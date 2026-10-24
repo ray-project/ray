@@ -1,13 +1,15 @@
 """Keep the per-file prose doctest lists in doc/BUILD.bazel complete and live.
 
-Core, RLlib, Serve, Train, and Tune prose is tested by `doctest_each()` over an
-explicit list of pages, not a directory glob, so that every target tests
-something. An explicit list can silently miss a page: a runnable block added
-to an unlisted page runs nowhere, not even post-merge. This check fails when:
+Doc prose is tested by `doctest_each()` over explicit lists of pages, not
+directory globs, so that every target tests something. Each library (Core,
+Data, RLlib, Serve, Train, and Tune) has its own list, and prose that no library
+owns is in the team:none list. An explicit list can silently miss a page: a
+runnable block added to an unlisted page runs nowhere, not even post-merge.
+This check fails when:
 
-- A page under one of those library directories has a runnable example but no
-  doctest target names it. Add the page to the library's list in
-  doc/BUILD.bazel, or add it to UNTESTED below with a reason.
+- A page under doc/source has a runnable example but no doctest target names
+  it. Add the page to its library's list in doc/BUILD.bazel, or to the team:none
+  list if no library owns it. Or add it to UNTESTED below with a reason.
 - A page a doctest target names has no runnable example. Its target would pass
   without testing anything, so remove it from doc/BUILD.bazel.
 
@@ -29,18 +31,17 @@ import sys
 from pathlib import Path
 from typing import Iterable, Set
 
-LIBRARY_DIRS = ("core", "rllib", "serve", "train", "tune")
-
 # Pages with a runnable example that deliberately have no doctest target.
 UNTESTED = {
     # The `doc_code/` snippet for this page is tested instead.
     "doc/source/core/tasks/nested-tasks.md",
-    # CI does not have Horovod installed.
-    "doc/source/train/horovod.md",
-    # These were excluded from their library's doctest target before the
+    # This was excluded from its library's doctest target before the
     # per-file split, with no reason recorded.
-    "doc/source/core/handling-dependencies.md",
     "doc/source/serve/production-guide/fault-tolerance.md",
+    # These pages teach doctest syntax. Their `>>>` samples illustrate the
+    # format and aren't meant to run.
+    "doc/source/ray-contribute/getting-involved.md",
+    "doc/source/ray-contribute/writing-code-snippets.md",
 }
 
 _PROMPT_RE = re.compile(r"^\s*>>>( |$)", re.MULTILINE)
@@ -50,9 +51,13 @@ _DIRECTIVE_RE = {
 }
 _OPTION_RE = re.compile(r"^\s*:[\w-]+:")
 _SKIPIF_TRUE_RE = re.compile(r"^\s*:skipif:\s*True\s*$")
-_BUILD_PAGE_RE = re.compile(
-    r'"(source/(?:%s)/[^"*]+\.(?:md|rst))"' % "|".join(LIBRARY_DIRS)
+# buildifier normalizes spacing in doc/BUILD.bazel but keeps end-of-line
+# comments, so a call's closing parenthesis and its `gpu` argument can carry one.
+_BUILD_CALL_RE = re.compile(
+    r"^doctest(?:_each)?\(\n.*?^\)[ \t]*(?:#[^\n]*)?$", re.MULTILINE | re.DOTALL
 )
+_COMMENT_RE = re.compile(r"#.*")
+_BUILD_PAGE_RE = re.compile(r'"(source/[^"*]+\.(?:md|rst))"')
 
 
 def has_runnable_example(text: str, suffix: str) -> bool:
@@ -74,15 +79,23 @@ def has_runnable_example(text: str, suffix: str) -> bool:
     return False
 
 
-def library_pages(doc_dir: Path) -> Iterable[Path]:
-    for lib in LIBRARY_DIRS:
-        for suffix in ("*.md", "*.rst"):
-            yield from (doc_dir / "source" / lib).rglob(suffix)
+def doc_pages(doc_dir: Path) -> Iterable[Path]:
+    for suffix in ("*.md", "*.rst"):
+        yield from (doc_dir / "source").rglob(suffix)
+
+
+def _build_pages(call: str) -> Set[str]:
+    """Pages a doctest call names, ignoring commented-out entries."""
+    return set(_BUILD_PAGE_RE.findall(_COMMENT_RE.sub("", call)))
 
 
 def listed_pages(doc_dir: Path) -> Set[str]:
+    """Pages named by a doctest call in doc/BUILD.bazel."""
     build = (doc_dir / "BUILD.bazel").read_text(encoding="utf-8")
-    return {"doc/" + page for page in _BUILD_PAGE_RE.findall(build)}
+    pages = set()
+    for call in _BUILD_CALL_RE.findall(build):
+        pages |= {"doc/" + page for page in _build_pages(call)}
+    return pages
 
 
 def main() -> int:
@@ -99,7 +112,7 @@ def main() -> int:
     listed = listed_pages(doc_dir)
     runnable = {
         str(page.relative_to(repo_root))
-        for page in library_pages(doc_dir)
+        for page in doc_pages(doc_dir)
         if has_runnable_example(
             page.read_text(encoding="utf-8", errors="replace"), page.suffix
         )
@@ -112,7 +125,8 @@ def main() -> int:
     for header, pages in (
         (
             "Pages with a runnable example but no doctest target. Add each to "
-            "its library's list in doc/BUILD.bazel, or to UNTESTED in "
+            "its library's list in doc/BUILD.bazel, or to the team:none list if "
+            "no library owns it. Or add it to UNTESTED in "
             "doc/test_prose_doctest_targets.py with a reason:",
             missing,
         ),

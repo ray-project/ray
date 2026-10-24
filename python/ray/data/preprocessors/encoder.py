@@ -157,6 +157,8 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             Another preprocessor that encodes categorical data.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -430,6 +432,8 @@ class OneHotEncoder(SerializablePreprocessorBase):
             If your categories are ordered, you may want to use
             :class:`OrdinalEncoder`.
     """  # noqa: E501
+
+    _supports_deferred_fit = True
 
     def __init__(
         self,
@@ -716,6 +720,8 @@ class MultiHotEncoder(SerializablePreprocessorBase):
     [1]: https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MultiLabelBinarizer.html
     """
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -891,6 +897,8 @@ class LabelEncoder(SerializablePreprocessorBase):
             If you're encoding ordered features, use :class:`OrdinalEncoder` instead of
             :class:`LabelEncoder`.
     """
+
+    _supports_deferred_fit = True
 
     def __init__(self, label_column: str, *, output_column: Optional[str] = None):
         super().__init__()
@@ -1069,6 +1077,8 @@ class Categorizer(SerializablePreprocessorBase):
             will be raised.
 
     """  # noqa: E501
+
+    _supports_deferred_fit = True
 
     def __init__(
         self,
