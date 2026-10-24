@@ -968,6 +968,19 @@ def test_field_types(partition_value, expected_type):
             True,
             "IS_IN with multiple values",
         ),
+        # Hive writes a null partition value as __HIVE_DEFAULT_PARTITION__.
+        (
+            "year=__HIVE_DEFAULT_PARTITION__/file.parquet",
+            col("year").is_null(),
+            True,
+            "IS_NULL on null partition",
+        ),
+        (
+            "year=__HIVE_DEFAULT_PARTITION__/file.parquet",
+            col("year").is_in(["2020"]),
+            False,
+            "IS_IN on null partition",
+        ),
     ],
 )
 @pytest.mark.skipif(
@@ -1056,6 +1069,38 @@ def test_evaluate_predicate_on_partition_unaffected_cases(predicate, expected):
     path = "year=2020/month=01/data.parquet"
 
     assert parser.evaluate_predicate_on_partition(path, predicate) is expected
+
+
+@pytest.mark.parametrize("field_types", [None, {"year": int}])
+def test_path_partition_parser_hive_null_partition(field_types):
+    partitioning = Partitioning("hive", field_types=field_types)
+    parse = PathPartitionParser(partitioning)
+
+    partitions = parse("year=__HIVE_DEFAULT_PARTITION__/month=01/data.parquet")
+
+    assert partitions == {"year": None, "month": "01"}
+
+
+def test_read_parquet_hive_null_partition(ray_start_regular_shared, tmp_path):
+    rows = [{"number": 0, "year": 1970}, {"number": 1, "year": None}]
+    ray.data.from_items(rows).write_parquet(tmp_path, partition_cols=["year"])
+
+    ds = ray.data.read_parquet(
+        tmp_path, partitioning=Partitioning("hive", field_types={"year": int})
+    )
+
+    assert sorted(ds.take_all(), key=lambda row: row["number"]) == rows
+
+
+def test_read_csv_hive_null_partition(ray_start_regular_shared, tmp_path):
+    for year in ["1970", "__HIVE_DEFAULT_PARTITION__"]:
+        write_csv({"number": [0]}, os.path.join(tmp_path, f"year={year}", "data.csv"))
+
+    ds = ray.data.read_csv(tmp_path, partitioning=Partitioning("hive"))
+
+    assert ds.filter(expr=col("year").is_null()).count() == 1
+    # Raises if the null partition's `year` column is null-typed, not string.
+    assert ds.filter(expr=col("year").is_in(["1970"])).count() == 1
 
 
 if __name__ == "__main__":
