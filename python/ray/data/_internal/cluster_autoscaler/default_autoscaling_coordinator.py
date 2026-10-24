@@ -547,6 +547,19 @@ class _AutoscalingCoordinatorActor:
                 for label_selectors in req.requested_label_selectors:
                     merged.update(label_selectors)
                 requested_label_selectors = [merged]
+            elif req.strategy is ResourceRequestStrategy.STRICT_SPREAD:
+                # Implicit resources have capacity 1 on every node in both
+                # autoscalers. Request all of it per bundle to require distinct
+                # nodes within this request, while allowing different requesters
+                # to share nodes. Only annotate the forwarded copies: reservations
+                # and the eventual workers still use the original resources.
+                spread_resource = (
+                    f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
+                    f"autoscaling_coordinator_spread_{requester_id}"
+                )
+                requested_resources = [
+                    {**bundle, spread_resource: 1} for bundle in requested_resources
+                ]
             merged_req.extend(requested_resources)
             for per_bundle in requested_label_selectors:
                 merged_selectors.append({**per_bundle, **subcluster_selector})
