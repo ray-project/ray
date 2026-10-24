@@ -13,6 +13,7 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.rules import (
+    BindGeneratedIdColumn,
     CombineDownloads,
     CombineShuffles,
     CommonSubExprElimination,
@@ -71,6 +72,9 @@ class LogicalOptimizer(Optimizer):
         # isolated from the optimizer rule loop as it applies to
         # a single Projection operator not a chain of operators.
         plan = CommonSubExprElimination().apply(plan)
+        # Runs after the rule loop so no ruleset rule, including ones callers
+        # add, can project the generated ID column away again.
+        plan = BindGeneratedIdColumn().apply(plan)
         # Must run last, over the final plan: it derives each ``ListFiles``'
         # listing-time constraints from the scanner of the ``ReadFiles`` that
         # consumes it. Running it earlier (or as a ruleset entry, which a
