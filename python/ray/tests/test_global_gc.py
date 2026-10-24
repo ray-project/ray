@@ -2,6 +2,7 @@
 import gc
 import logging
 import sys
+import textwrap
 import time
 import weakref
 from unittest.mock import Mock
@@ -11,11 +12,97 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._private.gc_collect_manager import PythonGCThread
 from ray._private.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize(
+    "gc_mode, error_type",
+    [
+        ("uninitialized", "RuntimeError"),
+        ("thread_error", "RuntimeError"),
+        ("thread_error", "SystemExit"),
+        ("sync_error", "RuntimeError"),
+        ("sync_error", "SystemExit"),
+    ],
+)
+def test_local_gc_callback_recovery(gc_mode, error_type):
+    # An uncaught exception in the native callback can segfault the process.
+    # Exercise the RPC in a child process to isolate that failure from pytest.
+    script = textwrap.dedent(
+        f"""
+        import gc
+        import weakref
+        from contextlib import ExitStack
+        from unittest.mock import Mock, patch
+
+        import grpc
+        import ray
+        from ray._common.network_utils import build_address
+        from ray._common.test_utils import wait_for_condition
+        from ray._private.test_utils import auth_token_grpc_metadata
+        from ray.core.generated.common_pb2 import Address
+        from ray.core.generated.core_worker_pb2 import LocalGCRequest
+        from ray.core.generated.core_worker_pb2_grpc import CoreWorkerServiceStub
+
+        ray.init(
+            num_cpus=0,
+            include_dashboard=False,
+            _system_config={{
+                "start_python_gc_manager_thread": {gc_mode != "sync_error"},
+                "local_gc_interval_s": 3600,
+            }},
+        )
+        try:
+            worker = ray._private.worker.global_worker
+            core_worker = worker.core_worker
+            ref = ray.put(1)
+            address = Address.FromString(core_worker.get_owner_address(ref))
+            metadata = auth_token_grpc_metadata()
+            with grpc.insecure_channel(
+                build_address(address.ip_address, address.port)
+            ) as channel:
+                stub = CoreWorkerServiceStub(channel)
+                with ExitStack() as stack:
+                    if {gc_mode!r} == "uninitialized":
+                        # Recreate the startup state before the Python worker
+                        # receives its CoreWorker, without relying on timing.
+                        del worker.core_worker
+                        stack.callback(setattr, worker, "core_worker", core_worker)
+                    else:
+                        failing_gc = Mock(side_effect={error_type}("injected GC error"))
+                        if {gc_mode!r} == "thread_error":
+                            stack.enter_context(patch.object(
+                                worker, "core_worker", Mock(trigger_gc=failing_gc)
+                            ))
+                        else:
+                            stack.enter_context(patch.object(gc, "collect", failing_gc))
+                    stub.LocalGC(LocalGCRequest(), timeout=10, metadata=metadata)
+                    if {gc_mode!r} != "uninitialized":
+                        failing_gc.assert_called_once()
+
+                # A later GC must still collect objects after the worker is
+                # initialized or the failing callback is restored.
+                gc.disable()
+
+                class CyclicObject:
+                    def __init__(self):
+                        self.cycle = self
+
+                garbage = weakref.ref(CyclicObject())
+                assert garbage() is not None
+                stub.LocalGC(LocalGCRequest(), timeout=10, metadata=metadata)
+                wait_for_condition(lambda: garbage() is None, timeout=10)
+                assert ray.get(ref) == 1
+        finally:
+            gc.enable()
+            ray.shutdown()
+        """
+    )
+    run_string_as_driver(script)
 
 
 def test_auto_local_gc(shutdown_only):

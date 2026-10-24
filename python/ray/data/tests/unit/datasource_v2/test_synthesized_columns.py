@@ -25,7 +25,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
-from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 ROW_GROUP_SIZE = 25
 NUM_ROW_GROUPS = 4
@@ -175,7 +175,7 @@ def test_default_path_column_keeps_hive_partition_collision(tmp_path):
     partition_dir.mkdir()
     path = _write_file(partition_dir / "data.parquet")
     reader = ParquetFileReader(
-        partitioning=Partitioning("hive"),
+        partitioning=Partitioning(PartitionStyle.HIVE),
         synthesized_columns=(PathColumn(),),
     )
 

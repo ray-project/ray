@@ -17,6 +17,7 @@ lets one batch span two row groups.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pyarrow as pa
 
@@ -83,7 +84,17 @@ class SynthesizedColumn(ABC):
             together, and the unit is the whole file.
     """
 
-    name: str
+    if TYPE_CHECKING:
+        # Accept both mutable fields and frozen dataclass fields. Keep this
+        # property out of runtime so dataclass initializers can assign name.
+        @property
+        @abstractmethod
+        def name(self) -> str:
+            """Column name as it appears in the output schema."""
+
+    else:
+        name: str
+
     type: pa.DataType
     requires_read_unit_boundaries: bool = False
 

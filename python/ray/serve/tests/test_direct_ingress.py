@@ -2639,6 +2639,7 @@ def test_get_serve_instance_details_json_serializable(
                                     "max_backoff_s": 0.5,
                                 },
                                 "rolling_update_percentage": 0.2,
+                                "max_surge_percent": 0,
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},
@@ -2699,6 +2700,12 @@ def test_get_serve_instance_details_json_serializable(
                     "ingress_deployment_name": ""
                     if RAY_SERVE_ENABLE_HA_PROXY
                     else "autoscaling_app",
+                    # Set explicitly only on HTTP app target groups, so exclude_unset keeps it.
+                    **(
+                        {}
+                        if RAY_SERVE_ENABLE_HA_PROXY
+                        else {"is_router_application": False}
+                    ),
                 },
                 {
                     "targets": [

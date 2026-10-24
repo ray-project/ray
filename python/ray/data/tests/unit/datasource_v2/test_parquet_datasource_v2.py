@@ -14,13 +14,15 @@ import pytest
 from ray.data._internal.datasource_v2.common.online_bin_packer import (
     OnlineBinPacker,
 )
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    _SCHEMA_READ_BATCH_SIZE,
+)
 from ray.data._internal.datasource_v2.common.synthesized_columns import RowHashColumn
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     ChunkedFile,
     FooterFileIndexer,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
-    _SCHEMA_READ_BATCH_SIZE,
     ParquetDatasourceV2,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
@@ -36,8 +38,16 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators import InputData, ReadFiles
+from ray.data._internal.logical.rules.bind_generated_id_column import (
+    BindGeneratedIdColumn,
+)
 from ray.data._internal.util import unify_schemas_with_validation
+from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.generated_id import GeneratedIdColumn
+from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 
@@ -217,30 +227,36 @@ def test_custom_path_column_rejects_row_hash_name(tmp_path):
         )
 
 
-def test_custom_path_column_rejects_generated_id_name(tmp_path):
-    with pytest.raises(ValueError, match="conflicts with an extra synthesized column"):
-        ParquetDatasourceV2(
-            [str(tmp_path)],
-            include_paths="source_file",
-            extra_synthesized_columns=(GeneratedIdColumn("source_file"),),
-        )
-
-
-def test_custom_path_column_preserves_generated_id_schema(tmp_path):
+@pytest.mark.parametrize("generated_id_name", ["source_file", "checkpoint_id"])
+def test_custom_path_column_with_plan_time_generated_id(tmp_path, generated_id_name):
     path = str(tmp_path / "data.parquet")
     _write_parquet(path, pa.table({"id": [1]}))
-    generated_id = GeneratedIdColumn("checkpoint_id")
-    datasource = ParquetDatasourceV2(
-        [path],
-        include_paths="source_file",
-        extra_synthesized_columns=(generated_id,),
-    )
-
+    datasource = ParquetDatasourceV2([path], include_paths="source_file")
     schema = datasource.infer_schema(_manifest_of([path]))
+    read_files = ReadFiles(
+        datasource_name=datasource.name,
+        scanner=datasource.create_scanner(schema),
+        schema=schema,
+        parallelism=-1,
+        input_dependencies=[InputData(input_data=[])],
+    )
+    context = DataContext.get_current().copy()
+    context.checkpoint_config = CheckpointConfig(
+        generated_id_column=generated_id_name,
+        checkpoint_path=str(tmp_path / "checkpoint"),
+    )
+    plan = LogicalPlan(read_files, context)
+    if generated_id_name == "source_file":
+        with pytest.raises(InvalidCheckpointingConfig, match="already exists"):
+            BindGeneratedIdColumn().apply(plan)
+        return
 
+    bound = BindGeneratedIdColumn().apply(plan)
+    schema = bound.dag.infer_schema()
+    assert isinstance(schema, pa.Schema)
     assert schema.names == ["id", "source_file", "checkpoint_id"]
     assert schema.field("source_file").type == pa.string()
-    assert schema.field("checkpoint_id").type == generated_id.type
+    assert schema.field("checkpoint_id").type == GeneratedIdColumn("checkpoint_id").type
 
 
 def test_custom_path_column_rejects_partition_name(tmp_path):
@@ -250,7 +266,9 @@ def test_custom_path_column_rejects_partition_name(tmp_path):
     _write_parquet(str(file_path), pa.table({"id": [1]}))
 
     datasource = ParquetDatasourceV2(
-        [str(tmp_path)], include_paths="year", partitioning=Partitioning("hive")
+        [str(tmp_path)],
+        include_paths="year",
+        partitioning=Partitioning(PartitionStyle.HIVE),
     )
     sample = _manifest_of([str(file_path)])
     schema = datasource.infer_schema(sample)

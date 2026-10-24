@@ -22,8 +22,10 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
+from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsLimitPushdown
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
+from ray.data.datasource import FileShuffleConfig
 
 
 def _write(path, table):
@@ -117,6 +119,7 @@ def test_read_parquet_v2_custom_path_column_collision_preserves_column_order(
 
     assert ds.schema().names == ["id", "source_file"]
     batch = ds.take_batch(batch_format="pyarrow")
+    assert isinstance(batch, pa.Table)
     assert batch.column_names == ds.schema().names
     assert batch.to_pylist() == [{"id": 1, "source_file": str(file_path)}]
 
@@ -148,6 +151,7 @@ def test_read_parquet_v2_default_path_collision_preserves_column_order(
 
     assert ds.schema().names == ["id", "path"]
     batch = ds.take_batch(batch_format="pyarrow")
+    assert isinstance(batch, pa.Table)
     assert batch.column_names == ds.schema().names
     assert batch.to_pylist() == [{"id": 1, "path": str(file_path)}]
 
@@ -192,6 +196,7 @@ def test_read_parquet_v2_row_hash_collision_preserves_column_order(
 
     assert ds.schema().names == ["id", "row_hash"]
     batch = ds.take_batch(batch_format="pyarrow")
+    assert isinstance(batch, pa.Table)
     assert batch.column_names == ds.schema().names
     assert batch.schema.field("row_hash").type == pa.uint64()
 
@@ -265,32 +270,39 @@ def test_read_parquet_v2_columns_with_custom_path_column(
     assert ds.take_all() == [{"id": 1, "source_file": str(file_path)}]
 
 
+@pytest.mark.parametrize("configure_after_read", [False, True])
+@pytest.mark.parametrize("merge_schema", [False, True])
 def test_read_parquet_v2_custom_path_column_rejects_generated_id_name(
-    tmp_path, restore_ctx, monkeypatch
+    tmp_path, restore_ctx, monkeypatch, configure_after_read, merge_schema
 ):
     from pyarrow.fs import LocalFileSystem
 
     from ray.data.checkpoint import CheckpointConfig
+    from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
 
     path = tmp_path / "data.parquet"
     _write(path, pa.table({"id": [1]}))
-    monkeypatch.setattr(
-        restore_ctx,
-        "checkpoint_config",
-        CheckpointConfig(
-            generated_id_column="source_file",
-            checkpoint_path=str(tmp_path / "checkpoint"),
-            override_filesystem=LocalFileSystem(),
-        ),
+    config = CheckpointConfig(
+        generated_id_column="source_file",
+        checkpoint_path=str(tmp_path / "checkpoint"),
+        override_filesystem=LocalFileSystem(),
     )
+    if not configure_after_read:
+        monkeypatch.setattr(restore_ctx, "checkpoint_config", config)
     restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(path), include_paths="source_file", merge_schema=merge_schema
+    )
+    if configure_after_read:
+        ds.context.checkpoint_config = config
 
-    with pytest.raises(ValueError, match="conflicts with an extra synthesized column"):
-        ray.data.read_parquet(str(path), include_paths="source_file")
+    with pytest.raises(InvalidCheckpointingConfig, match="already exists"):
+        ds.take_all()
 
 
+@pytest.mark.parametrize("configure_after_read", [False, True])
 def test_read_parquet_v2_custom_path_column_preserves_generated_ids(
-    tmp_path, restore_ctx, monkeypatch
+    tmp_path, restore_ctx, monkeypatch, configure_after_read
 ):
     from pyarrow.fs import LocalFileSystem
 
@@ -298,16 +310,14 @@ def test_read_parquet_v2_custom_path_column_preserves_generated_ids(
 
     path = tmp_path / "data.parquet"
     _write(path, pa.table({"id": [1, 2], "path": ["first", "second"]}))
-    monkeypatch.setattr(
-        restore_ctx,
-        "checkpoint_config",
-        CheckpointConfig(
-            generated_id_column="checkpoint_id",
-            checkpoint_path=str(tmp_path / "checkpoint"),
-            override_filesystem=LocalFileSystem(),
-            delete_checkpoint_on_success=False,
-        ),
+    config = CheckpointConfig(
+        generated_id_column="checkpoint_id",
+        checkpoint_path=str(tmp_path / "checkpoint"),
+        override_filesystem=LocalFileSystem(),
+        delete_checkpoint_on_success=False,
     )
+    if not configure_after_read:
+        monkeypatch.setattr(restore_ctx, "checkpoint_config", config)
     restore_ctx.use_datasource_v2 = True
     with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
         ds = ray.data.read_parquet(
@@ -316,6 +326,8 @@ def test_read_parquet_v2_custom_path_column_preserves_generated_ids(
             include_paths="source_file",
             merge_schema=True,
         )
+    if configure_after_read:
+        ds.context.checkpoint_config = config
 
     assert ds.schema().names == ["id", "source_file", "checkpoint_id"]
     rows = sorted(ds.take_all(), key=lambda row: row["id"])
@@ -1447,6 +1459,78 @@ def test_merge_schema_rejects_schema_override_and_v1(tmp_path, restore_ctx):
     restore_ctx.use_datasource_v2 = False
     with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
         ray.data.read_parquet(str(path), merge_schema=True)
+
+
+def _write_global_ids(path, *, num_files, rows_per_file, row_group_size):
+    """Like ``_write_row_groups``, but ``id`` is unique across files."""
+    for i in range(num_files):
+        start = i * rows_per_file
+        pq.write_table(
+            pa.table({"id": list(range(start, start + rows_per_file))}),
+            str(path / f"f{i:03d}.parquet"),
+            row_group_size=row_group_size,
+        )
+
+
+@pytest.mark.parametrize(
+    "shuffle, listing_limited",
+    [
+        (None, True),
+        ("files", True),
+        (FileShuffleConfig(seed=0), True),
+        (FileShuffleConfig(seed=0, small_chunks_shuffle=True), False),
+    ],
+    ids=["no_shuffle", "files", "file_shuffle_config", "small_chunks_shuffle"],
+)
+def test_small_chunks_shuffle_keeps_limit_out_of_listing(
+    tmp_path, restore_ctx, shuffle, listing_limited
+):
+    """Listing stops early *before* the row-group shuffle, so a listing limit
+    would shrink the shuffle pool to the first files listed. Only the scanner,
+    which reads already-shuffled manifests, may take the limit."""
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    _write_row_groups(tmp_path, num_files=4, rows_per_file=20, row_group_size=5)
+    restore_ctx.use_datasource_v2 = True
+
+    ds = ray.data.read_parquet(str(tmp_path), shuffle=shuffle).limit(7)
+    ops = list(_walk(LogicalOptimizer().optimize(ds._logical_plan).dag))
+
+    (list_files,) = [op for op in ops if isinstance(op, ListFiles)]
+    (read_files,) = [op for op in ops if isinstance(op, ReadFiles)]
+    scanner = read_files.scanner
+    assert isinstance(scanner, SupportsLimitPushdown)
+    assert scanner.pushed_limit() == 7
+    assert list_files.limit == (7 if listing_limited else None)
+
+
+def test_limit_does_not_change_small_chunks_shuffle_output(
+    tmp_path, restore_ctx, monkeypatch
+):
+    """With a fixed seed and ordered execution, ``limit(n)`` must return the
+    first ``n`` rows of the full row-group shuffle -- the same rows as when
+    nothing is pushed down (``map_batches`` blocks limit pushdown)."""
+    _write_global_ids(tmp_path, num_files=50, rows_per_file=40, row_group_size=10)
+    restore_ctx.use_datasource_v2 = True
+    # One row group per shuffle run.
+    monkeypatch.setattr(restore_ctx, "small_shuffle_chunk_size", 1)
+    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
+
+    def read():
+        return ray.data.read_parquet(
+            str(tmp_path),
+            shuffle=FileShuffleConfig(
+                seed=0, reseed_after_execution=False, small_chunks_shuffle=True
+            ),
+        )
+
+    n = 40
+    blocked = read().map_batches(lambda b: b, batch_format="pyarrow").limit(n)
+    pushed = [r["id"] for r in read().limit(n).take_all()]
+    not_pushed = [r["id"] for r in blocked.take_all()]
+
+    assert len(pushed) == n
+    assert pushed == not_pushed
 
 
 if __name__ == "__main__":
