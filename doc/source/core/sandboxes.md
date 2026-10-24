@@ -309,6 +309,43 @@ ray.get(pool.close.remote())
 
 A sandbox doesn't outlive the Ray worker that creates it. When the worker exits or crashes, Ray stops the processes the worker started, and the sandbox with them, so an actor that dies without deleting its sandboxes doesn't leak their CPU and memory. Sandbox creation on the node then deletes what they left on disk, in the background and at most once a minute per process: runsc's state, the writable overlay, and the image cache's record that the sandbox uses the image. A sandbox created outside a Ray worker, such as by a driver script, keeps running after its creator exits until that cleanup stops it, so delete those explicitly.
 
+### Keep sandboxes booted with a warm pool
+
+Creating a sandbox boots gVisor, which takes a fraction of a second, and longer when many sandboxes start at once. If you know the configurations your workload creates, pass them to `SandboxRuntime` as warm-pool profiles. The runtime boots each profile's sandboxes ahead of time, and a `create` call whose arguments match a profile takes one of them at once, while the runtime boots a replacement in the background:
+
+```python
+import ray
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+PROFILE = {"image": "python:3.12-slim", "cpu": 0.25, "workdir": "/workspace"}
+
+@ray.remote
+class SandboxWorker:
+    def __init__(self, pool_size: int = 16):
+        self.runtime = SandboxRuntime(warm_pool=[{**PROFILE, "size": pool_size}])
+
+    def ready(self, timeout_seconds: float = 300) -> bool:
+        return self.runtime.wait_for_warm_pool(timeout_seconds)
+
+    def run(self, command: str, env: dict) -> str:
+        # Matches the profile, so it takes a booted sandbox.
+        instance_id = self.runtime.create(**PROFILE, env=env)
+        try:
+            return self.runtime.exec(instance_id, command).stdout
+        finally:
+            self.runtime.delete(instance_id)
+
+    def close(self):
+        self.runtime.close()
+
+worker = SandboxWorker.remote()
+ray.get(worker.ready.remote())
+print(ray.get(worker.run.remote("echo $TASK", {"TASK": "warm"})))
+ray.get(worker.close.remote())
+```
+
+A profile is the keyword arguments of `create` plus a `size`. Everything fixed at boot must match: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, `readonly`, and `rootless`. A create's `env`, `ttl_seconds`, and `timeout_seconds` don't need to match: a sandbox taken from the pool runs every command with the create's `env` on top of the profile's, and its TTL starts at the create. Creates that match no profile boot as usual. Call `close` to delete the sandboxes the pool still holds.
+
 ### Pass custom OCI configurations to gVisor
 
 For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [Open Container Initiative (OCI) runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
