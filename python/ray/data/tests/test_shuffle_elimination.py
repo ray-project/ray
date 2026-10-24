@@ -1,18 +1,24 @@
-from typing import Callable, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
+from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    _make_complete_aggregating_block_fn,
+)
 from ray.data._internal.logical.interfaces import (
     ClusteredDistribution,
     HashPartitioning,
 )
 from ray.data._internal.logical.operators import Project
 from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data.aggregate import Sum
+from ray.data.aggregate import AbsMax, AggregateFnV2, Count, CountDistinct, Sum
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.expressions import col
@@ -203,6 +209,78 @@ def test_project_preserves_columns_without_schema(
     project = opaque.rename_columns({"id": "key"})._logical_plan.dag
     assert not project.preserves_columns(["id"])
     assert project.preserves_columns(["grp"])
+
+
+# ---------------------------------------------------------------------------
+# Complete (one-phase) aggregation of a partition
+# ---------------------------------------------------------------------------
+
+
+def _partition_blocks() -> List[Block]:
+    """One partition's blocks: mixed formats, one empty, groups 1 and 2 split
+    across blocks."""
+    return [
+        pa.table({"k": [1, 2], "v": [1, 2]}),
+        pa.table({"k": pa.array([], pa.int64()), "v": pa.array([], pa.int64())}),
+        pd.DataFrame({"k": [2, 3], "v": [10, 20]}),
+        pa.table({"k": [1], "v": [100]}),
+    ]
+
+
+@pytest.mark.parametrize(
+    "aggs,expected",
+    [
+        pytest.param(
+            (Sum(on="v", alias_name="s"), Count(alias_name="c")),
+            {"s": [101, 12, 20], "c": [2, 2, 1]},
+            id="vectorized",
+        ),
+        pytest.param(
+            (CountDistinct(on="v", alias_name="d"),),
+            {"d": [2, 2, 1]},
+            id="vectorized_collection",
+        ),
+        # ``AbsMax`` has no Arrow kernel, forcing the Python engine.
+        pytest.param(
+            (Sum(on="v", alias_name="s"), AbsMax(on="v", alias_name="m")),
+            {"s": [101, 12, 20], "m": [100, 10, 20]},
+            id="python",
+        ),
+    ],
+)
+def test_complete_aggregation_of_a_partition(
+    aggs: Tuple[AggregateFnV2, ...], expected: Dict[str, List[int]]
+):
+    """One row per group, from all of the group's blocks."""
+    aggregate = _make_complete_aggregating_block_fn(("k",), aggs)
+    out = pa.concat_tables(
+        aggregate(iter(_partition_blocks()), TaskContext(task_idx=0, op_name="test"))
+    )
+    assert out.sort_by("k").to_pydict() == {"k": [1, 2, 3], **expected}
+    # No rows means no groups and no output block.
+    assert list(aggregate(iter(_partition_blocks()[1:2]), TaskContext(0, "test"))) == []
+
+
+class _SumThatCannotCombine(AggregateFnV2):
+    """A sum that fails if two partial aggregates are ever combined."""
+
+    def __init__(self):
+        super().__init__("s", zero_factory=lambda: 0, on="v", ignore_nulls=True)
+
+    def aggregate_block(self, block: Block) -> int:
+        return pc.sum(BlockAccessor.for_block(block).to_arrow()["v"]).as_py()
+
+    def combine(self, current_accumulator: int, new: int) -> int:
+        raise AssertionError("combined partial aggregates of one group")
+
+
+def test_complete_aggregation_aggregates_each_group_once():
+    """A group split across blocks is aggregated once, not per block."""
+    aggregate = _make_complete_aggregating_block_fn(("k",), (_SumThatCannotCombine(),))
+    out = pa.concat_tables(
+        aggregate(iter(_partition_blocks()), TaskContext(task_idx=0, op_name="test"))
+    )
+    assert out.sort_by("k").to_pydict() == {"k": [1, 2, 3], "s": [101, 12, 20]}
 
 
 if __name__ == "__main__":
