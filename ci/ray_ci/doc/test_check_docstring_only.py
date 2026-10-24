@@ -1,3 +1,4 @@
+import subprocess
 import sys
 
 import pytest
@@ -6,6 +7,7 @@ from ci.ray_ci.doc.check_docstring_only import (
     _parse_name_status,
     check_changes,
     check_file,
+    main,
 )
 
 _BEFORE = '''"""Module docstring."""
@@ -130,6 +132,38 @@ def test_change_kinds():
         "renamed.py",
         "README.md",
     ]
+
+
+def _git_repo(path):
+    def git(*args):
+        subprocess.check_call(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=path
+        )
+
+    git("init", "-q", "-b", "master")
+    return git
+
+
+def test_base_diffs_from_the_merge_base(tmp_path, monkeypatch, capsys):
+    git = _git_repo(tmp_path)
+    (tmp_path / "lib.py").write_text(_BEFORE)
+    (tmp_path / "other.py").write_text("X = 1\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "base")
+    git("checkout", "-q", "-b", "feature")
+    (tmp_path / "lib.py").write_text(_BEFORE.replace("Run it.", "Run it again."))
+    git("commit", "-q", "-am", "docstrings only")
+    # A code change lands on master after the branch point. Diffing against
+    # master literally would count it as this branch's change.
+    git("checkout", "-q", "master")
+    (tmp_path / "other.py").write_text("X = 2\n")
+    git("commit", "-q", "-am", "code on master")
+    git("checkout", "-q", "feature")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["check_docstring_only.py", "--base", "master"])
+    assert main() == 0
+    assert "1 file(s), docstrings only." in capsys.readouterr().out
 
 
 def test_parse_name_status():
