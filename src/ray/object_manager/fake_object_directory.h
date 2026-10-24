@@ -66,6 +66,12 @@ class FakeObjectDirectory : public IObjectDirectory {
     spilled_objects.push_back(object_id);
   }
 
+  void ReportObjectPrimaryMoved(const ObjectID &object_id,
+                                const NodeID &node_id,
+                                const rpc::Address &owner_address) override {
+    primary_moved_objects.push_back(object_id);
+  }
+
   void RecordMetrics(uint64_t duration_ms) override {}
 
   std::string DebugString() const override { return "FakeObjectDirectory"; }
@@ -80,6 +86,7 @@ class FakeObjectDirectory : public IObjectDirectory {
   std::vector<ObjectID> added_objects;
   std::vector<ObjectID> removed_objects;
   std::vector<ObjectID> spilled_objects;
+  std::vector<ObjectID> primary_moved_objects;
 };
 
 }  // namespace ray

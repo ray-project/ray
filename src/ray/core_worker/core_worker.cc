@@ -4325,6 +4325,12 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                        << " has been received.";
       }
     }
+
+    if (object_location_update.has_primary_moved_to_node_id()) {
+      reference_counter_->UpdateObjectPinnedAtRaylet(
+          object_id,
+          NodeID::FromBinary(object_location_update.primary_moved_to_node_id()));
+    }
   }
 
   send_reply_callback(Status::OK(),
