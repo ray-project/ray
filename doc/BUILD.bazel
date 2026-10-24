@@ -19,6 +19,10 @@ filegroup(
     visibility = ["//ci/pipeline:__pkg__"],
 )
 
+# Consumed by //python/ray/dashboard:test_http_job_server, which checks the
+# Ray Jobs API spec against the JobHead routes and responses.
+exports_files(["source/cluster/running-applications/job-submission/openapi.yml"])
+
 # --------------------------------------------------------------------
 # Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
