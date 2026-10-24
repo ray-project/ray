@@ -1689,6 +1689,107 @@ def test_variable_shaped_null_rows_to_pandas_unchanged():
         np.testing.assert_array_equal(actual_row, expected_row)
 
 
+def _to_pandas_chunked(chunks) -> TensorArray:
+    """Convert a multi-chunk column, as a batch spanning several blocks does."""
+    column = pa.chunked_array(chunks)
+    return column.type.to_pandas_dtype().__from_arrow__(column)
+
+
+def test_variable_shaped_uniform_rows_multi_chunk_to_pandas_skips_per_row(
+    monkeypatch,
+):
+    """Uniform rows spread over several chunks are joined without per-row views.
+
+    A batch that spans two blocks reaches pandas as a two-chunk column. Each
+    chunk is dense on its own, so it is joined with one concatenation instead of
+    going through ``to_numpy``, which returns one view per row for the result to
+    be stacked from.
+    """
+    data = np.arange(24, dtype=np.float32).reshape(6, 4)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    to_numpy_calls = []
+    original_to_numpy = ArrowVariableShapedTensorArray.to_numpy
+
+    def spy_to_numpy(self, *args, **kwargs):
+        to_numpy_calls.append(len(self))
+        return original_to_numpy(self, *args, **kwargs)
+
+    monkeypatch.setattr(ArrowVariableShapedTensorArray, "to_numpy", spy_to_numpy)
+
+    tensor_array = _to_pandas_chunked([arr.slice(0, 2), arr.slice(2)])
+
+    assert to_numpy_calls == []
+    assert tensor_array._tensor.dtype == np.float32
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data)
+
+
+@pytest.mark.parametrize(
+    "chunk_rows",
+    [
+        # #66122 noted that a dense chunk can't be concatenated with a ragged one.
+        [np.ones((2, 4)), [np.ones(2), np.ones(5)]],
+        [[np.ones(2), np.ones(5)], np.ones((2, 4))],
+        # Each chunk is dense, but not with the same row shape.
+        [np.ones((2, 4)), np.zeros((3, 5))],
+    ],
+    ids=["dense_then_ragged", "ragged_then_dense", "dense_different_shapes"],
+)
+def test_variable_shaped_mixed_chunks_to_pandas(chunk_rows):
+    """Chunks that can't share one dense array fall back to one ndarray per row."""
+    chunks = [ArrowVariableShapedTensorArray.from_numpy(rows) for rows in chunk_rows]
+    expected = [row for rows in chunk_rows for row in rows]
+
+    tensor_array = _to_pandas_chunked(chunks)
+
+    assert tensor_array._tensor.dtype == object
+    assert len(tensor_array) == len(expected)
+    for actual_row, expected_row in zip(tensor_array.to_numpy(), expected):
+        np.testing.assert_array_equal(actual_row, expected_row)
+
+
+def test_variable_shaped_zero_dim_mixed_chunks_to_pandas():
+    """0-d rows next to a null row still fall back to one ndarray per row.
+
+    A dense chunk of 0-d rows is 1-d, like a chunk of per-row ndarrays, so the
+    row shapes alone can't tell them apart.
+    """
+    # from_numpy can't build 0-d rows, so build the storage directly.
+    zero_dim = pa.ExtensionArray.from_storage(
+        ArrowVariableShapedTensorType(pa.float32(), 0),
+        pa.StructArray.from_arrays(
+            [
+                pa.array([[1.0], [2.0], [3.0]], pa.large_list(pa.float32())),
+                pa.array([[], [], []], pa.list_(pa.int64())),
+            ],
+            names=["data", "shape"],
+        ),
+    )
+    with_null = _with_null_row(zero_dim, "struct")
+    assert zero_dim._to_dense_numpy_or_none() is not None
+
+    tensor_array = _to_pandas_chunked([zero_dim, with_null])
+
+    expected = list(zero_dim.to_numpy()) + list(
+        with_null.to_numpy(zero_copy_only=False)
+    )
+    actual = tensor_array.to_numpy()
+    assert len(actual) == len(expected)
+    for actual_row, expected_row in zip(actual, expected):
+        np.testing.assert_array_equal(actual_row, expected_row)
+
+
+def test_variable_shaped_multi_chunk_with_empty_chunks_to_pandas_is_zero_copy():
+    """Empty chunks are skipped, so one remaining chunk is still a view."""
+    data = np.arange(12, dtype=np.float32).reshape(3, 4)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    tensor_array = _to_pandas_chunked([arr.slice(0, 0), arr, arr.slice(0, 0)])
+
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data)
+    assert np.shares_memory(tensor_array._tensor, _arrow_values_view(arr))
+
+
 if __name__ == "__main__":
     import sys
 
