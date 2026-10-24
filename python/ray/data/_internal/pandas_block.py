@@ -618,8 +618,6 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow as pa
 
-        from ray.data._internal.tensor_extensions.pandas import TensorDtype
-
         # _from_pandas_safe handles object-dtype columns that pa.Table.from_pandas
         # cannot convert (e.g. multi-dimensional numpy arrays, PIL images), because Arrow cannot handle them natively.
         arrow_table = _from_pandas_safe(self._table)
@@ -639,9 +637,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
             # Skip coercing explicitly typed columns to avoid type information loss
             # See https://github.com/ray-project/ray/issues/59087 for context
-            if isinstance(
-                col.dtype, (TensorDtype, pd.ArrowDtype)
-            ) or is_extension_array_dtype(col.dtype):
+            if is_extension_array_dtype(col.dtype):
                 continue
 
             if not col.notna().any():
