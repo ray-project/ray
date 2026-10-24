@@ -17,7 +17,12 @@ from typing import (
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
+from pandas.api.types import (
+    is_extension_array_dtype,
+    is_object_dtype,
+    is_scalar,
+    is_string_dtype,
+)
 
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
@@ -632,9 +637,11 @@ class PandasBlockAccessor(TableBlockAccessor):
         for idx, col_name in enumerate(self._table.columns):
             col = self._table[col_name]
 
-            # Skip coercing tensors to null-type to avoid type information loss
+            # Skip coercing explicitly typed columns to avoid type information loss
             # See https://github.com/ray-project/ray/issues/59087 for context
-            if isinstance(col.dtype, (TensorDtype, pd.ArrowDtype)):
+            if isinstance(
+                col.dtype, (TensorDtype, pd.ArrowDtype)
+            ) or is_extension_array_dtype(col.dtype):
                 continue
 
             if not col.notna().any():
