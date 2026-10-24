@@ -285,8 +285,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
         auto &loader = AuthenticationTokenLoader::instance();
         loader.GetToken();
       },
-      "no authentication token was found.*run `ray get-auth-token` on the head "
-      "node.*set RAY_AUTH_MODE=disabled");
+      "it has no token or the cluster has token authentication disabled.*run `ray "
+      "get-auth-token` on the head node.*set RAY_AUTH_MODE=disabled");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestCaching) {
@@ -400,6 +400,19 @@ TEST_F(AuthenticationTokenLoaderTest, TestJWTExpiration) {
   EXPECT_EQ(token2->GetRawValue(), "new-token");
 
   // Re-enable auth for other tests
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestK8sTokenAuthWithAuthDisabledFails) {
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "disabled", "ENABLE_K8S_TOKEN_AUTH": true})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  EXPECT_DEATH(AuthenticationTokenLoader::instance().GetToken(),
+               "Kubernetes token authentication \\(ENABLE_K8S_TOKEN_AUTH\\) requires "
+               "RAY_AUTH_MODE=token");
+
   RayConfig::instance().initialize(
       R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
 }

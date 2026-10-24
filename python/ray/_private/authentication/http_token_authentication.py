@@ -1,15 +1,30 @@
+import logging
 import socket
 import threading
 from http.cookies import CookieError, SimpleCookie
 from socketserver import ThreadingMixIn
 from types import ModuleType
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
 from ray._private.authentication import (
     authentication_constants,
     authentication_utils as auth_utils,
 )
+
+if TYPE_CHECKING:
+    from multidict import CIMultiDictProxy
+
+logger = logging.getLogger(__name__)
+
+
+def _carries_auth_header(headers: "CIMultiDictProxy[str]") -> bool:
+    """Whether a request carries a non-empty Authorization header, of any scheme, or
+    X-Ray-Authorization header. The token cookie doesn't count: a browser can keep it
+    from an earlier token-mode cluster at the same address."""
+    return any(
+        headers.getall(authentication_constants.AUTHORIZATION_HEADER_NAME, [])
+    ) or bool(headers.get(authentication_constants.RAY_AUTHORIZATION_HEADER_NAME))
 
 
 def get_token_auth_middleware(
@@ -31,11 +46,20 @@ def get_token_auth_middleware(
     async def token_auth_middleware(request, handler):
         """Middleware to validate bearer tokens when token authentication is enabled.
 
-        In minimal Ray installations (without ray._raylet), this middleware is a no-op
-        and passes all requests through without authentication.
+        With auth disabled, or without ray._raylet (doc builds), it authenticates
+        nothing and only rejects requests that carry an auth header, so token-mode
+        clients opt out too.
         """
-        # No-op if token auth is not enabled or raylet is not available
         if not auth_utils.is_token_auth_enabled():
+            if _carries_auth_header(request.headers):
+                logger.debug(
+                    f"Rejecting {request.method} {request.path} with an auth header "
+                    "because auth is disabled"
+                )
+                return aiohttp_module.web.Response(
+                    status=401,
+                    text=authentication_constants.TOKEN_AUTH_ERROR_MESSAGE,
+                )
             return await handler(request)
 
         # skip authentication for whitelisted paths
@@ -185,9 +209,7 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
     if not auth_headers:
         from ray.exceptions import AuthenticationError
 
-        raise AuthenticationError(
-            authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
-        )
+        raise AuthenticationError(authentication_constants.TOKEN_AUTH_ERROR_MESSAGE)
 
     return auth_headers
 
@@ -195,11 +217,10 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
 def format_authentication_http_error(status: int, body: str) -> Optional[str]:
     """Return a user-friendly authentication error message, if applicable."""
 
+    # A 401 means a missing token or a token sent to a cluster with auth disabled,
+    # which the one message covers, so the body would only repeat it.
     if status == 401:
-        return "Authentication required: {body}\n\n{details}".format(
-            body=body,
-            details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
-        )
+        return authentication_constants.TOKEN_AUTH_ERROR_MESSAGE
 
     if status == 403:
         return "Authentication failed: {body}\n\n{details}".format(
