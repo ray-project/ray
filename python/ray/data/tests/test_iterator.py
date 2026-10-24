@@ -46,6 +46,28 @@ def test_basic_dataset(ray_start_regular_shared):
     # assert it.stats() == ds.stats()
 
 
+def test_iterator_count(ray_start_regular_shared):
+    """`DataIterator.count()` returns the number of rows the iterator yields."""
+    ds = ray.data.range(100)
+    it = ds.iterator()
+    assert it.count() == 100
+
+    # `count()` should not consume the iterator.
+    result = []
+    for batch in it.iter_batches():
+        result += batch["id"].tolist()
+    assert result == list(range(100))
+
+
+def test_iterator_count_after_transform(ray_start_regular_shared):
+    """`count()` reflects row-count-changing transforms."""
+    ds = ray.data.range(100).limit(42)
+    assert ds.iterator().count() == 42
+
+    ds = ray.data.range(100).filter(lambda row: row["id"] < 30)
+    assert ds.iterator().count() == 30
+
+
 def test_basic_dataset_multi_use_iterator(ray_start_regular_shared):
     """Tests that the iterable outputted by `iter_batches` can be used
     multiple times."""
