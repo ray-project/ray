@@ -40,6 +40,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
 from ray.data._internal.execution.util import merge_label_selector
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
@@ -84,6 +85,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
+        output_partitioning: Optional[HashPartitioning] = None,
     ):
         input_ops: List[PhysicalOperator] = (
             [input_op] if isinstance(input_op, DiskHashShuffleMapOp) else list(input_op)
@@ -103,6 +105,8 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
         self._emit_empty_partitions: bool = should_emit_empty_partitions
+        # See PhysicalOperator.output_partitioning.
+        self._output_partitioning: Optional[HashPartitioning] = output_partitioning
         # False when reduce_fn (aggregation) or a fused map can change the row
         # count, so num_output_rows_total() can't borrow the map op's total.
         self._preserves_row_count: bool = preserves_row_count

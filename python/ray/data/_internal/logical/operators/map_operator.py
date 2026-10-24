@@ -11,6 +11,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Union,
 )
 
@@ -502,6 +503,31 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
+
+    def preserves_columns(self, columns: Sequence[str]) -> bool:
+        """Whether each of ``columns`` passes through unchanged under its own name."""
+        from ray.data.expressions import AliasExpr, ColumnExpr, StarExpr, is_rename_expr
+
+        has_star = any(isinstance(e, StarExpr) for e in self.exprs)
+        # The last expression for a name wins, as in eval_projection.
+        final_exprs: Dict[str, "Expr"] = {
+            e.name: e for e in self.exprs if not isinstance(e, StarExpr)
+        }
+        # star() doesn't forward a rename's source column.
+        rename_sources = {e.expr.name for e in self.exprs if is_rename_expr(e)}
+
+        for column in columns:
+            expr = final_exprs.get(column)
+            if expr is None:
+                # Only a star() can forward it.
+                if not has_star or column in rename_sources:
+                    return False
+                continue
+            while isinstance(expr, AliasExpr):
+                expr = expr.expr
+            if not (isinstance(expr, ColumnExpr) and expr.name == column):
+                return False
+        return True
 
     def infer_schema(self) -> Optional["Schema"]:
         import pyarrow as pa
