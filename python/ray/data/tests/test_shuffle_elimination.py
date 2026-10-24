@@ -8,8 +8,17 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
+from ray.data._internal.execution.operators.hash_aggregate import (
+    HashAggregateOperator,
+)
 from ray.data._internal.execution.operators.hash_aggregate_v2 import (
     _make_complete_aggregating_block_fn,
+)
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    ShuffleReduceOp,
 )
 from ray.data._internal.logical.interfaces import (
     ClusteredDistribution,
@@ -17,11 +26,12 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators import Project
 from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data.aggregate import AbsMax, AggregateFnV2, Count, CountDistinct, Sum
+from ray.data.aggregate import AbsMax, AggregateFnV2, Count, CountDistinct, Max, Sum
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.expressions import col
+from ray.data.grouped_data import GroupedData
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.tests.conftest import *  # noqa: F401, F403
 
@@ -76,6 +86,58 @@ def _join(right: Optional[Dataset] = None, join_type: str = "inner") -> Dataset:
 
 def _physical_dag(ds: Dataset) -> PhysicalOperator:
     return get_execution_plan(ds._logical_plan)[0].dag
+
+
+def _op_names(dag: PhysicalOperator) -> List[str]:
+    return [op.name for op in dag.post_order_iter()]
+
+
+def _has_aggregate_shuffle(dag: PhysicalOperator) -> bool:
+    return any("HashAggregateMap" in name for name in _op_names(dag))
+
+
+def _pandas_groupby(
+    ds: Dataset, keys: List[str], **aggs: Tuple[str, str]
+) -> pd.DataFrame:
+    """Reference result: ``ds`` materialized, then aggregated in pandas."""
+    return ds.to_pandas().groupby(keys).agg(**aggs).reset_index()
+
+
+def _assert_same_rows(
+    ds: Dataset, expected: pd.DataFrame, sort_keys: List[str]
+) -> None:
+    actual = ds.to_pandas()
+    assert set(actual.columns) == set(expected.columns), (
+        actual.columns,
+        expected.columns,
+    )
+    actual = actual[expected.columns].sort_values(sort_keys).reset_index(drop=True)
+    expected = expected.sort_values(sort_keys).reset_index(drop=True)
+    pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
+
+
+def _assert_fused_aggregate(
+    dag: PhysicalOperator,
+    *aggregate_key_columns: Tuple[str, ...],
+    contains: Tuple[str, ...] = (),
+) -> None:
+    """Assert the aggregation(s) run inside the join's reduce, the DAG's root.
+
+    Ops in between are only checked via ``contains``; pushdown may add a Project.
+    """
+    reduce_ops = [
+        op
+        for op in dag.post_order_iter()
+        if isinstance(op, (ShuffleReduceOp, DiskHashShuffleReduceOp))
+    ]
+    assert len(reduce_ops) == 1 and reduce_ops[0] is dag, _op_names(dag)
+    expected_tail = "".join(
+        f"->HashAggregate(key_columns={keys}, mode=complete)"
+        for keys in aggregate_key_columns
+    )
+    assert dag.name.endswith(expected_tail), dag.name
+    for part in contains:
+        assert part in dag.name, dag.name
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +343,181 @@ def test_complete_aggregation_aggregates_each_group_once():
         aggregate(iter(_partition_blocks()), TaskContext(task_idx=0, op_name="test"))
     )
     assert out.sort_by("k").to_pydict() == {"k": [1, 2, 3], "s": [101, 12, 20]}
+
+
+# ---------------------------------------------------------------------------
+# Shuffle elimination
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("use_disk", [False, True])
+def test_groupby_after_join_skips_shuffle(
+    ray_start_regular_shared_2_cpus, shuffle_v2: DataContext, use_disk: bool
+):
+    """TPC-H q3 shape: join, derive a column, group by a superset of the key."""
+    shuffle_v2.use_disk_based_hash_shuffle = use_disk
+    before_agg = _join().with_column("rev", col("lval") * col("rval"))
+    ds = before_agg.groupby(["id", "grp"]).aggregate(
+        Sum(on="rev", alias_name="rev"),
+        Max(on="rval", alias_name="m"),
+        Count(alias_name="c"),
+    )
+
+    dag = _physical_dag(ds)
+    _assert_fused_aggregate(dag, ("id", "grp"), contains=("->Project->",))
+    assert isinstance(dag, DiskHashShuffleReduceOp) == use_disk
+    # The aggregated output keeps the join's layout.
+    assert dag.output_partitioning == HashPartitioning(("id",), NUM_PARTITIONS)
+    assert dag.num_output_rows_total() is None
+
+    out = ds.materialize()
+    # One output block per non-empty partition, with no second shuffle.
+    assert out.num_blocks() <= NUM_PARTITIONS
+    expected = _pandas_groupby(
+        before_agg,
+        ["id", "grp"],
+        rev=("rev", "sum"),
+        m=("rval", "max"),
+        c=("rval", "size"),
+    )
+    _assert_same_rows(out, expected, ["id", "grp"])
+
+
+@pytest.mark.parametrize(
+    "transform,skips_shuffle",
+    [
+        pytest.param(lambda ds: ds.groupby("id"), True, id="join_key"),
+        pytest.param(
+            lambda ds: ds.groupby("id", num_partitions=NUM_PARTITIONS),
+            True,
+            id="same_num_partitions",
+        ),
+        pytest.param(lambda ds: ds.groupby("grp"), False, id="other_key"),
+        pytest.param(
+            lambda ds: ds.with_column("id", col("id") % 3).groupby("id"),
+            False,
+            id="key_overwritten",
+        ),
+        pytest.param(
+            lambda ds: ds.groupby("id", num_partitions=NUM_PARTITIONS + 1),
+            False,
+            id="different_num_partitions",
+        ),
+        pytest.param(
+            lambda ds: ds.filter(expr=TWO_SIDED_PREDICATE, num_cpus=0.5).groupby("id"),
+            False,
+            id="map_with_incompatible_remote_args",
+        ),
+        pytest.param(
+            lambda ds: ds.filter(expr=TWO_SIDED_PREDICATE, concurrency=1).groupby("id"),
+            False,
+            id="map_with_concurrency_cap",
+        ),
+    ],
+)
+def test_aggregate_shuffle_elimination(
+    ray_start_regular_shared_2_cpus,
+    transform: Callable[[Dataset], GroupedData],
+    skips_shuffle: bool,
+):
+    grouped = transform(_join())
+    ds = grouped.aggregate(Sum(on="rval", alias_name="s"))
+    assert _has_aggregate_shuffle(_physical_dag(ds)) != skips_shuffle
+
+    # Reference: the same pipeline minus the aggregation, aggregated in pandas.
+    keys = grouped._key if isinstance(grouped._key, list) else [grouped._key]
+    expected = _pandas_groupby(grouped._dataset, keys, s=("rval", "sum"))
+    _assert_same_rows(ds, expected, keys)
+
+
+def test_left_outer_join_then_count_skips_shuffle(ray_start_regular_shared_2_cpus):
+    """TPC-H q13 shape: left join then count; unmatched keys must count 0."""
+    joined = _join(_right().filter(expr=col("rid") < 60), join_type="left_outer")
+    ds = joined.groupby("id").aggregate(
+        Count(on="rval", ignore_nulls=True, alias_name="c")
+    )
+    assert not _has_aggregate_shuffle(_physical_dag(ds))
+
+    expected = _pandas_groupby(joined, ["id"], c=("rval", "count"))
+    assert (expected["c"] == 0).sum() == 60
+    _assert_same_rows(ds, expected, ["id"])
+
+
+def test_chained_groupby_skips_both_shuffles(ray_start_regular_shared_2_cpus):
+    """Both groupbys, and the maps before them, fold into the join's reduce."""
+    before_agg = (
+        _join().filter(expr=TWO_SIDED_PREDICATE).with_column("w", col("rval") * 2)
+    )
+    ds = (
+        before_agg.groupby("id")
+        .aggregate(Sum(on="w", alias_name="s"))
+        .groupby(["id", "s"])
+        .aggregate(Count(alias_name="c"))
+    )
+    _assert_fused_aggregate(
+        _physical_dag(ds),
+        ("id",),
+        ("id", "s"),
+        contains=("->Filter(", "->Project->"),
+    )
+
+    expected = _pandas_groupby(before_agg, ["id"], s=("w", "sum"))
+    expected["c"] = 1
+    _assert_same_rows(ds, expected, ["id"])
+
+
+def test_non_vectorized_aggregation_skips_shuffle(ray_start_regular_shared_2_cpus):
+    """``AbsMax`` has no Arrow kernel, forcing the Python fallback path."""
+    joined = _join()
+    ds = joined.groupby("id").aggregate(
+        Sum(on="rval", alias_name="s"), AbsMax(on="rval", alias_name="am")
+    )
+    assert not _has_aggregate_shuffle(_physical_dag(ds))
+
+    expected = _pandas_groupby(joined, ["id"], s=("rval", "sum"), am=("rval", "max"))
+    _assert_same_rows(ds, expected, ["id"])
+
+
+def test_empty_join_output(ray_start_regular_shared_2_cpus):
+    joined = _join(_right().filter(expr=col("rid") > 10_000))
+    ds = joined.groupby("id").aggregate(Count(alias_name="c"))
+    assert not _has_aggregate_shuffle(_physical_dag(ds))
+    assert ds.take_all() == []
+
+
+def test_downstream_map_after_eliminated_shuffle(ray_start_regular_shared_2_cpus):
+    joined = _join()
+    ds = (
+        joined.groupby("id")
+        .aggregate(Sum(on="rval", alias_name="s"))
+        .with_column("s2", col("s") * 2)
+    )
+    assert not _has_aggregate_shuffle(_physical_dag(ds))
+
+    expected = _pandas_groupby(joined, ["id"], s=("rval", "sum"))
+    expected["s2"] = expected["s"] * 2
+    _assert_same_rows(ds, expected, ["id"])
+
+
+def test_global_aggregation_keeps_shuffle(ray_start_regular_shared_2_cpus):
+    joined = _join()
+    ds = joined.groupby(None).aggregate(Sum(on="rval", alias_name="s"))
+    # Needs all rows in one place, whatever the input's layout.
+    assert ds._logical_plan.dag.required_input_distribution is None
+    dag = _physical_dag(ds)
+    assert _has_aggregate_shuffle(dag)
+    assert dag.output_partitioning is None
+    assert ds.take_all() == [{"s": joined.to_pandas()["rval"].sum()}]
+
+
+def test_legacy_hash_shuffle_strategy_is_untouched(
+    ray_start_regular_shared_2_cpus, shuffle_v2: DataContext
+):
+    shuffle_v2.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    joined = _join()
+    ds = joined.groupby("id").aggregate(Sum(on="rval", alias_name="s"))
+    assert isinstance(_physical_dag(ds), HashAggregateOperator)
+    _assert_same_rows(ds, _pandas_groupby(joined, ["id"], s=("rval", "sum")), ["id"])
 
 
 if __name__ == "__main__":

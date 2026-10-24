@@ -48,6 +48,7 @@ from ray.data._internal.logical.operators import (
     Sort,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
+from ray.data._internal.planner.plan_local_aggregate import try_plan_local_aggregate
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
@@ -265,6 +266,13 @@ def _plan_hash_shuffle_aggregate_v2(
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    # Skip the shuffle if the input is already partitioned as required.
+    local_aggregate = try_plan_local_aggregate(
+        logical_op, input_physical_op, data_context
+    )
+    if local_aggregate is not None:
+        return local_aggregate
 
     normalized_key_columns = SortKey(logical_op.key).get_columns()
     key_columns = tuple(normalized_key_columns)

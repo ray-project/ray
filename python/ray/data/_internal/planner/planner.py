@@ -364,6 +364,9 @@ class Planner:
         physical_dag, op_map = self._plan_recursively(
             logical_plan.dag, logical_plan.context
         )
+        # Drop ops folded away during planning (see try_plan_local_aggregate).
+        live_ops = set(physical_dag.post_order_iter())
+        op_map = {op: lo for op, lo in op_map.items() if op in live_ops}
         physical_plan = PhysicalPlan(physical_dag, op_map, logical_plan.context)
         return physical_plan, callbacks
 
