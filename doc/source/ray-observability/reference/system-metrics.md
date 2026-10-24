@@ -74,7 +74,7 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
   - The number of CPU cores per node.
 * - `ray_node_gpus_utilization`
   - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
-  - The GPU utilization per GPU as a percentage quantity (0.\.NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G), `GpuIndex` is the index of the GPU, and `GpuUuid` is the unique device identifier.
+  - The GPU utilization per GPU as a percentage quantity (0.\.100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G), `GpuIndex` is the index of the GPU, and `GpuUuid` is the unique device identifier. The series is absent for a device that does not report utilization, such as a MIG slice or a device whose NVML query fails; it is never -1.
 * - `ray_node_gpus_available`
   - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
   - The number of GPUs available.
@@ -84,6 +84,9 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
 * - `ray_node_gpu_temperature_celsius`
   - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
   - The current GPU temperature per GPU, in Celsius.
+* - `ray_node_gpu_collection_errors_total`
+  - `instance`, `Api`, `Reason`
+  - Number of failed reads of a GPU metric source on the node. `Api` is the source (for example `utilization`, `process_utilization`, `power`), `Reason` the error class the GPU library raised (for example `NVMLError_Unknown`). `init` counts polls where the GPU library failed to start, which leaves every GPU metric absent. APIs the device or driver doesn't have (`NVMLError_NotSupported`, `NVMLError_FunctionNotFound`) aren't counted. A GPU metric that is absent from the scrape while this counter grows is failing, not idle. Only present once a read has failed.
 * - `ray_tpu_tensorcore_utilization`
   - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
   - The TensorCore utilization percentage per TPU device (0.\.100). Exported on Google Cloud TPU nodes when the GKE TPU device plugin metric server is active. See {ref}`What the KubeRay TPU webhook configures <kuberay-tpu-webhook-config>`.
@@ -165,7 +168,7 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
   - The amount of GPU memory available per GPU, in megabytes.
 * - `ray_node_gram_used`
   - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
-  - The amount of GPU memory used per GPU, in bytes.
+  - The amount of GPU memory used per GPU, in megabytes.
 * - `ray_node_network_received`
   - `instance`, `node_type`
   - The total network traffic received per node, in bytes.

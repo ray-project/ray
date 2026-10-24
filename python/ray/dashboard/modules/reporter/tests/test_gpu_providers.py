@@ -1,6 +1,7 @@
 """Unit tests for GPU providers."""
 
 import os
+import time
 import unittest
 from unittest.mock import Mock, call, patch
 
@@ -549,6 +550,171 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["processes_pids"][1234]["gpu_utilization"], 35)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_is_microseconds(self, mock_pynvml):
+        """The cursor passed to NVML is the previous poll's time in microseconds."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [Mock(pid=1000, smUtil=40)]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+
+        with patch.object(self.provider, "_shutdown"):
+            before_us = int(time.time() * 1_000_000)
+            self.provider.get_gpu_utilization()
+            between_us = int(time.time() * 1_000_000)
+            self.provider.get_gpu_utilization()
+
+        # The first poll reads the whole buffer the driver retains.
+        self.assertEqual(cursors[0], 0)
+        # The second poll continues from the first poll, in microseconds; a
+        # millisecond cursor would be ~1000x smaller than `before_us`.
+        self.assertGreaterEqual(cursors[1], before_us)
+        self.assertLessEqual(cursors[1], between_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_follows_newest_sample(self, mock_pynvml):
+        """The cursor continues from the newest sample NVML returned."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        newest_us = int(time.time() * 1_000_000) + 500_000
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [Mock(pid=1000, smUtil=40, timeStamp=newest_us)]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            self.provider.get_gpu_utilization()
+
+        self.assertEqual(cursors[1], newest_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_follows_sample_before_now(self, mock_pynvml):
+        """A sample older than the poll still sets the cursor, so none is skipped."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        newest_us = int(time.time() * 1_000_000) - 200_000
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [Mock(pid=1000, smUtil=40, timeStamp=newest_us)]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            self.provider.get_gpu_utilization()
+
+        self.assertEqual(cursors[1], newest_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_ignores_sample_far_ahead(self, mock_pynvml):
+        """A sample timestamped far in the future does not become the cursor."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [
+                Mock(
+                    pid=1000,
+                    smUtil=40,
+                    timeStamp=int(time.time() * 1_000_000) + 60_000_000,
+                )
+            ]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+
+        with patch.object(self.provider, "_shutdown"):
+            before_us = int(time.time() * 1_000_000)
+            self.provider.get_gpu_utilization()
+            between_us = int(time.time() * 1_000_000)
+            self.provider.get_gpu_utilization()
+
+        self.assertGreaterEqual(cursors[1], before_us)
+        self.assertLessEqual(cursors[1], between_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_reset_after_clock_step(self, mock_pynvml):
+        """A cursor far in the future (clock stepped backwards) restarts from now."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [Mock(pid=1000, smUtil=40)]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+        now_us = int(time.time() * 1_000_000)
+        self.provider._gpu_process_last_sample_ts[0] = now_us + 60_000_000
+
+        self.provider.get_gpu_utilization()
+        after_us = int(time.time() * 1_000_000)
+
+        self.assertGreaterEqual(cursors[0], now_us)
+        self.assertLessEqual(cursors[0], after_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_reset_kept_when_query_fails(self, mock_pynvml):
+        """After a clock step back, a failed query doesn't leave the cursor ahead."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+            mock_pynvml.NVMLError("Unknown Error")
+        )
+        now_us = int(time.time() * 1_000_000)
+        self.provider._gpu_process_last_sample_ts[0] = now_us + 60_000_000
+
+        self.provider.get_gpu_utilization()
+        after_us = int(time.time() * 1_000_000)
+
+        cursor_us = self.provider._gpu_process_last_sample_ts[0]
+        self.assertGreaterEqual(cursor_us, now_us)
+        self.assertLessEqual(cursor_us, after_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_idle_window_advances_cursor(self, mock_pynvml):
+        """NVML_ERROR_NOT_FOUND means no sample since the cursor: an idle window."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+
+        class MockNVMLErrorNotFound(mock_pynvml.NVMLError):
+            pass
+
+        mock_pynvml.NVMLError_NotFound = MockNVMLErrorNotFound
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+            MockNVMLErrorNotFound()
+        )
+
+        before_us = int(time.time() * 1_000_000)
+        result = self.provider.get_gpu_utilization()
+        after_us = int(time.time() * 1_000_000)
+
+        # The process found by the running-process API is kept, without a
+        # utilization value, and the window moves on.
+        self.assertIsNone(result[0]["processes_pids"][1000]["gpu_utilization"])
+        cursor_us = self.provider._gpu_process_last_sample_ts[0]
+        self.assertGreaterEqual(cursor_us, before_us)
+        self.assertLessEqual(cursor_us, after_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_error_keeps_cursor(self, mock_pynvml):
+        """Any other NVML error leaves the cursor so the next poll covers the gap."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+            mock_pynvml.NVMLError("boom")
+        )
+        self.provider._gpu_process_last_sample_ts[0] = 1234
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertIsNone(result[0]["processes_pids"][1000]["gpu_utilization"])
+        self.assertEqual(self.provider._gpu_process_last_sample_ts[0], 1234)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
     def test_get_gpu_utilization_with_errors(self, mock_pynvml):
         """Test GPU utilization retrieval with partial errors."""
         mock_handle = Mock()
@@ -593,7 +759,8 @@ class TestNvidiaGpuProvider(unittest.TestCase):
 
         self.assertEqual(gpu_info["index"], 0)
         self.assertEqual(gpu_info["name"], "NVIDIA Tesla V100")
-        self.assertEqual(gpu_info["utilization_gpu"], -1)  # Should be -1 due to error
+        # No utilization sample when the query fails; never a -1 sentinel.
+        self.assertIsNone(gpu_info["utilization_gpu"])
         self.assertEqual(
             gpu_info["processes_pids"], {}
         )  # Should be empty dict due to error
@@ -661,6 +828,120 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["memory_used"], 2 * 1024)  # 2GB in MB
         self.assertEqual(gpu_info["memory_total"], 4 * 1024)  # 4GB in MB
         self.assertEqual(gpu_info["processes_pids"], {})
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_get_gpu_utilization_with_mig_unsupported_utilization(self, mock_pynvml):
+        """A MIG slice whose utilization query is unsupported reports None."""
+        mock_gpu_handle = Mock()
+        mock_mig_handle = Mock()
+        mock_mig_memory_info = Mock()
+        mock_mig_memory_info.used = 2 * MB * 1024
+        mock_mig_memory_info.total = 4 * MB * 1024
+
+        class MockNVMLError(Exception):
+            pass
+
+        mock_pynvml.NVMLError = MockNVMLError
+        mock_pynvml.nvmlInit.return_value = None
+        mock_pynvml.nvmlDeviceGetCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetHandleByIndex.return_value = mock_gpu_handle
+        mock_pynvml.nvmlDeviceGetMigMode.return_value = (True, True)
+        mock_pynvml.nvmlDeviceGetMaxMigDeviceCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetMigDeviceHandleByIndex.return_value = mock_mig_handle
+        mock_pynvml.nvmlDeviceGetMemoryInfo.return_value = mock_mig_memory_info
+        # NVML does not support nvmlDeviceGetUtilizationRates on MIG devices.
+        mock_pynvml.nvmlDeviceGetUtilizationRates.side_effect = MockNVMLError(
+            "Not Supported"
+        )
+        mock_pynvml.nvmlDeviceGetComputeRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetGraphicsRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetName.return_value = b"NVIDIA A100-SXM4-40GB MIG 1g.5gb"
+        mock_pynvml.nvmlDeviceGetUUID.return_value = (
+            b"MIG-12345678-1234-1234-1234-123456789abc"
+        )
+        mock_pynvml.nvmlShutdown.return_value = None
+        self.provider._pynvml = mock_pynvml
+        self.provider._initialized = True
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(result), 1)
+        self.assertIsNone(result[0]["utilization_gpu"])
+        self.assertEqual(result[0]["memory_used"], 2 * 1024)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_collection_errors_counted_and_drained(self, mock_pynvml):
+        """Failed reads are counted by (api, error class) and reset on drain."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        mock_pynvml.nvmlDeviceGetUtilizationRates.side_effect = mock_pynvml.NVMLError(
+            "Unknown Error"
+        )
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            self.assertEqual(
+                self.provider.drain_collection_errors(),
+                {("utilization", "MockNVMLError"): 1},
+            )
+            # Drained: a clean poll reports nothing.
+            mock_pynvml.nvmlDeviceGetUtilizationRates.side_effect = None
+            self.provider.get_gpu_utilization()
+            self.assertEqual(self.provider.drain_collection_errors(), {})
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_collection_errors_skip_idle_process_utilization(self, mock_pynvml):
+        """NOT_FOUND from the process utilization API is idle, not an error."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+
+        class MockNVMLErrorNotFound(mock_pynvml.NVMLError):
+            pass
+
+        mock_pynvml.NVMLError_NotFound = MockNVMLErrorNotFound
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+            MockNVMLErrorNotFound()
+        )
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            self.assertEqual(self.provider.drain_collection_errors(), {})
+
+            mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+                mock_pynvml.NVMLError("Unknown Error")
+            )
+            self.provider.get_gpu_utilization()
+        self.assertEqual(
+            self.provider.drain_collection_errors(),
+            {("process_utilization", "MockNVMLError"): 1},
+        )
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_collection_errors_skip_unsupported_apis(self, mock_pynvml):
+        """An API the device or driver doesn't have is not a failure."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        not_supported = type("NVMLError_NotSupported", (mock_pynvml.NVMLError,), {})
+        function_not_found = type(
+            "NVMLError_FunctionNotFound", (mock_pynvml.NVMLError,), {}
+        )
+        mock_pynvml.nvmlDeviceGetPowerUsage.side_effect = not_supported()
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+            function_not_found()
+        )
+
+        self.provider.get_gpu_utilization()
+
+        self.assertEqual(self.provider.drain_collection_errors(), {})
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_collection_errors_count_init_failure(self, mock_pynvml):
+        """A failed nvmlInit is counted, since every GPU metric goes absent."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        mock_pynvml.nvmlInit.side_effect = mock_pynvml.NVMLError("Driver Not Loaded")
+        self.provider._initialized = False
+
+        self.assertEqual(self.provider.get_gpu_utilization(), [])
+        errors = self.provider.drain_collection_errors()
+        self.assertEqual(
+            [(api, count) for (api, _), count in errors.items()], [("init", 1)]
+        )
 
 
 class TestAmdGpuProvider(unittest.TestCase):
@@ -742,6 +1023,55 @@ class TestAmdGpuProvider(unittest.TestCase):
         self.assertEqual(len(gpu_info["processes_pids"]), 1)
         self.assertEqual(gpu_info["processes_pids"][5678]["pid"], 5678)
         self.assertEqual(gpu_info["processes_pids"][5678]["gpu_memory_usage"], 512)
+
+    @patch("ray._private.thirdparty.pyamdsmi", create=True)
+    def test_get_gpu_utilization_failure_reports_none(self, mock_pyamdsmi):
+        """The shim's -1 (query failed) becomes None, not a utilization value."""
+        mock_pyamdsmi.smi_initialize.return_value = None
+        mock_pyamdsmi.smi_get_device_count.return_value = 1
+        mock_pyamdsmi.smi_get_device_id.return_value = "device_0"
+        mock_pyamdsmi.smi_get_device_utilization.return_value = -1
+        mock_pyamdsmi.smi_get_device_compute_process.return_value = []
+        mock_pyamdsmi.smi_get_compute_process_info_by_device.return_value = []
+        mock_pyamdsmi.smi_get_device_name.return_value = b"AMD Instinct MI300X"
+        mock_pyamdsmi.smi_get_device_unique_id.return_value = (
+            "GPU-13579bdf-9abc-def0-0000-000000000001"
+        )
+        mock_pyamdsmi.smi_get_device_memory_used.return_value = 6 * MB * 1024
+        mock_pyamdsmi.smi_get_device_memory_total.return_value = 16 * MB * 1024
+        mock_pyamdsmi.smi_shutdown.return_value = None
+        self.provider._pyamdsmi = mock_pyamdsmi
+        self.provider._initialized = True
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(result), 1)
+        self.assertIsNone(result[0]["utilization_gpu"])
+        self.assertEqual(result[0]["memory_used"], 6 * 1024)
+
+    @patch("ray._private.thirdparty.pyamdsmi", create=True)
+    def test_collection_errors_count_failed_utilization_query(self, mock_pyamdsmi):
+        """The shim signals a failed utilization query by value; count it."""
+        mock_pyamdsmi.smi_initialize.return_value = None
+        mock_pyamdsmi.smi_get_device_count.return_value = 1
+        mock_pyamdsmi.smi_get_device_utilization.return_value = -1
+        mock_pyamdsmi.smi_get_device_compute_process.return_value = []
+        mock_pyamdsmi.smi_get_compute_process_info_by_device.return_value = []
+        mock_pyamdsmi.smi_get_device_name.return_value = b"AMD Instinct MI300X"
+        mock_pyamdsmi.smi_get_device_unique_id.return_value = "GPU-0"
+        mock_pyamdsmi.smi_get_device_memory_used.return_value = MB
+        mock_pyamdsmi.smi_get_device_memory_total.return_value = 2 * MB
+        mock_pyamdsmi.smi_get_device_average_power.return_value = 100.0
+        mock_pyamdsmi.smi_shutdown.return_value = None
+        self.provider._pyamdsmi = mock_pyamdsmi
+        self.provider._initialized = True
+
+        self.provider.get_gpu_utilization()
+
+        self.assertEqual(
+            self.provider.drain_collection_errors(),
+            {("utilization", "query_failed"): 1},
+        )
 
 
 class TestGpuMetricProvider(unittest.TestCase):
@@ -875,6 +1205,11 @@ class TestGpuMetricProvider(unittest.TestCase):
         self.assertEqual(result[0]["index"], 0)
         self.assertEqual(result[0]["name"], "Test GPU")
         mock_provider.get_gpu_utilization.assert_called_once()
+
+    def test_drain_collection_errors_no_provider(self):
+        """Without a provider there is nothing to drain."""
+        self.provider._provider = None
+        self.assertEqual(self.provider.drain_collection_errors(), {})
 
     def test_get_provider_name_no_provider(self):
         """Test get_provider_name when no provider is set."""
