@@ -630,14 +630,14 @@ def test_cluster_utils_rejects_auth_mode_in_system_config(
     cluster_kwargs: dict, config_mode: str
 ) -> None:
     """Cluster() rejects an AUTH_MODE in _system_config that disagrees with its
-    mode, as ray.init() does: the mode can only be set with RAY_AUTH_MODE or
+    mode, as ray.init() does: a test cluster's mode can only be set with
     enable_token_auth. The earlier RAY_AUTH_MODE comes back after the failure."""
     from ray.cluster_utils import Cluster
 
     set_auth_mode("token")
     reset_auth_token_state()
 
-    with pytest.raises(RuntimeError, match="RAY_AUTH_MODE"):
+    with pytest.raises(RuntimeError, match="remove AUTH_MODE from _system_config"):
         Cluster(
             initialize_head=True,
             head_node_args={"_system_config": {"AUTH_MODE": config_mode}},
@@ -678,7 +678,7 @@ def test_autoscaling_cluster_rejects_auth_mode_in_system_config() -> None:
     cluster = AutoscalingCluster(head_resources={"CPU": 1}, worker_node_types={})
 
     with patch("subprocess.check_call") as check_call:
-        with pytest.raises(RuntimeError, match="RAY_AUTH_MODE"):
+        with pytest.raises(RuntimeError, match="remove AUTH_MODE from _system_config"):
             cluster.start(_system_config={"AUTH_MODE": "disabled"})
     check_call.assert_not_called()
     assert os.environ["RAY_AUTH_MODE"] == "token"

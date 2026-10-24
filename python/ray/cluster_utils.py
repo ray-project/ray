@@ -46,9 +46,8 @@ class _TestClusterAuthMode:
             raise RuntimeError(
                 f"_system_config sets AUTH_MODE={config_mode!r}, but "
                 f"enable_token_auth={self._enable_token_auth} runs the cluster in "
-                f"{mode!r} mode. The authentication mode can only be set with "
-                "enable_token_auth or the RAY_AUTH_MODE environment variable; remove "
-                "AUTH_MODE from _system_config."
+                f"{mode!r} mode. A test cluster's authentication mode can only be "
+                "set with enable_token_auth; remove AUTH_MODE from _system_config."
             )
         if not self._applied:
             self._previous_mode = os.environ.get(AUTH_MODE_ENV_VAR)
