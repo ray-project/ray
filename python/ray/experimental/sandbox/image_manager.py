@@ -62,7 +62,9 @@ class BaseImageManager(ABC):
         """Pull a container image into the local cache or storage.
 
         Args:
-            image: Container image reference (e.g. 'python:3.10-slim') or path to local tar archive.
+            image: Container image reference (e.g. 'python:3.10-slim') or path
+                to a local ``docker save`` archive, OCI image layout archive,
+                or flat root filesystem tar.
             timeout_seconds: Timeout for network operations.
             instance_id: The sandbox instance that will use the image. When
                 given, the image is pinned in the cache until
@@ -253,7 +255,9 @@ class ImageManager(BaseImageManager):
         passing ``instance_id`` pins the image until ``release_image``.
 
         Args:
-            image: Container image name (e.g. 'busybox:latest') or path to local tar archive.
+            image: Container image reference (e.g. 'busybox:latest') or path to
+                a local ``docker save`` archive, OCI image layout archive, or
+                flat root filesystem tar.
             timeout_seconds: Timeout for network operations.
             instance_id: The sandbox instance that will use the image.
 
