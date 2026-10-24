@@ -44,6 +44,8 @@ def batch_blocks(
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
             ensure_copy=ensure_copy,
+            # format_batches copies NumPy batches when ensure_copy is set.
+            numpy_copy_follows=batch_format == "numpy",
         ),
         batch_format=batch_format,
         stats=stats,
