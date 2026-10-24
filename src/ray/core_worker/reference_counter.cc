@@ -1882,6 +1882,49 @@ std::optional<std::string> ReferenceCounter::GetTensorTransport(
 
 std::optional<MoveState> ReferenceCounter::GetMoveState(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
+  return GetMoveStateInternal(object_id);
+}
+
+std::vector<std::optional<MoveState>> ReferenceCounter::GetMoveStates(
+    const std::vector<ObjectID> &object_ids) const {
+  std::vector<std::optional<MoveState>> move_states;
+  move_states.reserve(object_ids.size());
+  // One lock for the whole list instead of acquiring/releasing the lock for every
+  // object. This function is used only for pre-checks that fail a bad task submission
+  // early. Granular locking might lead to more early failures, but in the happy path
+  // might degrade performance. Also, the arg list isn't expected to be super long - so
+  // holding the lock for the entire duration is fine.
+  absl::MutexLock lock(&mutex_);
+  for (const ObjectID &object_id : object_ids) {
+    move_states.push_back(GetMoveStateInternal(object_id));
+  }
+  return move_states;
+}
+
+Status ReferenceCounter::TryCommitMoves(const std::vector<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mutex_);
+  // Validate every object before changing any, so a rejected task moves nothing.
+  // Acquire the lock for both validation and commit phases (without unlocking after
+  // validation) so that no two tasks can be validated successfully.
+  for (const ObjectID &object_id : object_ids) {
+    if (GetMoveStateInternal(object_id) == MoveState::MOVED) {
+      return Status::InvalidArgument(absl::StrFormat(
+          "Object %s was created with _consume_once=True and was already passed to an "
+          "actor task.",
+          object_id.Hex()));
+    }
+  }
+  for (const ObjectID &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    if (it != object_id_refs_.end() && it->second.move_state_ == MoveState::MOVABLE) {
+      it->second.move_state_ = MoveState::MOVED;
+    }
+  }
+  return Status::OK();
+}
+
+std::optional<MoveState> ReferenceCounter::GetMoveStateInternal(
+    const ObjectID &object_id) const {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return std::nullopt;
