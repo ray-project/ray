@@ -172,6 +172,7 @@ def _normalize_vllm_engine_kwargs(engine_kwargs: Dict[str, Any]) -> Dict[str, An
             continue
         if key == "kv_transfer_config":
             value = _default_offloading_kv_role(value)
+            normalized_kwargs[key] = value
 
         config_type = _get_vllm_config_type(field.type)
         if config_type is None:

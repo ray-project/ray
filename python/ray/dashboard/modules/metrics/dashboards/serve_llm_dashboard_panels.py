@@ -827,7 +827,7 @@ _kv_disk_tier_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 127, 8, 8),
+        grid_pos=GridPos(0, 128, 8, 8),
     ),
     Panel(
         id=62,
@@ -847,7 +847,7 @@ _kv_disk_tier_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 127, 8, 8),
+        grid_pos=GridPos(8, 128, 8, 8),
     ),
     Panel(
         id=63,
@@ -870,7 +870,7 @@ _kv_disk_tier_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 127, 8, 8),
+        grid_pos=GridPos(16, 128, 8, 8),
     ),
     Panel(
         id=64,
@@ -890,7 +890,7 @@ _kv_disk_tier_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 135, 8, 8),
+        grid_pos=GridPos(0, 136, 8, 8),
     ),
     Panel(
         id=65,
@@ -910,7 +910,7 @@ _kv_disk_tier_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 135, 8, 8),
+        grid_pos=GridPos(8, 136, 8, 8),
     ),
     Panel(
         id=66,
@@ -930,7 +930,7 @@ _kv_disk_tier_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 135, 8, 8),
+        grid_pos=GridPos(16, 136, 8, 8),
     ),
 ]
 
