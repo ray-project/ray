@@ -72,6 +72,21 @@ def test_union_with_filter(ray_start_10_cpus_shared):
     assert result == [3, 4, 5]
 
 
+def test_union_with_select_columns(ray_start_10_cpus_shared):
+    from ray.data._internal.logical.operators import Project, Union
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    ds1 = ray.data.from_items([{"a": 1, "unused": "left"}, {"a": 2, "unused": "left"}])
+    ds2 = ray.data.from_items([{"a": 3, "unused": "right"}])
+    ds = ds1.union(ds2).select_columns(["a"])
+
+    optimized = LogicalOptimizer().optimize(ds._logical_plan).dag
+
+    assert isinstance(optimized, Union)
+    assert all(isinstance(branch, Project) for branch in optimized.input_dependencies)
+    assert sorted(row["a"] for row in ds.take_all()) == [1, 2, 3]
+
+
 if __name__ == "__main__":
     import sys
 
