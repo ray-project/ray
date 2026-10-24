@@ -15,6 +15,7 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     AutoscalingConfigProducer,
     _derive_autoscaling_config_from_ray_cr,
     _get_custom_resources,
+    _get_labels_from_group_spec,
     _get_num_tpus,
     _get_ray_resources_from_group_spec,
     _round_up_k8s_quantity,
@@ -116,7 +117,11 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
-                "labels": {},
+                "labels": {
+                    "ray.io/accelerator-type": "TPU-V4",
+                    "ray.io/tpu-topology": "2x2x2",
+                    "ray.io/tpu-pod-type": "v4-16",
+                },
                 "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
@@ -229,6 +234,12 @@ def _get_ray_cr_with_top_level_labels() -> dict:
     cr = get_basic_ray_cr()
     # This top-level structured labels take priority.
     cr["spec"]["workerGroupSpecs"][0]["labels"] = {"instance-type": "mx5"}
+    # Top-level labels are merged over, and override, labels derived from the
+    # TPU nodeSelector.
+    cr["spec"]["workerGroupSpecs"][2]["labels"] = {
+        "ray.io/market-type": "spot",
+        "ray.io/tpu-pod-type": "v4-16-custom",
+    }
 
     # rayStartParams labels field should be ignored.
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["labels"] = "instance-type=n2"
@@ -238,6 +249,9 @@ def _get_ray_cr_with_top_level_labels() -> dict:
 def _get_autoscaling_config_with_top_level_labels() -> dict:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["small-group"]["labels"] = {"instance-type": "mx5"}
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {"ray.io/market-type": "spot", "ray.io/tpu-pod-type": "v4-16-custom"}
+    )
     return config
 
 
@@ -407,6 +421,13 @@ def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+    )
     return config
 
 
@@ -430,6 +451,13 @@ def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V5LITEPOD",
+            "ray.io/tpu-topology": "2x4",
+            "ray.io/tpu-pod-type": "v5litepod-8",
+        }
+    )
     return config
 
 
@@ -975,6 +1003,16 @@ def test_top_level_resources_override_warnings():
         # Assert that all expected calls were made, in any order.
         mock_logger.warning.assert_has_calls(expected_calls, any_order=True)
         assert mock_logger.warning.call_count == 4
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_tpu_missing_node_selectors_labels():
+    """No TPU labels are derived unless both GKE TPU nodeSelectors are set."""
+    assert _get_labels_from_group_spec(_get_tpu_group_with_no_node_selectors()) == {}
+    assert (
+        _get_labels_from_group_spec(_get_tpu_group_without_topology_node_selector())
+        == {}
+    )
 
 
 if __name__ == "__main__":
