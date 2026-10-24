@@ -550,7 +550,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
 
         self._finalization_started = True
-        finalize = self._phase_metrics.output_phase
+        finalize = self._phase_metrics.phases["finalize"]
 
         def _on_bundle_ready(bundle: RefBundle, rank: int) -> None:
             assert (
@@ -633,7 +633,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def _get_next_inner(self) -> RefBundle:
         bundle = self._output_queue.get_next()
-        finalize = self._phase_metrics.output_phase
+        finalize = self._phase_metrics.phases["finalize"]
         finalize.on_output_dequeued(bundle)
         finalize.record_block_stats(*bundle.metadata)
         return bundle
