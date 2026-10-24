@@ -17,7 +17,7 @@ cd python
 # Not -q: these three are the only packages this script still fetches, and hiding
 # the "Obtaining dependency information ... from https://files.pythonhosted.org/..."
 # lines is how their exposure went uncounted in the first place.
-/opt/python/"${PYTHON}"/bin/pip install cython==3.0.12 setuptools==80.9.0 wheel==0.45.1
+/opt/python/"${PYTHON}"/bin/pip install cython==3.3.0 setuptools==80.9.0 wheel==0.45.1
 # Set the commit SHA in _version.py.
 if [[ -n "$TRAVIS_COMMIT" ]]; then
   sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
