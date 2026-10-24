@@ -1543,6 +1543,17 @@ py_test(
 )
 
 py_test(
+    name = "test_train_iter_ctx",
+    size = "small",
+    srcs = ["algorithms/tests/test_train_iter_ctx.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_env_runner_state_server",
     size = "small",
     srcs = ["algorithms/tests/test_env_runner_state_server.py"],
