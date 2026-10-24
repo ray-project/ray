@@ -71,6 +71,11 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
 
+  /// Drop one pending attempt of the task, and the task's entry once none is left.
+  /// Must be called exactly once for every attempt EnqueueTask added.
+  void RemovePendingAttemptLocked(const TaskID &task_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   void ExecuteRequest(TaskToExecute &&request);
 
   /// Per-concurrency-group ordering state.
@@ -119,9 +124,18 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Mutex to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
 
-  /// A map of actor task IDs -> is_canceled
+  struct PendingTaskState {
+    /// Attempts of the task that are queued or running. More than one can be pending
+    /// at once.
+    int32_t num_pending_attempts = 0;
+    /// Shared by all pending attempts of the task.
+    bool is_canceled = false;
+  };
+
+  /// A map of actor task IDs -> pending state.
   /// Pending means tasks are queued or running.
-  absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, PendingTaskState> pending_task_id_to_state
+      ABSL_GUARDED_BY(mu_);
 
   friend class OrderedActorTaskExecutionQueueTest;
 };
