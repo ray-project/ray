@@ -640,6 +640,7 @@ class VLLMEngine(LLMEngine):
             engine_cls = enable_token_tracking(
                 AsyncLLM,
                 report_decode_progress=RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
+                model_id=self.llm_config.model_id,
             )
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
