@@ -165,6 +165,103 @@ class TestPPO(unittest.TestCase):
         assert post_std != 0.0, post_std
         algo.stop()
 
+    def test_restore_keeps_current_old_api_policy_config(self):
+        """Algorithm restore keeps the current trial config but loads training state."""
+
+        def make_config(*, lr, clip_param, lambda_, lr_schedule=None):
+            return (
+                ppo.PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=False,
+                    enable_env_runner_and_connector_v2=False,
+                )
+                .environment("CartPole-v1")
+                .env_runners(num_env_runners=0, rollout_fragment_length=64)
+                .training(
+                    lr=lr,
+                    lr_schedule=lr_schedule,
+                    clip_param=clip_param,
+                    lambda_=lambda_,
+                    num_epochs=1,
+                    train_batch_size=64,
+                    minibatch_size=32,
+                )
+            )
+
+        donor_lr = 1e-4
+        donor = make_config(
+            lr=donor_lr,
+            clip_param=0.1,
+            lambda_=0.8,
+        ).build()
+        donor.train()
+        donor_policy = donor.get_policy()
+        donor_weights = donor_policy.get_weights()
+        donor_optimizer_state = donor_policy.get_state()["_optimizer_variables"]
+        checkpoint = donor.save().checkpoint
+
+        # Static PBT-style mutation: the current trial config is the control plane,
+        # while model/optimizer training state still comes from the donor checkpoint.
+        target_lr = 7e-4
+        target_clip = 0.35
+        target_lambda = 0.97
+        target_config = make_config(
+            lr=target_lr,
+            clip_param=target_clip,
+            lambda_=target_lambda,
+        )
+        target = target_config.build()
+        target.restore(checkpoint)
+
+        policy = target.get_policy()
+        self.assertAlmostEqual(target.config.lr, target_lr)
+        self.assertAlmostEqual(policy.config["lr"], target_lr)
+        self.assertAlmostEqual(policy.config["clip_param"], target_clip)
+        self.assertAlmostEqual(policy.config["lambda"], target_lambda)
+        self.assertAlmostEqual(policy._optimizers[0].param_groups[0]["lr"], target_lr)
+        check(policy.get_weights(), donor_weights)
+
+        target_optimizer_state = policy.get_state()["_optimizer_variables"]
+        check(
+            target_optimizer_state[0]["state"],
+            donor_optimizer_state[0]["state"],
+        )
+
+        # Direct Policy restore retains the public checkpoint behavior: the serialized
+        # Policy config is authoritative when there is no Algorithm restore marker.
+        direct_policy = ppo.PPOTorchPolicy(
+            policy.observation_space,
+            policy.action_space,
+            target_config.to_dict(),
+        )
+        direct_policy.set_state(donor_policy.get_state())
+        self.assertAlmostEqual(direct_policy.config["lr"], donor_lr)
+
+        # If the current trial carries an LR schedule, restore the donor's optimizer
+        # moments but evaluate the current schedule at the checkpoint timestep.
+        scheduled = make_config(
+            lr=9e-4,
+            lr_schedule=[[0, 9e-4], [1000, 1e-4]],
+            clip_param=0.42,
+            lambda_=0.91,
+        ).build()
+        scheduled.restore(checkpoint)
+        scheduled_policy = scheduled.get_policy()
+        expected_lr = scheduled_policy._lr_schedule.value(
+            scheduled_policy.global_timestep
+        )
+        self.assertAlmostEqual(
+            scheduled_policy._optimizers[0].param_groups[0]["lr"],
+            expected_lr,
+        )
+        self.assertAlmostEqual(scheduled_policy.config["clip_param"], 0.42)
+        self.assertAlmostEqual(scheduled_policy.config["lambda"], 0.91)
+        check(scheduled_policy.get_weights(), donor_weights)
+
+        scheduled.stop()
+        target.stop()
+        donor.stop()
+
     def test_ppo_use_kl_loss_false_zeroes_kl_term(self):
         """Test that use_kl_loss=False zeroes out the KL term regardless of kl_coeff.
 
