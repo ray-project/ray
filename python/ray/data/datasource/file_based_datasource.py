@@ -519,6 +519,10 @@ def _add_partitions_to_table(
             column = column.cast(partition_schema.field(field).type)
         if field in column_names:
             column_type = table.schema.field(field).type
+            if value is None and pa.types.is_null(column_type):
+                # CSV and JSON read an all-null column as null-typed. Keep the
+                # partition column's type.
+                column_type = column.type
             try:
                 column = column.cast(column_type)
             except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
@@ -527,8 +531,13 @@ def _add_partitions_to_table(
                     f"to target type {column_type}."
                 ) from e
 
-            values_are_equal = pc.all(pc.equal(column, table[field]))
-            values_are_equal = values_are_equal.as_py()
+            if value is None:
+                # `pc.equal` returns null for null inputs, so check that the file's
+                # values are all null.
+                values_are_equal = table[field].null_count == len(table)
+            else:
+                values_are_equal = pc.all(pc.equal(column, table[field]))
+                values_are_equal = values_are_equal.as_py()
 
             if not values_are_equal:
                 raise ValueError(

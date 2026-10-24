@@ -1103,6 +1103,17 @@ def test_read_csv_hive_null_partition(ray_start_regular_shared, tmp_path):
     assert ds.filter(expr=col("year").is_in(["1970"])).count() == 1
 
 
+def test_read_csv_hive_null_partition_column_in_data(
+    ray_start_regular_shared, tmp_path
+):
+    path = os.path.join(tmp_path, "year=__HIVE_DEFAULT_PARTITION__", "data.csv")
+    write_csv({"number": [0], "year": [None]}, path)
+
+    ds = ray.data.read_csv(tmp_path, partitioning=Partitioning("hive"))
+
+    assert ds.take_all() == [{"number": 0, "year": None}]
+
+
 if __name__ == "__main__":
     import sys
 
