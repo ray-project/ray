@@ -583,9 +583,6 @@ class _LearnerThread(threading.Thread):
 
             # If we need to aggregate, reduce metrics and queue them.
             if do_agg:
-                # If in multi-learner setup, safeguard state retrieval within barriers.
-                if torch.distributed.is_initialized():
-                    torch.distributed.barrier()
                 # Only the first rank retrieves the state.
                 if self.learner._rank == 0:
                     with self.learner._model_io_lock, torch.inference_mode():
@@ -630,8 +627,6 @@ class _LearnerThread(threading.Thread):
                 # Notify all listeners that aggregation is done and results can be
                 # retrieved.
                 self.learner._agg_event.set()
-                if torch.distributed.is_initialized():
-                    torch.distributed.barrier()
 
         # Keep running (see `run` method).
         return True
