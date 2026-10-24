@@ -170,8 +170,8 @@ class RedisAsyncContext {
   /// Marker 1 is queued here, ahead of every later write, and counts as
   /// acknowledged once Redis replies to it: from then on a reconnect check also
   /// covers what Redis held before this process wrote. If the connection is
-  /// down right now, marker 1 is skipped and numbering starts at 2 with the
-  /// next write. Thread-safe.
+  /// down or a reconnect check is pending, it is sent with the first flush
+  /// after the check passes. Thread-safe.
   ///
   /// \param watermark Where to write the marker and what to prefix it with.
   void EnableWriteWatermark(WriteWatermark watermark);
@@ -285,6 +285,15 @@ class RedisAsyncContext {
   uint64_t last_submitted_write_ = 0;
   /// Number carried by the last marker queued. Guarded by `mutex_`.
   uint64_t last_marked_write_ = 0;
+  /// Marker 1 could not be sent when the watermark was enabled and goes out
+  /// with the next flush. Written under `mutex_`; atomic because
+  /// PauseCommands() reads it without the lock.
+  std::atomic<bool> first_marker_pending_{false};
+  /// privdata of FirstMarkerReplyFn.
+  struct FirstMarker {
+    std::weak_ptr<bool> alive;
+    uint64_t number;
+  };
   /// See AckWrite().
   std::atomic<uint64_t> last_acked_write_{0};
   /// See PauseCommands(). Read under `mutex_` at submission.
@@ -335,8 +344,12 @@ class RedisAsyncContext {
   /// the output buffer is flushed. `mutex_` must be held.
   void AppendMarkerLocked();
 
-  /// Reply callback of marker 1: acknowledges it. privdata is a heap-allocated
-  /// weak_ptr to `alive_`, freed here.
+  /// Queue the first marker, carrying the last write number so far. `mutex_`
+  /// must be held and the connection up.
+  void QueueFirstMarkerLocked();
+
+  /// Reply callback of the first marker: acknowledges its number. privdata is
+  /// a heap-allocated FirstMarker, freed here.
   static void FirstMarkerReplyFn(redisAsyncContext *context,
                                  void *raw_reply,
                                  void *privdata);

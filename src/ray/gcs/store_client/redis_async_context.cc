@@ -277,33 +277,43 @@ void RedisAsyncContext::EnableWriteWatermark(WriteWatermark watermark) {
   last_marked_write_ = 1;
   // Go through this connection, not the synchronous one: only this one is
   // re-established after a reconnect, and a GCS promoted to leader gets here
-  // long after startup. During a reconnect, skip marker 1; the next write's
-  // marker covers everything up to it.
+  // long after startup. During a reconnect, hold marker 1 back until the check
+  // passes; AppendMarkerLocked() sends it with the first flush after that.
   if (!redis_async_context_ || commands_paused_) {
+    first_marker_pending_ = true;
     return;
   }
-  const std::string value = absl::StrCat(write_watermark_->incarnation, ":1");
+  QueueFirstMarkerLocked();
+}
+
+void RedisAsyncContext::QueueFirstMarkerLocked() {
+  // It covers everything submitted so far, so it carries the last number; on
+  // its reply, Redis has run every write up to that number on this connection.
+  const uint64_t n = last_submitted_write_;
+  const std::string value = absl::StrCat(write_watermark_->incarnation, ":", n);
   const char *argv[] = {
       "HSET", write_watermark_->key.data(), write_watermark_->field.data(), value.data()};
   const size_t argvlen[] = {
       4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
-  auto *privdata = new std::weak_ptr<bool>(alive_);
+  auto *privdata = new FirstMarker{alive_, n};
   if (redisAsyncCommandArgv(
           redis_async_context_.get(), &FirstMarkerReplyFn, privdata, 4, argv, argvlen) !=
       REDIS_OK) {
     delete privdata;
     RAY_LOG(WARNING) << "Failed to queue the first write watermark marker: "
                      << redis_async_context_->errstr;
+    return;
   }
+  first_marker_pending_ = false;
+  last_marked_write_ = n;
 }
 
 void RedisAsyncContext::FirstMarkerReplyFn(redisAsyncContext *context,
                                            void *raw_reply,
                                            void *privdata) {
-  std::unique_ptr<std::weak_ptr<bool>> alive(
-      static_cast<std::weak_ptr<bool> *>(privdata));
+  std::unique_ptr<FirstMarker> marker(static_cast<FirstMarker *>(privdata));
   auto *reply = static_cast<redisReply *>(raw_reply);
-  if (reply == nullptr || alive->expired()) {
+  if (reply == nullptr || marker->alive.expired()) {
     return;
   }
   if (reply->type == REDIS_REPLY_ERROR) {
@@ -313,7 +323,7 @@ void RedisAsyncContext::FirstMarkerReplyFn(redisAsyncContext *context,
                         "lost writes that Redis still has.";
     return;
   }
-  static_cast<RedisAsyncContext *>(context->ev.data)->AckWrite(1);
+  static_cast<RedisAsyncContext *>(context->ev.data)->AckWrite(marker->number);
 }
 
 std::optional<RedisAsyncContext::WriteWatermark> RedisAsyncContext::GetWriteWatermark() {
@@ -329,7 +339,14 @@ void RedisAsyncContext::AckWrite(uint64_t n) {
 
 uint64_t RedisAsyncContext::LastAckedWrite() const { return last_acked_write_.load(); }
 
-void RedisAsyncContext::PauseCommands(bool paused) { commands_paused_.store(paused); }
+void RedisAsyncContext::PauseCommands(bool paused) {
+  commands_paused_.store(paused);
+  // A first marker held back during the reconnect goes out with the next
+  // flush; ask for one, since nothing else may be queued.
+  if (!paused && first_marker_pending_) {
+    AddWrite();
+  }
+}
 
 void RedisAsyncContext::SetDisconnectHandler(std::function<void()> handler) {
   disconnect_handler_ = std::move(handler);
@@ -424,8 +441,14 @@ void RedisAsyncContext::AppendMarkerLocked() {
   // reply was flushed with such a marker behind it, and a Redis that lost the
   // write lost that marker too. During a reconnect, commands are held and the
   // check must read what the previous connection left, so add none.
-  if (!write_watermark_.has_value() || commands_paused_ ||
-      last_marked_write_ >= last_submitted_write_) {
+  if (!write_watermark_.has_value() || commands_paused_) {
+    return;
+  }
+  if (first_marker_pending_) {
+    QueueFirstMarkerLocked();
+    return;
+  }
+  if (last_marked_write_ >= last_submitted_write_) {
     return;
   }
   const std::string value =

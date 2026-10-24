@@ -908,6 +908,31 @@ TEST_F(RedisAsyncContextTest, TestFirstMarkerCoversDataFromBeforeAnyWrite) {
   EXPECT_TRUE(h.WaitForWritesLost().has_value());
 }
 
+// The watermark can be enabled while a reconnect check is pending, as when a
+// promotion races a reconnect. Marker 1 is then held back, not dropped: it goes
+// out once commands resume, even with nothing else queued, so the state loaded
+// at enable time is covered without waiting for a write.
+TEST_F(RedisAsyncContextTest, TestFirstMarkerHeldDuringAReconnectCheckIsSent) {
+  ReconnectCheckHarness h;
+  ASSERT_NE(h.Run({"SET", "loaded", "1"}), nullptr);
+  h.ctx().async_context().PauseCommands(true);
+  h.EnableWatermark();
+  EXPECT_EQ(h.Watermark(), "(nil)");
+  h.ctx().async_context().PauseCommands(false);
+
+  const auto deadline = std::chrono::steady_clock::now() + 10s;
+  while (!absl::EndsWith(h.Watermark(), ":1") &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(20ms);
+  }
+  ASSERT_TRUE(absl::EndsWith(h.Watermark(), ":1")) << h.Watermark();
+  h.Sync();
+
+  ASSERT_EQ(h.Admin({"FLUSHALL"}), "OK");
+  h.DropConnection();
+  EXPECT_TRUE(h.WaitForWritesLost().has_value());
+}
+
 // A rejected first marker is not counted as acknowledged, so a reconnect does
 // not take Redis's word for data the marker was meant to cover.
 TEST_F(RedisAsyncContextTest, TestRejectedFirstMarkerIsNotAcknowledged) {
