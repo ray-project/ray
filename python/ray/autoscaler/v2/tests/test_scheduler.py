@@ -31,13 +31,21 @@ from ray.autoscaler.v2.schema import (
 from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
+    BundleSelector,
     ClusterResourceConstraint,
     GangResourceRequest,
+    LocalityConstraint,
+    LocalityRequirement,
     NodeState,
     NodeStatus,
     ResourceRequest,
 )
-from ray.core.generated.common_pb2 import LabelSelectorOperator
+from ray.core.generated.common_pb2 import (
+    LabelSelector,
+    LabelSelectorConstraint,
+    LabelSelectorOperator,
+    PlacementStrategy,
+)
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     NodeKind,
@@ -4431,6 +4439,330 @@ class TestPrecomputeSerializeKeys:
         to_launch, _ = _launch_and_terminate(reply)
         # Existing node handles 2, remaining 8 need 8/4 = 2 new nodes.
         assert to_launch == {"type_1": 2}
+
+
+def _make_locality_gang_request(
+    bundles: List[Dict[str, float]],
+    bundle_labels: Dict[str, str],
+    locality_label: str,
+    pinned_domain: Optional[str] = None,
+) -> GangResourceRequest:
+    selectors = [
+        [
+            (k, LabelSelectorOperator.LABEL_OPERATOR_IN, [v])
+            for k, v in bundle_labels.items()
+        ]
+    ]
+    requests = [
+        ResourceRequestUtil.make(bundle, label_selectors=selectors)
+        for bundle in bundles
+    ]
+    locality_req = LocalityRequirement(
+        locality_constraint=LocalityConstraint(
+            label_name=locality_label,
+            placement_strategy=PlacementStrategy.STRICT_PACK,
+        )
+    )
+    if pinned_domain is not None:
+        locality_req.label_selector.CopyFrom(
+            LabelSelector(
+                label_constraints=[
+                    LabelSelectorConstraint(
+                        label_key=locality_label,
+                        operator=LabelSelectorOperator.LABEL_OPERATOR_IN,
+                        label_values=[pinned_domain],
+                    )
+                ]
+            )
+        )
+    # GCS fills the legacy `requests` field and `bundle_selectors` identically.
+    return GangResourceRequest(
+        requests=requests,
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=requests,
+                locality_requirement=locality_req,
+            )
+        ],
+    )
+
+
+def _make_running_domain_node(
+    node_type: str,
+    instance_id: str,
+    total_resources: Dict[str, float],
+    labels: Dict[str, str],
+    used: Optional[Dict[str, float]] = None,
+) -> AutoscalerInstance:
+    used = used or {}
+    return make_autoscaler_instance(
+        im_instance=Instance(
+            instance_type=node_type,
+            status=Instance.RAY_RUNNING,
+            instance_id=instance_id,
+            node_id=instance_id.encode(),
+        ),
+        ray_node=NodeState(
+            node_id=instance_id.encode(),
+            ray_node_type_name=node_type,
+            total_resources=total_resources,
+            available_resources={
+                k: v - used.get(k, 0) for k, v in total_resources.items()
+            },
+            labels=labels,
+            status=NodeStatus.RUNNING,
+        ),
+        cloud_instance_id=f"cloud-{instance_id}",
+    )
+
+
+def _make_pending_instance(node_type: str, instance_id: str) -> AutoscalerInstance:
+    return make_autoscaler_instance(
+        im_instance=Instance(
+            instance_type=node_type, status=Instance.REQUESTED, instance_id=instance_id
+        )
+    )
+
+
+def _schedule_gangs(
+    node_type_configs: Dict[NodeType, NodeTypeConfig],
+    gangs: List[GangResourceRequest],
+    instances: Optional[List[AutoscalerInstance]] = None,
+) -> Tuple[Dict[NodeType, int], int]:
+    """Returns the nodes to launch by type and the number of infeasible gangs."""
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=node_type_configs,
+            current_instances=instances or [],
+            gang_resource_requests=gangs,
+        )
+    )
+    to_launch, _ = _launch_and_terminate(reply)
+    return to_launch, len(reply.infeasible_gang_resource_requests)
+
+
+TPU_LABELS = {
+    "ray.io/accelerator-type": "TPU-V6E",
+    "ray.io/tpu-topology": "4x4",
+    "ray.io/tpu-pod-type": "v6e-16",
+}
+TPU_CONFIGS = {
+    "tpu_4x4": NodeTypeConfig(
+        name="tpu_4x4",
+        resources={"CPU": 4, "TPU": 4},
+        labels=TPU_LABELS,
+        min_worker_nodes=0,
+        max_worker_nodes=16,
+    )
+}
+
+
+def _tpu_gang(
+    num_bundles: int = 4, pinned_domain: Optional[str] = None
+) -> GangResourceRequest:
+    return _make_locality_gang_request(
+        bundles=[{"CPU": 1, "TPU": 4}] * num_bundles,
+        bundle_labels={
+            "ray.io/accelerator-type": "TPU-V6E",
+            "ray.io/tpu-topology": "4x4",
+        },
+        locality_label="ray.io/tpu-slice-name",
+        pinned_domain=pinned_domain,
+    )
+
+
+def _tpu_host(
+    instance_id: str,
+    slice_name: str,
+    used: Optional[Dict[str, float]] = None,
+    **extra_resources: float,
+) -> AutoscalerInstance:
+    """A registered host of `slice_name` with `used` resources in use."""
+    return _make_running_domain_node(
+        "tpu_4x4",
+        instance_id,
+        {"CPU": 4, "TPU": 4, **extra_resources},
+        {**TPU_LABELS, "ray.io/tpu-slice-name": slice_name},
+        used,
+    )
+
+
+def test_gang_locality_requirement_tpu_slices():
+    """STRICT_PACK on ray.io/tpu-slice-name for 4-host v6e-16 slices."""
+    gang = _tpu_gang()
+
+    # Scale from zero: one whole 4-host slice per gang.
+    assert _schedule_gangs(TPU_CONFIGS, [gang]) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs(TPU_CONFIGS, [gang] * 2) == ({"tpu_4x4": 8}, 0)
+
+    # Staggered boot: registered hosts are paired with their pending siblings
+    # instead of launching, even while a CPU task and objects in the object store
+    # use part of them. Real hosts also report extra resources, such as the slice
+    # name.
+    in_use = {"CPU": 1, "object_store_memory": 100}
+    slice_0 = [
+        _tpu_host("n0", "slice-0", in_use, object_store_memory=1000, **{"slice-0": 1}),
+        _tpu_host("n1", "slice-0", in_use, object_store_memory=1000),
+        _make_pending_instance("tpu_4x4", "n2"),
+        _make_pending_instance("tpu_4x4", "n3"),
+    ]
+    slice_1 = [
+        _tpu_host("n4", "slice-1", in_use, object_store_memory=1000, **{"slice-1": 1}),
+        _tpu_host("n5", "slice-1", in_use, object_store_memory=1000),
+        _make_pending_instance("tpu_4x4", "n6"),
+        _make_pending_instance("tpu_4x4", "n7"),
+    ]
+    assert _schedule_gangs(TPU_CONFIGS, [gang], slice_0) == ({}, 0)
+    assert _schedule_gangs(TPU_CONFIGS, [gang] * 2, slice_0) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs(TPU_CONFIGS, [gang] * 2, slice_0 + slice_1) == ({}, 0)
+
+    # A fully booted slice with a busy host is not completed with the pending
+    # hosts of another replica: that replica takes one gang and the other gang
+    # launches a new slice.
+    part_busy = [
+        _tpu_host(f"s0-w{w}", "slice-0", {"TPU": 4} if w == 0 else None)
+        for w in range(4)
+    ] + [_make_pending_instance("tpu_4x4", f"p{w}") for w in range(4)]
+    assert _schedule_gangs(TPU_CONFIGS, [gang] * 2, part_busy) == ({"tpu_4x4": 4}, 0)
+
+    # Per-chip bundles: a fully booted slice with one chip in use is not completed
+    # with another replica's pending hosts either.
+    per_chip = _make_locality_gang_request(
+        bundles=[{"TPU": 1}] * 16,
+        bundle_labels={"ray.io/tpu-topology": "4x4"},
+        locality_label="ray.io/tpu-slice-name",
+    )
+    one_chip_busy = [
+        _tpu_host(f"s0-w{w}", "slice-0", {"TPU": 1} if w == 0 else None)
+        for w in range(4)
+    ] + [_make_pending_instance("tpu_4x4", f"p{w}") for w in range(4)]
+    assert _schedule_gangs(TPU_CONFIGS, [per_chip] * 2, one_chip_busy) == (
+        {"tpu_4x4": 4},
+        0,
+    )
+
+    # Two fragmented slices: the gang is never split across them.
+    fragmented = [
+        _tpu_host(f"s{s}-w{w}", f"slice-{s}", {"TPU": 4} if w == 0 else None)
+        for s in (0, 1)
+        for w in range(4)
+    ]
+    assert _schedule_gangs(TPU_CONFIGS, [gang], fragmented) == ({"tpu_4x4": 4}, 0)
+
+    # Fully busy slices: the gang launches a new slice.
+    busy = [
+        _tpu_host(f"s{s}-w{w}", f"slice-{s}", {"TPU": 4})
+        for s in range(3)
+        for w in range(4)
+    ]
+    assert _schedule_gangs(TPU_CONFIGS, [gang], busy) == ({"tpu_4x4": 4}, 0)
+
+    # A rescheduling gang pinned to a degraded slice is infeasible, not relaunched.
+    degraded = [_tpu_host("s0-w0", "slice-0", {"TPU": 4})]
+    pinned = _tpu_gang(num_bundles=1, pinned_domain="slice-0")
+    assert _schedule_gangs(TPU_CONFIGS, [pinned], degraded) == ({}, 1)
+
+
+GPU_LABELS = {"ray.io/accelerator-type": "GB200"}
+
+
+def _gpu_config(
+    name: str, rack: Optional[str] = None, min_workers: int = 0
+) -> NodeTypeConfig:
+    """A GPU node type; nodes of a type with a `rack` share a static domain."""
+    return NodeTypeConfig(
+        name=name,
+        resources={"CPU": 8, "GPU": 4},
+        labels={**GPU_LABELS, **({"ray.io/gpu-domain": rack} if rack else {})},
+        min_worker_nodes=min_workers,
+        max_worker_nodes=8,
+    )
+
+
+def _gpu_gang(
+    num_bundles: int = 2, pinned_domain: Optional[str] = None
+) -> GangResourceRequest:
+    return _make_locality_gang_request(
+        bundles=[{"CPU": 1, "GPU": 4}] * num_bundles,
+        bundle_labels=GPU_LABELS,
+        locality_label="ray.io/gpu-domain",
+        pinned_domain=pinned_domain,
+    )
+
+
+def _gpu_node(
+    node_type: str,
+    instance_id: str,
+    rack: Optional[str] = None,
+    used: Optional[Dict[str, float]] = None,
+) -> AutoscalerInstance:
+    """A registered node in `rack` with `used` resources in use."""
+    return _make_running_domain_node(
+        node_type,
+        instance_id,
+        {"CPU": 8, "GPU": 4},
+        {**GPU_LABELS, **({"ray.io/gpu-domain": rack} if rack else {})},
+        used,
+    )
+
+
+def test_gang_locality_requirement_gpu_domains():
+    """STRICT_PACK on ray.io/gpu-domain with dynamic and static per-rack domains."""
+    # Dynamic racks: a gang is not split across two half-used racks, nor placed on
+    # a running node that registered without a rack label.
+    dynamic = {"gb200": _gpu_config("gb200")}
+    assert _schedule_gangs(
+        dynamic, [_gpu_gang()] * 2, [_gpu_node("gb200", "unlabeled-0")]
+    ) == ({"gb200": 4}, 0)
+    fragmented = [
+        _gpu_node("gb200", f"r{r}-n{n}", f"rack-{r}", {"GPU": 4 * n})
+        for r in (0, 1)
+        for n in (0, 1)
+    ]
+    assert _schedule_gangs(dynamic, [_gpu_gang()], fragmented) == ({"gb200": 2}, 0)
+
+    # Nor is it split between the new nodes of an earlier gang that leaves room on
+    # them and a new node: two gangs of three half-node bundles launch 2 nodes each.
+    half_node_gang = _make_locality_gang_request(
+        bundles=[{"GPU": 2}] * 3,
+        bundle_labels=GPU_LABELS,
+        locality_label="ray.io/gpu-domain",
+    )
+    assert _schedule_gangs(dynamic, [half_node_gang] * 2) == ({"gb200": 4}, 0)
+
+    # Static racks: the rack that needs the fewest launches wins, even if it sorts
+    # last, and a gang pinned to a rack without nodes launches into that rack.
+    racks = {
+        "gb200_rack_a": _gpu_config("gb200_rack_a", "rack-a"),
+        "gb200_rack_b": _gpu_config("gb200_rack_b", "rack-b"),
+    }
+    rack_b_node = _gpu_node("gb200_rack_b", "rb-0", "rack-b")
+    assert _schedule_gangs(racks, [_gpu_gang()], [rack_b_node]) == (
+        {"gb200_rack_b": 1},
+        0,
+    )
+    pinned_a = _gpu_gang(num_bundles=1, pinned_domain="rack-a")
+    assert _schedule_gangs(racks, [pinned_a], [rack_b_node]) == (
+        {"gb200_rack_a": 1},
+        0,
+    )
+
+    # Pairing a booting dynamic rack with a pending node leaves the static label
+    # of an unrelated min-workers node intact, so the pinned gang reuses it.
+    mixed = {
+        "gb200": _gpu_config("gb200"),
+        "gb200_rack_b": _gpu_config("gb200_rack_b", "rack-b", min_workers=1),
+    }
+    booting = [
+        _gpu_node("gb200", "r0-n0", "rack-0"),
+        _make_pending_instance("gb200", "r0-n1"),
+    ]
+    pinned_b = _gpu_gang(num_bundles=1, pinned_domain="rack-b")
+    assert _schedule_gangs(mixed, [_gpu_gang(), pinned_b], booting) == (
+        {"gb200_rack_b": 1},
+        0,
+    )
 
 
 if __name__ == "__main__":

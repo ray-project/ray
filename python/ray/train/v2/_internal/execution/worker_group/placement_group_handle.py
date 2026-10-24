@@ -1,6 +1,7 @@
 import logging
+import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, List, Union
 
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup, remove_placement_group
@@ -24,6 +25,11 @@ class PlacementGroupHandle(ABC):
     def placement_group(self) -> PlacementGroup:
         """The underlying PlacementGroup for worker scheduling."""
         ...
+
+    @property
+    def placement_groups(self) -> List[PlacementGroup]:
+        """All underlying PlacementGroups for worker scheduling."""
+        return [self.placement_group]
 
     @abstractmethod
     def ready(self) -> ObjectRef:
@@ -80,21 +86,42 @@ class DefaultPlacementGroupHandle(PlacementGroupHandle):
 
 
 class SlicePlacementGroupHandle(PlacementGroupHandle):
-    """Wrapper for SlicePlacementGroup that delegates to its underlying PlacementGroup."""
+    """Wrapper for SlicePlacementGroup that delegates to its underlying PlacementGroup(s)."""
 
     def __init__(self, spg: "SlicePlacementGroup"):
         self._spg = spg
 
     @property
+    def placement_groups(self) -> List[PlacementGroup]:
+        pgs = self._spg.placement_groups
+        return pgs if isinstance(pgs, list) else [self._spg.placement_group]
+
+    @property
     def placement_group(self) -> PlacementGroup:
-        return self._spg.placement_group
+        pgs = self.placement_groups
+        if len(pgs) > 1:
+            raise ValueError(
+                f"Cannot access singular `placement_group` when managing {len(pgs)} slices. "
+                "Please use `placement_groups` instead."
+            )
+        return pgs[0]
 
     def ready(self) -> ObjectRef:
-        return self._spg.placement_group.ready()
+        return self.placement_group.ready()
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         try:
-            return self._spg.placement_group.wait(timeout_seconds)
+            pgs = self.placement_groups
+            if not pgs:
+                return False
+            deadline = time.monotonic() + timeout_seconds
+            for i, pg in enumerate(pgs):
+                remaining = (
+                    timeout_seconds if i == 0 else max(0.0, deadline - time.monotonic())
+                )
+                if not pg.wait(remaining):
+                    return False
+            return True
         except Exception:
             logger.warning(
                 "Slice placement group wait failed; treating as not ready.",
