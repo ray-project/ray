@@ -22,7 +22,7 @@ pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CU
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
-# TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
+# vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.32.0.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/python/requirements/llm/patches/vllm-device-aware-compile-cache.patch"
 VLLM_DEFER_TRITON_PATCH="$(pwd)/python/requirements/llm/patches/vllm-defer-triton-validation.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
