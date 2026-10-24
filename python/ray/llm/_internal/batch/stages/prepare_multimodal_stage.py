@@ -95,7 +95,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             along with processing metadata.
         """
         try:
-            from vllm.entrypoints.chat_utils import parse_chat_messages_async
+            from vllm.renderers.chat_utils import parse_chat_messages_async
         except ImportError as e:
             raise ImportError(
                 "vLLM is not installed or failed to import. Please run "
