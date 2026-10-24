@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING
 from ray.data._internal.usage.collector import (
     EnvInfo,
     Issue,
+    LineageReconstructionInfo,
     LogicalOp,
+    MemoryStats,
     OpConfig,
     PipelinePerf,
     PlanNode,
@@ -31,7 +33,9 @@ def create_usage_callback(logical_plan: "LogicalPlan") -> UsageCallback:
 __all__ = [
     "EnvInfo",
     "Issue",
+    "LineageReconstructionInfo",
     "LogicalOp",
+    "MemoryStats",
     "OpConfig",
     "PipelinePerf",
     "PlanNode",
