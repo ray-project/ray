@@ -23,9 +23,14 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
     return -1.;
   }
 
+  auto resolved =
+      ResolveGpuMemory(required_resources.GetResourceSet(), node_resources.labels);
+  if (!resolved) {
+    return -1.;
+  }
   double node_score = 0.;
-  for (auto &resource_id : required_resources.ResourceIds()) {
-    const auto &request_resource = required_resources.Get(resource_id);
+  for (auto &resource_id : resolved->ResourceIds()) {
+    const auto &request_resource = resolved->Get(resource_id);
     const auto node_available_resource = node_resources.GetAvailableSum(resource_id);
     node_score += Calculate(request_resource, node_available_resource);
   }

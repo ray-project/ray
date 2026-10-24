@@ -16,6 +16,7 @@
 // build.
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -571,6 +572,49 @@ TEST_F(LocalResourceManagerTest, RepeatedMarkFootprintAsIdleDoesNotResetIdleTime
     manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
     ASSERT_EQ(AssertIdleAndGetTime(), idle_after_first_mark);
   }
+}
+
+TEST_F(LocalResourceManagerTest, GpuMemoryPacksOnOneDevice) {
+  auto resources =
+      CreateNodeResources({{ResourceID::CPU(), 8.0}, {ResourceID::GPU(), 2.0}});
+  resources.labels[kLabelKeyGpuMemoryPerDevice] = "80000000000";
+  manager = std::make_unique<LocalResourceManager>(local_node_id,
+                                                   resources,
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr,
+                                                   fake_resource_usage_gauge_,
+                                                   clock_);
+
+  auto allocate = [this](double bytes) {
+    auto allocation = std::make_shared<TaskResourceInstances>();
+    bool ok = manager->AllocateLocalTaskResources({{kGPUMemory_ResourceLabel, bytes}},
+                                                  allocation);
+    return ok ? allocation : nullptr;
+  };
+
+  auto first = allocate(5e10);
+  ASSERT_NE(first, nullptr);
+  ASSERT_FALSE(first->Has(ResourceID::GPUMemory()));
+  auto first_gpus = first->Get(ResourceID::GPU());
+  ASSERT_EQ(FixedPoint::Sum(first_gpus), FixedPoint(0.625));
+  ASSERT_EQ(std::count(first_gpus.begin(), first_gpus.end(), FixedPoint(0)), 1);
+  ASSERT_FALSE(manager->WasLastRecordedNodeStateIdle());
+
+  auto second = allocate(5e10);
+  ASSERT_NE(second, nullptr);
+  ASSERT_NE(second->Get(ResourceID::GPU()), first_gpus);
+
+  ASSERT_EQ(allocate(5e10), nullptr);
+  auto third = allocate(3e10);
+  ASSERT_NE(third, nullptr);
+  ASSERT_EQ(allocate(9e10), nullptr);
+
+  for (auto &allocation : {first, second, third}) {
+    manager->ReleaseWorkerResources(allocation);
+  }
+  ASSERT_TRUE(manager->WasLastRecordedNodeStateIdle());
 }
 
 }  // namespace ray

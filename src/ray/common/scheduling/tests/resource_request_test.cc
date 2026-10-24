@@ -229,4 +229,54 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   ASSERT_EQ(task_resource_instances.ToResourceSet(), resource_set);
 }
 
+TEST_F(ResourceRequestTest, TestResolveGpuMemory) {
+  absl::flat_hash_map<std::string, std::string> labels{
+      {kLabelKeyGpuMemoryPerDevice, "80000000000"}};
+
+  ResourceSet no_gpu_memory({{ResourceID::CPU(), FixedPoint(1)}});
+  ASSERT_EQ(*ResolveGpuMemory(no_gpu_memory, {}), no_gpu_memory);
+
+  ResourceSet quarter(
+      {{ResourceID::CPU(), FixedPoint(1)}, {ResourceID::GPUMemory(), FixedPoint(2e10)}});
+  auto resolved = ResolveGpuMemory(quarter, labels);
+  ASSERT_TRUE(resolved.has_value());
+  ASSERT_FALSE(resolved->Has(ResourceID::GPUMemory()));
+  ASSERT_EQ(resolved->Get(ResourceID::GPU()), FixedPoint(0.25));
+  ASSERT_EQ(resolved->Get(ResourceID::CPU()), FixedPoint(1));
+
+  ResourceSet rounds_up({{ResourceID::GPUMemory(), FixedPoint(1)}});
+  ASSERT_EQ(ResolveGpuMemory(rounds_up, labels)->Get(ResourceID::GPU()),
+            FixedPoint(0.0001));
+
+  ResourceSet whole({{ResourceID::GPUMemory(), FixedPoint(8e10)}});
+  ASSERT_EQ(ResolveGpuMemory(whole, labels)->Get(ResourceID::GPU()), FixedPoint(1));
+
+  ResourceSet too_big({{ResourceID::GPUMemory(), FixedPoint(8e10 + 1)}});
+  ASSERT_FALSE(ResolveGpuMemory(too_big, labels).has_value());
+  ASSERT_FALSE(ResolveGpuMemory(quarter, {}).has_value());
+  ASSERT_FALSE(ResolveGpuMemory(quarter, {{kLabelKeyGpuMemoryPerDevice, "not-a-number"}})
+                   .has_value());
+}
+
+TEST_F(ResourceRequestTest, TestNodeResourcesResolveGpuMemoryPerNode) {
+  auto make_node = [](double gpus, const std::string &per_device) {
+    return ResourceMapToNodeResources({{"CPU", 8}, {"GPU", gpus}},
+                                      {{"CPU", 8}, {"GPU", gpus}},
+                                      {{kLabelKeyGpuMemoryPerDevice, per_device}});
+  };
+  auto big = make_node(1, "80000000000");
+  auto small = make_node(1, "24000000000");
+  auto cpu_only = ResourceMapToNodeResources({{"CPU", 8}}, {{"CPU", 8}});
+
+  ResourceRequest request({{ResourceID::GPUMemory(), FixedPoint(4e10)}});
+  ASSERT_TRUE(big.IsFeasible(request));
+  ASSERT_TRUE(big.IsAvailable(request));
+  ASSERT_FALSE(small.IsFeasible(request));
+  ASSERT_FALSE(cpu_only.IsFeasible(request));
+
+  big.SetAvailableResource(ResourceID::GPU(), 0.4);
+  ASSERT_TRUE(big.IsFeasible(request));
+  ASSERT_FALSE(big.IsAvailable(request));
+}
+
 }  // namespace ray
