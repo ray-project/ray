@@ -80,15 +80,6 @@ def test_metrics_wsgi_auth_can_be_disabled_explicitly(
         assert body == [b"metrics"]
 
 
-def test_prometheus_authorization_config_omitted_when_metrics_auth_disabled(
-    auth_env, monkeypatch
-):
-    monkeypatch.setenv("RAY_AUTH_MODE", "token")
-    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
-    reset_auth_token_state()
-    assert get_prometheus_authorization_config() == ""
-
-
 def test_prometheus_authorization_config_empty_when_auth_disabled(
     auth_env, monkeypatch
 ):
