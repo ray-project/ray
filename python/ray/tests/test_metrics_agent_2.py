@@ -4,6 +4,7 @@ import time
 from typing import List
 
 import pytest
+import requests
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.metrics.export.value import ValueDouble
 from opencensus.stats import execution_context
@@ -25,6 +26,7 @@ from ray._common.test_utils import (
 )
 from ray._private.metrics_agent import (
     RAY_WORKER_TIMEOUT_S,
+    Counter,
     Gauge,
     MetricsAgent,
     OpenCensusProxyCollector,
@@ -119,6 +121,28 @@ def get_agent(request, monkeypatch):
         REGISTRY.unregister(agent.stats_exporter.collector)
         REGISTRY.unregister(agent.proxy_exporter_collector)
         execution_context.set_measure_to_view_map({})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_metrics_agent_record_and_export_counter(get_agent):
+    """A `Counter` exports as a Prometheus counter summing the recorded deltas."""
+    namespace = "test"
+    agent, agent_port = get_agent
+
+    counter = Counter("events_total", "desc", "1", ["tag"])
+    agent.record_and_export([Record(gauge=counter, value=3, tags={"tag": "a"})])
+    agent.record_and_export([Record(gauge=counter, value=4, tags={"tag": "a"})])
+
+    prom_name = get_prom_metric_name(namespace, "events_total")
+    name, samples = get_metric(prom_name, agent_port)
+    assert name == prom_name
+    assert len(samples) == 1
+    assert samples[0].value == 7
+    assert samples[0].labels == {"tag": "a"}
+
+    text = requests.get(f"http://localhost:{agent_port}").text
+    assert f"# TYPE {prom_name} counter" in text
+    assert "events_total_total" not in text
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
