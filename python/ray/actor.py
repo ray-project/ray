@@ -1123,12 +1123,6 @@ class ActorMethod:
                 f"_consume_once must be a bool, got {type(_consume_once).__name__}."
             )
         if _consume_once:
-            # TODO(karticam): Support streaming generators in a follow-up PR.
-            if num_returns == "streaming":
-                raise ValueError(
-                    "_consume_once=True is not supported yet for streaming generator "
-                    "actor methods. Support will be added in a future release."
-                )
             if num_returns == "dynamic":
                 raise ValueError(
                     "_consume_once=True is not supported with num_returns='dynamic'."
@@ -2552,7 +2546,8 @@ class ActorHandle(Generic[T]):
             labels: Optional key-value labels to attach to this actor method task.
             consume_once: Private. If True, each return value can be passed to exactly one
                 actor method call and can't be borrowed. The object will be moved(deleted) from producer
-                upon consumption.
+                upon consumption. For a streaming generator method, this applies to each
+                yielded object.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor

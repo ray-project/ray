@@ -19,9 +19,20 @@ class Producer:
     def generate(self):
         yield 1
 
+    def generate_values(self, values):
+        for value in values:
+            yield value
+
     @ray.method(num_returns="dynamic")
     def generate_dynamic(self):
         yield 1
+
+
+@ray.remote
+class AsyncProducer:
+    async def generate_values(self, values):
+        for value in values:
+            yield value
 
 
 @ray.remote
@@ -177,16 +188,42 @@ def test_all_returns_are_consume_once(ray_start_regular_shared):
             normal_task.remote(ref)
 
 
+@pytest.mark.parametrize("producer_cls", [Producer, AsyncProducer])
 @pytest.mark.parametrize("num_returns", [None, "streaming"])
-def test_consume_once_rejected_for_streaming_generator_methods(
-    ray_start_regular_shared, num_returns
+def test_streaming_generator_yields_are_consume_once(
+    ray_start_regular_shared, producer_cls, num_returns
 ):
-    producer = Producer.remote()
+    producer = producer_cls.remote()
+    consumer = Consumer.remote()
     # A generator method without num_returns defaults to "streaming".
     options = {} if num_returns is None else {"num_returns": num_returns}
+    # The small values stay in the owner's memory store, the large one goes to plasma.
+    large = b"x" * (1024 * 1024)
 
-    with pytest.raises(ValueError, match="streaming generator"):
-        producer.generate.options(_consume_once=True, **options).remote()
+    gen = producer.generate_values.options(_consume_once=True, **options).remote(
+        [1, large, 3]
+    )
+    refs = list(gen)
+    assert [move_state(ref) for ref in refs] == ["MOVABLE"] * 3
+    assert move_state(gen.completed()) == "NOT_MOVABLE"
+
+    # Reads don't move the yielded objects.
+    assert ray.get(refs) == [1, large, 3]
+    assert ray.get(consumer.consume_all.remote(refs[0], refs[1])) == [1, large, None]
+    assert move_state(refs[0]) == "MOVED"
+    assert move_state(refs[1]) == "MOVED"
+    assert ray.get(refs[1]) == large
+
+    with pytest.raises(ValueError, match="already passed to an actor task"):
+        consumer.consume.remote(refs[0])
+    with pytest.raises(ValueError, match="argument to a task"):
+        normal_task.remote(refs[2])
+    with pytest.raises(pickle.PicklingError, match="only be passed directly"):
+        consumer.consume.remote([refs[2]])
+    assert move_state(refs[2]) == "MOVABLE"
+
+    plain_gen = producer.generate_values.options(**options).remote([1])
+    assert [move_state(ref) for ref in plain_gen] == ["NOT_MOVABLE"]
 
 
 def test_consume_once_rejected_for_dynamic_generator_methods(
