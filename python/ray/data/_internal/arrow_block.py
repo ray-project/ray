@@ -473,6 +473,44 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         return sort(self._table, sort_key)
 
+    def top_n(self, sort_key: "SortKey", limit: int) -> Block:
+        assert (
+            sort_key.get_columns()
+        ), f"Sorting columns couldn't be empty (got {sort_key.get_columns()})"
+        assert limit >= 0, limit
+
+        if limit == 0 or self._table.num_rows == 0:
+            return self._table.slice(0, 0)
+
+        import pyarrow.compute as pac
+
+        result_size = min(limit, self._table.num_rows)
+        primary_column = self._table[sort_key.get_columns()[0]]
+        # SelectK excludes rows whose primary key is null or NaN, while a full
+        # sort places them at the end. Fall back if the result must include them.
+        excluded_primary_values = primary_column.null_count
+
+        if pyarrow.types.is_floating(primary_column.type):
+            nan_mask = pac.is_nan(primary_column)
+            nan_count = pac.sum(nan_mask).as_py()
+            excluded_primary_values += nan_count or 0
+
+        if excluded_primary_values > self._table.num_rows - result_size:
+            sorted_table = self.sort(sort_key)
+            return BlockAccessor.for_block(sorted_table).slice(0, result_size)
+
+        try:
+            indices = pac.select_k_unstable(
+                self._table,
+                k=result_size,
+                sort_keys=sort_key.to_arrow_sort_args(),
+            )
+        except pyarrow.ArrowNotImplementedError:
+            sorted_table = self.sort(sort_key)
+            return BlockAccessor.for_block(sorted_table).slice(0, result_size)
+
+        return self.take(indices)
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:

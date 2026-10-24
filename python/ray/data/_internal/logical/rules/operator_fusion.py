@@ -42,6 +42,7 @@ from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     StreamingRepartition,
+    TopN,
     Write,
 )
 from ray.data.datasource.file_datasink import _FileDatasink
@@ -65,6 +66,15 @@ class FuseOperators(Rule):
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         self._op_map = plan.op_map.copy()
+        # TopN lowers to a local map and a global merge. Only the map stage
+        # needs map metadata for the existing fusion compatibility rules.
+        for op, logical_op in plan.op_map.items():
+            if isinstance(op, MapOperator) and isinstance(logical_op, TopN):
+                self._op_map[op] = AbstractMap(
+                    op.name,
+                    logical_op.input_dependencies,
+                    can_modify_num_rows=True,
+                )
         # TODO(xgui): Currently we have to fuse streaming_repartition before map fusion
         # because the result of map fusion loses the batch_size information.
         # We should fix this by not losing the batch_size information when fusing map operators.
