@@ -7,6 +7,8 @@ import pyarrow as pa
 
 from ray.data._internal.util import unify_schemas_with_validation
 
+_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
+
 # Bound submitted reads, not just executing threads, for full inference.
 _SCHEMA_READ_BATCH_SIZE = 256
 

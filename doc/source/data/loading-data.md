@@ -875,7 +875,7 @@ For a trusted, row-producing SQL query, pass `query` and an explicit `pyarrow.Sc
 Query reads require an explicit Arrow schema. DataSourceV2 planning needs it on the driver before the read worker executes the query. See [issue #66840](https://github.com/ray-project/ray/issues/66840) for optional schema inference from the same query execution.
 :::
 
-Non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone; Impyla truncates sub-microsecond precision. Complex types are unsupported.
+In the default `read_mode="hs2"`, non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone; `impyla` truncates sub-microsecond precision. Complex types are unsupported in this mode.
 
 Because table reads use `SELECT *`, an unsupported column type prevents reading the whole table. Use `query=` to select supported columns and provide a matching schema.
 
@@ -942,7 +942,31 @@ The example uses the binary HiveServer2 protocol. Each read runs at most one dat
 The reader attempts to cancel the HiveServer2 operation and close its cursor and connection when reading ends. Closing a Dataset iterator can force Ray to stop the read worker before Python cleanup runs. Immediate operation cancellation or explicit connection cleanup isn't guaranteed.
 :::
 
-Compared with {func}`~ray.data.read_sql`, `read_hive` fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
+Compared with {func}`~ray.data.read_sql`, the default HS2 mode fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
+
+(native-hive-file-reads)=
+#### Native Hive file reads
+
+Use `read_mode="direct"` for native Ray Data reads of a Parquet or ORC Hive table without partitions. Both managed and external file tables with supported metadata are eligible. The driver uses HiveServer2 for `DESCRIBE FORMATTED` and read-only `SET` queries for the same session's mapping settings. Workers read storage directly without executing an HS2 data query. Raw SQL queries, partitioned tables, Hive `ACID`, custom SerDes, Parquet positional column access, and Iceberg/Delta/Hudi tables aren't supported by this path and are rejected during metadata planning.
+
+Pass an existing PyArrow `filesystem` when storage requires explicit configuration. HS2 authentication doesn't grant storage access: driver and reading workers need the filesystem client dependencies, network access, and credentials. HDFS needs a working Hadoop client and `libhdfs` environment on those processes. S3 credentials follow the configured filesystem. Storage authorization isn't inherited from HiveServer2 policies.
+
+The reader uses Hive's declared columns and types, including `ARRAY`, `MAP`, `STRUCT`, and supported nested combinations, with native Arrow value decoding. Top-level `CHAR` and `VARCHAR` values respect their declared lengths, including `CHAR` padding. Nested `CHAR`/`VARCHAR` fields aren't supported and are rejected during metadata planning. `TIMESTAMP` uses microseconds without an inferred time zone; fractional digits beyond microseconds are discarded consistently before and after the Unix epoch. These value conversions use Ray Data projections, so filters on converted values run after conversion. Column selection, missing-column `NULL` filling, task grouping and execution reuse the native readers. `limit` is a global Ray Data limit, and `override_num_blocks` is honored as a native read-planning hint.
+
+File types can widen to the Hive declaration through native Arrow casts: signed integers can widen to larger signed integers, `FLOAT` can widen to `DOUBLE`, and `DECIMAL` precision can increase when its scale stays the same. These rules also apply within supported nested types. The reader rejects narrowing and other type changes and keeps the Hive declaration.
+
+Parquet uses name mapping. ORC follows the metadata session's mapping settings: `orc.force.positional.evolution=true` maps top-level fields by their positions in the full Hive schema, so renamed columns retain their values. Top-level name matching follows `orc.schema.evolution.case.sensitive`. Legacy ORC files whose top-level names all match `_col[0-9]+` use positional fallback when the session permits missing schema metadata. Each file, including files outside the sample, is mapped before filtering and projected to Hive's declared column names and order. Missing columns receive typed `NULL` values, and extra file columns are ignored. Column pruning preserves the original Hive positions, including columns used only by filters. Direct reads support the default positional evolution depth of one and require ORC schema evolution to be enabled. Deeper positional evolution is rejected during metadata planning. Nested fields retain the existing name and type compatibility rules.
+
+When file schemas are needed, direct reads sample up to 16 files, matching the existing native V2 strategy. For Parquet and ORC, `merge_schema=True` uses all eligible files and retains the discovered file set; it doesn't widen or replace the Hive declaration. ORC aligns each sampled file to the Hive declaration before schema unification, so files written before and after a rename don't create separate output columns. The native ORC schema-evolution limits in {func}`~ray.data.read_orc` also apply. Hive metadata boundaries are checked before scanning; sampling doesn't guarantee that every later file is compatible. Mixed Parquet timestamp units can make Arrow reject a file outside the sample before Hive timestamp conversion. Parquet validates file schemas before each split produces data, adding footer reads that can repeat across splits and delay the first output. File errors follow the native reader's error and retry semantics and never restart the read through HS2.
+
+```python
+dataset = ray.data.read_hive(
+    "analytics.events",
+    connection_factory=create_connection,
+    read_mode="direct",
+    override_num_blocks=8,
+)
+```
 
 (reading_sql)=
 (reading-sql-databases)=
