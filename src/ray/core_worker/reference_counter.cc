@@ -869,6 +869,7 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
     callback(it->first);
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+  it->second.locations_being_freed.clear();
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
   UnsetObjectPrimaryCopy(it);
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
@@ -955,8 +956,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
       RAY_LOG(INFO).WithField(object_id)
           << "Updating primary location for object to node " << node_id
           << ", but it already has a primary location " << *it->second.pinned_at_node_id_
-          << ". This should only happen during reconstruction or when the object "
-             "was moved to a consumer";
+          << ". This should only happen during reconstruction";
     }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us_);
@@ -973,6 +973,48 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
       UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
     }
   }
+}
+
+std::optional<NodeID> ReferenceCounter::UpdateObjectPrimaryMoved(
+    const ObjectID &object_id, const NodeID &node_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end() || freed_objects_.contains(object_id)) {
+    return std::nullopt;
+  }
+  // Only the owner tracks the location.
+  RAY_CHECK(it->second.owned_by_us_);
+  if (it->second.OutOfScope(lineage_pinning_enabled_)) {
+    return std::nullopt;
+  }
+  if (is_node_dead_(node_id)) {
+    // The new primary holder node is already gone. The previous primary was never freed,
+    // so it still pins the object and stays the primary.
+    return std::nullopt;
+  }
+  const std::optional<NodeID> previous_primary = it->second.pinned_at_node_id_;
+  UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
+  it->second.pinned_at_node_id_ = node_id;
+  std::optional<NodeID> node_to_free;
+  // The consumer's node is now the primary. There is nothing to free when there
+  // is no previous primary, This would happen when the producer (previous
+  // primary) node died and recovery started. Previous primary is same as the current
+  // node when the owner handles the same move twice after the raylet resends a location
+  // batch whose reply was lost.
+  if (previous_primary.has_value() && *previous_primary != node_id) {
+    node_to_free = previous_primary;
+    it->second.locations_being_freed.insert(*node_to_free);
+    // HandleObjectSpilled records a moved object's spill only from its primary's
+    // node, so a recorded spill is the previous primary's, and the free deletes
+    // it as well.
+    if (it->second.spilled) {
+      it->second.spilled = false;
+      it->second.spilled_url = "";
+      it->second.spilled_node_id = NodeID::Nil();
+    }
+  }
+  UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
+  return node_to_free;
 }
 
 bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
@@ -1524,6 +1566,7 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
 void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
                                                     const NodeID &node_id) {
   it->second.locations.erase(node_id);
+  it->second.locations_being_freed.erase(node_id);
   PushToLocationSubscribers(it);
 }
 
@@ -1555,9 +1598,24 @@ std::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
   return it->second.locations;
 }
 
+std::optional<absl::flat_hash_set<NodeID>>
+ReferenceCounter::GetObjectLocationsForRecovery(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return std::nullopt;
+  }
+  absl::flat_hash_set<NodeID> locations = it->second.locations;
+  for (const NodeID &node_id : it->second.locations_being_freed) {
+    locations.erase(node_id);
+  }
+  return locations;
+}
+
 bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
                                            const std::string &spilled_url,
-                                           const NodeID &spilled_node_id) {
+                                           const NodeID &spilled_node_id,
+                                           const NodeID &reporter_node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1570,6 +1628,22 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     // evicted" notification to delete the copy at this spilled URL. Therefore,
     // we should not add this spill URL as a location.
     return false;
+  }
+  if (it->second.move_state_ == MoveState::MOVED) {
+    // A moved object has a primary copy on the producer's node and then on the
+    // consumer's node, and both may spill it. The owner frees the producer's
+    // copy, spill file included, so only the current primary's spill is
+    // recorded. While recovery is in flight there is no primary, and only a
+    // copy being freed is ignored.
+    const std::optional<NodeID> &primary = it->second.pinned_at_node_id_;
+    if (primary.has_value()
+            ? *primary != reporter_node_id
+            : it->second.locations_being_freed.contains(reporter_node_id)) {
+      RAY_LOG(DEBUG).WithField(object_id).WithField(reporter_node_id)
+          << "Ignoring the spill of a moved object by a node that does not hold its "
+             "primary copy";
+      return true;
+    }
   }
 
   // Decrement counter for old state
