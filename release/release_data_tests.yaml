@@ -984,6 +984,7 @@
 - name: backpressure_training_prefetch
   python: "3.10"
   group: data-backpressure
+  repeated_run: 3
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_8_cpu_compute.yaml
