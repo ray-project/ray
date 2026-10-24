@@ -857,6 +857,35 @@ class TestBuildAsgiApp:
         assert response.status_code == 500
         assert "EngineCore encountered an issue" in response.json()["error"]["message"]
 
+    @pytest.mark.asyncio
+    async def test_anthropic_routes_are_registered(self):
+        """vLLM's native ASGI app must mount Anthropic Messages routes.
+
+        Direct streaming serves this app from LLMServer, so a vLLM upgrade
+        that drops ``POST /v1/messages`` or ``POST /v1/messages/count_tokens``
+        would break Anthropic clients such as Claude Code.
+        """
+        from starlette.datastructures import State
+        from vllm.platforms import current_platform
+
+        if not current_platform.device_type:
+            current_platform.device_type = "cpu"
+
+        vllm_args = make_arg_parser(FlexibleArgumentParser()).parse_args([])
+        engine = VLLMEngine.__new__(VLLMEngine)
+        engine._vllm_args = vllm_args
+        engine._engine_client = SimpleNamespace(model_config=None)
+        engine._token_receiver = None
+        # build_asgi_app copies this onto the ASGI app; it no longer calls
+        # init_app_state.
+        engine._app_state = State()
+
+        app = await engine.build_asgi_app()
+
+        paths = app.openapi()["paths"]
+        assert "post" in paths["/v1/messages"]
+        assert "post" in paths["/v1/messages/count_tokens"]
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
