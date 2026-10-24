@@ -12,7 +12,7 @@ from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 
 import ray
-from ray._private.metrics_agent import Record
+from ray._private.metrics_agent import Counter, Record
 from ray._private.telemetry.metric_cardinality import MetricCardinality
 from ray._private.telemetry.metric_types import MetricType
 
@@ -461,7 +461,11 @@ class OpenTelemetryMetricRecorder:
             value = record.value
             tags = {**record.tags, **global_tags}
             try:
-                self.register_gauge_metric(gauge.name, gauge.description or "")
+                if isinstance(gauge, Counter):
+                    # Counter records are deltas; set_metric_value adds them.
+                    self.register_counter_metric(gauge.name, gauge.description or "")
+                else:
+                    self.register_gauge_metric(gauge.name, gauge.description or "")
                 self.set_metric_value(gauge.name, tags, value)
             except Exception as e:
                 logger.error(
