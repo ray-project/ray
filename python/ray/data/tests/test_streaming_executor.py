@@ -1574,6 +1574,128 @@ class TestDataOpTask:
                 ray.wait([streaming_gen], fetch_local=False)
                 data_op_task.on_data_ready(None, InlineMetadataFetcher())
 
+    def test_terminal_wait_not_counted_as_output_backpressure(
+        self,
+        ray_start_regular_shared,
+        monkeypatch,
+    ):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[])
+
+        task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+        )
+
+        # Wait until this empty generator has reached EOF. There has never been an
+        # output block available to read.
+        ray.get(streaming_gen.completed(), timeout=20)
+        assert streaming_gen._stream_exhausted()
+
+        clock = [100.0]
+        monkeypatch.setattr(
+            "ray.data._internal.execution.interfaces.physical_operator.time.perf_counter",
+            lambda: clock[0],
+        )
+
+        fetcher = InlineMetadataFetcher()
+
+        # A zero output budget must not start output-backpressure accounting when
+        # the stream is already exhausted and only terminal confirmation remains.
+        assert task.on_data_ready(0, fetcher) == 0
+
+        clock[0] += 10
+
+        # Give the task budget so the current master implementation can observe EOF
+        # and finish normally.
+        assert task.on_data_ready(1, fetcher) == 0
+
+        assert task.has_finished
+        assert task._total_output_backpressure_s == 0
+
+    def test_unread_output_counts_as_output_backpressure(
+        self,
+        ray_start_regular_shared,
+        monkeypatch,
+    ):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
+
+        task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+        )
+
+        ray.wait([streaming_gen], fetch_local=False)
+
+        clock = [100.0]
+        monkeypatch.setattr(
+            "ray.data._internal.execution.interfaces.physical_operator.time.perf_counter",
+            lambda: clock[0],
+        )
+
+        fetcher = InlineMetadataFetcher()
+
+        # Output is available, but the zero budget prevents it from being read.
+        assert task.on_data_ready(0, fetcher) == 0
+
+        clock[0] += 10
+
+        # Resume reading.
+        assert task.on_data_ready(None, fetcher) > 0
+
+        assert task._total_output_backpressure_s == 10
+
+    def test_pending_output_counts_as_backpressure_after_stream_exhausted(
+        self,
+        ray_start_regular_shared,
+        monkeypatch,
+    ):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
+
+        task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+        )
+        fetcher = InlineMetadataFetcher()
+
+        ray.get(streaming_gen.completed(), timeout=20)
+
+        # Pull the block + metadata refs, but pretend the metadata object isn't
+        # available yet so the pair remains pending on the task.
+        with monkeypatch.context() as m:
+            m.setattr(
+                fetcher,
+                "in_data_ready_get_object_size",
+                lambda task: None,
+            )
+            assert task.on_data_ready(None, fetcher) == 0
+
+        assert streaming_gen._stream_exhausted()
+        assert not task.pending_block_ref.is_nil()
+        assert not task.pending_meta_ref.is_nil()
+
+        clock = [100.0]
+        monkeypatch.setattr(
+            "ray.data._internal.execution.interfaces.physical_operator.time.perf_counter",
+            lambda: clock[0],
+        )
+
+        # Although the generator stream itself is exhausted, an output pair is
+        # still pending and the zero budget prevents it from being processed.
+        assert task.on_data_ready(0, fetcher) == 0
+
+        clock[0] += 10
+
+        # Resume processing the pending pair.
+        assert task.on_data_ready(None, fetcher) > 0
+
+        assert task._total_output_backpressure_s == 10
+
     def test_operator_name_parameter(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
         task = DataOpTask(
