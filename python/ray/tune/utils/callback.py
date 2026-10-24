@@ -65,7 +65,9 @@ def _create_default_callbacks(
     are synced across nodes.
 
     """
-    callbacks = callbacks or []
+    # Copy so the user's list (e.g. ``RunConfig.callbacks``) is not extended with
+    # per-run callbacks that would be carried into the next run that reuses it.
+    callbacks = list(callbacks or [])
 
     # Initialize callbacks from environment variable
     env_callbacks = _initialize_env_callbacks()
