@@ -14,14 +14,49 @@
 
 #include "ray/gcs/leader_election/leader_elector.h"
 
+#include <atomic>
+#include <future>
+#include <optional>
 #include <unordered_set>
+#include <vector>
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "gtest/gtest.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace gcs {
+
+class LeaderElectorTestPeer {
+ public:
+  struct RenewalState {
+    int64_t timestamp_ns;
+    bool is_leading;
+  };
+
+  static void SetSteadyNow(LeaderElector &elector,
+                           std::function<SteadyTimePoint()> provider) {
+    elector.steady_now_for_testing_ = std::move(provider);
+  }
+
+  static void SetAfterWatchdogExpiryCheck(LeaderElector &elector,
+                                          std::function<void()> callback) {
+    elector.after_watchdog_expiry_check_for_testing_ = std::move(callback);
+  }
+
+  static std::optional<RenewalState> WaitForRenewal(LeaderElector &elector,
+                                                    int64_t timestamp_ns,
+                                                    std::chrono::milliseconds timeout) {
+    std::unique_lock<std::mutex> lock(elector.mutex_);
+    if (!elector.watchdog_cv_.wait_for(lock, timeout, [&]() {
+          return elector.last_successful_renew_steady_ns_ == timestamp_ns;
+        })) {
+      return std::nullopt;
+    }
+    return RenewalState{elector.last_successful_renew_steady_ns_, elector.is_leading_};
+  }
+};
 
 class FakeLeaseClient : public LeaderLeaseClientInterface {
  public:
@@ -493,6 +528,290 @@ TEST_F(LeaderElectorTest, RenewTransientFailureDoesNotStepDown) {
   EXPECT_GE(renew_calls.load(), 2);
 
   elector.Stop();
+}
+
+// Gates control ordering; the fake clock controls elapsed time. Timeouts only guard
+// against hangs. Destruction releases every gate before joining the elector threads.
+class WatchdogRenewalHarness {
+ public:
+  static constexpr auto kTimeout = std::chrono::seconds(10);
+  struct DecisionObservation {
+    std::thread::id thread;
+    bool is_leading;
+    int stop_calls;
+    int64_t evaluation_ns;
+  };
+
+  WatchdogRenewalHarness(const std::string &holder_id, size_t renewal_count)
+      : renewals_(renewal_count) {
+    auto try_acquire = [this](const std::string &holder, int, std::string &current) {
+      if (++acquire_calls_ != 1) {
+        return Status::IOError("Reacquisition disabled during regression");
+      }
+      election_thread_promise_.set_value(std::this_thread::get_id());
+      current = holder;
+      return Status::OK();
+    };
+    auto renew = [this](const std::string &holder, int, std::string &current) {
+      if (renew_calls_ == renewals_.size()) {
+        return Status::IOError("Further renewals disabled during regression");
+      }
+      const size_t index = renew_calls_++;
+      renewals_[index].entered.set_value();
+      renewals_[index].release.ready.wait();
+      current = holder;
+      RecordEvent(renewals_.size() == 1
+                      ? "renewal succeeded"
+                      : "renewal succeeded T" + std::to_string(index + 1));
+      return Status::OK();
+    };
+    config_.lease_client =
+        std::make_shared<FakeLeaseClient>(try_acquire, renew, [](const std::string &) {});
+    config_.holder_id = holder_id;
+    config_.lease_duration_seconds = 15;
+    config_.renew_deadline_seconds = 10;
+    config_.retry_period_seconds = 2;
+    config_.on_started_leading = [this]() { started_promise_.set_value(); };
+    config_.on_stopped_leading = [this]() { ++stop_calls_; };
+    elector_ = std::make_unique<LeaderElector>(config_);
+    LeaderElectorTestPeer::SetAfterWatchdogExpiryCheck(*elector_, [this]() {
+      std::call_once(decision_once_, [this]() {
+        RecordEvent("expiry decision completed");
+        decision_promise_.set_value({std::this_thread::get_id(),
+                                     elector_->IsLeader(),
+                                     stop_calls_.load(),
+                                     evaluation_ns_});
+      });
+    });
+    LeaderElectorTestPeer::SetSteadyNow(*elector_, [this]() {
+      if (std::this_thread::get_id() == election_thread_.get()) {
+        return clock.SteadyNow();
+      }
+      // The watchdog has released its snapshot lock; gated renewals cannot yet
+      // complete, so the first snapshot must be T0.
+      std::call_once(snapshot_once_, [this]() {
+        RecordEvent("snapshot T0");
+        snapshot_promise_.set_value(std::this_thread::get_id());
+      });
+      // No elector or test-control mutex is held while waiting.
+      watchdog_release_.ready.wait();
+      const auto now = clock.SteadyNow();
+      std::call_once(sample_once_, [this, now]() {
+        RecordEvent("watchdog sampled N");
+        evaluation_ns_ =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch())
+                .count();
+      });
+      return now;
+    });
+  }
+
+  ~WatchdogRenewalHarness() {
+    for (auto &renewal : renewals_) {
+      renewal.release.Open();
+    }
+    watchdog_release_.Open();
+    elector_->Stop();
+  }
+
+  void Start() {
+    elector_->Run();
+    ASSERT_EQ(started_.wait_for(kTimeout), std::future_status::ready);
+  }
+  void WaitForWatchdogSnapshot() {
+    ASSERT_EQ(snapshot_.wait_for(kTimeout), std::future_status::ready);
+    watchdog_thread_ = snapshot_.get();
+    ASSERT_NE(watchdog_thread_, election_thread_.get());
+  }
+  void WaitForRenewal(size_t index) {
+    ASSERT_EQ(renewals_[index].entered_future.wait_for(kTimeout),
+              std::future_status::ready);
+  }
+  void ReleaseRenewal(size_t index) { renewals_[index].release.Open(); }
+  auto WaitForPublication(int64_t timestamp_ns) {
+    return LeaderElectorTestPeer::WaitForRenewal(*elector_, timestamp_ns, kTimeout);
+  }
+  void ReleaseWatchdog() {
+    RecordEvent("watchdog released");
+    watchdog_release_.Open();
+  }
+  std::optional<DecisionObservation> WaitForExpiryDecision() {
+    if (decision_.wait_for(kTimeout) != std::future_status::ready) {
+      return std::nullopt;
+    }
+    return decision_.get();
+  }
+  void ExpectLeadershipRetained(const DecisionObservation &observation) {
+    // The acknowledgement follows the expiry decision and any stop callback.
+    // Stop() has not run; no RPC reports ownership loss or reacquires leadership.
+    EXPECT_EQ(observation.thread, watchdog_thread_);
+    EXPECT_TRUE(observation.is_leading);
+    EXPECT_EQ(observation.stop_calls, 0);
+    EXPECT_TRUE(elector_->IsLeader());
+    EXPECT_EQ(stop_calls_.load(), 0);
+  }
+  int64_t DeadlineNs() const {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::seconds(config_.renew_deadline_seconds))
+        .count();
+  }
+  void RecordEvent(std::string event) {
+    std::scoped_lock lock(events_mutex_);
+    events_.push_back(std::move(event));
+  }
+  void ExpectEvents(const std::vector<std::string> &expected) {
+    std::scoped_lock lock(events_mutex_);
+    EXPECT_EQ(events_, expected);
+    std::string timeline;
+    for (const auto &event : events_) {
+      timeline += (timeline.empty() ? "" : " -> ") + event;
+    }
+    ::testing::Test::RecordProperty("observed_order", timeline);
+  }
+
+  FakeClock clock{absl::FromUnixSeconds(100)};
+
+ private:
+  struct ReleaseGate {
+    std::promise<void> promise;
+    std::shared_future<void> ready = promise.get_future().share();
+    std::once_flag once;
+    void Open() {
+      std::call_once(once, [this]() { promise.set_value(); });
+    }
+  };
+  struct RenewalGate {
+    std::promise<void> entered;
+    std::future<void> entered_future = entered.get_future();
+    ReleaseGate release;
+  };
+  std::vector<RenewalGate> renewals_;
+  ReleaseGate watchdog_release_;
+  std::promise<std::thread::id> election_thread_promise_, snapshot_promise_;
+  std::shared_future<std::thread::id> election_thread_ =
+      election_thread_promise_.get_future().share();
+  std::future<std::thread::id> snapshot_ = snapshot_promise_.get_future();
+  std::promise<void> started_promise_;
+  std::future<void> started_ = started_promise_.get_future();
+  std::promise<DecisionObservation> decision_promise_;
+  std::future<DecisionObservation> decision_ = decision_promise_.get_future();
+  std::once_flag snapshot_once_, sample_once_, decision_once_;
+  std::thread::id watchdog_thread_;
+  int64_t evaluation_ns_ = 0;  // Written and copied into the decision by the watchdog.
+  std::atomic<int> stop_calls_{0};
+  int acquire_calls_ = 0;
+  size_t renew_calls_ = 0;
+  std::mutex events_mutex_;
+  std::vector<std::string> events_;
+  LeaderElectionConfig config_;
+  std::unique_ptr<LeaderElector> elector_;
+};
+
+TEST_F(LeaderElectorTest, WatchdogKeepsLeadershipAfterTimelyRenewal) {
+  constexpr int64_t kT0Ns = 100000000000;
+  constexpr int64_t kT1Ns = 108000000000;
+  constexpr int64_t kEvaluationNs = 111000000000;
+  WatchdogRenewalHarness harness(holder_id_, 1);
+  ASSERT_NO_FATAL_FAILURE(harness.Start());
+
+  const auto initial = harness.WaitForPublication(kT0Ns);
+  ASSERT_TRUE(initial.has_value());
+  ASSERT_EQ(initial->timestamp_ns, kT0Ns);
+  ASSERT_TRUE(initial->is_leading);
+  ASSERT_NO_FATAL_FAILURE(harness.WaitForWatchdogSnapshot());
+  ASSERT_NO_FATAL_FAILURE(harness.WaitForRenewal(0));
+
+  harness.clock.AdvanceTime(absl::Seconds(8));
+  harness.ReleaseRenewal(0);
+  const auto published = harness.WaitForPublication(kT1Ns);
+  ASSERT_TRUE(published.has_value());
+  ASSERT_EQ(published->timestamp_ns, kT1Ns);
+  ASSERT_GT(published->timestamp_ns, initial->timestamp_ns);
+  ASSERT_TRUE(published->is_leading);
+  harness.RecordEvent("publication observed T1");
+
+  harness.clock.AdvanceTime(absl::Seconds(3));
+  harness.RecordEvent("fake time N");
+  harness.ReleaseWatchdog();
+  const auto observation = harness.WaitForExpiryDecision();
+  ASSERT_TRUE(observation.has_value());
+  const auto evaluation_ns = observation->evaluation_ns;
+  EXPECT_EQ(evaluation_ns, kEvaluationNs);
+  const auto deadline_ns = harness.DeadlineNs();
+  EXPECT_LT(published->timestamp_ns - initial->timestamp_ns, deadline_ns);
+  EXPECT_GE(evaluation_ns - initial->timestamp_ns, deadline_ns);
+  EXPECT_LT(evaluation_ns - published->timestamp_ns, deadline_ns);
+
+  harness.ExpectLeadershipRetained(*observation);
+  harness.ExpectEvents({"snapshot T0",
+                        "renewal succeeded",
+                        "publication observed T1",
+                        "fake time N",
+                        "watchdog released",
+                        "watchdog sampled N",
+                        "expiry decision completed"});
+}
+
+TEST_F(LeaderElectorTest, WatchdogKeepsLeadershipAcrossTimelyRenewalChain) {
+  constexpr int64_t kT0Ns = 100000000000;
+  constexpr int64_t kT1Ns = 108000000000;
+  constexpr int64_t kT2Ns = 116000000000;
+  constexpr int64_t kEvaluationNs = 119000000000;
+  WatchdogRenewalHarness harness(holder_id_, 2);
+  ASSERT_NO_FATAL_FAILURE(harness.Start());
+
+  const auto initial = harness.WaitForPublication(kT0Ns);
+  ASSERT_TRUE(initial.has_value());
+  ASSERT_EQ(initial->timestamp_ns, kT0Ns);
+  ASSERT_TRUE(initial->is_leading);
+  ASSERT_NO_FATAL_FAILURE(harness.WaitForWatchdogSnapshot());
+  ASSERT_NO_FATAL_FAILURE(harness.WaitForRenewal(0));
+
+  harness.clock.AdvanceTime(absl::Seconds(8));
+  harness.ReleaseRenewal(0);
+  const auto first = harness.WaitForPublication(kT1Ns);
+  ASSERT_TRUE(first.has_value());
+  ASSERT_EQ(first->timestamp_ns, kT1Ns);
+  ASSERT_GT(first->timestamp_ns, initial->timestamp_ns);
+  ASSERT_TRUE(first->is_leading);
+  harness.RecordEvent("publication observed T1");
+
+  // Renew() schedules the next RPC using its ordinary retry wait. Its entry signal,
+  // rather than elapsed wall time, establishes when the second RPC is gated.
+  ASSERT_NO_FATAL_FAILURE(harness.WaitForRenewal(1));
+  harness.clock.AdvanceTime(absl::Seconds(8));
+  harness.ReleaseRenewal(1);
+  const auto second = harness.WaitForPublication(kT2Ns);
+  ASSERT_TRUE(second.has_value());
+  ASSERT_EQ(second->timestamp_ns, kT2Ns);
+  ASSERT_GT(second->timestamp_ns, first->timestamp_ns);
+  ASSERT_TRUE(second->is_leading);
+  harness.RecordEvent("publication observed T2");
+
+  harness.clock.AdvanceTime(absl::Seconds(3));
+  harness.RecordEvent("fake time N");
+  harness.ReleaseWatchdog();
+  const auto observation = harness.WaitForExpiryDecision();
+  ASSERT_TRUE(observation.has_value());
+  const auto evaluation_ns = observation->evaluation_ns;
+  EXPECT_EQ(evaluation_ns, kEvaluationNs);
+  const auto deadline_ns = harness.DeadlineNs();
+  EXPECT_LT(first->timestamp_ns - initial->timestamp_ns, deadline_ns);
+  EXPECT_LT(second->timestamp_ns - first->timestamp_ns, deadline_ns);
+  EXPECT_LT(evaluation_ns - second->timestamp_ns, deadline_ns);
+  EXPECT_GE(second->timestamp_ns - initial->timestamp_ns, deadline_ns);
+  EXPECT_GE(evaluation_ns - initial->timestamp_ns, deadline_ns);
+
+  harness.ExpectLeadershipRetained(*observation);
+  harness.ExpectEvents({"snapshot T0",
+                        "renewal succeeded T1",
+                        "publication observed T1",
+                        "renewal succeeded T2",
+                        "publication observed T2",
+                        "fake time N",
+                        "watchdog released",
+                        "watchdog sampled N",
+                        "expiry decision completed"});
 }
 
 // Group 3: Telemetry & Transition Callbacks
