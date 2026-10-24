@@ -372,7 +372,7 @@ class ServerCallImpl : public ServerCall {
       }
       RAY_LOG(DEBUG) << "Rejecting " << call_name_
                      << " with a token because auth is disabled";
-      return Status::Unauthenticated(kAuthModeMismatchErrorMessage);
+      return Status::Unauthenticated(kTokenAuthErrorMessage);
     }
 
     if (it == metadata.end()) {

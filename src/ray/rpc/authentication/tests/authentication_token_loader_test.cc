@@ -285,8 +285,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
         auto &loader = AuthenticationTokenLoader::instance();
         loader.GetToken();
       },
-      "no authentication token was found.*run `ray get-auth-token` on the head "
-      "node.*set RAY_AUTH_MODE=disabled");
+      "it has no token or the cluster has token authentication disabled.*run `ray "
+      "get-auth-token` on the head node.*set RAY_AUTH_MODE=disabled");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestCaching) {

@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
@@ -217,9 +218,7 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestServerWithAuthDisabledRejectsTo
   auto status = PingWithMetadata({{"authorization", "Bearer client_token"}});
 
   ASSERT_EQ(status.error_code(), grpc::StatusCode::UNAUTHENTICATED);
-  ASSERT_EQ(status.error_message(),
-            "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client "
-            "too");
+  ASSERT_EQ(status.error_message(), kTokenAuthErrorMessage);
 }
 
 TEST_F(TestGrpcServerClientTokenAuthFixture,

@@ -88,8 +88,7 @@ RayServerBidiReactor::RayServerBidiReactor(
     // Auth is disabled here; reject clients that send a token so that they opt out too.
     RAY_LOG(WARNING) << "Authorization header in syncer connection from node "
                      << NodeID::FromBinary(GetRemoteNodeID()) << " but auth is disabled";
-    Finish(
-        grpc::Status(grpc::StatusCode::UNAUTHENTICATED, kAuthModeMismatchErrorMessage));
+    Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, kTokenAuthErrorMessage));
     return;
   }
 

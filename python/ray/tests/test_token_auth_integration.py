@@ -814,17 +814,12 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
             _cleanup_ray_start(env)
 
 
-_AUTH_MODE_MISMATCH = "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled"
-
-
-def _assert_auth_mode_mismatch_only(output: str):
-    """The AuthModeMismatch error names only the opt-out fix, not the token help."""
+def _assert_token_auth_error(output: str):
     from ray._private.authentication.authentication_constants import (
-        TOKEN_AUTH_FIX_MESSAGE,
+        TOKEN_AUTH_ERROR_MESSAGE,
     )
 
-    assert _AUTH_MODE_MISMATCH in output, output
-    assert TOKEN_AUTH_FIX_MESSAGE not in output, output
+    assert TOKEN_AUTH_ERROR_MESSAGE in output, output
 
 
 @pytest.fixture
@@ -896,7 +891,7 @@ def test_driver_on_auth_disabled_cluster(
         assert "driver ok" in output
     else:
         assert result.returncode != 0, output
-        _assert_auth_mode_mismatch_only(output)
+        _assert_token_auth_error(output)
 
 
 @pytest.mark.skipif(
@@ -906,7 +901,7 @@ def test_driver_on_auth_disabled_cluster(
 def test_ray_start_address_in_token_mode_on_auth_disabled_cluster(
     disabled_head_with_token_file,
 ):
-    """ray start --address in token mode fails fast with AuthModeMismatch against a
+    """ray start --address in token mode fails fast with the token auth error against a
     head with RAY_AUTH_MODE=disabled."""
     env, address, _, _ = disabled_head_with_token_file
     result = subprocess.run(
@@ -917,7 +912,7 @@ def test_ray_start_address_in_token_mode_on_auth_disabled_cluster(
         timeout=15,
     )
     assert result.returncode != 0
-    _assert_auth_mode_mismatch_only(result.stdout + result.stderr)
+    _assert_token_auth_error(result.stdout + result.stderr)
 
 
 @pytest.mark.skipif(
@@ -950,7 +945,7 @@ def test_ray_client_on_auth_disabled_cluster(
         assert "client ok" in output
     else:
         assert result.returncode != 0, output
-        _assert_auth_mode_mismatch_only(output)
+        _assert_token_auth_error(output)
 
 
 @pytest.mark.skipif(
@@ -995,17 +990,17 @@ def test_dashboard_agent_grpc_on_auth_disabled_cluster(disabled_head_with_token_
             timeout=5,
         )
     assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
-    assert _AUTH_MODE_MISMATCH in exc_info.value.details()
+    _assert_token_auth_error(exc_info.value.details())
 
 
 @pytest.mark.parametrize(
     "headers, expected_status",
     [
-        ([("Authorization", "Bearer t")], 400),
-        ([("Authorization", "bearer t")], 400),
-        ([("Authorization", "Basic dXNlcjpwYXNz")], 400),
-        ([("X-Ray-Authorization", "Bearer t")], 400),
-        ([("Authorization", ""), ("Authorization", "Bearer t")], 400),
+        ([("Authorization", "Bearer t")], 401),
+        ([("Authorization", "bearer t")], 401),
+        ([("Authorization", "Basic dXNlcjpwYXNz")], 401),
+        ([("X-Ray-Authorization", "Bearer t")], 401),
+        ([("Authorization", ""), ("Authorization", "Bearer t")], 401),
         ([("Authorization", "")], 200),
         ([("X-Ray-Authorization", "")], 200),
         ([("Cookie", "ray-authentication-token=t")], 200),
@@ -1042,8 +1037,8 @@ def test_token_auth_middleware_with_auth_disabled(
         response = asyncio.run(middleware(request, handler))
 
     assert response.status == expected_status
-    if expected_status == 400:
-        assert _AUTH_MODE_MISMATCH in response.text
+    if expected_status == 401:
+        _assert_token_auth_error(response.text)
 
 
 _HTTP_CLIENT_CALLS = {
@@ -1089,8 +1084,8 @@ def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
             f"{dashboard_url}{path}", headers=headers, cookies=cookies, timeout=5
         )
         if expect_mismatch:
-            assert response.status_code == 400, (path, headers, response.text)
-            assert _AUTH_MODE_MISMATCH in response.text
+            assert response.status_code == 401, (path, headers, response.text)
+            _assert_token_auth_error(response.text)
         else:
             assert response.status_code == 200, (path, headers, cookies, response.text)
     for client_name, client_call in _HTTP_CLIENT_CALLS.items():
@@ -1117,7 +1112,7 @@ def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
             else:
                 assert result.returncode != 0, output
                 assert "AuthenticationError" in output, output
-                _assert_auth_mode_mismatch_only(output)
+                _assert_token_auth_error(output)
 
 
 @pytest.mark.skipif(

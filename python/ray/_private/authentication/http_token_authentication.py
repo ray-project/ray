@@ -47,8 +47,8 @@ def get_token_auth_middleware(
         """Middleware to validate bearer tokens when token authentication is enabled.
 
         With auth disabled, or without ray._raylet (doc builds), it authenticates
-        nothing and only rejects requests that carry an auth header, with
-        AuthModeMismatch, so token-mode clients opt out too.
+        nothing and only rejects requests that carry an auth header, so token-mode
+        clients opt out too.
         """
         if not auth_utils.is_token_auth_enabled():
             if _carries_auth_header(request.headers):
@@ -57,8 +57,8 @@ def get_token_auth_middleware(
                     "because auth is disabled"
                 )
                 return aiohttp_module.web.Response(
-                    status=400,
-                    text=authentication_constants.AUTH_MODE_MISMATCH_ERROR_MESSAGE,
+                    status=401,
+                    text=authentication_constants.TOKEN_AUTH_ERROR_MESSAGE,
                 )
             return await handler(request)
 
@@ -209,9 +209,7 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
     if not auth_headers:
         from ray.exceptions import AuthenticationError
 
-        raise AuthenticationError(
-            authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
-        )
+        raise AuthenticationError(authentication_constants.TOKEN_AUTH_ERROR_MESSAGE)
 
     return auth_headers
 
@@ -219,18 +217,10 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
 def format_authentication_http_error(status: int, body: str) -> Optional[str]:
     """Return a user-friendly authentication error message, if applicable."""
 
-    # The fix is to opt out of auth, so the help on getting a token would mislead.
-    if (
-        status == 400
-        and authentication_constants.AUTH_MODE_MISMATCH_ERROR_MESSAGE in body
-    ):
-        return body
-
+    # A 401 means a missing token or a token sent to a cluster with auth disabled,
+    # which the one message covers, so the body would only repeat it.
     if status == 401:
-        return "Authentication required: {body}\n\n{details}".format(
-            body=body,
-            details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
-        )
+        return authentication_constants.TOKEN_AUTH_ERROR_MESSAGE
 
     if status == 403:
         return "Authentication failed: {body}\n\n{details}".format(

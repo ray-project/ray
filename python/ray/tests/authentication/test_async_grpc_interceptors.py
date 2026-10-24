@@ -2,6 +2,9 @@ import grpc
 import pytest
 from grpc import aio as aiogrpc
 
+from ray._private.authentication.authentication_constants import (
+    TOKEN_AUTH_ERROR_MESSAGE,
+)
 from ray._private.authentication.authentication_token_generator import (
     generate_new_authentication_token,
 )
@@ -176,10 +179,7 @@ async def test_async_server_with_auth_disabled_rejects_token(
                 )
 
             assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
-            assert exc_info.value.details() == (
-                "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; "
-                "set it on the client too"
-            )
+            assert exc_info.value.details() == TOKEN_AUTH_ERROR_MESSAGE
         finally:
             await server.stop(grace=1)
 

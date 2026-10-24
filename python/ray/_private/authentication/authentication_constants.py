@@ -7,16 +7,11 @@ TOKEN_AUTH_FIX_MESSAGE = (
     "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information."
 )
 
-# Keep in sync with kNoTokenErrorMessage in
-# src/ray/rpc/authentication/authentication_token_loader.cc.
-TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE = (
-    "Token authentication is enabled but no authentication token was found. "
-    + TOKEN_AUTH_FIX_MESSAGE
-)
-
-# Keep in sync with kAuthModeMismatchErrorMessage in src/ray/common/constants.h.
-AUTH_MODE_MISMATCH_ERROR_MESSAGE = (
-    "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client too"
+# For a client with no token and for a token sent to a cluster with auth disabled.
+# Keep in sync with kTokenAuthErrorMessage in src/ray/common/constants.h.
+TOKEN_AUTH_ERROR_MESSAGE = (
+    "Token authentication is enabled on this client, but it has no token or the "
+    "cluster has token authentication disabled. " + TOKEN_AUTH_FIX_MESSAGE
 )
 
 # Keep in sync with kK8sTokenAuthRequiresTokenModeErrorMessage in
