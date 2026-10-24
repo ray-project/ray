@@ -33,6 +33,7 @@ from ray.experimental.sandbox.backend.gvisor import (
     _namespace_ids,
     _render_egress_ruleset,
     _write_egress_ruleset,
+    runsc_env,
 )
 from ray.experimental.sandbox.config import (
     ALLOW_ALL_CIDRS,
@@ -2287,6 +2288,60 @@ def test_resolve_exec_user(monkeypatch):
     monkeypatch.setattr(backend, "read_file", unreadable)
     with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
         backend._resolve_exec_user("sb-1", "postfix")
+
+
+def test_runsc_env_caps_gomaxprocs_unless_set(monkeypatch):
+    """runsc CLI calls run with GOMAXPROCS=2, as gVisor's containerd shim
+    runs them, unless the worker's environment sets it."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    assert runsc_env()["GOMAXPROCS"] == "2"
+    monkeypatch.setenv("GOMAXPROCS", "8")
+    assert runsc_env()["GOMAXPROCS"] == "8"
+
+
+def test_runsc_run_starts_with_gomaxprocs(monkeypatch):
+    """A sandbox's attached `runsc run` gets runsc_env()'s GOMAXPROCS."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    backend = GVisorSandboxBackend()
+    sandbox_id = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+    )
+    try:
+        proc = backend._sandbox_metadata[sandbox_id]["proc"]
+        with open(f"/proc/{proc.pid}/environ", "rb") as f:
+            assert b"GOMAXPROCS=2" in f.read().split(b"\0")
+    finally:
+        backend.delete_sandbox(sandbox_id)
+
+
+def test_exec_kill_and_reclaim_run_runsc_with_gomaxprocs(private_bundles, monkeypatch):
+    """Killing a timed-out command's processes and reclaiming an unowned
+    bundle run runsc with runsc_env()'s GOMAXPROCS too."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+    # Log GOMAXPROCS with the arguments, and list no processes, so the kill
+    # falls back to the command's own PID.
+    (private_bundles / "runsc").write_text(
+        "#!/bin/sh\n"
+        'echo "GOMAXPROCS=$GOMAXPROCS $*" >> "$(dirname "$0")/runsc.log"\n'
+        'case " $* " in *" trace "*) exit 1 ;; esac\n'
+    )
+    sandbox_id = "ray-sandbox-00000000000f"
+    config = GVisorSandboxConfig(image="busybox:latest", rootless=False)
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    pid_file = private_bundles / "exec.pid"
+    pid_file.write_text("7")
+    backend._kill_exec(config, sandbox_id, str(pid_file))
+    root = Path(gvisor._RAY_SANDBOX_DIR, sandbox_id)
+    root.mkdir(parents=True)
+    backend._own_bundle(config, str(root)).close()
+    assert backend._reclaim_unowned_bundles() == [sandbox_id]
+    assert (private_bundles / "runsc.log").read_text().splitlines() == [
+        f"GOMAXPROCS=2 --root /tmp/runsc trace procfs {sandbox_id}",
+        f"GOMAXPROCS=2 --root /tmp/runsc kill --pid 7 {sandbox_id} SIGKILL",
+        f"GOMAXPROCS=2 --root /tmp/runsc kill {sandbox_id} SIGKILL",
+        f"GOMAXPROCS=2 --root /tmp/runsc delete -force {sandbox_id}",
+    ]
 
 
 if __name__ == "__main__":
