@@ -312,6 +312,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     return producer_freed_callback_concurrency_group_;
   }
 
+  /**
+   * Run the actor's `__on_object_freed__` hook for an object it created, in the hook's
+   * concurrency group. Returns right away; does nothing if the actor has no hook.
+   *
+   * \param[in] object_id The freed object.
+   */
+  void ScheduleOnObjectFreedHook(const ObjectID &object_id);
+
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
@@ -1496,6 +1504,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                rpc::PlasmaObjectReadyReply *reply,
                                rpc::SendReplyCallback send_reply_callback);
 
+  /// Implements gRPC server handler.
+  void HandleOnObjectFreed(rpc::OnObjectFreedRequest request,
+                           rpc::OnObjectFreedReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
+
   /// Creates a new mutable object.
   void HandleRegisterMutableObjectReader(rpc::RegisterMutableObjectReaderRequest request,
                                          rpc::RegisterMutableObjectReaderReply *reply,
@@ -2311,8 +2324,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Callback to free an RDT object when it is out of scope.
   std::function<void(const ObjectID &)> free_actor_object_callback_;
 
-  /// Set once on the actor creation path, before any actor method or RPC for the actor
-  /// runs, so they are read without a lock.
+  /// Set on the task execution thread on the actor creation path, before `__init__`
+  /// runs. Read on that thread or by actor methods, which run after it, so no lock is
+  /// needed.
   bool producer_freed_callback_enabled_ = false;
   std::string producer_freed_callback_concurrency_group_;
 

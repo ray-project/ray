@@ -2660,6 +2660,44 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
         rdt_manager = ray._private.worker.global_worker.rdt_manager
         rdt_manager.queue_or_free_object_primary_copy(object_id)
 
+cdef void on_object_freed_callback(const CObjectID &c_object_id) nogil:
+    # Runs on the executor of the hook's concurrency group (see
+    # TaskReceiver::RunOnActorExecutor).
+    with gil:
+        run_on_object_freed_hook(c_object_id.Hex().decode())
+
+
+def run_on_object_freed_hook(object_id_hex: str):
+    """Run the actor's `__on_object_freed__` hook. An exception in the hook is logged
+    and the actor keeps running."""
+    try:
+        worker = ray._private.worker.global_worker
+        core_worker = worker.core_worker
+        actor = worker.actors[core_worker.get_actor_id()]
+        hook = actor.__on_object_freed__
+        if not core_worker.current_actor_is_asyncio():
+            hook(object_id_hex)
+            return
+        # Like an actor method, the hook runs on its concurrency group's event loop.
+        if is_async_func(hook):
+            coroutine = hook(object_id_hex)
+        else:
+            async def run_sync_hook():
+                return hook(object_id_hex)
+            coroutine = run_sync_hook()
+        actor_class = getattr(type(actor), "__ray_actor_class__", type(actor))
+        creation_descriptor = PythonFunctionDescriptor.from_class(actor_class)
+        hook_descriptor = PythonFunctionDescriptor(
+            creation_descriptor.module_name, "__on_object_freed__",
+            creation_descriptor.class_name)
+        _, concurrency_group = core_worker.get_producer_freed_callback()
+        core_worker.run_async_func_or_coro_in_event_loop(
+            coroutine, hook_descriptor, concurrency_group, is_actor_task=True)
+    except Exception:
+        logger.exception(
+            "Error running the __on_object_freed__ hook for object %s", object_id_hex)
+
+
 cdef void set_direct_transport_metadata(const CObjectID &c_object_id, const c_string &c_direct_transport_metadata) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
@@ -3346,6 +3384,7 @@ cdef class CoreWorker:
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
         options.free_actor_object_callback = free_actor_object_callback
+        options.on_object_freed_callback = on_object_freed_callback
         options.set_direct_transport_metadata = set_direct_transport_metadata
         options.check_signals = check_signals
         options.gc_collect = gc_collect
@@ -3506,6 +3545,12 @@ cdef class CoreWorker:
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
+
+    def _schedule_on_object_freed_hook_for_testing(self, object_id_hex):
+        """Run the actor's `__on_object_freed__` hook the way an OnObjectFreed RPC
+        does. Testing only."""
+        CCoreWorkerProcess.GetCoreWorker().ScheduleOnObjectFreedHook(
+            CObjectID.FromBinary(bytes.fromhex(object_id_hex)))
 
     def get_producer_freed_callback(self):
         """Return whether this worker's actor class defines the

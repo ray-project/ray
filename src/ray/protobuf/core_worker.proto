@@ -363,6 +363,16 @@ message PlasmaObjectReadyRequest {
 
 message PlasmaObjectReadyReply {}
 
+message OnObjectFreedRequest {
+  // The worker the raylet means to reach. A worker that reuses the address of a dead
+  // one drops the request.
+  bytes intended_worker_id = 1;
+  // An object this worker's actor created, freed from the node.
+  bytes object_id = 2;
+}
+
+message OnObjectFreedReply {}
+
 message SpillObjectsRequest {
   repeated ObjectReference object_refs_to_spill = 1;
 }
@@ -561,6 +571,12 @@ service CoreWorkerService {
   // Notification from raylet that an object ID is available in local plasma.
   // Failure: Should not fail, always from local raylet.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+
+  // Notification from the raylet that an object this worker's actor created was freed.
+  // Runs the actor's __on_object_freed__ hook. Replies once the hook is scheduled, not
+  // once it has run.
+  // Failure: Not retried. A hook that doesn't run is the same as a dead worker's hook.
+  rpc OnObjectFreed(OnObjectFreedRequest) returns (OnObjectFreedReply);
 
   // Request for a worker to exit from its raylet.
   // Failure: Should not fail, always from local raylet.
