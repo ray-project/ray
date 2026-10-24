@@ -53,6 +53,9 @@ class ObjectManagerInterface {
       const WorkerID &worker_id) const = 0;
   virtual std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
       const NodeID &node_id) const = 0;
+  /// The producer worker recorded when the object was created in local plasma, or Nil
+  /// if the object isn't in local plasma or was created without one.
+  virtual WorkerID GetLocalObjectProducerWorkerId(const ObjectID &object_id) const = 0;
   virtual bool IsPlasmaObjectSpillable(const ObjectID &object_id) = 0;
   virtual int64_t GetUsedMemory() const = 0;
   virtual bool PullManagerHasPullsQueued() const = 0;

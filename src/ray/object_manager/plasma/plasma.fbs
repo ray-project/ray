@@ -135,6 +135,9 @@ table PlasmaCreateRequest {
   owner_port: int;
   // Unique id for the owner worker.
   owner_worker_id: string;
+  // ID of the worker that created the object, if its actor defines
+  // `__on_object_freed__`. Nil otherwise.
+  producer_worker_id: string;
   // Whether the object will be mutable.
   is_mutable: bool;
   // The size of the object's data in bytes.
