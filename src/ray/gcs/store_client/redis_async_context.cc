@@ -279,8 +279,12 @@ void RedisAsyncContext::EnableWriteWatermark(WriteWatermark watermark) {
   // re-established after a reconnect, and a GCS promoted to leader gets here
   // long after startup. During a reconnect, hold marker 1 back until the check
   // passes; AppendMarkerLocked() sends it with the first flush after that.
+  // Mark it pending before reading commands_paused_: PauseCommands(false)
+  // clears the pause before reading the flag, so whichever runs second sees
+  // the other's write and the marker can't be left behind. (Today resuming
+  // also runs under mutex_, from the reconnect check's reply.)
+  first_marker_pending_ = true;
   if (!redis_async_context_ || commands_paused_) {
-    first_marker_pending_ = true;
     return;
   }
   QueueFirstMarkerLocked();
@@ -342,7 +346,8 @@ uint64_t RedisAsyncContext::LastAckedWrite() const { return last_acked_write_.lo
 void RedisAsyncContext::PauseCommands(bool paused) {
   commands_paused_.store(paused);
   // A first marker held back during the reconnect goes out with the next
-  // flush; ask for one, since nothing else may be queued.
+  // flush; ask for one, since nothing else may be queued. Read the flag after
+  // clearing the pause; see EnableWriteWatermark() for the other side.
   if (!paused && first_marker_pending_) {
     AddWrite();
   }
