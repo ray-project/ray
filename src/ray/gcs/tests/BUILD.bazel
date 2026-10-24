@@ -361,6 +361,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/asio:periodical_runner",
+        "//src/ray/common:constants",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:fake_gcs_node_manager",
         "//src/ray/gcs:gcs_node_manager",
