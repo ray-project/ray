@@ -368,7 +368,12 @@ class Cluster:
                 # that the corresponding calls to add_node were made. We do
                 # this because in the tests we assume that the driver is
                 # connected to the first node that is added.
-                self._wait_for_node(node)
+                try:
+                    self._wait_for_node(node)
+                except BaseException:
+                    if node is self.head_node:
+                        self._auth_mode.restore()
+                    raise
 
         return node
 
