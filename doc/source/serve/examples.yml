@@ -64,6 +64,10 @@ examples:
       - natural language processing
     link: tutorials/gradio-integration
     related_technology: integrations
+  - title: Serve a Streamlit App with Ray Serve
+    skill_level: intermediate
+    link: tutorials/streamlit-integration
+    related_technology: integrations
   - title: Serve a Text Generator with Request Batching
     skill_level: intermediate
     use_cases:
