@@ -274,7 +274,8 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
     """Visitor that reports whether an expression can be lowered to PyArrow.
 
     This mirrors the node/operation support of :class:`_PyArrowExpressionVisitor`
-    but only inspects the expression structure, it never builds PyArrow objects.
+    (except ``/``, see ``visit_binary``) but only inspects the expression
+    structure, it never builds PyArrow objects.
     """
 
     def visit_column(self, expr: "ColumnExpr") -> bool:
@@ -291,6 +292,12 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
         # literal (the converter reads ``expr.right.value`` directly).
         if expr.op in (Operation.IN, Operation.NOT_IN):
             return isinstance(expr.right, LiteralExpr) and self.visit(expr.left)
+
+        # A PyArrow expression doesn't know the operand types, so it can't tell
+        # integer ``/`` (truncated by ``pc.divide``) from float ``/``. Keep it
+        # out of the datasource and evaluate it on the blocks instead.
+        if expr.op == Operation.DIV:
+            return False
 
         from ray.data._internal.planner.plan_expression.expression_evaluator import (
             _ARROW_EXPR_OPS_MAP,

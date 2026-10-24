@@ -11,13 +11,15 @@ This module tests:
 
 import math
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
-from ray.data.expressions import BinaryExpr, Operation, UDFExpr, col, lit
+from ray.data.datatype import DataType
+from ray.data.expressions import BinaryExpr, Operation, UDFExpr, col, lit, udf
 from ray.data.tests.conftest import get_pyarrow_version
 
 pytestmark = pytest.mark.skipif(
@@ -233,6 +235,55 @@ class TestBasicArithmetic:
             pd.Series(expected_values, name=None),
             check_names=False,
         )
+
+    # ── Integer division on Arrow blocks ──
+
+    @pytest.mark.parametrize(
+        "expr",
+        [col("a") / col("b"), col("a") / 2, col("a") / np.int64(2)],
+        ids=["col_div_col", "col_div_int", "col_div_np_int"],
+    )
+    def test_integer_division_arrow(self, expr):
+        """Integer ``/`` on Arrow blocks is true division, as on pandas blocks."""
+        result = eval_expr(expr, pa.table({"a": [7, -7], "b": [2, 2]}))
+        assert result.to_pylist() == [3.5, -3.5]
+
+    def test_integer_division_arrow_edge_cases(self):
+        """Large int64 values round like pandas; zero and bool still raise."""
+        big = 2**53 + 1
+        table = pa.table({"a": [big], "zero": [0]})
+        assert eval_expr(col("a") / 1, table).to_pylist() == [float(big)]
+        assert eval_expr(1 / col("a"), table).to_pylist() == [1 / float(big)]
+        with pytest.raises(pa.ArrowInvalid, match="divide by zero"):
+            eval_expr(col("a") / col("zero"), table)
+        with pytest.raises(pa.ArrowNotImplementedError):
+            eval_expr(col("a") / True, table)
+
+    @pytest.mark.parametrize(
+        "expr,values,expected_type",
+        [
+            (col("a") / 2, pa.array([None, None]), pa.float64()),
+            (col("a") / 2, pa.array([7, -7]).dictionary_encode(), pa.float64()),
+            (col("a") / lit(None), pa.array([7, -7]), pa.float64()),
+            (col("a") / 2, pa.array([7], pa.decimal128(5, 0)), pa.decimal128(25, 20)),
+        ],
+        ids=["all_null", "dictionary", "null_literal", "decimal"],
+    )
+    def test_division_arrow_result_type(self, expr, values, expected_type):
+        """Each block gets the type that plan-time inference predicts."""
+        table = pa.table({"a": values})
+        assert eval_expr(expr, table).type == expected_type
+        assert expr.alias("out").to_field(table.schema).type == expected_type
+
+    def test_division_arrow_numpy_udf(self):
+        """An integer numpy array returned by a UDF is not truncated."""
+
+        @udf(return_dtype=DataType.int64())
+        def as_numpy(x):
+            return x.to_numpy()
+
+        result = eval_expr(as_numpy(col("a")) / 2, pa.table({"a": [7, -7]}))
+        assert result.to_pylist() == [3.5, -3.5]
 
 
 # ──────────────────────────────────────

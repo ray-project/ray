@@ -33,15 +33,14 @@ from ray.tests.conftest import *  # noqa
             [{"id": i, "result": str(i)} for i in range(5)],
         ),
         (
-            col("id") / 2,
+            col("id") // 2,
             DataType.int64(),
             [{"id": i, "result": i // 2} for i in range(5)],
         ),
-        # col("id")/2 uses integer division in expression layer, then cast to float64
         (
             col("id") / 2,
             DataType.float64(),
-            [{"id": i, "result": float(i // 2)} for i in range(5)],
+            [{"id": i, "result": i / 2} for i in range(5)],
         ),
     ],
 )

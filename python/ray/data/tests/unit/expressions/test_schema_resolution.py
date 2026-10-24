@@ -111,6 +111,8 @@ class TestBinaryExpr:
                 lambda: col("name") + lit("!"),
                 pa.field("out", pa.string(), nullable=True),
             ),
+            # int / int -> float (true division)
+            (lambda: col("a") / lit(2), pa.field("out", pa.float64(), nullable=True)),
         ],
     )
     def test_to_field(self, schema, expr_factory, expected):

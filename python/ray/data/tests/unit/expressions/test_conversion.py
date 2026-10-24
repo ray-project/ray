@@ -258,6 +258,19 @@ class TestToPyArrow:
         converted = ray_expr.to_pyarrow()
         assert isinstance(converted, pc.Expression)
 
+    @pytest.mark.parametrize(
+        "expr,convertible",
+        [
+            (col("a") / 2 > 1, False),
+            (col("a") // 2 > 1, True),
+            (col("a") % 2 == 0, True),
+        ],
+        ids=["div", "floordiv", "mod"],
+    )
+    def test_division_pyarrow_convertibility(self, expr, convertible):
+        """``/`` stays out of predicate pushdown; ``//`` and ``%`` are unchanged."""
+        assert expr._is_pyarrow_convertible() is convertible
+
     # ── Alias Expressions ──
 
     def test_alias_expressions(self, test_table):

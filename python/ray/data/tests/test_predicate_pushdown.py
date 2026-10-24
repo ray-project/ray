@@ -149,6 +149,22 @@ def test_filter_with_udf_expression_not_pushed_down(parquet_ds):
     )
 
 
+def test_integer_division_filter_not_pushed_down(ray_start_regular_shared, tmp_path):
+    """``/`` on integer columns is true division, so it stays as a Filter."""
+    pq.write_table(
+        pa.table({"clicks": [3, 10, 0, 50], "impressions": [100] * 4}),
+        tmp_path / "data.parquet",
+    )
+    ds = ray.data.read_parquet(str(tmp_path)).filter(
+        expr=col("clicks") / col("impressions") > 0.05
+    )
+    _check_plan_with_flexible_read(
+        ds,
+        "Filter[Filter((col('clicks') / col('impressions')) > 0.05)]",
+        [{"clicks": 10, "impressions": 100}, {"clicks": 50, "impressions": 100}],
+    )
+
+
 @pytest.mark.parametrize("udf_first", [True, False])
 def test_filter_mixed_udf_and_expression(parquet_ds, udf_first):
     """Convertible conjuncts push down while the UDF stays as a Filter."""

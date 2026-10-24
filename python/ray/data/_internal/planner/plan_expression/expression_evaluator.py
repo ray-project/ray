@@ -133,11 +133,34 @@ def _pa_add_or_concat(left: Any, right: Any) -> Any:
     return pc.add(left, right)
 
 
+def _is_pa_integer_input(x: Any) -> bool:
+    if isinstance(x, (pa.Array, pa.ChunkedArray, pa.Scalar)):
+        t = x.type.value_type if pa.types.is_dictionary(x.type) else x.type
+        return pa.types.is_integer(t) or pa.types.is_null(t)
+    if isinstance(x, np.ndarray):
+        return np.issubdtype(x.dtype, np.integer)
+    return x is None or (isinstance(x, (int, np.integer)) and not isinstance(x, bool))
+
+
+def _pa_truediv(left: Any, right: Any) -> Any:
+    """True division for ``/``; ``pc.divide`` truncates integers (7 / 2 -> 3).
+
+    Integer inputs (including all-null and dictionary-encoded ones) are cast to
+    float64 first, as in pandas, so values above 2**53 round. ``divide_checked``
+    keeps raising on division by zero.
+    """
+    if _is_pa_integer_input(left) and _is_pa_integer_input(right):
+        left = pc.cast(left, pa.float64(), safe=False)
+        right = pc.cast(right, pa.float64(), safe=False)
+        return pc.divide_checked(left, right)
+    return pc.divide(left, right)
+
+
 _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.ADD: _pa_add_or_concat,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
-    Operation.DIV: pc.divide,
+    Operation.DIV: _pa_truediv,
     Operation.MOD: lambda left, right: (
         # Modulo op is essentially:
         #   r = N - floor(N/M) * M
