@@ -555,8 +555,7 @@ void FillResourcesData(
     const absl::flat_hash_map<std::string, double> &available_resources,
     const absl::flat_hash_map<std::string, double> &total_resources,
     int64_t idle_ms,
-    bool is_draining,
-    int64_t draining_deadline_timestamp_ms) {
+    bool is_draining) {
   resources_data.set_node_id(node_id.Binary());
   for (const auto &resource : available_resources) {
     (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -566,21 +565,14 @@ void FillResourcesData(
   }
   resources_data.set_idle_duration_ms(idle_ms);
   resources_data.set_is_draining(is_draining);
-  resources_data.set_draining_deadline_timestamp_ms(draining_deadline_timestamp_ms);
 }
 
 void FillResourcesData(rpc::ResourcesData &data,
                        const std::string &node_id,
                        std::vector<rpc::ResourceDemand> demands) {
   auto load_by_shape = data.mutable_resource_load_by_shape();
-  auto agg_load = data.mutable_resource_load();
   for (const auto &demand : demands) {
     load_by_shape->add_resource_demands()->CopyFrom(demand);
-    for (const auto &resource : demand.shape()) {
-      (*agg_load)[resource.first] +=
-          (resource.second * (demand.num_ready_requests_queued() +
-                              demand.num_infeasible_requests_queued()));
-    }
   }
   data.set_node_id(node_id);
 }
