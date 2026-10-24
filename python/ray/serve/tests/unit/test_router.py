@@ -1,11 +1,16 @@
 import asyncio
 import concurrent.futures
+import contextvars
+import gc
+import inspect
 import random
 import sys
 import threading
+import weakref
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
@@ -13,6 +18,7 @@ import grpc
 import pytest
 
 import ray
+import ray.serve.context
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import (
@@ -35,6 +41,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
 )
+from ray.serve._private.default_impl import create_init_handle_options
 from ray.serve._private.replica import Replica as ServeReplica
 from ray.serve._private.replica_result import ReplicaResult, gRPCReplicaResult
 from ray.serve._private.request_router import (
@@ -58,11 +65,13 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.context import _RequestContext
 from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     ReplicaUnavailableError,
 )
+from ray.serve.handle import DeploymentHandle, DeploymentResponse
 
 
 class FakeReplicaResult(ReplicaResult):
@@ -3491,6 +3500,295 @@ class TestCustomRequestRouterAPIs:
         )
         # Should complete without error.
         await r._backoff(0)
+
+
+def _response(future) -> DeploymentResponse:
+    return DeploymentResponse(
+        future,
+        RequestMetadata(request_id="r", internal_request_id="i"),
+        _is_router_running_in_separate_loop=False,
+        _pending_call=("handle", ("arg",), {"k": 1}),
+    )
+
+
+def test_claim_takes_over_a_call_before_routing_starts():
+    async def run():
+        task = asyncio.ensure_future(asyncio.sleep(10))
+        response = _response(task)
+        assert response._claim_pending_call() == ("handle", ("arg",), {"k": 1})
+        await asyncio.sleep(0)
+        assert task.cancelled()
+        assert response._claim_pending_call() is None
+
+    asyncio.run(run())
+
+
+def test_claim_refuses_a_call_that_is_already_routing():
+    async def run():
+        task = asyncio.ensure_future(asyncio.sleep(10))
+        response = _response(task)
+        response._request_metadata._routing_started = True
+        assert response._claim_pending_call() is None
+        assert not task.cancelled()
+        task.cancel()
+
+    asyncio.run(run())
+
+
+def test_claim_refuses_a_cancelled_call():
+    async def run():
+        task = asyncio.ensure_future(asyncio.sleep(10))
+        response = _response(task)
+        response.cancel()
+        # The task has not seen its cancellation yet, but the caller's cancel stands.
+        assert not task.done()
+        assert response._claim_pending_call() is None
+
+    asyncio.run(run())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("routing_started", [False, True])
+async def test_current_loop_claim_refuses_once_routing_starts(
+    setup_router, routing_started
+):
+    router, fake_request_router = setup_router
+    replica = FakeReplica(
+        ReplicaID(unique_id="r1", deployment_id=DeploymentID(name="test"))
+    )
+    fake_request_router.set_replica_to_return(replica)
+    fake_request_router.set_should_block_requests(True)
+    current_loop_router = CurrentLoopRouter.__new__(CurrentLoopRouter)
+    current_loop_router._asyncio_loop = asyncio.get_running_loop()
+    current_loop_router._asyncio_router = router
+    meta = RequestMetadata(request_id="r", internal_request_id="i")
+    task = current_loop_router.assign_request(meta, "arg")
+    response = DeploymentResponse(
+        task,
+        meta,
+        _is_router_running_in_separate_loop=False,
+        _pending_call=("handle", ("arg",), {}),
+    )
+    if not routing_started:
+        assert response._claim_pending_call() == ("handle", ("arg",), {})
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not meta._routing_started and not replica._requests_sent
+        return
+    await async_wait_for_condition(
+        lambda: len(fake_request_router._blocked_requests) == 1
+    )
+    assert meta._routing_started
+    assert response._claim_pending_call() is None
+    fake_request_router.unblock_requests(1)
+    await task
+    assert len(replica._requests_sent) == 1
+
+
+@pytest.fixture
+def thread_router():
+    # Only the router loop matters here; the rest of the router is never used.
+    router = SingletonThreadRouter.__new__(SingletonThreadRouter)
+    router._asyncio_loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=router._asyncio_loop.run_forever, daemon=True)
+    thread.start()
+    yield router
+    router._asyncio_loop.call_soon_threadsafe(router._asyncio_loop.stop)
+    thread.join(timeout=5)
+    router._asyncio_loop.close()
+
+
+async def _routed(ran):
+    ran.append(True)
+    return "result"
+
+
+async def _fails():
+    raise ValueError("boom")
+
+
+def test_default_mode_hands_off_on_the_callers_next_turn(thread_router):
+    async def run():
+        ran = []
+        future = thread_router._wrap_asyncio_call_in_future(
+            _routed(ran), defer_on=asyncio.get_running_loop()
+        )
+        # A handler returning now still finds the call unrouted.
+        assert future._pending is not None
+        await asyncio.sleep(0)
+        assert future._pending is None
+        assert await asyncio.wrap_future(future) == "result" and ran
+
+    asyncio.run(run())
+
+
+def test_claimed_call_never_reaches_the_router_thread(thread_router):
+    async def run():
+        ran = []
+        coro = _routed(ran)
+        future = thread_router._wrap_asyncio_call_in_future(
+            coro, defer_on=asyncio.get_running_loop()
+        )
+        assert future.claim()
+        with pytest.raises(concurrent.futures.CancelledError):
+            future.result(timeout=5)
+        await asyncio.sleep(0.05)
+        assert not ran
+        # Closed, so it doesn't warn that it was never awaited.
+        assert inspect.getcoroutinestate(coro) == inspect.CORO_CLOSED
+
+    asyncio.run(run())
+
+
+def test_claim_refuses_a_call_handed_off_on_another_thread(thread_router):
+    started = threading.Event()
+
+    async def routing():
+        started.set()
+        # Still routing when the claim runs.
+        await asyncio.sleep(0.1)
+        return "result"
+
+    async def run():
+        future = thread_router._wrap_asyncio_call_in_future(
+            routing(), defer_on=asyncio.get_running_loop()
+        )
+        response = DeploymentResponse(
+            future,
+            RequestMetadata(request_id="r", internal_request_id="i"),
+            _pending_call=("handle", (), {}),
+        )
+        waiter = threading.Thread(target=lambda: future.result(timeout=5), daemon=True)
+        waiter.start()
+        # Blocks this loop, so only the waiter's own wait can hand the call off.
+        assert started.wait(timeout=5)
+        assert response._claim_pending_call() is None
+        assert await asyncio.wrap_future(future) == "result"
+
+    asyncio.run(run())
+
+
+def test_blocking_wait_hands_off_without_the_callers_loop(thread_router):
+    async def run():
+        loop = asyncio.get_running_loop()
+        # Each sync wait blocks this loop, so neither may wait for the loop to turn.
+        future = thread_router._wrap_asyncio_call_in_future(_routed([]), defer_on=loop)
+        assert future.result(timeout=5) == "result"
+        failing = thread_router._wrap_asyncio_call_in_future(_fails(), defer_on=loop)
+        assert isinstance(failing.exception(timeout=5), ValueError)
+
+    asyncio.run(run())
+
+
+def test_await_hands_off_without_the_callers_loop(thread_router):
+    # A caller loop that never turns, like one blocked waiting on this call.
+    stalled = asyncio.new_event_loop()
+
+    async def run():
+        future = thread_router._wrap_asyncio_call_in_future(
+            _routed([]), defer_on=stalled
+        )
+        response = DeploymentResponse(
+            future, RequestMetadata(request_id="r", internal_request_id="i")
+        )
+        result = await asyncio.wait_for(response._fetch_future_result_async(), 5)
+        assert result == "result"
+
+    try:
+        asyncio.run(run())
+    finally:
+        stalled.close()
+
+
+def test_hand_off_schedules_the_call_once(thread_router):
+    errors = []
+    thread_router._asyncio_loop.set_exception_handler(
+        lambda loop, context: errors.append(context)
+    )
+
+    async def run():
+        future = thread_router._wrap_asyncio_call_in_future(
+            _routed([]), defer_on=asyncio.get_running_loop()
+        )
+        future.hand_off()
+        future.hand_off()
+        assert await asyncio.wrap_future(future) == "result"
+        await asyncio.sleep(0.05)
+
+    asyncio.run(run())
+    assert not errors
+
+
+def test_handed_off_future_is_freed_without_the_cycle_collector(thread_router):
+    async def run():
+        future = thread_router._wrap_asyncio_call_in_future(
+            _routed([]), defer_on=asyncio.get_running_loop()
+        )
+        assert await asyncio.wrap_future(future) == "result"
+        return weakref.ref(future)
+
+    gc.disable()
+    try:
+        ref = asyncio.run(run())
+        # Refcounting alone frees it once the router thread drops its callbacks.
+        wait_for_condition(lambda: ref() is None, timeout=5)
+    finally:
+        gc.enable()
+
+
+def test_assign_request_defers_only_in_a_forwardable_request(thread_router):
+    thread_router._asyncio_router = SimpleNamespace(
+        assign_request=lambda meta: _routed([])
+    )
+
+    def call(forwardable):
+        ray.serve.context._serve_request_context.set(
+            _RequestContext(request_id="parent", _forwardable=forwardable)
+        )
+        meta = RequestMetadata(request_id="c", internal_request_id="c")
+        return thread_router.assign_request(meta)
+
+    async def run():
+        # Other requests route at once, as does a sync handler, whose thread has no
+        # loop to wait for.
+        for future in (call(False), await asyncio.to_thread(call, True)):
+            assert future._pending is None
+            assert await asyncio.wrap_future(future) == "result"
+        deferred = call(True)
+        assert deferred._pending is not None
+        assert await asyncio.wrap_future(deferred) == "result"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_remote_keeps_a_pending_call_only_in_a_forwardable_request(stream):
+    router = SimpleNamespace(
+        assign_request=lambda meta, *args, **kwargs: concurrent.futures.Future()
+    )
+    handle = DeploymentHandle(
+        "d",
+        "app",
+        init_options=create_init_handle_options(_run_router_in_separate_loop=True),
+        _router=router,
+        _request_counter=Mock(),
+    ).options(stream=stream)
+
+    def run():
+        ray.serve.context._serve_request_context.set(
+            _RequestContext(request_id="parent")
+        )
+        assert handle.remote(1)._pending_call is None
+        ray.serve.context._serve_request_context.set(
+            _RequestContext(request_id="parent", _forwardable=True)
+        )
+        inner = handle.remote(1)
+        response = handle.remote(inner, k=2)
+        assert response._pending_call == (handle, (inner,), {"k": 2})
+        # The outer call consumes the inner response, so it can't be forwarded.
+        assert inner._claim_pending_call() is None
+
+    contextvars.copy_context().run(run)
 
 
 if __name__ == "__main__":
