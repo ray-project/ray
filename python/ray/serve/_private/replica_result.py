@@ -421,7 +421,12 @@ class gRPCReplicaResult(ReplicaResult):
             assert self._gen is not None
             async for resp in self._gen:
                 self._result_queue.put_nowait(resp)
+        except asyncio.CancelledError as e:
+            # The call was cancelled (e.g., `DeploymentResponseGenerator.cancel`).
+            # Cancellation must take effect immediately, so drop buffered results.
+            self._result_queue.set_error(e, discard_messages=True)
         except BaseException as e:
+            # Transport failure: return already-buffered results before the error.
             self._result_queue.set_error(e)
         finally:
             self._result_queue.close()
