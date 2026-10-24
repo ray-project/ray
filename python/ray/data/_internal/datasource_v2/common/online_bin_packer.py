@@ -99,7 +99,9 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
         size_bytes=sum(sizes),
         fully_matched=run.fully_matched,
         unit_sizes=sizes if b - a > 1 else (),
-        unit_rows=rows if b - a > 1 else (),
+        unit_rows=rows if b - a > 1 or run.file_num_units is not None else (),
+        unit_start_rows=run.unit_start_rows[a:b],
+        file_num_units=run.file_num_units,
     )
     return BinItem(file=item.file, run=piece)
 
@@ -426,11 +428,42 @@ class OnlineBinPacker(FilePartitioner):
                 runs_by_file[item.file].append(item.run)
 
         for file, runs in runs_by_file.items():
+            positioned = [run for run in runs if run.file_num_units is not None]
+            positions = {}
+            file_num_units = None
+            if positioned:
+                counts = {run.file_num_units for run in positioned}
+                if len(positioned) != len(runs) or len(counts) != 1:
+                    raise ValueError(
+                        f"Inconsistent read-unit positions for {file.path}"
+                    )
+                file_num_units = positioned[0].file_num_units
+                for run in runs:
+                    if not run.unit_rows or not run.unit_start_rows:
+                        raise ValueError(f"Missing read-unit positions for {file.path}")
+                    unit_sizes = run.unit_sizes or (run.size_bytes,)
+                    if len(unit_sizes) != len(run.unit_ids):
+                        raise ValueError(f"Missing read-unit sizes for {file.path}")
+                    for index, rows, start, size in zip(
+                        run.unit_ids, run.unit_rows, run.unit_start_rows, unit_sizes
+                    ):
+                        if index in positions:
+                            raise ValueError(
+                                f"Duplicate read unit {index} for {file.path}"
+                            )
+                        positions[index] = (rows, start, size)
+            ids = tuple(sorted(i for run in runs for i in run.unit_ids))
             merged = FileChunk(
-                unit_ids=tuple(sorted(i for run in runs for i in run.unit_ids)),
+                unit_ids=ids,
                 num_rows=sum(run.num_rows for run in runs),
                 size_bytes=sum(run.size_bytes for run in runs),
                 fully_matched=all(run.fully_matched for run in runs),
+                unit_rows=tuple(positions[i][0] for i in ids) if positioned else (),
+                unit_sizes=tuple(positions[i][2] for i in ids) if positioned else (),
+                unit_start_rows=tuple(positions[i][1] for i in ids)
+                if positioned
+                else (),
+                file_num_units=file_num_units,
             )
             files.append(file)
             chunk_metadatas.append(merged.to_metadata())
