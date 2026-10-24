@@ -1,12 +1,16 @@
 """Unit tests for RDTManager."""
+import gc
 import logging
 import re
 import sys
+import weakref
 from dataclasses import dataclass
 from typing import Any, List
+from unittest.mock import Mock
 
 import pytest
 
+import ray
 from ray.exceptions import GetTimeoutError
 from ray.experimental import (
     CommunicatorMetadata,
@@ -14,7 +18,12 @@ from ray.experimental import (
     TensorTransportMetadata,
     register_tensor_transport,
 )
-from ray.experimental.rdt.rdt_manager import RDTManager, RDTMeta, RDTSource
+from ray.experimental.rdt.rdt_manager import (
+    RDTManager,
+    RDTMeta,
+    RDTSource,
+    TransferMetadata,
+)
 from ray.experimental.rdt.tensor_transport_manager import FetchRequest
 
 _BACKEND_NAME = "TEST_PIPELINE"
@@ -381,6 +390,48 @@ def test_get_timed_out_error():
             manager.fetch_and_get_rdt_objects(object_ids, timeout=0.1)
         finally:
             rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = original
+
+
+@pytest.mark.parametrize("two_sided", [False, True])
+def test_idle_monitor_releases_completed_transfer_actor_handles(monkeypatch, two_sided):
+    class Actor:
+        pass
+
+    source, destination = Actor(), Actor()
+    actor_refs = [weakref.ref(source), weakref.ref(destination)]
+    send_ref, recv_ref = Mock(), Mock()
+    send_ref.hex.return_value = "send"
+    recv_ref.hex.return_value = "recv"
+    manager = RDTManager()
+    manager._unmonitored_transfers.put(
+        TransferMetadata(
+            src_actor=source,
+            dst_actor=destination,
+            send_ref=send_ref if two_sided else None,
+            recv_ref=recv_ref,
+            communicator_meta=CommunicatorMetadata(),
+            backend="TEST",
+            obj_id="object",
+            timeout=float("inf"),
+        )
+    )
+    del source, destination
+
+    monkeypatch.setattr(ray, "wait", lambda refs, **kwargs: ([refs[0]], refs[1:]))
+    monkeypatch.setattr(ray, "get", lambda ref: None)
+    idle_checks = []
+
+    def check_idle(timeout):
+        # Check while the monitor's frame is still alive, before it exits.
+        gc.collect()
+        assert all(ref() is None for ref in actor_refs)
+        idle_checks.append(True)
+        manager._monitor_failures_shutdown_event.set()
+        return True
+
+    monkeypatch.setattr(manager._monitor_failures_shutdown_event, "wait", check_idle)
+    manager._monitor_failures()
+    assert idle_checks == [True]
 
 
 if __name__ == "__main__":

@@ -25,6 +25,8 @@ When Ray transfers a tensor between actors with your transport, it calls methods
 
 The {class}`TensorTransportManager <ray.experimental.TensorTransportManager>` abstract class defines the interface for custom tensor transports. You must implement all abstract methods.
 
+If your transport owns process-local resources, override the optional `shutdown(timeout=None)` method. Ray calls it during `ray.shutdown()` and normal Python process exit, then removes successfully closed managers from its cache. Make cleanup safe to call repeatedly, honor the timeout, and avoid starting new transfers or making Ray calls. If cleanup raises an exception, Ray logs the error and retains the manager for a later shutdown attempt. Forced termination, including `ray.kill()`, can bypass this hook.
+
 The following diagram shows when Ray calls each method during a tensor transfer:
 
 ```text
