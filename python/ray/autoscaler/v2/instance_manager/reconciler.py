@@ -400,9 +400,10 @@ class Reconciler:
 
         # Sort the request instance by the increasing request time.
         instances_with_launch_requests.sort(
-            key=lambda instance: InstanceUtil.get_status_transition_times_ns(
+            key=lambda instance: InstanceUtil.get_first_status_transition_time_ns(
                 instance, IMInstance.REQUESTED
             )
+            or 0
         )
 
         # Fail at most the summed LaunchNodeError.count instances per
@@ -969,11 +970,13 @@ class Reconciler:
             return instances_by_type
 
         # Sort the instances by the time they were queued.
-        def _sort_by_earliest_queued(instance: IMInstance) -> List[int]:
-            queue_times = InstanceUtil.get_status_transition_times_ns(
-                instance, IMInstance.QUEUED
+        def _sort_by_earliest_queued(instance: IMInstance) -> int:
+            return (
+                InstanceUtil.get_first_status_transition_time_ns(
+                    instance, IMInstance.QUEUED
+                )
+                or 0
             )
-            return sorted(queue_times)
 
         queued_instances_by_type = _group_by_type(queued_instances)
         running_instances_by_type = _group_by_type(running_instances)
@@ -1664,19 +1667,17 @@ class Reconciler:
             # Not timeout yet, be patient.
             return None
 
-        all_request_times_ns = sorted(
-            InstanceUtil.get_status_transition_times_ns(
-                instance, select_instance_status=IMInstance.REQUESTED
-            )
+        num_requests = InstanceUtil.get_status_transition_count(
+            instance, IMInstance.REQUESTED
         )
         # Fail the allocation if we have tried too many times.
-        if len(all_request_times_ns) > max_num_retry_request_to_allocate:
+        if num_requests > max_num_retry_request_to_allocate:
             return IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
                 details=(
                     "failed to allocate cloud instance after "
-                    f"{len(all_request_times_ns)} attempts > "
+                    f"{num_requests} attempts > "
                     f"max_num_retry_request_to_allocate={max_num_retry_request_to_allocate}"  # noqa
                 ),
             )

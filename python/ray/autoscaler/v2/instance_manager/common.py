@@ -9,7 +9,7 @@ from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEven
 # append-only and read only for the most recent transitions (e.g. latest
 # details, per-status timestamps), so trimming the oldest entries bounds the
 # memory a single long-lived or repeatedly-stuck instance can hold while
-# preserving every read done by the reconciler. Floored at 10 so a
+# lifetime counts and first timestamps are retained separately. Floored at 10 so a
 # misconfigured env var cannot trim the history to empty, which would trip the
 # `len(status_times_ns) >= 1` assertion in `has_timeout`.
 MAX_STATUS_HISTORY_LENGTH = max(
@@ -170,6 +170,23 @@ class InstanceUtil:
             details: The details of the status transition.
         """
         now_ns = time.time_ns()
+        # Initialize summaries for instances created before these fields existed,
+        # before trimming any of their available history.
+        if not instance.status_transition_counts:
+            for transition in instance.status_history:
+                previous_status = transition.instance_status
+                instance.status_transition_counts[previous_status] += 1
+                instance.first_status_transition_times_ns[previous_status] = min(
+                    instance.first_status_transition_times_ns.get(
+                        previous_status, transition.timestamp_ns
+                    ),
+                    transition.timestamp_ns,
+                )
+
+        instance.status_transition_counts[status] += 1
+        instance.first_status_transition_times_ns[status] = min(
+            instance.first_status_transition_times_ns.get(status, now_ns), now_ns
+        )
         instance.status_history.append(
             Instance.StatusHistory(
                 instance_status=status,
@@ -177,13 +194,54 @@ class InstanceUtil:
                 details=details,
             )
         )
-        # Bound the append-only history so an instance that is repeatedly stuck
+        # Bound the history so an instance that is repeatedly stuck
         # or retried before reaching a terminal state cannot grow unboundedly.
-        # Only the most recent transitions are ever read, so drop the oldest.
+        # Lifetime counts and first timestamps are retained separately, so drop the oldest.
         # Delete one at a time (not a slice) since slice deletion on a protobuf
         # repeated field is not supported across all protobuf versions.
         while len(instance.status_history) > MAX_STATUS_HISTORY_LENGTH:
             del instance.status_history[0]
+
+    @staticmethod
+    def get_status_transition_count(
+        instance: Instance, status: Instance.InstanceStatus
+    ) -> int:
+        """Return the lifetime number of transitions into a status.
+
+        Args:
+            instance: The instance to check.
+            status: The status whose transitions to count.
+
+        Returns:
+            The recorded count, or the count from history for a legacy instance.
+        """
+        if status in instance.status_transition_counts:
+            return instance.status_transition_counts[status]
+        return sum(t.instance_status == status for t in instance.status_history)
+
+    @staticmethod
+    def get_first_status_transition_time_ns(
+        instance: Instance, status: Instance.InstanceStatus
+    ) -> Optional[int]:
+        """Return the first transition time into a status.
+
+        Args:
+            instance: The instance to check.
+            status: The status whose first transition to find.
+
+        Returns:
+            The first timestamp in nanoseconds, or None if the status is absent.
+        """
+        if status in instance.first_status_transition_times_ns:
+            return instance.first_status_transition_times_ns[status]
+        return min(
+            (
+                t.timestamp_ns
+                for t in instance.status_history
+                if t.instance_status == status
+            ),
+            default=None,
+        )
 
     @staticmethod
     def has_timeout(instance: Instance, timeout_s: int) -> bool:
