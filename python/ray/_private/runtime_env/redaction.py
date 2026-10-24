@@ -1,14 +1,14 @@
 """Helpers for masking secret `runtime_env` values before they leave the process.
 
-These depend only on `ray._common`, so that Ray Core (log lines, process command
-lines, error messages) and the dashboard (HTTP responses, events sent to an
-external HTTP endpoint) can all use them.
+These depend only on `ray._private.ray_constants`, so that Ray Core (log lines,
+process command lines, error messages) and the dashboard (HTTP responses, events
+sent to an external HTTP endpoint) can all use them.
 """
 import json
 import logging
 from typing import Any, Dict, Optional
 
-from ray._common import ray_constants
+from ray._private import ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def is_runtime_env_redaction_enabled() -> bool:
 
     Returns:
         True unless `RAY_DASHBOARD_REDACT_RUNTIME_ENV` was set to anything other
-        than `1` or `true` (case-insensitive) when `ray._common.ray_constants`
+        than `1` or `true` (case-insensitive) when `ray._private.ray_constants`
         was imported.
     """
     return ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV

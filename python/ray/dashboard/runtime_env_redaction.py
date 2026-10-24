@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp.web
 
-from ray._common.runtime_env_redaction import (  # noqa: F401
+from ray._private.runtime_env.redaction import (  # noqa: F401
     REDACTED_PLACEHOLDER,
     RUNTIME_ENV_DICT_KEYS,
     RUNTIME_ENV_INFO_KEYS,

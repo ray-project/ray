@@ -317,7 +317,7 @@ def test_should_not_redact_for_non_browser_requests(headers):
 @pytest.mark.parametrize("headers", BROWSER_HEADERS + NON_BROWSER_HEADERS)
 def test_flag_disables_redaction_entirely(headers, monkeypatch):
     monkeypatch.setattr(
-        "ray._common.ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV", False
+        "ray._private.ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV", False
     )
     assert should_redact_runtime_env(_mock_request(headers)) is False
 
@@ -606,7 +606,7 @@ def test_http_event_publisher_redacts_runtime_env(
     monkeypatch, redact, preserve_proto_field_name
 ):
     """Events sent to an external HTTP service follow the redaction setting."""
-    from ray._common import ray_constants
+    from ray._private import ray_constants
     from ray.core.generated import events_base_event_pb2
     from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
         AsyncHttpPublisherClient,

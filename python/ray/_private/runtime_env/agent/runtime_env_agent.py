@@ -11,7 +11,6 @@ from typing import Callable, Dict, List, Set, Tuple, Union
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
-from ray._common.runtime_env_redaction import redact_serialized_runtime_env
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
@@ -31,6 +30,7 @@ from ray._private.runtime_env.plugin import (
 )
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.redaction import redact_serialized_runtime_env
 from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
 from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin

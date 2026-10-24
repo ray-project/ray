@@ -9,13 +9,13 @@ from typing import List, Optional
 import aiohttp
 
 import ray.dashboard.utils as dashboard_utils
-from ray._common.runtime_env_redaction import (
-    is_runtime_env_redaction_enabled,
-    redact_runtime_env_deep,
-)
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.protobuf_compat import message_to_json
+from ray._private.runtime_env.redaction import (
+    is_runtime_env_redaction_enabled,
+    redact_runtime_env_deep,
+)
 from ray._raylet import GcsClient
 from ray.core.generated import (
     events_base_event_pb2,

@@ -60,7 +60,6 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.network_utils import get_localhost_ip
-from ray._common.runtime_env_redaction import redact_runtime_env
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     enable_token_auth_by_default,
@@ -80,6 +79,7 @@ from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )

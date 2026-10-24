@@ -24,7 +24,7 @@ namespace ray {
  *
  * Keys are left intact so that operators can still see which variables are set.
  * Keep in sync with `REDACTED_PLACEHOLDER` in
- * python/ray/_common/runtime_env_redaction.py.
+ * python/ray/_private/runtime_env/redaction.py.
  */
 inline constexpr std::string_view kRedactedPlaceholder = "<redacted>";
 
@@ -32,7 +32,7 @@ inline constexpr std::string_view kRedactedPlaceholder = "<redacted>";
  * @brief Masks the secret values in a serialized runtime env.
  *
  * Mirrors `redact_serialized_runtime_env` in
- * python/ray/_common/runtime_env_redaction.py: every value under `env_vars` is
+ * python/ray/_private/runtime_env/redaction.py: every value under `env_vars` is
  * replaced with `kRedactedPlaceholder`, and the keys are kept. Also works for a
  * serialized `RuntimeEnvContext`, which keeps `env_vars` at the top level too.
  *
