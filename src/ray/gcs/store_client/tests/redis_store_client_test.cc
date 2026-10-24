@@ -14,6 +14,7 @@
 
 #include "ray/gcs/store_client/redis_store_client.h"
 
+#include <atomic>
 #include <boost/optional/optional_io.hpp>
 #include <chrono>
 #include <future>
@@ -909,6 +910,47 @@ class RedisStoreClientMetricsDisabledTest : public RedisStoreClientMetricsTest {
  protected:
   bool PayloadMetricsEnabled() const override { return false; }
 };
+
+// Health checks issued while a PING is outstanding share it instead of each
+// sending their own, and every caller still gets an answer. Issuing them from
+// the io_service thread keeps the first PING's reply from being processed in
+// between, so all of them land on that one PING.
+TEST_F(RedisStoreClientMetricsTest, ConcurrentHealthChecksShareOnePing) {
+  auto ping_count = [this]() {
+    double total = 0;
+    for (const auto &[tags, value] : command_count_.GetTagToValue()) {
+      if (tags.at("Command") == "PING") {
+        total += value;
+      }
+    }
+    return total;
+  };
+  const double pings_before = ping_count();
+
+  constexpr int kChecks = 20;
+  std::atomic<int> ok{0};
+  std::promise<void> all_done;
+  std::atomic<int> remaining{kChecks};
+  io_service_->post(
+      [&]() {
+        for (int i = 0; i < kChecks; ++i) {
+          store_client_->AsyncCheckHealth({[&](Status s) {
+                                             if (s.ok()) {
+                                               ++ok;
+                                             }
+                                             if (--remaining == 0) {
+                                               all_done.set_value();
+                                             }
+                                           },
+                                           *io_service_});
+        }
+      },
+      "ConcurrentHealthChecksShareOnePing");
+  ASSERT_EQ(all_done.get_future().wait_for(std::chrono::seconds(10)),
+            std::future_status::ready);
+  EXPECT_EQ(ok.load(), kChecks);
+  EXPECT_EQ(ping_count() - pings_before, 1);
+}
 
 TEST_F(RedisStoreClientMetricsDisabledTest, KillSwitchStopsRecording) {
   const std::string table = "NODE";

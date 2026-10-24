@@ -182,8 +182,22 @@ class RedisStoreClient : public StoreClient {
 
   // Check if Redis is available.
   //
+  // Checks issued while one is still outstanding do not send another PING:
+  // they wait for the outstanding one and receive its result. The GCS health
+  // check fires on a fixed period whether or not the previous PING came back,
+  // so without this an outage would stockpile one pending PING per period for
+  // as long as the reconnect grace period keeps them alive.
+  //
   // \param callback The callback that will be called with a Status. OK means healthy.
   void AsyncCheckHealth(Postable<void(Status)> callback);
+
+  /// Check after every reconnect that Redis kept the writes it acknowledged
+  /// to this client, and exit if not; see RedisContext::EnableWriteWatermark.
+  /// Thread-safe.
+  ///
+  /// \param name This client's field in the watermark hash. Each client of a
+  /// gcs_server needs its own.
+  void EnableWriteWatermark(const std::string &name);
 
  private:
   /// \class RedisScanner
@@ -305,6 +319,16 @@ class RedisStoreClient : public StoreClient {
 
   // The following context writes everything to the primary shard.
   std::shared_ptr<RedisContext> primary_context_;
+
+  /// Callers of AsyncCheckHealth waiting on the outstanding PING. Shared with
+  /// the PING's reply callback, which may run after this client is gone.
+  struct HealthCheckWaiters {
+    absl::Mutex mu;
+    bool in_flight ABSL_GUARDED_BY(mu) = false;
+    std::vector<Postable<void(Status)>> callbacks ABSL_GUARDED_BY(mu);
+  };
+  std::shared_ptr<HealthCheckWaiters> health_check_waiters_ =
+      std::make_shared<HealthCheckWaiters>();
 
   absl::Mutex mu_;
 

@@ -87,6 +87,7 @@ class GcsWorkerManager;
 class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 class GcsTaskManager;
+class RedisStoreClient;
 class GcsAutoscalerStateManager;
 struct RedisClientOptions;
 
@@ -312,6 +313,12 @@ class GcsServer {
 
   RedisClientOptions GetRedisClientOptions();
 
+  /// Have both Redis store clients check after a reconnect that Redis kept
+  /// their acknowledged writes; see RedisContext::EnableWriteWatermark. Called
+  /// once this GCS writes to Redis: at startup, or on promotion to leader when
+  /// leader election is enabled.
+  void EnableRedisWriteWatermarks();
+
   const ray::gcs::GcsServerMetrics &metrics_;
 
   /// NOTE: the declaration order for data members must follow the dependency structure
@@ -410,6 +417,10 @@ class GcsServer {
   /// io context, so a plain bool is correct; making it atomic would imply the rest of
   /// that function is safe to call from another thread, and it is not.
   bool promotion_started_ = false;
+  /// The Redis store clients, for EnableRedisWriteWatermarks(). Null unless
+  /// storage is Redis; owned by the table storage and the KV manager.
+  RedisStoreClient *redis_tables_client_ = nullptr;
+  RedisStoreClient *redis_kv_client_ = nullptr;
   /// Flag to ensure InitMetricsExporter is only called once.
   std::atomic<bool> metrics_exporter_initialized_ = false;
   // Invoked when the RPC server has bound to a port.

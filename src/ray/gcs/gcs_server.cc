@@ -208,6 +208,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   case StorageType::REDIS_PERSIST: {
     auto redis_store_client = std::make_shared<RedisStoreClient>(
         io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_));
+    redis_tables_client_ = redis_store_client.get();
     // Health check Redis periodically and crash if it becomes unavailable.
     // NOTE: periodical_runner_ must run on the same IO context as the Redis client.
     periodical_runner_->RunFnPeriodically(
@@ -301,6 +302,7 @@ void GcsServer::Start() {
   InitKVManager();
 
   if (!config_.enable_gcs_leader_election) {
+    EnableRedisWriteWatermarks();
     // Load gcs tables data asynchronously.
     auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
     gcs_init_data->AsyncLoad({[this, gcs_init_data] {
@@ -526,6 +528,9 @@ void GcsServer::PromoteToLeader() {
   if (IsLeader() || promotion_started_) {
     return;
   }
+  // A passive GCS writes nothing to Redis, the watermark included, and it shares
+  // the watermark's fields with the leader; it takes them over from here.
+  EnableRedisWriteWatermarks();
   if (!is_started_) {
     // Start() is still resolving the cluster ID. Becoming the leader here also
     // releases that wait (a leader generates the cluster ID instead of waiting for
@@ -1013,6 +1018,7 @@ void GcsServer::InitKVManager() {
   case (StorageType::REDIS_PERSIST): {
     auto redis_store_client = std::make_unique<RedisStoreClient>(
         io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_));
+    redis_kv_client_ = redis_store_client.get();
     if (RayConfig::instance().gcs_redis_storage_metrics_enabled()) {
       store_client = std::make_unique<ObservableStoreClient>(
           std::move(redis_store_client),
@@ -1351,6 +1357,17 @@ RedisClientOptions GcsServer::GetRedisClientOptions() {
                             config_.redis_username,
                             config_.redis_password,
                             config_.enable_redis_ssl};
+}
+
+void GcsServer::EnableRedisWriteWatermarks() {
+  // Field names are fixed per client, so the watermark hash stays at two fields
+  // across restarts.
+  if (redis_tables_client_ != nullptr) {
+    redis_tables_client_->EnableWriteWatermark("gcs_tables");
+  }
+  if (redis_kv_client_ != nullptr) {
+    redis_kv_client_->EnableWriteWatermark("gcs_internal_kv");
+  }
 }
 
 void GcsServer::InitMetricsExporter(int metrics_agent_port) {

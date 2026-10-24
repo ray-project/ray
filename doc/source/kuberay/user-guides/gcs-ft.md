@@ -402,6 +402,101 @@ would otherwise have survived can terminate the GCS instead. Keep the detection
 window comfortably longer than any stall you expect to recover from.
 ```
 
+## What happens when the Redis connection drops
+
+GCS reconnects in place. It does not exit and wait to be restarted, and the
+detached actors and job metadata it stored survive as long as Redis keeps the
+data. This includes a connection that TCP keepalive (step 5) declares dead. If
+Redis lost data during the outage, GCS exits instead; see
+[below](#when-redis-comes-back-without-data).
+
+Where the primary moves during a failover, GCS follows it:
+
+* **Behind a proxy or Kubernetes Service.** The address GCS holds never
+  changes, so it reconnects to the same one once the proxy points at the
+  promoted node.
+* **Redis Sentinel.** GCS asks Sentinel for the primary again on each attempt,
+  so a promotion moves it to the new node.
+* **Redis Cluster reached directly.** There is no Sentinel to ask. GCS keeps
+  dialing the address it was given, so put a Service or proxy in front if the
+  primary can move.
+
+GCS still exits if Redis stays unreachable past the grace period below. That is
+deliberate: a head node that cannot reach its metadata store is not serving.
+
+### When Redis comes back without data
+
+Before it resumes, GCS checks that Redis still holds every write it got a reply
+for. Redis can come back without recent writes:
+
+* A restart without persistence comes back empty.
+* A restart from an RDB snapshot comes back without the writes made since that
+  snapshot.
+* A failover to a replica that was behind drops the writes the replica hadn't
+  received yet.
+
+GCS keeps its running state in memory, so continuing on such a Redis would
+leave the two out of step. The damage shows up later, for example as a detached
+actor that is listed but can't be fetched. GCS exits instead, and the restarted
+GCS reloads what Redis actually holds, as it did before in-place reconnects.
+
+When Redis lost nothing, the check passes and GCS continues without a restart.
+That's the case for a dropped connection, for a failover to a replica that had
+caught up, and for a Redis restart with `appendonly yes`. With the
+`appendfsync everysec` setting that KubeRay recommends, a restart of the Redis
+process loses nothing, while a failure of the node it runs on can lose the
+last second of writes.
+
+Run Redis with `maxmemory-policy noeviction`. An eviction policy can drop GCS
+data while Redis keeps running, which neither this check nor a GCS restart
+notices.
+
+To run the check, GCS follows each write with a small marker write to the
+`RAY<namespace>@WriteWatermark` hash, which doubles the number of write
+commands it sends. Set `RAY_redis_reconnect_verify_writes=0` to turn off both
+the check and the marker writes; GCS then continues after any reconnect.
+
+### Tuning the reconnect
+
+Set these as environment variables on every node before `ray start`. The first
+four are specific to reconnecting; the rest predate them and also govern the
+retry behavior of individual Redis commands.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. With `0`, a command gives up after its own retry budget, roughly 3.5 seconds, as before in-place reconnects; GCS still reconnects in place. |
+| `RAY_redis_reconnect_connect_timeout_ms` | `5000` | How long each reconnect attempt waits for its TCP connect before trying again. Without it, a connect to an address that no longer answers, such as a deleted Redis Pod's IP, waits out the kernel's SYN retries for about two minutes. `0` turns the timeout off. |
+| `RAY_redis_reconnect_sentinel_timeout_ms` | `2000` | Timeout for each step of the query a reconnect sends to Sentinel to find the current primary. |
+| `RAY_redis_reconnect_verify_writes` | `1` | Whether GCS checks, before resuming, that Redis kept every write it acknowledged, and exits if not. See [When Redis comes back without data](#when-redis-comes-back-without-data). |
+| `RAY_redis_db_connect_retries` | `120` | Reconnect attempts before GCS exits. Also bounds the connect attempts at startup. |
+| `RAY_redis_retry_base_ms` | `100` | First backoff between attempts. |
+| `RAY_redis_retry_multiplier` | `2` | Backoff growth. |
+| `RAY_redis_retry_max_ms` | `1000` | Backoff ceiling. |
+| `RAY_num_redis_request_retries` | `5` | Retries for a single command once the grace period has passed. |
+
+Whichever bound runs out first ends it. Under the defaults that is the grace
+period: the GCS health check keeps a Redis command in flight at all times, so
+GCS exits roughly when the grace period ends plus a few seconds of retry drain
+(`RAY_num_redis_request_retries` attempts at up to `RAY_redis_retry_max_ms`
+each), about 65 seconds. The reconnect budget, 120 attempts at a backoff capped
+at one second, lasts about two minutes and so does not decide the outcome
+unless you lower it: with `RAY_redis_db_connect_retries=3`, GCS exits after
+three failed attempts rather than waiting out the minute. To survive a longer
+failover, raise both: the grace period, and the reconnect budget so that it
+outlasts the grace period. At the one-second backoff ceiling that is about one
+attempt per second of grace. Raising either one alone does not help.
+
+Raise both when a failover takes longer than a minute, which happens with a
+large Sentinel `down-after-milliseconds`. For three minutes:
+
+```sh
+export RAY_redis_reconnect_grace_period_ms=180000
+export RAY_redis_db_connect_retries=200
+```
+
+The backoff variables are shared with the command retry path, so changing them
+affects both.
+
 ## Next steps
 
 * See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
