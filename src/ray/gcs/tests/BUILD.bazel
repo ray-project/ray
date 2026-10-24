@@ -482,3 +482,23 @@ ray_cc_test(
         "//src/ray/gcs:gcs_server_lib",
     ],
 )
+
+ray_cc_test(
+    name = "resource_load_pull_benchmark",
+    size = "medium",
+    srcs = ["resource_load_pull_benchmark.cc"],
+    # Manual microbenchmark; run with:
+    #   bazel run -c opt //src/ray/gcs/tests:resource_load_pull_benchmark
+    tags = [
+        "manual",
+        "team:core",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:node_manager_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/time",
+    ],
+)

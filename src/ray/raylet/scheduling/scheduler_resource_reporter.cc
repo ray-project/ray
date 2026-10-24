@@ -79,7 +79,6 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
     return;
   }
 
-  auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
 
@@ -123,15 +122,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       const auto &resources = scheduling_class_descriptor.resource_set.GetResourceMap();
       auto by_shape_entry = resource_load_by_shape->Add();
 
-      for (const auto &resource : resources) {
-        const auto &label = resource.first;
-        const auto &quantity = resource.second;
-
-        if (count != 0) {
-          // Add to `resource_loads`.
-          (*resource_loads)[label] += quantity * count;
-        }
-        // Add to `resource_load_by_shape`.
+      for (const auto &[label, quantity] : resources) {
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }
 
