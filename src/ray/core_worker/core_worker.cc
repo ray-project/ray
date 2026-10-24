@@ -424,6 +424,7 @@ CoreWorker::CoreWorker(
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_gauge,
     ray::observability::MetricInterface &actor_by_state_gauge,
+    ray::observability::MetricInterface &task_submissions_counter,
     ClockInterface &clock)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
@@ -466,6 +467,7 @@ CoreWorker::CoreWorker(
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_counter_(task_by_state_gauge, actor_by_state_gauge),
+      task_submissions_counter_(task_submissions_counter),
       task_event_buffer_(std::move(task_event_buffer)),
       ray_task_event_recorder_(std::move(ray_task_event_recorder)),
       pid_(pid),
@@ -1099,10 +1101,12 @@ void CoreWorker::InternalHeartbeat() {
     if (spec.IsActorTask()) {
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
       actor_handle->SetResubmittedActorTaskSpec(spec);
+      task_submissions_counter_.Record(1, {{"IsRetry", "true"}});
       actor_task_submitter_->SubmitTask(spec);
     } else if (spec.IsActorCreationTask()) {
       actor_task_submitter_->SubmitActorCreationTask(spec);
     } else {
+      task_submissions_counter_.Record(1, {{"IsRetry", "true"}});
       normal_task_submitter_->SubmitTask(spec);
     }
   }
@@ -2293,6 +2297,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   std::vector<rpc::ObjectReference> returned_refs;
   returned_refs = task_manager_->AddPendingTask(
       task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
+  task_submissions_counter_.Record(1, {{"IsRetry", "false"}});
 
   io_service_.post(
       [this, task_spec = std::move(task_spec)]() mutable {
@@ -2754,6 +2759,7 @@ Status CoreWorker::SubmitActorTask(
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   task_returns = task_manager_->AddPendingTask(
       rpc_address_, task_spec, CurrentCallSite(), max_retries);
+  task_submissions_counter_.Record(1, {{"IsRetry", "false"}});
   actor_task_submitter_->SubmitTask(task_spec);
   return Status::OK();
 }

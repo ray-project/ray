@@ -651,8 +651,11 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 lineage_task_id, dependencies, reconstruction_plan_id
             )
             # If the task is a seed task (and this is not a reconstruction attempt), register the inputs of the task as seed inputs
-            if self._is_seed_operator() and reconstruction_plan_id is None:
-                lineage_tracker.register_seed_input(lineage_task_id, inputs)
+            if self._is_seed_operator():
+                if reconstruction_plan_id is None:
+                    lineage_tracker.register_seed_input(lineage_task_id, inputs)
+                else:
+                    self._num_reconstruction_inputs_queued -= 1
 
         # This task's next output_index. A per-task closure local, so it is scoped
         # exactly right and resets naturally on a re-execution.
@@ -712,17 +715,21 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             exception: Optional[Exception],
             task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
+            aborted: bool,
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
             #       emitted (current limitation, since it's emitted along with
             #       `BlockMetadata`)
-            assert exception or (
-                task_exec_driver_stats
+            assert (
+                aborted or exception or task_exec_driver_stats
             ), "Driver's task execution stats must be provided on task's successful completion"
 
-            self._metrics.on_task_finished(
-                task_index, exception, task_exec_stats, task_exec_driver_stats
-            )
+            if aborted:
+                self._metrics.on_task_aborted(task_index)
+            else:
+                self._metrics.on_task_finished(
+                    task_index, exception, task_exec_stats, task_exec_driver_stats
+                )
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
@@ -734,13 +741,14 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
             )
 
-            if lineage_tracker is not None and exception is None:
+            if lineage_tracker is not None and exception is None and not aborted:
                 # Hand any child whose whole input set this completion completes
                 # downstream before reporting the completion itself.
                 if reconstruction_plan_id is not None:
                     self._release_reconstruction_blocks_to_child(
                         lineage_task_id, reconstruction_plan_id, task_index
                     )
+                    self._num_reconstruction_tasks_finished += 1
                 lineage_tracker.register_task_complete(
                     lineage_task_id, reconstruction_plan_id
                 )
@@ -816,6 +824,23 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     def has_next(self) -> bool:
         assert self._started
         return self._output_queue.has_next()
+
+    def lineage_recovery_progress_str(self) -> str:
+        if self._lineage_tracker is None:
+            return ""
+        num_queued = self._num_reconstruction_inputs_queued
+        num_running = sum(
+            1
+            for task in self._data_tasks.values()
+            if task.reconstruction_plan_id is not None
+        )
+        num_finished = self._num_reconstruction_tasks_finished
+        if not (num_queued or num_running or num_finished):
+            return ""
+        return (
+            f"Recovery: {num_queued} queued, {num_running} running, "
+            f"{num_finished} finished"
+        )
 
     def _get_next_inner(self) -> RefBundle:
         assert self._started

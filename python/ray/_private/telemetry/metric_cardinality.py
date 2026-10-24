@@ -14,6 +14,11 @@ HIGH_CARDINALITY_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = 
     "tasks": sum,
     "actors": sum,
 }
+# High-cardinality counter metrics. Counters always aggregate with sum().
+HIGH_CARDINALITY_COUNTER_METRICS: List[str] = [
+    "task_submissions",
+    "object_recovery_attempts",
+]
 
 _CARDINALITY_LEVEL = None
 _HIGH_CARDINALITY_LABELS: Dict[str, List[str]] = {}
@@ -74,7 +79,10 @@ class MetricCardinality(str, Enum):
 
     @staticmethod
     def get_high_cardinality_metrics() -> List[str]:
-        return list(HIGH_CARDINALITY_GAUGE_AGGREGATION.keys())
+        return (
+            list(HIGH_CARDINALITY_GAUGE_AGGREGATION.keys())
+            + HIGH_CARDINALITY_COUNTER_METRICS
+        )
 
     @staticmethod
     def get_high_cardinality_labels_to_drop(metric_name: str) -> List[str]:
