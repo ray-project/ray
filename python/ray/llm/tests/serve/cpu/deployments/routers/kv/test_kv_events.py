@@ -1,3 +1,4 @@
+import copy
 import sys
 from types import SimpleNamespace
 from unittest import mock
@@ -35,6 +36,22 @@ def make_kv_aware_llm_config(**kwargs) -> LLMConfig:
         },
         **kwargs,
     )
+
+
+def _tiering_kwargs(
+    secondary_tiers,
+    spec_name="TieringOffloadingSpec",
+    kv_connector="OffloadingConnector",
+):
+    extra_config = {"secondary_tiers": secondary_tiers}
+    if spec_name is not None:
+        extra_config["spec_name"] = spec_name
+    return {
+        "kv_transfer_config": {
+            "kv_connector": kv_connector,
+            "kv_connector_extra_config": extra_config,
+        }
+    }
 
 
 @pytest.fixture(scope="module")
@@ -96,26 +113,137 @@ class TestConfigureKvEvents:
         assert llm_config.runtime_env["env_vars"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "1"
 
     @pytest.mark.parametrize(
-        "offload_size, expected",
+        "kv_connector, expected",
         [
-            (2.0, {"existing": "value", "self_describing_kv_events": True}),
-            (None, {"existing": "value"}),
+            # Native offloading, whether enabled through kv_offloading_size or
+            # configured directly in kv_transfer_config.
+            (
+                "OffloadingConnector",
+                {"existing": "value", "self_describing_kv_events": True},
+            ),
+            ("LMCacheConnectorV1", {"existing": "value"}),
         ],
     )
-    def test_native_offload_event_configuration(self, offload_size, expected):
-        """Only native CPU offload enables complete CPU-tier KV events."""
+    def test_native_offload_event_configuration(self, kv_connector, expected):
+        """Only OffloadingConnector enables complete offload-tier KV events."""
         extra_config = {"existing": "value"}
         vllm_config = SimpleNamespace(
-            cache_config=SimpleNamespace(
-                kv_offloading_size=offload_size,
-                kv_offloading_backend="native",
+            kv_transfer_config=SimpleNamespace(
+                kv_connector=kv_connector, kv_connector_extra_config=extra_config
             ),
-            kv_transfer_config=SimpleNamespace(kv_connector_extra_config=extra_config),
         )
 
         enable_native_kv_offload_events(vllm_config)
 
         assert extra_config == expected
+
+    def test_native_offload_events_without_kv_transfer(self):
+        """No KV connector means no offload tier to describe."""
+        enable_native_kv_offload_events(SimpleNamespace(kv_transfer_config=None))
+
+    def test_storage_tier_events_default_on_for_fs(self):
+        """KV routing turns on STORAGE events for filesystem tiers that don't set
+        enable_kv_events, keeps explicit values, and leaves object-store tiers."""
+        tiers = [
+            {"type": "fs", "root_dir": "/a"},
+            {"type": "fs", "root_dir": "/b", "enable_kv_events": False},
+            {"type": "obj", "bucket": "c"},
+        ]
+        llm_config = make_kv_aware_llm_config(
+            engine_kwargs={
+                "kv_transfer_config": {
+                    "kv_connector": "OffloadingConnector",
+                    "kv_connector_extra_config": {
+                        "spec_name": "TieringOffloadingSpec",
+                        "secondary_tiers": tiers,
+                    },
+                }
+            }
+        )
+        configure_kv_events_for_kv_routing(llm_config)
+
+        extra_config = llm_config.engine_kwargs["kv_transfer_config"][
+            "kv_connector_extra_config"
+        ]
+        assert extra_config["spec_name"] == "TieringOffloadingSpec"
+        assert extra_config["secondary_tiers"] == [
+            {"type": "fs", "root_dir": "/a", "enable_kv_events": True},
+            {"type": "fs", "root_dir": "/b", "enable_kv_events": False},
+            {"type": "obj", "bucket": "c"},
+        ]
+        # The caller's tier dicts are not mutated.
+        assert "enable_kv_events" not in tiers[0]
+
+    def test_storage_tier_defaults_skip_non_kv_aware(self):
+        """Without KVAwareRouter, filesystem tiers keep the user's settings."""
+        tiers = [{"type": "fs", "root_dir": "/a"}]
+        llm_config = make_kv_aware_llm_config(
+            engine_kwargs={
+                "kv_transfer_config": {
+                    "kv_connector": "OffloadingConnector",
+                    "kv_connector_extra_config": {
+                        "spec_name": "TieringOffloadingSpec",
+                        "secondary_tiers": tiers,
+                    },
+                }
+            }
+        )
+        llm_config.deployment_config["request_router_config"][
+            "request_router_class"
+        ] = "ray.serve.experimental.consistent_hash_router:ConsistentHashRouter"
+
+        _maybe_setup_kv_aware_routing(llm_config.deployment_config, llm_config)
+
+        assert llm_config.engine_kwargs["kv_transfer_config"][
+            "kv_connector_extra_config"
+        ]["secondary_tiers"] == [{"type": "fs", "root_dir": "/a"}]
+
+    def test_storage_tier_defaults_ignore_malformed_tiers(self):
+        """Non-dict tier entries are left for vLLM's validation to report."""
+        llm_config = make_kv_aware_llm_config(
+            engine_kwargs={
+                "kv_transfer_config": {
+                    "kv_connector": "OffloadingConnector",
+                    "kv_connector_extra_config": {
+                        "spec_name": "TieringOffloadingSpec",
+                        "secondary_tiers": ["fs", {"type": "fs", "root_dir": "/a"}],
+                    },
+                }
+            }
+        )
+        configure_kv_events_for_kv_routing(llm_config)
+        assert llm_config.engine_kwargs["kv_transfer_config"][
+            "kv_connector_extra_config"
+        ]["secondary_tiers"] == [
+            "fs",
+            {"type": "fs", "root_dir": "/a", "enable_kv_events": True},
+        ]
+
+    @pytest.mark.parametrize(
+        "engine_kwargs",
+        [
+            _tiering_kwargs([{"type": "fs"}], spec_name=None),
+            _tiering_kwargs([{"type": "fs"}], kv_connector="LMCacheConnectorV1"),
+            _tiering_kwargs({"type": "fs"}),
+            {
+                "kv_transfer_config": {
+                    "kv_connector": "OffloadingConnector",
+                    "kv_connector_extra_config": "{}",
+                }
+            },
+        ],
+    )
+    def test_storage_tier_defaults_skip_non_tiering_configs(self, engine_kwargs):
+        """Tiers are only defaulted for TieringOffloadingSpec; other connectors,
+        specs, and malformed configs are left as given."""
+        llm_config = make_kv_aware_llm_config(
+            engine_kwargs=copy.deepcopy(engine_kwargs)
+        )
+        configure_kv_events_for_kv_routing(llm_config)
+        assert (
+            llm_config.engine_kwargs["kv_transfer_config"]
+            == engine_kwargs["kv_transfer_config"]
+        )
 
     @pytest.mark.parametrize(
         "engine_kwargs, local_rank, expected_port, expected_replay_port",
