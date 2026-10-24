@@ -118,6 +118,111 @@ def test_pandas_to_arrow_var_shape_tensor_conversion():
         np.testing.assert_array_equal(actual, expected)
 
 
+def _assert_null_row_is_missing(column, row0, row2):
+    """Row 1 is missing, and the rows around it keep their own values.
+
+    Checks both halves of the contract: ``to_numpy`` yields ``None`` for the
+    null row rather than another row's bytes, and the Arrow->pandas path
+    refuses the column outright instead of building an unusable TensorArray.
+    """
+    result = column.to_numpy(zero_copy_only=False)
+    assert len(result) == 3
+    assert result[1] is None
+    np.testing.assert_array_equal(result[0], row0)
+    np.testing.assert_array_equal(result[2], row2)
+
+    # Arrow -> pandas (powers Dataset.to_pandas()). TensorArray has no null
+    # representation, so this must raise rather than return a TensorArray that
+    # reports TensorDtype(shape=(), dtype=object) and can't convert back.
+    with pytest.raises(ValueError, match="no null representation"):
+        column.type.to_pandas_dtype().__from_arrow__(column)
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.int64, np.bool_])
+def test_tensor_array_to_numpy_null_rows(tensor_format_context, dtype):
+    """Null rows must come back as missing, not another row's bytes (issue #67200).
+
+    A null row (e.g. an unmatched row after a left outer join) used to make
+    ``to_numpy`` read past/into the data buffer: a variable-shaped column
+    returned another row's value or raised ``Use () not None as shape
+    arguments`` on NumPy >= 2.3, and a fixed-shape column raised ``buffer is too
+    small for requested array``. Both should now surface the null row as
+    ``None``, matching ``take_all()`` and plain list columns.
+
+    Scoped to Ray's own extension types (V1/V2); PyArrow's native
+    FixedShapeTensorArray is out of scope for this fix.
+    """
+    tensor_format = tensor_format_context
+    # Row 1 is null in both columns.
+    indices = pa.array([0, None, 1])
+
+    if tensor_format != FixedShapeTensorFormat.ARROW_NATIVE:
+        fixed_rows = np.array([[10, 11], [20, 21]], dtype=dtype)
+        fixed = ArrowTensorArray.from_numpy(fixed_rows).take(indices)
+        _assert_null_row_is_missing(fixed, fixed_rows[0], fixed_rows[1])
+
+    ragged_rows = [
+        np.array([[10, 11], [12, 13]], dtype=dtype),
+        np.array([[20, 21, 22]], dtype=dtype),
+    ]
+    ragged = ArrowVariableShapedTensorArray.from_numpy(ragged_rows).take(indices)
+    _assert_null_row_is_missing(ragged, ragged_rows[0], ragged_rows[1])
+
+    # take() then slice() keeps the null row aligned with its own offset.
+    sliced = ArrowVariableShapedTensorArray.from_numpy(ragged_rows).take(
+        pa.array([0, 0, None, 1])
+    )[1:]
+    sliced_result = sliced.to_numpy(zero_copy_only=False)
+    assert len(sliced_result) == 3
+    assert sliced_result[1] is None
+    np.testing.assert_array_equal(sliced_result[0], ragged_rows[0])
+    np.testing.assert_array_equal(sliced_result[2], ragged_rows[1])
+
+
+def test_variable_shaped_tensor_array_to_numpy_child_null_rows():
+    """A null in only the ``data`` or ``shape`` child still reads as missing.
+
+    A struct's children don't inherit its validity bitmap, so a row that's null
+    in one child only leaves a valid-looking shape whose offsets address another
+    row's bytes. Gating on the struct's own ``null_count`` misses it and returns
+    that other row's data with no error at all. ``take()`` and joins null every
+    level, so this shows up for arrays built elsewhere.
+    """
+    rows = [
+        np.array([[10.0, 11.0], [12.0, 13.0]]),
+        np.array([[20.0, 21.0, 22.0]]),
+        np.array([[30.0, 31.0]]),
+    ]
+    base = ArrowVariableShapedTensorArray.from_numpy(rows)
+
+    for null_child in ("data", "shape"):
+        children = {
+            "data": base.storage.field("data"),
+            "shape": base.storage.field("shape"),
+        }
+        child = children[null_child]
+        children[null_child] = pa.array(
+            [child[0].as_py(), None, child[2].as_py()], type=child.type
+        )
+        storage = pa.StructArray.from_arrays(
+            [children["data"], children["shape"]], ["data", "shape"]
+        )
+        column = pa.ExtensionArray.from_storage(base.type, storage)
+        # The struct itself is valid; only the child carries the null.
+        assert column.null_count == 0
+
+        result = column.to_numpy(zero_copy_only=False)
+        assert result[1] is None, f"{null_child}-child null leaked another row"
+        np.testing.assert_array_equal(result[0], rows[0])
+        np.testing.assert_array_equal(result[2], rows[2])
+
+        # The pandas path has to refuse this column too. It can't go by
+        # null_count, which is 0 here, so a child-level null would otherwise
+        # reach TensorArray and fail with an unhelpful TypeError.
+        with pytest.raises(ValueError, match="no null representation"):
+            column.type.to_pandas_dtype().__from_arrow__(column)
+
+
 def test_arrow_scalar_tensor_array_roundtrip(tensor_format_context):
     tensor_format = tensor_format_context
 
@@ -1670,23 +1775,31 @@ def test_to_dense_numpy_or_none_declines_null_rows(level):
     assert _with_null_row(arr, level)._to_dense_numpy_or_none() is None
 
 
-def test_variable_shaped_null_rows_to_pandas_unchanged():
-    """Declining leaves a null-bearing column converting exactly as it did.
+def test_variable_shaped_null_rows_to_pandas_rejected():
+    """A null-bearing column is refused by the pandas conversion.
 
-    Pandas has no null tensor to convert one into, so what the old path made of
-    a null row is what this one has to keep making of it.
+    This used to assert the conversion stayed byte-for-byte what it had always
+    been (added with #66122, to show that payload-copy optimization left the
+    null path alone). That baseline was the bug in #67200: the "unchanged"
+    output was another row's bytes, and the assertion held only because both
+    sides of it read through the same broken path.
+
+    Pandas still has no null tensor to convert one into, so the column is now
+    refused with a message pointing at the numpy path, rather than converted
+    into a TensorArray that reports TensorDtype(shape=(), dtype=object) and
+    can't be converted back to Arrow.
     """
     arr = ArrowVariableShapedTensorArray.from_numpy(
         np.arange(12, dtype=np.float32).reshape(3, 4)
     ).take(pa.array([0, None, 2], type=pa.int64()))
     assert arr.null_count > 0
 
-    expected = arr.to_numpy(zero_copy_only=False)
-    actual = _to_pandas(arr).to_numpy()
+    # The numpy path keeps working and reports the null row as missing.
+    values = arr.to_numpy(zero_copy_only=False)
+    assert values[1] is None
 
-    assert len(actual) == len(expected)
-    for actual_row, expected_row in zip(actual, expected):
-        np.testing.assert_array_equal(actual_row, expected_row)
+    with pytest.raises(ValueError, match="no null representation"):
+        _to_pandas(arr)
 
 
 if __name__ == "__main__":

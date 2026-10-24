@@ -432,6 +432,22 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         """
         from ray.data._internal.tensor_extensions.arrow import tensor_array_to_numpy
 
+        # TensorArray has no null representation: a None row forces the backing
+        # ndarray to object dtype, which makes the column report
+        # TensorDtype(shape=(), dtype=object) and makes __arrow_array__ unable
+        # to convert it back. Fail with a usable message rather than hand back a
+        # TensorArray that cannot round trip.
+        null_rows_error = (
+            "Tensor columns containing null rows can't be converted to pandas, "
+            "because TensorArray has no null representation. Read the data with "
+            'batch_format="numpy" instead, which returns null rows as None.'
+        )
+
+        # Checked up front, before the per-chunk conversion below, which can't
+        # concatenate a dense chunk with a chunk that nulls turned ragged.
+        if array.null_count > 0:
+            raise ValueError(null_rows_error)
+
         if isinstance(array, pa.ChunkedArray):
             if array.num_chunks > 1:
                 # TODO(Clark): Remove concat and construct from list with
@@ -452,6 +468,13 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 values = tensor_array_to_numpy(array.chunk(0))
         else:
             values = tensor_array_to_numpy(array)
+
+        # `array.null_count` only counts rows the extension array itself marks
+        # null. A variable-shaped row can instead be null in its `data` or
+        # `shape` child, which to_numpy() reports as None but null_count misses.
+        # Short-circuits on the first None, and only object arrays can hold one.
+        if values.dtype == object and any(value is None for value in values):
+            raise ValueError(null_rows_error)
 
         # For ARROW_NATIVE format (pa.fixed_shape_tensor), to_numpy() flattens the
         # inner tensor dimensions (e.g. shape (3,2,2,2) becomes (3,8)). Stack to collapse the object array into a real numeric array and then reshape to match the dimensions of the tensor from the metadata
