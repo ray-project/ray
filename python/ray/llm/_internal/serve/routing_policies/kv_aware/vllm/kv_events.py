@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import ray
 from ray import serve
@@ -69,13 +69,6 @@ def _tiering_extra_config(engine_kwargs: Dict[str, Any]) -> Optional[Dict[str, A
     return extra_config
 
 
-def _secondary_tiers(engine_kwargs: Dict[str, Any]) -> List[Dict[str, Any]]:
-    extra_config = _tiering_extra_config(engine_kwargs)
-    if extra_config is None:
-        return []
-    return [t for t in extra_config["secondary_tiers"] if isinstance(t, dict)]
-
-
 def _enable_storage_tier_kv_events(llm_config: LLMConfig) -> None:
     """Publish KV events from local filesystem offload tiers.
 
@@ -109,16 +102,6 @@ def _enable_storage_tier_kv_events(llm_config: LLMConfig) -> None:
             **llm_config.engine_kwargs["kv_transfer_config"],
             "kv_connector_extra_config": {**extra_config, "secondary_tiers": tiers},
         }
-    )
-
-
-def publishes_storage_tier_kv_events(llm_config: LLMConfig) -> bool:
-    """Whether a KV-aware deployment publishes ``STORAGE`` events from an
-    offload tier, applying the same filesystem-tier default as
-    ``configure_kv_events_for_kv_routing``."""
-    return any(
-        tier.get("enable_kv_events", tier.get("type") == "fs")
-        for tier in _secondary_tiers(llm_config.engine_kwargs)
     )
 
 

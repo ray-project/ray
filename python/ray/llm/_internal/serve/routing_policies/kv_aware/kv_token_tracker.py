@@ -712,57 +712,6 @@ def get_llm_router_handle():
     return serve.get_deployment_handle(LLM_ROUTER_DEPLOYMENT_NAME, app_name=app_name)
 
 
-# First ai-dynamo release that indexes vLLM ``STORAGE`` KV events on its Disk
-# tier. Earlier releases fall back to the device tier for unknown media, so they
-# would credit disk-resident blocks as if they were in GPU memory.
-MIN_AI_DYNAMO_VERSION_FOR_STORAGE_TIER = "1.5.0"
-
-
-def _check_storage_tier_support(llm_config: "LLMConfig") -> None:
-    """Refuse to route on disk-tier KV events with an ai-dynamo too old to
-    tell them apart from GPU-resident blocks."""
-    from importlib.metadata import PackageNotFoundError, version
-
-    from packaging.version import InvalidVersion, Version
-
-    from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
-        publishes_storage_tier_kv_events,
-    )
-
-    if not publishes_storage_tier_kv_events(llm_config):
-        return
-    # ``dynamo.llm`` ships in ai-dynamo-runtime; images may install it without
-    # the ai-dynamo meta-package, so check it first.
-    for distribution in ("ai-dynamo-runtime", "ai-dynamo"):
-        try:
-            installed = version(distribution)
-            break
-        except PackageNotFoundError:
-            continue
-    else:
-        # Missing ai-dynamo is reported when the selection service is created.
-        return
-    try:
-        too_old = Version(installed) < Version(MIN_AI_DYNAMO_VERSION_FOR_STORAGE_TIER)
-    except InvalidVersion:
-        logger.warning(
-            "Can't parse %s version %r; assuming it indexes disk-tier KV events.",
-            distribution,
-            installed,
-        )
-        return
-    # Pre-releases of 1.5.0 compare lower on purpose: some predate the Disk-tier
-    # mapping (ai-dynamo#11571).
-    if too_old:
-        raise ValueError(
-            f"KV-aware routing with a disk offload tier needs "
-            f"ai-dynamo>={MIN_AI_DYNAMO_VERSION_FOR_STORAGE_TIER}, but "
-            f"{distribution} {installed} is installed. Older releases index the "
-            "tier's STORAGE KV events as GPU-resident blocks. Upgrade ai-dynamo, "
-            "or set enable_kv_events to False on the filesystem tier."
-        )
-
-
 def build_kv_token_tracker(
     llm_config: "LLMConfig", serve_deployment_id: Any
 ) -> "KVTokenTracker":
@@ -770,7 +719,6 @@ def build_kv_token_tracker(
     so the same-process ``KVAwareRouter`` can reach it. Must be called from the
     ingress replica's event loop (the tracker binds a LongPollClient to it).
     """
-    _check_storage_tier_support(llm_config)
     tracker = KVTokenTracker(
         indexer_threads=llm_config.experimental_configs.get(
             KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS

@@ -17,7 +17,6 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     get_kv_event_routing_stats,
     get_prompt_token_routing_stats,
     get_token_channel_endpoints,
-    publishes_storage_tier_kv_events,
     resolve_kv_event_block_size,
     resolve_kv_event_source_endpoint,
 )
@@ -174,7 +173,6 @@ class TestConfigureKvEvents:
         ]
         # The caller's tier dicts are not mutated.
         assert "enable_kv_events" not in tiers[0]
-        assert publishes_storage_tier_kv_events(llm_config)
 
     def test_storage_tier_defaults_skip_non_kv_aware(self):
         """Without KVAwareRouter, filesystem tiers keep the user's settings."""
@@ -220,7 +218,6 @@ class TestConfigureKvEvents:
             "fs",
             {"type": "fs", "root_dir": "/a", "enable_kv_events": True},
         ]
-        assert publishes_storage_tier_kv_events(llm_config)
 
     @pytest.mark.parametrize(
         "engine_kwargs",
@@ -247,37 +244,6 @@ class TestConfigureKvEvents:
             llm_config.engine_kwargs["kv_transfer_config"]
             == engine_kwargs["kv_transfer_config"]
         )
-
-    @pytest.mark.parametrize(
-        "engine_kwargs, expected",
-        [
-            ({}, False),
-            ({"kv_offloading_backend": "native", "kv_offloading_size": 2.0}, False),
-            (_tiering_kwargs([{"type": "fs", "root_dir": "/a"}]), True),
-            (_tiering_kwargs([{"type": "obj", "bucket": "c"}]), False),
-            # Only TieringOffloadingSpec on OffloadingConnector reads tiers.
-            (_tiering_kwargs([{"type": "fs"}], spec_name="CPUOffloadingSpec"), False),
-            (_tiering_kwargs([{"type": "fs"}], spec_name=None), False),
-            (
-                _tiering_kwargs([{"type": "fs"}], kv_connector="LMCacheConnectorV1"),
-                False,
-            ),
-            # Malformed configs are left for vLLM's validation to report.
-            (
-                {
-                    "kv_transfer_config": {
-                        "kv_connector": "OffloadingConnector",
-                        "kv_connector_extra_config": "{}",
-                    }
-                },
-                False,
-            ),
-            (_tiering_kwargs({"type": "fs", "root_dir": "/a"}), False),
-        ],
-    )
-    def test_publishes_storage_tier_kv_events(self, engine_kwargs, expected):
-        llm_config = make_kv_aware_llm_config(engine_kwargs=engine_kwargs)
-        assert publishes_storage_tier_kv_events(llm_config) is expected
 
     @pytest.mark.parametrize(
         "engine_kwargs, local_rank, expected_port, expected_replay_port",

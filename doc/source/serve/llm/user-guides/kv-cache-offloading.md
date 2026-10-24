@@ -35,7 +35,7 @@ All three backends extend KV cache capacity, but their integration with Ray Serv
 | LMCache | `kv_transfer_config`, plus LMCache environment variables | No | Hit-rate panels only |
 | MultiConnector | `kv_transfer_config` | No | Hit-rate panels only |
 
-`KVAwareRouter` indexes the GPU KV cache events that Ray Serve LLM enables on every KV-aware deployment. Tracking blocks in the offloaded tier additionally needs CPU-tier events, which Ray Serve LLM enables only for the *native* backend. The native backend can also add a local disk tier that the router tracks; see {ref}`native-kv-cache-disk-tier`. With LMCache or MultiConnector the router still routes, but scores an offloaded prefix as though it weren't cached.
+`KVAwareRouter` indexes the GPU KV cache events that Ray Serve LLM enables on every KV-aware deployment. Tracking blocks in the offloaded tier additionally needs CPU-tier events, which Ray Serve LLM enables only for the *native* backend. With LMCache or MultiConnector the router still routes, but scores an offloaded prefix as though it weren't cached.
 
 (native-kv-cache-offloading)=
 ## Offload to CPU memory with native vLLM offloading
@@ -103,49 +103,6 @@ serve run config.yaml
 ```
 :::
 ::::
-
-(native-kv-cache-disk-tier)=
-### Add a local disk tier
-
-The native backend can extend the CPU tier with a filesystem tier through vLLM's `TieringOffloadingSpec`. Offloaded blocks are also written under `root_dir`, so a replica can reload a prefix from disk after it's evicted from CPU memory. When the filesystem tier publishes KV events, `KVAwareRouter` also tracks which prefixes each replica holds on disk and credits them less than CPU-resident prefixes.
-
-Keep `kv_offloading_backend` and `kv_offloading_size` for the CPU tier, and add a `kv_transfer_config` that selects the tiering spec:
-
-```python
-llm_config = LLMConfig(
-    # ...
-    engine_kwargs={
-        "enable_prefix_caching": True,
-        "kv_offloading_backend": "native",
-        "kv_offloading_size": 8,  # GiB of CPU KV cache per replica
-        "kv_transfer_config": {
-            "kv_connector": "OffloadingConnector",
-            "kv_connector_extra_config": {
-                "spec_name": "TieringOffloadingSpec",
-                "secondary_tiers": [
-                    {
-                        "type": "fs",
-                        "root_dir": "/mnt/local-nvme/kv-cache",
-                        "locality": "LOCAL",
-                    }
-                ],
-            },
-        },
-    },
-)
-```
-
-- **`kv_role`**: Ray Serve LLM sets it to `kv_both` when `kv_transfer_config` names `OffloadingConnector` without a role.
-- **`enable_kv_events`**: With `KVAwareRouter`, Ray Serve LLM turns on KV events for filesystem tiers that don't set this key, so the router knows which replica holds each disk-resident prefix. Set it to `False` to keep a tier out of routing decisions. Object-store tiers publish events only when you set it to `True`.
-- **`locality`** describes where the tier's storage lives relative to the replica. The router indexes `LOCAL` and unset events as belonging to the replica, and drops `REMOTE` events because it doesn't index a cache shared across replicas yet. If you turn on events for an object-store tier, set `locality` to `"REMOTE"` unless the store is local to each replica.
-
-Configure the tiers on a top-level `OffloadingConnector`. The router doesn't track tiers of an `OffloadingConnector` nested inside MultiConnector. If you set `VLLM_USE_SIMPLE_KV_OFFLOAD=1` together with `kv_offloading_size`, vLLM uses a different connector and ignores `secondary_tiers`; Ray Serve LLM pins it to `0` for `KVAwareRouter` deployments.
-
-The router needs `ai-dynamo>=1.5.0` to track the disk tier. Earlier versions don't recognize the filesystem tier's `STORAGE` events and index those blocks as if they were in GPU memory. If the deployment publishes disk-tier events and an older `ai-dynamo` is installed, the ingress replica raises an error that names the required version at startup, and the application doesn't become healthy. Because filesystem tiers publish events by default under `KVAwareRouter`, set `enable_kv_events` to `False` on the tier to keep using an older `ai-dynamo`.
-
-The router credits a disk-resident prefix only to the replica that published its KV events. vLLM's filesystem tier doesn't limit its disk usage or publish removal events yet, so monitor the space under `root_dir`, and don't delete files under it while the replica runs: the router keeps crediting deleted blocks until that replica restarts. For the remaining tier options, see the vLLM [KV offloading usage guide](https://docs.vllm.ai/en/stable/features/kv_offloading_usage/).
-
-To change how much cache credit the router gives disk-resident and CPU-resident prefixes, see {ref}`kv-aware-routing-guide`.
 
 ### Combine offloading with a request router
 
