@@ -14,6 +14,7 @@ from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
 from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
     HiveDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import HiveTableMetadata
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import DatasourceCategory
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
@@ -64,7 +65,7 @@ def test_indexer_honors_excluded_read_units_without_hive_io(monkeypatch, exclude
     def unexpected_io(*args):
         pytest.fail("Listing must not connect to HiveServer2")
 
-    monkeypatch.setattr(hive_datasource_v2, "infer_table_schema", unexpected_io)
+    monkeypatch.setattr(hive_datasource_v2, "infer_table_metadata", unexpected_io)
     monkeypatch.setattr(hive_datasource_v2, "read_hs2_batches", unexpected_io)
     datasource = HiveDatasourceV2(_query_spec())
     indexer = datasource._get_file_indexer()
@@ -81,7 +82,7 @@ def test_indexer_honors_excluded_read_units_without_hive_io(monkeypatch, exclude
 def test_query_schema_does_not_request_table_metadata(monkeypatch):
     monkeypatch.setattr(
         hive_datasource_v2,
-        "infer_table_schema",
+        "infer_table_metadata",
         lambda _: pytest.fail("Query reads must use their explicit schema"),
     )
     spec = _query_spec()
@@ -94,8 +95,9 @@ def test_table_schema_uses_hive_metadata(monkeypatch):
     calls = []
     monkeypatch.setattr(
         hive_datasource_v2,
-        "infer_table_schema",
-        lambda actual_spec: calls.append(actual_spec) or expected,
+        "infer_table_metadata",
+        lambda actual_spec: calls.append(actual_spec)
+        or HiveTableMetadata(expected, (("id", "BIGINT"),)),
     )
     assert HiveDatasourceV2(spec).infer_schema(None) == expected
     assert calls == [spec]

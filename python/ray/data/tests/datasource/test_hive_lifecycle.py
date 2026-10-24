@@ -1,5 +1,6 @@
 """Check Hive cleanup through actual Ray Dataset consumption."""
 
+import os
 from pathlib import Path
 from typing import Generator, List, Tuple, cast
 
@@ -33,13 +34,18 @@ class Cursor:
 
     def execute(self, statement):
         record("execute")
+        record("sql_limit" if " LIMIT " in statement else "sql_no_limit")
 
     def fetchmany(self, size):
         self.fetch_calls += 1
+        mode = os.environ["HIVE_TEST_READ_MODE"]
         if self.fetch_calls == 1:
             record("first_batch")
+            return [(0,)] if mode == "residual_limit" else [(1,)]
+        if mode == "residual_limit" and self.fetch_calls == 2:
+            record("matching_batch")
             return [(1,)]
-        if os.environ["HIVE_TEST_READ_MODE"] == "complete":
+        if mode == "complete":
             record("eof")
             return []
 
@@ -94,12 +100,43 @@ def _worker_stopped(pid: int) -> bool:
         return True
 
 
-@pytest.mark.parametrize("termination", ["complete", "dataset_limit", "iterator_close"])
 @pytest.mark.parametrize("block_count", [None, 4])
+@pytest.mark.parametrize(
+    "read_mode,termination",
+    [
+        (mode, termination)
+        for mode in ("table", "query")
+        for termination in ("complete", "dataset_limit", "iterator_close")
+    ]
+    + [("table", "residual_limit")],
+)
 def test_hive_dataset_cleanup(
-    tmp_path: Path, termination: str, block_count: int | None, restore_data_context
+    tmp_path: Path,
+    termination: str,
+    block_count: int | None,
+    read_mode: str,
+    restore_data_context,
 ):
+    driver_pid = os.getpid()
+
     def connection_factory():
+        if read_mode == "table" and os.getpid() == driver_pid:
+
+            class MetadataCursor:
+                def get_table_schema(self, table, database):
+                    return [("id", "bigint")]
+
+                def close(self):
+                    pass
+
+            class MetadataConnection:
+                def cursor(self, *, user):
+                    return MetadataCursor()
+
+                def close(self):
+                    pass
+
+            return MetadataConnection()
         from impala.dbapi import connect
 
         return connect()
@@ -131,14 +168,20 @@ def test_hive_dataset_cleanup(
         # Flush the first fetched row before asking the client for more rows.
         context.target_max_block_size = 1
         dataset = ray.data.read_hive(
-            query="SELECT id",
-            schema=pa.schema([("id", pa.int64())]),
+            table="events" if read_mode == "table" else None,
+            query="SELECT id" if read_mode == "query" else None,
+            schema=pa.schema([("id", pa.int64())]) if read_mode == "query" else None,
             connection_factory=connection_factory,
             override_num_blocks=block_count,
         )
         consumed_dataset = dataset
         if termination == "dataset_limit":
             consumed_dataset = dataset.limit(1)
+            assert consumed_dataset.take_all() == [{"id": 1}]
+        elif termination == "residual_limit":
+            from ray.data.expressions import col
+
+            consumed_dataset = dataset.filter(expr=col("id").is_in([1])).limit(1)
             assert consumed_dataset.take_all() == [{"id": 1}]
         elif termination == "complete":
             assert dataset.take_all() == [{"id": 1}]
@@ -178,6 +221,9 @@ def test_hive_dataset_cleanup(
         events = [event for event, _ in records]
         assert events.count("connect") == events.count("execute") == 1
         assert "first_batch" in events
+        if termination == "residual_limit":
+            assert "matching_batch" in events
+            assert "sql_no_limit" in events and "sql_limit" not in events
         assert "gate_timeout" not in events
         assert not release_file.exists()
         executor = consumed_dataset._current_executor
