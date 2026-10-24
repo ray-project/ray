@@ -1212,6 +1212,10 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         ("myfile-{i}.parquet", True),
         # Case 8: Templated filename with UUID already present - should not raise error
         ("myfile_{write_uuid}-{i}.parquet", False),
+        # Case 9: `parquet` in the stem is not a file extension
+        ("contains-parquet-{write_uuid}", False),
+        # Case 10: Same as above with an index template
+        ("contains-parquet-{write_uuid}-{i}", False),
     ],
     ids=[
         "no_uuid_no_ext",
@@ -1222,6 +1226,8 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         "templated_no_uuid_no_ext",
         "templated_no_uuid_with_ext",
         "templated_has_uuid",
+        "contains_parquet_no_ext",
+        "templated_contains_parquet_no_ext",
     ],
 )
 def test_parquet_write_uuid_handling_with_custom_filename_provider(
@@ -1278,6 +1284,7 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
         assert re.search(
             uuid_pattern, written_file
         ), f"File '{written_file}' should contain UUID"
+        assert pathlib.Path(written_file).suffix == ".parquet"
 
         # Verify the content is correct by reading back
         ds_read = ray.data.read_parquet(tmp_path)
