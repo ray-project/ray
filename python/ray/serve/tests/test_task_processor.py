@@ -2,8 +2,10 @@ import json
 import os
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -16,13 +18,42 @@ from ray.serve.task_consumer import (
     task_consumer,
     task_handler,
 )
+from ray.serve.task_processor import CeleryTaskProcessorAdapter
 from ray.tests.conftest import external_redis  # noqa: F401
+
+
+@pytest.mark.parametrize("worker_stops", [False, True])
+def test_stop_consumer_only_clears_stopped_worker_thread(worker_stops):
+    adapter = CeleryTaskProcessorAdapter.__new__(CeleryTaskProcessorAdapter)
+    adapter._app = MagicMock()
+    adapter._worker_hostname = "test-worker"
+    adapter._worker_thread = MagicMock()
+    adapter._worker_thread.is_alive.side_effect = [True, not worker_stops]
+
+    worker_thread = adapter._worker_thread
+    adapter.stop_consumer(timeout=123.0)
+
+    adapter._app.control.broadcast.assert_called_once_with(
+        "shutdown", destination=["celery@test-worker"]
+    )
+    worker_thread.join.assert_called_once_with(timeout=123.0)
+    if worker_stops:
+        assert adapter._worker_thread is None
+    else:
+        assert adapter._worker_thread is worker_thread
 
 
 @ray.remote
 class ProcessedTasksTracker:
     def __init__(self):
         self.processed_tasks = set()
+        self.consumer_actor = None
+
+    def set_consumer_actor(self, actor):
+        self.consumer_actor = actor
+
+    def get_consumer_actor(self):
+        return self.consumer_actor
 
     def add_task(self, task_data):
         self.processed_tasks.add(task_data)
@@ -151,6 +182,99 @@ def _get_task_counts_by_routing_key(queue_path):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithRayServe:
     """Test task consumer integration with Ray Serve."""
+
+    @pytest.mark.parametrize(
+        "release_after_s,shutdown_budget_s",
+        [
+            pytest.param(15, 60, id="beyond-default-timeout"),
+            pytest.param(1, 60, id="finishes-before-budget"),
+            pytest.param(None, 5, id="exceeds-budget"),
+        ],
+    )
+    def test_task_consumer_graceful_shutdown_budget(
+        self,
+        serve_instance,
+        create_processor_config,
+        release_after_s,
+        shutdown_budget_s,
+    ):
+        tracker = ProcessedTasksTracker.remote()
+        signal = SignalActor.remote()
+        shutdown_started = SignalActor.remote()
+
+        class ObservedAdapter(CeleryTaskProcessorAdapter):
+            def stop_consumer(self, timeout=10.0):
+                # Observe the actual consumer stop phase, rather than assuming
+                # the controller has started it when serve.delete() returns.
+                ray.get(shutdown_started.send.remote())
+                super().stop_consumer(timeout=timeout)
+
+        processor_config = create_processor_config(adapter=ObservedAdapter)
+
+        @serve.deployment(
+            max_ongoing_requests=1,
+            graceful_shutdown_wait_loop_s=0.1,
+            graceful_shutdown_timeout_s=shutdown_budget_s,
+        )
+        @task_consumer(task_processor_config=processor_config)
+        class Consumer:
+            def __init__(self):
+                ray.get(
+                    tracker.set_consumer_actor.remote(
+                        ray.get_runtime_context().current_actor
+                    )
+                )
+
+            @task_handler(name="process_request")
+            def process_request(self, data):
+                ray.get(signal.wait.remote())
+                ray.get(tracker.add_task.remote(data))
+
+        app_name = "shutdown-budget-test"
+        try:
+            serve.run(Consumer.bind(), name=app_name)
+            actor = ray.get(tracker.get_consumer_actor.remote())
+            ray.get(send_request_to_queue.remote(processor_config, "completed"))
+            wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+            shutdown_requested_at = time.monotonic()
+            serve.delete(app_name, _blocking=False)
+            ray.get(shutdown_started.wait.remote(), timeout=30)
+            consumer_stop_observed_at = time.monotonic()
+
+            if release_after_s is not None:
+                time.sleep(release_after_s)
+                ray.get(signal.send.remote())
+
+            wait_for_condition(
+                lambda: app_name not in serve.status().applications,
+                timeout=shutdown_budget_s + 20,
+                retry_interval_ms=100,
+            )
+            shutdown_finished_at = time.monotonic()
+
+            # Application removal alone is insufficient: confirm that Ray
+            # actually terminated the replica actor, including its task threads.
+            with pytest.raises(ray.exceptions.ActorDiedError):
+                ray.get(actor.__ray_ready__.remote(), timeout=10)
+
+            completed = ray.get(tracker.get_count.remote())
+            elapsed_since_request = shutdown_finished_at - shutdown_requested_at
+            elapsed_since_stop = shutdown_finished_at - consumer_stop_observed_at
+            if release_after_s is None:
+                assert completed == 0
+                # Allow controller scheduling/polling overhead, but reject an
+                # immediate exit or an unbounded wait on the blocked task.
+                assert shutdown_budget_s - 1 <= elapsed_since_request
+                assert elapsed_since_request < shutdown_budget_s + 15
+            else:
+                assert completed == 1
+                assert elapsed_since_stop >= release_after_s
+                # A completed task must not consume the entire 60-second budget.
+                assert elapsed_since_stop < shutdown_budget_s / 2
+        finally:
+            ray.get(signal.send.remote())
+            serve.delete(app_name)
 
     def test_task_consumer_as_serve_deployment(
         self, temp_queue_directory, serve_instance, create_processor_config
