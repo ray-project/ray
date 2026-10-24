@@ -263,6 +263,8 @@ class ObjectManager : public ObjectManagerInterface,
   std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
       const NodeID &node_id) const override;
 
+  WorkerID GetLocalObjectProducerWorkerId(const ObjectID &object_id) const override;
+
   /// Returns debug string for class.
   ///
   /// \return string.

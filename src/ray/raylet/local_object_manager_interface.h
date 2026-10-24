@@ -34,7 +34,8 @@ class LocalObjectManagerInterface {
   virtual void PinObjectsAndWaitForFree(const std::vector<ObjectID> &,
                                         std::vector<std::unique_ptr<RayObject>> &&,
                                         const rpc::Address &,
-                                        const ObjectID & = ObjectID::Nil()) = 0;
+                                        const ObjectID & = ObjectID::Nil(),
+                                        const WorkerID & = WorkerID::Nil()) = 0;
 
   virtual void SpillObjectUptoMaxThroughput() = 0;
 
@@ -78,6 +79,10 @@ class LocalObjectManagerInterface {
 
   virtual std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
       const NodeID &node_id) const = 0;
+
+  /// The producer worker recorded when the object was pinned, or Nil if the object
+  /// isn't pinned here or was pinned without one.
+  virtual WorkerID GetProducerWorkerId(const ObjectID &object_id) const = 0;
 
   virtual std::string DebugString() const = 0;
 };

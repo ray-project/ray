@@ -199,6 +199,9 @@ message PinObjectIDsRequest {
   // so that we can notify the owner about the nested ObjectRefs, in case the
   // owner does not know about them yet.
   optional bytes generator_id = 3;
+  // ID of the worker that created the objects, if its actor defines
+  // `__on_object_freed__`. Unset otherwise.
+  optional bytes producer_worker_id = 4;
 }
 
 message PinObjectIDsReply {

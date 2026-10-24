@@ -224,6 +224,10 @@ struct ObjectInfo {
   int owner_port;
   /// Owner's worker ID.
   WorkerID owner_worker_id;
+  /// ID of the worker that created the object, if its actor defines
+  /// `__on_object_freed__`. Nil otherwise, including for copies received from
+  /// other nodes and copies restored from spilled files.
+  WorkerID producer_worker_id;
 
   int64_t GetObjectSize() const {
     return data_size + metadata_size + (is_mutable ? sizeof(PlasmaObjectHeader) : 0);
@@ -235,7 +239,8 @@ struct ObjectInfo {
             (owner_node_id == other.owner_node_id) &&
             (owner_ip_address == other.owner_ip_address) &&
             (owner_port == other.owner_port) &&
-            (owner_worker_id == other.owner_worker_id));
+            (owner_worker_id == other.owner_worker_id) &&
+            (producer_worker_id == other.producer_worker_id));
   }
 };
 
