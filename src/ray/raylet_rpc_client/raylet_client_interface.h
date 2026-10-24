@@ -46,10 +46,13 @@ class BundleSpecification;
 class RayletClientInterface {
  public:
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
+  /// `producer_worker_id` is the ID of the worker that created the objects if its actor
+  /// defines `__on_object_freed__`, else Nil.
   virtual void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
       const ObjectID &generator_id,
+      const WorkerID &producer_worker_id,
       const rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   /// Requests a worker from the raylet. The callback will be sent via gRPC.

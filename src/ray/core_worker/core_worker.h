@@ -313,6 +313,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   }
 
   /**
+   * The producer ID to record on the plasma objects this worker creates: its own ID if
+   * its actor defines the `__on_object_freed__` hook, else Nil.
+   */
+  WorkerID ProducerFreedCallbackWorkerId() const {
+    return producer_freed_callback_enabled_ ? GetWorkerID() : WorkerID::Nil();
+  }
+
+  /**
    * Run the actor's `__on_object_freed__` hook for an object it created, in the hook's
    * concurrency group. Returns right away; does nothing if the actor has no hook.
    *
@@ -675,6 +683,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] object_id Object ID specified by the user.
   /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data Buffer for the user to write the object into.
+  /// \param[in] created_by_worker Whether this worker creates the object, as opposed to
+  /// restoring it from a spilled file. Only an object the worker creates records it as
+  /// the producer.
   /// \return Status.
   Status CreateExisting(const std::shared_ptr<Buffer> &metadata,
                         const size_t data_size,

@@ -77,14 +77,25 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
       std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion)
       : objects_pending_deletion_(objects_pending_deletion) {}
 
-  void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
-                                std::vector<std::unique_ptr<RayObject>> &&objects,
-                                const rpc::Address &owner_address,
-                                const ObjectID &generator_id = ObjectID::Nil()) override {
+  void PinObjectsAndWaitForFree(
+      const std::vector<ObjectID> &object_ids,
+      std::vector<std::unique_ptr<RayObject>> &&objects,
+      const rpc::Address &owner_address,
+      const ObjectID &generator_id = ObjectID::Nil(),
+      const WorkerID &producer_worker_id = WorkerID::Nil()) override {
     pinned_objects.insert(pinned_objects.end(), object_ids.begin(), object_ids.end());
+    for (const ObjectID &object_id : object_ids) {
+      producer_worker_ids.emplace(object_id, producer_worker_id);
+    }
   }
 
   std::vector<ObjectID> pinned_objects;
+  absl::flat_hash_map<ObjectID, WorkerID> producer_worker_ids;
+
+  WorkerID GetProducerWorkerId(const ObjectID &object_id) const override {
+    auto it = producer_worker_ids.find(object_id);
+    return it == producer_worker_ids.end() ? WorkerID::Nil() : it->second;
+  }
 
   // NOOP
   void SpillObjectUptoMaxThroughput() override {}
@@ -820,6 +831,37 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
   EXPECT_FALSE(failed_pin_reply.successes(0));
 }
 
+TEST_F(NodeManagerTest, TestPinObjectIDsRecordsTheProducer) {
+  rpc::Address owner_addr;
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  const WorkerID producer_worker_id = WorkerID::FromRandom();
+  const ObjectID with_producer = ObjectID::FromRandom();
+  const ObjectID without_producer = ObjectID::FromRandom();
+  for (const ObjectID &id : {with_producer, without_producer}) {
+    RAY_UNUSED(fake_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+
+  rpc::PinObjectIDsRequest request_with_producer;
+  request_with_producer.add_object_ids(with_producer.Binary());
+  request_with_producer.set_producer_worker_id(producer_worker_id.Binary());
+  rpc::PinObjectIDsRequest request_without_producer;
+  request_without_producer.add_object_ids(without_producer.Binary());
+  for (const rpc::PinObjectIDsRequest &request :
+       {request_with_producer, request_without_producer}) {
+    rpc::PinObjectIDsReply reply;
+    node_manager_->HandlePinObjectIDs(
+        request,
+        &reply,
+        [](Status s, std::function<void()> success, std::function<void()> failure) {});
+    ASSERT_TRUE(reply.successes(0));
+  }
+
+  EXPECT_EQ(local_object_manager_->GetProducerWorkerId(with_producer),
+            producer_worker_id);
+  EXPECT_TRUE(local_object_manager_->GetProducerWorkerId(without_producer).IsNil());
+}
+
 TEST_F(NodeManagerTest, TestPinAndReportMovedObject) {
   rpc::Address owner_addr;
   owner_addr.set_worker_id(WorkerID::FromRandom().Binary());
@@ -847,6 +889,8 @@ TEST_F(NodeManagerTest, TestPinAndReportMovedObject) {
   EXPECT_EQ(node_manager_->PinAndReportMovedObject(id, owner_addr), PinResult::kPinned);
   EXPECT_EQ(local_object_manager_->pinned_objects, std::vector<ObjectID>{id});
   EXPECT_EQ(fake_object_directory_->primary_moved_objects, std::vector<ObjectID>{id});
+  // The consumer's pin doesn't record a producer.
+  EXPECT_TRUE(local_object_manager_->GetProducerWorkerId(id).IsNil());
 
   // The object is pending deletion: the pin is refused.
   objects_pending_deletion_->emplace(id);
