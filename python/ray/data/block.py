@@ -476,7 +476,7 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
-    def take(self, indices: List[int]) -> Block:
+    def take(self, indices: Union[List[int], np.ndarray]) -> Block:
         """Return a new block containing the provided row indices.
 
         Args:
