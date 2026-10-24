@@ -690,6 +690,20 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleUnknownWorkerRegistration) {
   ASSERT_FALSE(status.ok());
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, RegisterWorkerWithPid1DoesNotSaveProcessGroup) {
+  // A worker running in a container with its own PID namespace reports its pid in that
+  // namespace, e.g. 1. In the raylet's namespace getpgid(1) is 1 (or 0), and
+  // killpg(1, sig) is kill(-1, sig), so this pgid must never be used for cleanup.
+  PopWorkerStatus status;
+  auto [_, worker_id] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+  auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON);
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, /*pid=*/1, [](Status, int) {}));
+  ASSERT_FALSE(worker->GetSavedProcessGroupId().has_value());
+  worker_pool_->DisconnectWorker(
+      worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_USER_EXIT);
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, StartupPythonWorkerProcessCount) {
   TestStartupWorkerProcessCount(Language::PYTHON, 1);
 }
