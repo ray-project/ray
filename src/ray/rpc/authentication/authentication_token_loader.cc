@@ -25,6 +25,7 @@
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
 #include "openssl/rand.h"
+#include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
@@ -46,16 +47,12 @@
 namespace ray {
 namespace rpc {
 
-// Keep in sync with TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE in
-// python/ray/_private/authentication/authentication_constants.py, so the Python
-// AuthenticationError recognizes the fix text and doesn't append it twice.
-constexpr const char *kNoTokenErrorMessage =
-    "Token authentication is enabled but no authentication token was found. "
-    "To connect to a cluster with token authentication, run `ray get-auth-token` "
-    "on the head node and copy the token to ~/.ray/auth_token on this machine, "
-    "or to a file that RAY_AUTH_TOKEN_PATH points to. If the cluster was started "
-    "with RAY_AUTH_MODE=disabled, set RAY_AUTH_MODE=disabled here too. See "
-    "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information.";
+// Keep in sync with K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE in
+// python/ray/_private/authentication/authentication_constants.py.
+constexpr const char *kK8sTokenAuthRequiresTokenModeErrorMessage =
+    "Kubernetes token authentication (ENABLE_K8S_TOKEN_AUTH) requires "
+    "RAY_AUTH_MODE=token. Set RAY_AUTH_MODE=token, or turn off "
+    "ENABLE_K8S_TOKEN_AUTH to run with auth disabled.";
 
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
@@ -93,6 +90,11 @@ AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
 
 std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
     bool ignore_auth_mode) {
+  // Every Ray process loads its token at startup, so this fails each one. A user
+  // config error, so no RAY_CHECK, whose message calls it a bug in Ray.
+  if (IsK8sTokenAuthEnabled() && GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+    RAY_LOG(FATAL) << kK8sTokenAuthRequiresTokenModeErrorMessage;
+  }
   absl::MutexLock lock(&token_mutex_);
 
   // If k8s token auth is enabled, revoke cached token as Kubelet
@@ -123,7 +125,7 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
 
   // If no token found and auth is enabled, fail with RAY_CHECK
   bool has_token = result.token.has_value() && !result.token->empty();
-  RAY_CHECK(has_token || ignore_auth_mode) << kNoTokenErrorMessage;
+  RAY_CHECK(has_token || ignore_auth_mode) << kTokenAuthErrorMessage;
 
   // Cache and return the loaded token
   if (has_token) {
@@ -172,7 +174,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
     result.token = std::nullopt;
     return result;
   } else if (!has_token) {
-    result.error_message = kNoTokenErrorMessage;
+    result.error_message = kTokenAuthErrorMessage;
     return result;
   }
   // Cache and return success

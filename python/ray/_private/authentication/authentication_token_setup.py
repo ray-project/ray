@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ray._private.authentication.authentication_constants import (
-    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+    TOKEN_AUTH_ERROR_MESSAGE,
 )
 from ray._raylet import (
     AuthenticationMode,
@@ -129,4 +129,4 @@ def ensure_token_if_auth_enabled(
     if create_token_if_missing:
         token_loader.create_token_if_missing()
     elif not token_loader.has_token(ignore_auth_mode=True):
-        raise AuthenticationError(TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE)
+        raise AuthenticationError(TOKEN_AUTH_ERROR_MESSAGE)

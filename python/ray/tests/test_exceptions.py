@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray._private.authentication.authentication_constants import (
-    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+    TOKEN_AUTH_ERROR_MESSAGE,
 )
 from ray.exceptions import AuthenticationError, RayError
 
@@ -36,7 +36,7 @@ class TestAuthenticationError:
         [
             "Token is missing",
             "Token is invalid.",
-            TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+            TOKEN_AUTH_ERROR_MESSAGE,
         ],
         ids=["no_period", "trailing_period", "no_token_message"],
     )
@@ -80,12 +80,9 @@ class TestAuthenticationError:
             else:
                 assert "RAY_AUTH_MODE is currently" not in error_str
 
-    def test_auth_mode_mismatch_omits_token_help(self):
-        """AuthModeMismatch is fixed by opting out, so no 'get a token' help."""
-        message = (
-            "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; "
-            "set it on the client too"
-        )
+    def test_token_auth_error_gets_no_second_fix(self):
+        """The token auth error already names both fixes, so nothing is appended."""
+        message = TOKEN_AUTH_ERROR_MESSAGE
         with patch.dict(
             "sys.modules",
             {

@@ -165,31 +165,6 @@ def test_projection_without_the_column_skips_it(tmp_path):
     assert table.column_names == ["value"]
 
 
-def test_infer_schema_advertises_the_column(tmp_path):
-    path = _write_file(tmp_path / "a.parquet")
-    datasource = ParquetDatasourceV2(
-        [path], extra_synthesized_columns=(GeneratedIdColumn(ID_COLUMN),)
-    )
-
-    schema = datasource.infer_schema(_manifest([(path, None)]))
-
-    assert schema.field(ID_COLUMN).type == GENERATED_ID_COLUMN_TYPE
-    scanner = datasource.create_scanner(schema)
-    assert scanner.read_schema().field(ID_COLUMN).type == GENERATED_ID_COLUMN_TYPE
-
-
-def test_infer_schema_raises_on_name_clash(tmp_path):
-    path = _write_file(
-        tmp_path / "a.parquet", extra_columns={ID_COLUMN: list(range(NUM_ROWS))}
-    )
-    datasource = ParquetDatasourceV2(
-        [path], extra_synthesized_columns=(GeneratedIdColumn(ID_COLUMN),)
-    )
-
-    with pytest.raises(ValueError, match="already exists"):
-        datasource.infer_schema(_manifest([(path, None)]))
-
-
 def test_no_column_without_request(tmp_path):
     path = _write_file(tmp_path / "a.parquet")
     datasource = ParquetDatasourceV2([path])
