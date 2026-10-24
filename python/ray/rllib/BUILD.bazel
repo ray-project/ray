@@ -1780,6 +1780,17 @@ py_test(
 
 # IQL
 py_test(
+    name = "test_iql",
+    size = "small",
+    srcs = ["algorithms/iql/tests/test_iql.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_iql_rl_module",
     size = "small",
     srcs = ["algorithms/iql/tests/test_iql_rl_module.py"],
