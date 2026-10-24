@@ -361,7 +361,8 @@ class TaskManager : public TaskManagerInterface {
   std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
                                                    const TaskSpecification &spec,
                                                    const std::string &call_site,
-                                                   int max_retries = 0) override;
+                                                   int max_retries = 0,
+                                                   bool consume_once = false) override;
 
   std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
                                              std::vector<ObjectID> *task_deps) override;
