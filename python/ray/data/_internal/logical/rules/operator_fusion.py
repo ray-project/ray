@@ -33,7 +33,11 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
+from ray.data._internal.logical.interfaces import (
+    HashPartitioning,
+    PhysicalPlan,
+    Rule,
+)
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractMap,
@@ -409,6 +413,8 @@ class FuseOperators(Rule):
             map_transformer=down_op.get_map_transformer(),
             map_task_kwargs=down_op.get_map_task_kwargs(),
             target_max_block_size_override=down_op.target_max_block_size_override,
+            # The map decides what the fused op's output looks like.
+            output_partitioning=down_op.output_partitioning,
         )
         fused_op.set_logical_operators(
             *up_op._logical_operators, *down_op._logical_operators
@@ -852,6 +858,7 @@ def fuse_map_into_shuffle_reduce_op(
     map_transformer: "MapTransformer",
     map_task_kwargs: Dict[str, Any],
     target_max_block_size_override: Optional[int],
+    output_partitioning: Optional[HashPartitioning],
 ) -> Union[ShuffleReduceOp, DiskHashShuffleReduceOp]:
     """Rebuild ``up_op`` to also run ``map_transformer`` in its reduce tasks."""
     common_kwargs: Dict[str, Any] = dict(
@@ -869,6 +876,7 @@ def fuse_map_into_shuffle_reduce_op(
         fused_output_map_target_max_block_size_override=(
             target_max_block_size_override
         ),
+        output_partitioning=output_partitioning,
     )
     if isinstance(up_op, DiskHashShuffleReduceOp):
         return DiskHashShuffleReduceOp(

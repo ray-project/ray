@@ -38,6 +38,7 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_o
     SortShuffleMapOp,
 )
 from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
+from ray.data._internal.logical.interfaces import HashPartitioning
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
@@ -310,6 +311,12 @@ def _plan_hash_shuffle_aggregate_v2(
         name=(
             f"{prefix}HashAggregateReduce(key_columns={key_columns}, "
             f"num_partitions={num_partitions})"
+        ),
+        # The output stays hash-partitioned by the grouping keys, if any.
+        output_partitioning=(
+            HashPartitioning(columns=key_columns, num_partitions=num_partitions)
+            if key_columns
+            else None
         ),
     )
     return reduce_op
