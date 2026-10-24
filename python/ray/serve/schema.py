@@ -1396,6 +1396,14 @@ class ReplicaDetails(ServeActorDetails):
             "state from the running replica actor."
         )
     )
+    multiplexed_model_ids: List[str] = Field(
+        default_factory=list,
+        description=(
+            "IDs of the multiplexed models that are loaded or loading on this "
+            "replica, as last reported to the controller. Empty for "
+            "deployments that don't use model multiplexing."
+        ),
+    )
 
 
 @PublicAPI(stability="alpha")

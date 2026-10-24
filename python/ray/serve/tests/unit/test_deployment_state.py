@@ -26,6 +26,7 @@ from ray.serve._private.common import (
     ReplicaID,
     ReplicaMetricReport,
     ReplicaState,
+    RequestRoutingInfo,
     TargetCapacityDirection,
     TimeStampedValue,
 )
@@ -1072,6 +1073,50 @@ def test_recent_dead_replicas_bounded(mock_deployment_state_manager):
 
     # Buffer is capped at 2 even though three replicas have stopped.
     assert len(ds._recent_dead_replicas) == 2
+
+
+def test_record_multiplexed_model_ids_updates_replica_details(
+    mock_deployment_state_manager,
+):
+    """Model IDs reported by a replica are exposed in its ReplicaDetails."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info()[0])
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    replica_id = ds._replicas.get()[0].replica_id
+    (details,) = ds.list_replica_details()
+    assert details.multiplexed_model_ids == []
+    # Not reported yet, so it is omitted from the user-facing details.
+    assert "multiplexed_model_ids" not in details.model_fields_set
+
+    ds.record_request_routing_info(
+        RequestRoutingInfo(
+            replica_id=replica_id, multiplexed_model_ids=["model-b", "model-a"]
+        )
+    )
+    (details,) = ds.list_replica_details()
+    assert details.replica_id == replica_id.unique_id
+    assert details.multiplexed_model_ids == ["model-a", "model-b"]
+
+    # An evicted model disappears from the details on the next report.
+    ds.record_request_routing_info(
+        RequestRoutingInfo(replica_id=replica_id, multiplexed_model_ids=["model-c"])
+    )
+    (details,) = ds.list_replica_details()
+    assert details.multiplexed_model_ids == ["model-c"]
+
+    # Routing stats alone (no model IDs) leave the recorded IDs unchanged.
+    ds.record_request_routing_info(
+        RequestRoutingInfo(replica_id=replica_id, routing_stats={"key": 1})
+    )
+    (details,) = ds.list_replica_details()
+    assert details.multiplexed_model_ids == ["model-c"]
 
 
 def test_force_kill(mock_deployment_state_manager):
