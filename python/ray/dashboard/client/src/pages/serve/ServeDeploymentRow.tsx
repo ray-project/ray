@@ -28,9 +28,18 @@ export const ServeDeploymentRow = ({
   application: { last_deployed_time_s, name: applicationName },
   showExpandColumn = false,
 }: ServeDeploymentRowProps) => {
-  const { name, status, message, deployment_config, replicas } = deployment;
+  const {
+    name,
+    status,
+    message,
+    deployment_config,
+    target_num_replicas,
+    num_running_replicas_at_target_version,
+  } = deployment;
 
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
+  const readyReplicaCount = num_running_replicas_at_target_version ?? "-";
+  const targetReplicaCount = target_num_replicas ?? "-";
 
   return (
     <React.Fragment>
@@ -75,7 +84,7 @@ export const ServeDeploymentRow = ({
               applicationName,
             )}/${encodeURIComponent(name)}`}
           >
-            {replicas.length}
+            {readyReplicaCount} / {targetReplicaCount}
           </Link>
         </TableCell>
         <TableCell align="center">
