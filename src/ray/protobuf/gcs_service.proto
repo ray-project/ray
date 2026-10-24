@@ -672,6 +672,10 @@ message GcsSubscriberPollRequest {
   /// max_processed_sequence_id if the publisher_id doesn't match.
   /// This usually happens when gcs failover.
   bytes publisher_id = 3;
+  /// Reject an unknown subscriber instead of creating empty subscriber state.
+  /// Clients must register before polling and recover by registering again.
+  /// Rejection returns Ray NotFound, mapped to gRPC ABORTED on the wire.
+  bool require_subscriber = 4;
 }
 
 message GcsSubscriberPollReply {
