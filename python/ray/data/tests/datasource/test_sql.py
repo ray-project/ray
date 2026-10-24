@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 import tempfile
 from typing import Generator
@@ -94,26 +95,36 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
 
 def test_read_sql_single_parallelism_does_not_log_sharding_fallback(
     temp_database: str, caplog):
-    connection = sqlite3.connect(temp_database)
-    connection.execute("CREATE TABLE movie(title, year, score)")
-    connection.execute("INSERT INTO movie VALUES (?, ?, ?)", ("Test Movie", 2024, 8.0))
-    connection.commit()
-    connection.close()
+    logger = logging.getLogger("ray.data._internal.datasource.sql_datasource")
+    logger.addHandler(caplog.handler)
 
-    with caplog.at_level("INFO", logger="ray.data._internal.datasource.sql_datasource"):
-        dataset = ray.data.read_sql(
-            "SELECT * FROM movie",
-            lambda: sqlite3.connect(temp_database),
-            override_num_blocks=1,
-            shard_hash_fn="unicode",
-            shard_keys=["title"],
+    try:
+        connection = sqlite3.connect(temp_database)
+        connection.execute("CREATE TABLE movie(title, year, score)")
+        connection.execute(
+            "INSERT INTO movie VALUES (?, ?, ?)",
+            ("Test Movie", 2024, 8.0),
         )
-        actual_values = dataset.take_all()
+        connection.commit()
+        connection.close()
 
-    assert len(actual_values) == 1
-    assert not any(
-        "Sharding is not supported" in record.message for record in caplog.records
-    )
+        with caplog.at_level("INFO", logger=logger.name):
+            dataset = ray.data.read_sql(
+                "SELECT * FROM movie",
+                lambda: sqlite3.connect(temp_database),
+                override_num_blocks=1,
+                shard_hash_fn="unicode",
+                shard_keys=["title"],
+            )
+            actual_values = dataset.take_all()
+
+        assert len(actual_values) == 1
+        assert not any(
+            "Sharding is not supported" in record.message
+            for record in caplog.records
+        )
+    finally:
+        logger.removeHandler(caplog.handler)
 
 # for mysql test
 @pytest.mark.skip(reason="skip this test because mysql env is not ready")
