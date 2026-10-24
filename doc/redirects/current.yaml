@@ -1,5 +1,10 @@
 schema_version: 1
 redirects:
+- from:
+  - /en/releases-2.36.0/*
+  - /en/releases-2.36.1/*
+  to: /en/latest/:splat
+  type: exact
 - from: /cluster/kubernetes/benchmarks.html
   to: /kuberay/benchmarks/index.html
   type: page

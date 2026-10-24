@@ -135,6 +135,46 @@ When you remove the reference page of a deprecated or end-of-life API that has a
 
 Rules with the default `force: false` fire only on a 404, so they never replace a reference page that still exists. Docs versions that still document the old API, such as older releases, keep serving its page. The redirect takes effect only on versions where the page is gone.
 
+## Retiring a docs version
+
+Retiring a docs version means deactivating it on Read the Docs, which deletes its build output and makes every URL under it return 404. One rule at the top of `current.yaml` sends those URLs to the same path on `/en/latest/`:
+
+```yaml
+- from:
+  - /en/releases-2.36.0/*
+  - /en/releases-2.36.1/*
+  to: /en/latest/:splat
+  type: exact
+```
+
+To retire another version, add its `/en/<slug>/*` path to that rule's `from` list. Don't create a second rule for it. The rule uses the default `force: false`, so it does nothing while the version is active, and you can merge it before anyone deactivates the version.
+
+Keep the rule first in the file. After you deactivate a version, every one of its URLs returns 404, so every version-less `page` rule can fire on it. Read the Docs applies the first rule that matches, and several existing `page` rules point at each other, such as `/rllib/package_ref/*` and `/rllib/api/*`. A pair like that works only while one side exists, so on a deactivated version it sends the reader back and forth in a redirect loop. With the rule first, the request moves to `/en/latest/` before any of those rules can run. `validate` can't catch a misplaced rule, because it doesn't know which versions have pages.
+
+Don't replace the list with a single `/en/releases-*` rule. Read the Docs allows `*` only at the end of a `from` path, so `:splat` would keep the version in the URL and send readers to `/en/latest/2.36.0/...`. That rule would also have to sit first, where it would catch every 404 on releases that are still active.
+
+Before you open the PR, simulate the retirement. Model the version as having no pages after the change:
+
+```bash
+rtd-redirects simulate --file doc/redirects/current.yaml --base upstream/master --head HEAD \
+    --pages-before releases-2.36.0=inv:https://docs.ray.io/en/releases-2.36.0/objects.inv \
+    --pages-after releases-2.36.0=list:/dev/null \
+    --pages latest=inv:https://docs.ray.io/en/latest/objects.inv \
+    --pages master=inv:https://docs.ray.io/en/master/objects.inv \
+    --prefix / --no-rule-sources
+```
+
+Expect regressions only on the retired version, for pages that exist there but not on `latest`, and none on `latest` or `master`. Add rules for the retired pages that matter, and let the others return 404.
+
+Retire the version in this order:
+
+1. Merge the PR that adds the version to the rule.
+1. Wait for the postmerge apply run described in [When merged redirects go live](#when-merged-redirects-go-live), then confirm the version still serves its pages.
+1. Ask a maintainer with Read the Docs admin access to deactivate the version.
+1. Confirm a few of its URLs return `301` to `/en/latest/`.
+
+Deactivation is permanent. It deletes the version's built pages, and reactivating the version only starts a new build, which most older docs versions can no longer complete. Confirm that you want to retire the version before you ask a maintainer to deactivate it. After deactivation, removing the version's line from the rule only makes its URLs return 404, and the version's GitHub release branch is the only remaining source for its docs.
+
 ## Auditing drift
 
 This section is for maintainers with Read the Docs admin access. `rtd-redirects plan --project anyscale-ray --file doc/redirects/current.yaml` shows any difference between this file and the live configuration. An empty plan means no drift. It needs an `RTD_API_TOKEN` with admin access to `anyscale-ray`.
