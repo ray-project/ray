@@ -93,6 +93,49 @@ class Gauge(View):
         return self._description
 
 
+class Counter(View):
+    """Counter representation of opencensus view.
+
+    Recorded values are deltas added to the total; names must end in `_total`.
+    """
+
+    def __init__(self, name, description, unit, tags: List[str]):
+        if _is_invalid_metric_name(name):
+            raise ValueError(
+                f"Invalid metric name: {name}. Metric will be discarded "
+                "and data will not be collected or published. "
+                "Metric names can only contain letters, numbers, _, and :. "
+                "Metric names cannot start with numbers."
+            )
+        if not name.endswith("_total"):
+            raise ValueError(
+                f"Invalid counter name: {name}. Counter names must end in `_total`."
+            )
+        self._measure = measure_module.MeasureFloat(name, description, unit)
+        self._description = description
+        tags = [tag_key_module.TagKey(tag) for tag in tags]
+        self._view = View(
+            name, description, tags, self.measure, aggregation.SumAggregation()
+        )
+
+    @property
+    def measure(self):
+        return self._measure
+
+    @property
+    def view(self):
+        return self._view
+
+    @property
+    def name(self):
+        return self.measure.name
+
+    @property
+    def description(self):
+        return self._description
+
+
+# `gauge` is a `Gauge` (value replaces the last) or a `Counter` (value is a delta).
 Record = namedtuple("Record", ["gauge", "value", "tags"])
 
 

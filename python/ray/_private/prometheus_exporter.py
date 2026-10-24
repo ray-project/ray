@@ -18,7 +18,6 @@ from prometheus_client.core import (
     CounterMetricFamily,
     GaugeMetricFamily,
     HistogramMetricFamily,
-    UnknownMetricFamily,
 )
 
 from ray._private.authentication.http_token_authentication import (
@@ -200,9 +199,11 @@ class Collector(object):
             return
 
         elif isinstance(agg_data, aggregation_data_module.SumAggregationData):
+            # Sum aggregation means a `Counter`. CounterMetricFamily handles the
+            # `_total` suffix; passing a unit would add it to the name.
             metric = metrics_map.get(metric_name)
             if not metric:
-                metric = UnknownMetricFamily(
+                metric = CounterMetricFamily(
                     name=metric_name,
                     documentation=metric_description,
                     labels=label_keys,
