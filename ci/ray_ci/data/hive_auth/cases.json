@@ -1,0 +1,6 @@
+{
+  "G": ["positive_table", "positive_query", "missing_driver", "missing_worker_table", "missing_worker_query", "invalid_driver", "invalid_worker_table", "invalid_worker_query", "service_driver", "service_worker_table", "service_worker_query", "expired_worker_query"],
+  "T": ["positive_table", "positive_query", "ca_driver", "ca_worker_table", "ca_worker_query", "host_driver", "host_worker_table", "host_worker_query", "file_worker_table", "file_worker_query"],
+  "GT": ["positive_table", "positive_query"],
+  "N": ["positive_table", "positive_query"]
+}

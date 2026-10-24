@@ -40,6 +40,7 @@
 ! release_tests spark_on_ray rocksdb_tests redis_tests sandbox_tests
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 ! doc_example
+! hive_auth_integration
 
 # Per-team API reference pages. Editing these can change the documented public
 # API surface, so they must be able to trigger the API-consistency checks
@@ -134,6 +135,38 @@ doc/*.jpeg
 doc/*.gif
 doc/*.webp
 # pass
+;
+
+# Security profiles have their own opt-in tag. Keep these below the prose
+# skip rule and above the broad Data/CI rules (first match wins).
+python/ray/data/_internal/datasource_v2/formats/hive/
+python/ray/data/read_api.py
+python/ray/data/tests/datasource/_hive_test_utils.py
+python/ray/data/tests/datasource/test_hive_auth_integration.py
+ci/docker/data.build.Dockerfile
+@ data hive_auth_integration
+;
+
+ci/ray_ci/data/hive_auth/
+ci/ray_ci/data/run_hive_auth_integration.sh
+ci/ray_ci/tests.env.Dockerfile
+@ tools hive_auth_integration
+;
+
+# Preserve the existing dependency-check tags for inputs actually consumed by
+# this job. Other Python versions and unrelated depsets keep their old routes.
+ci/raydepsets/configs/ci_data.depsets.yaml
+python/deplocks/ci/data-hive-auth-ci_depset_py3.10.lock
+python/deplocks/ci/data-mongo-ci_depset_py3.10.lock
+@ ml tune train serve workflow data core_python dashboard linux_wheels java python_dependencies min_build hive_auth_integration
+;
+
+python/requirements/data/hive-auth.txt
+@ ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build hive_auth_integration
+;
+
+ci/docker/datamongo.build.wanda.yaml
+@ ml tune train data serve core_cpp cpp java core_python doc linux_wheels macos_wheels dashboard tools release_tests hive_auth_integration
 ;
 
 python/ray/air/

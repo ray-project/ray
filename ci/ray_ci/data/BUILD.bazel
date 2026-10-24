@@ -1,0 +1,16 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:ci_require.bzl", "ci_require")
+
+py_test(
+    name = "test_run_hive_auth_integration",
+    size = "small",
+    srcs = ["test_run_hive_auth_integration.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        "//ci/ray_ci/data/hive_auth:runner",
+        ci_require("pytest"),
+    ],
+)
