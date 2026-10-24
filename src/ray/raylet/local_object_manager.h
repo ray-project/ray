@@ -161,6 +161,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// eviction notification.
   bool ObjectPendingDeletion(const ObjectID &object_id) override;
 
+  bool HoldsPrimaryCopy(const ObjectID &object_id) const override;
+
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
   /// TODO(sang): We currently only use 1 IO worker per each call to this method because

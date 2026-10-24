@@ -1491,6 +1491,14 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // Clean up any open ray.get or ray.wait calls that the worker made.
   lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
   lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
+  // A move record normally belongs to a pull, and that pull's cancel erases it.
+  // After a failed pin the record is written again with no pull owning it, to be
+  // picked up by this worker's own fetch of its args. If the worker dies before
+  // that fetch, no pull ever comes and nothing else erases the record. A stale
+  // record is harmful: the next plain pull of the object on this node, such as
+  // the owner's ray.get, would be treated as a move, pinned here and reported to
+  // the owner. So the dead worker's unowned records are erased here.
+  object_manager_.EraseMovePullsRequestedBy(worker->WorkerId());
 
   // Erase any lease metadata.
   if (leased_workers_.contains(worker->GetGrantedLeaseId())) {
@@ -1726,7 +1734,7 @@ void NodeManager::ProcessWaitRequestMessage(
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    AsyncWait(client, refs, /*is_move=*/{});
+    AsyncWait(client, refs);
   }
 
   if (message->num_required_objects() == 0) {
@@ -1793,11 +1801,16 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
-  std::vector<bool> is_move;
   if (message->is_move() != nullptr) {
-    is_move.assign(message->is_move()->begin(), message->is_move()->end());
+    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker != nullptr) {
+      HandleMovedActorCallArgs(
+          worker->WorkerId(),
+          refs,
+          std::vector<bool>(message->is_move()->begin(), message->is_move()->end()));
+    }
   }
-  AsyncWait(client, refs, is_move);
+  AsyncWait(client, refs);
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
@@ -2400,8 +2413,7 @@ void NodeManager::AsyncGet(const std::shared_ptr<ClientConnection> &client,
 }
 
 void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
-                            const std::vector<rpc::ObjectReference> &object_refs,
-                            const std::vector<bool> &is_move) {
+                            const std::vector<rpc::ObjectReference> &object_refs) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
@@ -2412,8 +2424,48 @@ void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
 
   // Start an async request to get or wait for the objects.
   // The objects will be fetched locally unless the get or wait request is canceled.
-  lease_dependency_manager_.StartOrUpdateWaitRequest(
-      worker->WorkerId(), object_refs, is_move);
+  lease_dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
+}
+
+void NodeManager::HandleMovedActorCallArgs(const WorkerID &worker_id,
+                                           const std::vector<rpc::ObjectReference> &refs,
+                                           const std::vector<bool> &is_move) {
+  RAY_CHECK_EQ(is_move.size(), refs.size());
+  for (size_t i = 0; i < refs.size(); i++) {
+    if (!is_move[i]) {
+      continue;
+    }
+    const ObjectID object_id = ObjectRefToId(refs[i]);
+    if (local_object_manager_.HoldsPrimaryCopy(object_id)) {
+      // This node already holds the primary copy; there is nothing to move.
+      continue;
+    }
+    if (lease_dependency_manager_.CheckObjectLocal(object_id)) {
+      const MovedObjectPinResult result =
+          PinAndReportMovedObject(object_id, refs[i].owner_address());
+      if (result == MovedObjectPinResult::kPinned) {
+        // A plain copy was already here, for example from the owner's ray.get on
+        // this node, and is now the primary copy. No pull is needed.
+        continue;
+      }
+      if (result == MovedObjectPinResult::kNotPinnable) {
+        // The owner is dead or the object is being freed, so no copy of it may
+        // be pinned here, and a record would only linger until the worker exits.
+        continue;
+      }
+    }
+    // The object is not here, so the wait started by the caller pulls it, and
+    // the record makes the arriving copy a move.
+    //
+    // Or the copy was here but the pin missed: the store evicted it a moment
+    // ago and its "object deleted" notification is still queued behind us, so
+    // the lease dependency manager still believes it is local and starts no
+    // pull. The worker's own fetch of its args then finds the object missing
+    // and pulls it, and the record makes that pull a move. Until that pull
+    // starts the record belongs to no pull; DisconnectClient erases it if the
+    // worker dies first.
+    object_manager_.MarkMovePull(object_id, worker_id);
+  }
 }
 
 void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &client,
@@ -2489,22 +2541,39 @@ void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
 
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
-  // A received move is pinned as the new primary copy before the lease
-  // dependency manager cancels the wait pull, which owns the move record.
-  if (object_manager_.IsMovePull(object_id)) {
+  // A moved object is pinned as the new primary copy before the call to the
+  // lease dependency manager below. That call cancels the wait pull for the
+  // object, and when it is the last pull, the pull manager drops the plasma
+  // reference it took in PinNewObjectIfNeeded, so the store may evict the copy,
+  // and CancelPull erases the move record. Pinning first uses both while they
+  // still exist.
+  const std::optional<WorkerID> move_requester =
+      object_manager_.GetMovePullRequester(object_id);
+  bool pin_missed = false;
+  if (move_requester.has_value()) {
     rpc::Address owner_address;
     owner_address.set_node_id(object_info.owner_node_id.Binary());
     owner_address.set_ip_address(object_info.owner_ip_address);
     owner_address.set_port(object_info.owner_port);
     owner_address.set_worker_id(object_info.owner_worker_id.Binary());
-    if (PinAndReportMovedObject(object_id, owner_address)) {
-      num_moved_objects_pinned_++;
-    } else {
-      num_moved_objects_pin_failed_++;
-    }
+    pin_missed = PinAndReportMovedObject(object_id, owner_address) ==
+                 MovedObjectPinResult::kNotInStore;
   }
   // Notify the task dependency manager that this object is local.
   const auto ready_lease_ids = lease_dependency_manager_.HandleObjectLocal(object_id);
+  if (pin_missed) {
+    // The pin missed because the copy is no longer in the store. This happens
+    // when the copy was sealed as a plain copy, so nothing held it in the
+    // store, and it was evicted before the pull manager could pin it; the
+    // record was written in between, by a request that saw the pull in flight.
+    // The record is written back only here, after the call above: that call
+    // cancels the wait pull, and with the last pull CancelPull erases the
+    // record, so a record written earlier would be lost. The worker's own fetch
+    // of its args finds the object missing and pulls it again, and the record
+    // makes that pull a move. Until then the record belongs to no pull;
+    // DisconnectClient erases it if the worker dies first.
+    object_manager_.MarkMovePull(object_id, *move_requester);
+  }
   RAY_LOG(DEBUG).WithField(object_id).WithField(self_node_id_)
       << "Object local on node, " << ready_lease_ids.size() << " tasks ready";
   local_lease_manager_.LeasesUnblocked(ready_lease_ids);
@@ -2738,33 +2807,45 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-bool NodeManager::PinAndReportMovedObject(const ObjectID &object_id,
-                                          const rpc::Address &owner_address) {
+NodeManager::MovedObjectPinResult NodeManager::PinAndReportMovedObject(
+    const ObjectID &object_id, const rpc::Address &owner_address) {
+  if (local_object_manager_.HoldsPrimaryCopy(object_id)) {
+    return MovedObjectPinResult::kPinned;
+  }
   if (failed_workers_cache_.contains(WorkerID::FromBinary(owner_address.worker_id())) ||
       failed_nodes_cache_.contains(NodeID::FromBinary(owner_address.node_id()))) {
     RAY_LOG(DEBUG).WithField(object_id)
         << "Not pinning moved object because its owner is dead";
-    return false;
+    num_moved_objects_pin_failed_++;
+    return MovedObjectPinResult::kNotPinnable;
   }
   std::vector<ObjectID> object_ids{object_id};
   std::vector<std::unique_ptr<RayObject>> results;
-  // The received copy still holds the store reference taken when it was created
-  // (ReceiveObjectChunk releases it on the main service, behind this call), so
-  // the store cannot have evicted it: the Get only misses if the store itself is
-  // unreachable.
-  // Regarding the last check, the copy can be pending deletion when the owner died,
-  // or freed the object by hand, while the move was in flight; the raylet is about
-  // to delete it, so it must not be pinned.
+  // The Get misses when the store evicted the copy before this ran. That is
+  // possible only for a copy that was sealed before its move was recorded, for
+  // example one pulled by the owner's ray.get on this node, with the move
+  // request arriving after the seal: a plain seal releases the store reference
+  // at once, whereas the sealing chunk of a recorded move keeps it until after
+  // the store's notification is handled.
   if (!GetObjectsFromPlasma(object_ids, &results) || results.size() != 1 ||
-      results[0] == nullptr || local_object_manager_.ObjectPendingDeletion(object_id)) {
-    RAY_LOG(DEBUG).WithField(object_id)
-        << "Moved object is not in the object store or is being freed";
-    return false;
+      results[0] == nullptr) {
+    RAY_LOG(DEBUG).WithField(object_id) << "Moved object is not in the object store";
+    num_moved_objects_pin_failed_++;
+    return MovedObjectPinResult::kNotInStore;
+  }
+  // The copy can be pending deletion when the owner died, or freed the object
+  // by hand, while the move was in flight; the raylet is about to delete it, so
+  // it must not be pinned.
+  if (local_object_manager_.ObjectPendingDeletion(object_id)) {
+    RAY_LOG(DEBUG).WithField(object_id) << "Not pinning moved object being freed";
+    num_moved_objects_pin_failed_++;
+    return MovedObjectPinResult::kNotPinnable;
   }
   local_object_manager_.PinObjectsAndWaitForFree(
       object_ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
   object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
-  return true;
+  num_moved_objects_pinned_++;
+  return MovedObjectPinResult::kPinned;
 }
 
 void NodeManager::HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
