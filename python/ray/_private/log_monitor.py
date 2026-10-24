@@ -36,6 +36,13 @@ LOG_NAME_UPDATE_INTERVAL_S = float(os.getenv("LOG_NAME_UPDATE_INTERVAL_S", 0.5))
 RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
     os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000)
 )
+# How often to look for log files of dead workers that are no longer being
+# read and move them to logs/old/. Without this, a worker's files are only
+# moved when they happen to be open while the open-file cap is hit, so most
+# dead workers' files stay in logs/ for the life of the node.
+RAY_LOG_MONITOR_DEAD_WORKER_SWEEP_INTERVAL_S = float(
+    os.getenv("RAY_LOG_MONITOR_DEAD_WORKER_SWEEP_INTERVAL_S", 10)
+)
 RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED = int(
     os.getenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", 0)
 )
@@ -221,23 +228,130 @@ class LogMonitor:
                     # The process is not alive any more, so move the log file
                     # out of the log directory so glob.glob will not be slowed
                     # by it.
-                    target = os.path.join(
-                        self.logs_dir, "old", os.path.basename(file_info.filename)
-                    )
-                    try:
-                        shutil.move(file_info.filename, target)
-                    except (IOError, OSError) as e:
-                        if e.errno == errno.ENOENT:
-                            logger.warning(
-                                f"Warning: The file {file_info.filename} was not found."
-                            )
-                        else:
-                            raise e
+                    self._move_to_old_dir(file_info)
 
             if proc_alive:
                 self.closed_file_infos.append(file_info)
 
         self.can_open_more_files = True
+
+    def _move_to_old_dir(self, file_info: LogFileInfo) -> bool:
+        """Move a log file into logs/old/ so it is no longer globbed.
+
+        Args:
+            file_info: The log file to move.
+
+        Returns:
+            True if the file is no longer in the log directory.
+        """
+        target = os.path.join(
+            self.logs_dir, "old", os.path.basename(file_info.filename)
+        )
+        try:
+            shutil.move(file_info.filename, target)
+        except (IOError, OSError) as e:
+            if e.errno == errno.ENOENT:
+                logger.warning(f"Warning: The file {file_info.filename} was not found.")
+                # ENOENT is also raised when logs/old/ is missing, in which case the
+                # file is still here.
+                return not os.path.exists(file_info.filename)
+            else:
+                raise e
+        return True
+
+    def move_dead_worker_files(self):
+        """Move fully read log files of dead workers into logs/old/.
+
+        _close_all_files only checks the files that are open when the open-file
+        cap is reached. A worker that writes a few lines and goes idle has its
+        file closed (or never reopened) while it is still alive, so it is never
+        checked again after it dies. This sweeps both lists instead.
+
+        A file is only moved once everything in it has been published, so no
+        output is lost. A file that still has unread lines is left for the
+        next sweep.
+        """
+        dead_pids = {}
+
+        def is_dead_and_drained(file_info: LogFileInfo) -> bool:
+            pid = file_info.worker_pid
+            if not isinstance(pid, int):
+                # System components (raylet, gcs_server, ...) and unknown files.
+                return False
+            # WORKER_LOG_PATTERN matches the full path, so a temp dir with "worker"
+            # in it can give a system log a PID before its first publish.
+            if not os.path.basename(file_info.filename).startswith(
+                ("worker-", "java-worker-")
+            ):
+                return False
+            if pid not in dead_pids:
+                dead_pids[pid] = not self.is_proc_alive_fn(pid)
+            if not dead_pids[pid]:
+                return False
+            # Check the size after the liveness check: a dead process can't
+            # append any more, so if we have read up to the end, we are done.
+            if file_info.file_handle is not None:
+                # Judge an open file by what its handle can still read, and only
+                # move it if the path still names that file. Otherwise leave it to
+                # reopen_if_necessary() and the next sweep.
+                handle_stat = os.fstat(file_info.file_handle.fileno())
+                try:
+                    path_stat = os.stat(file_info.filename)
+                except (IOError, OSError) as e:
+                    if e.errno == errno.ENOENT:
+                        # Gone from logs/; retire it once the handle is read.
+                        return handle_stat.st_size == file_info.file_position
+                    raise e
+                return (
+                    path_stat.st_ino == handle_stat.st_ino
+                    and path_stat.st_dev == handle_stat.st_dev
+                    and handle_stat.st_size == file_info.file_position
+                )
+            try:
+                size = os.path.getsize(file_info.filename)
+            except (IOError, OSError) as e:
+                if e.errno == errno.ENOENT:
+                    return True
+                raise e
+            if size < file_info.file_position:
+                # Rotated or truncated while closed. Read the new file from the
+                # start before moving it.
+                file_info.file_position = 0
+                file_info.size_when_last_opened = 0
+                return False
+            return size == file_info.file_position
+
+        still_open = []
+        for file_info in self.open_file_infos:
+            if is_dead_and_drained(file_info):
+                file_info.file_handle.close()
+                file_info.file_handle = None
+                if self._move_to_old_dir(file_info):
+                    self.log_filenames.discard(file_info.filename)
+                else:
+                    # Stay tracked so it is not rediscovered and published again.
+                    self.closed_file_infos.append(file_info)
+            else:
+                still_open.append(file_info)
+        if len(still_open) < len(self.open_file_infos):
+            self.can_open_more_files = True
+        self.open_file_infos = still_open
+
+        still_closed = []
+        for file_info in self.closed_file_infos:
+            if is_dead_and_drained(file_info):
+                if self._move_to_old_dir(file_info):
+                    self.log_filenames.discard(file_info.filename)
+                else:
+                    still_closed.append(file_info)
+            else:
+                if dead_pids.get(file_info.worker_pid):
+                    # Dead but not fully read. open_closed_files only reopens a
+                    # file that grew since it was last opened, which a dead
+                    # worker's file never does, so make it eligible again.
+                    file_info.size_when_last_opened = file_info.file_position
+                still_closed.append(file_info)
+        self.closed_file_infos = still_closed
 
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
@@ -490,10 +604,15 @@ class LogMonitor:
         log lines.
         """
         last_updated = time.time()
+        last_swept = time.time()
         while True:
             if self.should_update_filenames(last_updated):
                 self.update_log_filenames()
                 last_updated = time.time()
+
+            if time.time() - last_swept > RAY_LOG_MONITOR_DEAD_WORKER_SWEEP_INTERVAL_S:
+                self.move_dead_worker_files()
+                last_swept = time.time()
 
             self.open_closed_files()
             anything_published = self.check_log_files_and_publish_updates()
