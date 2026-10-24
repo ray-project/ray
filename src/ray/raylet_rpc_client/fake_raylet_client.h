@@ -38,7 +38,12 @@ class FakeRayletClient : public RayletClientInterface {
   void PinObjectIDs(const Address &caller_address,
                     const std::vector<ObjectID> &object_ids,
                     const ObjectID &generator_id,
-                    const ClientCallback<PinObjectIDsReply> &callback) override {}
+                    const WorkerID &producer_worker_id,
+                    const ClientCallback<PinObjectIDsReply> &callback) override {
+    for (const ObjectID &object_id : object_ids) {
+      pinned_producer_worker_ids[object_id] = producer_worker_id;
+    }
+  }
 
   void RequestWorkerLease(
       rpc::RequestWorkerLeaseRequest &&request,
@@ -351,6 +356,8 @@ class FakeRayletClient : public RayletClientInterface {
   int num_commit_requested = 0;
   int num_cancel_local_task_requested = 0;
   int num_free_local_objects_requested = 0;
+  // The producer worker each PinObjectIDs request carried, by object.
+  absl::flat_hash_map<ObjectID, WorkerID> pinned_producer_worker_ids;
   // Object count of each FreeLocalObjects RPC, and the still-pending replies.
   std::vector<int> free_local_objects_batches;
   std::list<ClientCallback<FreeLocalObjectsReply>> free_local_objects_callbacks = {};

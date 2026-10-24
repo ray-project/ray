@@ -115,6 +115,7 @@ class RayletClient : public RayletClientInterface {
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
       const ObjectID &generator_id,
+      const WorkerID &producer_worker_id,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   void ShutdownRaylet(

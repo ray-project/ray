@@ -153,6 +153,8 @@ class PlasmaClientInterface {
   ///
   /// \param object_id The ID to use for the newly created object.
   /// \param owner_address The address of the object's owner.
+  /// \param producer_worker_id The ID of the worker creating the object if its
+  ///        actor defines `__on_object_freed__`, else Nil.
   /// \param data_size The size in bytes of the space to be allocated for this
   /// object's
   ///        data (this does not include space used for metadata).
@@ -171,6 +173,7 @@ class PlasmaClientInterface {
   /// be either sealed or aborted.
   virtual Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                         const ray::rpc::Address &owner_address,
+                                        const WorkerID &producer_worker_id,
                                         bool is_mutable,
                                         int64_t data_size,
                                         const uint8_t *metadata,
@@ -241,6 +244,7 @@ class PlasmaClient : public std::enable_shared_from_this<PlasmaClient>,
 
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                 const ray::rpc::Address &owner_address,
+                                const WorkerID &producer_worker_id,
                                 bool is_experimental_mutable_object,
                                 int64_t data_size,
                                 const uint8_t *metadata,
