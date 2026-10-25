@@ -2106,8 +2106,8 @@ class Replica:
                 if now >= next_log_time:
                     next_log_time = now + GRACEFUL_SHUTDOWN_WAITING_LOG_INTERVAL_S
                     logger.info(
-                        f"Waiting for an additional {wait_loop_period_s}s to shut "
-                        f"down: {num_ongoing_requests} ongoing requests, "
+                        f"Waiting to shut down (checking every {wait_loop_period_s}s): "
+                        f"{num_ongoing_requests} ongoing requests, "
                         f"{max(0.0, min_period_remaining_s):.1f}s minimum draining "
                         f"period remaining."
                     )
