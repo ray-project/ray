@@ -16,13 +16,11 @@ package objectstore
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
-	"github.com/ray-project/ray/go/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,46 +43,13 @@ func newObjectID() *ids.ObjectID {
 
 func TestNewNativeObjectStore(t *testing.T) {
 	lock := &sync.RWMutex{}
-	resolver := func(context.Context, ids.ActorID) (*proto.Address, error) {
-		return &proto.Address{}, nil
-	}
-
-	store := NewNativeObjectStore(lock, resolver)
+	store := NewNativeObjectStore(lock)
 	require.NotNil(t, store)
 	assert.Same(t, lock, store.shutdownLock)
-	assert.NotNil(t, store.resolveActorAddress)
-}
-
-func TestNewNativeObjectStore_NilResolver(t *testing.T) {
-	store := NewNativeObjectStore(&sync.RWMutex{}, nil)
-	require.NotNil(t, store)
-	assert.Nil(t, store.resolveActorAddress)
-}
-
-func TestPutRawWithOwner_NoResolver(t *testing.T) {
-	store := NewNativeObjectStore(&sync.RWMutex{}, nil)
-	ownerActorID := ids.NilActorID()
-
-	_, err := store.PutRawWithOwner(newTestObject("data", "RAW", nil), &ownerActorID)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "actor address resolver not configured")
-}
-
-func TestPutRawWithOwner_ResolverError(t *testing.T) {
-	expectedErr := errors.New("resolve failed")
-	store := NewNativeObjectStore(&sync.RWMutex{}, func(context.Context, ids.ActorID) (*proto.Address, error) {
-		return nil, expectedErr
-	})
-	ownerActorID := ids.NilActorID()
-
-	_, err := store.PutRawWithOwner(newTestObject("data", "RAW", nil), &ownerActorID)
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, expectedErr), "expected error to wrap %v, got %v", expectedErr, err)
-	assert.Contains(t, err.Error(), "failed to resolve actor address")
 }
 
 func TestGetRawWithContext_AlreadyCancelled(t *testing.T) {
-	store := NewNativeObjectStore(&sync.RWMutex{}, nil)
+	store := NewNativeObjectStore(&sync.RWMutex{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -97,7 +62,7 @@ func TestGetRawWithContext_AlreadyCancelled(t *testing.T) {
 // nativeGetView/nativeWait/nativeDelete return early on empty input without
 // touching the C++ runtime, so they can be tested safely.
 func TestNativeGetView_EmptyInput(t *testing.T) {
-	store := NewNativeObjectStore(&sync.RWMutex{}, nil)
+	store := NewNativeObjectStore(&sync.RWMutex{})
 
 	result, err := store.nativeGetView(nil, 1000)
 	require.NoError(t, err)
@@ -105,7 +70,7 @@ func TestNativeGetView_EmptyInput(t *testing.T) {
 }
 
 func TestNativeWait_EmptyInput(t *testing.T) {
-	store := NewNativeObjectStore(&sync.RWMutex{}, nil)
+	store := NewNativeObjectStore(&sync.RWMutex{})
 
 	result, err := store.nativeWait(nil, 0, 1000, false)
 	require.NoError(t, err)
@@ -113,7 +78,7 @@ func TestNativeWait_EmptyInput(t *testing.T) {
 }
 
 func TestNativeDelete_EmptyInput(t *testing.T) {
-	store := NewNativeObjectStore(&sync.RWMutex{}, nil)
+	store := NewNativeObjectStore(&sync.RWMutex{})
 
 	err := store.nativeDelete(nil, false)
 	require.NoError(t, err)

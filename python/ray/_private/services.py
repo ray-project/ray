@@ -29,7 +29,6 @@ from ray._common.network_utils import (
     node_ip_address_from_perspective,
     parse_address,
 )
-from ray._private.ray_constants import ENABLE_GO_LOG_MONITOR
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions, NodeID
@@ -1274,7 +1273,7 @@ def start_log_monitor(
     Returns:
         ProcessInfo for the process that was started.
     """
-    if ENABLE_GO_LOG_MONITOR:
+    if ray_constants.ENABLE_GO_LOG_MONITOR:
         if not cluster_id_hex:
             raise ValueError(
                 "cluster_id_hex is required when Go log monitor is enabled"

@@ -1301,7 +1301,7 @@ def test_start_log_monitor_uses_go_command_when_enabled(monkeypatch):
         launched["command"] = command
         return object()
 
-    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_LOG_MONITOR", True)
     monkeypatch.setattr(
         ray._private.services, "start_ray_process", fake_start_ray_process
     )
@@ -1327,7 +1327,7 @@ def test_start_log_monitor_uses_go_command_over_python(monkeypatch):
         launched["command"] = command
         return object()
 
-    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_LOG_MONITOR", True)
     monkeypatch.setattr(
         ray._private.services, "start_ray_process", fake_start_ray_process
     )
@@ -1354,7 +1354,7 @@ def test_start_log_monitor_passes_cluster_id_to_go_command(monkeypatch):
         return object()
 
     cluster_id_hex = "0123456789abcdef0123456789abcdef0123456789abcdef01234567"
-    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_LOG_MONITOR", True)
     monkeypatch.setattr(
         ray._private.services, "start_ray_process", fake_start_ray_process
     )
@@ -1376,7 +1376,7 @@ def test_start_log_monitor_passes_node_ip_to_go_command(monkeypatch):
         launched["command"] = command
         return object()
 
-    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_LOG_MONITOR", True)
     monkeypatch.setattr(
         ray._private.services, "start_ray_process", fake_start_ray_process
     )
@@ -1393,7 +1393,7 @@ def test_start_log_monitor_passes_node_ip_to_go_command(monkeypatch):
 
 
 def test_start_log_monitor_requires_cluster_id_for_go(monkeypatch):
-    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_LOG_MONITOR", True)
 
     with pytest.raises(ValueError, match="cluster_id_hex is required"):
         ray._private.services.start_log_monitor(

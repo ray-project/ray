@@ -109,12 +109,6 @@ func (l *LocalModeObjectStore) PutRaw(obj *object.NativeRayObject) (*ids.ObjectI
 	return &objectID, nil
 }
 
-// PutRawWithOwner stores the object with the specified owner actor ID.
-// LocalMode does not support owner assignment, so this throws an error.
-func (l *LocalModeObjectStore) PutRawWithOwner(obj *object.NativeRayObject, ownerActorID *ids.ActorID) (*ids.ObjectID, error) {
-	return nil, fmt.Errorf("assigning owner in Ray.put() is not implemented in local mode")
-}
-
 // PutRawWithID stores the object with the specified ObjectID.
 //
 // Uses reference semantics aligned with Java's LocalModeObjectStore: the stored

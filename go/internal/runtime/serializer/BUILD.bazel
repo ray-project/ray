@@ -58,5 +58,8 @@ go_test(
         "type_utils_test.go",
     ],
     embed = [":serializer"],
-    deps = ["//go/pkg/ids"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/object",
+    ],
 )

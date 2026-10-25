@@ -107,13 +107,6 @@ func TestPutRawWithID_PutIfAbsent(t *testing.T) {
 	assert.Equal(t, "first", string(objs[0].Data))
 }
 
-func TestPutRawWithOwner_NotImplemented(t *testing.T) {
-	store := NewLocalModeObjectStore()
-	ownerActorID := ids.NilActorID()
-	_, err := store.PutRawWithOwner(newTestObject("data", "RAW", nil), &ownerActorID)
-	assert.Error(t, err)
-}
-
 func TestGetRaw_ReferenceSemantics(t *testing.T) {
 	store := NewLocalModeObjectStore()
 	id := newObjectID()

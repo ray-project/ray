@@ -131,7 +131,8 @@ __attribute__((weak)) CSerializedObjectArray *GoExecuteTask(
     int args_count,
     int num_returns,
     const char *actor_id_data,
-    int actor_id_size) {
+    int actor_id_size,
+    int *error_code) {
   // Stub: return null to indicate no task execution
   // Tests that need task execution should mock differently
   return nullptr;

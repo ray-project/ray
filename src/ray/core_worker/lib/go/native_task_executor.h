@@ -41,6 +41,13 @@ extern "C" {
 //   num_returns - Number of expected return values
 //   actor_id_data - Binary data of actor ID (for actor tasks, NULL for normal tasks)
 //   actor_id_size - Size of actor ID binary data
+//   error_code - Out parameter for a task execution status code (see
+//     GoTaskErrorCode enum). 0 means the task completed and the returned array
+//     carries the results; a non-zero code maps to a ray::Status and no result
+//     array is returned (callers must treat the results as absent). The Go side
+//     writes a non-zero value so the C++ callback can return the matching
+//     ray::Status (e.g. INTENTIONAL_SYSTEM_EXIT). May be NULL when the caller
+//     only needs results.
 //
 // Returns:
 //   CSerializedObjectArray* containing task execution results, or NULL on failure.
@@ -53,7 +60,8 @@ typedef CSerializedObjectArray *(*GoTaskExecutorCallback)(int language,
                                                           int args_count,
                                                           int num_returns,
                                                           char *actor_id_data,
-                                                          int actor_id_size);
+                                                          int actor_id_size,
+                                                          int *error_code);
 
 // ============================================================================
 // TaskExecutor Functions
@@ -72,6 +80,13 @@ typedef CSerializedObjectArray *(*GoTaskExecutorCallback)(int language,
 //   num_returns - Number of expected return values
 //   actor_id_data - Binary data of actor ID (for actor tasks, NULL for normal tasks)
 //   actor_id_size - Size of actor ID binary data
+//   error_code - Out parameter for a task execution status code (see
+//     GoTaskErrorCode enum). 0 means the task completed and the returned array
+//     carries the results; a non-zero code maps to a ray::Status and no result
+//     array is returned (callers must treat the results as absent). The Go side
+//     writes a non-zero value so the C++ callback can return the matching
+//     ray::Status (e.g. INTENTIONAL_SYSTEM_EXIT). May be NULL when the caller
+//     only needs results.
 //
 // Returns:
 //   CSerializedObjectArray* containing task execution results, or NULL on failure.
@@ -84,7 +99,8 @@ CSerializedObjectArray *GoExecuteTask(int language,
                                       int args_count,
                                       int num_returns,
                                       char *actor_id_data,
-                                      int actor_id_size);
+                                      int actor_id_size,
+                                      int *error_code);
 
 // RegisterGoTaskExecutorCallback registers the Go task executor callback with C++.
 // This is a wrapper function that calls CNativeTaskExecutor_RegisterCallback with

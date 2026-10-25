@@ -94,6 +94,7 @@ go_test(
         "//go/pkg/runtime/submitter",
         "//go/proto",
         "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
         "@com_github_vmihailenco_msgpack_v5//:msgpack",
         "@org_golang_google_protobuf//proto",
     ],

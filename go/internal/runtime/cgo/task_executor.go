@@ -29,7 +29,6 @@ package cgo
 import "C"
 
 import (
-	"encoding/json"
 	"fmt"
 	"runtime"
 	"strings"
@@ -39,6 +38,7 @@ import (
 	"github.com/ray-project/ray/go/internal/errors"
 	"github.com/ray-project/ray/go/internal/proctitle"
 	"github.com/ray-project/ray/go/internal/runtime/actor"
+	rayerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
@@ -203,7 +203,6 @@ func convertGoResultToC(results []function.SerializedObject, err error, numRetur
 	if err != nil {
 		taskExecutorLogger.Error(err, "Task execution failed, serializing error to C++")
 
-		// Serialize the error to JSON
 		// Check if error is already TaskExecutionError, otherwise wrap it
 		var rayErr *errors.TaskExecutionError
 		if taskErr, ok := err.(*errors.TaskExecutionError); ok {
@@ -218,12 +217,31 @@ func convertGoResultToC(results []function.SerializedObject, err error, numRetur
 			)
 		}
 
-		// Serialize error to JSON bytes using ToSerializedForm() method
-		serializedErr, marshalErr := json.Marshal(rayErr.ToSerializedForm())
-		if marshalErr != nil {
-			taskExecutorLogger.Error(marshalErr, "Failed to serialize error, using fallback")
-			// Fallback: serialize error message as string
-			serializedErr = []byte(fmt.Sprintf(`{"error_type":"RayTaskException","error_message":"%s"}`, err.Error()))
+		// Serialize the error under the cross-language numeric convention:
+		// metadata is the decimal rpc::ErrorType and the payload is a
+		// msgpack-wrapped RayException protobuf, which Python's integer
+		// error parse reads natively. The previous JSON convention
+		// ({"type":"error"} metadata) was unreadable to Python; the Go
+		// reader keeps accepting it for objects written before this change
+		// (see ErrorObjectFromNative in go/pkg/runtime/object).
+		//
+		// Spec 3.1 requires FormattedExceptionString to carry both the error
+		// string and its stack trace, so append the stack the JSON convention
+		// used to carry (TaskExecutionError.StackTrace) on a new line.
+		msg := rayErr.Error()
+		if stack := rayErr.StackTrace(); stack != "" {
+			msg += "\n" + stack
+		}
+		errorData, dataErr := object.MarshalTaskExecutionErrorData(msg)
+		if dataErr != nil {
+			taskExecutorLogger.Error(dataErr, "Failed to marshal task error payload, using fallback message")
+			errorData, dataErr = object.MarshalTaskExecutionErrorData("task execution failed: " + err.Error())
+			if dataErr != nil {
+				// The payload builder cannot fail on a plain string; if it
+				// ever does, return null so C++ surfaces the failure through
+				// its own error path rather than emitting a malformed object.
+				return nil
+			}
 		}
 
 		// Create error objects for all return values
@@ -231,8 +249,8 @@ func convertGoResultToC(results []function.SerializedObject, err error, numRetur
 		errorResults := make([]function.SerializedObject, numReturns)
 		for i := 0; i < numReturns; i++ {
 			errorResults[i] = function.SerializedObject{
-				Data:     serializedErr,
-				Metadata: []byte(`{"type":"error"}`),
+				Data:     errorData,
+				Metadata: object.TaskExecutionErrorMetadata(),
 			}
 		}
 		if numReturns == 0 {
@@ -403,6 +421,10 @@ var cgoMemoryStats struct {
 //   - num_returns: Number of expected return values
 //   - actor_id_data: Binary data of actor ID (for actor tasks, NULL for normal tasks)
 //   - actor_id_size: Size of actor ID binary data
+//   - error_code: Out parameter for a task execution status code (0 = success).
+//     The Go side writes GO_TASK_ERROR_INTENTIONAL_SYSTEM_EXIT when the task
+//     raised an intentional actor exit, so C++ returns Status::IntentionalSystemExit
+//     (mirroring how the Java worker throws RayIntentionalSystemExitException).
 //
 // Returns:
 //   - *C.CSerializedObjectArray containing task execution results, or serialized error
@@ -419,6 +441,7 @@ func GoExecuteTask(
 	numReturns C.int,
 	actorIDData *C.char,
 	actorIDSize C.int,
+	errorCode *C.int,
 ) (cResult *C.CSerializedObjectArray) {
 	var funcDescList []string
 	defer func() {
@@ -521,6 +544,21 @@ func GoExecuteTask(
 		int(numReturns),
 		actorID,
 	)
+
+	// An actor-exit error is not a task failure: it drives CoreWorker::ExecuteTask's
+	// Exit(INTENDED_USER_EXIT) path and marks the worker exiting without treating
+	// the actor as failed, mirroring how the Java worker throws
+	// RayIntentionalSystemExitException. The exit is carried through the
+	// error_code out parameter instead of being serialized into a result object.
+	if err != nil && rayerrors.IsActorExitError(err) {
+		if errorCode != nil {
+			*errorCode = C.int(C.GO_TASK_ERROR_INTENTIONAL_SYSTEM_EXIT)
+		}
+		taskExecutorLogger.Info("task raised intentional actor exit",
+			"taskType", taskType, "error", err.Error())
+		// Return nil results: the actor is exiting, there is nothing to deliver.
+		return nil
+	}
 
 	// Convert result to C format
 	cResult = convertGoResultToC(results, err, int(numReturns))

@@ -4,11 +4,11 @@ Cross-language Python -> Go end-to-end test (extended from the former
 test_python_call_go_simple.py).
 
 Covers two call forms of Python -> Go:
-  Part A: stateless remote functions (go_function) — goAdd/goMultiply/goConcat/goCompute
+  Part A: stateless remote functions (go_function) - goAdd/goMultiply/goConcat/goCompute
           plus concurrent calls (originally test_python_call_go_simple.py).
   Part B: Go actor created and driven from Python (the fourth cross-language
           scenario), in particular a logically-void
-          method (Counter.Void) — the cross-language void regression
+          method (Counter.Void) - the cross-language void regression
           (added in this change).
 
 Regression target (Part B): a cross-language actor method call defaults to
@@ -23,7 +23,7 @@ XLANG metadata) and ray.get returns None.
 
 NOTE: this lane runs against a real cluster (cluster mode). Ray's
 `ray.init(local_mode=True)` entry is removed in Ray 2.56 (it raises
-RuntimeError), and the padding under test is the cluster worker's — a
+RuntimeError), and the padding under test is the cluster worker's - a
 same-process runner would not exercise it either way.
 
 Prerequisites:

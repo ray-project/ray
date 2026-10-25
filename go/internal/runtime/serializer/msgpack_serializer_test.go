@@ -17,8 +17,10 @@ package serializer
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/ray-project/ray/go/pkg/runtime/object"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -195,6 +197,40 @@ func TestEncodeToBufferWithHeader(t *testing.T) {
 	// num may be encoded as different integer type, just check it exists
 	if _, exists := resultMap["num"]; !exists {
 		t.Error("Expected 'num' key in result")
+	}
+}
+
+// TestErrorLengthHeaderMatchesCanonical is the cross-package drift guard for
+// the 9-byte cross-language length header. The header embedded in a Go
+// task-error payload by object.MarshalTaskExecutionErrorData must byte-equal
+// what this package's canonical encodeLengthHeader produces for the same
+// payload-section length. The object package keeps its own copy of the format
+// (this package's helper is unexported and the package is internal), so this
+// test is what actually detects divergence - object's own header test only
+// re-encodes with its own encoder and cannot see a change here.
+func TestErrorLengthHeaderMatchesCanonical(t *testing.T) {
+	for _, n := range []int{0, 9, 26, 300} {
+		data, err := object.MarshalTaskExecutionErrorData(strings.Repeat("x", n))
+		if err != nil {
+			t.Fatalf("MarshalTaskExecutionErrorData(%d) failed: %v", n, err)
+		}
+		if len(data) < MessagePackOffset {
+			t.Fatalf("payload for n=%d too short: %d", n, len(data))
+		}
+		embedded := data[:MessagePackOffset]
+		dec := msgpack.NewDecoder(bytes.NewReader(embedded))
+		sectionLen, err := dec.DecodeInt()
+		if err != nil {
+			t.Fatalf("decode embedded length header for n=%d failed: %v", n, err)
+		}
+		want, err := encodeLengthHeader(sectionLen)
+		if err != nil {
+			t.Fatalf("encodeLengthHeader(%d) failed: %v", sectionLen, err)
+		}
+		if !bytes.Equal(want, embedded) {
+			t.Fatalf("length header drift for n=%d: object % x, serializer % x",
+				n, embedded, want)
+		}
 	}
 }
 

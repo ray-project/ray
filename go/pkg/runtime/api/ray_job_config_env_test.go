@@ -22,6 +22,8 @@ import (
 
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/ray-project/ray/go/proto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	protolib "google.golang.org/protobuf/proto"
 )
 
@@ -151,4 +153,14 @@ func TestBuildJobOptionsFromBuilderIsRepeatable(t *testing.T) {
 	if got := builder.RuntimeEnvJSON(); got != "" {
 		t.Fatalf("builder.RuntimeEnvJSON() = %q after the call, want the caller's builder left untouched", got)
 	}
+}
+
+// TestBuildJobOptionsFromBuilder_NilBuilder proves a nil builder is rejected
+// with an error instead of panicking. Clone() dereferences its receiver, so a
+// nil builder used to crash the caller; the guard lets InitializeWithJobConfig
+// report it through its error return.
+func TestBuildJobOptionsFromBuilder_NilBuilder(t *testing.T) {
+	_, err := buildJobOptionsFromBuilder(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must not be nil")
 }

@@ -253,10 +253,6 @@ func (m *mockObjectStore) PutRaw(obj *NativeRayObject) (*ids.ObjectID, error) {
 	return &objectID, nil
 }
 
-func (m *mockObjectStore) PutRawWithOwner(obj *NativeRayObject, ownerActorID *ids.ActorID) (*ids.ObjectID, error) {
-	return m.PutRaw(obj)
-}
-
 func (m *mockObjectStore) PutRawWithID(obj *NativeRayObject, objectID *ids.ObjectID) error {
 	m.objects[objectID.String()] = obj
 	return nil

@@ -364,6 +364,9 @@ func (r *Ray) InitializeWithJobConfig(builder *options.JobConfigBuilder) error {
 // _merge_runtime_env, so that retry would fail with a conflict the caller never
 // created.
 func buildJobOptionsFromBuilder(builder *options.JobConfigBuilder) (options.JobOptions, error) {
+	if builder == nil {
+		return options.JobOptions{}, fmt.Errorf("job config builder must not be nil")
+	}
 	merged := builder.Clone()
 	if err := merged.MergeFromEnv(); err != nil {
 		return options.JobOptions{}, fmt.Errorf("failed to merge job config from environment: %w", err)

@@ -41,9 +41,6 @@ type ObjectStore interface {
 	// PutRaw stores the object and returns the generated ObjectID.
 	PutRaw(obj *NativeRayObject) (*ids.ObjectID, error)
 
-	// PutRawWithOwner stores the object with the specified owner actor ID.
-	PutRawWithOwner(obj *NativeRayObject, ownerActorID *ids.ActorID) (*ids.ObjectID, error)
-
 	// PutRawWithID stores the object with the specified ObjectID.
 	PutRawWithID(obj *NativeRayObject, objectID *ids.ObjectID) error
 

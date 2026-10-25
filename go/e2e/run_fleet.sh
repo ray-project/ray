@@ -302,7 +302,7 @@ stage_job_dir() {   # $1=driver  $2=comma-separated extras (may be empty)
   # code_search_path is the relative "./userfuncs.so" and the Go worker its task
   # lands on opens the plugin from the job directory.
   if [[ "$d" != "test_python_call_go" ]]; then
-    [[ -f "$bin" ]] || die "driver binary missing at $bin — did the build step run?"
+    [[ -f "$bin" ]] || die "driver binary missing at $bin - did the build step run?"
     cp "$bin" "$job/$d"
   fi
   cp "$PLUGIN" "$job/userfuncs.so"

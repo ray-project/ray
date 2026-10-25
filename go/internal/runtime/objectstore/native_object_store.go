@@ -132,8 +132,6 @@ import (
 
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
-	"github.com/ray-project/ray/go/proto"
-	protolib "google.golang.org/protobuf/proto"
 
 	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
@@ -361,8 +359,7 @@ func (n *NativeObjectStore) nativeSealExisting(objectID *ids.ObjectID, ownerAddr
 }
 
 type NativeObjectStore struct {
-	shutdownLock        *sync.RWMutex
-	resolveActorAddress func(context.Context, ids.ActorID) (*proto.Address, error)
+	shutdownLock *sync.RWMutex
 	// cgoMu serializes the CGO write/refcount operations that mutate the C++
 	// CoreWorker object store (Put, PutWithID, Add/RemoveLocalReference,
 	// Delete). Concurrent CGO writes are unsafe in the C++ reference counter,
@@ -373,33 +370,14 @@ type NativeObjectStore struct {
 	cgoMu sync.Mutex
 }
 
-func NewNativeObjectStore(shutdownLock *sync.RWMutex, resolveActorAddress func(context.Context, ids.ActorID) (*proto.Address, error)) *NativeObjectStore {
+func NewNativeObjectStore(shutdownLock *sync.RWMutex) *NativeObjectStore {
 	return &NativeObjectStore{
-		shutdownLock:        shutdownLock,
-		resolveActorAddress: resolveActorAddress,
+		shutdownLock: shutdownLock,
 	}
 }
 
 func (n *NativeObjectStore) PutRaw(obj *object.NativeRayObject) (*ids.ObjectID, error) {
-	return n.PutRawWithOwner(obj, nil)
-}
-
-func (n *NativeObjectStore) PutRawWithOwner(obj *object.NativeRayObject, ownerActorID *ids.ActorID) (*ids.ObjectID, error) {
-	if ownerActorID == nil {
-		return n.nativePut(obj, nil)
-	}
-	if n.resolveActorAddress == nil {
-		return nil, fmt.Errorf("actor address resolver not configured")
-	}
-	addr, err := n.resolveActorAddress(context.Background(), *ownerActorID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve actor address: %w", err)
-	}
-	ownerAddressBytes, err := protolib.Marshal(addr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal owner address: %w", err)
-	}
-	return n.nativePut(obj, ownerAddressBytes)
+	return n.nativePut(obj)
 }
 
 func (n *NativeObjectStore) PutRawWithID(obj *object.NativeRayObject, objectID *ids.ObjectID) error {
@@ -530,11 +508,11 @@ func (n *NativeObjectStore) GetAllReferenceCounts() (map[ids.ObjectID][2]int64, 
 	return result, nil
 }
 
-func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject, ownerAddress []byte) (*ids.ObjectID, error) {
+func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject) (*ids.ObjectID, error) {
 	n.cgoMu.Lock()
 	defer n.cgoMu.Unlock()
 
-	objectID, writePtr, handle, err := n.nativeCreateOwned(obj.Metadata, ownerAddress, len(obj.Data))
+	objectID, writePtr, handle, err := n.nativeCreateOwned(obj.Metadata, nil, len(obj.Data))
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +520,7 @@ func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject, ownerAddress 
 	// data == nullptr: object already exists in plasma; Seal to finalize the
 	// OBJECT_IN_PLASMA entry without writing.
 	if handle == 0 {
-		if err := n.nativeSealOwned(objectID, ownerAddress); err != nil {
+		if err := n.nativeSealOwned(objectID, nil); err != nil {
 			return nil, err
 		}
 		return objectID, nil
@@ -558,7 +536,7 @@ func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject, ownerAddress 
 	// handle allocated by CreateOwned; release it here regardless to avoid a
 	// per-Put leak of the write buffer.
 	defer releasePlasmaBuffer(handle)
-	if err := n.nativeSealOwned(objectID, ownerAddress); err != nil {
+	if err := n.nativeSealOwned(objectID, nil); err != nil {
 		return nil, err
 	}
 	return objectID, nil

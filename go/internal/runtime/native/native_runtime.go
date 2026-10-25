@@ -171,11 +171,8 @@ func (nr *NativeRuntime) Start() error {
 	// the teardown. Constructing the store without it leaves the lock nil and
 	// RemoveLocalReference dereferences a nil pointer. RemoveLocalReference is the
 	// only object-store CGO call gated by this lock; Put/Get/Wait/Delete and
-	// AddLocalReference are not covered by it. No owner-address resolver is
-	// injected: owned puts (the `_owner` argument to ray.put) were removed
-	// upstream in Ray 2.56 (ray-project/ray#63520), and the C++ core worker no
-	// longer accepts an owner address.
-	nativeStore := objectstore.NewNativeObjectStore(&nr.shutdownLock, nil)
+	// AddLocalReference are not covered by it.
+	nativeStore := objectstore.NewNativeObjectStore(&nr.shutdownLock)
 	nr.objectStore = nativeStore
 
 	// Register the Go task executor callback with C++.

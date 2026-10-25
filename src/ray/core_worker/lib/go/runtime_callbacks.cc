@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/core_worker/common.h"
@@ -32,6 +33,55 @@
 #include "ray/util/time.h"
 
 namespace ray::go {
+
+namespace {
+
+// PopulateTaskFailureReturns maps a Go task failure that produced no result
+// array onto the ray::Status and return objects CoreWorker::ExecuteTask
+// expects. A failed actor-creation task surfaces as CreationTaskError so the
+// worker exits with USER_ERROR and the actor is marked dead (a plain Invalid
+// status would hit the RAY_CHECK in CoreWorker::ExecuteTask and abort the
+// worker). Any other task with return slots gets an error object in every slot
+// (the upstream contract for user exceptions: OK status + application_error +
+// populated returns, where empty slots would trip RAY_CHECK(objects_valid) in
+// TaskReceiver). Zero-return tasks cannot carry an error object; the failure is
+// conveyed through the application error alone.
+ray::Status PopulateTaskFailureReturns(
+    int task_type,
+    const std::string &message,
+    const ray::rpc::Address &caller_address,
+    std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>> *returns) {
+  if (task_type == ray::rpc::TaskType::ACTOR_CREATION_TASK) {
+    return ray::Status::CreationTaskError(message);
+  }
+  if (!returns->empty()) {
+    for (auto &ret : *returns) {
+      auto error_object = ray::go::CreateErrorObject(
+          message, ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+      int64_t task_output_inlined_bytes = 0;
+      RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+          ret.first,
+          error_object->GetData()->Size(),
+          error_object->GetMetadata(),
+          /*contained_ids=*/{},
+          caller_address,
+          &task_output_inlined_bytes,
+          &ret.second));
+      if (ret.second != nullptr && error_object->GetData() != nullptr) {
+        memcpy(ret.second->GetData()->Data(),
+               error_object->GetData()->Data(),
+               error_object->GetData()->Size());
+      }
+      RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+          ret.first, ret.second, ray::ObjectID::Nil(), caller_address));
+    }
+  } else {
+    RAY_LOG(ERROR) << message << "; task has no return slots to carry an error object";
+  }
+  return ray::Status::OK();
+}
+
+}  // namespace
 
 // ============================================================================
 // Public API Functions
@@ -216,6 +266,7 @@ CreateTaskExecutionCallback() {
     // build the function descriptor without guessing the language from the descriptor
     // contents. This matches how Java's nativeRunTaskExecutor and C++'s
     // runtime_callbacks carry the language across the language boundary.
+    int go_error_code = GO_TASK_OK;
     CSerializedObjectArray *c_results =
         GoExecuteTask(static_cast<int>(ray_function.GetLanguage()),
                       static_cast<int>(task_type),
@@ -225,7 +276,33 @@ CreateTaskExecutionCallback() {
                       static_cast<int>(c_args.size()),
                       static_cast<int>(returns->size()),
                       const_cast<char *>(actor_id_data),
-                      actor_id_size);
+                      actor_id_size,
+                      &go_error_code);
+
+    // Adopt the Go-allocated result array immediately so every path after the
+    // call - including the non-OK switch branches below - releases it through
+    // RAII (CSerializedObjectArrayPtr is defined in cgo_wrapper.h;
+    // CNativeCommon_FreeCSerializedObjectArray is null-safe).
+    auto result_ptr = CSerializedObjectArrayPtr(c_results);
+
+    // Map a non-zero error code returned by Go to the corresponding ray::Status
+    // so CoreWorker::ExecuteTask drives the correct exit path (e.g. an actor
+    // that intentionally exits must not be treated as an application error). An
+    // unknown code degrades gracefully like the nullptr path below instead of
+    // returning Invalid, which would hit the RAY_CHECK in
+    // CoreWorker::ExecuteTask and abort the worker.
+    switch (go_error_code) {
+    case GO_TASK_OK:
+      break;
+    case GO_TASK_ERROR_INTENTIONAL_SYSTEM_EXIT:
+      return ray::Status::IntentionalSystemExit(
+          "Go worker requested intentional system exit");
+    default:
+      *application_error =
+          absl::StrCat("Go worker returned unknown task error code: ", go_error_code);
+      return PopulateTaskFailureReturns(
+          task_type, *application_error, caller_address, returns);
+    }
 
     // Log c_results from GoExecuteTask
     RAY_LOG(INFO) << "C++ received c_results from GoExecuteTask: "
@@ -234,50 +311,9 @@ CreateTaskExecutionCallback() {
 
     if (c_results == nullptr) {
       *application_error = "Task execution failed in Go runtime";
-      if (task_type == ray::rpc::TaskType::ACTOR_CREATION_TASK) {
-        // A failed creation task must surface as CreationTaskError so the
-        // worker exits with USER_ERROR and the actor is marked dead; a plain
-        // Invalid status would hit the RAY_CHECK in CoreWorker::ExecuteTask
-        // and abort the worker.
-        return ray::Status::CreationTaskError(*application_error);
-      }
-      // For tasks with return slots, surface the failure as an error object
-      // in every slot (the upstream contract for user exceptions: OK status +
-      // application_error + populated returns). Returning OK with empty slots
-      // would trip RAY_CHECK(objects_valid) in TaskReceiver and abort the
-      // worker. Zero-return tasks cannot carry an error object; the failure
-      // is conveyed via the application error alone.
-      if (!returns->empty()) {
-        for (auto &ret : *returns) {
-          auto error_object = ray::go::CreateErrorObject(
-              *application_error, ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
-          int64_t task_output_inlined_bytes = 0;
-          RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-              ret.first,
-              error_object->GetData()->Size(),
-              error_object->GetMetadata(),
-              /*contained_ids=*/{},
-              caller_address,
-              &task_output_inlined_bytes,
-              &ret.second));
-          if (ret.second != nullptr && error_object->GetData() != nullptr) {
-            memcpy(ret.second->GetData()->Data(),
-                   error_object->GetData()->Data(),
-                   error_object->GetData()->Size());
-          }
-          RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-              ret.first, ret.second, ray::ObjectID::Nil(), caller_address));
-        }
-      } else {
-        RAY_LOG(ERROR) << *application_error
-                       << "; task has no return slots to carry an error object";
-      }
-      return ray::Status::OK();
+      return PopulateTaskFailureReturns(
+          task_type, *application_error, caller_address, returns);
     }
-
-    // Use RAII pointer for automatic cleanup (CSerializedObjectArrayPtr is defined in
-    // cgo_wrapper.h)
-    auto result_ptr = CSerializedObjectArrayPtr(c_results);
 
     if (result_ptr->count > 0 && !returns->empty()) {
       // Validate that objects array is not null when count > 0

@@ -434,9 +434,11 @@ func ParseErrorType(metadata []byte) (int, bool) {
 	return errorType, true
 }
 
-// goWorkerErrorMetadata is the metadata value the Go worker attaches to task execution error
-// objects (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go). Its data payload
-// is a JSON object serialized from go/pkg/errors.SerializedRayError.
+// goWorkerErrorMetadata is the legacy metadata value the Go worker wrote on task execution
+// error objects before the numeric wire change (convertGoResultToC in
+// go/internal/runtime/cgo/task_executor.go now emits the numeric form instead). It is kept so
+// the reader still accepts objects written back then; its data payload is a JSON object
+// serialized from go/pkg/errors.SerializedRayError.
 const goWorkerErrorMetadata = `{"type":"error"}`
 
 // Precomputed byte forms of the metadata values compared in ErrorObjectFromNative. Comparing
@@ -445,13 +447,14 @@ var goWorkerErrorMetadataBytes = []byte(goWorkerErrorMetadata)
 var metadataTypeTaskExecutionExceptionBytes = []byte(MetadataTypeTaskExecutionException)
 
 // taskExceptionFromGoWorkerError builds a readable task execution exception from a Go worker
-// error object. The worker serializes the error payload via the internal errors type's
-// ToSerializedForm (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go), whose
-// wire form is shared with -- and pinned against -- pkg/errors.SerializedRayError. This package
-// deserializes the same shared contract type, so the JSON wire format stays in a single
-// definition (dependency inversion: go/internal depends on go/pkg, never the reverse). When the
-// JSON payload cannot be parsed it still returns a readable exception carrying the raw data, so
-// the driver never sees a silent/generic deserialization failure.
+// error object. Legacy: the worker used to serialize the error payload as JSON via the internal
+// errors type's ToSerializedForm (convertGoResultToC in go/internal/runtime/cgo/task_executor.go
+// now emits the numeric form instead). That wire form is shared with -- and pinned against --
+// pkg/errors.SerializedRayError. This package deserializes the same shared contract type, so the
+// JSON wire format stays in a single definition (dependency inversion: go/internal depends on
+// go/pkg, never the reverse). When the JSON payload cannot be parsed it still returns a readable
+// exception carrying the raw data, so the driver never sees a silent/generic deserialization
+// failure. Legacy convention retained for objects written before the numeric wire change.
 func taskExceptionFromGoWorkerError(data []byte) RayException {
 	var payload pkgerrors.SerializedRayError
 	message := ""
@@ -489,6 +492,13 @@ var errorTypeFactories = map[int]func(*NativeRayObject) RayException{
 		return NewRayIDExceptionActorDied("")
 	},
 	RpcErrorTypeTaskExecutionException: func(nativeObj *NativeRayObject) RayException {
+		// The Go writer's dialect (RayException PB behind the 9-byte length
+		// header) takes precedence; the C++ CreateErrorObject dialect
+		// (RayErrorInfo PB, msgpack-wrapped) remains the fallback so error
+		// objects produced by the C++ nullptr path stay readable.
+		if exc := taskExceptionFromGoWirePayload(nativeObj.DataBytes()); exc != nil {
+			return exc
+		}
 		message := extractErrorInfoMessage(nativeObj.DataBytes())
 		if message == "" {
 			message = "task execution failed"
@@ -515,8 +525,9 @@ func ErrorObjectFromNative(nativeObj *NativeRayObject) (RayException, bool) {
 	if nativeObj == nil {
 		return nil, false
 	}
-	// The Go worker encodes task execution errors with a {"type":"error"} metadata and a JSON
-	// error payload (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go).
+	// Legacy: the Go worker used to encode task execution errors with a {"type":"error"} metadata
+	// and a JSON error payload (convertGoResultToC in go/internal/runtime/cgo/task_executor.go now
+	// emits the numeric wire form).
 	if bytes.Equal(nativeObj.Metadata, goWorkerErrorMetadataBytes) {
 		return taskExceptionFromGoWorkerError(nativeObj.DataBytes()), true
 	}
