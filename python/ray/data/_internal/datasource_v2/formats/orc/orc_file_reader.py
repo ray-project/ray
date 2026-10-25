@@ -1,4 +1,4 @@
-from typing import Iterator
+from typing import Iterator, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -14,6 +14,52 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
 from ray.util.annotations import DeveloperAPI
+
+
+def _struct_scan_schema(
+    physical_schema: pa.Schema, target_schema: pa.Schema
+) -> Tuple[pa.Schema, bool]:
+    """Return the schema to scan with when struct children differ from the target.
+
+    PyArrow older than 21 cannot reconcile struct columns whose children differ
+    from the file's physical type, and raises ``ArrowTypeError`` while scanning.
+    For such columns, scan with the physical struct type so the read succeeds;
+    the caller then aligns and casts to ``target_schema``. Other fields keep the
+    target type, so columns missing from the file are still null-filled.
+
+    Args:
+        physical_schema: The schema stored in the ORC file.
+        target_schema: The unified schema the reader should produce.
+
+    Returns:
+        ``(scan_schema, needs_alignment)``.
+    """
+    fields = []
+    needs_alignment = False
+    for field in target_schema:
+        index = physical_schema.get_field_index(field.name)
+        if index != -1:
+            physical_type = physical_schema.field(index).type
+            if (
+                pa.types.is_struct(physical_type)
+                and pa.types.is_struct(field.type)
+                and physical_type != field.type
+            ):
+                field = field.with_type(physical_type)
+                needs_alignment = True
+        fields.append(field)
+    return pa.schema(fields), needs_alignment
+
+
+def _align_to_schema(table: pa.Table, target_schema: pa.Schema) -> pa.Table:
+    """Backfill missing struct children with nulls and cast to ``target_schema``."""
+    from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
+
+    names = [name for name in table.column_names if name in target_schema.names]
+    align_schema = pa.schema([target_schema.field(name) for name in names])
+    return _align_struct_fields([table.select(names)], align_schema)[0].cast(
+        align_schema
+    )
 
 
 @DeveloperAPI
@@ -53,6 +99,17 @@ class OrcFileReader(FileReader):
         evaluated on the resulting table.
         """
         if self._partition_parser is None:
+            target_schema = self._file_dataset_schema
+            if target_schema is not None:
+                scan_schema, needs_alignment = _struct_scan_schema(
+                    fragment.physical_schema, target_schema
+                )
+                if needs_alignment:
+                    scanner = fragment.scanner(**scanner_kwargs, schema=scan_schema)
+                    for tagged in scanner.scan_batches():
+                        table = pa.Table.from_batches([tagged.record_batch])
+                        yield _align_to_schema(table, target_schema)
+                    return
             yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
             return
 
@@ -133,12 +190,17 @@ class OrcFileReader(FileReader):
             [field for field in physical_schema if field.name in decoded_names]
         )
         raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
-        scanner = fragment.scanner(**scan_kwargs, schema=file_schema)
+        # Older PyArrow cannot read files whose nested struct children differ
+        # from the target schema, so read those columns as stored and align.
+        scan_schema, needs_alignment = _struct_scan_schema(physical_schema, file_schema)
+        scanner = fragment.scanner(**scan_kwargs, schema=scan_schema)
         residual_filter = (
             residual_predicate.to_pyarrow() if residual_predicate is not None else None
         )
         for tagged in scanner.scan_batches():
             table = pa.Table.from_batches([tagged.record_batch])
+            if needs_alignment:
+                table = _align_to_schema(table, file_schema)
             for name, value in partitions.items():
                 if name in required_names:
                     table = table.append_column(

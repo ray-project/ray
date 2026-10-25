@@ -2,6 +2,8 @@ import json
 import os
 from dataclasses import fields
 from decimal import Decimal
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 import pyarrow as pa
@@ -218,6 +220,150 @@ def test_read_orc_v2_unifies_schema_and_hive_partitions(
     assert rows[1]["year"] == "2024"
     assert rows[1]["path"].endswith("second.orc")
     assert materialized.num_blocks() == 1
+
+
+def _write_evolved_struct_orc_files(
+    root: Path,
+    partitioned: bool,
+    old: Tuple[pa.DataType, List[Dict[str, Any]]],
+    new: Tuple[pa.DataType, List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Write an old and a new file whose ``customer`` struct types differ.
+
+    Args:
+        root: Directory to write the files under.
+        partitioned: Put each file in its own Hive ``day=`` directory.
+        old: ``(customer_type, rows)`` for the older file.
+        new: ``(customer_type, rows)`` for the newer file.
+
+    Returns:
+        Keyword arguments for ``read_orc``.
+    """
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    for name, day, (customer_type, rows) in [
+        ("a_old.orc", "2026-10-14", old),
+        ("b_new.orc", "2026-10-15", new),
+    ]:
+        directory = root / f"day={day}" if partitioned else root
+        directory.mkdir(exist_ok=True)
+        schema = pa.schema([("event_id", pa.int64()), ("customer", customer_type)])
+        _write_orc(str(directory / name), pa.Table.from_pylist(rows, schema=schema))
+
+    if not partitioned:
+        return {}
+    return {"partitioning": Partitioning(PartitionStyle.HIVE, base_dir=str(root))}
+
+
+def _read_customers(path, **kwargs):
+    ds = ray.data.read_orc(str(path), override_num_blocks=1, **kwargs)
+    rows = sorted(ds.take_all(), key=lambda row: row["event_id"])
+    return [row["customer"] for row in rows]
+
+
+@pytest.mark.parametrize("partitioned", [False, True])
+def test_read_orc_v2_evolved_struct_fields(
+    ray_start_regular_shared, tmp_path, monkeypatch, partitioned
+):
+    """Missing or reordered struct children are null-filled and matched by name."""
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    kwargs = _write_evolved_struct_orc_files(
+        tmp_path,
+        partitioned,
+        old=(
+            pa.struct([("age", pa.int64())]),
+            [
+                {"event_id": 1, "customer": {"age": 31}},
+                {"event_id": 2, "customer": None},
+            ],
+        ),
+        new=(
+            pa.struct([("region", pa.string()), ("age", pa.int64())]),
+            [{"event_id": 3, "customer": {"region": "APAC", "age": 42}}],
+        ),
+    )
+
+    assert _read_customers(tmp_path, **kwargs) == [
+        {"age": 31, "region": None},
+        None,
+        {"age": 42, "region": "APAC"},
+    ]
+
+    # Projection and filter on top of the evolved struct column.
+    projected = (
+        ray.data.read_orc(str(tmp_path), **kwargs)
+        .select_columns(["event_id", "customer"])
+        .take_all()
+    )
+    assert sorted(row["event_id"] for row in projected) == [1, 2, 3]
+    filtered = ray.data.read_orc(str(tmp_path), **kwargs).filter(
+        expr=col("event_id") >= 2
+    )
+    assert sorted(row["event_id"] for row in filtered.take_all()) == [2, 3]
+
+    # Filter on a child of the evolved struct. The null struct row drops out.
+    filtered = ray.data.read_orc(str(tmp_path), **kwargs).filter(
+        expr=col("customer").struct.field("age") >= 31
+    )
+    assert sorted(row["event_id"] for row in filtered.take_all()) == [1, 3]
+
+
+@pytest.mark.parametrize("partitioned", [False, True])
+@pytest.mark.parametrize(
+    "old,new,expected",
+    [
+        pytest.param(
+            (
+                pa.struct([("age", pa.int64()), ("region", pa.string())]),
+                [{"event_id": 1, "customer": {"age": 31, "region": "EMEA"}}],
+            ),
+            (
+                pa.struct([("region", pa.string()), ("age", pa.int64())]),
+                [{"event_id": 2, "customer": {"region": "APAC", "age": 42}}],
+            ),
+            [{"age": 31, "region": "EMEA"}, {"age": 42, "region": "APAC"}],
+            id="reordered_children",
+        ),
+        pytest.param(
+            (
+                pa.struct([("address", pa.struct([("city", pa.string())]))]),
+                [{"event_id": 1, "customer": {"address": {"city": "Oslo"}}}],
+            ),
+            (
+                pa.struct(
+                    [
+                        (
+                            "address",
+                            pa.struct([("zip", pa.string()), ("city", pa.string())]),
+                        )
+                    ]
+                ),
+                [
+                    {
+                        "event_id": 2,
+                        "customer": {"address": {"zip": "100", "city": "Tokyo"}},
+                    }
+                ],
+            ),
+            [
+                {"address": {"city": "Oslo", "zip": None}},
+                {"address": {"city": "Tokyo", "zip": "100"}},
+            ],
+            id="nested_struct_missing_child",
+        ),
+    ],
+)
+def test_read_orc_v2_struct_children_aligned_by_name(
+    ray_start_regular_shared, tmp_path, monkeypatch, partitioned, old, new, expected
+):
+    """Struct children match by name, including inside nested structs."""
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    kwargs = _write_evolved_struct_orc_files(tmp_path, partitioned, old, new)
+    assert _read_customers(tmp_path, **kwargs) == expected
 
 
 def test_read_orc_v1_fallback(ray_start_regular_shared, tmp_path, monkeypatch):
