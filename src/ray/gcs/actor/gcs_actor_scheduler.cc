@@ -293,8 +293,9 @@ void GcsActorScheduler::LeaseWorkerFromNode(
   // backlog in GCS.
   // Counter for generating unique lease IDs.
   static uint32_t lease_id_counter = 0;
-  actor->GetMutableLeaseSpec()->set_lease_id(
-      LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++).Binary());
+  const auto lease_id = LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++);
+  actor->GetMutableLeaseSpec()->set_lease_id(lease_id.Binary());
+  pending_lease_requests_.insert(lease_id);
 
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_lease_spec()->CopyFrom(actor->GetLeaseSpecification().GetMessage());
@@ -303,17 +304,59 @@ void GcsActorScheduler::LeaseWorkerFromNode(
   request.set_is_selected_based_on_locality(false);
   raylet_client->RequestWorkerLease(
       std::move(request),
-      [this, actor, node](const Status &status,
-                          const rpc::RequestWorkerLeaseReply &reply) {
+      [this, actor, node, lease_id](const Status &status,
+                                    const rpc::RequestWorkerLeaseReply &reply) {
+        const auto lease_node_id = NodeID::FromBinary(node->node_id());
+        const bool granted = status.ok() && !reply.worker_address().node_id().empty();
+        if (pending_lease_requests_.erase(lease_id) == 0) {
+          // Another grant already satisfied this request. Even if the actor has
+          // restarted again, this reply must not consume its new leasing state.
+          if (granted) {
+            auto address = rpc::RayletClientPool::GenerateRayletAddress(
+                lease_node_id, node->node_manager_address(), node->node_manager_port());
+            KillLeasedWorkerForActor(address, reply.worker_address(), ActorID::Nil());
+          }
+          return;
+        }
+
+        const auto current_lease_id = actor->GetLeaseSpecification().LeaseId();
+        if (lease_id != current_lease_id) {
+          // A compatible old grant may satisfy the current attempt. Other stale
+          // replies must not fail or retry the replacement request.
+          if (!granted) {
+            return;
+          }
+          auto iter = node_to_actors_when_leasing_.find(lease_node_id);
+          if (iter != node_to_actors_when_leasing_.end() &&
+              iter->second.contains(actor->GetActorID())) {
+            pending_lease_requests_.erase(current_lease_id);
+            // Retire callback authority before sending cancellation. The raylet
+            // may have already granted this lease; its reply will clean it up.
+            auto address = rpc::RayletClientPool::GenerateRayletAddress(
+                lease_node_id, node->node_manager_address(), node->node_manager_port());
+            raylet_client_pool_.GetOrConnectByAddress(address)->CancelWorkerLease(
+                current_lease_id,
+                [](const Status &, const rpc::CancelWorkerLeaseReply &) {});
+          }
+        }
         HandleWorkerLeaseReply(actor, node, status, reply);
       });
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<const rpc::GcsNodeInfo> node) {
+  const auto lease_id = actor->GetLeaseSpecification().LeaseId();
+  const auto attempt =
+      actor->GetCreationTaskSpecification().GetMessage().attempt_number();
   RAY_UNUSED(execute_after(
       io_context_,
-      [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
+      [this, node, actor, lease_id, attempt] {
+        if (actor->GetLeaseSpecification().LeaseId() == lease_id &&
+            actor->GetCreationTaskSpecification().GetMessage().attempt_number() ==
+                attempt) {
+          DoRetryLeasingWorkerFromNode(actor, node);
+        }
+      },
       std::chrono::milliseconds(
           RayConfig::instance().gcs_lease_worker_retry_interval_ms())));
 }
