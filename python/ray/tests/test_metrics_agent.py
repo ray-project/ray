@@ -1109,6 +1109,37 @@ def test_basic_custom_metrics(metric_mock):
     metric_mock.record.assert_called_with(8, tags=tags)
 
 
+def test_gauge_inc_dec(metric_mock):
+    """Gauge.inc()/dec() apply on top of the last recorded value per tag set.
+
+    https://github.com/ray-project/ray/issues/39754
+    """
+    gauge = Gauge("gauge", description="gauge", tag_keys=("a",))
+    gauge._metric = metric_mock
+
+    gauge.inc(tags={"a": "1"})
+    metric_mock.record.assert_called_with(1.0, tags={"a": "1"})
+    gauge.inc(2, tags={"a": "1"})
+    metric_mock.record.assert_called_with(3.0, tags={"a": "1"})
+    gauge.dec(tags={"a": "1"})
+    metric_mock.record.assert_called_with(2.0, tags={"a": "1"})
+    # Values are tracked per tag set.
+    gauge.inc(5, tags={"a": "2"})
+    metric_mock.record.assert_called_with(5, tags={"a": "2"})
+    # set() resets the base that later inc()/dec() build on.
+    gauge.set(10, tags={"a": "1"})
+    gauge.dec(4, tags={"a": "1"})
+    metric_mock.record.assert_called_with(6, tags={"a": "1"})
+    # Negative values are allowed, unlike Counter.inc().
+    gauge.inc(-10, tags={"a": "1"})
+    metric_mock.record.assert_called_with(-4, tags={"a": "1"})
+
+    with pytest.raises(TypeError):
+        gauge.inc("1", tags={"a": "1"})
+    with pytest.raises(TypeError):
+        gauge.dec(None, tags={"a": "1"})
+
+
 def test_custom_metrics_with_extra_tags(metric_mock):
     base_tags = {"a": "1"}
     extra_tags = {"a": "1", "b": "2"}
