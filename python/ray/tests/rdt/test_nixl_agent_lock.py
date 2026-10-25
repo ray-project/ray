@@ -57,10 +57,10 @@ def transport(monkeypatch):
 
 def test_version_change_waits_for_in_flight_transfer(transport):
     agent = transport._nixl_agent
-    transport._add_remote_agent("a", 1, b"meta")
+    transport._prepare_remote_agent("a", 1, b"meta")
     start_transfer(transport, "a", "h1")
 
-    transport._add_remote_agent("a", 2, b"meta")
+    transport._prepare_remote_agent("a", 2, b"meta")
 
     assert agent.removed == ["a"]
     assert agent.removed_in_flight == []
@@ -68,18 +68,18 @@ def test_version_change_waits_for_in_flight_transfer(transport):
 
 def test_same_version_keeps_agent(transport):
     agent = transport._nixl_agent
-    transport._add_remote_agent("a", 1, b"meta")
+    transport._prepare_remote_agent("a", 1, b"meta")
     start_transfer(transport, "a", "h1")
 
-    transport._add_remote_agent("a", 1, b"meta")
+    transport._prepare_remote_agent("a", 1, b"meta")
 
     assert agent.removed == []
 
 
 def test_eviction_waits_for_in_flight_transfer(transport):
     agent = transport._nixl_agent
-    transport._add_remote_agent("a", 1, b"meta")
-    transport._add_remote_agent("b", 1, b"meta")
+    transport._prepare_remote_agent("a", 1, b"meta")
+    transport._prepare_remote_agent("b", 1, b"meta")
     start_transfer(transport, "a", "h1")
 
     transport._evict_if_full("c")
@@ -91,8 +91,8 @@ def test_eviction_waits_for_in_flight_transfer(transport):
 
 def test_concurrent_evictions_remove_an_agent_once(transport):
     agent = transport._nixl_agent
-    transport._add_remote_agent("a", 1, b"meta")
-    transport._add_remote_agent("b", 1, b"meta")
+    transport._prepare_remote_agent("a", 1, b"meta")
+    transport._prepare_remote_agent("b", 1, b"meta")
 
     with transport._agent_lock("a"):
         threads = [

@@ -508,7 +508,7 @@ class NixlTensorTransport(TensorTransportManager):
                 self._evict_if_full(remote_name)
 
             with self._agent_lock(remote_name):
-                self._add_remote_agent(
+                self._prepare_remote_agent(
                     remote_name, remote_agent_meta_version, remote_nixl_agent_meta
                 )
 
@@ -672,11 +672,13 @@ class NixlTensorTransport(TensorTransportManager):
                 pass
         inflight.clear()
 
-    def _add_remote_agent(
+    def _prepare_remote_agent(
         self, remote_name: str, version: int, remote_nixl_agent_meta: bytes
     ) -> None:
-        """Adds the remote agent, replacing it first if its metadata version changed.
+        """Makes the remote agent ready for a new transfer and updates the cache.
 
+        If its metadata version changed, the transfers in flight on it are polled to
+        completion and the agent is removed first, then the new metadata is added.
         The caller holds the agent lock.
         """
         nixl_agent = self.get_nixl_agent()
