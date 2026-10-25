@@ -1,5 +1,6 @@
 import inspect
 import logging
+import threading
 from inspect import Parameter
 from typing import Any, Dict, List, Tuple
 
@@ -13,6 +14,32 @@ logger = logging.getLogger(__name__)
 # This dummy type is also defined in ArgumentsBuilder.java. Please keep it
 # synced.
 DUMMY_TYPE = b"__RAY_DUMMY__"
+
+# `inspect.Signature`s built from parameter lists, by the list's identity:
+# callers keep a function's or method's list (in its metadata) and pass the
+# same one on every call, so its signature is built once rather than on every
+# `.remote()`. Each entry holds its list, so the list's id can't be reused
+# while it's cached. Bounded, for callers that build a new list per call: past
+# the bound, the oldest entry goes. Lookups need no lock; adding an entry (and
+# evicting one) takes `_signatures_lock`, since threads calling `.remote()`
+# together could otherwise both evict the same entry.
+_SIGNATURE_CACHE_SIZE = 1024
+_signatures: Dict[int, Tuple[List[Parameter], inspect.Signature]] = {}
+_signatures_lock = threading.Lock()
+
+
+def _signature_of(signature_parameters: List[Parameter]) -> inspect.Signature:
+    """The `inspect.Signature` of `signature_parameters`, built once per list.
+    The list must not change afterwards (no caller changes it)."""
+    cached = _signatures.get(id(signature_parameters))
+    if cached is not None and cached[0] is signature_parameters:
+        return cached[1]
+    built = inspect.Signature(parameters=signature_parameters)
+    with _signatures_lock:
+        if len(_signatures) >= _SIGNATURE_CACHE_SIZE:
+            del _signatures[next(iter(_signatures))]
+        _signatures[id(signature_parameters)] = (signature_parameters, built)
+    return built
 
 
 def get_signature(func: Any) -> inspect.Signature:
@@ -94,9 +121,8 @@ def validate_args(
     Raises:
         TypeError: Raised if arguments do not fit in the function signature.
     """
-    reconstructed_signature = inspect.Signature(parameters=signature_parameters)
     try:
-        reconstructed_signature.bind(*args, **kwargs)
+        _signature_of(signature_parameters).bind(*args, **kwargs)
     except TypeError as exc:  # capture a friendlier stacktrace
         raise TypeError(str(exc)) from None
 

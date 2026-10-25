@@ -1,5 +1,8 @@
+import concurrent.futures
+import contextlib
 import errno
 import fcntl
+import hashlib
 import io
 import json
 import logging
@@ -11,14 +14,16 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from collections import deque
 from functools import lru_cache
-from typing import BinaryIO, Deque, Dict, List, Optional, Tuple, Union
+from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
+from ray.experimental.sandbox._internal import docker_config
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -37,18 +42,21 @@ ROOTFS_IMAGE = "rootfs.erofs"
 _EXTRACT_FORMAT = 3
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
+# How many of an image's layers download at once, as in Docker.
+_LAYER_DOWNLOADS = 3
 
 
 def _registry_request(
     url: str, headers: Dict[str, str], auth_header: Optional[str] = None
 ) -> urllib.request.Request:
-    """Build a registry request, keeping the bearer token off redirects.
+    """Build a registry request, keeping its credentials off redirects.
 
     Registries answer blob GETs with a redirect to presigned object storage.
     urllib does not copy unredirected headers onto a redirected request, so
-    marking the token this way drops it at the hop. Sending it onward would
-    trip S3's ``400 InvalidArgument: Only one auth mechanism allowed``, since
-    the presigned URL already carries its own signature.
+    marking the credentials this way drops them at the hop. Sending them
+    onward would hand them to the storage host and trip S3's ``400
+    InvalidArgument: Only one auth mechanism allowed``, since the presigned
+    URL already carries its own signature.
     """
     req = urllib.request.Request(url, headers=headers)
     if auth_header:
@@ -109,8 +117,8 @@ def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
     avoids Docker Hub's anonymous rate limits and pulls over the local
     network instead of the WAN. Only Docker Hub pulls are rewritten; other
     registries pass through untouched. When set, the mirror is
-    authoritative (no fallback to the upstream), and it is used with the
-    same anonymous token flow as any registry.
+    authoritative (no fallback to the upstream), and it authenticates like
+    any registry (see ``get_registry_auth_headers``).
 
     Args:
         registry: Registry host chosen by ``parse_image_ref``.
@@ -136,6 +144,9 @@ def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     """Parse image reference string into (registry, repository, tag_or_digest).
 
+    The registry comes back in lowercase, since host names are
+    case-insensitive: ``Docker.io/...`` is a Docker Hub reference too.
+
     Args:
         image_ref: Container image reference string (e.g. 'busybox:latest',
             'python:3.10-slim', 'docker.io/library/python:3.12-slim',
@@ -153,21 +164,63 @@ def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
             image_ref, tag = parts[0], parts[1]
 
     parts = image_ref.split("/", 1)
+    host = parts[0].lower()
     if len(parts) == 1:
         registry = "registry-1.docker.io"
         repo = f"library/{parts[0]}"
-    elif "." in parts[0] or ":" in parts[0] or parts[0] == "localhost":
-        if parts[0] in _DOCKER_HUB_REGISTRIES:
+    elif "." in host or ":" in host or host == "localhost":
+        if host in _DOCKER_HUB_REGISTRIES:
             registry = "registry-1.docker.io"
             repo = f"library/{parts[1]}" if "/" not in parts[1] else parts[1]
         else:
-            registry = parts[0]
+            registry = host
             repo = parts[1]
     else:
         registry = "registry-1.docker.io"
         repo = image_ref
 
     return registry, repo, tag
+
+
+# Keeps a cache entry's name, and the ``.lock`` and ``.tmp.<uuid>`` names
+# derived from it, well under the 255-byte limit on a file name.
+_CACHE_NAME_READABLE_CHARS = 128
+
+
+def image_cache_name(image: str) -> str:
+    """Name of an image's entry in the image cache.
+
+    A registry reference is normalized first, so every spelling of one image
+    (``python:3.12-slim``, ``library/python:3.12-slim``,
+    ``docker.io/library/python:3.12-slim``) shares one entry instead of each
+    pulling and building its own. The name is the normalized reference made
+    safe for a file name, then a hash of the reference: the first part turns
+    ``/``, ``:`` and ``@`` all into ``_``, so ``repo@sha256:<hex>`` and a tag
+    named ``sha256_<hex>`` differ only in the hash.
+
+    The name depends on the string alone, not on which files exist, so the
+    pin a pull takes and its later release always agree on it.
+
+    Args:
+        image: Container image reference or path to a local tar archive.
+
+    Returns:
+        A name that is safe as a directory and file name.
+    """
+    if (
+        not isinstance(image, str)
+        or not image.strip()
+        or image.endswith(".tar")
+        or image.startswith(("/", "./", "../"))
+    ):
+        return sanitize_image_name(image)
+    registry, repo, reference = parse_image_ref(image)
+    if registry == "registry-1.docker.io":
+        registry = "docker.io"
+    separator = "@" if "@" in image else ":"
+    ref = f"{registry}/{repo}{separator}{reference}"
+    ref_hash = hashlib.sha256(ref.encode("utf-8")).hexdigest()[:16]
+    return f"{sanitize_image_name(ref)[:_CACHE_NAME_READABLE_CHARS]}-{ref_hash}"
 
 
 def get_platform_arch() -> str:
@@ -190,7 +243,31 @@ def get_registry_auth_headers(
     reference: str = "latest",
     timeout: float = 30.0,
 ) -> Dict[str, str]:
-    """Retrieve bearer authentication token headers for registry repository."""
+    """Answer a registry's authentication challenge for pulling ``repo``.
+
+    An anonymous manifest request shows whether, and how, the registry wants
+    callers to authenticate. Only a challenge sends Ray to the node's Docker
+    config for the registry's credentials (see
+    ``docker_config.registry_credentials``), so a pull that draws no
+    challenge runs no credential helper. Docker Hub and GHCR challenge every
+    pull, even of a public image. A ``Basic`` challenge, Amazon ECR's, takes
+    the credentials on every request; a ``Bearer`` challenge trades them, or
+    nothing for a public repository, for a token from the realm it names.
+
+    Args:
+        registry: Registry host, optionally with a scheme.
+        repo: Repository path within the registry.
+        reference: Tag or digest whose manifest is requested.
+        timeout: Network and credential helper timeout in seconds.
+
+    Returns:
+        The ``Authorization`` header for the pull's registry requests, or no
+        headers when the registry asks for none.
+
+    Raises:
+        SandboxCreationError: If the registry demands credentials that the
+            node's Docker config lacks, or turns down the ones it has.
+    """
     url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
@@ -200,8 +277,21 @@ def get_registry_auth_headers(
         if err.code != 401:
             return {}
         auth_hdr = err.headers.get("Www-Authenticate", "")
-        if not re.match(r"^\s*Bearer\b", auth_hdr, re.IGNORECASE):
+        scheme = auth_hdr.split(None, 1)[0].lower() if auth_hdr.strip() else ""
+        if scheme not in ("basic", "bearer"):
             return {}
+
+        creds = docker_config.registry_credentials(registry, timeout)
+        if creds is not None and creds.registry_token:
+            return {"Authorization": f"Bearer {creds.registry_token}"}
+        if scheme == "basic":
+            if creds is None or not creds.username:
+                raise SandboxCreationError(
+                    f"Registry '{registry}' requires credentials to pull "
+                    f"'{repo}', and the Docker config "
+                    f"{docker_config.config_path()} provides none for it."
+                )
+            return {"Authorization": creds.basic_authorization()}
 
         realm_m = re.search(r'realm=["\']?([^"\',\s]+)["\']?', auth_hdr, re.IGNORECASE)
         if not realm_m:
@@ -222,9 +312,29 @@ def get_registry_auth_headers(
         if scope:
             params["scope"] = scope
 
-        sep = "&" if "?" in realm else "?"
-        auth_url = f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
-        auth_req = urllib.request.Request(auth_url, headers={"User-Agent": _USER_AGENT})
+        if creds is not None and creds.identity_token:
+            # The token spec's OAuth2 refresh-token grant.
+            auth_url = realm
+            form = dict(
+                params,
+                grant_type="refresh_token",
+                refresh_token=creds.identity_token,
+                client_id="ray-sandbox",
+            )
+            auth_req = urllib.request.Request(
+                auth_url,
+                data=urllib.parse.urlencode(form).encode("utf-8"),
+                headers={"User-Agent": _USER_AGENT},
+            )
+        else:
+            sep = "&" if "?" in realm else "?"
+            auth_url = (
+                f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
+            )
+            basic = None
+            if creds is not None and creds.username:
+                basic = creds.basic_authorization()
+            auth_req = _registry_request(auth_url, {"User-Agent": _USER_AGENT}, basic)
         try:
             with urllib.request.urlopen(auth_req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -232,6 +342,13 @@ def get_registry_auth_headers(
                 if token:
                     return {"Authorization": f"Bearer {token}"}
         except Exception as auth_err:
+            if creds is not None:
+                raise SandboxCreationError(
+                    f"Failed to get a pull token for '{registry}' from "
+                    f"'{realm}' with the credentials in "
+                    f"{docker_config.config_path()}: "
+                    f"{_describe_pull_error(auth_err)}"
+                ) from auth_err
             logger.warning(
                 f"Failed to obtain registry auth token from '{auth_url}': {auth_err}"
             )
@@ -340,8 +457,12 @@ def extract_tar_layer(
         tar_fileobj = tar_input
 
     dir_mtimes = []
+    # Iterating reads the layer once; getmembers() first would decompress it
+    # twice, since extractfile() then rewinds a compressed stream. Not stream
+    # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
+    # short on a member boundary would extract without an error.
     with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
-        for member in tar.getmembers():
+        for member in tar:
             name = member.name.lstrip("/")
 
             # Prevent path traversal
@@ -645,6 +766,7 @@ def build_erofs_image(
 
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
+_IMAGE_CACHE_MIN_FREE_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"
 # Subdirectory of each cached image holding one marker file per live sandbox.
 _USERS_SUBDIR = ".users"
 
@@ -676,6 +798,44 @@ def image_cache_max_bytes(images_dir: str) -> int:
         return shutil.disk_usage(images_dir).total // 2
     except OSError:
         return 0
+
+
+def image_cache_min_free_bytes(images_dir: str) -> int:
+    """Return the free space that eviction keeps on the cache's filesystem.
+
+    The cache shares its filesystem with sandboxes' writable overlays, logs
+    and spilled objects, so it gives way when they fill the disk.
+    ``RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES`` sets the floor in bytes; ``0``
+    disables it. Unset, it is a tenth of the filesystem that holds
+    ``images_dir``, the level at which the kubelet starts evicting Pods.
+
+    Args:
+        images_dir: Root image cache directory.
+
+    Returns:
+        The floor in bytes; 0 disables it.
+    """
+    raw = os.environ.get(_IMAGE_CACHE_MIN_FREE_BYTES_ENV)
+    if raw is not None and raw.strip():
+        try:
+            return max(int(raw), 0)
+        except ValueError:
+            logger.warning(
+                "Ignoring %s=%r: expected an integer number of bytes.",
+                _IMAGE_CACHE_MIN_FREE_BYTES_ENV,
+                raw,
+            )
+    try:
+        return shutil.disk_usage(images_dir).total // 10
+    except OSError:
+        return 0
+
+
+def _free_bytes(path: str) -> Optional[int]:
+    try:
+        return shutil.disk_usage(path).free
+    except OSError:
+        return None
 
 
 def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
@@ -744,12 +904,17 @@ def _file_size_bytes(path: str) -> int:
 
 
 def evict_least_recently_used_images(
-    images_dir: str, max_bytes: int, keep: Optional[str] = None
+    images_dir: str,
+    max_bytes: Optional[int],
+    keep: Optional[str] = None,
+    min_free_bytes: int = 0,
 ) -> None:
-    """Evict least-recently-extracted images until the cache fits ``max_bytes``.
+    """Evict least-recently-extracted images until the cache fits ``max_bytes``
+    and its filesystem has ``min_free_bytes`` free.
 
     Nodes cache every image they ever ran, so without a cap a long-lived
-    node eventually fills its disk. Candidates are fully extracted images
+    node eventually fills its disk, and the cache also gives way when
+    sandboxes' overlays or anything else fill it. Candidates are fully extracted images
     (``.extracted`` marker present) and ``<name>.tar`` archives left behind
     by earlier Ray versions, oldest first. An image is skipped when a live sandbox uses it, when its
     per-image lock is held (a pull in progress), or when it is ``keep``. The
@@ -758,8 +923,9 @@ def evict_least_recently_used_images(
 
     Args:
         images_dir: Root image cache directory.
-        max_bytes: The cache size cap in bytes.
+        max_bytes: The cache size cap in bytes, or None for no cap.
         keep: Sanitized name of an image that must survive this pass.
+        min_free_bytes: Free space to keep on the cache's filesystem.
     """
     try:
         names = os.listdir(images_dir)
@@ -797,8 +963,11 @@ def evict_least_recently_used_images(
         entries.append((mtime, name, path, tar_path, size))
 
     total = sum(entry[-1] for entry in entries)
+    free = _free_bytes(images_dir)
     for _, name, img_dir, tar_path, size in sorted(entries):
-        if total <= max_bytes:
+        if (max_bytes is None or total <= max_bytes) and (
+            free is None or free >= min_free_bytes
+        ):
             return
         if name == keep or (img_dir is not None and _has_users(img_dir)):
             continue
@@ -818,6 +987,7 @@ def evict_least_recently_used_images(
         except OSError:
             continue  # Locked by an in-progress pull; try the next one.
         total -= size
+        free = _free_bytes(images_dir)
         logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
 
 
@@ -848,13 +1018,19 @@ def pull_and_extract_container_image(
             f"Failed to create images directory '{images_dir}': {err}"
         ) from err
 
-    safe_name = sanitize_image_name(image)
+    safe_name = image_cache_name(image)
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
     max_cache = image_cache_max_bytes(images_dir)
-    if max_cache > 0:
-        evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
+    min_free = image_cache_min_free_bytes(images_dir)
+    if max_cache > 0 or min_free > 0:
+        evict_least_recently_used_images(
+            images_dir,
+            max_cache if max_cache > 0 else None,
+            keep=safe_name,
+            min_free_bytes=min_free,
+        )
 
     expected_marker = expected_extract_marker()
 
@@ -937,6 +1113,99 @@ def pull_and_extract_container_image(
                 fcntl.flock(f_lock, fcntl.LOCK_UN)
             except Exception:
                 pass
+
+
+def _download_blob(
+    url: str,
+    headers: Dict[str, str],
+    auth_header: Optional[str],
+    timeout_seconds: float,
+    blob_dir: str,
+    stop: threading.Event,
+) -> BinaryIO:
+    """Download a registry blob into an anonymous temporary file.
+
+    Args:
+        url: The blob's URL.
+        headers: Request headers.
+        auth_header: The registry's ``Authorization`` value, if any.
+        timeout_seconds: Network request timeout.
+        blob_dir: Directory for the temporary file.
+        stop: Set to end the download early.
+
+    Returns:
+        The file, rewound; a partial one if ``stop`` was set meanwhile.
+    """
+    blob = tempfile.TemporaryFile(dir=blob_dir)
+    if stop.is_set():
+        return blob
+    try:
+        req = _registry_request(url, headers, auth_header)
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            while not stop.is_set():
+                # read1 returns what has arrived, so a stop takes effect soon.
+                chunk = resp.read1(1 << 20)
+                if not chunk:
+                    break
+                blob.write(chunk)
+        blob.seek(0)
+    except BaseException:
+        blob.close()
+        raise
+    return blob
+
+
+def _download_blobs(
+    urls: List[str],
+    headers: Dict[str, str],
+    auth_header: Optional[str],
+    timeout_seconds: float,
+    blob_dir: str,
+) -> Iterator[BinaryIO]:
+    """Yield registry blobs in order, downloading a few of them at a time.
+
+    The caller extracts each layer while the ones after it download, and
+    closes each blob it gets. Closing the generator, as on an error, returns
+    at once: downloads still running stop at their next read, and the blobs
+    nobody took get closed.
+
+    Args:
+        urls: Blob URLs, in the order to yield them.
+        headers: Request headers.
+        auth_header: The registry's ``Authorization`` value, if any.
+        timeout_seconds: Network request timeout.
+        blob_dir: Directory for the temporary files.
+
+    Yields:
+        BinaryIO: Each blob, as a rewound temporary file.
+    """
+    stop = threading.Event()
+    pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=_LAYER_DOWNLOADS, thread_name_prefix="sandbox-layer-download"
+    )
+    downloads = [
+        pool.submit(
+            _download_blob, url, headers, auth_header, timeout_seconds, blob_dir, stop
+        )
+        for url in urls
+    ]
+    yielded = 0
+    try:
+        for download in downloads:
+            blob = download.result()
+            yielded += 1
+            yield blob
+    finally:
+        stop.set()
+        for download in downloads[yielded:]:
+            download.cancel()
+            download.add_done_callback(_close_blob)
+        pool.shutdown(wait=False)
+
+
+def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
+    if not download.cancelled() and download.exception() is None:
+        download.result().close()
 
 
 def _extract_image_layers(
@@ -1057,22 +1326,38 @@ def _extract_image_layers(
                 f"No layers found in manifest for image '{image}'"
             )
 
-        for layer in layers:
-            digest = layer["digest"]
-            blob_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/{digest}"
-            blob_req = _registry_request(blob_url, headers, auth_header)
-            with urllib.request.urlopen(blob_req, timeout=timeout_seconds) as blob_resp:
-                with tempfile.NamedTemporaryFile(
-                    dir=blob_dir, delete=True
-                ) as tmp_blob_file:
-                    shutil.copyfileobj(blob_resp, tmp_blob_file, length=64 * 1024)
-                    tmp_blob_file.seek(0)
-                    extract_tar_layer(tmp_blob_file, rootfs_dir, ownership=ownership)
+        blob_urls = [
+            f"{registry_base_url(registry)}/v2/{repo}/blobs/{layer['digest']}"
+            for layer in layers
+        ]
+        with contextlib.closing(
+            _download_blobs(blob_urls, headers, auth_header, timeout_seconds, blob_dir)
+        ) as blobs:
+            for blob in blobs:
+                with blob:
+                    extract_tar_layer(blob, rootfs_dir, ownership=ownership)
 
     except Exception as err:
         if isinstance(err, SandboxCreationError):
             raise
         raise SandboxCreationError(
-            f"Failed to pull and extract container image '{image}': {err}"
+            f"Failed to pull and extract container image '{image}': "
+            f"{_describe_pull_error(err)}"
         ) from err
     return ownership
+
+
+def _describe_pull_error(err: Exception) -> str:
+    """Describe a failed pull, with the registry's own reasons for an HTTP error.
+
+    A registry's error body says why it refused a request: Amazon ECR's
+    ``DENIED``, for one, names the IAM action that the node's role lacks.
+    """
+    if not isinstance(err, urllib.error.HTTPError):
+        return str(err)
+    try:
+        errors = json.loads(err.read(65536)).get("errors") or []
+        reasons = "; ".join(f"{e['code']}: {e['message']}" for e in errors)
+    except Exception:
+        reasons = ""
+    return f"{err}: {reasons}" if reasons else str(err)

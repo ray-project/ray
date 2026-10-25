@@ -187,6 +187,29 @@ class NonSamplingFileIndexer(FileIndexer):
         )
         yield from self._process_file_infos_to_manifests(file_infos)
 
+    def list_files_from_file_infos(
+        self,
+        file_infos: Iterable[FileInfo],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        limit: Optional[int] = None,
+        projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
+    ) -> Iterable[FileManifest]:
+        if excluded_read_unit_ids:
+            file_infos = (
+                info for info in file_infos if info.path not in excluded_read_unit_ids
+            )
+        if shuffle_config is not None:
+            file_infos = _shuffle_file_infos(
+                list(file_infos), seed=shuffle_config.get_seed(execution_idx)
+            )
+        yield from self._process_file_infos_to_manifests(file_infos)
+
     def _iter_file_infos_for_list(
         self,
         paths: "BlockColumn",

@@ -32,6 +32,13 @@ class Sandbox:
             is the recommended internet-access mode.
         dns: Optional nameserver IPs for the generated /etc/resolv.conf
             (public resolvers by default for "public").
+        cidr_allowlist: Optional egress allowlist for network="public": only
+            the listed destinations are reachable (plus DNS to the ``dns``
+            resolvers). None means the public internet, with internal
+            addresses left out as a best effort, and a denylist keeps
+            instance metadata and the Kubernetes API service closed whatever
+            the list says; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none); see
             ``DOCKER_DEFAULT_CAPABILITIES``.
@@ -40,6 +47,10 @@ class Sandbox:
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
+        disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past it
+            fail with ENOSPC. Zero (default) means no cap. Requires
+            ``readonly=False`` or a ``workdir``; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         **kwargs: Additional parameters passed to runtime.
     """
 
@@ -55,8 +66,10 @@ class Sandbox:
         rootless: bool = True,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
+        disk: Union[str, int, float] = 0,
         **kwargs,
     ):
         env = env or {}
@@ -64,7 +77,7 @@ class Sandbox:
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
         try:
             assigned = ray.get_runtime_context().get_assigned_resources()
-            if (cpu is None or cpu <= 0) and "CPU" in assigned and assigned["CPU"] > 0:
+            if cpu is None and "CPU" in assigned and assigned["CPU"] > 0:
                 cpu = float(assigned["CPU"])
 
             if (memory is None) and "memory" in assigned and assigned["memory"] > 0:
@@ -84,8 +97,10 @@ class Sandbox:
             rootless=rootless,
             network=network,
             dns=dns,
+            cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
             readonly=readonly,
+            disk=disk,
             **kwargs,
         )
 
@@ -186,6 +201,20 @@ class Sandbox:
             SandboxStatus of the sandbox instance.
         """
         return self.runtime.get_status(self.instance_id)
+
+    def set_egress_allowlist(self, cidrs: List[str]) -> None:
+        """Replace the egress allowlist of this network="public" sandbox.
+
+        The update is atomic. Connections the new list no longer allows stall
+        from their next packet, and no list opens the denylist; see
+        ``SandboxRuntime.set_egress_allowlist``.
+
+        Args:
+            cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
+                ``ALLOW_ALL_CIDRS`` opens every destination outside the
+                denylist.
+        """
+        self.runtime.set_egress_allowlist(self.instance_id, cidrs)
 
     def delete(self) -> None:
         """Clean up and terminate the sandbox instance."""
