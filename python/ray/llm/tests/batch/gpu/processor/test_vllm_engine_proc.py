@@ -80,16 +80,17 @@ def test_vllm_engine_processor(
     assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
 
     if expected_distributed_executor_backend == "ray":
-        ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
-        assert ray_remote_args_fn is not None
+        bundles = stage.map_batches_kwargs.pop("placement_group_bundles")
+        assert len(bundles) == tensor_parallel_size
         assert stage.map_batches_kwargs == {
             "zero_copy_batch": True,
             "max_concurrency": 8,
             "accelerator_type": gpu_type,
             "num_gpus": 0,
+            "placement_group_strategy": "PACK",
         }
     else:
-        assert "ray_remote_args_fn" not in stage.map_batches_kwargs
+        assert "placement_group_bundles" not in stage.map_batches_kwargs
         assert stage.map_batches_kwargs == {
             "zero_copy_batch": True,
             "max_concurrency": 8,
@@ -210,12 +211,12 @@ def test_vllm_engine_processor_bundle_per_worker(
 
     if expected_num_bundles > 1:
         # TP/PP > 1 -> executor_backend="ray"
-        ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
-        assert ray_remote_args_fn.args[0] == expected_num_bundles
-        assert ray_remote_args_fn.args[1] == gpu_type
-        expected_bundles = [{"CPU": 1, "GPU": 1}] * expected_num_bundles
-        assert ray_remote_args_fn.args[2]["bundles"] == expected_bundles
-        assert ray_remote_args_fn.args[2]["strategy"] == "PACK"
+        bundles = stage.map_batches_kwargs.pop("placement_group_bundles")
+        expected_bundles = [
+            {"CPU": 1, "GPU": 1, f"accelerator_type:{gpu_type}": 0.001}
+        ] * expected_num_bundles
+        assert bundles == expected_bundles
+        expected_kwargs["placement_group_strategy"] = "PACK"
         expected_kwargs["num_gpus"] = 0
     else:
         # TP=1, PP=1 -> executor_backend="uni"
