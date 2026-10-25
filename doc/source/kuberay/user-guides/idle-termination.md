@@ -24,7 +24,7 @@ The Ray autoscaler applies the policy once the Ray cluster has had no drivers co
 To use idle termination, the RayCluster must meet the following requirements:
 
 - `enableInTreeAutoscaling` is `true`.
-- Autoscaler v2 is enabled. Set `spec.autoscalerOptions.version` to `v2`, or set the `RAY_ENABLE_AUTOSCALER_V2=1` environment variable on the head container.
+- Autoscaler v2 is enabled. Set `spec.autoscalerOptions.version` to `v2`, or set the `RAY_enable_autoscaler_v2=1` environment variable on the head container.
 - `spec.rayVersion` is 2.60.0 or later.
 
 The KubeRay operator validates these requirements and rejects a RayCluster that doesn't meet them.
