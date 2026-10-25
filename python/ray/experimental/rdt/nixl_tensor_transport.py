@@ -579,10 +579,17 @@ class NixlTensorTransport(TensorTransportManager):
             # Check the state of the transfer continuously.
             deadline = None if timeout < 0 else time.monotonic() + timeout
             while True:
-                with self._agent_lock(fetch_request.remote_name):
-                    state = self.get_nixl_agent().check_xfer_state(
-                        fetch_request.xfer_handle
-                    )
+                agent_lock = self._agent_lock(fetch_request.remote_name)
+                # Don't block on a removal in progress, so the timeout and abort checks still run.
+                if agent_lock.acquire(blocking=False):
+                    try:
+                        state = self.get_nixl_agent().check_xfer_state(
+                            fetch_request.xfer_handle
+                        )
+                    finally:
+                        agent_lock.release()
+                else:
+                    state = "PROC"
                 if state == "ERR":
                     raise RuntimeError("NIXL transfer got to Error state.")
                 if state == "PROC":
@@ -682,6 +689,8 @@ class NixlTensorTransport(TensorTransportManager):
             # memory overlap). Removing it fails the transfers still in flight on it.
             if cached_version is not None and cached_version != version:
                 self._finish_transfers(remote_name)
+                with self._remote_agents_lock:
+                    del self._remote_agents[remote_name]
                 nixl_agent.remove_remote_agent(remote_name)
         nixl_agent.add_remote_agent(remote_nixl_agent_meta)
         if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
@@ -709,9 +718,9 @@ class NixlTensorTransport(TensorTransportManager):
                 # Another thread may have evicted it while we waited for the lock.
                 if cached:
                     self._finish_transfers(victim)
-                    self.get_nixl_agent().remove_remote_agent(victim)
                     with self._remote_agents_lock:
                         self._remote_agents.pop(victim, None)
+                    self.get_nixl_agent().remove_remote_agent(victim)
 
     def recv_multiple_tensors(
         self,
