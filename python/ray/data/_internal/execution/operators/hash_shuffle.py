@@ -1274,7 +1274,10 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 self._aggregator_pool.num_aggregators
                 * self._aggregator_pool._aggregator_ray_remote_args["num_cpus"]
             ),
-            gpu=0,
+            gpu=(
+                self._aggregator_pool.num_aggregators
+                * self._aggregator_pool._aggregator_ray_remote_args.get("num_gpus", 0)
+            ),
             memory=(
                 self._aggregator_pool.num_aggregators
                 * self._aggregator_pool._aggregator_ray_remote_args.get("memory", 0)
