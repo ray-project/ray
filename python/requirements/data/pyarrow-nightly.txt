@@ -1,5 +1,5 @@
 # not including pyarrow as nightly versions will break depset compilation too frequently
 hudi>=0.5.0
-pylance
+pylance>=6.0.0
 modin
 pandas
