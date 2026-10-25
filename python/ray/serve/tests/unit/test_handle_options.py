@@ -1,10 +1,15 @@
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
 from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
 from ray.serve._private.utils import DEFAULT
+from ray.serve.handle import (
+    DeploymentHandle,
+    _normalize_candidate_multiplexed_model_ids,
+)
 
 
 def test_dynamic_handle_options():
@@ -96,6 +101,111 @@ def test_init_handle_options():
     proxy_options = InitHandleOptions.create(_source=DeploymentHandleSource.PROXY)
     assert proxy_options._prefer_local_routing is False
     assert proxy_options._source == DeploymentHandleSource.PROXY
+
+
+def test_dynamic_handle_options_candidate_multiplexed_model_ids():
+    default_options = DynamicHandleOptions()
+    assert default_options.candidate_multiplexed_model_ids == ()
+
+    only_set_candidates = default_options.copy_and_update(
+        candidate_multiplexed_model_ids=("v7", "v6")
+    )
+    assert only_set_candidates.candidate_multiplexed_model_ids == ("v7", "v6")
+    assert only_set_candidates.multiplexed_model_id == ""
+    assert only_set_candidates.method_name == "__call__"
+
+    # Existing options should be unmodified.
+    assert default_options.candidate_multiplexed_model_ids == ()
+
+
+@pytest.mark.parametrize(
+    "candidate_multiplexed_model_ids,expected",
+    [
+        (["v7", "v6", "v5"], ("v7", "v6", "v5")),
+        ([], ()),
+        # Already-frozen input is accepted so internal callers can pass it back.
+        (("v7",), ("v7",)),
+    ],
+)
+def test_normalize_candidate_multiplexed_model_ids(
+    candidate_multiplexed_model_ids, expected
+):
+    assert (
+        _normalize_candidate_multiplexed_model_ids(candidate_multiplexed_model_ids)
+        == expected
+    )
+
+
+def test_options_rejects_both_multiplexed_model_id_fields():
+    handle = DeploymentHandle("D", "app")
+
+    with pytest.raises(ValueError, match="Only one of"):
+        handle.options(
+            multiplexed_model_id="v7",
+            candidate_multiplexed_model_ids=["v6", "v5"],
+        )
+
+
+@pytest.mark.parametrize(
+    "first,second,expected_model_id,expected_candidates",
+    [
+        (
+            {"candidate_multiplexed_model_ids": ["v7", "v6"]},
+            {"multiplexed_model_id": "v5"},
+            "v5",
+            (),
+        ),
+        (
+            {"multiplexed_model_id": "v5"},
+            {"candidate_multiplexed_model_ids": ["v7", "v6"]},
+            "",
+            ("v7", "v6"),
+        ),
+        # An empty list carries no model ID, so it clears the candidates without
+        # disturbing a single ID set earlier.
+        (
+            {"multiplexed_model_id": "v5"},
+            {"candidate_multiplexed_model_ids": []},
+            "v5",
+            (),
+        ),
+        # An unrelated option leaves both fields alone.
+        (
+            {"candidate_multiplexed_model_ids": ["v7", "v6"]},
+            {"method_name": "other"},
+            "",
+            ("v7", "v6"),
+        ),
+    ],
+)
+def test_options_chaining_keeps_multiplexed_fields_exclusive(
+    first, second, expected_model_id, expected_candidates
+):
+    # A stub router marks the handle initialized so `options()` doesn't need a
+    # running Serve instance.
+    handle = DeploymentHandle("D", "app", _router=MagicMock())
+
+    options = handle.options(**first).options(**second).handle_options
+
+    assert options.multiplexed_model_id == expected_model_id
+    assert options.candidate_multiplexed_model_ids == expected_candidates
+
+
+@pytest.mark.parametrize(
+    "candidate_multiplexed_model_ids,expected_error",
+    [
+        ("v7", TypeError),  # a bare string is not a list of IDs
+        (object(), TypeError),
+        ([1], TypeError),
+        ([""], ValueError),
+        (["v7", "v7"], ValueError),
+    ],
+)
+def test_normalize_candidate_multiplexed_model_ids_rejects_invalid(
+    candidate_multiplexed_model_ids, expected_error
+):
+    with pytest.raises(expected_error):
+        _normalize_candidate_multiplexed_model_ids(candidate_multiplexed_model_ids)
 
 
 if __name__ == "__main__":
