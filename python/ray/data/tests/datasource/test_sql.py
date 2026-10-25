@@ -170,6 +170,33 @@ def test_write_sql_nonexistant_table(temp_database: str):
         )
 
 
+@pytest.mark.parametrize("num_blocks", (2, 4))
+def test_read_sql_with_null_shard_keys(num_blocks: int, temp_database: str):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE events (id INTEGER, customer_id TEXT)")
+
+    expected_values = [(i, None if i < 10 else str(i)) for i in range(200)]
+    connection.executemany("INSERT INTO events VALUES (?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    dataset = ray.data.read_sql(
+        "SELECT * FROM events",
+        lambda: sqlite3.connect(temp_database),
+        override_num_blocks=num_blocks,
+        shard_hash_fn="unicode",
+        shard_keys=["customer_id"],
+    )
+
+    actual_values = [
+        (record["id"], record["customer_id"])
+        for record in dataset.take_all()
+    ]
+
+    assert len(actual_values) == len(expected_values)
+    assert sorted(actual_values, key=lambda row: row[0]) == expected_values
+
+
 if __name__ == "__main__":
     import sys
 

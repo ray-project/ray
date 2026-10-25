@@ -98,6 +98,7 @@ class SQLDatasource(Datasource):
         sql_params: Optional[Any] = None,
     ):
         self.sql = sql
+        self.shard_key_list = list(shard_keys) if shard_keys else None
         if shard_keys and len(shard_keys) > 1:
             self.shard_keys = f"CONCAT({','.join(shard_keys)})"
         elif shard_keys and len(shard_keys) == 1:
@@ -197,10 +198,30 @@ class SQLDatasource(Datasource):
 
     def _create_parallel_read_fn(self, task_id: int, parallelism: int):
         hash_fn = self.shard_hash_fn
-        query = (
-            f"SELECT * FROM ({self.sql}) as T "
-            f"WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = {task_id}"
+        hash_fn = self.shard_hash_fn
+        hash_predicate = (
+            f"MOD(ABS({hash_fn}({self.shard_keys})), "
+            f"{parallelism}) = {task_id}"
         )
+
+        if self.shard_key_list:
+            null_conditions = [
+                f"{key} IS NULL" for key in self.shard_key_list
+            ]
+            non_null_conditions = [
+                f"{key} IS NOT NULL" for key in self.shard_key_list
+            ]
+            null_predicate = "(" + " OR ".join(null_conditions) + ")"
+            non_null_predicate = "(" + " AND ".join(non_null_conditions) + ")"
+
+            if task_id == 0:
+                predicate = f"({null_predicate} OR {hash_predicate})"
+            else:
+                predicate = f"({non_null_predicate} AND {hash_predicate})"
+        else:
+            predicate = hash_predicate
+
+        query = f"SELECT * FROM ({self.sql}) AS T WHERE {predicate}"
 
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
