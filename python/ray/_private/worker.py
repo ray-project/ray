@@ -1757,6 +1757,12 @@ def init(
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
 
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+        raise RuntimeError(
+            "Ray Client is already initialized in this process. "
+            "ray.init() can't start or connect to a Ray cluster without ray://."
+        )
+
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
     try:
