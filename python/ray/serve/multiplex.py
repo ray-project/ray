@@ -197,46 +197,51 @@ class _ModelMultiplexWrapper:
             # the replica.
             self._push_multiplexed_replica_info = True
             self._model_load_tasks.add(model_id)
-            async with self._model_cache_lock:
-                # Check if the model has been loaded by another request.
-                if model_id in self.models:
-                    return self.models[model_id]
-                try:
-                    # If the number of models per replica is specified, check
-                    # if the number of models on the current replica has
-                    # reached the limit.
-                    if (
-                        self.max_num_models_per_replica > 0
-                        and len(self.models) >= self.max_num_models_per_replica
-                    ):
-                        # Unload the least recently used model.
-                        await self.unload_model_lru()
-                        self._push_multiplexed_replica_info = True
+            try:
+                async with self._model_cache_lock:
+                    # Check if the model has been loaded by another request.
+                    if model_id in self.models:
+                        return self.models[model_id]
+                    try:
+                        # If the number of models per replica is specified, check
+                        # if the number of models on the current replica has
+                        # reached the limit.
+                        if (
+                            self.max_num_models_per_replica > 0
+                            and len(self.models) >= self.max_num_models_per_replica
+                        ):
+                            # Unload the least recently used model.
+                            await self.unload_model_lru()
+                            self._push_multiplexed_replica_info = True
 
-                    # Load the model.
-                    logger.debug(f"Loading model '{model_id}'.")
-                    self.models_load_counter.inc()
-                    load_start_time = time.time()
-                    if self.self_arg is None:
-                        self.models[model_id] = await self._func(model_id)
-                    else:
-                        self.models[model_id] = await self._func(
-                            self.self_arg, model_id
+                        # Load the model.
+                        logger.debug(f"Loading model '{model_id}'.")
+                        self.models_load_counter.inc()
+                        load_start_time = time.time()
+                        if self.self_arg is None:
+                            self.models[model_id] = await self._func(model_id)
+                        else:
+                            self.models[model_id] = await self._func(
+                                self.self_arg, model_id
+                            )
+                        load_latency_ms = (time.time() - load_start_time) * 1000.0
+                        logger.debug(
+                            f"Successfully loaded model '{model_id}' in "
+                            f"{load_latency_ms:.1f}ms."
                         )
-                    load_latency_ms = (time.time() - load_start_time) * 1000.0
-                    logger.debug(
-                        f"Successfully loaded model '{model_id}' in "
-                        f"{load_latency_ms:.1f}ms."
-                    )
-                    self._model_load_tasks.discard(model_id)
-                    self.model_load_latency_ms.observe(load_latency_ms)
-                    return self.models[model_id]
-                except Exception as e:
-                    logger.error(
-                        f"Failed to load model '{model_id}'. Error: {e}",
-                    )
-                    self._model_load_tasks.discard(model_id)
-                    raise e
+                        self.model_load_latency_ms.observe(load_latency_ms)
+                        return self.models[model_id]
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to load model '{model_id}'. Error: {e}",
+                        )
+                        raise e
+            finally:
+                # The ID was pushed while loading. If the load failed or was
+                # cancelled, push again so the controller drops it.
+                self._model_load_tasks.discard(model_id)
+                if model_id not in self.models:
+                    self._push_multiplexed_replica_info = True
 
     async def unload_model_lru(self) -> None:
         """Unload the least recently used model."""

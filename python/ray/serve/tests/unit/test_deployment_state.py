@@ -1091,7 +1091,7 @@ def test_record_multiplexed_model_ids_updates_replica_details(
 
     replica_id = ds._replicas.get()[0].replica_id
     (details,) = ds.list_replica_details()
-    assert details.multiplexed_model_ids == []
+    assert details.multiplexed_model_ids == ()
     # Not reported yet, so it is omitted from the user-facing details.
     assert "multiplexed_model_ids" not in details.model_fields_set
 
@@ -1102,21 +1102,23 @@ def test_record_multiplexed_model_ids_updates_replica_details(
     )
     (details,) = ds.list_replica_details()
     assert details.replica_id == replica_id.unique_id
-    assert details.multiplexed_model_ids == ["model-a", "model-b"]
+    assert details.multiplexed_model_ids == ("model-a", "model-b")
+    # The frozen model stays hashable.
+    hash(details)
 
     # An evicted model disappears from the details on the next report.
     ds.record_request_routing_info(
         RequestRoutingInfo(replica_id=replica_id, multiplexed_model_ids=["model-c"])
     )
     (details,) = ds.list_replica_details()
-    assert details.multiplexed_model_ids == ["model-c"]
+    assert details.multiplexed_model_ids == ("model-c",)
 
     # Routing stats alone (no model IDs) leave the recorded IDs unchanged.
     ds.record_request_routing_info(
         RequestRoutingInfo(replica_id=replica_id, routing_stats={"key": 1})
     )
     (details,) = ds.list_replica_details()
-    assert details.multiplexed_model_ids == ["model-c"]
+    assert details.multiplexed_model_ids == ("model-c",)
 
 
 def test_force_kill(mock_deployment_state_manager):

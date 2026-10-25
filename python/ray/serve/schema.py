@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from zlib import crc32
 
 from pydantic import (
@@ -1396,12 +1396,13 @@ class ReplicaDetails(ServeActorDetails):
             "state from the running replica actor."
         )
     )
-    multiplexed_model_ids: List[str] = Field(
-        default_factory=list,
+    multiplexed_model_ids: Tuple[str, ...] = Field(
+        default=(),
         description=(
             "IDs of the multiplexed models that are loaded or loading on this "
             "replica, as last reported to the controller. Empty for "
-            "deployments that don't use model multiplexing."
+            "deployments that don't use model multiplexing. After a controller "
+            "restart it stays empty until the replica's model cache next changes."
         ),
     )
 

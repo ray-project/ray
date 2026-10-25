@@ -225,6 +225,70 @@ class TestMultiplexWrapper:
         assert "3" in multiplexer.models
         assert len(multiplexer._model_load_tasks) == 0
 
+    async def test_failed_load_drops_model_id(self, start_serve_with_context):
+        """A model that fails to load is dropped from the pushed model IDs."""
+
+        release = asyncio.Event()
+
+        async def model_load_func(model_id: str):
+            await release.wait()
+            raise RuntimeError("load failed")
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        task = get_or_create_event_loop().create_task(multiplexer.load_model("1"))
+        await asyncio.sleep(0.1)
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+        # The loading ID has been pushed.
+        multiplexer._push_multiplexed_replica_info = False
+
+        release.set()
+        with pytest.raises(RuntimeError, match="load failed"):
+            await task
+        assert multiplexer._get_loading_and_loaded_model_ids() == []
+        # Push again so the controller drops the ID pushed while loading.
+        assert multiplexer._push_multiplexed_replica_info
+
+    @pytest.mark.parametrize("cancel_while", ["loading", "waiting_for_lock"])
+    async def test_cancelled_load_drops_model_id(
+        self, start_serve_with_context, cancel_while
+    ):
+        """A model whose load is cancelled is dropped from the pushed model IDs."""
+        release = asyncio.Event()
+
+        async def model_load_func(model_id: str):
+            await release.wait()
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=2
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        loop = get_or_create_event_loop()
+        if cancel_while == "waiting_for_lock":
+            # Model "1" holds the cache lock while it loads.
+            holder = loop.create_task(multiplexer.load_model("1"))
+            await asyncio.sleep(0.1)
+        task = loop.create_task(multiplexer.load_model("2"))
+        await asyncio.sleep(0.1)
+        assert "2" in multiplexer._get_loading_and_loaded_model_ids()
+        multiplexer._push_multiplexed_replica_info = False
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert "2" not in multiplexer._get_loading_and_loaded_model_ids()
+        assert multiplexer._push_multiplexed_replica_info
+
+        if cancel_while == "waiting_for_lock":
+            release.set()
+            assert await holder == "1"
+            assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+
 
 class TestBasicAPI:
     def test_decorator_validation(self):
