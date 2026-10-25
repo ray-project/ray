@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import random
+import os
 from collections import deque
 from typing import List, Optional, Tuple
 
@@ -30,7 +30,9 @@ class _SubscriberBase:
         self._worker_id = worker_id
         # self._subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
-        self._subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
+        # os.urandom rather than the global `random` module so that ray.init()
+        # does not perturb a seed the user set beforehand (#10145).
+        self._subscriber_id = os.urandom(28)
         self._last_batch_size = 0
         self._max_processed_sequence_id = 0
         self._publisher_id = b""
