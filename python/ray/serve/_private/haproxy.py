@@ -1060,10 +1060,9 @@ class HAProxyApi(ProxyApi):
         # No worker has spawned yet, so any match belongs to a dead actor.
         self._sweep_stale_logs()
 
-        if self._metrics_require_token:
-            os.makedirs(
-                os.path.dirname(self.cfg.metrics_exporter_socket_path), exist_ok=True
-            )
+        exporter_socket_dir = os.path.dirname(self.cfg.metrics_exporter_socket_path)
+        if self._metrics_require_token and exporter_socket_dir:
+            os.makedirs(exporter_socket_dir, exist_ok=True)
 
         # Create a server state directory only if optimization is enabled
         if self.cfg.enable_hap_optimization:
