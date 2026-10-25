@@ -1351,8 +1351,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         # acquire that many GPUs. The declared max has to reflect the
         # override so GPU accounting stays consistent.
         gpu_override = (self._aggregator_ray_remote_args_override or {}).get(
-            "num_gpus", 0
-        )
+            "num_gpus"
+        ) or 0
         return ExecutionResources.zero(), ExecutionResources.for_limits(
             gpu=self._num_aggregators * gpu_override
         )

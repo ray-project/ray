@@ -1030,6 +1030,8 @@ class TestReservationOpResourceAllocator:
     @pytest.mark.parametrize(
         "num_partitions,num_cpus,num_gpus,expected_max_gpu",
         [
+            (1, 1, None, 0),
+            (1, 1, 0, 0),
             (1, 1, 0.5, 0.5),
             (4, 4, 0.5, 2.0),
         ],
