@@ -971,6 +971,27 @@ void InternalKVAccessor::AsyncInternalKVPut(
       timeout_ms);
 }
 
+void InternalKVAccessor::AsyncInternalKVPutIfMatch(
+    const std::string &ns,
+    const std::string &key,
+    const std::string &expected_value,
+    const std::string &value,
+    const int64_t timeout_ms,
+    const rpc::OptionalItemCallback<bool> &callback) {
+  rpc::InternalKVPutRequest req;
+  req.set_namespace_(ns);
+  req.set_key(key);
+  req.set_expected_value(expected_value);
+  req.set_value(value);
+  client_impl_->GetGcsRpcClient().InternalKVPut(
+      std::move(req),
+      [callback](const Status &status, rpc::InternalKVPutReply &&reply) {
+        callback(status,
+                 status.ok() ? std::optional<bool>(reply.updated()) : std::nullopt);
+      },
+      timeout_ms);
+}
+
 void InternalKVAccessor::AsyncInternalKVExists(
     const std::string &ns,
     const std::string &key,

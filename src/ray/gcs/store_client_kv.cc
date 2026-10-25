@@ -99,6 +99,18 @@ void StoreClientInternalKV::Put(const std::string &ns,
       table_name_, MakeKey(ns, key), std::move(value), overwrite, std::move(callback));
 }
 
+void StoreClientInternalKV::PutIfMatch(const std::string &ns,
+                                       const std::string &key,
+                                       std::string expected_value,
+                                       std::string value,
+                                       Postable<void(bool)> callback) {
+  delegate_->AsyncPutIfMatch(table_name_,
+                             MakeKey(ns, key),
+                             std::move(expected_value),
+                             std::move(value),
+                             std::move(callback));
+}
+
 void StoreClientInternalKV::Del(const std::string &ns,
                                 const std::string &key,
                                 bool del_by_prefix,

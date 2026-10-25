@@ -26,7 +26,7 @@ namespace ray {
 namespace gcs {
 
 // Hand-written fake for InternalKVInterface that stores keys and values in an
-// in-memory map. Supports all operations: Get, MultiGet, Put, Del, Exists, Keys.
+// in-memory map. Supports Get, MultiGet, Put, PutIfMatch, Del, Exists, Keys.
 // Warning: Naively prepends the namespace to the key, so e.g. the
 // (namespace, key) pairs ("a", "bc") and ("ab", "c") will collide which is a bug.
 class FakeInternalKV : public InternalKVInterface {
@@ -75,6 +75,19 @@ class FakeInternalKV : public InternalKVInterface {
       kv_store_[full_key] = value;
       std::move(callback).Post("FakeInternalKV.Put.true", true);
     }
+  }
+
+  void PutIfMatch(const std::string &ns,
+                  const std::string &key,
+                  std::string expected_value,
+                  std::string value,
+                  Postable<void(bool)> callback) override {
+    auto it = kv_store_.find(ns + key);
+    bool updated = it != kv_store_.end() && it->second == expected_value;
+    if (updated) {
+      it->second = std::move(value);
+    }
+    std::move(callback).Post("FakeInternalKV.PutIfMatch", updated);
   }
 
   void Del(const std::string &ns,

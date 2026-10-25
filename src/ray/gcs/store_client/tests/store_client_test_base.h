@@ -17,6 +17,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <future>
 #include <iomanip>
 #include <memory>
 #include <string>
@@ -228,6 +229,70 @@ class StoreClientTestBase : public ::testing::Test {
     Exists(false);
     // AsyncGet
     GetEmpty();
+  }
+
+  void TestAsyncPutIfMatch() {
+    auto update = [this](const std::string &expected, const std::string &value) {
+      std::promise<bool> result;
+      auto future = result.get_future();
+      store_client_->AsyncPutIfMatch(
+          table_name_,
+          "conditional-key",
+          expected,
+          value,
+          {[&result](bool updated) { result.set_value(updated); },
+           *io_service_pool_->Get()});
+      return future.get();
+    };
+    auto put = [this](const std::string &value) {
+      std::promise<bool> result;
+      auto future = result.get_future();
+      store_client_->AsyncPut(
+          table_name_,
+          "conditional-key",
+          value,
+          true,
+          {[&result](bool added) { result.set_value(added); }, *io_service_pool_->Get()});
+      return future.get();
+    };
+    auto remove = [this]() {
+      std::promise<bool> result;
+      auto future = result.get_future();
+      store_client_->AsyncDelete(table_name_,
+                                 "conditional-key",
+                                 {[&result](bool deleted) { result.set_value(deleted); },
+                                  *io_service_pool_->Get()});
+      return future.get();
+    };
+
+    EXPECT_FALSE(update("", "new"));
+    EXPECT_TRUE(put("old"));
+    EXPECT_FALSE(update("stale", "new"));
+    EXPECT_TRUE(update("old", "new"));
+    EXPECT_FALSE(update("old", "stale"));
+    EXPECT_TRUE(remove());
+    EXPECT_FALSE(update("new", "resurrected"));
+
+    EXPECT_TRUE(put("contended"));
+    std::promise<bool> first;
+    std::promise<bool> second;
+    auto first_result = first.get_future();
+    auto second_result = second.get_future();
+    store_client_->AsyncPutIfMatch(
+        table_name_,
+        "conditional-key",
+        "contended",
+        "first",
+        {[&first](bool updated) { first.set_value(updated); }, *io_service_pool_->Get()});
+    store_client_->AsyncPutIfMatch(
+        table_name_,
+        "conditional-key",
+        "contended",
+        "second",
+        {[&second](bool updated) { second.set_value(updated); },
+         *io_service_pool_->Get()});
+    EXPECT_NE(first_result.get(), second_result.get());
+    EXPECT_TRUE(remove());
   }
 
   void GenTestData() {
