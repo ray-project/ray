@@ -105,6 +105,34 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
     return all_vars + cmd
 
 
+_OUTPUT_START_MARKER = "__RAY_COMMAND_OUTPUT_START__"
+_OUTPUT_END_MARKER = "__RAY_COMMAND_OUTPUT_END__"
+
+
+def _with_output_markers(cmd: str) -> str:
+    """Bracket the command's stdout with markers.
+
+    Login shells run profile scripts that may print a MOTD, quota warnings or
+    similar banners before (and after) the command runs. Callers that parse the
+    captured output, e.g. ``docker inspect`` JSON, break on that extra text.
+    The markers let :func:`_strip_output_markers` recover just the command's
+    own output while preserving its exit code.
+    """
+    return (
+        f"echo {_OUTPUT_START_MARKER}; ({cmd}); __ray_status=$?; "
+        f"echo; echo {_OUTPUT_END_MARKER}; exit $__ray_status"
+    )
+
+
+def _strip_output_markers(output: bytes) -> bytes:
+    """Return the part of ``output`` between the markers, if both are present."""
+    start = output.find(_OUTPUT_START_MARKER.encode())
+    end = output.rfind(_OUTPUT_END_MARKER.encode())
+    if start == -1 or end == -1 or end < start:
+        return output
+    return output[start + len(_OUTPUT_START_MARKER) : end].strip(b"\r\n")
+
+
 def _with_interactive(cmd):
     force_interactive = (
         f"source ~/.bashrc; "
@@ -304,7 +332,9 @@ class SSHCommandRunner(CommandRunnerInterface):
                     use_login_shells=is_using_login_shells(),
                 )
             else:
-                return self.process_runner.check_output(final_cmd)
+                return _strip_output_markers(
+                    self.process_runner.check_output(final_cmd)
+                )
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
@@ -387,6 +417,8 @@ class SSHCommandRunner(CommandRunnerInterface):
         if cmd:
             if environment_variables:
                 cmd = _with_environment_variables(cmd, environment_variables)
+            if with_output:
+                cmd = _with_output_markers(cmd)
             if is_using_login_shells():
                 final_cmd += _with_interactive(cmd)
             else:
