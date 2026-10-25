@@ -165,12 +165,10 @@ class _SilentHandler(WSGIRequestHandler):
         pass
 
 
-def start_metrics_http_server(port: int, registry, addr: str = "0.0.0.0") -> None:
-    """Serve ``registry`` on ``addr:port`` from a daemon thread, like
-    ``prometheus_client.start_http_server``, but requiring the token when token
-    auth is on."""
-    from prometheus_client import make_wsgi_app
-
+def start_token_auth_http_server(port: int, app, addr: str = "0.0.0.0") -> WSGIServer:
+    """Serve the metrics WSGI ``app`` on ``addr:port`` from a daemon thread,
+    requiring the token when token auth is on. Returns the server so the caller
+    can shut it down."""
     family, _, _, _, sockaddr = socket.getaddrinfo(
         addr, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
     )[0]
@@ -180,11 +178,21 @@ def start_metrics_http_server(port: int, registry, addr: str = "0.0.0.0") -> Non
     httpd = make_server(
         sockaddr[0],
         port,
-        get_token_auth_wsgi_app(make_wsgi_app(registry)),
+        get_token_auth_wsgi_app(app),
         server_class,
         _SilentHandler,
     )
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
+def start_metrics_http_server(port: int, registry, addr: str = "0.0.0.0") -> None:
+    """Serve ``registry`` on ``addr:port`` from a daemon thread, like
+    ``prometheus_client.start_http_server``, but requiring the token when token
+    auth is on."""
+    from prometheus_client import make_wsgi_app
+
+    start_token_auth_http_server(port, make_wsgi_app(registry), addr)
 
 
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:

@@ -138,7 +138,13 @@ defaults
     {%- endif %}
     balance {{ config.balance_algorithm }}
 frontend prometheus
+    {%- if metrics_exporter_socket_path %}
+    # Token auth is on: the proxy actor serves metrics_port, checks the token
+    # and forwards here, so only the actor's user can reach the exporter.
+    bind unix@{{ metrics_exporter_socket_path }} mode 600
+    {%- else %}
     bind :{{ config.metrics_port }}
+    {%- endif %}
     mode http
     http-request use-service prometheus-exporter if { path {{ config.metrics_uri }} }
     no log

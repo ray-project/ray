@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import functools
+import http.client
 import io
 import json
 import logging
@@ -8,6 +9,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import string
 import time
 from abc import ABC, abstractmethod
@@ -15,10 +17,15 @@ from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+from wsgiref.simple_server import WSGIServer
 
 import ray
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
+from ray._private.authentication import authentication_utils as auth_utils
+from ray._private.authentication.http_token_authentication import (
+    start_token_auth_http_server,
+)
 from ray.serve._private.common import (
     NodeId,
     ReplicaID,
@@ -56,6 +63,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_ENABLED,
+    RAY_SERVE_HAPROXY_METRICS_EXPORTER_SOCKET_PATH,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
@@ -308,6 +316,56 @@ def _tail_file(path: str, n_bytes: int = 4096) -> str:
             return f.read().decode("utf-8", errors="ignore").strip()
     except OSError:
         return ""
+
+
+# Prometheus' default scrape timeout.
+_EXPORTER_FORWARD_TIMEOUT_S = 10
+
+
+class _UnixHTTPConnection(http.client.HTTPConnection):
+    """An HTTPConnection to a server listening on a Unix socket."""
+
+    def __init__(self, path: str, timeout: float):
+        super().__init__("localhost", timeout=timeout)
+        self._path = path
+
+    def connect(self) -> None:
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self._path)
+
+
+def _exporter_forwarding_app(socket_path: str, metrics_uri: str):
+    """WSGI app that answers ``metrics_uri`` with what HAProxy's Prometheus
+    exporter on ``socket_path`` returns for it."""
+
+    def app(environ, start_response):
+        if environ.get("PATH_INFO") != metrics_uri:
+            start_response("404 Not Found", [("Content-Type", "text/plain")])
+            return [b"Not Found"]
+
+        # The exporter takes its filters (scope=..., no-maint) as a query string.
+        query = environ.get("QUERY_STRING")
+        conn = _UnixHTTPConnection(socket_path, _EXPORTER_FORWARD_TIMEOUT_S)
+        try:
+            conn.request("GET", f"{metrics_uri}?{query}" if query else metrics_uri)
+            response = conn.getresponse()
+            body = response.read()
+        except (OSError, http.client.HTTPException) as e:
+            # HAProxy is starting, or the socket is gone with it.
+            logger.warning(f"Failed to read the HAProxy metrics exporter: {e}")
+            start_response("503 Service Unavailable", [("Content-Type", "text/plain")])
+            return [b"HAProxy metrics exporter unavailable"]
+        finally:
+            conn.close()
+
+        start_response(
+            f"{response.status} {response.reason}",
+            [("Content-Type", response.getheader("Content-Type", "text/plain"))],
+        )
+        return [body]
+
+    return app
 
 
 def get_haproxy_binary() -> str:
@@ -734,6 +792,8 @@ class HAProxyConfig:
     stats_uri: str = "/stats"
     metrics_port: int = RAY_SERVE_HAPROXY_METRICS_PORT
     metrics_uri: str = "/metrics"
+    # Where the exporter listens instead of metrics_port when token auth is on.
+    metrics_exporter_socket_path: str = RAY_SERVE_HAPROXY_METRICS_EXPORTER_SOCKET_PATH
     # All timeout values are in seconds
     timeout_queue_s: Optional[int] = None
     timeout_connect_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S
@@ -971,6 +1031,14 @@ class HAProxyApi(ProxyApi):
         # file count stays bounded instead of growing with every reload.
         self._retired_logs: "deque[Tuple[str, str]]" = deque()
         self._max_retained_logs: int = 10
+        # HAProxy can't check the auth token without a copy of it in its config
+        # (#67047), so with token auth on its exporter listens on a Unix socket
+        # and metrics_port is served from this process behind the token check.
+        self._metrics_require_token: bool = (
+            auth_utils.is_token_auth_enabled()
+            and not auth_utils.is_metrics_auth_skipped()
+        )
+        self._metrics_server: Optional[WSGIServer] = None
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -991,6 +1059,11 @@ class HAProxyApi(ProxyApi):
         # Sweep std-stream logs left by a previous incarnation on this node.
         # No worker has spawned yet, so any match belongs to a dead actor.
         self._sweep_stale_logs()
+
+        if self._metrics_require_token:
+            os.makedirs(
+                os.path.dirname(self.cfg.metrics_exporter_socket_path), exist_ok=True
+            )
 
         # Create a server state directory only if optimization is enabled
         if self.cfg.enable_hap_optimization:
@@ -1529,6 +1602,11 @@ class HAProxyApi(ProxyApi):
                     "router_application_lua_path": router_application_lua_path,
                     "metrics_enabled": self.cfg.metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
+                    "metrics_exporter_socket_path": (
+                        self.cfg.metrics_exporter_socket_path
+                        if self._metrics_require_token
+                        else None
+                    ),
                     "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,
                     "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
                 }
@@ -1575,6 +1653,14 @@ class HAProxyApi(ProxyApi):
 
                 self._generate_config_file_internal()
                 logger.info("Successfully generated HAProxy config file.")
+
+            if self._metrics_require_token and self._metrics_server is None:
+                self._metrics_server = start_token_auth_http_server(
+                    self.cfg.metrics_port,
+                    _exporter_forwarding_app(
+                        self.cfg.metrics_exporter_socket_path, self.cfg.metrics_uri
+                    ),
+                )
 
             self._proc = await self._start_and_wait_for_haproxy()
             logger.info("HAProxy started successfully.")
@@ -1691,6 +1777,12 @@ class HAProxyApi(ProxyApi):
         return backend_stats
 
     async def stop(self) -> None:
+        if self._metrics_server is not None:
+            # shutdown() blocks until the serving thread's poll loop exits.
+            await asyncio.to_thread(self._metrics_server.shutdown)
+            self._metrics_server.server_close()
+            self._metrics_server = None
+
         proc = self._proc
         if proc is None:
             logger.info("HAProxy process not running, skipping shutdown.")
@@ -1930,6 +2022,9 @@ class HAProxyManager(ProxyActorInterface):
                 ),
                 server_state_file=_per_node(RAY_SERVE_HAPROXY_SERVER_STATE_FILE),
                 metrics_socket_path=_per_node(RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH),
+                metrics_exporter_socket_path=_per_node(
+                    RAY_SERVE_HAPROXY_METRICS_EXPORTER_SOCKET_PATH
+                ),
             ),
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )

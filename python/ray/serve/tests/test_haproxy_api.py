@@ -4,13 +4,15 @@ import hashlib
 import json
 import logging
 import os
+import secrets
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Optional, Tuple
 from unittest import mock
 
 import httpx
@@ -29,6 +31,11 @@ from ray._common.test_utils import (
     async_wait_for_condition,
     fetch_prometheus_metrics,
     wait_for_condition,
+)
+from ray._private.authentication_test_utils import (
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
 )
 from ray.serve._private import haproxy
 from ray.serve._private.common import RequestProtocol
@@ -3704,6 +3711,126 @@ def test_ingress_router_fallback_yaml(ray_shutdown):
         )
         assert response.status_code == 200
         assert response.json() == {"request": i}
+
+
+def _enable_token_auth() -> str:
+    """Turn token auth on in this process. The autouse _restore_token_auth_env
+    fixture turns it back off after the test."""
+    token = secrets.token_hex(32)
+    set_auth_mode("token")
+    set_env_auth_token(token)
+    reset_auth_token_state()
+    return token
+
+
+def _metrics_config(temp_dir: str, **overrides) -> HAProxyConfig:
+    return HAProxyConfig(
+        http_options=HTTPOptions(host="127.0.0.1", port=find_free_port()),
+        stats_port=find_free_port(),
+        metrics_port=find_free_port(),
+        socket_path=os.path.join(temp_dir, "admin.sock"),
+        metrics_exporter_socket_path=os.path.join(temp_dir, "exporter.sock"),
+        **overrides,
+    )
+
+
+async def _start_metrics_haproxy(
+    temp_dir: str, haproxy_api_cleanup
+) -> Tuple[HAProxyApi, str]:
+    """Start HAProxy and return it with its exporter's URL."""
+    config = _metrics_config(temp_dir)
+    api = HAProxyApi(cfg=config, config_file_path=os.path.join(temp_dir, "haproxy.cfg"))
+    haproxy_api_cleanup(api)
+    await api.start()
+    wait_for_condition(lambda: check_haproxy_ready(config.stats_port), timeout=10)
+    return api, f"http://127.0.0.1:{config.metrics_port}{config.metrics_uri}"
+
+
+@pytest.mark.asyncio
+async def test_metrics_exporter_requires_token_when_auth_on(haproxy_api_cleanup):
+    token = _enable_token_auth()
+    accepted = [
+        {"Authorization": f"Bearer {token}"},
+        {"X-Ray-Authorization": f"Bearer {token}"},
+        {"Cookie": f"ray-authentication-token={token}"},
+    ]
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api, url = await _start_metrics_haproxy(temp_dir, haproxy_api_cleanup)
+
+        # HAProxy itself only listens on a socket its own user can open, and the
+        # config it reads holds no token.
+        with open(api.config_file_path) as f:
+            config = f.read()
+        socket_path = api.cfg.metrics_exporter_socket_path
+        assert f"bind unix@{socket_path} mode 600" in config
+        assert f"bind :{api.cfg.metrics_port}" not in config
+        assert token not in config
+        assert stat.S_IMODE(os.stat(socket_path).st_mode) == 0o600
+
+        missing = requests.get(url, timeout=5)
+        assert missing.status_code == 401
+        assert missing.headers["WWW-Authenticate"] == "Bearer"
+        wrong = requests.get(
+            url, headers={"Authorization": "Bearer " + "0" * 64}, timeout=5
+        )
+        assert wrong.status_code == 403
+
+        for headers in accepted:
+            response = requests.get(url, headers=headers, timeout=5)
+            assert response.status_code == 200, headers
+            assert "haproxy_process_" in response.text, headers
+
+        # The exporter's own query-string filters still apply.
+        scoped = requests.get(f"{url}?scope=frontend", headers=accepted[0], timeout=5)
+        assert scoped.status_code == 200
+        assert "haproxy_frontend_" in scoped.text
+        assert "haproxy_process_" not in scoped.text
+
+        # A graceful reload hands the socket to the new HAProxy process.
+        await api.reload()
+        wait_for_condition(
+            lambda: requests.get(url, headers=accepted[0], timeout=5).status_code
+            == 200,
+            timeout=10,
+        )
+
+        # Stopping HAProxy also closes the port.
+        await api.stop()
+        with pytest.raises(requests.ConnectionError):
+            requests.get(url, headers=accepted[0], timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_metrics_exporter_open_when_auth_off(haproxy_api_cleanup):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api, url = await _start_metrics_haproxy(temp_dir, haproxy_api_cleanup)
+
+        with open(api.config_file_path) as f:
+            config = f.read()
+        assert f"bind :{api.cfg.metrics_port}\n" in config
+        assert "exporter.sock" not in config
+
+        response = requests.get(url, timeout=5)
+        assert response.status_code == 200
+        assert "haproxy_process_" in response.text
+
+
+def test_metrics_exporter_on_tcp_when_metrics_auth_skipped(monkeypatch):
+    """RAY_AUTH_SKIP_METRICS opens HAProxy's exporter like Ray's other metrics
+    endpoints, so HAProxy keeps serving it directly."""
+    _enable_token_auth()
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = HAProxyApi(
+            cfg=_metrics_config(temp_dir),
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+        )
+        api._generate_config_file_internal()
+
+        with open(api.config_file_path) as f:
+            config = f.read()
+        assert f"bind :{api.cfg.metrics_port}\n" in config
+        assert "exporter.sock" not in config
 
 
 if __name__ == "__main__":

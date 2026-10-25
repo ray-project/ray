@@ -860,6 +860,14 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
 )
 
+# Unix socket HAProxy's Prometheus exporter listens on when token auth is on.
+# The proxy actor then serves RAY_SERVE_HAPROXY_METRICS_PORT itself, checks the
+# token and forwards to this socket.
+RAY_SERVE_HAPROXY_METRICS_EXPORTER_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_METRICS_EXPORTER_SOCKET_PATH",
+    "/tmp/haproxy-serve/exporter.sock",
+)
+
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
