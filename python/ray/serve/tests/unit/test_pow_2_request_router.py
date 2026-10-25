@@ -6,10 +6,12 @@ import random
 import sys
 import time
 from typing import Optional, Set
+from unittest.mock import patch
 
 import pytest
 
 import ray
+import ray.serve._private.request_router.request_router as request_router_module
 from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError
@@ -1453,12 +1455,11 @@ async def test_cancelled_get_queue_len_finishes_before_routing(pow_2_router):
     replica is treated as unavailable.
     """
     s = pow_2_router
-    s.queue_len_response_deadline_s = 0.001
-    # Bounds how long the router waits for cancelled probes to finish.
-    s.max_queue_len_response_deadline_s = 10
+    # Also bounds how long the router waits for cancelled probes to finish.
+    s.queue_len_response_deadline_s = 0.5
     loop = get_or_create_event_loop()
 
-    r1 = SlowToCancelReplica("r1", cleanup_s=0.1)
+    r1 = SlowToCancelReplica("r1", cleanup_s=0.05)
     r2 = FakeRunningReplica("r2")
     r2.set_queue_len_response(0)
     s.update_replicas([r1, r2])
@@ -1476,11 +1477,12 @@ async def test_cancelled_get_queue_len_finishes_before_routing(pow_2_router):
 async def test_slow_to_cancel_get_queue_len_does_not_block_routing(pow_2_router):
     """
     Verify that a `get_queue_len` call that takes a long time to handle its
-    cancellation doesn't block routing past the max response deadline.
+    cancellation doesn't block routing past the round's response deadline.
     """
     s = pow_2_router
-    s.queue_len_response_deadline_s = 0.001
-    s.max_queue_len_response_deadline_s = 0.01
+    s.queue_len_response_deadline_s = 0.01
+    # The wait is bounded by the round's deadline, not the max.
+    s.max_queue_len_response_deadline_s = 100
     loop = get_or_create_event_loop()
 
     r1 = SlowToCancelReplica("r1", cleanup_s=100)
@@ -1488,8 +1490,11 @@ async def test_slow_to_cancel_get_queue_len_does_not_block_routing(pow_2_router)
     r2.set_queue_len_response(0)
     s.update_replicas([r1, r2])
 
+    start = time.monotonic()
     task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
-    assert (await asyncio.wait_for(task, timeout=10)) == r2
+    assert (await asyncio.wait_for(task, timeout=100)) == r2
+    # One round: the probe deadline plus the bounded wait, with slack for CI.
+    assert time.monotonic() - start < 1
     assert r1.num_cleanups_finished == 0
     r1.finish_cleanup()
     await async_wait_for_condition(
@@ -1504,9 +1509,8 @@ async def test_routing_task_cancelled_while_cancelled_probe_finishes(pow_2_route
     cancelled `get_queue_len` call to finish still cancels the routing task.
     """
     s = pow_2_router
-    s.queue_len_response_deadline_s = 0.001
-    # Long enough that only the cancellation can end the wait.
-    s.max_queue_len_response_deadline_s = 100
+    # Long enough that the cancellation, not the deadline, ends the wait.
+    s.queue_len_response_deadline_s = 1
     loop = get_or_create_event_loop()
 
     r1 = SlowToCancelReplica("r1", cleanup_s=100)
@@ -1524,6 +1528,46 @@ async def test_routing_task_cancelled_while_cancelled_probe_finishes(pow_2_route
     r1.finish_cleanup()
     await async_wait_for_condition(
         lambda: r1.num_cleanups_finished == r1.num_cleanups_started
+    )
+
+
+class RaisesOnCancelReplica(FakeRunningReplica):
+    """Fake replica whose `get_queue_len` raises while handling cancellation."""
+
+    async def get_queue_len(self, *, deadline_s: float) -> int:
+        try:
+            return await super().get_queue_len(deadline_s=deadline_s)
+        except asyncio.CancelledError:
+            raise RuntimeError("cleanup failed")
+
+
+@pytest.mark.asyncio
+async def test_cancelled_probe_error_is_logged(pow_2_router):
+    """
+    Verify that an exception a cancelled `get_queue_len` call raises while
+    handling its cancellation is logged, not reported as "never retrieved".
+    """
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 0.01
+    loop = get_or_create_event_loop()
+
+    r1 = RaisesOnCancelReplica("r1")
+
+    unhandled = []
+    original_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _, context: unhandled.append(context))
+    try:
+        with patch.object(request_router_module.logger, "warning") as warning:
+            assert await s._probe_queue_lens([r1], 0) == [(r1, None)]
+        gc.collect()
+        await asyncio.sleep(0)
+    finally:
+        loop.set_exception_handler(original_handler)
+
+    assert [c["message"] for c in unhandled] == []
+    assert any(
+        "raised RuntimeError('cleanup failed')" in call.args[0]
+        for call in warning.call_args_list
     )
 
 
@@ -1574,9 +1618,8 @@ async def test_probe_results_kept_when_cancelled_during_probe_cleanup(pow_2_rout
     routing task is cancelled while it waits for cancelled probes to finish.
     """
     s = pow_2_router
-    s.queue_len_response_deadline_s = 0.01
-    # Long enough that only the cancellation can end the wait.
-    s.max_queue_len_response_deadline_s = 100
+    # Long enough that the cancellation, not the deadline, ends the wait.
+    s.queue_len_response_deadline_s = 1
     loop = get_or_create_event_loop()
 
     r1 = FakeRunningReplica("r1")

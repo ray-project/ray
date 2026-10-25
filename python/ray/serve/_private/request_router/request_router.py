@@ -1,5 +1,6 @@
 import asyncio
 import enum
+import functools
 import logging
 import math
 import random
@@ -48,6 +49,18 @@ from ray.util import metrics
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _log_cancelled_probe_error(replica_id: ReplicaID, task: asyncio.Task):
+    """Log an exception a cancelled queue length probe raised while finishing.
+
+    Retrieving it also keeps asyncio from logging it as "never retrieved".
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning(f"Cancelled queue length probe for {replica_id} raised {exc!r}.")
 
 
 class LocalityScope(str, enum.Enum):
@@ -1016,10 +1029,10 @@ class RequestRouter(ABC):
             # from being logged as "never retrieved".
             for t in get_queue_len_tasks:
                 if not t.done():
-                    # Retrieve the result so an exception raised while the probe
-                    # handles its cancellation isn't logged as "never retrieved".
                     t.add_done_callback(
-                        lambda task: None if task.cancelled() else task.exception()
+                        functools.partial(
+                            _log_cancelled_probe_error, task_to_replica[t].replica_id
+                        )
                     )
                 t.cancel()
         for t in pending:
@@ -1072,17 +1085,18 @@ class RequestRouter(ABC):
 
         # Cancellation is cooperative, so wait for the cancelled probes to finish
         # before the results are used. This runs after the results in hand were
-        # processed, so a cancellation here doesn't drop them. Bound the wait by the
-        # max response deadline so a probe that is slow to handle its cancellation
-        # can't block routing.
+        # processed, so a cancellation here doesn't drop them. Probes should handle
+        # cancellation promptly (`RunningReplica.get_queue_len` cancels its RPC
+        # synchronously); the wait is bounded by this round's response deadline so
+        # one that doesn't can't block routing.
         if pending:
             _, still_running = await asyncio.wait(
-                pending, timeout=max_queue_len_response_deadline_s
+                pending, timeout=queue_len_response_deadline_s
             )
             if still_running:
                 logger.warning(
                     f"{len(still_running)} cancelled queue length probe(s) did "
-                    f"not finish within {max_queue_len_response_deadline_s}s."
+                    f"not finish within {queue_len_response_deadline_s}s."
                 )
 
         assert len(result) == len(replicas)
