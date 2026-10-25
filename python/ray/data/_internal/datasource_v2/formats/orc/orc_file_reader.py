@@ -1,4 +1,4 @@
-from typing import Iterator, Tuple
+from typing import Iterator, List, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -62,6 +62,51 @@ def _align_to_schema(table: pa.Table, target_schema: pa.Schema) -> pa.Table:
     )
 
 
+def _scan_aligned(
+    fragment: pds.Fragment,
+    scan_kwargs: dict,
+    scan_schema: pa.Schema,
+    target_schema: pa.Schema,
+    filter_columns: List[str],
+) -> Iterator[pa.Table]:
+    """Scan with stored struct types, align to ``target_schema``, then filter.
+
+    The filter runs after alignment, not in the scanner, so it can reference
+    struct children this file lacks and see them as nulls. Columns the filter
+    needs but the projection omits are read for filtering and dropped after.
+
+    Args:
+        fragment: The ORC fragment to read.
+        scan_kwargs: Scanner keyword arguments, including any ``filter``.
+        scan_schema: Schema from ``_struct_scan_schema``.
+        target_schema: Schema to align each batch to.
+        filter_columns: Top-level columns the filter references.
+
+    Yields:
+        pa.Table: Aligned and filtered tables.
+    """
+    scan_kwargs = dict(scan_kwargs)
+    filter_expr = scan_kwargs.pop("filter", None)
+    columns = scan_kwargs.get("columns")
+    if filter_expr is not None and columns is not None:
+        scan_kwargs["columns"] = list(
+            dict.fromkeys(
+                columns + [c for c in filter_columns if c in scan_schema.names]
+            )
+        )
+    scanner = fragment.scanner(**scan_kwargs, schema=scan_schema)
+    for tagged in scanner.scan_batches():
+        table = pa.Table.from_batches([tagged.record_batch])
+        # Check before alignment, which can drop children absent from the target.
+        raise_on_pickle_object_columns(table)
+        table = _align_to_schema(table, target_schema)
+        if filter_expr is not None:
+            table = table.filter(filter_expr)
+            if columns is not None:
+                table = table.select([c for c in columns if c in table.column_names])
+        yield table
+
+
 @DeveloperAPI
 class OrcFileReader(FileReader):
     """Read ORC files in batches using PyArrow Dataset fragments.
@@ -105,10 +150,18 @@ class OrcFileReader(FileReader):
                     fragment.physical_schema, target_schema
                 )
                 if needs_alignment:
-                    scanner = fragment.scanner(**scanner_kwargs, schema=scan_schema)
-                    for tagged in scanner.scan_batches():
-                        table = pa.Table.from_batches([tagged.record_batch])
-                        yield _align_to_schema(table, target_schema)
+                    filter_columns = (
+                        get_column_references(self._predicate)
+                        if self._predicate is not None
+                        else []
+                    )
+                    yield from _scan_aligned(
+                        fragment,
+                        scanner_kwargs,
+                        scan_schema,
+                        target_schema,
+                        filter_columns,
+                    )
                     return
             yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
             return
@@ -193,14 +246,22 @@ class OrcFileReader(FileReader):
         # Older PyArrow cannot read files whose nested struct children differ
         # from the target schema, so read those columns as stored and align.
         scan_schema, needs_alignment = _struct_scan_schema(physical_schema, file_schema)
-        scanner = fragment.scanner(**scan_kwargs, schema=scan_schema)
+        if needs_alignment:
+            # scan_kwargs["columns"] already includes the filter's data columns.
+            tables = _scan_aligned(
+                fragment, scan_kwargs, scan_schema, file_schema, filter_columns=[]
+            )
+        else:
+            tables = (
+                pa.Table.from_batches([tagged.record_batch])
+                for tagged in fragment.scanner(
+                    **scan_kwargs, schema=file_schema
+                ).scan_batches()
+            )
         residual_filter = (
             residual_predicate.to_pyarrow() if residual_predicate is not None else None
         )
-        for tagged in scanner.scan_batches():
-            table = pa.Table.from_batches([tagged.record_batch])
-            if needs_alignment:
-                table = _align_to_schema(table, file_schema)
+        for table in tables:
             for name, value in partitions.items():
                 if name in required_names:
                     table = table.append_column(

@@ -3,6 +3,7 @@ import os
 from dataclasses import fields
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 
 import pandas as pd
@@ -308,6 +309,59 @@ def test_read_orc_v2_evolved_struct_fields(
         expr=col("customer").struct.field("age") >= 31
     )
     assert sorted(row["event_id"] for row in filtered.take_all()) == [1, 3]
+
+    # Filter on a child only the newer file has. Older rows see it as null.
+    region = col("customer").struct.field("region")
+    filtered = ray.data.read_orc(str(tmp_path), **kwargs).filter(
+        expr=region == "APAC"
+    )
+    assert sorted(row["event_id"] for row in filtered.take_all()) == [3]
+    filtered = ray.data.read_orc(str(tmp_path), **kwargs).filter(
+        expr=region.is_null()
+    )
+    assert sorted(row["event_id"] for row in filtered.take_all()) == [1, 2]
+
+    # The filter column is read even when the projection drops it.
+    projected = (
+        ray.data.read_orc(str(tmp_path), **kwargs)
+        .filter(expr=region == "APAC")
+        .select_columns(["event_id"])
+    )
+    assert projected.take_all() == [{"event_id": 3}]
+
+
+def test_read_orc_v2_struct_alignment_rejects_pickle_object_columns(monkeypatch):
+    """A pickled-object child is rejected before alignment can drop it."""
+    from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import (
+        _scan_aligned,
+    )
+    from ray.data._internal.object_extensions.arrow import (
+        AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
+    )
+
+    monkeypatch.delenv(AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, raising=False)
+    blob = pa.ExtensionArray.from_storage(
+        ArrowPythonObjectType(), pa.array([b"payload"], type=pa.large_binary())
+    )
+    customer = pa.StructArray.from_arrays(
+        [pa.array([31]), blob], names=["age", "blob"]
+    )
+    record_batch = pa.record_batch([customer], names=["customer"])
+
+    class FakeFragment:
+        def scanner(self, **kwargs):
+            return SimpleNamespace(
+                scan_batches=lambda: [SimpleNamespace(record_batch=record_batch)]
+            )
+
+    # The target schema lacks ``blob``, so alignment alone would drop it.
+    target = pa.schema([("customer", pa.struct([("age", pa.int64())]))])
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(
+            _scan_aligned(
+                FakeFragment(), {}, record_batch.schema, target, filter_columns=[]
+            )
+        )
 
 
 @pytest.mark.parametrize("partitioned", [False, True])
