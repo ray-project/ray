@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray.serve._private.common import RequestMetadata
+from ray.serve._private.constants import MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S
 from ray.serve._private.replica import Replica
 
 
@@ -397,6 +398,55 @@ class TestDrainOngoingRequests:
             await Replica._drain_ongoing_requests(fake)
 
         assert events == [("sleep", 0.05), ("check",)]
+
+    @pytest.mark.asyncio
+    async def test_zero_wait_loop_does_not_busy_loop(self):
+        """`graceful_shutdown_wait_loop_s=0` is valid; the loop must still
+        sleep between checks instead of spinning the replica's event loop."""
+        fake, events = self._make_fake(wait_loop_period_s=0)
+        counts = iter([2, 1, 0])
+        fake.get_num_ongoing_requests = lambda: next(counts)
+
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake)
+
+        sleeps = [delay for kind, *delay in events if kind == "sleep"]
+        assert sleeps == [[MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S]] * 3
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "wait_loop_period_s,expected_logs",
+        [
+            # A short wait loop logs once per log interval, not every pass
+            # (~700 passes here).
+            (0, 7),
+            # The default wait loop is longer than the log interval, so every
+            # pass still logs, as before.
+            (2, 3),
+        ],
+    )
+    async def test_waiting_log_is_rate_limited(self, wait_loop_period_s, expected_logs):
+        """Requests stay ongoing for 7s of fake time: the 'Waiting' line is
+        logged at most once per `GRACEFUL_SHUTDOWN_WAITING_LOG_INTERVAL_S`."""
+        clock = [0.0]
+        fake = MagicMock()
+        fake._deployment_config.graceful_shutdown_wait_loop_s = wait_loop_period_s
+        fake.get_num_ongoing_requests = lambda: 1 if clock[0] < 7 else 0
+        real_sleep = asyncio.sleep
+
+        async def fake_sleep(delay, result=None):
+            # Even `sleep(0)` takes some time, so the clock always moves.
+            clock[0] += max(delay, 0.001)
+            await real_sleep(0)
+            return result
+
+        with patch("asyncio.sleep", fake_sleep), patch(
+            "ray.serve._private.replica.time.monotonic", lambda: clock[0]
+        ), patch("ray.serve._private.replica.logger") as logger:
+            await Replica._drain_ongoing_requests(fake)
+
+        waiting_logs = [c for c in logger.info.call_args_list if "Waiting" in c.args[0]]
+        assert len(waiting_logs) == expected_logs
 
 
 class TestGracefulShutdownIsIdempotent:
