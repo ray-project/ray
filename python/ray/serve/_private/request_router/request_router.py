@@ -14,6 +14,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Sequence,
     Set,
     Tuple,
 )
@@ -383,6 +384,50 @@ class MultiplexMixin:
                 ranked_replicas[1].append(replica)
             else:
                 ranked_replicas[2].append(replica)
+        return ranked_replicas
+
+    def rank_replicas_via_multiplex_candidates(
+        self,
+        replicas: List[RunningReplica],
+        candidate_multiplexed_model_ids: Sequence[str],
+    ) -> List[List[RunningReplica]]:
+        """Rank replicas by an ordered list of acceptable multiplexed model IDs.
+
+        Rank ``i`` is the list of replicas that have the i-th candidate loaded.
+        The next rank is the list of replicas that have the fewest multiplexed
+        models, and the last rank is the list of all other replicas.
+
+        Routing to a replica from rank ``i`` only avoids a model load if the request
+        is then served with ``candidate_multiplexed_model_ids[i]``, so the caller is
+        responsible for setting ``RequestMetadata.multiplexed_model_id`` to the
+        candidate it matched on.
+
+        Args:
+            replicas: The replicas to rank.
+            candidate_multiplexed_model_ids: Acceptable multiplexed model IDs,
+                ordered from most to least preferred.
+
+        Returns:
+            Ranked lists of replicas, best rank first.
+        """
+        replica_ids_by_rank: List[Set[ReplicaID]] = [
+            self._multiplexed_model_id_to_replica_ids.get(model_id, set())
+            for model_id in candidate_multiplexed_model_ids
+        ]
+        replica_ids_by_rank.append(
+            self._get_replica_ids_with_fewest_multiplexed_models()
+        )
+
+        ranked_replicas: List[List[RunningReplica]] = [
+            [] for _ in range(len(replica_ids_by_rank) + 1)
+        ]
+        for replica in replicas:
+            for rank, replica_ids in enumerate(replica_ids_by_rank):
+                if replica.replica_id in replica_ids:
+                    ranked_replicas[rank].append(replica)
+                    break
+            else:
+                ranked_replicas[-1].append(replica)
         return ranked_replicas
 
 
