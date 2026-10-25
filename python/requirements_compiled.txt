@@ -1028,11 +1028,11 @@ kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
-lance-namespace==0.6.1
+lance-namespace==0.11.1
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   pylance
-lance-namespace-urllib3-client==0.6.1
+lance-namespace-urllib3-client==0.11.1
     # via lance-namespace
 lazy-object-proxy==1.12.0
     # via openapi-spec-validator
@@ -1779,7 +1779,7 @@ pyjwt==2.12.1
     #   azure-cli-core
     #   msal
     #   snowflake-connector-python
-pylance==4.0.0
+pylance==13.0.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt

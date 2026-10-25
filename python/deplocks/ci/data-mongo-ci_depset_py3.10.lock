@@ -2090,13 +2090,13 @@ kombu==5.6.2 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   celery
-lance-namespace==0.6.1 \
-    --hash=sha256:9699c9e3f12236e5e08ea979cc4e036a8e3c67ed2f37ae6f25c5353ab908e1be \
-    --hash=sha256:f0deea442bd3f1056a8e2fed056ae2778e3356517ec2e680db049058b824d131
+lance-namespace==0.11.1 \
+    --hash=sha256:07643fce9a42ad4d58cc8bf91e3f592bc7f4cbd8d0ad5233223506debf67551c \
+    --hash=sha256:f67cfbbe0647b7cb42f23b673e7edf8a75b7d8a047265a916492f8d247ee1bc2
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
-lance-namespace-urllib3-client==0.6.1 \
-    --hash=sha256:31fbd058ce1ea0bf49045cdeaa756360ece0bc61e9e10276f41af6d217debe87 \
-    --hash=sha256:b9c103e1377ad46d2bd70eec894bfec0b1e2133dae0964d7e4de543c6e16293b
+lance-namespace-urllib3-client==0.11.1 \
+    --hash=sha256:145a9e9424d7597487249b5b95ee274423bf2910e1a9160b6a07b676b61ea46a \
+    --hash=sha256:36537f529294da6d884ba0fe783704483f0a75463497c7705fd083a4d0257990
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   lance-namespace
