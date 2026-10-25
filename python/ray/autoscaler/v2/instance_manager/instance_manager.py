@@ -283,7 +283,9 @@ class InstanceManager:
             The updated instance.
         """
         logger.info(InstanceUtil.get_log_str_for_update(instance, update))
-        assert InstanceUtil.set_status(instance, update.new_instance_status), (
+        assert InstanceUtil.set_status(
+            instance, update.new_instance_status, details=update.details
+        ), (
             "Invalid status transition from "
             f"{Instance.InstanceStatus.Name(instance.status)} to "
             f"{Instance.InstanceStatus.Name(update.new_instance_status)}"
