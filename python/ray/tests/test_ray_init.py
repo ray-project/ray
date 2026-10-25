@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import signal
 import subprocess
 import sys
@@ -357,6 +358,21 @@ def test_ray_init_with_runtime_env_as_object(
     assert "gcs://" in parsed_runtime_env["working_dir"]
     assert len(parsed_runtime_env["py_modules"]) == 1
     assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+def test_ray_init_does_not_perturb_global_random_state(shutdown_only):
+    """Regression test for https://github.com/ray-project/ray/issues/10145.
+
+    ray.init() used to draw from the global `random` module (port selection,
+    GCS subscriber IDs), so a seed set before ray.init() no longer reproduced
+    the same sequence afterwards.
+    """
+    random.seed(42)
+    expected = [random.random() for _ in range(5)]
+
+    random.seed(42)
+    ray.init()
+    assert [random.random() for _ in range(5)] == expected
 
 
 def test_shutdown_wait_for_processes(shutdown_only):
