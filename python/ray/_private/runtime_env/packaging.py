@@ -318,6 +318,7 @@ def _get_pathspec_matcher(path: Path, pathspec: PathSpec) -> Callable:
     never matched. Otherwise a pattern like ".*" would match "." and exclude the
     whole directory.
     """
+    path = path.absolute()
 
     def match(p: Path):
         p = p.absolute()
@@ -330,7 +331,6 @@ def _get_pathspec_matcher(path: Path, pathspec: PathSpec) -> Callable:
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
-    path = path.absolute()
     pathspec = PathSpec.from_lines("gitwildmatch", excludes)
     return _get_pathspec_matcher(path, pathspec)
 
