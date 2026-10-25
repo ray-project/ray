@@ -1906,8 +1906,22 @@ Status CoreWorker::GetLocationFromOwner(
     objects_by_owner[owner_address].push_back(object_id);
   }
 
+  // Use the same config from worker_fetch_request_size.
+  const auto batch_size =
+      static_cast<size_t>(RayConfig::instance().worker_fetch_request_size());
+
+  // Count every batch before dispatching any of them. The reply callbacks run on
+  // the io_service thread and may fire while this thread is still dispatching, so
+  // a counter incremented per dispatch could reach zero (and complete the promise)
+  // before the remaining batches have been counted. A later callback would then
+  // call set_value() on an already satisfied promise.
+  size_t num_batches = 0;
+  for (const auto &owner_and_objects : objects_by_owner) {
+    num_batches += (owner_and_objects.second.size() + batch_size - 1) / batch_size;
+  }
+
   auto mutex = std::make_shared<absl::Mutex>();
-  auto num_remaining = std::make_shared<size_t>(0);  // Will be incremented per batch
+  auto num_remaining = std::make_shared<size_t>(num_batches);
   auto ready_promise = std::make_shared<std::promise<void>>();
   auto location_by_id =
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
@@ -1916,14 +1930,8 @@ Status CoreWorker::GetLocationFromOwner(
     const auto &owner_address = owner_and_objects.first;
     const auto &owner_object_ids = owner_and_objects.second;
 
-    // Calculate the number of batches
-    // Use the same config from worker_fetch_request_size
-    auto batch_size =
-        static_cast<size_t>(RayConfig::instance().worker_fetch_request_size());
-
     for (size_t batch_start = 0; batch_start < owner_object_ids.size();
          batch_start += batch_size) {
-      *num_remaining += 1;
       size_t batch_end = std::min(batch_start + batch_size, owner_object_ids.size());
       auto client = core_worker_client_pool_->GetOrConnect(owner_address);
       rpc::GetObjectLocationsOwnerRequest request;
