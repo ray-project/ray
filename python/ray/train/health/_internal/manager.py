@@ -13,6 +13,8 @@ from ray.train.health.state import HealthState
 
 logger = logging.getLogger(__name__)
 
+_DECISION_TYPES = (Noop, Reattempt, Evict, Diagnose)
+
 
 def _join_reasons(decisions: Sequence[HealthDecision]) -> str:
     return "; ".join(dict.fromkeys(d.reason for d in decisions if d.reason))
@@ -29,6 +31,10 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
 
     Returns:
         The health decision to carry out. ``Noop()`` if there is nothing to do.
+
+    Raises:
+        TypeError: If a decision is not a ``Noop``, ``Reattempt``, ``Evict`` or
+            ``Diagnose``.
     """
     # TODO: Add a field to Diagnose for checks that need the workers stopped,
     # such as an all-reduce test, and rank those above Reattempt.
@@ -40,6 +46,8 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
             reattempts.append(decision)
         elif isinstance(decision, Diagnose):
             diagnoses.append(decision)
+        elif not isinstance(decision, Noop):
+            raise TypeError(f"Unknown health decision: {decision!r}.")
 
     if evicts:
         nodes = sorted({node for evict in evicts for node in evict.target_nodes})
@@ -224,7 +232,8 @@ class HealthManager:
 
     def _evaluate(self, evaluator: Evaluator, state: HealthState) -> HealthDecision:
         """Run one evaluator. One that raises, or returns something other than a
-        ``HealthDecision``, decides ``Noop()``, with a warning the first time.
+        ``Noop``, ``Reattempt``, ``Evict`` or ``Diagnose``, decides ``Noop()``,
+        with a warning the first time.
 
         Args:
             evaluator: The evaluator to run.
@@ -236,9 +245,10 @@ class HealthManager:
         try:
             decision = evaluator.evaluate(state)
             error = None
-            if not isinstance(decision, HealthDecision):
+            if not isinstance(decision, _DECISION_TYPES):
                 error = TypeError(
-                    f"evaluate() returned {decision!r}, not a HealthDecision."
+                    f"evaluate() returned {decision!r}, not a Noop, Reattempt, "
+                    "Evict or Diagnose."
                 )
         except Exception as e:
             error = e

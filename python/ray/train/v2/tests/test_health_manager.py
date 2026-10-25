@@ -12,6 +12,7 @@ from ray.train.health import (
     Evaluator,
     Evict,
     HealthCheck,
+    HealthDecision,
     NodeProbe,
     Noop,
     PeriodicHealthCheck,
@@ -58,6 +59,10 @@ class Always(Evaluator):
 class Raises(Evaluator):
     def evaluate(self, state):
         raise RuntimeError("bug in evaluator")
+
+
+class Custom(HealthDecision):
+    pass
 
 
 class EvictHotGpu(Evaluator):
@@ -150,6 +155,11 @@ def test_merge_decisions(decisions, merged):
     assert merge_decisions(decisions) == merged
 
 
+def test_merge_decisions_rejects_an_unknown_decision():
+    with pytest.raises(TypeError):
+        merge_decisions([Noop(), Custom()])
+
+
 def test_merge_probes_keeps_one_probe_per_name_at_the_shortest_interval():
     first, second, comms = Temp(), Temp(), Comms()
     merged = merge_probes(
@@ -233,7 +243,11 @@ def test_an_evicted_node_is_not_evicted_again():
     assert manager.evicted_nodes == ["n1", "n2"]
 
 
-@pytest.mark.parametrize("broken", [Raises(), Always(None)], ids=["raises", "none"])
+@pytest.mark.parametrize(
+    "broken",
+    [Raises(), Always(None), Always(Custom())],
+    ids=["raises", "none", "unknown-decision"],
+)
 def test_a_failing_evaluator_is_skipped_and_logged_once(broken, caplog, propagate_logs):
     manager = HealthManager([_check(evaluators=[broken, Always(Reattempt())])])
     assert manager.evaluate_inflight_checks(timeout=0) == Reattempt()
