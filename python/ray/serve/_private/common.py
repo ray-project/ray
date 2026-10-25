@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from starlette.types import Scope
 
@@ -820,6 +820,10 @@ class RequestMetadata:
 
     # Multiplexed model ID.
     multiplexed_model_id: str = ""
+
+    # Ordered, highest-priority-first multiplexed model IDs that are acceptable
+    # for this request. Choosing among them is a custom request router's job.
+    candidate_multiplexed_model_ids: Tuple[str, ...] = ()
 
     # Session ID.
     session_id: str = ""
