@@ -1,0 +1,7 @@
+gym>=0.21.0,<0.24.0
+scikit-image
+pandas
+requests
+tensorflow
+black==22.10.0
+yq

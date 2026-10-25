@@ -1,0 +1,29 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: minimal
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers. min_workers default to 0.
+max_workers: 1
+
+# Cloud-provider specific configuration.
+provider:
+  type: aws
+  region: us-west-2
+  availability_zone: us-west-2a
+  # Security group to create with custom in bound rules and name.
+  security_group:
+    GroupName: test_security_group_name
+    IpPermissions:
+      - FromPort: 443
+        ToPort: 443
+        IpProtocol: TCP
+        IpRanges:
+          - CidrIp: 0.0.0.0/0
+      - FromPort: 8265
+        ToPort: 8265
+        IpProtocol: TCP
+        IpRanges:
+          - CidrIp: 0.0.0.0/0
+# How Ray will authenticate with newly launched nodes.
+auth:
+  ssh_user: ubuntu

@@ -1,0 +1,1 @@
+Broadcast time: 605.0678841490001 (1073741824 B x 50 nodes)

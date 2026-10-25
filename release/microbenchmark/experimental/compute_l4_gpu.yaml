@@ -1,0 +1,6 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: g6.12xlarge
+
+worker_nodes: []

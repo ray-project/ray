@@ -1,0 +1,96 @@
+/*
+github.com style (c) Vasily Polovnyov <vast@whiteants.net>
+*/
+
+.hljs-light {
+  display: block;
+  overflow-x: auto;
+  padding: 0.5em;
+  color: #333;
+}
+
+.hljs-light .hljs-comment,
+.hljs-light .hljs-quote {
+  color: #998;
+  font-style: italic;
+}
+
+.hljs-light .hljs-keyword,
+.hljs-light .hljs-selector-tag,
+.hljs-light .hljs-subst {
+  color: #333;
+  font-weight: bold;
+}
+
+.hljs-light .hljs-number,
+.hljs-light .hljs-literal,
+.hljs-light .hljs-variable,
+.hljs-light .hljs-template-variable,
+.hljs-light .hljs-tag .hljs-attr {
+  color: #008080;
+}
+
+.hljs-light .hljs-string,
+.hljs-light .hljs-doctag {
+  color: #d14;
+}
+
+.hljs-light .hljs-title,
+.hljs-light .hljs-section,
+.hljs-light .hljs-selector-id {
+  color: #900;
+  font-weight: bold;
+}
+
+.hljs-light .hljs-subst {
+  font-weight: normal;
+}
+
+.hljs-light .hljs-type,
+.hljs-light .hljs-class .hljs-title {
+  color: #458;
+  font-weight: bold;
+}
+
+.hljs-light .hljs-tag,
+.hljs-light .hljs-name,
+.hljs-light .hljs-attribute {
+  color: #000080;
+  font-weight: normal;
+}
+
+.hljs-light .hljs-regexp,
+.hljs-light .hljs-link {
+  color: #009926;
+}
+
+.hljs-light .hljs-symbol,
+.hljs-light .hljs-bullet {
+  color: #990073;
+}
+
+.hljs-light .hljs-built_in,
+.hljs-light .hljs-builtin-name {
+  color: #0086b3;
+}
+
+.hljs-light .hljs-meta {
+  color: #999;
+  font-weight: bold;
+}
+
+.hljs-light .hljs-deletion {
+  background: #fdd;
+}
+
+.hljs-light .hljs-addition {
+  background: #dfd;
+}
+
+.hljs-light .hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-light .hljs-strong {
+  font-weight: bold;
+}

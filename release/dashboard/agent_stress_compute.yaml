@@ -1,0 +1,15 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
+
+head_node:
+  instance_type: m5.16xlarge
+  resources:
+    CPU: 85
+
+worker_nodes: []

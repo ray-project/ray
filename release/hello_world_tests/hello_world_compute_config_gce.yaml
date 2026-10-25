@@ -1,0 +1,8 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-c
+
+head_node:
+    instance_type: n2-standard-4
+
+worker_nodes: []

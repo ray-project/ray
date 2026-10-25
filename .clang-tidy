@@ -1,0 +1,86 @@
+# Disable the following checks with reasons in parenthesis:
+#
+# -bugprone-macro-parentheses (inconsistent style)
+# -google-readability-todo (potentially too restrictive)
+# -misc-non-private-member-variables-in-classes (potentially too restrictive)
+# -misc-unused-parameters (can be cleaned up in batch and enabled)
+# -modernize-avoid-c-arrays (too restrictive)
+# -modernize-concat-nested-namespaces (inconsistent style)
+# -modernize-pass-by-value (too restrictive)
+# -modernize-return-braced-init-list (inconsistent style)
+# -modernize-use-emplace (more subtle behavior)
+# -modernize-use-nodiscard (too much noise)
+# -modernize-use-trailing-return-type (inconsistent style)
+# -modernize-use-override (TODO(mwtian): re-enable after fixing existing derived classes)
+# -modernize-avoid-bind (incorrect conversion)
+# -modernize-loop-convert (more subtle behavior)
+# -modernize-replace-disallow-copy-and-assign-macro (inconsistent style)
+# -modernize-make-unique (doesn't work with private constructor)
+# -modernize-make-shared (doesn't work with private constructor)
+# Other readability-* rules (potentially too noisy, inconsistent style)
+# Other rules not mentioned here or below (not yet evaluated)
+#
+# TODO: enable google-* and readability-* families of checks.
+Checks: >
+  abseil-*,
+  bugprone-*,
+  -bugprone-macro-parentheses,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  cert-*,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-do-while,
+  google-*,
+  -google-readability-todo,
+  -google-default-arguments,
+  misc-*,
+  -misc-non-private-member-variables-in-classes,
+  -misc-unused-parameters,
+  -misc-include-cleaner,
+  -misc-const-correctness,
+  modernize-*,
+  -modernize-concat-nested-namespaces,
+  -modernize-return-braced-init-list,
+  -modernize-use-nodiscard,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-bind,
+  -modernize-loop-convert,
+  performance-*,
+  readability-braces-around-statements,
+  readability-const-return-type,
+  readability-container-contains,
+  readability-container-data-pointer,
+  readability-container-size-empty,
+  readability-delete-null-pointer,
+  readability-duplicate-include,
+  readability-implicit-bool-conversion,
+  readability-make-member-function-const,
+  readability-misleading-indentation,
+  readability-misplaced-array-index,
+  readability-named-parameter,
+  readability-non-const-parameter,
+  readability-redundant-*,
+  -readability-redundant-access-specifiers,
+  readability-static-definition-in-anonymous-namespace,
+  readability-string-compare,
+  readability-suspicious-call-argument,
+
+CheckOptions:
+  # Reduce noisiness of the bugprone-narrowing-conversions check.
+  - key:   bugprone-narrowing-conversions.IgnoreConversionFromTypes
+    value: 'size_t;ptrdiff_t;size_type;difference_type'
+  - key:   bugprone-narrowing-conversions.WarnOnEquivalentBitWidth
+    value: 'false'
+  - key: cppcoreguidelines-special-member-functions.AllowMissingMoveFunctionsWhenCopyIsDeleted
+    value: 'true'
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 'true'
+  - key: performance-move-const-arg.CheckTriviallyCopyableMove
+    value: 'false'
+
+# Turn all the warnings from the checks above into errors.
+WarningsAsErrors: "*"

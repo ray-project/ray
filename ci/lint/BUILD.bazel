@@ -1,0 +1,8 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "check_bazel_team_owner",
+    srcs = ["check_bazel_team_owner.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    visibility = ["//visibility:private"],
+)

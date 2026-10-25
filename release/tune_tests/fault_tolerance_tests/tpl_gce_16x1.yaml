@@ -1,0 +1,22 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-b
+
+head_node:
+    instance_type: n1-standard-2
+    resources:
+      head: 1
+
+worker_nodes:
+    - instance_type: n1-standard-2
+      min_nodes: 16
+      max_nodes: 16
+      market_type: SPOT
+
+## Required to allow nodes to terminate themselves.
+#advanced_instance_config:
+#  TagSpecifications:
+#    - ResourceType: "instance"
+#      Tags:
+#        - Key: chaos-test-name
+#          Value: 'tune-chaos-test'

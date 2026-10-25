@@ -1,0 +1,50 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "ray_syncer",
+    srcs = [
+        "node_state.cc",
+        "ray_syncer.cc",
+        "ray_syncer_client.cc",
+        "ray_syncer_server.cc",
+    ],
+    hdrs = [
+        "common.h",
+        "node_state.h",
+        "ray_syncer.h",
+        "ray_syncer_bidi_reactor.h",
+        "ray_syncer_bidi_reactor_base.h",
+        "ray_syncer_client.h",
+        "ray_syncer_server.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet/scheduling:__pkg__",
+    ],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner_interface",
+        "//src/ray/common:constants",
+        "//src/ray/common:id",
+        "//src/ray/protobuf:ray_syncer_cc_grpc",
+        "//src/ray/rpc/authentication:authentication_mode",
+        "//src/ray/rpc/authentication:authentication_token",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/rpc/authentication:authentication_token_validator",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_ray_syncer",
+    testonly = True,
+    hdrs = ["fake_ray_syncer.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":ray_syncer",
+    ],
+)

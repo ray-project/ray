@@ -1,0 +1,154 @@
+import enum
+import hashlib
+import pathlib
+import re
+import urllib.parse
+from typing import Tuple
+from urllib.parse import urlparse
+
+from ray._common.runtime_env_package import (
+    COMPOUND_ARCHIVE_EXTENSIONS,
+    PACKAGE_UPLOAD_EXTENSIONS,
+    WHEEL_EXTENSION,
+    get_package_extension,
+)
+
+_REMOTE_PROTOCOLS = ("http", "https", "s3", "gs", "azure", "abfss", "file")
+
+# Matches the leading "C:/" or "C:\" of a Windows path rooted at a drive.
+_WINDOWS_DRIVE_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
+
+
+class Protocol(enum.Enum):
+    # For packages dynamically uploaded and managed by the GCS.
+    GCS = "gcs"
+    # For conda environments installed locally on each node.
+    CONDA = "conda"
+    # For pip environments installed locally on each node.
+    PIP = "pip"
+    # For uv environments installed locally on each node.
+    UV = "uv"
+    # Remote http path, assumes everything packed in one zip file.
+    HTTP = "http"
+    # Remote https path, assumes everything packed in one zip file.
+    HTTPS = "https"
+    # Remote s3 path, assumes everything packed in one zip file.
+    S3 = "s3"
+    # Remote google storage path, assumes everything packed in one zip file.
+    GS = "gs"
+    # Remote azure blob storage path, assumes everything packed in one zip file.
+    AZURE = "azure"
+    # Remote Azure Blob File System Secure path, assumes everything packed in one zip file.
+    ABFSS = "abfss"
+    # File storage path, assumes everything packed in one zip file.
+    FILE = "file"
+    # A directory that is already present on every node. Assumes absolute path.
+    LOCAL = "local"
+
+    @classmethod
+    def remote_protocols(cls):
+        # Returns a list of protocols that support remote storage.
+        # RuntimeEnv fields apply their own format constraints to these URIs.
+        return [cls[protocol.upper()] for protocol in _REMOTE_PROTOCOLS]
+
+
+def _is_path(path_or_uri: str) -> bool:
+    """Returns True if path_or_uri is a path and False otherwise."""
+    if not isinstance(path_or_uri, str):
+        raise TypeError(f" path_or_uri must be a string, got {type(path_or_uri)}.")
+
+    parsed_path = pathlib.Path(path_or_uri)
+    parsed_uri = urllib.parse.urlparse(path_or_uri)
+
+    if isinstance(parsed_path, pathlib.PurePosixPath):
+        return not parsed_uri.scheme
+    elif isinstance(parsed_path, pathlib.PureWindowsPath):
+        return parsed_uri.scheme == parsed_path.drive.strip(":").lower()
+    else:
+        # this should never happen.
+        raise TypeError(f"Unsupported path type: {type(parsed_path).__name__}")
+
+
+def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
+    """
+    Parse package uri into protocol and package name based on its format.
+    Note that the output of this function is not for handling actual IO, it's
+    only for setting up local directory folders by using package name as path.
+
+    >>> parse_uri("https://test.com/file.zip")  # doctest: +ELLIPSIS
+    (<Protocol.HTTPS: 'https'>, 'https_...zip')
+
+    >>> parse_uri("https://test.com/file.whl")
+    (<Protocol.HTTPS: 'https'>, 'file.whl')
+
+    >>> parse_uri("local:///path/in/image")
+    (<Protocol.LOCAL: 'local'>, '/path/in/image')
+
+    >>> parse_uri("local://C:/path/in/image")
+    (<Protocol.LOCAL: 'local'>, 'C:/path/in/image')
+
+    """
+    if _is_path(pkg_uri):
+        raise ValueError(f"Expected URI but received path {pkg_uri}")
+
+    uri = urlparse(pkg_uri)
+    try:
+        protocol = Protocol(uri.scheme)
+    except ValueError as e:
+        raise ValueError(
+            f'Invalid protocol for runtime_env URI "{pkg_uri}". '
+            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
+        )
+
+    if protocol == Protocol.LOCAL:
+        # There is no package to name: the directory is used in place, so return
+        # the path itself.
+        prefix = f"{Protocol.LOCAL.value}://"
+        if pkg_uri[: len(prefix)].lower() != prefix:
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": a local URI must '
+                "start with local://. Write local:///path/in/image, or "
+                "local://C:/path/in/image on Windows."
+            )
+        path = pkg_uri[len(prefix) :]
+        if path.startswith("/") and _WINDOWS_DRIVE_PATH.match(path[1:]):
+            # A drive spelled with file://'s empty authority: "local:///C:/app".
+            path = path[1:]
+        if not (path.startswith("/") or _WINDOWS_DRIVE_PATH.match(path)):
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": the path must be '
+                "absolute. Write local:///path/in/image, or local://C:/path/in/image "
+                "on Windows."
+            )
+        archive_extension = get_package_extension(path, PACKAGE_UPLOAD_EXTENSIONS)
+        if archive_extension is not None:
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": the path must be a '
+                f"directory, not a {archive_extension} archive. A local:// directory "
+                "is used in place and is never unpacked."
+            )
+        return (protocol, path)
+
+    if protocol in Protocol.remote_protocols():
+        if uri.path.endswith(WHEEL_EXTENSION):
+            # Don't modify the .whl filename. See
+            # https://peps.python.org/pep-0427/#file-name-convention
+            # for more information.
+            package_name = uri.path.split("/")[-1]
+        else:
+            # Hash the URI to produce a stable, NAME_MAX-safe local filename
+            # regardless of how long or deeply nested the URI is. The extension
+            # is preserved so is_zip_uri / is_jar_uri keep working. Compound
+            # compound extensions are kept intact so archive-type
+            # detection downstream still works.
+            # netloc + path covers URIs where the filename has no path
+            # component (e.g., s3://package.zip puts "package.zip" in netloc).
+            raw = uri.netloc + uri.path
+            suffix = get_package_extension(raw, COMPOUND_ARCHIVE_EXTENSIONS)
+            if suffix is None:
+                suffix = pathlib.Path(raw).suffix
+            digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
+            package_name = f"{protocol.value}_{digest}{suffix}"
+    else:
+        package_name = uri.netloc
+    return (protocol, package_name)

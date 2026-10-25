@@ -1,0 +1,43 @@
+cluster_name: default
+
+max_workers: 5
+
+docker:
+    image: anyscale/ray-ml:latest
+    container_name: ray_container
+    pull_before_run: true
+
+setup_commands: []
+
+head_setup_commands: []
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+
+available_node_types:
+    worker_node_max_specified:
+        resources: {}
+        min_workers: 2
+        max_workers: 3
+        node_config:
+            InstanceType: m5.large
+    worker_node_max_unspecified:
+        resources: {}
+        min_workers: 2
+        node_config:
+            InstanceType: m5.large
+    head_node:
+        resources: {}
+        node_config:
+            InstanceType: m5.large
+        min_workers: 0
+        max_workers: 0
+
+head_node_type: head_node
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu

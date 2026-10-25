@@ -1,0 +1,16 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.4xlarge
+
+worker_nodes:
+    - name: gpu-worker-node
+      instance_type: g4dn.12xlarge
+      min_nodes: 4
+      max_nodes: 4
+      market_type: ON_DEMAND
+    - name: cpu-worker-node
+      instance_type: r6i.4xlarge
+      min_nodes: 4
+      max_nodes: 4
+      market_type: ON_DEMAND

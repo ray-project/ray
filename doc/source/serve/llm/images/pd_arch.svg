@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="661px" height="481px" viewBox="-0.5 -0.5 661 481">
+  <defs/>
+  <g>
+    <!-- Ingress: double-bordered box (shadow + front) -->
+    <rect x="238" y="10" width="216" height="56" fill="white" stroke="black" stroke-width="2.5" pointer-events="all"/>
+    <rect x="230" y="2" width="216" height="56" fill="white" stroke="black" stroke-width="2.5" pointer-events="all"/>
+    <text x="338" y="37" fill="black" font-family="Helvetica, Arial, sans-serif" font-size="24px" text-anchor="middle" dominant-baseline="central" font-weight="bold">Ingress</text>
+
+    <!-- Arrow: Ingress → PDDecodeServer -->
+    <path d="M 338 58 L 338 146" fill="none" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+    <path d="M 338 152 L 334 144 L 338 146 L 342 144 Z" fill="black" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+
+    <!-- PDDecodeServer: double-bordered box -->
+    <rect x="208" y="160" width="260" height="56" fill="white" stroke="black" stroke-width="2.5" pointer-events="all"/>
+    <rect x="200" y="152" width="260" height="56" fill="white" stroke="black" stroke-width="2.5" pointer-events="all"/>
+    <text x="330" y="185" fill="black" font-family="Helvetica, Arial, sans-serif" font-size="22px" text-anchor="middle" dominant-baseline="central" font-weight="bold">PDDecodeServer</text>
+
+    <!-- Branching lines: PDDecodeServer → PDPrefillServer and KVConnector -->
+    <!-- Center vertical line -->
+    <path d="M 330 208 L 330 272" fill="none" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+    <!-- Horizontal bar -->
+    <path d="M 140 272 L 520 272" fill="none" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+    <!-- Left drop to PDPrefillServer with arrowhead -->
+    <path d="M 140 272 L 140 314" fill="none" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+    <path d="M 140 320 L 136 312 L 140 314 L 144 312 Z" fill="black" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+    <!-- Right drop to KVConnector with arrowhead -->
+    <path d="M 520 272 L 520 340" fill="none" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+    <path d="M 520 346 L 516 338 L 520 340 L 524 338 Z" fill="black" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+
+    <!-- PDPrefillServer: triple-stacked boxes (3 replicas) -->
+    <rect x="66" y="336" width="180" height="120" fill="white" stroke="black" stroke-width="2.5" pointer-events="all"/>
+    <rect x="58" y="328" width="180" height="120" fill="white" stroke="black" stroke-width="2.5" pointer-events="all"/>
+    <rect x="50" y="320" width="180" height="120" fill="white" stroke="black" stroke-width="2.5" pointer-events="all"/>
+    <text x="140" y="370" fill="black" font-family="Helvetica, Arial, sans-serif" font-size="20px" text-anchor="middle" dominant-baseline="central" font-weight="bold">PDPrefillServer</text>
+
+    <!-- KVConnector: single rounded box -->
+    <rect x="430" y="346" width="180" height="80" rx="10" ry="10" fill="white" stroke="black" stroke-width="2.5" pointer-events="all"/>
+    <text x="520" y="390" fill="black" font-family="Helvetica, Arial, sans-serif" font-size="22px" text-anchor="middle" dominant-baseline="central" font-weight="bold">KVConnector</text>
+
+    <!-- Bidirectional arrow: PDPrefillServer ↔ KVConnector -->
+    <path d="M 246 390 L 424 390" fill="none" stroke="black" stroke-width="2" stroke-miterlimit="10" stroke-dasharray="8 4"/>
+    <!-- Right arrowhead -->
+    <path d="M 430 390 L 422 386 L 424 390 L 422 394 Z" fill="black" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+    <!-- Left arrowhead -->
+    <path d="M 240 390 L 248 394 L 246 390 L 248 386 Z" fill="black" stroke="black" stroke-width="2" stroke-miterlimit="10"/>
+    <!-- Label -->
+    <text x="335" y="380" fill="#666666" font-family="Helvetica, Arial, sans-serif" font-size="11px" text-anchor="middle" font-style="italic">KV transfer</text>
+  </g>
+</svg>

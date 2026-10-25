@@ -1,0 +1,230 @@
+import os
+import re
+from typing import List, Optional, Set
+
+from ci.ray_ci.doc.api import (
+    _SPHINX_AUTOCLASS_HEADER,
+    _SPHINX_AUTOSUMMARY_HEADER,
+    API,
+)
+
+_SPHINX_CURRENTMODULE_HEADER = ".. currentmodule::"
+_SPHINX_TOCTREE_HEADER = ".. toctree::"
+_SPHINX_INCLUDE_HEADER = ".. include::"
+
+# A MyST landing page writes the same toctree as a directive fence rather than an
+# RST directive: ```{toctree} (or :::{toctree}), options as `:key: value` lines,
+# entries at the fence's own indentation, closed by a line of the same fence
+# character. An API landing page converted from .rst to .md keeps its children
+# only if this form is recognized too -- otherwise the walk finds no children and
+# the whole team's documented-API set silently collapses to the landing page.
+_MYST_TOCTREE_HEADER = re.compile(r"^(?P<fence>`{3,}|:{3,})\{toctree\}\s*$")
+
+# A toctree entry is a bare docname, a "Title <docname>" pair, or either of those
+# carrying an explicit source extension. Sphinx strips a known suffix and
+# resolves a bare docname to whichever source file exists, so this walk has to do
+# the same. Matching only ".rst" would drop a child page the moment it converts
+# to Markdown, taking that page's autosummary entries out of the team's
+# documented-API set with it.
+_TOCTREE_TITLED_ENTRY = re.compile(r"^.*<(?P<target>[^<>]+)>$")
+_SOURCE_SUFFIXES = (".rst", ".md")
+
+
+def _toctree_entry_path(directory: str, entry: str) -> Optional[str]:
+    """Resolve one toctree line to a source path, or None if it isn't an entry.
+
+    Returns None for a blank line, a directive option (":maxdepth: 2"), and for
+    an entry written root-relative ("/path/to/page"), which can't be resolved
+    without the Sphinx source root. No API landing page uses that form.
+    """
+    entry = entry.strip()
+    if not entry or entry.startswith((":", "/")):
+        return None
+    titled = _TOCTREE_TITLED_ENTRY.match(entry)
+    if titled:
+        entry = titled.group("target").strip()
+    if entry.endswith(_SOURCE_SUFFIXES):
+        return os.path.join(directory, entry)
+    for suffix in _SOURCE_SUFFIXES:
+        candidate = os.path.join(directory, entry + suffix)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+class Autodoc:
+    """
+    Autodoc class represents the top level sphinx autodoc landing page and finds
+    autodoc APIs that would be generated from sphinx from all sub-pages.
+    """
+
+    def __init__(self, head_rst_file: str):
+        """
+        Args:
+            head_rst_file: The path to the landing page RST file that contains the list
+                of children RSTs of the autodoc APIs.
+        """
+        self._head_rst_file = head_rst_file
+        self._autodoc_rsts = None
+        self._apis = None
+
+    def get_apis(self) -> List[API]:
+        self.walk()
+        return self._apis or []
+
+    def walk(self) -> None:
+        if self._apis is not None:
+            # already walk
+            return
+        rsts = self._get_autodoc_rsts()
+        self._apis = []
+        for rst in rsts:
+            self._apis.extend(self._parse_autodoc_rst(rst))
+
+    def _get_autodoc_rsts(self) -> Set[str]:
+        """
+        Recursively parse the head_rst_file to find all the autodoc rsts
+        """
+        if self._autodoc_rsts is not None:
+            return self._autodoc_rsts
+
+        self._autodoc_rsts = {self._head_rst_file}
+        visit_current = {self._head_rst_file}
+        while visit_current:
+            visit_next = set()
+            for rst in visit_current:
+                for child_rst in self._get_autodoc_rsts_in_file(rst):
+                    if child_rst not in self._autodoc_rsts:
+                        self._autodoc_rsts.add(child_rst)
+                        visit_next.add(child_rst)
+            visit_current = visit_next
+
+        return self._autodoc_rsts
+
+    def _get_autodoc_rsts_in_file(self, rst_file: str) -> Set[str]:
+        """
+        Parse the list of rst declared in the head_rst_file, for example:
+
+        .. include:: area_00.rst
+
+        .. toctree::
+            :option
+
+            area_01.rst
+            area_02.rst
+
+        A MyST page writes the same toctree as a fence:
+
+        ```{toctree}
+        :maxdepth: 2
+
+        area_01.rst
+        area_02.rst
+        ```
+        """
+        if not os.path.exists(rst_file):
+            return set()
+
+        rsts = set()
+        dir = os.path.dirname(rst_file)
+        with open(rst_file, "r") as f:
+            line = f.readline()
+            while line:
+                line = line.strip()
+
+                # look for the include block
+                if line.startswith(_SPHINX_INCLUDE_HEADER):
+                    rsts.add(
+                        os.path.join(
+                            dir, line.removeprefix(_SPHINX_INCLUDE_HEADER).strip()
+                        )
+                    )
+                    line = f.readline()
+                    continue
+
+                # look for a MyST toctree fence
+                myst_toctree = _MYST_TOCTREE_HEADER.match(line)
+                if myst_toctree:
+                    fence_char = myst_toctree.group("fence")[0]
+                    line = f.readline()
+                    while line:
+                        entry = line.strip()
+                        if entry and set(entry) == {fence_char}:
+                            # closing fence, end of the toctree
+                            break
+                        child = _toctree_entry_path(dir, entry)
+                        if child:
+                            rsts.add(child)
+                        line = f.readline()
+                    line = f.readline()
+                    continue
+
+                # look for the toctree block
+                if not line == _SPHINX_TOCTREE_HEADER:
+                    line = f.readline()
+                    continue
+
+                # parse the toctree block
+                line = f.readline()
+                while line:
+                    if line.strip() and not re.match(r"\s", line):
+                        # end of toctree, \s means empty space, this line is checking if
+                        # the line is not empty and not starting with empty space
+                        break
+                    child = _toctree_entry_path(dir, line)
+                    if child:
+                        rsts.add(child)
+                    line = f.readline()
+
+        return rsts
+
+    def _parse_autodoc_rst(self, rst_file: str) -> List[API]:
+        """
+        Parse the rst file to find the autodoc APIs. Example content of the rst file
+
+
+        .. currentmodule:: mymodule
+
+        .. autoclass:: myclass
+
+        .. autosummary::
+
+            myclass.myfunc_01
+            myclass.myfunc_02
+        """
+        if not os.path.exists(rst_file):
+            return []
+
+        apis = []
+        module = None
+        with open(rst_file, "r") as f:
+            line = f.readline()
+            while line:
+                # parse currentmodule block
+                if line.startswith(_SPHINX_CURRENTMODULE_HEADER):
+                    module = line[len(_SPHINX_CURRENTMODULE_HEADER) :].strip()
+
+                # parse autoclass block
+                if line.startswith(_SPHINX_AUTOCLASS_HEADER):
+                    apis.append(API.from_autoclass(line, module))
+
+                # parse autosummary block
+                if line.startswith(_SPHINX_AUTOSUMMARY_HEADER):
+                    doc = line
+                    line = f.readline()
+                    # collect lines until the end of the autosummary block
+                    while line:
+                        doc += line
+                        if line.strip() and not re.match(r"\s", line):
+                            # end of autosummary, \s means empty space, this line is
+                            # checking if the line is not empty and not starting with
+                            # empty space
+                            break
+                        line = f.readline()
+
+                    apis.extend(API.from_autosummary(doc, module))
+                    continue
+
+                line = f.readline()
+
+        return [api for api in apis if api]

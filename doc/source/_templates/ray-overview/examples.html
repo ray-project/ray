@@ -1,0 +1,175 @@
+<!-- prettier-ignore -->
+{% extends "!layout.html" %}
+{%- block extrahead -%}
+{% include 'extrahead.html' %}
+{{ super() }}
+{% endblock %}
+
+<!-- prettier-ignore -->
+{% block body %}
+{# Main example gallery for Ray. Examples here are pulled in from the individual Ray library
+`examples.html` pages, which themselves are built from the `examples.yml` file for the library. #}
+
+<div class="content-wrapper">
+  <div class="content">
+    <div class="examples-search-area">
+      <label id="examples-search-input-label" for="examples-search-input">
+        <svg
+          id="examples-search-icon"
+          width="25"
+          height="25"
+          viewBox="0 0 25 25"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M18.4295 16.6717L22.7125 20.9537L21.2975 22.3687L17.0155 18.0857C15.4223 19.3629 13.4405 20.0576 11.3985 20.0547C6.43053 20.0547 2.39853 16.0227 2.39853 11.0547C2.39853 6.08669 6.43053 2.05469 11.3985 2.05469C16.3665 2.05469 20.3985 6.08669 20.3985 11.0547C20.4014 13.0967 19.7068 15.0784 18.4295 16.6717ZM16.4235 15.9297C17.6926 14.6246 18.4014 12.8751 18.3985 11.0547C18.3985 7.18669 15.2655 4.05469 11.3985 4.05469C7.53053 4.05469 4.39853 7.18669 4.39853 11.0547C4.39853 14.9217 7.53053 18.0547 11.3985 18.0547C13.219 18.0576 14.9684 17.3488 16.2735 16.0797L16.4235 15.9297V15.9297Z"
+          />
+        </svg>
+      </label>
+      <input
+        type="text"
+        id="examples-search-input"
+        class="examples-search-term"
+        placeholder="Search examples"
+      />
+    </div>
+    <div id="dropdown-area">
+      {{ render_use_cases_dropdown() }} {{ render_libraries_dropdown() }} {{
+      render_frameworks_dropdown() }} {{ render_contributor_dropdown() }}
+    </div>
+    <div id="no-matches" class="hidden">
+      <div id="no-matches-inner-content">
+        <svg
+          width="119"
+          height="119"
+          viewBox="0 0 119 119"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle
+            cx="59.5"
+            cy="59.5"
+            r="59.5"
+            fill="url(#paint0_linear_362_3841)"
+            fill-opacity="0.2"
+          />
+          <path
+            d="M19.1665 6.66663C19.1665 5.8382 19.8381 5.16663 20.6665 5.16663H58.9165H78.0702C78.5301 5.16663 78.9647 5.37767 79.2491 5.73919L88.8648 17.9624L88.8658 17.9637L98.3484 30.0984C98.5545 30.3622 98.6665 30.6873 98.6665 31.0221V56V105.333C98.6665 106.162 97.9949 106.833 97.1665 106.833H20.6665C19.8381 106.833 19.1665 106.162 19.1665 105.333V6.66663Z"
+            fill="#FBFEFF"
+            stroke="#D0EAF9"
+          />
+          <path
+            d="M77.485 29.4856C76.3051 29.4097 75.4482 28.3324 75.6397 27.1657L79.2591 5.11847C79.2874 4.94627 79.5072 4.89033 79.6143 5.02808L99.477 30.5658C99.5829 30.702 99.4784 30.8993 99.3063 30.8882L77.485 29.4856Z"
+            fill="#11608D"
+          />
+          <rect
+            x="25.6665"
+            y="15.1666"
+            width="46.6667"
+            height="3.5"
+            rx="1.75"
+            fill="#D6EEFC"
+          />
+          <rect
+            x="25.6665"
+            y="31.5"
+            width="46.6667"
+            height="3.5"
+            rx="1.75"
+            fill="#D6EEFC"
+          />
+          <rect
+            x="25.6665"
+            y="23.3334"
+            width="16.3333"
+            height="3.5"
+            rx="1.75"
+            fill="#D6EEFC"
+          />
+          <rect
+            x="25.6665"
+            y="39.6666"
+            width="16.3333"
+            height="3.5"
+            rx="1.75"
+            fill="#D6EEFC"
+          />
+          <rect
+            x="45.5"
+            y="23.3334"
+            width="26.8333"
+            height="3.5"
+            rx="1.75"
+            fill="#D6EEFC"
+          />
+          <rect
+            x="22.1665"
+            y="98"
+            width="30.3333"
+            height="3.5"
+            rx="1.75"
+            fill="#D6EEFC"
+          />
+          <g clip-path="url(#clip0_362_3841)">
+            <path
+              d="M90.5158 91.8128L104.257 105.551L99.7173 110.091L85.9792 96.3494C80.8675 100.447 74.5094 102.676 67.958 102.667C52.019 102.667 39.083 89.7306 39.083 73.7916C39.083 57.8526 52.019 44.9166 67.958 44.9166C83.897 44.9166 96.833 57.8526 96.833 73.7916C96.8423 80.343 94.6135 86.7011 90.5158 91.8128ZM84.0799 89.4323C88.1516 85.245 90.4255 79.6322 90.4163 73.7916C90.4163 61.3818 80.3646 51.3333 67.958 51.3333C55.5482 51.3333 45.4997 61.3818 45.4997 73.7916C45.4997 86.1982 55.5482 96.25 67.958 96.25C73.7985 96.2592 79.4114 93.9852 83.5986 89.9135L84.0799 89.4323Z"
+              fill="#60ABD7"
+            />
+          </g>
+          <ellipse
+            cx="61.8335"
+            cy="71.1667"
+            rx="3.5"
+            ry="4.66667"
+            fill="#60ABD7"
+          />
+          <ellipse
+            cx="73.5"
+            cy="71.1667"
+            rx="3.5"
+            ry="4.66667"
+            fill="#60ABD7"
+          />
+          <path
+            d="M60.6665 84.5834V84.5834C65.0731 82.3801 70.2599 82.3801 74.6665 84.5834V84.5834"
+            stroke="#60ABD7"
+            stroke-width="2"
+          />
+          <defs>
+            <linearGradient
+              id="paint0_linear_362_3841"
+              x1="59.5"
+              y1="0"
+              x2="59.5"
+              y2="119"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop stop-color="#19B1E2" />
+              <stop offset="1" stop-color="#3D89E9" />
+            </linearGradient>
+            <clipPath id="clip0_362_3841">
+              <rect
+                width="77"
+                height="77"
+                fill="white"
+                transform="translate(32.6665 38.5)"
+              />
+            </clipPath>
+          </defs>
+        </svg>
+        <h4>Sorry! We could not find an example matching that filter.</h4>
+        <a
+          id="new-example-issue-link"
+          href="https://github.com/ray-project/ray/issues/new?assignees=&labels=docs%2Ctriage&projects=&template=documentation-issue.yml&title=%5B%3CRay+component%3A+Core%7CRLlib%7Cetc...%3E%5D+"
+        >
+          <span id="new-example-issue-text">
+            Help us improve our examples by suggesting one. Tell us what example
+            you would like to have.
+          </span>
+        </a>
+      </div>
+    </div>
+    {{ render_example_gallery() }} {% endblock %}
+  </div>
+</div>

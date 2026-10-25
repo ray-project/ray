@@ -1,0 +1,381 @@
+import json
+import os
+import sys
+from unittest.mock import patch
+
+import pytest
+
+from ray_release.command_runner._anyscale_job_wrapper import (
+    OUTPUT_JSON_FILENAME,
+    TIMEOUT_RETURN_CODE,
+    main,
+    run_bash_command,
+    run_obj_store_util_check,
+    run_ray_oom_kill_check,
+    run_spilling_check,
+    run_unexpected_worker_failure_check,
+)
+
+cloud_storage_kwargs = dict(
+    results_cloud_storage_uri=None,
+    metrics_cloud_storage_uri=None,
+    output_cloud_storage_uri=None,
+    upload_cloud_storage_uri=None,
+    artifact_path=None,
+)
+
+
+def test_run_bash_command_success():
+    assert run_bash_command("exit 0", 1000) == 0
+
+
+def test_run_bash_command_fail():
+    assert run_bash_command("exit 1", 1000) == 1
+
+
+def test_run_bash_command_timeout():
+    assert run_bash_command("sleep 10", 1) == TIMEOUT_RETURN_CODE
+
+
+def _check_output_json(expected_return_code, prepare_return_codes=None):
+    with open(OUTPUT_JSON_FILENAME, "r") as fp:
+        output = json.load(fp)
+    assert output["return_code"] == expected_return_code
+    assert output["prepare_return_codes"] == (prepare_return_codes or [])
+    assert output["uploaded_results"] is False
+    assert output["collected_metrics"] is False
+    assert output["uploaded_metrics"] is False
+
+
+def test_prepare_commands_validation(tmpdir):
+    with pytest.raises(ValueError):
+        main(
+            test_workload="exit 0",
+            test_workload_timeout=10,
+            test_no_raise_on_timeout=False,
+            prepare_commands=["exit 0"],
+            prepare_commands_timeouts=[],
+            **cloud_storage_kwargs
+        )
+    with pytest.raises(ValueError):
+        main(
+            test_workload="exit 0",
+            test_workload_timeout=10,
+            test_no_raise_on_timeout=False,
+            prepare_commands=[],
+            prepare_commands_timeouts=[1],
+            **cloud_storage_kwargs
+        )
+
+
+def test_end_to_end(tmpdir):
+    expected_return_code = 0
+    assert (
+        main(
+            test_workload="exit 0",
+            test_workload_timeout=10,
+            test_no_raise_on_timeout=False,
+            prepare_commands=[],
+            prepare_commands_timeouts=[],
+            **cloud_storage_kwargs
+        )
+        == expected_return_code
+    )
+    _check_output_json(expected_return_code)
+
+
+def test_end_to_end_prepare_commands(tmpdir):
+    expected_return_code = 0
+    assert (
+        main(
+            test_workload="exit 0",
+            test_workload_timeout=10,
+            test_no_raise_on_timeout=False,
+            prepare_commands=["exit 0", "exit 0"],
+            prepare_commands_timeouts=[1, 1],
+            **cloud_storage_kwargs
+        )
+        == expected_return_code
+    )
+    _check_output_json(expected_return_code, [0, 0])
+
+
+def test_end_to_end_long_running(tmpdir):
+    expected_return_code = 0
+    assert (
+        main(
+            test_workload="sleep 10",
+            test_workload_timeout=1,
+            test_no_raise_on_timeout=True,
+            prepare_commands=[],
+            prepare_commands_timeouts=[],
+            **cloud_storage_kwargs
+        )
+        == expected_return_code
+    )
+    _check_output_json(TIMEOUT_RETURN_CODE)
+
+
+def test_end_to_end_timeout(tmpdir):
+    expected_return_code = TIMEOUT_RETURN_CODE
+    assert (
+        main(
+            test_workload="sleep 10",
+            test_workload_timeout=1,
+            test_no_raise_on_timeout=False,
+            prepare_commands=[],
+            prepare_commands_timeouts=[],
+            **cloud_storage_kwargs
+        )
+        == expected_return_code
+    )
+    _check_output_json(expected_return_code)
+
+
+def test_end_to_end_prepare_timeout(tmpdir):
+    expected_return_code = 1
+    assert (
+        main(
+            test_workload="exit 0",
+            test_workload_timeout=10,
+            test_no_raise_on_timeout=False,
+            prepare_commands=["exit 0", "sleep 10"],
+            prepare_commands_timeouts=[1, 1],
+            **cloud_storage_kwargs
+        )
+        == expected_return_code
+    )
+    _check_output_json(None, [0, TIMEOUT_RETURN_CODE])
+
+
+@pytest.mark.parametrize("long_running", (True, False))
+def test_end_to_end_failure(tmpdir, long_running):
+    expected_return_code = 1
+    assert (
+        main(
+            test_workload="exit 1",
+            test_workload_timeout=1,
+            test_no_raise_on_timeout=long_running,
+            prepare_commands=[],
+            prepare_commands_timeouts=[],
+            **cloud_storage_kwargs
+        )
+        == expected_return_code
+    )
+    _check_output_json(expected_return_code)
+
+
+def test_end_to_end_prepare_failure(tmpdir):
+    expected_return_code = 1
+    assert (
+        main(
+            test_workload="exit 0",
+            test_workload_timeout=10,
+            test_no_raise_on_timeout=False,
+            prepare_commands=["exit 0", "exit 1"],
+            prepare_commands_timeouts=[1, 1],
+            **cloud_storage_kwargs
+        )
+        == expected_return_code
+    )
+    _check_output_json(None, [0, 1])
+
+
+_PROM_SPILL_SAMPLE = [
+    {"metric": {}, "values": [[1700000000, "1073741824"]]},
+]
+
+
+@pytest.mark.parametrize(
+    "metrics_payload,expected_return_code",
+    [
+        # No spilling — empty list (Prometheus `> 0` filter dropped all points)
+        ({"spilled_bytes": []}, 0),
+        # Spilling occurred — non-empty list
+        ({"spilled_bytes": _PROM_SPILL_SAMPLE}, 1),
+        # Missing value (None) — fail with "could not retrieve" error
+        ({"spilled_bytes": None}, 1),
+        # Missing key entirely — fail with "could not retrieve" error
+        ({}, 1),
+    ],
+)
+def test_run_spilling_check_with_metrics_file(
+    tmpdir, metrics_payload, expected_return_code
+):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(metrics_payload, f)
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_spilling_check() == expected_return_code
+
+
+def test_run_spilling_check_missing_file(tmpdir):
+    metrics_path = str(tmpdir / "missing.json")
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_spilling_check() == 1
+
+
+def test_run_spilling_check_unset_metrics_env(tmpdir):
+    env = {k: v for k, v in os.environ.items() if k != "METRICS_OUTPUT_JSON"}
+    with patch.dict(os.environ, env, clear=True):
+        assert run_spilling_check() == 1
+
+
+def test_run_spilling_check_malformed_json(tmpdir):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        f.write("{not valid json")
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_spilling_check() == 1
+
+
+@pytest.mark.parametrize("payload", [[1, 2, 3], "spilled_bytes", 42, None])
+def test_run_spilling_check_non_dict_json(tmpdir, payload):
+    # Valid JSON but not a dict, so `metrics.get(...)` raises AttributeError.
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(payload, f)
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_spilling_check() == 1
+
+
+_PROM_TASK_OOM_SAMPLE = {
+    "metric": {
+        "Name": "ReadFiles",
+        "Type": "MemoryManager.TaskEviction.Total",
+    },
+    "values": [[1786542912, "1"], [1786544112, "4"]],
+}
+_PROM_IDLE_WORKER_OOM_SAMPLE = {
+    "metric": {
+        "Name": "idle",
+        "Type": "MemoryManager.IdleWorkerEviction.Total",
+    },
+    "values": [[1786542912, "10"]],
+}
+_PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE = {
+    "metric": {
+        "Name": "MapWorker(MapBatches(ExtractImageFeatures)).__init__",
+        "Type": "Raylet.UnexpectedActorFailure.Total",
+    },
+    "values": [[1786542267, "1"], [1786544217, "1"]],
+}
+
+
+def test_run_ray_oom_kill_check_ignores_idle_worker_kills(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump({"worker_oom_kills": [_PROM_IDLE_WORKER_OOM_SAMPLE]}, f)
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_ray_oom_kill_check() == 0
+    assert caplog.records == []
+
+
+def test_run_ray_oom_kill_check_summarizes_metric_series(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {
+                "worker_oom_kills": [
+                    _PROM_TASK_OOM_SAMPLE,
+                    _PROM_IDLE_WORKER_OOM_SAMPLE,
+                ]
+            },
+            f,
+        )
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_ray_oom_kill_check() == 1
+    assert [record.getMessage() for record in caplog.records] == [
+        "Test failed: OOM worker kills detected. "
+        "Latest cumulative counter values by metric:\n"
+        "  - ReadFiles (MemoryManager.TaskEviction.Total): 4",
+    ]
+
+
+def test_run_unexpected_worker_failure_check_summarizes_metric_series(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {"unexpected_worker_failures": [_PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE]}, f
+        )
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_unexpected_worker_failure_check() == 1
+    assert [record.getMessage() for record in caplog.records] == [
+        "Test failed: Unexpected worker failures detected "
+        "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+        "Latest cumulative counter values by metric:\n"
+        "  - MapWorker(MapBatches(ExtractImageFeatures)).__init__ "
+        "(Raylet.UnexpectedActorFailure.Total): 1",
+    ]
+
+
+class TestRunObjStoreUtilCheck:
+    def test_peak_below_limit_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "79"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_peak_at_limit_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "80"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_peak_above_limit_fails(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "81"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 1
+
+    def test_earlier_sample_above_limit_fails(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps(
+                {"object_store_util_percent": [{"values": [[0, "81"], [1, "0"]]}]}
+            )
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 1
+
+    def test_no_samples_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(json.dumps({"object_store_util_percent": []}))
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_only_nan_samples_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "NaN"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_negative_limit_skips_check(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "500"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("-1") == 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

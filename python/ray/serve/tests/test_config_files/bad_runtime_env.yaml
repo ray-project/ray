@@ -1,0 +1,4 @@
+applications:
+  - name: default
+    import_path: ray.serve.tests.test_config_files.test_dag.basic_dag.DagNode
+    runtime_env: {"working_dir": "s3://does_not_exist.zip"}

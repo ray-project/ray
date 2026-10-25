@@ -1,0 +1,23 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-b
+
+head_node:
+    instance_type: n1-standard-64-nvidia-tesla-t4-4
+    resources:
+        CPU: 64
+        GPU: 4
+
+worker_nodes:
+    - instance_type: n1-standard-64-nvidia-tesla-t4-4
+      min_nodes: 3
+      max_nodes: 3
+      market_type: ON_DEMAND
+
+advanced_instance_config:
+  instance_properties:
+    disks:
+      - boot: true
+        auto_delete: true
+        initialize_params:
+          disk_size_gb: 800

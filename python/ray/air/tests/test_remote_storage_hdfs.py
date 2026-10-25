@@ -1,0 +1,50 @@
+"""Test remote_storage in a ci environment with real hdfs setup."""
+
+import os
+
+import pytest
+
+from ray.train.v2._internal.execution.storage import (
+    _list_at_fs_path,
+    _upload_to_fs_path,
+    get_fs_and_path,
+)
+
+
+@pytest.fixture
+def setup_hdfs():
+    """Set env vars required by pyarrow to talk to hdfs correctly.
+
+    Returns hostname and port needed for the hdfs uri."""
+
+    # the following file is written in `install-hdfs.sh`.
+    with open("/tmp/hdfs_env", "r") as f:
+        for line in f.readlines():
+            line = line.rstrip("\n")
+            tokens = line.split("=", maxsplit=1)
+            os.environ[tokens[0]] = tokens[1]
+    import sys
+
+    sys.path.insert(0, os.path.join(os.environ["HADOOP_HOME"], "bin"))
+    hostname = os.getenv("CONTAINER_ID")
+    port = os.getenv("HDFS_PORT")
+    yield hostname, port
+
+
+def test_hdfs(tmp_path, setup_hdfs):
+    pytest.skip("TODO: Fix this test")
+
+    hostname, port = setup_hdfs
+    hdfs_uri = f"hdfs://{hostname}:{port}/test/"
+    fs, path = get_fs_and_path(hdfs_uri)
+
+    dummy_file = tmp_path.joinpath("dummy.txt")
+    dummy_file.write_text("dummy")
+    _upload_to_fs_path(dummy_file, fs, path)
+    assert _list_at_fs_path(fs, path) == ["dummy.txt"]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,0 +1,12 @@
+diff --git BUILD.boost BUILD.boost
+--- BUILD.boost
++++ BUILD.boost
+@@ -428,6 +428,7 @@ boost_library(
+     }),
+     linkopts = select({
+         ":android": [],
++        ":windows": [],
+         "//conditions:default": ["-lpthread"],
+     }),
+     deps = [
+--

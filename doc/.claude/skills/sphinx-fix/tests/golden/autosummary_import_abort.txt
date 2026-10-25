@@ -1,0 +1,20 @@
+✗ HARD-BROKEN BUILD — fix this first; the rest of the log is unreliable.
+  signal: extension-error
+    Extension error (sphinx.ext.autosummary)!
+
+    Traceback
+    =========
+
+  hint: the named module is usually a DECOY. autosummary imports every documented object at builder-inited, so the real cause is typically an unrelated module whose import chain breaks under autodoc_mock_imports (a dep mocked for the doc build -- numpy/pandas/etc. -- but used at import time), aborting a shared import (in Ray, ray.air imports ray.data). Trace the import to the offending eager import and make it lazy; the named module is just the first to trip it.
+  The warning list below is incomplete until this is fixed.
+
+Build: state=Finished  success=False  exit=1
+
+Partial findings (warning pass did not complete) (0):
+  (none)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: fix the hard-broken build above, then rebuild and re-run.

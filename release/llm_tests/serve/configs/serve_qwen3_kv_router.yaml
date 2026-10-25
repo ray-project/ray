@@ -1,0 +1,26 @@
+# Declarative Serve LLM app that selects the KV-aware request router, paired with
+# the llm_serve_kv_router_multiple_ingress_router release test which pins
+# RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE=2 so each node runs multiple
+# co-located LLMRouter ingress replicas.
+applications:
+  - args:
+      llm_configs:
+        - model_loading_config:
+            model_id: qwen3-1.7b
+            model_source: Qwen/Qwen3-1.7B
+          accelerator_type: L4
+          deployment_config:
+            request_router_config:
+              request_router_class: ray.serve.llm.request_router.KVAwareRouter
+          engine_kwargs:
+            max_model_len: 2048
+            tensor_parallel_size: 1
+            enforce_eager: true
+            gpu_memory_utilization: 0.4
+            # Qwen3 emits a <think> block by default, which the probes'
+            # exact-correctness tests read as the answer and reject.
+            default_chat_template_kwargs:
+              enable_thinking: false
+    import_path: ray.serve.llm:build_openai_app
+    name: llm-endpoint
+    route_prefix: /

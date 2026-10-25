@@ -1,0 +1,17 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-c
+
+head_node:
+    # See `tune_scalability_network_overhead`
+    # Don't schedule any trials to run on the head node.
+    # The head node is only used for synchronization purposes.
+    instance_type: n2d-standard-16
+    resources:
+        CPU: 0
+
+worker_nodes:
+    - instance_type: n2d-standard-2
+      min_nodes: 100
+      max_nodes: 100
+      market_type: SPOT

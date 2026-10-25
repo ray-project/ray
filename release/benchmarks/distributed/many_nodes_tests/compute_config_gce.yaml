@@ -1,0 +1,25 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+  - us-west1-c
+
+advanced_instance_config:
+  instance_properties:
+    disks:
+      - boot: true
+        auto_delete: true
+        initialize_params:
+          disk_size_gb: 30
+
+    # NFS needs to be disabled for this test, since the test spawns too many nodes
+    # and may hit the limit on the # of clients.
+    labels:
+      as-feature-disable-nfs-mount: "true"
+
+head_node:
+  instance_type: n2-standard-64
+
+worker_nodes:
+  - instance_type: n2-standard-2
+    min_nodes: 500
+    max_nodes: 2000
+    market_type: ON_DEMAND

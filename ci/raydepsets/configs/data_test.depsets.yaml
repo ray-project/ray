@@ -1,0 +1,20 @@
+build_arg_sets:
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+
+depsets:
+  - name: datatfds_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - python/deplocks/tests/data/requirements/datatfds_reqs.in
+    output: python/deplocks/tests/data/datatfds_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py312

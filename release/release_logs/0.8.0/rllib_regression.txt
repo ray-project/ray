@@ -1,0 +1,24 @@
++----------------------------------------+------------+--------------------+--------+------------------+-------------+----------+
+| Trial name                             | status     | loc                |   iter |   total time (s) |   timesteps |   reward |
+|----------------------------------------+------------+--------------------+--------+------------------+-------------+----------|
+| IMPALA_BreakoutNoFrameskip-v4_e25c5ce8 | TERMINATED |                    |    310 |         3604.3   |     9648000 |   399.75 |
+| IMPALA_BreakoutNoFrameskip-v4_e25cdfec | TERMINATED |                    |    310 |         3611.22  |     9552000 |   403.49 |
+| IMPALA_BreakoutNoFrameskip-v4_e25d65de | TERMINATED |                    |    310 |         3604.05  |     9604500 |   390.47 |
+| IMPALA_BreakoutNoFrameskip-v4_e25ddf0a | TERMINATED |                    |    310 |         3604.18  |     9447000 |   365.57 |
+| PPO_BreakoutNoFrameskip-v4_e25e4ddc    | TERMINATED |                    |    604 |         3605.24  |     3020000 |    42.59 |
+| PPO_BreakoutNoFrameskip-v4_e25eb8da    | TERMINATED |                    |    613 |         3603.35  |     3065000 |    50.58 |
+| PPO_BreakoutNoFrameskip-v4_e25f4520    | TERMINATED |                    |    608 |         3600.01  |     3040000 |    51.2  |
+| PPO_BreakoutNoFrameskip-v4_e25fd44a    | TERMINATED |                    |    613 |         3604.97  |     3065000 |    26.19 |
+| APEX_BreakoutNoFrameskip-v4_e2603fa2   | TERMINATED |                    |    115 |         3622.22  |     5169280 |    48.56 |
+| APEX_BreakoutNoFrameskip-v4_e260d462   | TERMINATED |                    |    115 |         3616.47  |     5201280 |    45.01 |
+| APEX_BreakoutNoFrameskip-v4_e2615a90   | TERMINATED |                    |    115 |         3615.15  |     5134080 |    25.02 |
+| APEX_BreakoutNoFrameskip-v4_e261cbec   | TERMINATED |                    |    115 |         3625.55  |     5189280 |    47.01 |
+| A2C_BreakoutNoFrameskip-v4_e26260a2    | TERMINATED |                    |    351 |         3602.43  |     3478000 |   145.84 |
+| A2C_BreakoutNoFrameskip-v4_e26331f8    | TERMINATED |                    |    351 |         3601.93  |     3577000 |   178.73 |
+| A2C_BreakoutNoFrameskip-v4_e2639e68    | TERMINATED |                    |    351 |         3607.28  |     3521500 |   185.45 |
+| A2C_BreakoutNoFrameskip-v4_e2642630    | TERMINATED |                    |    351 |         3606.35  |     3460000 |   122.32 |
+| DQN_BreakoutNoFrameskip-v4_99c588f2    | TERMINATED |                    |     32 |         3643.26  |      320000 |    19.24 |
+| DQN_BreakoutNoFrameskip-v4_99c62de8    | TERMINATED |                    |     31 |         3619.43  |      310000 |    19.97 |
+| DQN_BreakoutNoFrameskip-v4_99c6c01e    | TERMINATED |                    |     33 |         3680.95  |      330000 |    16.91 |
+| DQN_BreakoutNoFrameskip-v4_99c73f44    | TERMINATED |                    |     31 |         3625.12  |      310000 |    16.23 |
++----------------------------------------+------------+--------------------+--------+------------------+-------------+----------+

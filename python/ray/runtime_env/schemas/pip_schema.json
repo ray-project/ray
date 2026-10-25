@@ -1,0 +1,50 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "http://github.com/ray-project/ray/runtime_env/pip_schema.json",
+    "title": "pip",
+    "description": "A pip environment specification.",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "a list of pip packages"
+              },
+              {
+                "type": "string",
+                "description": "the path to a pip `requirements.txt` file"
+              }
+            ]
+          },
+          "pip_check": {
+            "type": "boolean",
+            "description": "whether to enable pip check at the end of pip install"
+          },
+          "pip_version": {
+            "type": "string",
+            "description": "the version of pip"
+          }
+        },
+        "required": [
+          "packages"
+        ]
+      },
+      {
+        "type": "string",
+        "description": "the path to a pip `requirements.txt` file"
+      },
+      {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "a list of pip requirements specifiers"
+      }
+    ]
+  }

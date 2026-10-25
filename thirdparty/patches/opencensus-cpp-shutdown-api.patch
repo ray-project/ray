@@ -1,0 +1,200 @@
+diff --git a/opencensus/exporters/stats/prometheus/internal/prometheus_exporter.cc b/opencensus/exporters/stats/prometheus/internal/prometheus_exporter.cc
+index 3bb5962..706b9b4 100644
+--- a/opencensus/exporters/stats/prometheus/internal/prometheus_exporter.cc
++++ b/opencensus/exporters/stats/prometheus/internal/prometheus_exporter.cc
+@@ -25,7 +25,7 @@ namespace opencensus {
+ namespace exporters {
+ namespace stats {
+
+-std::vector<prometheus::MetricFamily> PrometheusExporter::Collect() const {
++std::vector<prometheus::MetricFamily> PrometheusExporter::Collect() {
+   const auto data = opencensus::stats::StatsExporter::GetViewData();
+   std::vector<prometheus::MetricFamily> output(data.size());
+   for (int i = 0; i < data.size(); ++i) {
+diff --git a/opencensus/exporters/stats/prometheus/prometheus_exporter.h b/opencensus/exporters/stats/prometheus/prometheus_exporter.h
+index bbb285d..ab6471f 100644
+--- a/opencensus/exporters/stats/prometheus/prometheus_exporter.h
++++ b/opencensus/exporters/stats/prometheus/prometheus_exporter.h
+@@ -41,7 +41,7 @@ namespace stats {
+ // PrometheusExporter is thread-safe.
+ class PrometheusExporter final : public ::prometheus::Collectable {
+  public:
+-  std::vector<prometheus::MetricFamily> Collect() const override;
++  std::vector<prometheus::MetricFamily> Collect() override;
+ };
+
+ }  // namespace stats
+diff --git a/opencensus/stats/internal/delta_producer.cc b/opencensus/stats/internal/delta_producer.cc
+index 1d00504..7eb0d8a 100644
+--- a/opencensus/stats/internal/delta_producer.cc
++++ b/opencensus/stats/internal/delta_producer.cc
+@@ -75,6 +75,20 @@ DeltaProducer* DeltaProducer::Get() {
+   return global_delta_producer;
+ }
+
++void DeltaProducer::Shutdown() {
++  {
++    absl::MutexLock l(&mu_);
++    if (!thread_started_) {
++      return;
++    }
++    thread_started_ = false;
++  }
++  // Join loop thread when shutdown.
++  if (harvester_thread_.joinable()) {
++    harvester_thread_.join();
++  }
++}
++
+ void DeltaProducer::AddMeasure() {
+   delta_mu_.Lock();
+   absl::MutexLock harvester_lock(&harvester_mu_);
+@@ -115,7 +129,10 @@ void DeltaProducer::Flush() {
+ }
+
+ DeltaProducer::DeltaProducer()
+-    : harvester_thread_(&DeltaProducer::RunHarvesterLoop, this) {}
++    : harvester_thread_(&DeltaProducer::RunHarvesterLoop, this) {
++  absl::MutexLock l(&mu_);
++  thread_started_ = true;
++}
+
+ void DeltaProducer::SwapDeltas() {
+   ABSL_ASSERT(last_delta_.delta().empty() && "Last delta was not consumed.");
+@@ -131,11 +148,19 @@ void DeltaProducer::RunHarvesterLoop() {
+   absl::Time next_harvest_time = absl::Now() + harvest_interval_;
+   while (true) {
+     const absl::Time now = absl::Now();
+-    absl::SleepFor(next_harvest_time - now);
++    absl::SleepFor(absl::Seconds(0.1));
+     // Account for the possibility that the last harvest took longer than
+     // harvest_interval_ and we are already past next_harvest_time.
+-    next_harvest_time = std::max(next_harvest_time, now) + harvest_interval_;
+-    Flush();
++    if (absl::Now() > next_harvest_time) {
++      next_harvest_time = std::max(next_harvest_time, now) + harvest_interval_;
++      Flush();
++    }
++    {
++      absl::MutexLock l(&mu_);
++      if (!thread_started_) {
++        break;
++      }
++    }
+   }
+ }
+
+diff --git a/opencensus/stats/internal/delta_producer.h b/opencensus/stats/internal/delta_producer.h
+index e565f6a..453b4ef 100644
+--- a/opencensus/stats/internal/delta_producer.h
++++ b/opencensus/stats/internal/delta_producer.h
+@@ -71,6 +71,8 @@ class DeltaProducer final {
+   // Returns a pointer to the singleton DeltaProducer.
+   static DeltaProducer* Get();
+
++  void Shutdown();
++
+   // Adds a new Measure.
+   void AddMeasure();
+
+@@ -124,6 +126,9 @@ class DeltaProducer final {
+   // thread when calling a flush during harvesting.
+   Delta last_delta_ ABSL_GUARDED_BY(harvester_mu_);
+   std::thread harvester_thread_ ABSL_GUARDED_BY(harvester_mu_);
++
++  mutable absl::Mutex mu_;
++  bool thread_started_ ABSL_GUARDED_BY(mu_) = false;
+ };
+
+ }  // namespace stats
+diff --git a/opencensus/stats/internal/stats_exporter.cc b/opencensus/stats/internal/stats_exporter.cc
+index 7de96d6..f9cac57 100644
+--- a/opencensus/stats/internal/stats_exporter.cc
++++ b/opencensus/stats/internal/stats_exporter.cc
+@@ -95,25 +95,57 @@ void StatsExporterImpl::ClearHandlersForTesting() {
+ }
+
+ void StatsExporterImpl::StartExportThread() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+-  t_ = std::thread(&StatsExporterImpl::RunWorkerLoop, this);
+   thread_started_ = true;
++  t_ = std::thread(&StatsExporterImpl::RunWorkerLoop, this);
++}
++
++void StatsExporterImpl::Shutdown() {
++  {
++    absl::MutexLock l(&mu_);
++    if (!thread_started_) {
++      return;
++    }
++    thread_started_ = false;
++  }
++  // Join loop thread when shutdown.
++  if (t_.joinable()) {
++    t_.join();
++  }
+ }
+
+ void StatsExporterImpl::RunWorkerLoop() {
+   absl::Time next_export_time = GetNextExportTime();
+   while (true) {
+     // SleepFor() returns immediately when given a negative duration.
+-    absl::SleepFor(next_export_time - absl::Now());
++    absl::SleepFor(absl::Seconds(0.1));
+     // In case the last export took longer than the export interval, we
+     // calculate the next time from now.
+-    next_export_time = GetNextExportTime();
+-    Export();
++    if (absl::Now() > next_export_time) {
++      next_export_time = GetNextExportTime();
++      Export();
++    }
++    {
++      absl::MutexLock l(&mu_);
++      if (!thread_started_) {
++        break;
++      }
++    }
+   }
+ }
+
+ // StatsExporter
+ // -------------
+
++void StatsExporter::Shutdown() {
++  StatsExporterImpl::Get()->Shutdown();
++  StatsExporterImpl::Get()->ClearHandlersForTesting();
++}
++
++void StatsExporter::ExportNow() {
++  DeltaProducer::Get()->Flush();
++  StatsExporterImpl::Get()->Export();
++}
++
+ // static
+ void StatsExporter::SetInterval(absl::Duration interval) {
+   StatsExporterImpl::Get()->SetInterval(interval);
+diff --git a/opencensus/stats/internal/stats_exporter_impl.h b/opencensus/stats/internal/stats_exporter_impl.h
+index abbd13e..823471e 100644
+--- a/opencensus/stats/internal/stats_exporter_impl.h
++++ b/opencensus/stats/internal/stats_exporter_impl.h
+@@ -34,6 +34,7 @@ class StatsExporterImpl {
+  public:
+   static StatsExporterImpl* Get();
+   void SetInterval(absl::Duration interval);
++  void Shutdown();
+   absl::Time GetNextExportTime() const;
+   void AddView(const ViewDescriptor& view);
+   void RemoveView(absl::string_view name);
+diff --git a/opencensus/stats/stats_exporter.h b/opencensus/stats/stats_exporter.h
+index 6756858..228069b 100644
+--- a/opencensus/stats/stats_exporter.h
++++ b/opencensus/stats/stats_exporter.h
+@@ -44,6 +44,8 @@ class StatsExporter final {
+
+   // Removes the view with 'name' from the registry, if one is registered.
+   static void RemoveView(absl::string_view name);
++  static void Shutdown();
++  static void ExportNow();
+
+   // StatsExporter::Handler is the interface for push exporters that export
+   // recorded data for registered views. The exporter should provide a static

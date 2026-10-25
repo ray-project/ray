@@ -1,0 +1,34 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "actor_creator_test",
+    size = "small",
+    srcs = ["actor_creator_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker/actor_management:actor_creator",
+        "//src/ray/gcs_rpc_client:fake_gcs_client",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+    ],
+)
+
+ray_cc_test(
+    name = "actor_manager_test",
+    size = "small",
+    srcs = ["actor_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:reference_counter",
+        "//src/ray/core_worker/actor_management:actor_manager",
+        "//src/ray/gcs_rpc_client:fake_actor_info_accessor",
+        "//src/ray/gcs_rpc_client:fake_gcs_client",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/pubsub:fake_publisher",
+        "//src/ray/pubsub:fake_subscriber",
+    ],
+)

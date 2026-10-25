@@ -1,0 +1,9 @@
+# Kind config for running kind on host network.
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  # Ensure stable port so we can rewrite the server address later
+  apiServerPort: 6443
+nodes:
+- role: control-plane

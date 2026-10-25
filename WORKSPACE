@@ -1,0 +1,260 @@
+workspace(name = "io_ray")
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "platforms",
+    sha256 = "5eda539c841265031c2f82d8ae7a3a6490bd62176e0c038fc469eabf91f6149b",
+    urls = [
+        "https://github.com/bazelbuild/platforms/releases/download/0.0.9/platforms-0.0.9.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "rules_java",
+    sha256 = "302bcd9592377bf9befc8e41aa97ec02df12813d47af9979e4764f3ffdcc5da8",
+    urls = [
+        "https://github.com/bazelbuild/rules_java/releases/download/7.12.4/rules_java-7.12.4.tar.gz",
+    ],
+)
+
+# rules_python arrives transitively at 0.9.0 (from rules_foreign_cc 0.9.0), which
+# predates bzlmod and pins pip 22.0.4. 0.40.0 is deliberate, not the newest: it is
+# the last release that still ships python/pip_install/repositories.bzl (loaded
+# below) and still accepts py_runtime_pair(py2_runtime = ...) (bazel/BUILD.bazel).
+# Both are gone in 1.0.0. Declared here so the maybe() in grpc_deps(),
+# protobuf_deps() and rules_foreign_cc_dependencies() skips theirs.
+http_archive(
+    name = "rules_python",
+    sha256 = "690e0141724abb568267e003c7b6d9a54925df40c275a870a4d934161dc9dd53",
+    strip_prefix = "rules_python-0.40.0",
+    urls = [
+        "https://github.com/bazelbuild/rules_python/releases/download/0.40.0/rules_python-0.40.0.tar.gz",
+    ],
+)
+
+# rules_python >= ~0.23 needs this to create @rules_python_internal; 0.9.0 did not.
+load("@rules_python//python:repositories.bzl", "py_repositories")
+
+py_repositories()
+
+load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
+
+rules_java_dependencies()
+
+rules_java_toolchains()
+
+load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
+
+ray_deps_setup()
+
+load("//bazel:ray_deps_build_all.bzl", "ray_deps_build_all")
+
+ray_deps_build_all()
+
+# This needs to be run after grpc_deps() in ray_deps_build_all() to make
+# sure all the packages loaded by grpc_deps() are available. However a
+# load() statement cannot be in a function so we put it here.
+load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
+
+grpc_extra_deps()
+
+load("@bazel_skylib//lib:versions.bzl", "versions")
+
+# Floor only: .bazelversion is the exact pin, and bazelisk applies it before this
+# file is evaluated. A maximum here is a second, redundant gate that additionally
+# blocks running a newer Bazel against the tree to find out what it breaks.
+versions.check(minimum_bazel_version = "7.5.0")
+
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+
+hedron_compile_commands_setup()
+
+load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+
+python_register_toolchains(
+    name = "python3_10",
+    # rules_python >= ~0.23 chmods the hermetic interpreter read-only and then fails
+    # if the current user can still write to it. Ray's CI containers run as root, so
+    # that check fires on every job. The read-only install exists to keep .pyc writes
+    # out of the fetched tree; this toolchain is CI-infra only (see bazel/BUILD.bazel)
+    # and the containers are ephemeral, so the determinism it protects is not at risk.
+    ignore_root_user_error = True,
+    python_version = "3.10",
+    register_toolchains = False,
+)
+
+load("@python3_10//:defs.bzl", python310 = "interpreter")
+load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
+
+# The pip that whl_library shells out to, overridden ahead of the one rules_python
+# brings.
+#
+# rules_python arrives here transitively at 0.9.0, from rules_foreign_cc 0.9.0. It wins
+# over protobuf's newer 0.14.0 pin because ray_deps_build_all() runs
+# rules_foreign_cc_dependencies() before grpc_extra_deps() reaches protobuf_deps(), and
+# protobuf declares rules_python through maybe(). 0.9.0 pins pip 22.0.4, which predates
+# PEP 691 support (pip 22.2): it asks for text/html and skips a JSON index page rather
+# than parsing it, so the resolve fails as though the package did not exist:
+#
+#   Skipping page http://.../simple/click/ because the GET request got Content-Type:
+#   application/vnd.pypi.simple.v1+json. The only supported Content-Type is text/html
+#   ERROR: Could not find a version that satisfies the requirement click==8.1.7
+#   (from versions: none)
+#
+# Which is what any index whose pages are not HTML produces here. The CI mirror caches
+# an index page keyed on URL while PyPI answers `Vary: Accept`, so whichever client
+# warms an entry picks the representation every later reader gets -- and a pip this old
+# can only read one of the two. A pip that understands JSON understands HTML as well, so
+# moving it forward makes the representation stop mattering in either direction, rather
+# than depending on every producer asking for the same one.
+#
+# Declared before pip_install_dependencies() deliberately: that function declares its
+# deps through maybe(), which skips any repository that already exists, so this wins.
+# The build file has to keep the `lib` target name, because rules_python resolves these
+# as @pypi__pip//:lib.
+#
+# 24.3.1 is the ceiling, not a preference. rules_python 0.9.0 parses the lock file with
+# pip's internal API -- parse_requirements_to_bzl reads ParsedLine.is_requirement -- and
+# pip 25.0 removed that attribute, so pip_repository dies with an AttributeError before
+# whl_library ever runs. 24.3.1 is the last release that still has it. The floor is 23.2:
+# PEP 691 support landed in 22.2, but 22.3 through 23.1 hard-fail on dist-info-metadata,
+# the bug PEP 714 was written for, fixed in 23.2. That leaves 23.2 through 24.3.1, and
+# this takes the top of that range.
+#
+# Note this does not match the pip ci/env/install-dependencies.sh installs (25.2). The
+# two cannot be aligned while rules_python is 0.9.0; aligning them means moving
+# rules_python first.
+http_archive(
+    name = "pypi__pip",
+    build_file_content = """\
+package(default_visibility = ["//visibility:public"])
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "lib",
+    srcs = glob(["**/*.py"]),
+    data = glob(["**/*"], exclude = [
+        "**/*.py",
+        "**/*.pyc",
+        "**/* *",
+        "**/*.dist-info/RECORD",
+        "BUILD",
+        "WORKSPACE",
+    ]),
+    imports = ["."],
+)
+""",
+    sha256 = "3790624780082365f47549d032f3770eeb2b1e8bd1f7b2e02dace1afa361b4ed",
+    type = "zip",
+    url = "https://files.pythonhosted.org/packages/ef/7d/500c9ad20238fcfcb4cb9243eede163594d7020ce87bd9610c9e02771876/pip-24.3.1-py3-none-any.whl",
+)
+
+pip_install_dependencies()
+
+load("@rules_python//python:pip.bzl", "pip_parse")
+
+# For CI scripts use only; not for ray testing.
+pip_parse(
+    name = "py_deps_py310",
+    python_interpreter_target = python310,
+    requirements_lock = "//release:requirements_py310.txt",
+)
+
+load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps")
+
+install_py_deps_py310()
+
+register_toolchains("//bazel:py310_toolchain")
+
+register_execution_platforms(
+    "@local_config_platform//:host",
+    "//bazel:py310_platform",
+)
+
+http_archive(
+    name = "crane_linux_x86_64",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
+    urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"],
+)
+
+http_archive(
+    name = "registry_x86_64",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "61c9a2c0d5981a78482025b6b69728521fbc78506d68b223d4a2eb825de5ca3d",
+    urls = ["https://github.com/distribution/distribution/releases/download/v3.0.0/registry_3.0.0_linux_amd64.tar.gz"],
+)
+
+http_archive(
+    name = "uv_x86_64-linux",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "30ccbf0a66dc8727a02b0e245c583ee970bdafecf3a443c1686e1b30ec4939e8",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.9.26/uv-x86_64-unknown-linux-gnu.tar.gz"],
+)
+
+http_archive(
+    name = "uv_aarch64-darwin",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "fcf0a9ea6599c6ae28a4c854ac6da76f2c889354d7c36ce136ef071f7ab9721f",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.9.26/uv-aarch64-apple-darwin.tar.gz"],
+)
+
+http_archive(
+    name = "com_github_storypku_bazel_iwyu",
+    sha256 = "aa78c331a2cb139f73f7d74eeb4d5ab29794af82023ef5d6d5194f76b7d37449",
+    strip_prefix = "bazel_iwyu-0.19.2",
+    urls = [
+        "https://github.com/storypku/bazel_iwyu/archive/0.19.2.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "redis_linux_x86_64",
+    build_file_content = """exports_files(["redis-server", "redis-cli"])""",
+    sha256 = "4ae33c10059ed52202a12929d269deea46fac81b8e02e722d30cb22ceb3ed678",
+    urls = ["https://github.com/ray-project/redis/releases/download/7.2.3/redis-linux-x86_64.tar.gz"],
+)
+
+http_archive(
+    name = "redis_linux_arm64",
+    build_file_content = """exports_files(["redis-server", "redis-cli"])""",
+    sha256 = "2d1085a4f69477e1f44cbddd531e593f0712532b1ade9beab0b221a0cb01f298",
+    urls = ["https://github.com/ray-project/redis/releases/download/7.2.3/redis-linux-arm64.tar.gz"],
+)
+
+http_archive(
+    name = "redis_osx_arm64",
+    build_file_content = """exports_files(["redis-server", "redis-cli"])""",
+    sha256 = "74b76099c3600b538252cdd1731278e087e8e85eecc6c64318c860f3e9462506",
+    urls = ["https://github.com/ray-project/redis/releases/download/7.2.3/redis-osx-arm64.tar.gz"],
+)
+
+load("@com_github_storypku_bazel_iwyu//bazel:dependencies.bzl", "bazel_iwyu_dependencies")
+
+bazel_iwyu_dependencies()

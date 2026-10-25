@@ -1,0 +1,313 @@
+import logging
+
+from google.protobuf.struct_pb2 import Struct
+
+from ray.core.generated.export_train_state_pb2 import (
+    ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
+    ExportTrainRunEventData as ProtoTrainRun,
+)
+from ray.dashboard.modules.metrics.dashboards.common import Panel
+from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
+    TRAIN_RUN_PANELS,
+    TRAIN_WORKER_PANELS,
+)
+from ray.train.v2._internal.state.schema import (
+    ActorStatus,
+    BackendConfig,
+    DataConfig,
+    ExecutionOptions,
+    RunAttemptStatus,
+    RunConfig,
+    RunSettings,
+    RunStatus,
+    ScalingConfig,
+    TrainRun,
+    TrainRunAttempt,
+    TrainWorker,
+)
+from ray.train.v2._internal.util import TrainingFramework
+
+# Increment each time the exported Train schema changes (proto, pydantic, or
+# exported json) so downstream consumers can distinguish schema versions.
+TRAIN_SCHEMA_VERSION = 4
+RAY_TRAIN_VERSION = 2
+
+# Status mapping dictionaries
+_ACTOR_STATUS_MAP = {
+    ActorStatus.ALIVE: ProtoTrainRunAttempt.ActorStatus.ALIVE,
+    ActorStatus.DEAD: ProtoTrainRunAttempt.ActorStatus.DEAD,
+}
+
+_RUN_ATTEMPT_STATUS_MAP = {
+    RunAttemptStatus.PENDING: ProtoTrainRunAttempt.RunAttemptStatus.PENDING,
+    RunAttemptStatus.RUNNING: ProtoTrainRunAttempt.RunAttemptStatus.RUNNING,
+    RunAttemptStatus.FINISHED: ProtoTrainRunAttempt.RunAttemptStatus.FINISHED,
+    RunAttemptStatus.ERRORED: ProtoTrainRunAttempt.RunAttemptStatus.ERRORED,
+    RunAttemptStatus.ABORTED: ProtoTrainRunAttempt.RunAttemptStatus.ABORTED,
+}
+
+_RUN_STATUS_MAP = {
+    RunStatus.INITIALIZING: ProtoTrainRun.RunStatus.INITIALIZING,
+    RunStatus.SCHEDULING: ProtoTrainRun.RunStatus.SCHEDULING,
+    RunStatus.RUNNING: ProtoTrainRun.RunStatus.RUNNING,
+    RunStatus.RESTARTING: ProtoTrainRun.RunStatus.RESTARTING,
+    RunStatus.RESIZING: ProtoTrainRun.RunStatus.RESIZING,
+    RunStatus.FINISHED: ProtoTrainRun.RunStatus.FINISHED,
+    RunStatus.ERRORED: ProtoTrainRun.RunStatus.ERRORED,
+    RunStatus.ABORTED: ProtoTrainRun.RunStatus.ABORTED,
+}
+
+_TRAINING_FRAMEWORK_MAP = {
+    None: ProtoTrainRun.BackendConfig.TrainingFramework.TRAINING_FRAMEWORK_UNSPECIFIED,
+    TrainingFramework.TORCH: ProtoTrainRun.BackendConfig.TrainingFramework.TORCH,
+    TrainingFramework.JAX: ProtoTrainRun.BackendConfig.TrainingFramework.JAX,
+    TrainingFramework.TENSORFLOW: ProtoTrainRun.BackendConfig.TrainingFramework.TENSORFLOW,
+    TrainingFramework.XGBOOST: ProtoTrainRun.BackendConfig.TrainingFramework.XGBOOST,
+    TrainingFramework.LIGHTGBM: ProtoTrainRun.BackendConfig.TrainingFramework.LIGHTGBM,
+}
+
+logger = logging.getLogger(__name__)
+
+
+def _dict_to_struct(d: dict) -> Struct:
+    """Returns a protobuf Struct from a dictionary."""
+    s = Struct()
+    s.update(d)
+    return s
+
+
+def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
+    """Convert resources dictionary to protobuf TrainResources."""
+    return ProtoTrainRunAttempt.TrainResources(resources=resources)
+
+
+def _to_proto_worker(worker: TrainWorker) -> ProtoTrainRunAttempt.TrainWorker:
+    """Convert TrainWorker to protobuf format."""
+    status = None
+    if worker.status is not None:
+        status = _ACTOR_STATUS_MAP[worker.status]
+
+    return ProtoTrainRunAttempt.TrainWorker(
+        world_rank=worker.world_rank,
+        local_rank=worker.local_rank,
+        node_rank=worker.node_rank,
+        actor_id=bytes.fromhex(worker.actor_id),
+        node_id=bytes.fromhex(worker.node_id),
+        node_ip=worker.node_ip,
+        pid=worker.pid,
+        gpu_ids=worker.gpu_ids,
+        status=status,
+        resources=_to_proto_resources(worker.resources.resources),
+        log_file_path=worker.log_file_path,
+    )
+
+
+# Main conversion functions
+def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt:
+    """Convert TrainRunAttempt to protobuf format."""
+    proto_attempt = ProtoTrainRunAttempt(
+        schema_version=TRAIN_SCHEMA_VERSION,
+        ray_train_version=RAY_TRAIN_VERSION,
+        run_id=attempt.run_id,
+        attempt_id=attempt.attempt_id,
+        status=_RUN_ATTEMPT_STATUS_MAP[attempt.status],
+        status_detail=attempt.status_detail,
+        start_time_ns=attempt.start_time_ns,
+        end_time_ns=attempt.end_time_ns,
+        resources=[_to_proto_resources(r.resources) for r in attempt.resources],
+        workers=[_to_proto_worker(w) for w in attempt.workers],
+    )
+
+    return proto_attempt
+
+
+def _to_proto_dashboard_panel(panel: Panel) -> ProtoTrainRun.DashboardPanelMetadata:
+    """Convert Dashboard Panel to protobuf format."""
+    proto_panel = ProtoTrainRun.DashboardPanelMetadata(
+        id=str(panel.id),
+        title=panel.title,
+    )
+
+    return proto_panel
+
+
+def to_proto_backend_config(
+    backend_config: BackendConfig,
+) -> ProtoTrainRun.BackendConfig:
+    """Convert BackendConfig to protobuf format."""
+    proto_backend_config = ProtoTrainRun.BackendConfig(
+        framework=_TRAINING_FRAMEWORK_MAP[backend_config.framework],
+    )
+
+    proto_backend_config.config.CopyFrom(_dict_to_struct(backend_config.config))
+
+    return proto_backend_config
+
+
+def to_proto_scaling_config(
+    scaling_config: ScalingConfig,
+) -> ProtoTrainRun.ScalingConfig:
+    """Convert ScalingConfig to protobuf format."""
+    proto_scaling_config = ProtoTrainRun.ScalingConfig(
+        use_gpu=scaling_config.use_gpu,
+        placement_strategy=scaling_config.placement_strategy,
+        use_tpu=scaling_config.use_tpu,
+    )
+
+    if isinstance(scaling_config.num_workers, tuple):
+        proto_scaling_config.num_workers_range.CopyFrom(
+            ProtoTrainRun.ScalingConfig.IntRange(
+                min=scaling_config.num_workers[0],
+                max=scaling_config.num_workers[1],
+            )
+        )
+    else:
+        proto_scaling_config.num_workers_fixed = scaling_config.num_workers
+
+    if scaling_config.resources_per_worker is not None:
+        proto_scaling_config.resources_per_worker.values.update(
+            scaling_config.resources_per_worker
+        )
+
+    if scaling_config.accelerator_type is not None:
+        proto_scaling_config.accelerator_type = scaling_config.accelerator_type
+    if scaling_config.topology is not None:
+        proto_scaling_config.topology = scaling_config.topology
+
+    if scaling_config.bundle_label_selector is not None:
+        selectors = scaling_config.bundle_label_selector
+        if isinstance(selectors, dict):
+            proto_scaling_config.label_selector_single.values.update(selectors)
+        else:
+            proto_scaling_config.label_selector_list.values.extend(
+                [ProtoTrainRun.ScalingConfig.StringMap(values=s) for s in selectors]
+            )
+
+    return proto_scaling_config
+
+
+def _to_proto_execution_options(
+    execution_options: ExecutionOptions,
+) -> ProtoTrainRun.ExecutionOptions:
+    """Convert a single ExecutionOptions schema model to protobuf."""
+    return ProtoTrainRun.ExecutionOptions(
+        resource_limits=_dict_to_struct(execution_options.resource_limits),
+        exclude_resources=_dict_to_struct(execution_options.exclude_resources),
+        preserve_order=execution_options.preserve_order,
+        actor_locality_enabled=execution_options.actor_locality_enabled,
+        verbose_progress=execution_options.verbose_progress,
+    )
+
+
+def to_proto_data_config(data_config: DataConfig) -> ProtoTrainRun.DataConfig:
+    """Convert DataConfig to protobuf format."""
+    data_execution_options = data_config.data_execution_options
+    proto_data_config = ProtoTrainRun.DataConfig(
+        enable_shard_locality=data_config.enable_shard_locality,
+        data_execution_options=ProtoTrainRun.DataExecutionOptions(
+            default=_to_proto_execution_options(data_execution_options.default),
+            per_dataset_execution_options={
+                name: _to_proto_execution_options(opts)
+                for name, opts in data_execution_options.per_dataset_execution_options.items()
+            },
+        ),
+    )
+
+    if data_config.datasets_to_split == "all":
+        proto_data_config.all.SetInParent()
+    else:
+        proto_data_config.datasets.values.extend(data_config.datasets_to_split)
+
+    return proto_data_config
+
+
+def _to_proto_failure_config(run_config: RunConfig) -> ProtoTrainRun.FailureConfig:
+    """Convert RunConfig.failure_config to protobuf format."""
+    return ProtoTrainRun.FailureConfig(
+        max_failures=run_config.failure_config.max_failures,
+        controller_failure_limit=run_config.failure_config.controller_failure_limit,
+    )
+
+
+def _to_proto_checkpoint_config(
+    run_config: RunConfig,
+) -> ProtoTrainRun.CheckpointConfig:
+    """Convert RunConfig.checkpoint_config to protobuf format."""
+    checkpoint_score_order = ProtoTrainRun.CheckpointConfig.CheckpointScoreOrder.Value(
+        run_config.checkpoint_config.checkpoint_score_order.upper()
+    )
+
+    proto_checkpoint_config = ProtoTrainRun.CheckpointConfig(
+        checkpoint_score_order=checkpoint_score_order
+    )
+    if run_config.checkpoint_config.num_to_keep is not None:
+        proto_checkpoint_config.num_to_keep = run_config.checkpoint_config.num_to_keep
+    if run_config.checkpoint_config.checkpoint_score_attribute is not None:
+        proto_checkpoint_config.checkpoint_score_attribute = (
+            run_config.checkpoint_config.checkpoint_score_attribute
+        )
+    return proto_checkpoint_config
+
+
+def to_proto_run_config(run_config: RunConfig) -> ProtoTrainRun.RunConfig:
+    """Convert RunConfig to protobuf format."""
+    proto_run_config = ProtoTrainRun.RunConfig(
+        name=run_config.name,
+        failure_config=_to_proto_failure_config(run_config),
+        worker_runtime_env=_dict_to_struct(run_config.worker_runtime_env),
+        checkpoint_config=_to_proto_checkpoint_config(run_config),
+        storage_path=run_config.storage_path,
+    )
+
+    if run_config.storage_filesystem is not None:
+        proto_run_config.storage_filesystem = run_config.storage_filesystem
+
+    return proto_run_config
+
+
+def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettings:
+    """Convert RunSettings to protobuf format."""
+
+    proto_run_settings = ProtoTrainRun.RunSettings(
+        backend_config=to_proto_backend_config(run_settings.backend_config),
+        scaling_config=to_proto_scaling_config(run_settings.scaling_config),
+        datasets=run_settings.datasets,
+        data_config=to_proto_data_config(run_settings.data_config),
+        run_config=to_proto_run_config(run_settings.run_config),
+    )
+
+    if run_settings.train_loop_config is not None:
+        proto_run_settings.train_loop_config.CopyFrom(
+            _dict_to_struct(run_settings.train_loop_config)
+        )
+
+    return proto_run_settings
+
+
+def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
+    """Convert TrainRun to protobuf format."""
+
+    proto_train_run_panels = [_to_proto_dashboard_panel(p) for p in TRAIN_RUN_PANELS]
+    proto_train_worker_panels = [
+        _to_proto_dashboard_panel(p) for p in TRAIN_WORKER_PANELS
+    ]
+
+    proto_train_run = ProtoTrainRun(
+        schema_version=TRAIN_SCHEMA_VERSION,
+        ray_train_version=RAY_TRAIN_VERSION,
+        id=run.id,
+        name=run.name,
+        job_id=bytes.fromhex(run.job_id),
+        controller_actor_id=bytes.fromhex(run.controller_actor_id),
+        status=_RUN_STATUS_MAP[run.status],
+        status_detail=run.status_detail,
+        start_time_ns=run.start_time_ns,
+        end_time_ns=run.end_time_ns,
+        controller_log_file_path=run.controller_log_file_path,
+        train_run_panels=proto_train_run_panels,
+        train_worker_panels=proto_train_worker_panels,
+        framework_versions=run.framework_versions,
+        run_settings=_to_proto_run_settings(run.run_settings),
+    )
+
+    return proto_train_run

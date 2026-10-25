@@ -1,0 +1,14 @@
+filegroup(
+    name = "train_pytorch_examples",
+    srcs = glob(["*.ipynb"]),
+    visibility = ["//doc:__subpackages__"],
+)
+
+filegroup(
+    name = "pytorch_examples_ci_configs",
+    srcs = glob([
+        "**/ci/aws.yaml",
+        "**/ci/gce.yaml",
+    ]),
+    visibility = ["//doc/source/train/examples:__pkg__"],
+)

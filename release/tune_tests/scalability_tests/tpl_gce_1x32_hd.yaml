@@ -1,0 +1,15 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-c
+
+head_node:
+    instance_type: n2d-standard-16
+
+worker_nodes: []
+
+#advanced_instance_config:
+#  TagSpecifications:
+#    - ResourceType: "instance"
+#      Tags:
+#        - Key: ttl-hours
+#          Value: '48'

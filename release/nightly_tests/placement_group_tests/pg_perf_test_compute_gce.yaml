@@ -1,0 +1,26 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones: [us-west1-c]
+
+advanced_instance_config:
+    instance_properties:
+        disks:
+            - boot: true
+              auto_delete: true
+              initialize_params:
+                  disk_size_gb: 500
+
+head_node:
+    instance_type: n2-standard-32
+    resources:
+        CPU: 32
+        pending: 1
+        custom: 100
+
+worker_nodes:
+    - instance_type: n2-standard-16
+      min_nodes: 4
+      max_nodes: 4
+      market_type: ON_DEMAND
+      resources:
+          pending: 1
+          custom: 100

@@ -1,0 +1,15 @@
+cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+region: us-central1
+
+max_workers: 3
+
+head_node_type:
+    name: head_node
+    instance_type: n2-standard-8
+
+worker_node_types:
+    - name: worker_node
+      instance_type: n2-standard-8
+      min_workers: 3
+      max_workers: 3
+      use_spot: false

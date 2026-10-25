@@ -1,0 +1,112 @@
+import shlex
+import sys
+from unittest.mock import patch
+
+import pytest
+
+from ray_release.bazel import bazel_runfile
+from ray_release.buildkite.step import (
+    _DEFAULT_STEP_TEMPLATE,
+    DOCKER_PLUGIN_KEY,
+    get_step,
+    get_step_for_test_group,
+)
+from ray_release.configs.global_config import init_global_config
+from ray_release.test import Test
+
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+
+
+def _stub_test(val: dict) -> Test:
+    """
+    A helper function to create a test object with a given dictionary.
+    """
+    test = Test(
+        {
+            "name": "test with spaces",
+            "cluster": {
+                "byod": {},
+            },
+            "run": {
+                "script": "python test.py",
+                "timeout": 100,
+                "num_retries": 3,
+            },
+        }
+    )
+    test.update(val)
+    return test
+
+
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step(mock):
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        step = get_step(_stub_test({}), run_id=2)
+    assert step["label"] == "test with spaces (None) (2)"
+    assert step["retry"]["automatic"][0]["limit"] == 3
+    # run_release_test.sh reads this to know whether the current attempt is the
+    # last one, so it has to match the limit Buildkite retries against.
+    assert step["env"]["BUILDKITE_MAX_RETRIES"] == "3"
+    # The reporters shell out to `buildkite-agent`, which needs the binary the
+    # agent is running and the access token; the plugin provides both. A
+    # hand-rolled volume for the binary would shadow it, because /usr/local/bin
+    # precedes /usr/bin on PATH in the python image.
+    docker_plugin = step["plugins"][0][DOCKER_PLUGIN_KEY]
+    assert docker_plugin["mount-buildkite-agent"] is True
+    assert not any("buildkite-agent" in v for v in docker_plugin["volumes"])
+    assert "commands" in step
+    first_command = shlex.split(step["commands"][0])
+    assert first_command[0] == "./release/run_release_test.sh"
+    assert first_command[1] == "test with spaces"
+
+
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step_without_num_retries(mock):
+    test = _stub_test({"run": {"script": "python test.py", "timeout": 100}})
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        step = get_step(test, run_id=2)
+    # Neither the buildkite limit nor the in-job budget is overridden; the job
+    # falls back to the default in run_release_test.sh.
+    assert (
+        step["retry"]["automatic"][0]["limit"]
+        == _DEFAULT_STEP_TEMPLATE["retry"]["automatic"][0]["limit"]
+    )
+    assert "BUILDKITE_MAX_RETRIES" not in step["env"]
+
+
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step_with_zero_num_retries(mock):
+    test = _stub_test(
+        {"run": {"script": "python test.py", "timeout": 100, "num_retries": 0}}
+    )
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        step = get_step(test, run_id=2)
+    # An explicit 0 disables retries on both sides, rather than being read as
+    # "not configured" and falling back to the default.
+    assert step["retry"]["automatic"][0]["limit"] == 0
+    assert step["env"]["BUILDKITE_MAX_RETRIES"] == "0"
+
+
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step_for_test_group(mock):
+    grouped_tests = {
+        "group1": [
+            (_stub_test({"name": "test1", "repeated_run": 3}), False),
+            (_stub_test({"name": "test2"}), False),
+        ],
+        "group2": [(_stub_test({"name": "test3"}), False)],
+    }
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        steps = get_step_for_test_group(grouped_tests)
+    assert len(steps) == 2
+    assert steps[0]["group"] == "group1"
+    assert [step["label"] for step in steps[0]["steps"]] == [
+        "test1 (None) (0)",
+        "test1 (None) (1)",
+        "test1 (None) (2)",
+        "test2 (None) (0)",
+    ]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

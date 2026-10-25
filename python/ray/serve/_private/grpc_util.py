@@ -1,0 +1,325 @@
+import asyncio
+import logging
+from copy import deepcopy
+from typing import Callable, List, Optional, Sequence, Set, Tuple
+from unittest.mock import Mock
+
+import grpc
+from grpc.aio._server import Server
+from grpc_reflection.v1alpha import reflection
+
+from ray.exceptions import RayActorError, RayTaskError
+from ray.serve._private.constants import (
+    DEFAULT_GRPC_SERVER_OPTIONS,
+    RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
+    SERVE_LOGGER_NAME,
+)
+from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
+from ray.serve.config import gRPCOptions
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    gRPCStatusError,
+)
+from ray.serve.generated.serve_pb2 import DESCRIPTOR as SERVE_DESCRIPTOR
+from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
+
+# Maximum length for gRPC status details to avoid hitting HTTP/2 trailer limits.
+# gRPC default max metadata size is 8KB, so we use a conservative limit.
+GRPC_MAX_STATUS_DETAILS_LENGTH = 4096
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+class gRPCGenericServer(Server):
+    """Custom gRPC server that will override all service method handlers.
+
+    Original implementation see: https://github.com/grpc/grpc/blob/
+        60c1701f87cacf359aa1ad785728549eeef1a4b0/src/python/grpcio/grpc/aio/_server.py
+    """
+
+    def __init__(
+        self,
+        service_handler_factory: Callable,
+        *,
+        extra_options: Optional[List[Tuple[str, str]]] = None,
+    ):
+        super().__init__(
+            thread_pool=None,
+            generic_handlers=(),
+            interceptors=(),
+            maximum_concurrent_rpcs=None,
+            compression=None,
+            options=DEFAULT_GRPC_SERVER_OPTIONS + (extra_options or []),
+        )
+        self.generic_rpc_handlers: List[Sequence[grpc.GenericRpcHandler]] = []
+        self.service_handler_factory = service_handler_factory
+        self._passthrough_service_names: Set[str] = set()
+
+    def add_passthrough_service(self, service_name: str):
+        """Mark a service whose handlers should execute on this server directly.
+
+        Handlers for a passthrough service (e.g., gRPC server reflection) are
+        registered unmodified instead of being overridden to route to replicas.
+        Must be called before the service's handlers are registered; user-defined
+        servicers always register while this set is still empty, so they can
+        never match it and always get the replica-routing override.
+        NOTE: passthrough handlers bypass the service handler factory, so any
+        logic implemented inside the factory (e.g., auth) does not apply to
+        them; server interceptors would.
+        """
+        self._passthrough_service_names.add(service_name)
+
+    def _override_method_handler(
+        self, service_method: str, method_handler: grpc.RpcMethodHandler
+    ) -> grpc.RpcMethodHandler:
+        return method_handler._replace(
+            response_serializer=None,
+            unary_unary=self.service_handler_factory(
+                service_method=service_method,
+                streaming_type=gRPCStreamingType.UNARY_UNARY,
+            ),
+            unary_stream=self.service_handler_factory(
+                service_method=service_method,
+                streaming_type=gRPCStreamingType.UNARY_STREAM,
+            ),
+            stream_unary=self.service_handler_factory(
+                service_method=service_method,
+                streaming_type=gRPCStreamingType.STREAM_UNARY,
+            ),
+            stream_stream=self.service_handler_factory(
+                service_method=service_method,
+                streaming_type=gRPCStreamingType.STREAM_STREAM,
+            ),
+        )
+
+    def add_generic_rpc_handlers(
+        self, generic_rpc_handlers: Sequence[grpc.GenericRpcHandler]
+    ):
+        """Override generic_rpc_handlers before adding to the gRPC server.
+
+        Handlers for passthrough services are added unmodified. All other
+        handlers are overridden to have
+            1. None `response_serializer` so the server can pass back the
+            raw protobuf bytes to the user.
+            2. `unary_unary` is always calling the unary function generated via
+            `self.service_handler_factory`
+            3. `unary_stream` is always calling the streaming function generated via
+            `self.service_handler_factory`
+            4. `stream_unary` for client streaming requests
+            5. `stream_stream` for bidirectional streaming requests
+        """
+        rpc_handler = generic_rpc_handlers[0]
+        if not self._passthrough_service_names.intersection(
+            get_service_names([generic_rpc_handlers])
+        ):
+            serve_rpc_handlers = {}
+            for service_method, method_handler in rpc_handler._method_handlers.items():
+                serve_rpc_handlers[service_method] = self._override_method_handler(
+                    service_method, method_handler
+                )
+            rpc_handler._method_handlers = serve_rpc_handlers
+        self.generic_rpc_handlers.append(generic_rpc_handlers)
+        super().add_generic_rpc_handlers(generic_rpc_handlers)
+
+    def add_registered_method_handlers(
+        self,
+        service_name: str,
+        method_handlers: dict[str, grpc.RpcMethodHandler],
+    ):
+        """Route grpcio's registered-method handlers through Serve as well."""
+        base_add_registered_method_handlers = getattr(
+            super(), "add_registered_method_handlers", None
+        )
+        if base_add_registered_method_handlers is None:
+            # Older grpcio versions do not support this API. Generated services
+            # register generic handlers as the compatibility path.
+            return
+
+        if service_name in self._passthrough_service_names:
+            base_add_registered_method_handlers(service_name, method_handlers)
+            return
+
+        serve_method_handlers = {
+            method_name: self._override_method_handler(
+                f"/{service_name}/{method_name}", method_handler
+            )
+            for method_name, method_handler in method_handlers.items()
+        }
+        base_add_registered_method_handlers(service_name, serve_method_handlers)
+
+
+def get_service_names(
+    generic_rpc_handlers: Sequence[Sequence[grpc.GenericRpcHandler]],
+) -> Set[str]:
+    """Get fully qualified service names from registered method handlers.
+
+    Method handler keys are of the form "/pkg.Service/Method".
+    """
+    return {
+        service_method.split("/")[1]
+        for rpc_handlers in generic_rpc_handlers
+        for service_method in rpc_handlers[0]._method_handlers
+    }
+
+
+def enable_server_reflection(server: gRPCGenericServer) -> None:
+    """Enable the gRPC server reflection protocol on the server.
+
+    The reflection service is registered as a passthrough service so it
+    executes on the server itself instead of being routed to replicas.
+    """
+    service_names = get_service_names(server.generic_rpc_handlers)
+    # Advertise only user-defined services, not Serve's built-in API service.
+    service_names.discard(
+        SERVE_DESCRIPTOR.services_by_name["RayServeAPIService"].full_name
+    )
+    advertised_service_names = sorted(service_names) + [reflection.SERVICE_NAME]
+    server.add_passthrough_service(reflection.SERVICE_NAME)
+    reflection.enable_server_reflection(advertised_service_names, server)
+    logger.info(
+        "Enabled gRPC server reflection. "
+        f"Advertised services: {advertised_service_names}"
+    )
+
+
+async def start_grpc_server(
+    service_handler_factory: Callable,
+    grpc_options: gRPCOptions,
+    *,
+    event_loop: asyncio.AbstractEventLoop,
+    enable_so_reuseport: bool = False,
+) -> Tuple[asyncio.Task, gRPCGenericServer]:
+    """Start a gRPC server that handles requests with the service handler factory.
+
+    Returns a task that blocks until the server exits (e.g., due to error) and
+    the server object itself (so callers can shut it down gracefully).
+    """
+    from ray.serve._private.default_impl import add_grpc_address
+
+    server = gRPCGenericServer(
+        service_handler_factory,
+        extra_options=[("grpc.so_reuseport", str(int(enable_so_reuseport)))],
+    )
+    add_grpc_address(server, f"[::]:{grpc_options.port}")
+
+    # Add built-in gRPC service and user-defined services to the server.
+    # We pass a mock servicer because the actual implementation will be overwritten
+    # in the gRPCGenericServer implementation.
+    mock_servicer = Mock()
+    for servicer_fn in [
+        add_RayServeAPIServiceServicer_to_server
+    ] + grpc_options.grpc_servicer_func_callable:
+        servicer_fn(mock_servicer, server)
+
+    if grpc_options.enable_reflection:
+        enable_server_reflection(server)
+
+    await server.start()
+    return event_loop.create_task(server.wait_for_termination()), server
+
+
+def _truncate_message(
+    message: str, max_length: int = GRPC_MAX_STATUS_DETAILS_LENGTH
+) -> str:
+    """Truncate a message to avoid exceeding HTTP/2 trailer limits.
+
+    gRPC status details are sent as part of HTTP/2 trailers, which have a fixed size limit.
+    If the message (e.g., a stack trace) is too long, it can cause issues on the client side.
+    """
+    if len(message) <= max_length:
+        return message
+    truncation_notice = "... [truncated]"
+    return message[: max_length - len(truncation_notice)] + truncation_notice
+
+
+def get_grpc_response_status(
+    exc: BaseException, request_timeout_s: Optional[float], request_id: str
+) -> ResponseStatus:
+    if isinstance(exc, TimeoutError):
+        message = (
+            f"Request timed out after {request_timeout_s}s."
+            if request_timeout_s is not None
+            else "Request timed out."
+        )
+        return ResponseStatus(
+            code=grpc.StatusCode.DEADLINE_EXCEEDED,
+            is_error=True,
+            message=message,
+        )
+    elif isinstance(exc, asyncio.CancelledError):
+        message = f"Client for request {request_id} disconnected."
+        return ResponseStatus(
+            code=grpc.StatusCode.CANCELLED,
+            is_error=True,
+            message=message,
+        )
+    elif isinstance(exc, BackPressureError):
+        return ResponseStatus(
+            code=grpc.StatusCode.RESOURCE_EXHAUSTED,
+            is_error=True,
+            message=exc.message,
+        )
+    elif isinstance(exc, DeploymentUnavailableError):
+        if isinstance(exc, RayTaskError):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
+        return ResponseStatus(
+            code=grpc.StatusCode.UNAVAILABLE,
+            is_error=True,
+            message=exc.message,
+        )
+    elif isinstance(exc, gRPCStatusError):
+        # User set a gRPC status code before raising the exception.
+        # Respect the user's status code instead of returning INTERNAL.
+        original_exc = exc.original_exception
+        if isinstance(original_exc, (RayActorError, RayTaskError)):
+            logger.warning(
+                f"Request failed: {original_exc}", extra={"log_to_stderr": False}
+            )
+        else:
+            logger.exception(
+                f"Request failed with user-set gRPC status code {exc.grpc_code}."
+            )
+        # Use user-set details if provided, otherwise use the original exception message.
+        message = exc.grpc_details if exc.grpc_details else str(original_exc)
+        return ResponseStatus(
+            code=exc.grpc_code,
+            is_error=True,
+            message=_truncate_message(message),
+        )
+    else:
+        if isinstance(exc, (RayActorError, RayTaskError)):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
+        else:
+            logger.exception("Request failed due to unexpected error.")
+        return ResponseStatus(
+            code=grpc.StatusCode.INTERNAL,
+            is_error=True,
+            message=_truncate_message(str(exc)),
+        )
+
+
+def set_grpc_code_and_details(
+    context: grpc._cython.cygrpc._ServicerContext, status: ResponseStatus
+):
+    # Only the latest code and details will take effect. If the user already
+    # set them to a truthy value in the context, skip setting them with Serve's
+    # default values. By default, if nothing is set, the code is 0 and the
+    # details is "", which both are falsy. So if the user did not set them or
+    # if they're explicitly set to falsy values, such as None, Serve will
+    # continue to set them with our default values.
+    if not context.code():
+        context.set_code(status.code)
+    if not context.details():
+        context.set_details(status.message)
+
+
+def set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
+    grpc_options = deepcopy(grpc_options) or gRPCOptions()
+
+    if grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S:
+        grpc_options.request_timeout_s = (
+            grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+        )
+
+    return grpc_options

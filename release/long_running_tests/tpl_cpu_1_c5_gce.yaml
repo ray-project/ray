@@ -1,0 +1,21 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-c
+
+head_node:
+    instance_type: c2-standard-8
+
+worker_nodes: []
+
+#advanced_instance_config:
+#  TagSpecifications:
+#    - ResourceType: "instance"
+#      Tags:
+#        - Key: ttl-hours
+#          Value: '48'
+#
+#  BlockDeviceMappings:
+#    - DeviceName: /dev/sda1
+#      Ebs:
+#        VolumeSize: 300
+#        DeleteOnTermination: true

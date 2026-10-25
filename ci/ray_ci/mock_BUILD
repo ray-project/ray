@@ -1,0 +1,72 @@
+# This is a mock build file used for testing
+# If you make changes here, also edit test_bazel_sharding.py
+
+py_test(
+    name = "test_default",
+    srcs = ["mock_file"],
+    tags = ["manual"],
+)
+
+py_test(
+    name = "test_small",
+    size = "small",
+    srcs = ["mock_file"],
+    tags = ["size"],
+)
+
+py_test(
+    name = "test_medium",
+    size = "medium",
+    srcs = ["mock_file"],
+    tags = ["size"],
+)
+
+py_test(
+    name = "test_large",
+    size = "large",
+    srcs = ["mock_file"],
+    tags = ["size"],
+)
+
+py_test(
+    name = "test_enormous",
+    size = "enormous",
+    srcs = ["mock_file"],
+    tags = ["size", "huge"],
+)
+
+py_test(
+    name = "test_short",
+    timeout = "short",
+    srcs = ["mock_file"],
+    tags = ["timeout"],
+)
+
+py_test(
+    name = "test_moderate",
+    timeout = "moderate",
+    srcs = ["mock_file"],
+    tags = ["timeout"],
+)
+
+py_test(
+    name = "test_long",
+    timeout = "long",
+    srcs = ["mock_file"],
+    tags = ["timeout"],
+)
+
+py_test(
+    name = "test_eternal",
+    timeout = "eternal",
+    srcs = ["mock_file"],
+    tags = ["timeout", "huge"],
+)
+
+py_test(
+    name = "test_both_size_and_timeout",
+    size = "medium",
+    timeout = "long",
+    srcs = ["mock_file"],
+    tags = ["size", "timeout"],
+)

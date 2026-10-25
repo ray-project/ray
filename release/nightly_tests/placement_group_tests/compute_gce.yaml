@@ -1,0 +1,28 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones: [us-west1-c]
+
+advanced_instance_config:
+    instance_properties:
+        disks:
+            - boot: true
+              auto_delete: true
+              initialize_params:
+                  disk_size_gb: 500
+
+head_node:
+    instance_type: n2-standard-16
+
+worker_nodes:
+    - name: cpu_node
+      instance_type: n2-standard-16
+      min_nodes: 0
+      max_nodes: 2
+      market_type: ON_DEMAND
+    - name: fake_gpu_node
+      instance_type: n2-standard-16
+      min_nodes: 0
+      max_nodes: 2
+      market_type: ON_DEMAND
+      resources:
+          CPU: 16
+          GPU: 1

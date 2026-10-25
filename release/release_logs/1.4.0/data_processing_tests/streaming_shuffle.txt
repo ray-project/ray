@@ -1,0 +1,29 @@
+ubuntu@ip-172-31-60-37:~$ python -m ray.experimental.shuffle --num-cpus=32 --num-partitions=200 --partition-size=500e6 --object-store-memory=20e9
+Start a new cluster...
+2021-06-03 08:40:49,122	INFO services.py:1274 -- View the Ray dashboard at http://127.0.0.1:8265
+Map Progress.: 100%|█████████████████████████████████████████████████████████████████| 200/200 [03:02<00:00,  1.10it/s]
+Reduce Progress.: 100%|██████████████████████████████████████████████████████████████| 200/200 [03:02<00:00,  1.10it/s]
+
+--- Aggregate object store stats across all nodes ---
+Plasma memory usage 14168 MiB, 5942 objects, 74.28% full
+Spilled 80953 MiB, 33951 objects, avg write throughput 446 MiB/s
+Restored 79158 MiB, 33198 objects, avg read throughput 4713 MiB/s
+Objects consumed by Ray tasks: 95377 MiB.
+
+Shuffled 95367 MiB in 184.99779391288757 seconds
+ubuntu@ip-172-31-60-37:~$ python -m ray.experimental.shuffle --num-cpus=8 --num-partitions=200 --partition-size=500e6 --object-store-memory=5e9 --num-nodes=4
+Emulating a cluster...
+Num nodes: 4
+Num CPU per node: 8
+Object store memory per node: 5000000000.0
+2021-06-03 08:44:18,431	INFO worker.py:727 -- Connecting to existing Ray cluster at address: 172.31.60.37:6379
+Map Progress.: 100%|█████████████████████████████████████████████████████████████████| 200/200 [03:40<00:00,  1.10s/it]
+Reduce Progress.: 100%|██████████████████████████████████████████████████████████████| 200/200 [03:40<00:00,  1.10s/it]
+
+--- Aggregate object store stats across all nodes ---
+Plasma memory usage 5345 MiB, 2242 objects, 28.03% full
+Spilled 89745 MiB, 37638 objects, avg write throughput 410 MiB/s
+Restored 83571 MiB, 35049 objects, avg read throughput 3402 MiB/s
+Objects consumed by Ray tasks: 95377 MiB.
+
+Shuffled 95367 MiB in 222.46789169311523 seconds

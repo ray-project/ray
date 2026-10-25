@@ -1,0 +1,12 @@
+.sd-card.body {
+  display: flex;
+  flex-direction: column;
+}
+.sd-card-body > figure {
+  height: 10em;
+}
+.card-figure {
+  object-fit: contain;
+  width: 100%;
+  height: 100%;
+}

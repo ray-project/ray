@@ -1,0 +1,17 @@
+# __basic_example_begin__
+applications:
+  - name: default
+    import_path: my_module:app
+    deployments:
+      - name: MyConsumer
+        max_ongoing_requests: 5
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 10
+          target_ongoing_requests: 2
+          policy:
+            policy_function: "ray.serve.async_inference_autoscaling_policy:AsyncInferenceAutoscalingPolicy"
+            policy_kwargs:
+              broker_url: "redis://localhost:6379/0"
+              queue_name: "my_queue"
+# __basic_example_end__

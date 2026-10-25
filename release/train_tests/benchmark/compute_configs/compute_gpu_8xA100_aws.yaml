@@ -1,0 +1,10 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.4xlarge
+
+worker_nodes:
+    - instance_type: p4d.24xlarge
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND

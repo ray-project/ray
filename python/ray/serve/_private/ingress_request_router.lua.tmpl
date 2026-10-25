@@ -1,0 +1,142 @@
+-- Pins a request to a replica selected by its deployment's request router.
+
+local FORWARD_BODY = ${FORWARD_BODY}
+local MODEL_ID_HEADER = "serve_multiplexed_model_id"
+local ROUTERS = ${ROUTERS}
+local REPLICA_TARGETS = ${REPLICA_TARGETS}
+local _rr_cursor = {}
+
+-- Headers named by Connection are added dynamically.
+local ROUTER_REQUEST_HEADER_EXCLUSIONS = {
+    ["connection"] = true,
+    ["content-length"] = true,
+    ["expect"] = true,
+    ["host"] = true,
+    ["keep-alive"] = true,
+    ["proxy-authenticate"] = true,
+    ["proxy-authorization"] = true,
+    ["te"] = true,
+    ["trailer"] = true,
+    ["transfer-encoding"] = true,
+    ["upgrade"] = true,
+    ["x-body-truncated"] = true,
+}
+
+local function request_headers_for_router(headers)
+    local excluded = {}
+    for name, _ in pairs(ROUTER_REQUEST_HEADER_EXCLUSIONS) do
+        excluded[name] = true
+    end
+
+    -- RFC 9110 allows Connection to name additional hop-by-hop fields.
+    local connection = headers and headers["connection"]
+    if connection then
+        for _, value in pairs(connection) do
+            for token in value:gmatch("[^,]+") do
+                excluded[token:match("^%s*(.-)%s*$$"):lower()] = true
+            end
+        end
+    end
+
+    local lines = {}
+    for name, values in pairs(headers or {}) do
+        if not excluded[name:lower()] then
+            for _, value in pairs(values) do
+                lines[#lines + 1] = name .. ": " .. value .. "\r\n"
+            end
+        end
+    end
+    return table.concat(lines)
+end
+
+local function set_router_response_headers(txn, json_body)
+    local headers = json_body:match('"request_headers"%s*:%s*{(.-)}')
+    if not headers then
+        return
+    end
+    for name, value in headers:gmatch('"%s*([^"]-)%s*"%s*:%s*"([^"]*)"') do
+        if name ~= "" then
+            txn.http:req_set_header(name, value)
+        end
+    end
+end
+
+local function route(txn, app, pool, replica_map)
+    local body = FORWARD_BODY and (txn.sf:req_body() or "") or ""
+    local hdrs = txn.http:req_get_headers()
+    local headers = header_line(REQUEST_PATH_HEADER, txn.sf:path())
+        .. request_headers_for_router(hdrs)
+        .. header_line(MODEL_ID_HEADER, txn:get_var("txn.multiplexed_model_id"))
+
+    if FORWARD_BODY and body ~= "" then
+        local truncated = truncated_full_length(txn, body)
+        if truncated then
+            core.log(core.warning,
+                "ingress_request_router: forwarding truncated body to router ("
+                    .. #body .. "/" .. truncated .. " bytes)")
+            headers = headers .. "X-Body-Truncated: " .. #body .. "/" .. truncated .. "\r\n"
+            ${METRICS_SET_TRUNCATED}
+        end
+    end
+
+    local n = #pool
+    if n == 0 then
+        txn:set_var("txn.ingress_request_router_failed", "router_unavailable")
+        return
+    end
+    local start = _rr_cursor[app] or 0
+    _rr_cursor[app] = start + 1
+    local response = nil
+    for i = 0, n - 1 do
+        response = call_router(
+            pool[(start + i) % n + 1],
+            {headers = headers, body = body}
+        )
+        if response then
+            break
+        end
+    end
+    if not response then
+        txn:set_var("txn.ingress_request_router_failed", "router_unreachable")
+        return
+    end
+
+    local status, _, response_body = parse_response(response)
+    txn:set_var("txn.ingress_request_router_status", status and tostring(status) or "")
+    if status ~= 200 then
+        txn:set_var("txn.ingress_request_router_failed", "router_non_200")
+        return
+    end
+
+    local replica_id = json_string_field(response_body, "replica_id")
+    if not replica_id then
+        txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
+        return
+    end
+    local server_name = replica_map[replica_id]
+    if not server_name then
+        txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
+        return
+    end
+
+    set_router_response_headers(txn, response_body)
+    txn:set_var("txn.ingress_request_router_target", server_name)
+    txn:set_var("txn.via_ingress_request_router", true)
+end
+
+core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
+    ${METRICS_PRE_CALL_ROUTER}
+
+    local app = txn:get_var("txn.ingress_request_router_app")
+    if not app then
+        return
+    end
+    local pool = ROUTERS[app]
+    local replica_map = REPLICA_TARGETS[app]
+    if not pool or not replica_map then
+        return
+    end
+
+    route(txn, app, pool, replica_map)
+    ${METRICS_POST_CALL_ROUTER}
+end, 0)

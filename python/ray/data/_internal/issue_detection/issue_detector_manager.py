@@ -1,0 +1,111 @@
+import logging
+import threading
+import time
+from typing import TYPE_CHECKING, Dict, List, Set, Tuple
+
+from ray.core.generated.export_dataset_operator_event_pb2 import (
+    ExportDatasetOperatorEventData as ProtoOperatorEventData,
+)
+from ray.data._internal.issue_detection.issue_detector import (
+    Issue,
+    IssueDetector,
+    IssueType,
+)
+from ray.data._internal.operator_event_exporter import (
+    OperatorEvent,
+    format_export_issue_event_name,
+    get_operator_event_exporter,
+)
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
+
+logger = logging.getLogger(__name__)
+
+
+class IssueDetectorManager:
+    def __init__(self, executor: "StreamingExecutor"):
+        ctx = executor._data_context
+        self._issue_detectors: List[IssueDetector] = [
+            cls.from_executor(executor) for cls in ctx.issue_detectors_config.detectors
+        ]
+        self._last_detection_times: Dict[IssueDetector, float] = {
+            detector: time.perf_counter() for detector in self._issue_detectors
+        }
+        self.executor = executor
+        self._operator_event_exporter = get_operator_event_exporter()
+        # Set of detected (issue_type, operator) pairs for usage collection.
+        self._detected_issues: Set[Tuple[IssueType, "PhysicalOperator"]] = set()
+        # We protect the above set with a lock to avoid race conditions between the executor thread, that invokes the detectors (adding to the set of detected issues), and the
+        # consumer thread that checks the set of detected issues on shutdown (in the usage callback).
+        self._detected_issues_lock = threading.Lock()
+
+    def invoke_periodic_detection(self) -> None:
+        curr_time = time.perf_counter()
+        issues = []
+        for detector in self._issue_detectors:
+            if detector.detection_time_interval_s() == -1:
+                continue
+
+            if (
+                curr_time - self._last_detection_times[detector]
+                > detector.detection_time_interval_s()
+            ):
+                issues.extend(detector.detect_periodic())
+
+                self._last_detection_times[detector] = time.perf_counter()
+
+        self._report_issues(issues)
+
+    def invoke_final_detection(self) -> None:
+        issues = []
+        for detector in self._issue_detectors:
+            if detector.detection_time_interval_s() == -1:
+                continue
+            issues.extend(detector.detect_final())
+        self._report_issues(issues)
+
+    def _report_issues(self, issues: List[Issue]) -> None:
+        operators: Dict[str, "PhysicalOperator"] = {}
+        op_to_id: Dict["PhysicalOperator", str] = {}
+        for i, operator in enumerate(self.executor._topology.keys()):
+            operators[operator.id] = operator
+            op_to_id[operator] = self.executor._get_operator_id(operator, i)
+
+        for issue in issues:
+            logger.warning(issue.message)
+            operator = operators.get(issue.operator_id)
+            if not operator:
+                continue
+
+            with self._detected_issues_lock:
+                self._detected_issues.add((issue.issue_type, operator))
+
+            issue_event_type = format_export_issue_event_name(issue.issue_type)
+            if (
+                self._operator_event_exporter is not None
+                and issue_event_type
+                in ProtoOperatorEventData.DatasetOperatorEventType.keys()
+            ):
+                event_time = time.time()
+                operator_event = OperatorEvent(
+                    dataset_id=issue.dataset_name,
+                    operator_id=op_to_id[operator],
+                    operator_name=operator.name,
+                    event_time=event_time,
+                    event_type=issue_event_type,
+                    message=issue.message,
+                )
+                self._operator_event_exporter.export_operator_event(operator_event)
+        if len(issues) > 0:
+            logger.warning(
+                f"Found {len(issues)} issues. To disable issue detection, run DataContext.get_current().issue_detectors_config.detectors = []."
+            )
+
+    def get_detected_issues(self) -> Set[Tuple[IssueType, "PhysicalOperator"]]:
+        """Return a copy of the detected (issue_type, operator) pairs."""
+        with self._detected_issues_lock:
+            return set(self._detected_issues)

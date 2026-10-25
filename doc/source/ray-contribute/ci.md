@@ -1,0 +1,193 @@
+---
+myst:
+  html_meta:
+    description: "Explains the continuous integration workflow on Ray pull requests, including the microcheck default test set, how to add tests to it, and the full suite that runs at merge time. Read this to understand which tests run on your PR and how to trigger more."
+---
+
+# CI testing workflow on PRs
+
+This guide helps contributors understand the continuous integration (CI) workflow on a PR. Here, CI stands for automated testing of the codebase on the PR.
+
+## `microcheck`: default tests on your PR
+
+With every commit on your PR, by default, we'll run a set of tests called `microcheck`.
+
+These tests are designed to be 90% accurate at catching bugs on your PR while running only 10% of the full test suite. As a result, microcheck typically finishes twice as fast and at half the cost of the full test suite. Some notable features of microcheck are:
+
+* If a new test is added or an existing test is modified in a pull request, microcheck ensures these tests are included.
+* You can manually add more tests to microcheck by including the following line in the body of your git commit message: `@microcheck TEST_TARGET01 TEST_TARGET02 ....`. This line must be in the body of your message, starting from the second line or below (the first line is the commit message title). For example, here is how I manually add tests in my pull request:
+
+  ```
+  // git command to add commit message
+  git commit -a -s
+
+  // content of the commit message
+  run other serve docs example tests
+
+  @microcheck //doc:source/serve/doc_code/distilbert //doc:source/serve/doc_code/object_detection //doc:source/serve/doc_code/stable_diffusion
+
+  Signed-off-by: can <can@anyscale.com>
+  ```
+
+If microcheck passes, you'll see a green checkmark on your PR. If it fails, you'll see a red cross. In either case, you'll see a summary of the test run statuses in the GitHub UI.
+
+## Additional tests at merge time
+
+`microcheck` runs on every commit, but the full test suite must pass before a PR can merge. Adding the `go` label triggers the full suite, and committers require the `go` tests to have passed before adding a PR to the merge queue.
+
+If you're a committer, add the `go` label to your PR once it's ready, then merge after the full suite passes. Clicking **Enable auto-merge** does both in one step: it adds the `go` label and merges the PR automatically once the suite passes. Pushing a new commit disables auto-merge, so re-enable it afterward. When you review an external contributor's PR, add the `go` label for them, since they can't add it themselves.
+
+If you're an external contributor, adding the `go` label and enabling auto-merge both require write access, so a committer runs the full suite and merges when your PR is ready.
+
+## Documentation CI checks
+
+A change under `doc/` runs a different set of checks than a code change, and which ones run depends on the kind of file you touched. Ray routes documentation changes by path, so a change to one library's docs doesn't run every other library's tests.
+
+### The Read the Docs render gate
+
+Read the Docs builds the site on your PR and reports the `docs/readthedocs.com:anyscale-ray` check. The build runs `make -C doc html` with `fail_on_warning: true`, so any Sphinx warning fails it. A malformed directive, a broken cross-reference, or a page missing from a toctree surfaces here rather than in Buildkite.
+
+The preview build skips when your PR changes nothing under `doc/` and nothing in `.readthedocs.yaml`. Files under `doc/.claude/` don't count, because they never participate in the Sphinx build. This check isn't a required merge gate, but a red render gate almost always means the published page is broken.
+
+A PR that changes only Python source still changes the API reference when it edits docstrings. To build the preview for such a PR, start a line with `@rtd-build` in the message of any commit on the PR:
+
+```text
+Clarify the batch_size docstring in map_batches
+
+@rtd-build
+```
+
+The guard reads every commit on the PR, so the line takes effect on the push that adds it and on every push after. Ray squash-merges with the PR title and description, so the line doesn't reach `master`.
+
+### The API surface checks
+
+Two Buildkite steps cross-check the documented API surface against the code:
+
+* `doc: check API annotations` verifies the `@PublicAPI`, `@DeveloperAPI`, and `@Deprecated` annotations in the source.
+* `doc: check API doc consistency` verifies that the annotated surface and the surface documented in the API reference pages agree.
+
+Both run when you change library code, and also when you change an API reference page such as `doc/source/data/api/` or the autodoc machinery under `doc/source/_ext/`. Those paths carry a dedicated `doc_api` tag so an API page edit still reaches the checks, even though it's a documentation change. To reproduce the second check on your own machine, see [Running the API consistency check locally](#running-the-api-consistency-check-locally).
+
+### Per-library docs example tests
+
+Each library runs the executable examples in its own documentation in a step named `<library>: docs example tests`. These execute the `doctest`, `testcode`, and `literalinclude` snippets described in [How to write code snippets](writing-code-snippets.md).
+
+These steps run when library code changes, not when docs change. A change under `python/ray/data/`, for example, runs `data: docs example tests`, so a library change that breaks a documented example still fails the PR. They also run when a `BUILD.bazel` file that defines doc test targets changes. `doc/BUILD.bazel` runs every library's step, and an example `BUILD.bazel` under a library's doc directory runs that library's step. The post-merge build runs every docs example suite.
+
+An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/source/`, runs no docs example tests by default. To run the tests for the files you changed, see [Running the tests for your doc changes](#running-the-tests-for-your-doc-changes).
+
+### What a prose-only change runs
+
+Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. A prose change under `doc/source/` does build the images that the `docs-example-test` step needs, from cache, even when the label isn't applied. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for any page with a runnable example, because each such page has its own test target. API reference pages under a library's `api/` directory are the exception. They trigger the API consistency checks instead, so the label doesn't run their doctests, and the post-merge build covers them.
+
+A prose-only change also skips most of the lint group. The following lint steps still run:
+
+* `doc_no_new_rst`, which rejects newly added `.rst` files, because new pages must be MyST Markdown.
+* `ray_repo_links`, which checks that links to files on Ray's master branch resolve. Renaming or deleting a page breaks links to it.
+* `doc_prose_doctest_targets`, which checks that every page with a runnable example has its own doctest target.
+* The API parameter coverage check, which runs on every PR and doesn't block.
+
+The Vale documentation style check is temporarily off. The PyPI README check runs only when `README.rst` or `python/setup.py` changes.
+
+The code-oriented lint steps don't run, because a Markdown change can't fail them: `clang_format`, `bazel_buildifier`, `bazel_team`, `copyright_format`, `dashboard_format`, `pytest_format`, `test_coverage`, `semgrep_lint`, `pre_commit`, and pydoclint. This matters more than it sounds: those steps each pay a full repository clone, and `pre_commit` runs every hook with `--all-files`, so its cost is the same on a one-line Markdown edit as on a thousand-file C++ change.
+
+Skipping `pre_commit` costs prose nothing, which is worth knowing if you're wondering where whitespace linting went. `.pre-commit-config.yaml` excludes `doc/source/` globally, so its trailing-whitespace and end-of-file hooks never inspected your prose in the first place, on any PR.
+
+The split lives in `.buildkite/always.rules.txt`, which emits the `lint` tag for every file except prose and images. One non-prose file anywhere in your diff brings the whole lint group back, so a mixed PR loses no coverage. Post-merge builds run everything regardless, since rayci skips rule evaluation outside pull requests.
+
+### Running the tests for your doc changes
+
+Add the `docs-example-test` label to run the tests that your changed doc files feed, and nothing else. Like the `go` label, it requires write access, so an external contributor asks a reviewer to add it.
+
+With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel test targets that name one of your changed files directly. It runs them once, for every library, in a single Python 3.10 environment built from the docs test dependency set. It doesn't use each library's own images, so a test that depends on a library-specific environment can behave differently here than in post-merge:
+
+| File you change | Test that runs |
+| --- | --- |
+| `doc_code/*.py` | The `py_test` built from that file |
+| `.ipynb` | The notebook test whose `--path` argument names it |
+| A page with a runnable example | That page's doctest target |
+| `.yaml` or another data file | Any test that lists the file in its `data` |
+
+The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
+
+* **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
+* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The post-merge build runs the GPU examples.
+* **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
+
+To see what the label would run before you push, run the selector locally:
+
+```bash
+bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- doc/source/data/doc_code/key_concepts.py
+```
+
+The opt-in step runs only on premerge builds, which the `go` label starts. Microcheck doesn't run it, so apply both `docs-example-test` and `go` to run the tests for your changes. Adding or removing either label takes effect only on the next commit you push. A Buildkite rebuild replays the label set from the build it was rebuilt from, and the pipeline skips label-change builds for a commit that already has a build.
+
+### Docstring-only changes
+
+A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. For Ray Data, the `docstring-only` label skips those suites on a PR that changes nothing but docstrings and comments. Instead, it runs the `>>>` examples in the docstrings of only the modules the PR changed. Like the `go` label, it requires write access.
+
+With the label, a Data PR runs the following:
+
+* `data: docstring examples`, which runs each changed module's `>>>` examples in the Data CI image, with this PR's Ray installed. An example that shows output must print it, with `...` matching any text. An example that shows no output only has to run without raising. It skips examples marked `# doctest: +SKIP`, and whole docstrings marked `+SKIP_EXAMPLE`.
+* The two API surface checks and lint.
+* `lint: validate docstring-only scope`, the guard the label can't turn off.
+
+The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
+
+```bash
+python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
+python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
+```
+
+The label covers Ray Data only. Other libraries' test steps still run in full, and so does `ml: data integration tests`. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
+
+### What doesn't run on your PR
+
+Two heavier steps are post-merge only, and both carry `skip-on-premerge`:
+
+* `doc: build` renders the site with `make html` and uploads the build artifacts to S3, which it does only on `master`.
+* `doc: linkcheck` validates links and is soft-fail, so it reports without blocking.
+
+For building and previewing the docs on your own machine, see [Contributing to the Ray documentation](docs.md).
+
+## Running the API consistency check locally
+
+The `doc: check API doc consistency` premerge step runs the `api_policy_check` function in `ci/lint/lint.sh`, which does three things: installs Ray from your checkout with `--no-deps`, generates the autosummary stub `.rst` files with `doc/source/api_autogen.py`, then runs `ci/ray_ci/doc/cmd_check_api_discrepancy.py`. The checker compares each team's documented API surface against the annotated (`@PublicAPI`/`@DeveloperAPI`/`@Deprecated`) surface in the code, importing Ray's own symbols for real. So it needs an environment where Ray installs and imports, which is the opposite of the docs *build* environment, which deliberately doesn't install Ray (see [Building the Ray documentation](docs.md#building-the-ray-documentation)).
+
+The optional third-party backends that some surfaces pull in at import time don't have to be installed. Examples include the vLLM and SGLang stack behind `ray.data.llm` and `ray.serve.llm`, and the deep-learning backends behind `ray.train`, `ray.tune`, and `ray.rllib`. The check mocks whichever of them are absent, reading the list from `doc/source/api_mock_imports.py`, the same source of truth the docs build uses for `autodoc_mock_imports`. It mocks only the absent ones, because shadowing an installed library breaks the plain `import` the walk relies on.
+
+### The faithful environment: the docbuild image
+
+CI runs this check inside the `docbuild` image (`ci/docker/doc.build.Dockerfile`). The image doesn't pip-install Ray. It stages the prebuilt `ray-core` and `ray-dashboard` artifacts into `/opt/ray-build` on top of the `oss-ci-base_build` base image, then installs the docs dependency lock (`python/deplocks/docs/docbuild_depset_py3.11.lock`), which is where Sphinx and Jinja2 come from. At step time `lint.sh` unpacks those artifacts and runs `pip install -e "python[all]" --no-deps`, so the walked surface is your checkout's source over prebuilt compiled extensions.
+
+The base image supplies `python/requirements.txt`, so a few of the libraries the walk imports are real rather than mocked, `pandas` most notably. The heavy deep-learning backends aren't installed even in CI: `torch`, `transformers`, and `tensorflow` are all mocked there too. Because the lock pins Linux wheels, the only fully faithful local reproduction is the Linux docbuild image through Docker, or a CI run on your branch.
+
+### A lightweight local approximation
+
+For quick iteration on the checker itself, a Python 3.11 virtual environment with a nightly Ray wheel and Sphinx is usually enough. Sphinx isn't a Ray dependency, and both halves of the step need it: the checker imports `sphinx.ext.autodoc.mock` and the stub generator imports `sphinx.ext.autosummary`. You generally don't need to install the mocked backends by hand. Install one for real only when you want the check to walk that library's true surface instead of a mock.
+
+```bash
+uv venv --python 3.11 ~/.virtualenvs/ray-apiref
+source ~/.virtualenvs/ray-apiref/bin/activate
+
+# The wheel URL below is macOS arm64 / Python 3.11. Adjust it for your OS, architecture, and Python version.
+uv pip install sphinx \
+  "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-macosx_11_0_arm64.whl"
+
+# Link your checkout's Python files over the wheel so the check walks your local @PublicAPI changes, not the wheel's:
+python python/ray/setup-dev.py --yes
+
+# Generate the autosummary stubs the check reads, as CI does in the same step:
+PYTHONPATH="$(pwd)" python doc/source/api_autogen.py
+
+# Run the check against your checkout (PYTHONPATH so the checker imports from your tree):
+PYTHONPATH="$(pwd)" python ci/ray_ci/doc/cmd_check_api_discrepancy.py "$(pwd)" serve
+```
+
+Pass a single team (`core`, `data`, `serve`, `train`, `tune`, `rllib`) to check one surface, or pass `ALL` or omit the argument to check every team. These team names don't line up with the steps in [Per-library docs example tests](#per-library-docs-example-tests), so two cases need translating: the `ml` step covers `train` and `tune`, which the check treats as separate teams, and there's no `llm` team at all, since the check walks `ray.data.llm` under `data` and `ray.serve.llm` under `serve`. Two things only happen on the full pass. Every team after `core` depends on `core` running first, and the cross-team guard that catches annotated public subpackages no team's walk reaches runs at the end. Run without a team argument before you trust a green result.
+
+A bare Ray wheel doesn't pull in `pandas`, so locally the check mocks it where CI walks it for real. Install `pandas` in the virtual environment when you're checking the `data` team.
+
+```{warning}
+`setup-dev.py` links your checkout's Python packages over the wheel, so the walked `@PublicAPI` surface reflects your local changes. The rest of the wheel (compiled extensions and generated code) is still the nightly build, cut at a different commit than your checkout, so treat a clean local run as a fast iteration signal rather than a definitive result. For sign-off, rely on the CI run in the docbuild image.
+```

@@ -1,0 +1,16 @@
+# Injects a 200ms delay to all traffic to the Ray nodes.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay
+spec:
+  action: delay
+  mode: all # inject to all pods
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      'ray.io/cluster': 'raycluster-kuberay' # inject to all pods
+  delay:
+    latency: '200ms'
+  duration: '12h'

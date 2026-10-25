@@ -1,0 +1,22 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 500
+
+head_node:
+    instance_type: m6i.16xlarge
+    resources:
+        CPU: 64
+
+worker_nodes:
+    - instance_type: m6i.large
+      min_nodes: 5
+      max_nodes: 5
+      market_type: ON_DEMAND
+      resources:
+          CPU: 2
+          pg_custom: 666

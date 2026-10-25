@@ -1,0 +1,521 @@
+import json
+import logging
+from typing import List, Optional
+
+from aliyunsdkcore import client
+from aliyunsdkcore.acs_exception.exceptions import ClientException, ServerException
+from aliyunsdkecs.request.v20140526.AllocatePublicIpAddressRequest import (
+    AllocatePublicIpAddressRequest,
+)
+from aliyunsdkecs.request.v20140526.AuthorizeSecurityGroupRequest import (
+    AuthorizeSecurityGroupRequest,
+)
+from aliyunsdkecs.request.v20140526.CreateInstanceRequest import CreateInstanceRequest
+from aliyunsdkecs.request.v20140526.CreateKeyPairRequest import CreateKeyPairRequest
+from aliyunsdkecs.request.v20140526.CreateSecurityGroupRequest import (
+    CreateSecurityGroupRequest,
+)
+from aliyunsdkecs.request.v20140526.CreateVpcRequest import CreateVpcRequest
+from aliyunsdkecs.request.v20140526.CreateVSwitchRequest import CreateVSwitchRequest
+from aliyunsdkecs.request.v20140526.DeleteInstanceRequest import DeleteInstanceRequest
+from aliyunsdkecs.request.v20140526.DeleteInstancesRequest import DeleteInstancesRequest
+from aliyunsdkecs.request.v20140526.DeleteKeyPairsRequest import DeleteKeyPairsRequest
+from aliyunsdkecs.request.v20140526.DescribeInstancesRequest import (
+    DescribeInstancesRequest,
+)
+from aliyunsdkecs.request.v20140526.DescribeKeyPairsRequest import (
+    DescribeKeyPairsRequest,
+)
+from aliyunsdkecs.request.v20140526.DescribeSecurityGroupsRequest import (
+    DescribeSecurityGroupsRequest,
+)
+from aliyunsdkecs.request.v20140526.DescribeVpcsRequest import DescribeVpcsRequest
+from aliyunsdkecs.request.v20140526.DescribeVSwitchesRequest import (
+    DescribeVSwitchesRequest,
+)
+from aliyunsdkecs.request.v20140526.ImportKeyPairRequest import ImportKeyPairRequest
+from aliyunsdkecs.request.v20140526.RunInstancesRequest import RunInstancesRequest
+from aliyunsdkecs.request.v20140526.StartInstanceRequest import StartInstanceRequest
+from aliyunsdkecs.request.v20140526.StopInstanceRequest import StopInstanceRequest
+from aliyunsdkecs.request.v20140526.StopInstancesRequest import StopInstancesRequest
+from aliyunsdkecs.request.v20140526.TagResourcesRequest import TagResourcesRequest
+
+
+class AcsClient:
+    """
+    A wrapper around Aliyun SDK. We use this wrapper in aliyun node provider.
+
+    Parameters:
+        access_key: The AccessKey ID of your aliyun account.
+        access_key_secret: The AccessKey secret of your aliyun account.
+        region_id: A region is a geographic area where a data center resides.
+                   Region_id is the ID of region (e.g., cn-hangzhou,
+                   us-west-1, etc.)
+        max_retries: The maximum number of retries each connection.
+    """
+
+    def __init__(
+        self,
+        access_key: str,
+        access_key_secret: str,
+        region_id: str,
+        max_retries: int,
+    ):
+        self.cli = client.AcsClient(
+            ak=access_key,
+            secret=access_key_secret,
+            max_retry_time=max_retries,
+            region_id=region_id,
+        )
+
+    def describe_instances(
+        self,
+        tags: Optional[List[dict]] = None,
+        instance_ids: Optional[List[str]] = None,
+    ) -> Optional[list]:
+        """Query the details of one or more Elastic Compute Service (ECS) instances.
+
+        Args:
+            tags: The tags of the instance.
+            instance_ids: The IDs of ECS instances.
+
+        Returns:
+            ECS instance list.
+        """
+        request = DescribeInstancesRequest()
+        if tags is not None:
+            request.set_Tags(tags)
+        if instance_ids is not None:
+            request.set_InstanceIds(instance_ids)
+        response = self._send_request(request)
+        if response is not None:
+            instance_list = response.get("Instances").get("Instance")
+            return instance_list
+        return None
+
+    def create_instance(
+        self,
+        instance_type: str,
+        image_id: str,
+        tags: List[dict],
+        key_pair_name: str,
+        optimized: str = "optimized",
+        instance_charge_type: str = "PostPaid",
+        spot_strategy: str = "SpotWithPriceLimit",
+        internet_charge_type: str = "PayByTraffic",
+        internet_max_bandwidth_out: int = 5,
+    ) -> Optional[str]:
+        """Create a subscription or pay-as-you-go ECS instance.
+
+        Args:
+            instance_type: The instance type of the ECS.
+            image_id: The ID of the image used to create the instance.
+            tags: The tags of the instance.
+            key_pair_name: The name of the key pair to be bound to
+                the instance.
+            optimized: Specifies whether the instance is I/O optimized.
+            instance_charge_type: The billing method of the instance.
+                Default value: PostPaid.
+            spot_strategy: The preemption policy for the pay-as-you-go
+                instance.
+            internet_charge_type: The billing method for network usage.
+                Default value: PayByTraffic.
+            internet_max_bandwidth_out: The maximum inbound public
+                bandwidth. Unit: Mbit/s.
+
+        Returns:
+            The created instance ID.
+        """
+        request = CreateInstanceRequest()
+        request.set_InstanceType(instance_type)
+        request.set_ImageId(image_id)
+        request.set_IoOptimized(optimized)
+        request.set_InstanceChargeType(instance_charge_type)
+        request.set_SpotStrategy(spot_strategy)
+        request.set_InternetChargeType(internet_charge_type)
+        request.set_InternetMaxBandwidthOut(internet_max_bandwidth_out)
+        request.set_KeyPairName(key_pair_name)
+        request.set_Tags(tags)
+
+        response = self._send_request(request)
+        if response is not None:
+            instance_id = response.get("InstanceId")
+            logging.info("instance %s created task submit successfully.", instance_id)
+            return instance_id
+        logging.error("instance created failed.")
+        return None
+
+    def run_instances(
+        self,
+        instance_type: str,
+        image_id: str,
+        tags: List[dict],
+        security_group_id: str,
+        vswitch_id: str,
+        key_pair_name: str,
+        amount: int = 1,
+        optimized: str = "optimized",
+        instance_charge_type: str = "PostPaid",
+        spot_strategy: str = "SpotWithPriceLimit",
+        internet_charge_type: str = "PayByTraffic",
+        internet_max_bandwidth_out: int = 1,
+    ) -> Optional[List[str]]:
+        """Create one or more pay-as-you-go or subscription ECS instances.
+
+        Args:
+            instance_type: The instance type of the ECS.
+            image_id: The ID of the image used to create the instance.
+            tags: The tags of the instance.
+            security_group_id: The ID of the security group to which to
+                assign the instance. Instances in the same security group
+                can communicate with each other.
+            vswitch_id: The ID of the vSwitch to which to connect
+                the instance.
+            key_pair_name: The name of the key pair to be bound to
+                the instance.
+            amount: The number of instances that you want to create.
+            optimized: Specifies whether the instance is I/O optimized.
+            instance_charge_type: The billing method of the instance.
+                Default value: PostPaid.
+            spot_strategy: The preemption policy for the pay-as-you-go
+                instance.
+            internet_charge_type: The billing method for network usage.
+                Default value: PayByTraffic.
+            internet_max_bandwidth_out: The maximum inbound public
+                bandwidth. Unit: Mbit/s.
+
+        Returns:
+            The created instance IDs.
+        """
+        request = RunInstancesRequest()
+        request.set_InstanceType(instance_type)
+        request.set_ImageId(image_id)
+        request.set_IoOptimized(optimized)
+        request.set_InstanceChargeType(instance_charge_type)
+        request.set_SpotStrategy(spot_strategy)
+        request.set_InternetChargeType(internet_charge_type)
+        request.set_InternetMaxBandwidthOut(internet_max_bandwidth_out)
+        request.set_Tags(tags)
+        request.set_Amount(amount)
+        request.set_SecurityGroupId(security_group_id)
+        request.set_VSwitchId(vswitch_id)
+        request.set_KeyPairName(key_pair_name)
+
+        response = self._send_request(request)
+        if response is not None:
+            instance_ids = response.get("InstanceIdSets").get("InstanceIdSet")
+            return instance_ids
+        logging.error("instance created failed.")
+        return None
+
+    def create_security_group(self, vpc_id: str) -> Optional[str]:
+        """Create a security group.
+
+        Args:
+            vpc_id: The ID of the VPC in which to create the security group.
+
+        Returns:
+            The created security group ID.
+        """
+        request = CreateSecurityGroupRequest()
+        request.set_VpcId(vpc_id)
+        response = self._send_request(request)
+        if response is not None:
+            security_group_id = response.get("SecurityGroupId")
+            return security_group_id
+        return None
+
+    def describe_security_groups(
+        self,
+        vpc_id: Optional[str] = None,
+        tags: Optional[List[dict]] = None,
+    ) -> Optional[list]:
+        """Query basic information of security groups.
+
+        Args:
+            vpc_id: The ID of the VPC to which the security group belongs.
+            tags: The tags of the security group.
+
+        Returns:
+            Security group list.
+        """
+        request = DescribeSecurityGroupsRequest()
+        if vpc_id is not None:
+            request.set_VpcId(vpc_id)
+        if tags is not None:
+            request.set_Tags(tags)
+        response = self._send_request(request)
+        if response is not None:
+            security_groups = response.get("SecurityGroups").get("SecurityGroup")
+            return security_groups
+        logging.error("describe security group failed.")
+        return None
+
+    def authorize_security_group(
+        self,
+        ip_protocol: str,
+        port_range: str,
+        security_group_id: str,
+        source_cidr_ip: str,
+    ) -> None:
+        """Create an inbound security group rule.
+
+        Args:
+            ip_protocol: The transport layer protocol.
+            port_range: The range of destination ports relevant to
+                the transport layer protocol.
+            security_group_id: The ID of the destination security group.
+            source_cidr_ip: The range of source IPv4 addresses.
+                CIDR blocks and IPv4 addresses are supported.
+        """
+        request = AuthorizeSecurityGroupRequest()
+        request.set_IpProtocol(ip_protocol)
+        request.set_PortRange(port_range)
+        request.set_SecurityGroupId(security_group_id)
+        request.set_SourceCidrIp(source_cidr_ip)
+        self._send_request(request)
+
+    def create_v_switch(
+        self, vpc_id: str, zone_id: str, cidr_block: str
+    ) -> Optional[str]:
+        """Create vSwitches to divide the VPC into one or more subnets.
+
+        Args:
+            vpc_id: The ID of the VPC to which the VSwitch belongs.
+            zone_id: The ID of the zone to which the target VSwitch belongs.
+            cidr_block: The CIDR block of the VSwitch.
+
+        Returns:
+            The created VSwitch ID, or None if the request failed.
+        """
+        request = CreateVSwitchRequest()
+        request.set_ZoneId(zone_id)
+        request.set_VpcId(vpc_id)
+        request.set_CidrBlock(cidr_block)
+        response = self._send_request(request)
+        if response is not None:
+            return response.get("VSwitchId")
+        else:
+            logging.error("create_v_switch vpc_id %s failed.", vpc_id)
+        return None
+
+    def create_vpc(self) -> Optional[str]:
+        """Create a virtual private cloud (VPC).
+
+        Returns:
+            The created VPC ID.
+        """
+        request = CreateVpcRequest()
+        response = self._send_request(request)
+        if response is not None:
+            return response.get("VpcId")
+        return None
+
+    def describe_vpcs(self) -> Optional[list]:
+        """Query one or more VPCs in a region.
+
+        Returns:
+            VPC list.
+        """
+        request = DescribeVpcsRequest()
+        response = self._send_request(request)
+        if response is not None:
+            return response.get("Vpcs").get("Vpc")
+        return None
+
+    def tag_resource(
+        self,
+        resource_ids: List[str],
+        tags: List[dict],
+        resource_type: str = "instance",
+    ) -> None:
+        """Create and bind tags to specified ECS resources.
+
+        Args:
+            resource_ids: The IDs of N resources.
+            tags: The tags of the resource.
+            resource_type: The type of the resource.
+        """
+        request = TagResourcesRequest()
+        request.set_Tags(tags)
+        request.set_ResourceType(resource_type)
+        request.set_ResourceIds(resource_ids)
+        response = self._send_request(request)
+        if response is not None:
+            logging.info("instance %s create tag successfully.", resource_ids)
+        else:
+            logging.error("instance %s create tag failed.", resource_ids)
+
+    def start_instance(self, instance_id: str) -> None:
+        """Start an ECS instance.
+
+        Args:
+            instance_id: The ECS instance ID.
+        """
+        request = StartInstanceRequest()
+        request.set_InstanceId(instance_id)
+        response = self._send_request(request)
+
+        if response is not None:
+            logging.info("instance %s start successfully.", instance_id)
+        else:
+            logging.error("instance %s start failed.", instance_id)
+
+    def stop_instance(self, instance_id: str, force_stop: bool = False) -> None:
+        """Stop an ECS instance that is in the Running state.
+
+        Args:
+            instance_id: The ECS instance ID.
+            force_stop: Specifies whether to forcibly stop the instance.
+        """
+        request = StopInstanceRequest()
+        request.set_InstanceId(instance_id)
+        request.set_ForceStop(force_stop)
+        logging.info("Stop %s command submit successfully.", instance_id)
+        self._send_request(request)
+
+    def stop_instances(
+        self, instance_ids: List[str], stopped_mode: str = "StopCharging"
+    ) -> None:
+        """Stop one or more ECS instances that are in the Running state.
+
+        Args:
+            instance_ids: The IDs of instances.
+            stopped_mode: Specifies whether billing for the instance
+                continues after the instance is stopped.
+        """
+        request = StopInstancesRequest()
+        request.set_InstanceIds(instance_ids)
+        request.set_StoppedMode(stopped_mode)
+        response = self._send_request(request)
+        if response is None:
+            logging.error("stop_instances failed")
+
+    def delete_instance(self, instance_id: str) -> None:
+        """Release a pay-as-you-go instance or an expired subscription instance.
+
+        Args:
+            instance_id: The ID of the instance that you want to release.
+        """
+        request = DeleteInstanceRequest()
+        request.set_InstanceId(instance_id)
+        request.set_Force(True)
+        logging.info("Delete %s command submit successfully", instance_id)
+        self._send_request(request)
+
+    def delete_instances(self, instance_ids: List[str]) -> None:
+        """Release one or more pay-as-you-go or expired subscription instances.
+
+        Args:
+            instance_ids: The IDs of instances that you want to release.
+        """
+        request = DeleteInstancesRequest()
+        request.set_Force(True)
+        request.set_InstanceIds(instance_ids)
+        self._send_request(request)
+
+    def allocate_public_address(self, instance_id: str) -> Optional[str]:
+        """Assign a public IP address to an ECS instance.
+
+        Args:
+            instance_id: The ID of the instance to which you want to
+                assign a public IP address.
+
+        Returns:
+            The assigned IP address.
+        """
+        request = AllocatePublicIpAddressRequest()
+        request.set_InstanceId(instance_id)
+        response = self._send_request(request)
+        if response is not None:
+            return response.get("IpAddress")
+
+    def create_key_pair(self, key_pair_name: str) -> Optional[dict]:
+        """Create an SSH key pair.
+
+        Args:
+            key_pair_name: The name of the key pair.
+
+        Returns:
+            The created keypair data.
+        """
+        request = CreateKeyPairRequest()
+        request.set_KeyPairName(key_pair_name)
+        response = self._send_request(request)
+        if response is not None:
+            logging.info("Create Key Pair %s Successfully", response.get("KeyPairId"))
+            return response
+        else:
+            logging.error("Create Key Pair Failed")
+            return None
+
+    def import_key_pair(self, key_pair_name: str, public_key_body: str) -> None:
+        """Import the public key of an RSA-encrypted key pair.
+
+        Args:
+            key_pair_name: The name of the key pair.
+            public_key_body: The public key of the key pair.
+        """
+        request = ImportKeyPairRequest()
+        request.set_KeyPairName(key_pair_name)
+        request.set_PublicKeyBody(public_key_body)
+        self._send_request(request)
+
+    def delete_key_pairs(self, key_pair_names: List[str]) -> None:
+        """Delete one or more SSH key pairs.
+
+        Args:
+            key_pair_names: The names of the key pairs.
+        """
+        request = DeleteKeyPairsRequest()
+        request.set_KeyPairNames(key_pair_names)
+        self._send_request(request)
+
+    def describe_key_pairs(self, key_pair_name: Optional[str] = None) -> Optional[list]:
+        """Query one or more key pairs.
+
+        Args:
+            key_pair_name: The name of the key pair.
+
+        Returns:
+            Key pair list, or None if the request failed.
+        """
+        request = DescribeKeyPairsRequest()
+        if key_pair_name is not None:
+            request.set_KeyPairName(key_pair_name)
+        response = self._send_request(request)
+        if response is not None:
+            return response.get("KeyPairs").get("KeyPair")
+        else:
+            return None
+
+    def describe_v_switches(self, vpc_id: Optional[str] = None) -> Optional[list]:
+        """Query one or more VSwitches.
+
+        Args:
+            vpc_id: The ID of the VPC to which the VSwitch belongs.
+
+        Returns:
+            VSwitch list.
+        """
+        request = DescribeVSwitchesRequest()
+        if vpc_id is not None:
+            request.set_VpcId(vpc_id)
+        response = self._send_request(request)
+        if response is not None:
+            return response.get("VSwitches").get("VSwitch")
+        else:
+            logging.error("Describe VSwitches Failed.")
+            return None
+
+    def _send_request(self, request):
+        """send open api request"""
+        request.set_accept_format("json")
+        try:
+            response_str = self.cli.do_action_with_exception(request)
+            response_detail = json.loads(response_str)
+            return response_detail
+        except (ClientException, ServerException) as e:
+            logging.error(request.get_action_name())
+            logging.error(e)
+            return None

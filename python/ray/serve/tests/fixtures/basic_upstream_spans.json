@@ -1,0 +1,12 @@
+[
+  {
+    "name": "upstream_app",
+    "kind": "SpanKind.INTERNAL",
+    "status": {
+      "status_code": "UNSET"
+    },
+    "attributes": {},
+    "events": [],
+    "links": []
+  }
+]
