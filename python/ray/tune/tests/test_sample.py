@@ -1210,15 +1210,31 @@ class SearchSpaceTest(unittest.TestCase):
         ):
             searcher.set_search_properties(metric="a", mode="max", config=config)
 
+    def testConvertHyperOptQuantizedInteger(self):
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        # Every suggestion must be a value Tune itself would sample.
+        for domain, expected in (
+            (tune.qrandint(1, 10, 3), {3, 6, 9}),
+            (tune.qrandint(0, 9, 5), {0, 5}),
+            (tune.qrandint(1, 10, 1), set(range(1, 10))),
+            (tune.qlograndint(1, 20, 4), {4, 8, 12, 16, 20}),
+        ):
+            with self.subTest(expected=sorted(expected)):
+                searcher = HyperOptSearch(
+                    space={"a": domain},
+                    metric="m",
+                    mode="max",
+                    n_initial_points=500,
+                    random_state_seed=0,
+                )
+                values = {searcher.suggest(str(i))["a"] for i in range(500)}
+                self.assertEqual(values - expected, set())
+
     def testSampleBoundsHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
-        # Todo: Hyperopt actually suffers from the same problem as we did before
-        # https://github.com/ray-project/ray/pull/28187
-        ignore = [
-            "func",
-            "qrandint_q3",
-        ]
+        ignore = ["func"]
 
         config = self.config.copy()
         for k in ignore:
