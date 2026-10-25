@@ -83,3 +83,9 @@ def test_get_node_id_and_az_falls_back_on_gcs_error(monkeypatch, runtime_context
 
     assert node_id == "node-id-under-test"
     assert az is None
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
