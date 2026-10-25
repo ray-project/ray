@@ -59,6 +59,25 @@
 namespace ray {
 namespace core {
 
+// Replies to GetObjectLocationsOwner synchronously with one location per
+// requested object, so that a batch's callback runs while GetLocationFromOwner
+// is still dispatching the remaining batches.
+class SyncLocationCoreWorkerClient : public rpc::FakeCoreWorkerClient {
+ public:
+  void GetObjectLocationsOwner(
+      const rpc::GetObjectLocationsOwnerRequest &request,
+      const rpc::ClientCallback<rpc::GetObjectLocationsOwnerReply> &callback) override {
+    num_location_requests_++;
+    rpc::GetObjectLocationsOwnerReply reply;
+    for (int i = 0; i < request.object_ids_size(); ++i) {
+      reply.add_object_location_infos();
+    }
+    callback(Status::OK(), std::move(reply));
+  }
+
+  int num_location_requests_ = 0;
+};
+
 class CoreWorkerTest : public ::testing::Test {
  public:
   CoreWorkerTest()
@@ -101,10 +120,8 @@ class CoreWorkerTest : public ::testing::Test {
     client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
         io_service_, /*record_stats=*/false, /*local_address=*/"");
 
-    auto core_worker_client_pool =
-        std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
-          return std::make_shared<rpc::FakeCoreWorkerClient>();
-        });
+    auto core_worker_client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+        [this](const rpc::Address &) { return sync_location_client_; });
 
     auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
         [](const rpc::Address &) { return std::make_shared<rpc::FakeRayletClient>(); });
@@ -306,6 +323,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
  protected:
+  std::shared_ptr<SyncLocationCoreWorkerClient> sync_location_client_ =
+      std::make_shared<SyncLocationCoreWorkerClient>();
   FakeClock clock_;
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
@@ -367,6 +386,36 @@ TaskSpecification CreateStreamingGeneratorTaskSpec() {
   task.GetMutableMessage().set_streaming_generator(true);
   task.GetMutableMessage().set_generator_backpressure_num_objects(-1);
   return task;
+}
+
+// Regression test for https://github.com/ray-project/ray/issues/65523. With
+// two owners there are two batches. The fake client replies synchronously, so
+// the first batch's callback runs before the second batch is dispatched. If the
+// batch counter is incremented per dispatch, the first callback drives it to
+// zero and completes the promise, and the second callback throws
+// std::future_error ("promise already satisfied").
+TEST_F(CoreWorkerTest, GetLocationFromOwnerCountsAllBatchesBeforeDispatch) {
+  std::vector<ObjectID> object_ids;
+  for (int i = 0; i < 2; ++i) {
+    rpc::Address owner_address;
+    owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+    object_ids.push_back(ObjectID::FromRandom());
+    reference_counter_->AddOwnedObject(object_ids.back(),
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       /*add_local_ref=*/true);
+  }
+
+  std::vector<std::shared_ptr<ObjectLocation>> results;
+  ASSERT_TRUE(
+      core_worker_->GetLocationFromOwner(object_ids, /*timeout_ms=*/1000, &results).ok());
+  ASSERT_EQ(sync_location_client_->num_location_requests_, 2);
+  ASSERT_EQ(results.size(), 2);
+  ASSERT_NE(results[0], nullptr);
+  ASSERT_NE(results[1], nullptr);
 }
 
 TEST_F(CoreWorkerTest, PeekObjectRefStreamNReturnsExpectedRefs) {
