@@ -312,13 +312,9 @@ def test_read_orc_v2_evolved_struct_fields(
 
     # Filter on a child only the newer file has. Older rows see it as null.
     region = col("customer").struct.field("region")
-    filtered = ray.data.read_orc(str(tmp_path), **kwargs).filter(
-        expr=region == "APAC"
-    )
+    filtered = ray.data.read_orc(str(tmp_path), **kwargs).filter(expr=region == "APAC")
     assert sorted(row["event_id"] for row in filtered.take_all()) == [3]
-    filtered = ray.data.read_orc(str(tmp_path), **kwargs).filter(
-        expr=region.is_null()
-    )
+    filtered = ray.data.read_orc(str(tmp_path), **kwargs).filter(expr=region.is_null())
     assert sorted(row["event_id"] for row in filtered.take_all()) == [1, 2]
 
     # The filter column is read even when the projection drops it.
@@ -343,9 +339,7 @@ def test_read_orc_v2_struct_alignment_rejects_pickle_object_columns(monkeypatch)
     blob = pa.ExtensionArray.from_storage(
         ArrowPythonObjectType(), pa.array([b"payload"], type=pa.large_binary())
     )
-    customer = pa.StructArray.from_arrays(
-        [pa.array([31]), blob], names=["age", "blob"]
-    )
+    customer = pa.StructArray.from_arrays([pa.array([31]), blob], names=["age", "blob"])
     record_batch = pa.record_batch([customer], names=["customer"])
 
     class FakeFragment:
