@@ -592,6 +592,39 @@ TEST_F(ReferenceCountTest, TestBasic) {
   out.clear();
 }
 
+// Regression test for https://github.com/ray-project/ray/issues/65320: a
+// missing argument ID must not abort the rest of the batch, otherwise the
+// remaining arguments' submitted task references leak.
+TEST_F(ReferenceCountTest, TestRemoveSubmittedTaskReferencesSkipsMissingIds) {
+  std::vector<ObjectID> out;
+  ObjectID id1 = ObjectID::FromRandom();
+  ObjectID id2 = ObjectID::FromRandom();
+  ObjectID missing_id = ObjectID::FromRandom();
+  ObjectID return_id = ObjectID::FromRandom();
+
+  rc->AddLocalReference(id1, "");
+  rc->AddLocalReference(id2, "");
+  rc->AddLocalReference(return_id, "");
+  rc->UpdateSubmittedTaskReferences({return_id}, {id1, id2});
+  // The arguments stay in scope while the task is pending.
+  rc->RemoveLocalReference(id1, &out);
+  rc->RemoveLocalReference(id2, &out);
+  ASSERT_EQ(out.size(), 0);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
+
+  // The task finishes with an unknown ID first in the argument list. Both real
+  // arguments must still be released.
+  rc->UpdateFinishedTaskReferences(
+      {return_id}, {missing_id, id1, id2}, false, empty_borrower, empty_refs, &out);
+  ASSERT_EQ(out.size(), 2);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
+  ASSERT_FALSE(rc->HasReference(id1));
+  ASSERT_FALSE(rc->HasReference(id2));
+
+  rc->RemoveLocalReference(return_id, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+}
+
 TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   ObjectID id = ObjectID::FromRandom();
   rpc::Address address;
