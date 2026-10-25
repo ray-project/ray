@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -159,6 +160,10 @@ DEFINE_int64(system_reserved_memory_bytes,
              "be applied as a memory.min constraint to the system cgroup. If "
              "enable-resource-isolation is true, then this cannot be -1");
 
+DEFINE_string(config_list,
+              "",
+              "Base64-encoded JSON of system config overrides, in the same format the "
+              "GCS server receives. Applied before the first GCS connection.");
 DEFINE_string(system_pids,
               "",
               "A comma-separated list of pids to move into the system cgroup.");
@@ -277,12 +282,26 @@ int main(int argc, char *argv[]) {
   const int64_t system_reserved_cpu_weight = FLAGS_system_reserved_cpu_weight;
   const int64_t system_reserved_memory_bytes = FLAGS_system_reserved_memory_bytes;
   const std::string system_pids = FLAGS_system_pids;
+  const std::string config_list = FLAGS_config_list;
 
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
 
   gflags::ShutDownCommandLineFlags();
+
+  // Apply the system config passed by the launcher before anything reads
+  // RayConfig. The GCS client created below captures e.g.
+  // gcs_rpc_server_reconnect_timeout_s at construction, so initializing only in
+  // the AsyncGetInternalConfig callback (which needs a working GCS connection)
+  // left user-supplied values ignored for the very first connection attempt.
+  // The authoritative config is still fetched from GCS later.
+  {
+    std::string decoded_config_list;
+    RAY_CHECK(absl::Base64Unescape(config_list, &decoded_config_list))
+        << "config_list is not a valid base64-encoded string.";
+    RayConfig::instance().initialize(decoded_config_list);
+  }
 
   // Setting up resource isolation with cgroups.
   // The lifecycle of CgroupManager will be controlled by NodeManager.
