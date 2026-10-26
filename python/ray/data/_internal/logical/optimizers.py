@@ -17,7 +17,6 @@ from ray.data._internal.logical.rules import (
     CombineShuffles,
     CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
-    DeriveJoinSidePredicates,
     DeriveListFilesPushdown,
     FuseOperators,
     InheritTargetMaxBlockSizeRule,
@@ -68,10 +67,6 @@ class LogicalOptimizer(Optimizer):
         return [rule_cls() for rule_cls in get_logical_ruleset()]
 
     def _post_optimize(self, plan: LogicalPlan) -> LogicalPlan:
-        # Not in the rule loop: the residual it derives from stays, so it would
-        # re-push every iteration. Before ``DeriveListFilesPushdown`` so a
-        # derived predicate reaching a ``ReadFiles`` prunes its ``ListFiles``.
-        plan = DeriveJoinSidePredicates().apply(plan)
         # CommonSubExprElimination is only supposed to run once
         # isolated from the optimizer rule loop as it applies to
         # a single Projection operator not a chain of operators.

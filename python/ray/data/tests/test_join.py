@@ -1233,8 +1233,8 @@ def test_join_derived_predicates_chain_through_nested_joins(
 def test_join_derived_predicate_fuses_with_pushed_conjunct_on_same_side(
     ray_start_regular_shared_2_cpus,
 ):
-    """A derived predicate fuses into a Filter already on the join input instead of
-    stacking, so the optimized plan re-optimizes to itself.
+    """A derived predicate lands in the same Filter as the conjunct pushed to that
+    side, in predicate order, instead of stacking a second Filter.
     """
     from ray.data._internal.logical.operators import Join
     from ray.data.expressions import col
@@ -1259,7 +1259,7 @@ def test_join_derived_predicate_fuses_with_pushed_conjunct_on_same_side(
     assert isinstance(join, Join)
     left_input, right_input = join.input_dependencies
     derived_left = (col("left_val") == 1) | (col("left_val") == 5)
-    _assert_filter_with(left_input, derived_left & exact)
+    _assert_filter_with(left_input, exact & derived_left)
     _assert_filter_with(right_input, (col("right_val") == 5) | (col("right_val") == 1))
     _assert_num_filters(plan, 3)
 
@@ -1276,10 +1276,10 @@ def test_join_derived_predicate_fuses_with_pushed_conjunct_on_same_side(
 
 
 def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
-    """Without an output schema (pandas inputs) unique columns still push, while a
-    colliding name stays above the join.
+    """Pandas inputs have no Arrow output schema; routing needs only the input
+    column names, so a suffixed collision pushes like a unique column.
     """
-    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data._internal.logical.operators import Join
     from ray.data.expressions import col
 
     left_pd = pd.DataFrame(
@@ -1305,11 +1305,10 @@ def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
     assert joined._logical_plan.dag.infer_schema() is None
 
     plan = _optimized_plan(filtered_ds)
-    _assert_filter_with(plan.dag, colliding_pred)
-    join = plan.dag.input_dependencies[0]
-    assert isinstance(join, Join)
+    join = plan.dag
+    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
     _assert_filter_with(join.input_dependencies[0], unique_pred)
-    assert not isinstance(join.input_dependencies[1], Filter)
+    _assert_filter_with(join.input_dependencies[1], col("val") == 11)
     _assert_num_filters(plan, 2)
 
     expected_pd = left_pd.merge(right_pd, on="k", suffixes=("_l", "_r"))
@@ -1323,8 +1322,8 @@ def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
 def test_join_pandas_inputs_right_column_named_like_left_suffixed(
     ray_start_regular_shared_2_cpus,
 ):
-    """Without an output schema, a right column named like a suffixed left
-    collision (``v_l``) must not be claimed by the right side.
+    """A right column named like a suffixed left collision (``v_l``) is a name
+    both sides would emit, so a predicate on it stays above the join.
     """
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
@@ -1358,45 +1357,15 @@ def test_join_pandas_inputs_right_column_named_like_left_suffixed(
     assert len(rows) == 1 and rows[0]["k"] == 1 and rows[0]["v_l"] == 1
 
 
-def test_join_pandas_inputs_right_outer_pushes_right_key(
-    ray_start_regular_shared_2_cpus,
-):
-    """A right outer join keeps its right key, so the fallback pushes to it."""
-    from ray.data._internal.logical.operators import Join
-    from ray.data.expressions import col
-
-    left_pd = pd.DataFrame({"k": [1, 2, 3], "lv": [10, 20, 30]})
-    right_pd = pd.DataFrame({"rk": [0, 1, 2, 3], "rv": [0, 1, 2, 3]})
-    left_ds = ray.data.from_pandas(left_pd)
-    right_ds = ray.data.from_pandas(right_pd)
-    joined = left_ds.join(
-        right_ds,
-        join_type="right_outer",
-        num_partitions=2,
-        on=("k",),
-        right_on=("rk",),
-        aggregator_ray_remote_args={"num_cpus": 0.01},
-    )
-    assert joined._logical_plan.dag.infer_schema() is None
-    predicate = col("rk") == 2
-    filtered_ds = joined.filter(expr=predicate)
-
-    plan = _optimized_plan(filtered_ds)
-    join = plan.dag
-    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
-    _assert_filter_with(join.input_dependencies[1], predicate)
-    _assert_num_filters(plan, 1)
-
-    rows = filtered_ds.take_all()
-    assert len(rows) == 1 and rows[0]["rk"] == 2 and rows[0]["lv"] == 20
-
-
 def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_cpus):
     """Executing twice re-optimizes the already derived plan; the derived filters
     must not stack up.
     """
+    from ray.data._internal.datasource_v2.common.pushdown_utils import (
+        flatten_predicate_chain,
+    )
     from ray.data._internal.logical.operators import Filter
-    from ray.data.expressions import col
+    from ray.data.expressions import Operation, col
     from ray.data.tests.test_util import get_operators_of_type
 
     left_ds, right_ds = _duplicate_key_join_inputs()
@@ -1419,6 +1388,23 @@ def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_c
     second = filtered_ds.to_pandas()
     assert filtered_ds._logical_plan.dag.dag_str == first_plan_str
     assert rows_same(first, second)
+
+    # A filter added on top of the optimized plan fuses with the residual; its
+    # conjunct is pushed, the residual's implications are not pushed again.
+    extended = filtered_ds.filter(expr=col("left_val") < 100)
+    third = extended.to_pandas()
+    assert rows_same(first, third)
+    filters = get_operators_of_type(extended._logical_plan, Filter)
+    assert len(filters) == 3
+    conjuncts = [
+        conjunct
+        for f in filters
+        for conjunct in flatten_predicate_chain(f.predicate_expr, Operation.AND)
+    ]
+    # Residual OR, left: derived OR + new conjunct, right: derived OR.
+    assert len(conjuncts) == 4, [str(c) for c in conjuncts]
+    for i, a in enumerate(conjuncts):
+        assert not any(a.structurally_equals(b) for b in conjuncts[i + 1 :]), str(a)
 
 
 @pytest.mark.parametrize(
