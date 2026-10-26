@@ -17,6 +17,7 @@ from ray.llm._internal.serve.serving_patterns.model_express.mx_server import (
     ModelExpressServer,
 )
 from ray.serve.llm import LLMConfig
+from ray.serve.llm.mx import build_mx_app
 
 MX_ADDRESS = "10.0.0.1:41000"
 
@@ -169,6 +170,13 @@ def test_mx_server_envs():
         assert mx_envs.get_mx_server_port() == 9100
         assert importlib.reload(mx_envs).MX_SERVER_HEALTH_CHECK_PERIOD_S == 2.5
     importlib.reload(mx_envs)
+
+
+def test_build_mx_app():
+    deployment = build_mx_app({"metadata_backend": "redis"})._bound_deployment
+    assert deployment.name == "ModelExpressServer"
+    assert deployment.init_kwargs == {"metadata_backend": "redis"}
+    assert build_mx_app()._bound_deployment.init_kwargs == {}
 
 
 def test_mx_server_missing_binary():

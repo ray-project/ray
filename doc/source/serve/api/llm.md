@@ -23,6 +23,7 @@ The `ray.serve.llm` module builds and configures Serve applications that serve l
 
    serve.llm.build_llm_deployment
    serve.llm.build_openai_app
+   serve.llm.mx.build_mx_app
 ```
 
 ## Configs
