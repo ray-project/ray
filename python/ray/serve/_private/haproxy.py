@@ -1852,7 +1852,13 @@ class _UnixHTTPConnection(http.client.HTTPConnection):
     def connect(self) -> None:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
-        sock.connect(self._path)
+        try:
+            sock.connect(self._path)
+        except BaseException:
+            # Close now: a failed connect never reaches self.sock, so
+            # HTTPConnection.close() wouldn't close it.
+            sock.close()
+            raise
         self.sock = sock
 
 
