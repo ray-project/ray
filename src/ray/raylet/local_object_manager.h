@@ -120,7 +120,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// to its ref count. Set to nil for statically allocated ObjectIDs.
   /// \param producer_worker_id The worker that created the objects, if its actor
   /// defines `__on_object_freed__`. Nil otherwise. An object that is already pinned
-  /// keeps the producer recorded by its first pin.
+  /// keeps the producer recorded by its first pin, unless that pin recorded none.
   void PinObjectsAndWaitForFree(
       const std::vector<ObjectID> &object_ids,
       std::vector<std::unique_ptr<RayObject>> &&objects,
