@@ -5,6 +5,7 @@ from typing import Generator
 import pytest
 
 import ray
+from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.tests.conftest import *  # noqa  # noqa
 
 
@@ -91,6 +92,136 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
 
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
     assert sorted(actual_values) == sorted(expected_values)
+
+
+class _ModuloProbingCursor:
+    """A DB-API2 cursor double that simulates a database's modulo support.
+
+    ``MOD()`` and the ``%`` operator are not portable across databases, so
+    these tests control which syntax the fake "database" accepts. Using an
+    unsupported syntax raises the same kind of error a real driver would, and
+    every statement is recorded so tests can assert on the generated SQL.
+    """
+
+    def __init__(self, mod_supported: bool, percent_supported: bool):
+        self._mod_supported = mod_supported
+        self._percent_supported = percent_supported
+        self.executed = []
+        self.description = [("id",)]
+
+    def execute(self, sql, params=None):
+        self.executed.append(sql)
+        if "MOD(" in sql and not self._mod_supported:
+            raise sqlite3.OperationalError("no such function: MOD")
+        if " % " in sql and not self._percent_supported:
+            raise sqlite3.OperationalError('near "%": syntax error')
+
+    def executemany(self, sql, *args):
+        pass
+
+    def fetchone(self):
+        return (0,)
+
+    def fetchall(self):
+        return []
+
+
+class _ModuloProbingConnection:
+    """A DB-API2 connection double that hands out `_ModuloProbingCursor`s."""
+
+    def __init__(self, mod_supported: bool, percent_supported: bool):
+        self._mod_supported = mod_supported
+        self._percent_supported = percent_supported
+        self.cursors = []
+
+    def cursor(self):
+        cursor = _ModuloProbingCursor(self._mod_supported, self._percent_supported)
+        self.cursors.append(cursor)
+        return cursor
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def _make_probe_datasource(mod_supported: bool, percent_supported: bool):
+    """Build a SQLDatasource backed by a fake connection with given modulo support."""
+    connection = _ModuloProbingConnection(mod_supported, percent_supported)
+    datasource = SQLDatasource(
+        sql="SELECT * FROM events",
+        connection_factory=lambda: connection,
+        shard_hash_fn="MD5",
+        shard_keys=["customer_id"],
+    )
+    return datasource, connection
+
+
+def _all_queries(connection) -> list:
+    return [sql for cursor in connection.cursors for sql in cursor.executed]
+
+
+def test_supports_sharding_prefers_mod_when_available():
+    # When MOD() works, it wins the probe and the % fallback is never reached.
+    datasource, connection = _make_probe_datasource(
+        mod_supported=True, percent_supported=True
+    )
+    assert datasource.supports_sharding(4) is True
+    assert datasource._modulo_syntax == "MOD"
+    queries = _all_queries(connection)
+    assert any("MOD(" in q for q in queries)
+    assert not any(" % " in q for q in queries)
+
+
+def test_supports_sharding_falls_back_to_percent_operator():
+    # MOD() is unavailable (e.g. SQLite without math functions, SQL Server),
+    # so the probe should fall back to the % operator and cache that choice.
+    datasource, connection = _make_probe_datasource(
+        mod_supported=False, percent_supported=True
+    )
+    assert datasource.supports_sharding(4) is True
+    assert datasource._modulo_syntax == "%"
+    queries = _all_queries(connection)
+    # MOD() is tried first (and fails), then % wins.
+    assert any("MOD(" in q for q in queries)
+    assert any(" % " in q for q in queries)
+
+
+def test_supports_sharding_false_when_no_modulo_available():
+    # Neither syntax works: sharding is genuinely unsupported.
+    datasource, connection = _make_probe_datasource(
+        mod_supported=False, percent_supported=False
+    )
+    assert datasource.supports_sharding(4) is False
+    assert datasource._modulo_syntax is None
+    queries = _all_queries(connection)
+    # Both syntaxes were probed before giving up.
+    assert any("MOD(" in q for q in queries)
+    assert any(" % " in q for q in queries)
+
+
+def test_parallel_read_fn_uses_detected_modulo_syntax():
+    # The per-task read query must reuse the syntax that won the probe;
+    # otherwise the probe and the actual read would disagree and fail.
+    datasource, connection = _make_probe_datasource(
+        mod_supported=False, percent_supported=True
+    )
+    assert datasource.supports_sharding(4) is True
+    assert datasource._modulo_syntax == "%"
+
+    read_fn = datasource._create_parallel_read_fn(1, 4)
+    read_fn()
+
+    read_queries = [
+        q for q in _all_queries(connection) if q.startswith("SELECT * FROM (")
+    ]
+    assert read_queries, "expected a sharded read query to be executed"
+    assert all(" % " in q for q in read_queries)
+    assert not any("MOD(" in q for q in read_queries)
 
 
 # for mysql test
