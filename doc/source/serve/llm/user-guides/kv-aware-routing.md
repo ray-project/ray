@@ -103,7 +103,14 @@ Run `serve run config.yaml`.
 
 ### Use session pinning
 
-Send the same `x-session-id` header on each turn of a conversation to improve KV cache reuse. With the OpenAI Python client, pass `extra_headers={"x-session-id": "chat-123"}` to each request.
+Send the same `x-session-id` header on each turn of a conversation to improve KV cache reuse:
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-session-id: chat-123" \
+  -d '{"model": "qwen3-0.6b", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
 
 The first request selects a replica by estimated token load and KV cache overlap. Later turns stay on that replica even when another has lower load or more cached tokens. After the session's idle timeout, or if the replica becomes unavailable or ineligible, the router selects again.
 

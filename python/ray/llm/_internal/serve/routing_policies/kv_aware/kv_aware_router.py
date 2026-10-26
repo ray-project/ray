@@ -61,8 +61,7 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
         Args:
             session_affinity_ttl_s: How long to keep an idle session on the same
                 replica, in seconds. Defaults to 1800 (30 minutes).
-                ``0`` disables session pinning. ``build_kv_token_tracker``
-                reads it from ``request_router_kwargs`` and validates it.
+                ``0`` disables session pinning.
         """
         self._kv_token_tracker = get_kv_token_tracker()
         if self._kv_token_tracker is None:

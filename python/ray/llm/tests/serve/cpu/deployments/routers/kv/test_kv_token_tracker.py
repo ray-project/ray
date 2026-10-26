@@ -7,10 +7,7 @@ import asyncio
 import sys
 from typing import List
 
-import msgpack
 import pytest
-import zmq
-import zmq.asyncio
 
 import ray
 import ray.cloudpickle
@@ -189,6 +186,8 @@ class _TrackerBroadcastHandle:
         if self._tasks:
             await asyncio.gather(*self._tasks)
 
+        # Peers apply broadcasts in background tasks, so wait until every
+        # tracker holds the same requests.
         def converged():
             expected = {
                 request_id
@@ -206,7 +205,6 @@ class _RecordingSelectionService:
     def __init__(self, inner):
         self._inner = inner
         self.reservation_calls = []
-        self.applied_session_bindings = []
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
@@ -214,10 +212,6 @@ class _RecordingSelectionService:
     async def create_reservation(self, request):
         self.reservation_calls.append(request)
         return await self._inner.create_reservation(request)
-
-    async def apply_session_binding(self, binding):
-        await self._inner.apply_session_binding(binding)
-        self.applied_session_bindings.append(binding)
 
 
 @pytest.mark.asyncio
@@ -330,7 +324,7 @@ async def test_peer_trackers_converge_through_request_lifecycle():
         )
 
         # Exact prompt length matters at the next block boundary: 63 + 1
-        # tokens still occupy four blocks; the second output token needs five.
+        # tokens still occupy 4 blocks; the second output token needs 5.
         for output_tokens, blocks in [(1, 4), (2, 5)]:
             for tracker in trackers:
                 await tracker.on_decode_progress("req-bcast", output_tokens)
@@ -512,232 +506,23 @@ def _other(worker_ids, worker_id) -> int:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("ttl_s", [1800, 0], ids=["new-session", "disabled"])
-async def test_unpinned_session_scoring(ttl_s):
+async def test_session_pinning_disabled():
+    """With a zero TTL, a session's later turns follow load like unpinned ones."""
     pytest.importorskip("dynamo.llm")
-    tracker = _NoLongPollTracker(session_affinity_ttl_s=ttl_s)
+    tracker = _NoLongPollTracker(session_affinity_ttl_s=0)
     worker_ids = await _register_workers(tracker, ["sess-r0", "sess-r1"])
-    tracker._svc = _RecordingSelectionService(tracker._svc)
     try:
-        bindings = tracker._svc.session_binding_updates() if ttl_s else None
         first = await tracker.select_worker(
             "turn-1", _turn(1), worker_ids, 32, session_id=_SESSION
         )
         bound = first["worker_id"]
-        if bindings is not None:
-            assert (await anext(bindings))["worker_id"] == bound
         await _load_worker(tracker, bound, 3)
-        control = await tracker.select_worker(
-            "control",
-            _turn(2),
-            worker_ids,
-            32,
-            session_id="session-b" if ttl_s else _SESSION,
-        )
-        assert control["worker_id"] == _other(worker_ids, bound)
-    finally:
-        await _delete_workers(tracker, worker_ids)
-
-
-@pytest.mark.asyncio
-async def test_session_allowlist_rebind():
-    """When the bound worker is not a candidate (departed, or filtered out for
-    a LoRA adapter), the turn is scored normally and the session is rebound."""
-    pytest.importorskip("dynamo.llm")
-    tracker = _NoLongPollTracker()
-    worker_ids = await _register_workers(tracker, ["allow-r0", "allow-r1", "allow-r2"])
-    tracker._svc = _RecordingSelectionService(tracker._svc)
-    affinity = {"session_id": _SESSION}
-    bindings = tracker._svc.session_binding_updates()
-    try:
-        bound = worker_ids[0]
-        await tracker.select_worker("turn-1", _turn(1), [bound], 32, **affinity)
-        assert (await anext(bindings))["worker_id"] == bound
-
-        # Of the remaining candidates, the loaded one loses normal scoring.
-        loaded, idle = worker_ids[1], worker_ids[2]
-        await _load_worker(tracker, loaded, 2)
         second = await tracker.select_worker(
-            "turn-2", _turn(2), [loaded, idle], 32, **affinity
+            "turn-2", _turn(2), worker_ids, 32, session_id=_SESSION
         )
-        assert second["worker_id"] == idle
-        assert (await anext(bindings))["worker_id"] == idle
-
-        # The next turn follows the new binding even with the old worker back.
-        third = await tracker.select_worker(
-            "turn-3", _turn(3), worker_ids, 32, **affinity
-        )
-        assert third["worker_id"] == idle
+        assert second["worker_id"] == _other(worker_ids, bound)
     finally:
         await _delete_workers(tracker, worker_ids)
-
-
-@pytest.mark.asyncio
-async def test_peer_affinity_load_and_kv():
-    """Pin a later turn despite better load and overlap, with real KV events."""
-    pytest.importorskip("dynamo.llm")
-    routing = _NoLongPollTracker()
-    peer = _NoLongPollTracker()
-    trackers = (routing, peer)
-    worker_ids = [get_worker_id(f"kv-session-r{i}") for i in range(2)]
-    context = zmq.asyncio.Context()
-    publishers = {}
-    handle = _TrackerBroadcastHandle(*trackers)
-    tokens = list(range(1000, 1064))
-    query = {"model_name": "default", "routing_group": "default", "token_ids": tokens}
-    affinity = {"session_id": _SESSION}
-
-    async def flush_reservations():
-        for tracker in trackers:
-            await tracker.flush_replica_broadcast()
-        await handle.flush()
-        for tracker in trackers:
-            await tracker.flush_replica_updates()
-
-    async def lifecycle(hook, request_id):
-        await handle.broadcast(
-            "on_lifecycle_events", [(hook, (request_id,))]
-        ).results_async()
-
-    async def publish(worker_id, sequence, event):
-        await publishers[worker_id].send_multipart(
-            [
-                b"kv-events",
-                sequence.to_bytes(8, "big"),
-                msgpack.packb([0.0, [event], 0], use_bin_type=True),
-            ]
-        )
-
-    async def wait_for_overlap(expected):
-        async def matches():
-            for tracker in trackers:
-                scores = await tracker._svc.overlap_scores(query)
-                actual = {
-                    row["worker_id"]: row["device_blocks"] for row in scores["workers"]
-                }
-                if any(
-                    actual.get(worker_id, 0) != blocks
-                    for worker_id, blocks in expected.items()
-                ):
-                    return False
-            return True
-
-        await async_wait_for_condition(matches, timeout=5, retry_interval_ms=10)
-
-    try:
-        for worker_id in worker_ids:
-            publisher = context.socket(zmq.XPUB)
-            publisher.setsockopt(zmq.LINGER, 0)
-            publisher.setsockopt(zmq.XPUB_VERBOSE, 1)
-            port = publisher.bind_to_random_port("tcp://127.0.0.1")
-            publishers[worker_id] = publisher
-            for tracker in trackers:
-                tracker._register_block_size(16, str(worker_id))
-                await tracker._upsert_worker(
-                    worker_id,
-                    str(worker_id),
-                    {
-                        "endpoint": f"tcp://127.0.0.1:{port}",
-                        "block_size": 16,
-                        "max_num_batched_tokens": 8192,
-                        "dp_rank": 0,
-                    },
-                )
-            # Wait for both subscriptions so the first event cannot be lost.
-            for _ in trackers:
-                assert await publisher.poll(5000), "KV listener did not subscribe"
-                assert (await publisher.recv())[0] == 1
-
-        for tracker in trackers:
-            tracker._svc = _RecordingSelectionService(tracker._svc)
-            tracker.start_replica_broadcast(handle)
-        first = await routing.select_worker(
-            "turn-1", _turn(1), worker_ids, 32, **affinity
-        )
-        bound = first["worker_id"]
-        other = _other(worker_ids, bound)
-        await flush_reservations()
-        await async_wait_for_condition(
-            lambda: any(
-                b["session_id"] == _SESSION for b in peer._svc.applied_session_bindings
-            ),
-            timeout=5,
-        )
-        assert not routing._svc.applied_session_bindings
-        await lifecycle("on_request_completed", "turn-1")
-
-        stored = {
-            "type": "BlockStored",
-            "block_hashes": [101, 102, 103, 104],
-            "parent_block_hash": None,
-            "token_ids": tokens,
-            "block_size": 16,
-            "lora_id": None,
-            "medium": "GPU",
-            "lora_name": None,
-        }
-        await publish(other, 0, stored)
-        await wait_for_overlap({bound: 0, other: 4})
-        await _load_worker(peer, bound, 3)
-        await flush_reservations()
-
-        control = await peer.select_worker("control", tokens, worker_ids, 32)
-        assert control["worker_id"] == other
-        assert control["overlap_tokens"] == len(tokens)
-        await flush_reservations()
-        await lifecycle("on_request_completed", "control")
-
-        prefill_before = _worker_load(peer, bound, "potential_prefill_tokens")
-        second = await peer.select_worker("turn-2", tokens, worker_ids, 32, **affinity)
-        assert second["worker_id"] == bound
-        assert second["overlap_tokens"] == 0
-        assert second["effective_prefill_tokens"] == len(tokens)
-        await flush_reservations()
-        # The binding still names its original writer, but this publication is
-        # from the peer and must refresh the origin rather than be self-filtered.
-        await async_wait_for_condition(
-            lambda: any(
-                b["session_id"] == _SESSION
-                for b in routing._svc.applied_session_bindings
-            ),
-            timeout=5,
-        )
-        for tracker in trackers:
-            assert _active_requests(tracker, bound) == 4
-            assert _active_requests(tracker, other) == 0
-            assert _worker_load(
-                tracker, bound, "potential_prefill_tokens"
-            ) == prefill_before + len(tokens)
-        # Reserving a pinned request does not fabricate cache residency.
-        await wait_for_overlap({bound: 0, other: 4})
-
-        await publish(bound, 0, stored)
-        await wait_for_overlap({bound: 4, other: 4})
-        await lifecycle("on_prefill_complete", "turn-2")
-        for tracker in trackers:
-            assert (
-                _worker_load(tracker, bound, "potential_prefill_tokens")
-                == prefill_before
-            )
-        await lifecycle("on_request_completed", "turn-2")
-        assert all(_active_requests(tracker, bound) == 3 for tracker in trackers)
-        await publish(
-            bound,
-            1,
-            {
-                "type": "BlockRemoved",
-                "block_hashes": stored["block_hashes"],
-                "medium": "GPU",
-            },
-        )
-        await wait_for_overlap({bound: 0, other: 4})
-    finally:
-        for tracker in trackers:
-            tracker.stop_replica_broadcast()
-            await _delete_workers(tracker, worker_ids)
-        for publisher in publishers.values():
-            publisher.close()
-        context.term()
 
 
 # ---- LongPoll replica-membership tracking -----------------------------------

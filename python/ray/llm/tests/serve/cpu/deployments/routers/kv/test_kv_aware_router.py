@@ -246,8 +246,6 @@ class _StubKVAwareRouter(KVAwareRouter):
 
     def __init__(self, kv_token_tracker, **initialize_state_kwargs):
         self._deployment_id = DeploymentID(name="d", app_name="app")
-        # Serve calls initialize_state with the deployment's
-        # request_router_kwargs; then inject the stub tracker.
         self.initialize_state(**initialize_state_kwargs)
         self._kv_token_tracker = kv_token_tracker
 
