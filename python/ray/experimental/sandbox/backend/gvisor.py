@@ -434,6 +434,13 @@ def _write_egress_ruleset(
 _OVERLAY2_DIRNAME = "runsc-overlay2"
 
 
+def _caps_workdir(config: SandboxConfig) -> bool:
+    """Whether ``config``'s disk cap applies to its workdir, a host directory
+    bind-mounted into a readonly sandbox."""
+    disk_bytes = parse_memory_bytes(config.disk) or 0
+    return bool(config.readonly and config.workdir and disk_bytes > 0)
+
+
 def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
     """Return the fields of the ``name`` entry in passwd- or group-style text."""
     for line in text.splitlines():
@@ -764,6 +771,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         # Boot the sandbox from a kernel overlay over its cached EROFS image
         # if its final spec needs one.
+        if _caps_workdir(config):
+            # gVisor's --overlay2 layer keeps the capped workdir's writes here.
+            os.makedirs(os.path.join(root_dir, _OVERLAY2_DIRNAME), exist_ok=True)
         if not overlayfs.needs_rootfs_overlay(spec):
             return None
         return self._prepare_rootfs_overlay(config, spec, root_dir)
@@ -2134,9 +2144,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # gVisor's overlay over a writable root and ignores the flag for a
         # read-only one, so a readonly sandbox's root stays read-only. Its size
         # caps the writes made inside the sandbox, as the rootfs annotations
-        # do for an EROFS sandbox.
-        if rootfs_overlay is not None:
-            overlay2 = f"root:dir={os.path.join(root_dir, _OVERLAY2_DIRNAME)}"
+        # do for an EROFS sandbox. Where the cap applies to a readonly
+        # sandbox's workdir, the overlay covers that bind-mounted host
+        # directory too, so the workdir's writes land in the bundle, capped.
+        workdir_capped = _caps_workdir(config)
+        if rootfs_overlay is not None or workdir_capped:
+            scope = "all" if workdir_capped else "root"
+            overlay2 = f"{scope}:dir={os.path.join(root_dir, _OVERLAY2_DIRNAME)}"
             disk_bytes = parse_memory_bytes(config.disk) or 0
             if disk_bytes > 0:
                 overlay2 += f",size={disk_bytes}"
