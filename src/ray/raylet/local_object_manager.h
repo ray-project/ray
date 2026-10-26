@@ -56,6 +56,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
+      std::function<void(const ObjectID &, const WorkerID &)> on_spilled_copy_deleted,
       IObjectDirectory *object_directory,
       ray::observability::MetricInterface &object_store_memory_gauge,
       ray::raylet::SpillManagerMetrics &spill_manager_metrics,
@@ -73,6 +74,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(std::move(is_plasma_object_spillable)),
+        on_spilled_copy_deleted_(std::move(on_spilled_copy_deleted)),
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
@@ -224,6 +226,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// spilling, eviction of the in-memory copy, and a free while spilled.
   WorkerID GetProducerWorkerId(const ObjectID &object_id) const override;
 
+  bool HasDiskCopy(const ObjectID &object_id) const override;
+
   std::string DebugString() const override;
 
  private:
@@ -373,6 +377,10 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// Callback to check if a plasma object is pinned in workers.
   /// Return true if unpinned, meaning we can safely spill the object. False otherwise.
   std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable_;
+
+  /// Called when a spilled object's disk copy is deleted after it was freed, with the
+  /// producer recorded at pin. Not called for objects pinned without a producer.
+  std::function<void(const ObjectID &, const WorkerID &)> on_spilled_copy_deleted_;
 
   /// Used to decide spilling protocol.
   /// If it is "filesystem", it restores spilled objects only from an owner node.

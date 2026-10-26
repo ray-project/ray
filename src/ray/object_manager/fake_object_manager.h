@@ -122,7 +122,18 @@ class FakeObjectManager : public ObjectManagerInterface {
   }
 
   WorkerID GetLocalObjectProducerWorkerId(const ObjectID &object_id) const override {
-    return WorkerID::Nil();
+    auto it = local_object_producer_worker_ids.find(object_id);
+    return it == local_object_producer_worker_ids.end() ? WorkerID::Nil() : it->second;
+  }
+
+  bool SetLocalObjectProducerWorkerId(const ObjectID &object_id,
+                                      const WorkerID &producer_worker_id) override {
+    auto it = local_object_producer_worker_ids.find(object_id);
+    if (it == local_object_producer_worker_ids.end()) {
+      return false;
+    }
+    it->second = producer_worker_id;
+    return true;
   }
 
   void HandleObjectAdded(const ObjectInfo &object_info) override {
@@ -145,6 +156,8 @@ class FakeObjectManager : public ObjectManagerInterface {
   std::vector<ObjectID> added_objects;
   std::vector<ObjectID> deleted_objects;
   std::vector<NodeID> handle_node_removed_calls;
+  // The objects in local plasma and their recorded producers.
+  absl::flat_hash_map<ObjectID, WorkerID> local_object_producer_worker_ids;
 };
 
 }  // namespace ray

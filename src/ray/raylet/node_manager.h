@@ -291,7 +291,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// accounting, but does not write to any global accounting in the GCS.
   ///
   /// \param object_id The object that has been evicted locally.
-  void HandleObjectMissing(const ObjectID &object_id);
+  /// \param producer_worker_id The producer recorded on the deleted copy.
+  void HandleObjectMissing(const ObjectID &object_id, const WorkerID &producer_worker_id);
+
+  /**
+   * @brief Handle the deletion of a freed object's spilled copy.
+   *
+   * @param object_id The object whose spilled copy was deleted.
+   * @param producer_worker_id The producer recorded when the object was pinned.
+   */
+  void HandleSpilledCopyDeleted(const ObjectID &object_id,
+                                const WorkerID &producer_worker_id);
 
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
@@ -420,6 +430,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// specified in RayConfig, spill objects up to the max
   /// throughput.
   void SpillIfOverPrimaryObjectsThreshold();
+
+  /**
+   * @brief Ask the producer to run its `__on_object_freed__` hook for the object.
+   *
+   * Does nothing if the producer isn't registered on this node.
+   *
+   * @param object_id The freed object.
+   * @param producer_worker_id The worker that created the object.
+   */
+  void FireOnObjectFreed(const ObjectID &object_id, const WorkerID &producer_worker_id);
 
   /// Methods for handling nodes.
 
