@@ -539,9 +539,7 @@ class DashboardHead:
 
         # Advertise an address that other nodes and clients can connect to: the
         # node IP when listening on all interfaces, otherwise the bound host.
-        dashboard_http_host = (
-            self.ip if _is_all_interfaces(self.http_host) else http_host
-        )
+        dashboard_http_host = self.ip if _is_all_interfaces(http_host) else http_host
         # This synchronous code inside an async context is not great.
         # It is however acceptable, because this only gets run once
         # during initialization and therefore cannot block the event loop.
