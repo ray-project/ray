@@ -94,7 +94,7 @@ def test_concurrent_evictions_remove_an_agent_once(transport):
     transport._prepare_remote_agent("a", 1, b"meta")
     transport._prepare_remote_agent("b", 1, b"meta")
 
-    with transport._agent_lock("a"):
+    with transport._remote_agent_lock("a"):
         threads = [
             threading.Thread(target=transport._evict_if_full, args=(name,))
             for name in ("c", "d")
