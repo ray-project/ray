@@ -667,6 +667,7 @@ class TestGPUShuffleOperatorMetrics:
         assert d["num_tasks_running"] == 0
         assert d["row_outputs_taken"] == total_rows
         assert d["num_inputs_received"] == self.NUM_BLOCKS
+        assert d["shuffle"]["num_inputs_received"] == self.NUM_BLOCKS
         assert d["shuffle"]["num_tasks_finished"] == self.NUM_BLOCKS
         assert d["finalize"]["num_tasks_finished"] == self.NRANKS
         assert d["finalize"]["row_outputs_taken"] == total_rows
@@ -676,6 +677,35 @@ class TestGPUShuffleOperatorMetrics:
         op = self._make_op()
         self._run_insert_phase(op)
         self._run_extraction_phase(op)
+        assert op.num_outputs_total() == self.NUM_PARTITIONS
+        assert op.num_output_rows_total() == (
+            self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
+        )
+
+    def test_output_estimates_when_all_bundles_arrive_before_any_rank_finishes(
+        self,
+    ):
+        """The executor emits ready outputs before firing done callbacks, so
+        every bundle can land before any rank finishes (always, with one rank)."""
+        op = self._make_op()
+        self._run_insert_phase(op)
+        op._try_finalize()
+        for partition_id in range(self.NUM_PARTITIONS):
+            rank = partition_id % self.NRANKS
+            op._extraction_tasks[rank]._output_ready_callback(
+                _make_output_bundle(partition_id, self.ROWS_PER_PARTITION)
+            )
+        assert op.num_outputs_total() is None
+
+        tasks = list(op._extraction_tasks.values())
+        tasks[0]._task_done_callback(
+            None, TaskExecWorkerStats(task_wall_time_s=1.0), None
+        )
+        assert op.num_outputs_total() == self.NUM_PARTITIONS
+        for task in tasks[1:]:
+            task._task_done_callback(
+                None, TaskExecWorkerStats(task_wall_time_s=1.0), None
+            )
         assert op.num_outputs_total() == self.NUM_PARTITIONS
         assert op.num_output_rows_total() == (
             self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
@@ -700,6 +730,12 @@ class TestGPUShuffleOperatorMetrics:
         assert (
             sum(c.kwargs["increment"] for c in reduce_bar.update.call_args_list)
             == self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
+        )
+        # Input rows seed the total at finalize start; finished ranks replace it.
+        totals = [c.kwargs["total"] for c in reduce_bar.update.call_args_list]
+        assert [t for t in totals if t is not None][0] == input_rows
+        assert [t for t in totals if t is not None][-1] == (
+            self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
         )
 
     def test_stats_keyed_by_phase(self):

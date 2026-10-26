@@ -510,6 +510,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def _add_input_inner(self, bundle: RefBundle, input_index: int) -> None:
         shuffle = self._phase_metrics.phases["shuffle"]
+        shuffle.metrics.on_input_received(bundle)
 
         for block_ref, metadata in zip(bundle.block_refs, bundle.metadata):
             actor = self._rank_pool.get_actor_for_block(self._next_block_idx)
@@ -550,7 +551,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
 
         self._finalization_started = True
+        shuffle = self._phase_metrics.phases["shuffle"]
         finalize = self._phase_metrics.phases["finalize"]
+        # Shuffle preserves rows, so input rows are the exact output total (an
+        # upper bound for aggregation); the estimator refines it as ranks finish.
+        finalize.update_progress(total=shuffle.metrics.rows_inputs_of_submitted_tasks)
 
         def _on_bundle_ready(bundle: RefBundle, rank: int) -> None:
             assert (
@@ -580,12 +585,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
             finalize.on_task_output(rank, bundle)
             finalize.on_output_queued(bundle)
-            self._phase_metrics.update_output_estimates(
-                finalize, self._rank_pool.nranks
-            )
-            finalize.update_progress(
-                increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
-            )
+            finalize.update_progress(increment=bundle.num_rows() or 0)
 
         def _on_extraction_done(
             exc: Optional[Exception],
@@ -595,6 +595,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         ) -> None:
             self._extraction_tasks.pop(rank, None)
             finalize.on_task_finished(rank, exc, worker_stats, driver_stats)
+            # The per-task output average only exists once a rank has finished.
+            self._phase_metrics.update_output_estimates(
+                finalize, self._rank_pool.nranks
+            )
+            finalize.update_progress(total=self.num_output_rows_total())
             if not self._extraction_tasks:
                 # release GPU actors so downstream operators can acquire those GPUs
                 self._rank_pool.shutdown()
