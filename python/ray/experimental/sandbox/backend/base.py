@@ -208,7 +208,7 @@ class BaseSandboxBackend(ABC):
         checkpoint_path: str,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
-        background: bool = True,
+        background: Optional[bool] = None,
         direct: bool = False,
         remote: Optional[bool] = None,
         timeout_seconds: float = 30.0,
@@ -220,7 +220,9 @@ class BaseSandboxBackend(ABC):
             checkpoint_path: Directory path of the saved checkpoint bundle.
             cpu: Optional CPU allocation override.
             memory: Optional memory allocation override.
-            background: If True, restore guest memory asynchronously for sub-10ms start.
+            background: If True, restore guest memory asynchronously for sub-10ms
+                start; supported only for uncompressed checkpoints. None (default)
+                uses it whenever the checkpoint is uncompressed.
             direct: If True, use O_DIRECT for reading checkpoint pages.
             remote: If True, treat the checkpoint as remote/shared, allowing restoration
                 on a different VM node than where the checkpoint was captured. If None,

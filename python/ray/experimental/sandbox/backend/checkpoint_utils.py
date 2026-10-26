@@ -121,6 +121,7 @@ def create_manifest(
     leave_running: bool,
     remote: bool = False,
     node_id: Optional[str] = None,
+    compression: str = "none",
 ) -> Dict[str, Any]:
     """Generate the manifest metadata dictionary for a checkpoint bundle."""
     return {
@@ -129,6 +130,9 @@ def create_manifest(
         "sandbox_id": sandbox_id,
         "node_id": node_id or get_current_node_id(),
         "remote": bool(remote),
+        # How the memory image is compressed: restore can load memory in
+        # the background only from an uncompressed one.
+        "compression": compression,
         "image": config.image,
         "cwd": cwd,
         "workdir": workdir,
@@ -144,6 +148,8 @@ def create_manifest(
             "workdir": config.workdir,
             "capabilities": config.capabilities,
             "dns": config.dns,
+            "cidr_allowlist": config.cidr_allowlist,
+            "disk": config.disk,
             "_ignore_cgroups": getattr(config, "_ignore_cgroups", False),
         },
         "state_dir": "state",
@@ -179,6 +185,13 @@ def load_checkpoint_manifest(checkpoint_path: str) -> Tuple[Dict[str, Any], str]
     return manifest, state_dir
 
 
+# Configuration that the checkpointed memory state depends on: the image
+# and the mounts, root filesystem mode and network stack that the guest
+# kernel was saved with. A restore can't change them. ``workdir`` is one of
+# them only on a readonly rootfs, where it is a host-backed mount.
+_RESTORE_IMMUTABLE_FIELDS = ("image", "network", "readonly", "workdir", "rootless")
+
+
 def build_restored_config(
     manifest: Dict[str, Any],
     cpu: Optional[float] = None,
@@ -187,11 +200,25 @@ def build_restored_config(
 ) -> SandboxConfig:
     """Build the SandboxConfig for a restored sandbox from manifest metadata.
 
-    The restored sandbox preserves the original sandbox configuration from
-    manifest metadata (image, workdir, network, dns, capabilities, readonly, env)
-    while allowing cgroup resource limits (cpu, memory) and additional keyword
-    arguments (such as _oci_spec_transform_fn, _ignore_cgroups) passed in kwargs
-    to be merged.
+    The restored sandbox keeps the checkpointed configuration. Overrides in
+    ``cpu``, ``memory`` and ``kwargs`` (such as ``env``, ``dns``,
+    ``capabilities``, ``disk``, ``cidr_allowlist``, ``timeout_seconds``,
+    ``_oci_spec_transform_fn`` and ``_ignore_cgroups``) replace the recorded
+    values; None means no override.
+
+    Args:
+        manifest: The checkpoint's manifest.
+        cpu: CPU override, or None.
+        memory: Memory override, or None.
+        **kwargs: Other SandboxConfig overrides; unknown keys are ignored.
+
+    Returns:
+        The restored sandbox's configuration.
+
+    Raises:
+        SandboxError: If an override changes a field in
+            ``_RESTORE_IMMUTABLE_FIELDS``, which the restored memory state
+            depends on.
     """
     cfg_dict = dict(manifest.get("config", {}))
     if cpu is not None:
@@ -201,11 +228,23 @@ def build_restored_config(
 
     valid_fields = {f.name for f in dataclasses.fields(SandboxConfig)}
     for k, v in kwargs.items():
-        if k in valid_fields and v is not None:
-            cfg_dict[k] = v
+        if k not in valid_fields or v is None:
+            continue
+        immutable = k in _RESTORE_IMMUTABLE_FIELDS and not (
+            k == "workdir" and not cfg_dict.get("readonly", True)
+        )
+        if immutable and k in cfg_dict and v != cfg_dict[k]:
+            raise SandboxError(
+                f"Cannot restore with {k}={v!r}: the checkpoint was taken with "
+                f"{k}={cfg_dict[k]!r}, and its saved memory state depends on it. "
+                f"Restore without overriding {k!r}."
+            )
+        cfg_dict[k] = v
 
     if cfg_dict.get("network") not in ("public", "host") and kwargs.get("dns") is None:
         cfg_dict["dns"] = None
+    if cfg_dict.get("disk") is None:
+        cfg_dict.pop("disk", None)
 
     return SandboxConfig(**cfg_dict)
 

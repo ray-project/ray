@@ -667,7 +667,6 @@ def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
         ids = ownership.get(os.path.normpath(ti.name))
         ti.uid, ti.gid = ids if ids else (0, 0)
         ti.uname = ti.gname = ""
-        ti.mtime = 0
         return ti
 
     return _filter
@@ -749,7 +748,13 @@ def build_erofs_image(
                 "--tar=f",
                 f"-b{mmap.PAGESIZE}",
                 "-E^inline_data",
-                "-T0",
+                # Restoring a checkpoint on another node maps that node's
+                # build of the image in place of this one, so builds of the
+                # same image must lay it out the same way. Extended inodes
+                # (which carry each file's own mtime) keep the layout
+                # independent of when mkfs runs, as a fixed UUID keeps the
+                # superblock; files keep their mtimes.
+                "-Eforce-inode-extended",
                 "-U00000000-0000-0000-0000-000000000000",
                 out_path,
                 flat_tar,

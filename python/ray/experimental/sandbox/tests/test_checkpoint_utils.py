@@ -89,6 +89,68 @@ class TestCheckpointUtils(unittest.TestCase):
         assert restored.network == "public"
         assert restored.dns == ["8.8.8.8"]
 
+    def test_manifest_records_what_restore_needs(self):
+        config = SandboxConfig(
+            image="busybox:latest",
+            network="public",
+            readonly=False,
+            disk="2Gi",
+            cidr_allowlist=["203.0.113.0/24"],
+        )
+        manifest = create_manifest(
+            sandbox_id="test-sb",
+            config=config,
+            cwd="/",
+            workdir=None,
+            leave_running=True,
+            compression="flate-best-speed",
+        )
+        assert manifest["compression"] == "flate-best-speed"
+        assert manifest["config"]["disk"] == "2Gi"
+        assert manifest["config"]["cidr_allowlist"] == ["203.0.113.0/24"]
+        # The recorded disk and allowlist come back on restore.
+        restored = build_restored_config(json.loads(json.dumps(manifest)))
+        assert restored.disk == "2Gi"
+        assert restored.cidr_allowlist == ["203.0.113.0/24"]
+
+    def test_build_restored_config_rejects_changes_to_saved_state(self):
+        manifest = {
+            "config": {
+                "image": "busybox:latest",
+                "network": "none",
+                "readonly": True,
+                "workdir": "/workspace",
+                "rootless": False,
+            }
+        }
+        for field, value in (
+            ("image", "alpine:latest"),
+            ("network", "public"),
+            ("readonly", False),
+            ("workdir", "/other"),
+            ("rootless", True),
+        ):
+            with pytest.raises(SandboxError, match=f"Cannot restore with {field}="):
+                build_restored_config(manifest, **{field: value})
+        # Passing the recorded value, or None, is not a change.
+        restored = build_restored_config(
+            manifest, network="none", readonly=True, workdir="/workspace", image=None
+        )
+        assert restored.network == "none"
+
+    def test_build_restored_config_workdir_is_free_on_a_writable_rootfs(self):
+        # Without a readonly rootfs, the workdir is only the working
+        # directory, not a mount.
+        manifest = {
+            "config": {
+                "image": "busybox:latest",
+                "readonly": False,
+                "workdir": "/workspace",
+                "rootless": False,
+            }
+        }
+        assert build_restored_config(manifest, workdir="/other").workdir == "/other"
+
     def test_staged_checkpoint_atomic_swap_and_rollback(self):
         target_dir = os.path.join(self.temp_dir, "bundle")
         os.makedirs(target_dir, exist_ok=True)

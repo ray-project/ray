@@ -104,6 +104,8 @@ class Sandbox:
                 restore_kwargs["network"] = network
             if dns is not None:
                 restore_kwargs["dns"] = dns
+            if cidr_allowlist is not None:
+                restore_kwargs["cidr_allowlist"] = cidr_allowlist
             if capabilities is not None:
                 restore_kwargs["capabilities"] = capabilities
             if readonly is not None:

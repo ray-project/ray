@@ -376,6 +376,8 @@ res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
 * **Node-local vs. remote/shared storage:**
   * **Node-local storage (default, ``remote=False``):** When saving to local disk or NVMe SSD (such as ``/tmp/ray``), the checkpoint only resides on that worker VM. ``sandbox.restore()`` automatically pins the restored actor to the same worker node via Ray's ``NodeAffinitySchedulingStrategy``.
   * **Remote / shared mount (``remote=True``):** When saving to a shared filesystem accessible across all nodes (such as NFS, GCP Filestore, or Cloud Storage FUSE), pass ``remote=True`` to ``base_sb.checkpoint.remote(checkpoint_path, remote=True)``. This allows Ray to schedule restored sandboxes across any VM node in the cluster, enabling horizontal scale-out branching.
+* **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, `cidr_allowlist`, `capabilities`, and `disk` overrides. The saved state depends on `image`, `network`, `readonly`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them.
+* **Compression:** `checkpoint(compression="flate-best-speed")` writes a smaller checkpoint. gVisor loads guest memory in the background only from uncompressed checkpoints, so a sandbox restored from a compressed one starts after all of its memory is loaded.
 :::
 
 ### Pass custom OCI configurations to gVisor

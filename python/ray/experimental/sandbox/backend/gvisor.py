@@ -13,14 +13,13 @@ import tempfile
 import threading
 import time
 import uuid
-from typing import IO, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import IO, Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
 
 from ray.experimental.sandbox._internal import egress_guard
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
 )
-from ray.experimental.sandbox._internal.image_utils import ROOTFS_IMAGE
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -166,6 +165,22 @@ _SLIRP4NETNS_FLAGS = [
 # across exec. runsc keeps SIGINT ignored, but Go installs its own SIGQUIT
 # handler, so a SIGQUIT (Ctrl-\) still ends runsc and its sandbox, cleanly.
 _IGNORE_INTERRUPTS = "trap '' INT QUIT; "
+
+
+# The image compressions `runsc checkpoint --compression` takes.
+_CHECKPOINT_COMPRESSIONS = ("none", "flate-best-speed")
+
+
+class _RestoreImage(NamedTuple):
+    """A checkpoint image that a sandbox's launch command restores from."""
+
+    # The checkpoint's state directory (``runsc restore --image-path``).
+    image_path: str
+    # Load guest memory in the background after the sandbox starts running.
+    # runsc supports this only for uncompressed images.
+    background: bool = False
+    # Read the image with O_DIRECT.
+    direct: bool = False
 
 
 def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
@@ -495,6 +510,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
+        self._check_host_requirements(config)
+        cgroups = self._cgroup_manager_for(config)
+        sandbox_id = self._provision(config, cgroups, self._start_sandbox)
+        self._check_dns_reachable(config, sandbox_id)
+        return sandbox_id
+
+    def _check_host_requirements(self, config: SandboxConfig) -> None:
+        """Fail early when the node lacks a binary that the sandbox needs."""
         if not shutil.which("runsc"):
             raise SandboxCreationError(
                 "gVisor executable 'runsc' not found in PATH. "
@@ -516,17 +539,48 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "build from github.com/rootless-containers/slirp4netns), "
                     "util-linux, and nftables on the node image."
                 )
-        memory = parse_memory_bytes(config.memory) or 0
-        cgroups = None
-        if config.cpu > 0 or memory > 0:
-            cgroups = SandboxCgroupManager()
-            try:
-                cgroups.check(config.cpu, memory)
-            except Exception as err:
-                raise SandboxCreationError(
-                    f"Cannot enforce sandbox resources: {err}"
-                ) from err
 
+    def _cgroup_manager_for(
+        self, config: SandboxConfig
+    ) -> Optional[SandboxCgroupManager]:
+        """Return the cgroup manager for a sandbox with limits, or None."""
+        memory = parse_memory_bytes(config.memory) or 0
+        if config.cpu <= 0 and memory <= 0:
+            return None
+        cgroups = SandboxCgroupManager()
+        try:
+            cgroups.check(config.cpu, memory)
+        except Exception as err:
+            raise SandboxCreationError(
+                f"Cannot enforce sandbox resources: {err}"
+            ) from err
+        return cgroups
+
+    def _provision(
+        self,
+        config: SandboxConfig,
+        cgroups: Optional[SandboxCgroupManager],
+        start: Callable[
+            [SandboxConfig, str, str, IO[str], Optional[SandboxCgroup]], None
+        ],
+        action: str = "create",
+    ) -> str:
+        """Make a new sandbox's bundle, owner file and cgroup, then start it.
+
+        Shared by create and restore so that a restored sandbox is owned,
+        limited and reclaimed the same way as a created one.
+
+        Args:
+            config: The sandbox's configuration.
+            cgroups: The cgroup manager for a sandbox with limits, or None.
+            start: Prepares the bundle and starts the sandbox in it, with the
+                signature of ``_start_sandbox``.
+            action: What the caller does, for error messages.
+
+        Returns:
+            The new sandbox's ID.
+        """
+        memory = parse_memory_bytes(config.memory) or 0
         self._maybe_reclaim_unowned_bundles()
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
@@ -551,7 +605,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # After the owner file, so that a reclaim removes the cgroup
                 # of an owner that dies before it starts the sandbox.
                 cgroup = cgroups.allocate(sandbox_id, config.cpu, memory, cpus)
-            self._start_sandbox(config, sandbox_id, root_dir, owner_file, cgroup)
+            start(config, sandbox_id, root_dir, owner_file, cgroup)
         except Exception as err:
             if _release_cgroup(sandbox_id, cgroup):
                 self._image_manager.release_image(config.image, sandbox_id)
@@ -560,8 +614,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 owner_file.close()
             if isinstance(err, SandboxError):
                 raise
-            raise SandboxCreationError(f"Failed to create sandbox: {err}") from err
+            raise SandboxCreationError(f"Failed to {action} sandbox: {err}") from err
+        return sandbox_id
 
+    def _check_dns_reachable(self, config: SandboxConfig, sandbox_id: str) -> None:
+        """Delete a network="public" sandbox whose resolvers it can't reach."""
         if config.network == "public" and config.dns:
             # The filter drops a resolver it can't match, such as a
             # Service IP that the cluster's network translates when a
@@ -580,7 +637,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "Service IP such as the cluster DNS Service's. Use an "
                     "IPv4 resolver that isn't a Service IP."
                 )
-        return sandbox_id
 
     def _start_sandbox(
         self,
@@ -631,6 +687,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ) from err
 
         # Prepare OCI bundle config for long-running container process
+        self._prepare_bundle(config, root_dir, workdir_path, container_cwd)
+        self._launch_sandbox(
+            config,
+            sandbox_id,
+            root_dir,
+            workdir_path,
+            container_cwd,
+            owner_file,
+            cgroup,
+        )
+
+    def _prepare_bundle(
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        workdir_path: Optional[str],
+        container_cwd: str,
+    ) -> None:
+        """Write the bundle's config.json, resolv.conf and hosts for ``config``."""
         self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
             workdir_path=workdir_path,
@@ -646,6 +721,31 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             _oci_spec_transform_fn=config._oci_spec_transform_fn,
             disk=config.disk,
         )
+
+    def _launch_sandbox(
+        self,
+        config: SandboxConfig,
+        sandbox_id: str,
+        root_dir: str,
+        workdir_path: Optional[str],
+        container_cwd: str,
+        owner_file: IO[str],
+        cgroup: Optional[SandboxCgroup],
+        restore: Optional["_RestoreImage"] = None,
+    ) -> None:
+        """Run (or restore) the sandbox in its prepared bundle and register it.
+
+        Args:
+            config: The sandbox's configuration.
+            sandbox_id: The sandbox's ID, which also names its bundle.
+            root_dir: The sandbox's prepared bundle directory.
+            workdir_path: The host directory mounted at the workdir, if any.
+            container_cwd: The sandbox's working directory.
+            owner_file: The bundle's owner file, which this backend holds.
+            cgroup: The sandbox's cgroup, or None if it has no limits.
+            restore: The checkpoint image to restore from, or None to boot
+                the sandbox from its image.
+        """
         egress_allowlist = None
         if config.network == "public":
             egress_allowlist = list(
@@ -661,83 +761,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 raise SandboxCreationError(
                     f"Failed to write the egress ruleset for '{root_dir}': {err}"
                 ) from err
-        run_args = self._build_run_command(config, root_dir, sandbox_id)
-        if cgroup is not None:
-            run_args = cgroup.wrap(run_args)
-
-        stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
-        stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
-        # The launch process stays in this process's group, so the sandbox
-        # can't outlive a Ray worker that owns it: when a worker exits or
-        # crashes, the raylet kills the worker's process group. Everything
-        # the launch process started dies with it, runsc's sandbox through
-        # runsc's parent-death signal and a network="public" sandbox's
-        # helpers through setpriv. It ignores SIGINT, so a driver's Ctrl-C
-        # doesn't stop it (see _IGNORE_INTERRUPTS). The tree shares the stderr
-        # log so startup failures (missing /dev/net/tun, no uplink) surface
-        # through the SandboxCreationError path below.
-        try:
-            proc = subprocess.Popen(
-                run_args,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=stderr_file,
-            )
-        except Exception:
-            stderr_file.close()
-            raise
-        start_time = time.time()
-        timeout = config.timeout_seconds
-
-        try:
-            while True:
-                if proc.poll() is not None:
-                    stderr_file.seek(0)
-                    stderr_str = stderr_file.read()
-                    raise SandboxCreationError(
-                        f"gVisor container failed to start: {stderr_str}"
-                    )
-
-                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                res = subprocess.run(state_args, capture_output=True, text=True)
-                if res.returncode == 0:
-                    try:
-                        state_data = json.loads(res.stdout)
-                        status = state_data.get("status")
-                        if status == "running":
-                            if cgroup is not None:
-                                try:
-                                    cgroup.verify(proc.pid)
-                                except Exception as err:
-                                    raise SandboxCreationError(
-                                        f"Sandbox resource verification failed: {err}"
-                                    ) from err
-                            break
-                        elif status in ("stopped", "error"):
-                            raise SandboxCreationError(
-                                f"gVisor container stopped unexpectedly during initialization (status: {status})."
-                            )
-                    except Exception as e:
-                        if isinstance(e, SandboxCreationError):
-                            raise
-                        pass
-
-                # Check the deadline only after polling state, so a sandbox
-                # that reached 'running' just as the deadline passed is
-                # observed and kept rather than torn down unpolled.
-                if time.time() - start_time > timeout:
-                    raise SandboxTimeoutError(
-                        f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
-                    )
-
-                time.sleep(0.1)
-        except Exception:
-            # Delete runsc's container state, then stop the launch process
-            # and everything it started.
-            self._delete_container_state(config, sandbox_id)
-            self._terminate_tree(proc)
-            stderr_file.close()
-            raise
+        proc, stderr_file = self._run_until_running(
+            config, sandbox_id, root_dir, cgroup, restore=restore
+        )
 
         # The namespaces set_egress_allowlist must find behind netns.pid,
         # read while the holder is known to run the sandbox's network.
@@ -766,6 +792,115 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "owner_file": owner_file,
             "status": SandboxStatus.RUNNING,
         }
+
+    def _run_until_running(
+        self,
+        config: SandboxConfig,
+        sandbox_id: str,
+        root_dir: str,
+        cgroup: Optional[SandboxCgroup],
+        restore: Optional["_RestoreImage"] = None,
+    ) -> Tuple[subprocess.Popen, IO[str]]:
+        """Start the launch process and wait for the container to run.
+
+        If the container doesn't reach 'running', this deletes runsc's state
+        for it, stops the launch process and everything it started, and
+        raises.
+
+        Args:
+            config: The sandbox's configuration.
+            sandbox_id: The sandbox's ID.
+            root_dir: The sandbox's prepared bundle directory.
+            cgroup: The sandbox's cgroup, or None if it has no limits.
+            restore: The checkpoint image to restore from, or None to boot
+                the sandbox from its image.
+
+        Returns:
+            The launch process and its open stderr log.
+        """
+        run_args = self._build_run_command(config, root_dir, sandbox_id, restore)
+        if cgroup is not None:
+            run_args = cgroup.wrap(run_args)
+
+        stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
+        stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
+        # The launch process stays in this process's group, so the sandbox
+        # can't outlive a Ray worker that owns it: when a worker exits or
+        # crashes, the raylet kills the worker's process group. Everything
+        # the launch process started dies with it, runsc's sandbox through
+        # runsc's parent-death signal and a network="public" sandbox's
+        # helpers through setpriv. It ignores SIGINT, so a driver's Ctrl-C
+        # doesn't stop it (see _IGNORE_INTERRUPTS). The tree shares the stderr
+        # log so startup failures (missing /dev/net/tun, no uplink) surface
+        # through the SandboxCreationError path below.
+        try:
+            proc = subprocess.Popen(
+                run_args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+            )
+        except Exception:
+            stderr_file.close()
+            raise
+        start_time = time.time()
+        timeout = config.timeout_seconds
+        action = "restore" if restore is not None else "start"
+        # A restore is expected to come up in milliseconds, so poll it more
+        # often than a cold boot.
+        poll_interval = 0.01 if restore is not None else 0.1
+
+        def stderr_text() -> str:
+            stderr_file.seek(0)
+            return stderr_file.read()
+
+        try:
+            while True:
+                if proc.poll() is not None:
+                    raise SandboxCreationError(
+                        f"gVisor container failed to {action}: {stderr_text()}"
+                    )
+
+                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
+                res = subprocess.run(state_args, capture_output=True, text=True)
+                if res.returncode == 0:
+                    try:
+                        state_data = json.loads(res.stdout)
+                    except ValueError:
+                        state_data = {}
+                    status = state_data.get("status")
+                    if status == "running":
+                        if cgroup is not None:
+                            try:
+                                cgroup.verify(proc.pid)
+                            except Exception as err:
+                                raise SandboxCreationError(
+                                    f"Sandbox resource verification failed: {err}"
+                                ) from err
+                        break
+                    elif status in ("stopped", "error"):
+                        raise SandboxCreationError(
+                            f"gVisor container stopped unexpectedly during "
+                            f"{action} (status: {status}). Stderr: {stderr_text()}"
+                        )
+
+                # Check the deadline only after polling state, so a sandbox
+                # that reached 'running' just as the deadline passed is
+                # observed and kept rather than torn down unpolled.
+                if time.time() - start_time > timeout:
+                    raise SandboxTimeoutError(
+                        f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
+                    )
+
+                time.sleep(poll_interval)
+        except Exception:
+            # Delete runsc's container state, then stop the launch process
+            # and everything it started.
+            self._delete_container_state(config, sandbox_id)
+            self._terminate_tree(proc)
+            stderr_file.close()
+            raise
+        return proc, stderr_file
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
@@ -1295,15 +1430,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
         meta["status"] = SandboxStatus.RUNNING
 
-    def _copy_fs_tree(
-        self,
-        src: str,
-        dst: str,
-        ignore_patterns: Optional[List[str]] = None,
-    ) -> None:
-        """Copy a filesystem directory tree, with sudo fallback for root-owned guest files."""
-        copy_fs_tree(src, dst, ignore_patterns=ignore_patterns)
-
     def checkpoint_sandbox(
         self,
         sandbox_id: str,
@@ -1316,7 +1442,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> Dict[str, Any]:
-        """Save the sandbox state to a checkpoint bundle directory."""
+        """Save the sandbox state to a checkpoint bundle directory.
+
+        ``runsc checkpoint`` stops the sandbox once its image is written. Its
+        launch process (``runsc run`` or ``runsc restore``) then exits and
+        deletes runsc's container state, so ``--leave-running``, which
+        restores the container in place, can't keep it: the launch process
+        deletes the restored container as it exits. Instead, this stops the
+        sandbox with the checkpoint and, for ``leave_running=True``, restores
+        it in place from the new image under a new launch process, with the
+        same ID, bundle, owner file and cgroup. The sandbox is stopped while
+        its filesystem is copied, so the copy matches the memory image.
+        """
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
@@ -1327,6 +1464,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise SandboxError(
                 "gVisor (runsc) does not support checkpoint/restore in rootless mode. "
                 "Please configure the sandbox with rootless=False."
+            )
+        if compression not in _CHECKPOINT_COMPRESSIONS:
+            raise ValueError(
+                f"Unsupported checkpoint compression {compression!r}; use one of "
+                f"{', '.join(repr(c) for c in _CHECKPOINT_COMPRESSIONS)}."
             )
 
         if not checkpoint_path:
@@ -1343,33 +1485,48 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
 
         start_time = time.time()
+        was_paused = meta.get("status") == SandboxStatus.PAUSED
 
         # Step 2: Begin atomic staging using StagedCheckpoint context manager.
         # All state dumps and filesystem copies occur inside a staging directory first.
-        prior_status = meta.get("status", SandboxStatus.RUNNING)
-        was_paused_by_checkpoint = False
-        success = False
-        try:
-            # If the sandbox was running, pause it first to freeze guest memory
-            # and filesystem state while taking the checkpoint and copying files.
-            if prior_status == SandboxStatus.RUNNING:
-                self.pause_sandbox(sandbox_id, timeout_seconds=timeout_seconds)
-                was_paused_by_checkpoint = True
+        stage = StagedCheckpoint(checkpoint_path)
+        # Whether runsc stopped the sandbox, and whether a failure after that
+        # already restored it.
+        stopped = restored = False
 
-            with StagedCheckpoint(checkpoint_path) as stage:
-                # Step 3: Dump kernel and process memory state via `runsc checkpoint`.
-                # We pass --leave-running so runsc does not stop/destroy the container sandbox,
-                # keeping it suspended in-memory so it can be resumed afterwards.
+        def restore_after_failure() -> None:
+            # The checkpoint failed after it stopped the sandbox: bring the
+            # sandbox back from the staged image, whatever leave_running
+            # asked for.
+            nonlocal restored
+            restored = True
+            try:
+                self._restore_in_place(
+                    meta,
+                    sandbox_id,
+                    _RestoreImage(stage.state_dir, direct=direct),
+                    pause=was_paused,
+                )
+            except Exception as restore_err:
+                logger.warning(
+                    "Sandbox %s stopped for a checkpoint that failed, and "
+                    "couldn't be restored: %s",
+                    sandbox_id,
+                    restore_err,
+                )
+
+        try:
+            with stage:
+                # Step 3: Dump kernel and process memory state via `runsc checkpoint`,
+                # which stops the sandbox once the image is written.
                 checkpoint_args = self._runsc_base_args(config)
                 checkpoint_args.extend(
                     [
                         "checkpoint",
-                        "--leave-running",
                         f"--image-path={stage.state_dir}",
+                        f"--compression={compression}",
                     ]
                 )
-                if compression in ("none", "flate-best-speed"):
-                    checkpoint_args.append(f"--compression={compression}")
                 if exclude_committed_zero_pages:
                     checkpoint_args.append("--exclude-committed-zero-pages")
                 if direct:
@@ -1383,48 +1540,67 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     timeout=timeout_seconds,
                 )
                 if res.returncode != 0:
+                    # A failed checkpoint normally leaves the sandbox running;
+                    # if it didn't, get_status reports it terminated.
                     raise SandboxError(
                         f"Failed to checkpoint sandbox '{sandbox_id}': {res.stderr}"
                     )
-
-                # Step 4: Snapshot the copy-on-write rootfs overlay and writable workdir into staging.
-                stage.copy_bundle_filesystems(
-                    root_dir=root_dir,
-                    workdir=meta.get("workdir"),
-                    sandbox_id=sandbox_id,
-                )
-
-                # Step 5: Generate checkpoint manifest and apply strict file permission hardening.
-                manifest = create_manifest(
-                    sandbox_id=sandbox_id,
-                    config=config,
-                    cwd=meta["cwd"],
-                    workdir=meta.get("workdir"),
-                    leave_running=leave_running,
-                    remote=remote,
-                    node_id=node_id,
-                )
-                stage.write_manifest(manifest)
-                stage.harden_permissions(rootless=config.rootless, remote=remote)
-            success = True
-        finally:
-            if was_paused_by_checkpoint and (
-                leave_running or (not success and prior_status == SandboxStatus.RUNNING)
-            ):
-                # Resume execution only if the sandbox was running prior to checkpointing
-                # and either leave_running is requested or an error aborted checkpointing.
-                # If prior_status was already PAUSED, it remains paused.
+                stopped = True
                 try:
-                    self.resume_sandbox(sandbox_id)
-                except Exception as resume_err:
-                    logger.warning(
-                        f"Failed to resume sandbox '{sandbox_id}' after checkpoint: {resume_err}"
+                    self._reap_launch_process(meta, sandbox_id, timeout_seconds)
+
+                    # Step 4: Snapshot the copy-on-write rootfs overlay and writable workdir into staging.
+                    stage.copy_bundle_filesystems(
+                        root_dir=root_dir,
+                        workdir=meta.get("workdir"),
+                        sandbox_id=sandbox_id,
                     )
 
+                    # Step 5: Generate checkpoint manifest and apply strict file permission hardening.
+                    manifest = create_manifest(
+                        sandbox_id=sandbox_id,
+                        config=config,
+                        cwd=meta["cwd"],
+                        workdir=meta.get("workdir"),
+                        leave_running=leave_running,
+                        remote=remote,
+                        node_id=node_id,
+                        compression=compression,
+                    )
+                    stage.write_manifest(manifest)
+                    stage.harden_permissions(rootless=config.rootless, remote=remote)
+                except BaseException:
+                    # Before the staging directory, and the image in it, is
+                    # deleted on the way out.
+                    restore_after_failure()
+                    raise
+        except BaseException:
+            # A failed swap into checkpoint_path leaves the staging directory.
+            if stopped and not restored and os.path.isdir(stage.state_dir):
+                restore_after_failure()
+            raise
+
         # Step 6: Atomic swap completed upon exiting context manager.
-        # If leave_running is False, terminate and fully clean up the source sandbox.
         duration = time.time() - start_time
-        if not leave_running:
+        if leave_running:
+            try:
+                self._restore_in_place(
+                    meta,
+                    sandbox_id,
+                    _RestoreImage(
+                        os.path.join(checkpoint_path, "state"),
+                        background=compression == "none",
+                        direct=direct,
+                    ),
+                    pause=was_paused,
+                )
+            except Exception as err:
+                raise SandboxError(
+                    f"Checkpointed sandbox '{sandbox_id}' to '{checkpoint_path}', "
+                    f"but couldn't resume it afterwards, so it has stopped: {err}"
+                ) from err
+        else:
+            # Fully clean up the stopped source sandbox.
             self.delete_sandbox(sandbox_id)
 
         ckpt_path_obj = CheckpointPath(
@@ -1445,25 +1621,104 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "node_id": node_id,
         }
 
+    def _reap_launch_process(
+        self, meta: Dict, sandbox_id: str, timeout_seconds: float
+    ) -> None:
+        """Wait for a stopped sandbox's launch process to exit, and clean up.
+
+        Called after ``runsc checkpoint`` stops the sandbox: the launch
+        process exits on its own, a network="public" one after stopping its
+        namespace holder and slirp4netns.
+        """
+        proc = meta.get("proc")
+        if proc is not None:
+            try:
+                proc.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                pass
+            self._terminate_tree(proc)
+        self._delete_container_state(meta["config"], sandbox_id)
+        stderr_file = meta.get("stderr_file")
+        if stderr_file is not None:
+            try:
+                stderr_file.close()
+            except Exception:
+                pass
+        meta["stderr_file"] = None
+        meta["status"] = SandboxStatus.TERMINATED
+
+    def _restore_in_place(
+        self,
+        meta: Dict,
+        sandbox_id: str,
+        restore: _RestoreImage,
+        pause: bool = False,
+    ) -> None:
+        """Restore a stopped sandbox in its own bundle from a checkpoint image.
+
+        Keeps the sandbox's ID, bundle, owner file, cgroup and egress
+        allowlist, and replaces its launch process.
+
+        Args:
+            meta: The sandbox's metadata.
+            sandbox_id: The sandbox's ID.
+            restore: The checkpoint image to restore from.
+            pause: Pause the sandbox again once it runs, for a sandbox that
+                was paused when it was checkpointed.
+        """
+        config: SandboxConfig = meta["config"]
+        root_dir = meta["root_dir"]
+        # The launch script waits for these to be written; stale copies from
+        # the previous launch would let it go on before the new holder and
+        # slirp4netns are up.
+        for name in ("netns.pid", "slirp4netns.ready"):
+            try:
+                os.remove(os.path.join(root_dir, name))
+            except FileNotFoundError:
+                pass
+        if config.network == "public" and meta.get("egress_allowlist") is not None:
+            _write_egress_ruleset(root_dir, meta["egress_allowlist"], config.dns)
+        proc, stderr_file = self._run_until_running(
+            config, sandbox_id, root_dir, meta.get("cgroup"), restore=restore
+        )
+        meta["proc"] = proc
+        meta["stderr_file"] = stderr_file
+        meta["status"] = SandboxStatus.RUNNING
+        if config.network == "public":
+            meta["netns_ids"] = _holder_namespace_ids(root_dir)
+        if pause:
+            self.pause_sandbox(sandbox_id)
+
     def restore_sandbox(
         self,
         checkpoint_path: str,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
-        background: bool = True,
+        background: Optional[bool] = None,
         direct: bool = False,
         remote: Optional[bool] = None,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> str:
-        """Restore a new sandbox instance from a checkpoint bundle."""
+        """Restore a new sandbox instance from a checkpoint bundle.
+
+        The restored sandbox gets a bundle generated from the checkpoint's
+        configuration with any overrides applied, and is owned, limited and
+        cleaned up like a created one.
+        """
         # Step 1: Validate checkpoint bundle directory and load stored manifest configuration.
         checkpoint_path = os.path.abspath(checkpoint_path)
         if not os.path.exists(checkpoint_path):
             raise SandboxError(f"Checkpoint path does not exist: '{checkpoint_path}'")
 
         manifest, state_dir = load_checkpoint_manifest(checkpoint_path)
-        config = build_restored_config(manifest, cpu=cpu, memory=memory, **kwargs)
+        config = build_restored_config(
+            manifest,
+            cpu=cpu,
+            memory=memory,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
 
         is_remote = (
             remote if remote is not None else bool(manifest.get("remote", False))
@@ -1484,42 +1739,81 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     f"remote=True on a shared mount path."
                 )
 
-        # Step 2: Verify host runtime environment dependencies (runsc, network helpers).
-        if not shutil.which("runsc"):
-            raise SandboxCreationError(
-                "gVisor executable 'runsc' not found in PATH. "
-                "Please install gVisor (runsc) on the node."
-            )
-        if config.network == "public":
-            missing = [b for b in ("slirp4netns", "nsenter") if not shutil.which(b)]
-            if missing:
-                raise SandboxCreationError(
-                    "network='public' isolates each sandbox in its own network "
-                    "namespace via slirp4netns, but "
-                    f"{', '.join(repr(b) for b in missing)} was not found in "
-                    "PATH. Install slirp4netns (distro package, or a static "
-                    "build from github.com/rootless-containers/slirp4netns) "
-                    "and util-linux on the node image."
-                )
-
         if config.rootless:
             raise SandboxError(
                 "gVisor (runsc) does not support restore in rootless mode."
             )
 
-        # Step 3: Allocate a unique instance ID and host root directory for restored instance.
-        sandbox_uuid = uuid.uuid4().hex[:12]
-        sandbox_id = f"ray-sandbox-{sandbox_uuid}"
-        root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
-
-        try:
-            os.makedirs(root_dir, mode=0o777, exist_ok=True)
-            image_dir = self._image_manager.pull_image(
-                config.image,
-                timeout_seconds=timeout_seconds,
-                instance_id=sandbox_id,
+        # runsc restores guest memory in the background only from an
+        # uncompressed image. Checkpoints from before the manifest recorded
+        # compression were taken with the default, "none".
+        compression = manifest.get("compression", "none")
+        if background is None:
+            background = compression == "none"
+        elif background and compression != "none":
+            raise SandboxError(
+                f"Checkpoint at '{checkpoint_path}' is compressed "
+                f"({compression!r}), and runsc restores memory in the background "
+                "only from uncompressed checkpoints. Restore it with "
+                "background=False, or checkpoint with compression='none'."
             )
 
+        # Step 2: Verify host runtime environment dependencies (runsc, network helpers).
+        self._check_host_requirements(config)
+        cgroups = self._cgroup_manager_for(config)
+        restore = _RestoreImage(state_dir, background=background, direct=direct)
+
+        def start(config, sandbox_id, root_dir, owner_file, cgroup):
+            workdir_path, container_cwd = self._prepare_restored_bundle(
+                config, checkpoint_path, sandbox_id, root_dir
+            )
+            self._launch_sandbox(
+                config,
+                sandbox_id,
+                root_dir,
+                workdir_path,
+                container_cwd,
+                owner_file,
+                cgroup,
+                restore=restore,
+            )
+
+        # Step 3: Allocate a new ID, bundle, owner file and cgroup, and restore into them.
+        sandbox_id = self._provision(config, cgroups, start, action="restore")
+        self._check_dns_reachable(config, sandbox_id)
+        return sandbox_id
+
+    def _prepare_restored_bundle(
+        self,
+        config: SandboxConfig,
+        checkpoint_path: str,
+        sandbox_id: str,
+        root_dir: str,
+    ) -> Tuple[Optional[str], str]:
+        """Fill a new bundle from a checkpoint bundle.
+
+        Copies the checkpoint's filesystem state into the bundle, then
+        generates the bundle's config.json, resolv.conf and hosts from
+        ``config`` the same way a create does, so that overrides apply and
+        host paths point at this node's bundle and image cache.
+
+        Args:
+            config: The restored sandbox's configuration.
+            checkpoint_path: The checkpoint bundle directory.
+            sandbox_id: The restored sandbox's ID.
+            root_dir: The restored sandbox's new bundle directory.
+
+        Returns:
+            The host directory mounted at the workdir (or None), and the
+            sandbox's working directory.
+        """
+        try:
+            # Pin this node's copy of the image for the restored sandbox.
+            self._image_manager.pull_image(
+                config.image,
+                timeout_seconds=config.timeout_seconds,
+                instance_id=sandbox_id,
+            )
             container_cwd = (
                 config.workdir or self._image_manager.get_workdir(config.image) or "/"
             )
@@ -1530,247 +1824,36 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             for cand in ("rootfs", "upper"):
                 saved_rootfs = os.path.join(checkpoint_path, "fs", cand)
                 if os.path.isdir(saved_rootfs):
-                    try:
-                        copy_fs_tree(
-                            saved_rootfs,
-                            rootfs_dir,
-                            ignore_patterns=[".gvisor.filestore*"],
-                        )
-                    except Exception as e:
-                        raise SandboxCreationError(
-                            f"Failed to restore rootfs overlay for sandbox '{sandbox_id}': {e}"
-                        ) from e
+                    copy_fs_tree(
+                        saved_rootfs,
+                        rootfs_dir,
+                        ignore_patterns=[".gvisor.filestore*"],
+                    )
                     break
 
+            # The same rule as _start_sandbox: only an explicit workdir on a
+            # readonly rootfs is host-backed. build_restored_config keeps
+            # workdir and readonly as they were checkpointed.
             workdir_path = None
-            saved_workdir = os.path.join(checkpoint_path, "fs", "workdir")
-            target_workdir = config.workdir or manifest.get("workdir")
-
-            if os.path.isdir(saved_workdir) and target_workdir:
-                workdir_path = _safe_join_under(root_dir, target_workdir)
-                os.makedirs(workdir_path, mode=0o777, exist_ok=True)
-                try:
-                    copy_fs_tree(saved_workdir, workdir_path)
-                except Exception as e:
-                    raise SandboxCreationError(
-                        f"Failed to restore workdir for sandbox '{sandbox_id}': {e}"
-                    ) from e
-            elif config.workdir and config.readonly:
+            if config.workdir and config.readonly:
                 workdir_path = _safe_join_under(root_dir, config.workdir)
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
-
-            # Step 5: Restore OCI bundle configuration and network metadata files.
-            saved_config_path = os.path.join(checkpoint_path, "config.json")
-            target_config_path = os.path.join(root_dir, "config.json")
-            if os.path.isfile(saved_config_path):
-                shutil.copy2(saved_config_path, target_config_path)
-            else:
-                # Fallback to generating bundle config if config.json was not in bundle
-                self._image_manager.prepare_oci_bundle(
-                    root_dir=root_dir,
-                    workdir_path=workdir_path,
-                    container_cwd=container_cwd,
-                    image=config.image,
-                    env_dict=config.env,
-                    cpu=config.cpu,
-                    memory=config.memory,
-                    readonly=config.readonly,
-                    capabilities=config.capabilities,
-                    network=config.network,
-                    dns=config.dns,
-                    _oci_spec_transform_fn=config._oci_spec_transform_fn,
-                )
-
-            for net_file in ("resolv.conf", "hosts"):
-                saved_net_file = os.path.join(checkpoint_path, net_file)
-                if os.path.isfile(saved_net_file):
-                    shutil.copy2(saved_net_file, os.path.join(root_dir, net_file))
-
-            # Step 6: Rewrite host mount paths and patch OCI cgroup resource limits in target config.json.
-            if os.path.isfile(target_config_path):
-                with open(target_config_path, "r", encoding="utf-8") as f:
-                    spec_data = json.load(f)
-
-                # Update root.path and host mount paths to point to the new root_dir / workdir / resolv.conf / hosts
-                old_root_path = spec_data.get("root", {}).get("path")
-                if old_root_path:
-                    old_root_dir = os.path.dirname(old_root_path)
-                    for mount in spec_data.get("mounts", []):
-                        src = mount.get("source")
-                        if src and src.startswith(old_root_dir):
-                            mount["source"] = src.replace(old_root_dir, root_dir, 1)
-
-                spec_data.setdefault("root", {})["path"] = os.path.join(
-                    root_dir, "rootfs"
-                )
-
-                for mount in spec_data.get("mounts", []):
-                    dest = mount.get("destination")
-                    if dest == "/etc/resolv.conf":
-                        resolv_path = os.path.join(root_dir, "resolv.conf")
-                        if os.path.isfile(resolv_path):
-                            mount["source"] = resolv_path
-                    elif dest == "/etc/hosts":
-                        hosts_path = os.path.join(root_dir, "hosts")
-                        if os.path.isfile(hosts_path):
-                            mount["source"] = hosts_path
-                    elif workdir_path and dest == container_cwd:
-                        mount["source"] = workdir_path
-
-                # Apply environment variable overrides if provided
-                if config.env:
-                    proc_sec = spec_data.setdefault("process", {})
-                    current_env = proc_sec.get("env", [])
-                    filtered_env = []
-                    for e in current_env:
-                        key = e.split("=", 1)[0]
-                        if key not in config.env:
-                            filtered_env.append(e)
-                    for k, v in config.env.items():
-                        filtered_env.append(f"{k}={v}")
-                    proc_sec["env"] = filtered_env
-
-                # Apply capabilities overrides if provided
-                if config.capabilities is not None:
-                    proc_sec = spec_data.setdefault("process", {})
-                    caps = proc_sec.get("capabilities")
-                    if not isinstance(caps, dict):
-                        caps = {}
-                        proc_sec["capabilities"] = caps
-                    from ray.experimental.sandbox.image_manager import (
-                        _OCI_CAPABILITY_SETS,
-                    )
-
-                    for cap_set in _OCI_CAPABILITY_SETS:
-                        caps[cap_set] = list(dict.fromkeys(config.capabilities))
-
-                # Apply CPU and memory cgroup limit overrides if requested
-                if cpu is not None or memory is not None:
-                    linux_sec = spec_data.setdefault("linux", {})
-                    resources = linux_sec.setdefault("resources", {})
-                    if cpu is not None and cpu > 0:
-                        period = 100000
-                        quota = int(cpu * period)
-                        cpu_res = resources.setdefault("cpu", {})
-                        cpu_res["period"] = period
-                        cpu_res["quota"] = quota
-                    if memory is not None:
-                        parsed_mem = parse_memory_bytes(memory)
-                        if parsed_mem is not None and parsed_mem > 0:
-                            mem_res = resources.setdefault("memory", {})
-                            mem_res["limit"] = parsed_mem
-
-                # Update annotations to target node's locally pulled EROFS image
-                if image_dir:
-                    erofs_image_path = os.path.join(image_dir, ROOTFS_IMAGE)
-                    annotations = spec_data.get("annotations")
-                    if (
-                        isinstance(annotations, dict)
-                        and "dev.gvisor.spec.rootfs.source" in annotations
-                        and os.path.isfile(erofs_image_path)
-                    ):
-                        annotations["dev.gvisor.spec.rootfs.source"] = erofs_image_path
-
-                # Apply user-supplied _oci_spec_transform_fn if present
-                if config._oci_spec_transform_fn is not None:
-                    transformed = config._oci_spec_transform_fn(spec_data)
-                    if transformed is not None:
-                        spec_data = transformed
-
-                with open(target_config_path, "w", encoding="utf-8") as f:
-                    json.dump(spec_data, f, indent=2)
+                saved_workdir = os.path.join(checkpoint_path, "fs", "workdir")
+                if os.path.isdir(saved_workdir):
+                    copy_fs_tree(saved_workdir, workdir_path)
         except Exception as err:
-            self._image_manager.release_image(config.image, sandbox_id)
-            shutil.rmtree(root_dir, ignore_errors=True)
             raise SandboxCreationError(
                 f"Failed to prepare restored sandbox '{sandbox_id}': {err}"
             ) from err
 
-        # Step 7: Launch runsc restore process and wait for container to reach RUNNING status.
-        restore_args = self._build_restore_command(
-            config,
-            root_dir,
-            state_dir,
-            sandbox_id,
-            background=background,
-            direct=direct,
-        )
-
-        stderr_file = None
-        proc = None
-        start_time = time.time()
-        timeout = timeout_seconds
-
-        try:
-            stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
-            stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
-            proc = subprocess.Popen(
-                restore_args,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=stderr_file,
-                start_new_session=True,
-            )
-
-            while True:
-                if proc.poll() is not None and proc.returncode != 0:
-                    stderr_file.seek(0)
-                    stderr_str = stderr_file.read()
-                    raise SandboxCreationError(
-                        f"gVisor restore failed to start: {stderr_str}"
-                    )
-
-                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                res = subprocess.run(state_args, capture_output=True, text=True)
-                if res.returncode == 0:
-                    try:
-                        state_data = json.loads(res.stdout)
-                        status = state_data.get("status")
-                        if status == "running":
-                            break
-                        elif status in ("stopped", "error"):
-                            stderr_str = ""
-                            if stderr_file is not None:
-                                try:
-                                    stderr_file.seek(0)
-                                    stderr_str = stderr_file.read()
-                                except Exception:
-                                    pass
-                            raise SandboxCreationError(
-                                f"Restored gVisor container stopped unexpectedly (status: {status}). Stderr: {stderr_str}"
-                            )
-                    except Exception as e:
-                        if isinstance(e, SandboxCreationError):
-                            raise
-                        pass
-
-                if time.time() - start_time > timeout:
-                    raise SandboxTimeoutError(
-                        f"Restored gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
-                    )
-
-                time.sleep(0.01)
-        except Exception:
-            self._delete_container_state(config, sandbox_id)
-            if proc is not None:
-                self._terminate_tree(proc)
-            if stderr_file is not None:
-                stderr_file.close()
-            shutil.rmtree(root_dir, ignore_errors=True)
-            self._image_manager.release_image(config.image, sandbox_id)
-            raise
-
-        # Step 8: Register runtime metadata for the restored sandbox.
-        self._sandbox_metadata[sandbox_id] = {
-            "root_dir": root_dir,
-            "workdir": workdir_path,
-            "cwd": container_cwd,
-            "config": config,
-            "proc": proc,
-            "stderr_file": stderr_file,
-            "status": SandboxStatus.RUNNING,
-        }
-        return sandbox_id
+        # Step 5: Generate the OCI bundle from the restored configuration.
+        self._prepare_bundle(config, root_dir, workdir_path, container_cwd)
+        # /etc/hosts is writable inside the sandbox; keep its checkpointed
+        # contents over the freshly generated file.
+        saved_hosts = os.path.join(checkpoint_path, "hosts")
+        if os.path.isfile(saved_hosts):
+            shutil.copy2(saved_hosts, os.path.join(root_dir, "hosts"))
+        return workdir_path, container_cwd
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""
@@ -1805,10 +1888,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             pass
 
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, sandbox_id: str
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        sandbox_id: str,
+        restore: Optional[_RestoreImage] = None,
     ) -> List[str]:
         """Build the launch argv: `runsc run` under a shell that ignores SIGINT
         and SIGQUIT, namespace-wrapped for network="public".
+
+        With ``restore``, the launch command is `runsc restore` from that
+        checkpoint image instead, in the same wrapping: like `runsc run`, it
+        stays in the foreground while the sandbox runs and deletes the
+        container when it stops.
 
         Pure argv construction (no filesystem side effects) so tests can
         assert the exact command without runsc or slirp4netns installed. The
@@ -1842,7 +1934,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
-        args.extend(["run", "--bundle", root_dir, sandbox_id])
+        if restore is None:
+            args.extend(["run", "--bundle", root_dir, sandbox_id])
+        else:
+            args.extend(
+                ["restore", "--bundle", root_dir, "--image-path", restore.image_path]
+            )
+            if restore.background:
+                args.append("--background")
+            if restore.direct:
+                args.append("--direct")
+            args.append(sandbox_id)
         if use_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
             ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
@@ -1898,65 +2000,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             return ["bash", "-c", script]
         # The shell execs runsc, so the launch process is runsc itself.
         return ["sh", "-c", _IGNORE_INTERRUPTS + 'exec "$@"', "sh", *args]
-
-    def _build_restore_command(
-        self,
-        config: SandboxConfig,
-        root_dir: str,
-        state_dir: str,
-        sandbox_id: str,
-        background: bool = True,
-        direct: bool = False,
-    ) -> List[str]:
-        """Build the full `runsc restore` argv, namespace-wrapped for network="public"."""
-        args = self._runsc_base_args(config)
-        use_netns = config.network == "public"
-        if use_netns and "--rootless" in args:
-            args = [a for a in args if a != "--rootless"]
-            if "--ignore-cgroups" not in args:
-                args.insert(1, "--ignore-cgroups")
-        if config.network:
-            runsc_network = "host" if config.network == "public" else config.network
-            args.extend(["--network", runsc_network])
-        args.extend(["restore", "--bundle", root_dir, "--image-path", state_dir])
-        if background:
-            args.append("--background")
-        if direct:
-            args.append("--direct")
-        args.append(sandbox_id)
-
-        if use_netns:
-            netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
-            ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
-            runsc = " ".join(shlex.quote(a) for a in args)
-            slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
-            script = (
-                # This shell stays the parent of the holder, slirp4netns and
-                # runsc, and its exit trap kills and reaps the helpers.
-                "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
-                # setpriv --pdeathsig kills each child with this shell, which
-                # is what Ray kills when the owning worker exits.
-                "setpriv --pdeathsig KILL -- "
-                "unshare --user --map-root-user --net --fork --kill-child "
-                f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
-                "HOLDER=$!; "
-                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
-                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
-                f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
-                '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
-                f"setpriv --pdeathsig KILL -- {slirp} --ready-fd=3 --netns-type=path "
-                "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
-                f"3>{ready_file} & "
-                "SLIRP=$!; "
-                f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
-                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
-                f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
-                "nsenter --preserve-credentials -U -n -t $NSPID -- "
-                f"setpriv --pdeathsig KILL -- {runsc} & "
-                "wait $!"
-            )
-            return ["bash", "-c", script]
-        return args
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
         """Stop a sandbox's launch process, and everything it started, and reap it.
