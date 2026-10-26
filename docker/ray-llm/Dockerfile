@@ -16,12 +16,13 @@ RUN <<EOF
 set -euo pipefail
 
 cd "$HOME"
-curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+# The base image has wget but not curl.
+wget -qO- https://sh.rustup.rs | sh -s -- -y --profile minimal
 PROTOC_ARCH="$(uname -m)"
 if [[ "${PROTOC_ARCH}" == "aarch64" ]]; then
     PROTOC_ARCH="aarch_64"
 fi
-curl -fsSLo protoc.zip \
+wget -qO protoc.zip \
     "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-${PROTOC_ARCH}.zip"
 python -m zipfile -e protoc.zip protoc
 chmod +x protoc/bin/protoc
