@@ -24,7 +24,6 @@ from .base_autoscaling_coordinator import (
 from ray._common.utils import env_bool
 from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -804,20 +803,22 @@ _get_or_create_lock = threading.Lock()
 
 def get_or_create_autoscaling_coordinator():
     """Get or create the AutoscalingCoordinator actor."""
-    # Create the actor on the local node,
-    # to reduce network overhead.
-    scheduling_strategy = NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
-        soft=False,
-    )
-    actor_cls = ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)(
-        _AutoscalingCoordinatorActor
-    ).options(
+    # Run on the head node, which lives as long as the cluster, like Ray Serve's
+    # controller. Every requester on the cluster shares this detached actor, so
+    # it can't be tied to whichever node created it: if that node died, the
+    # actor could never restart. Soft node affinity doesn't help here, because
+    # Ray places an actor that requests no resources on a random node unless
+    # its affinity is hard.
+    actor_cls = ray.remote(
+        num_cpus=0,
+        resources={HEAD_NODE_RESOURCE_LABEL: 0.001},
+        max_restarts=-1,
+        max_task_retries=-1,
+    )(_AutoscalingCoordinatorActor).options(
         name="AutoscalingCoordinator",
         namespace="AutoscalingCoordinator",
         get_if_exists=True,
         lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
     )
     # NOTE: Need the following lock, because Ray Core doesn't allow creating the same
     # actor from multiple threads simultaneously.

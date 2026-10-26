@@ -428,6 +428,30 @@ def test_autoscaling_coordinator_e2e(cluster, gpu_tasks_include_cpu):
     assert ray.get([res1, res2]) == ["ok"] * 2
 
 
+def test_coordinator_actor_runs_on_the_head_node(cluster):
+    """Every requester on the cluster shares the coordinator, so it can't be
+    pinned to the node of whoever created it first: if that node died, the
+    actor could never restart."""
+    worker = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    # The head node has no CPUs, so this runs on the worker node.
+    @ray.remote(num_cpus=1)
+    def create_coordinator():
+        get_or_create_autoscaling_coordinator()
+
+    ray.get(create_coordinator.remote())
+    coordinator = get_or_create_autoscaling_coordinator()
+    assert ray.get(coordinator.get_reserved_resources.remote("r")) == {}
+    actor_info = ray._private.state.actors(coordinator._actor_id.hex())
+    assert actor_info["Address"]["NodeID"] == cluster.head_node.node_id
+
+    # Losing the node that created it doesn't affect it.
+    cluster.remove_node(worker)
+
+    assert ray.get(coordinator.get_reserved_resources.remote("r"), timeout=60) == {}
+
+
 @pytest.fixture
 def autoscaling_coordinator_actor(ray_start_regular_shared):
     actor_cls = ray.remote(num_cpus=0)(_AutoscalingCoordinatorActor)
