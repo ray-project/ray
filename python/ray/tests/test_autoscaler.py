@@ -537,6 +537,7 @@ class AutoscalingTest(unittest.TestCase):
             config,
             MockProvider(),
             no_restart=False,
+            map_head_auth_token=False,
         )
 
         try:
@@ -924,6 +925,8 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
 
+    # The auth token file mount would also change the container's mounts.
+    @patch.dict(os.environ, {"RAY_AUTH_MODE": "disabled"})
     def testDockerFileMountsAdded(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["file_mounts"] = {"source": "/dev/null"}
@@ -976,6 +979,8 @@ class AutoscalingTest(unittest.TestCase):
             "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_config.yaml"
         )
 
+    # The auth token file mount would also change the container's mounts.
+    @patch.dict(os.environ, {"RAY_AUTH_MODE": "disabled"})
     def testDockerFileMountsRemoved(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["file_mounts"] = {}
