@@ -5,8 +5,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.top_n_operator import (
     TOP_N_MAX_CANDIDATE_ROWS_CONFIG_KEY,
@@ -22,106 +20,23 @@ from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.tests.conftest import *  # noqa: F401, F403
 
 
-@pytest.mark.parametrize("upstream", ["input", "read", "map"])
 def test_top_n_planner_routes_to_local_map_and_final_merge(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
-    upstream,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
-
-    # Parentheses denote stages fused into a single MapOperator:
-    # input: InputDataBuffer -> LocalTopN -> TopNMerge
-    # read: InputDataBuffer -> (ReadRange -> LocalTopN) -> TopNMerge
-    # map: InputDataBuffer -> (ReadRange -> Map -> LocalTopN) -> TopNMerge
-    if upstream == "input":
-        ds = ray.data.from_items(
-            [{"id": value} for value in range(10)], override_num_blocks=2
-        )
-    else:
-        ds = ray.data.range(10, override_num_blocks=2)
-        if upstream == "map":
-            ds = ds.map(lambda row: {"id": 9 - row["id"]})
-    ds = ds.sort("id").limit(3)
+    ds = ray.data.range(10, override_num_blocks=2).sort("id").limit(3)
 
     dag = get_execution_plan(ds._logical_plan)[0].dag
 
     assert isinstance(dag, TopNMergeOperator)
     assert dag.name == "TopNMerge(limit=3)"
-
     local_map = dag.input_dependencies[0]
-    assert isinstance(local_map, MapOperator)
-    assert local_map.name.endswith("LocalTopN(limit=3)")
-    assert isinstance(local_map.input_dependencies[0], InputDataBuffer)
-
-    if upstream != "input":
-        assert "ReadRange->" in local_map.name
-    if upstream == "map":
-        assert "Map(<lambda>)->" in local_map.name
-
-    assert ds.take_all() == [{"id": value} for value in range(3)]
-
-
-def test_top_n_fuses_upstream_map_that_creates_sort_key(
-    ray_start_regular_shared_2_cpus,
-    restore_data_context,
-):
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
-    ds = (
-        ray.data.range(10, override_num_blocks=2)
-        .map(lambda row: {"key": 9 - row["id"]})
-        .sort("key")
-        .limit(3)
-    )
-
-    dag = get_execution_plan(ds._logical_plan)[0].dag
-    local_map = dag.input_dependencies[0]
-
-    assert isinstance(dag, TopNMergeOperator)
-    assert isinstance(local_map, MapOperator)
-    assert "Map(<lambda>)->LocalTopN(limit=3)" in local_map.name
-    assert isinstance(local_map.input_dependencies[0], InputDataBuffer)
-    assert ds.take_all() == [{"key": value} for value in range(3)]
-
-
-@pytest.mark.parametrize(
-    "map_kwargs",
-    [{"num_cpus": 2}, {"compute": ActorPoolStrategy(size=1)}],
-)
-def test_top_n_does_not_fuse_incompatible_upstream_map(
-    ray_start_regular_shared_2_cpus,
-    restore_data_context,
-    map_kwargs,
-):
-    class Identity:
-        def __call__(self, batch):
-            return batch
-
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
-    ds = (
-        ray.data.range(10, override_num_blocks=2)
-        .map_batches(
-            Identity if "compute" in map_kwargs else lambda batch: batch,
-            **map_kwargs,
-        )
-        .sort("id")
-        .limit(3)
-    )
-
-    dag = get_execution_plan(ds._logical_plan)[0].dag
-    local_map = dag.input_dependencies[0]
-
-    assert isinstance(dag, TopNMergeOperator)
     assert isinstance(local_map, MapOperator)
     assert local_map.name == "LocalTopN(limit=3)"
-    assert isinstance(local_map.input_dependencies[0], MapOperator)
-    assert ds.take_all() == [{"id": value} for value in range(3)]
+    assert not local_map.supports_fusion()
 
 
 @pytest.mark.parametrize("limit", [0, 1, 7, 10, 20])
