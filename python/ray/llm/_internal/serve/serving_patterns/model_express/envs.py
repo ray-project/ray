@@ -20,6 +20,18 @@ def get_mx_server_binary() -> str:
     )
 
 
+def get_mx_app_name() -> str:
+    """Name of the Serve app that runs the MX server.
+
+    LLM replicas look the server up in this app; set RAY_MX_APP_NAME when
+    deploying it under another name.
+
+    Returns:
+        The app name.
+    """
+    return os.environ.get("RAY_MX_APP_NAME", "mx")
+
+
 def get_mx_server_port() -> int:
     """gRPC port of the MX server.
 

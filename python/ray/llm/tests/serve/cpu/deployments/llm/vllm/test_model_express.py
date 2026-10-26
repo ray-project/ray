@@ -103,10 +103,18 @@ def test_setup_sets_client_env(ready_port_base):
     assert {"MX_", "MODEL_EXPRESS_"} <= set(prefixes)
 
 
-def test_setup_uses_configured_app_name(ready_port_base):
-    config = _llm_config(ready_port_base, **{model_express.MX_APP_NAME_KEY: "mx-2"})
-    _, looked_up = _setup(config, local_rank=0, env={})
-    assert looked_up == [("ModelExpressServer", "mx-2")]
+@pytest.mark.parametrize(
+    "experimental, env, expected",
+    [
+        ({}, {"RAY_MX_APP_NAME": "mx-env"}, "mx-env"),
+        ({"MX_APP_NAME": "mx-2"}, {"RAY_MX_APP_NAME": "mx-env"}, "mx-2"),
+    ],
+)
+def test_setup_uses_configured_app_name(ready_port_base, experimental, env, expected):
+    _, looked_up = _setup(
+        _llm_config(ready_port_base, **experimental), local_rank=0, env=env
+    )
+    assert looked_up == [("ModelExpressServer", expected)]
 
 
 def test_setup_keeps_user_env(ready_port_base):
@@ -144,6 +152,7 @@ def test_ready_endpoint_reports_engine_start(ready_port_base):
 def test_mx_server_envs():
     with patch.dict("os.environ", {}, clear=True):
         assert mx_envs.get_mx_server_binary() == "/usr/local/bin/modelexpress-server"
+        assert mx_envs.get_mx_app_name() == "mx"
         assert mx_envs.get_mx_server_port() == 8931
         assert importlib.reload(mx_envs).MX_SERVER_HEALTH_CHECK_PERIOD_S == 10
     with patch.dict(

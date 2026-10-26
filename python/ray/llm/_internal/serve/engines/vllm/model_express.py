@@ -18,6 +18,9 @@ import ray
 from ray import serve
 from ray.llm._internal.common.utils.download_utils import MODEL_EXPRESS_LOAD_FORMATS
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.serving_patterns.model_express.envs import (
+    get_mx_app_name,
+)
 from ray.llm._internal.serve.serving_patterns.model_express.mx_server import (
     MX_SERVER_DEPLOYMENT_NAME,
 )
@@ -30,7 +33,6 @@ MX_APP_NAME_KEY = "MX_APP_NAME"
 MX_METADATA_PORT_BASE_KEY = "MX_METADATA_PORT_BASE"
 MX_WORKER_GRPC_PORT_BASE_KEY = "MX_WORKER_GRPC_PORT_BASE"
 MX_READY_PORT_BASE_KEY = "MX_READY_PORT_BASE"
-DEFAULT_MX_APP_NAME = "mx"
 DEFAULT_MX_METADATA_PORT_BASE = 15555
 DEFAULT_MX_WORKER_GRPC_PORT_BASE = 16555
 DEFAULT_MX_READY_PORT_BASE = 17555
@@ -97,7 +99,7 @@ async def setup_model_express(llm_config: LLMConfig) -> None:
     offset = _port_offset(llm_config)
 
     if "MX_SERVER_ADDRESS" not in os.environ:
-        app_name = configs.get(MX_APP_NAME_KEY, DEFAULT_MX_APP_NAME)
+        app_name = configs.get(MX_APP_NAME_KEY) or get_mx_app_name()
         os.environ["MX_SERVER_ADDRESS"] = await _mx_server_address(app_name)
     _set_default(
         "MX_METADATA_PORT",
