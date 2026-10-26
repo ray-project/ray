@@ -108,7 +108,7 @@ They're rendered like this:
 
 ## Which type of example should you write?
 
-Where the example lives decides most of the choice. In a docstring, use *doctest-style*. On a documentation page, choose between *code-output-style* and *literalinclude*, whichever best illustrates your API.
+In a docstring, use *doctest-style*. On a documentation page, choose between *code-output-style* and *literalinclude*, whichever best illustrates your API.
 
 :::{tip}
 If you're not sure which style to use on a documentation page, use *code-output-style*.
@@ -132,7 +132,7 @@ Example:
 
 ### When to use *code-output-style*
 
-On a documentation page, use *code-output-style* for an example whose output you want to show, including object representations.
+On a documentation page, use *code-output-style* to show the code and its expected output, including object representations.
 
 ```
 .. testcode::
