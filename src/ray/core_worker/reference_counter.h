@@ -168,6 +168,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   void SetReleaseLineageCallback(const LineageReleasedCallback &callback) override;
 
+  void SetMemoryStoreDeleteCallback(
+      std::function<void(const std::vector<ObjectID> &)> callback) override;
+
   void PublishRefRemoved(const ObjectID &object_id) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   size_t NumObjectIDsInScope() const override ABSL_LOCKS_EXCLUDED(mutex_);
@@ -755,6 +758,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// The object's Reference will be erased after this callback.
   // Returns the amount of lineage in bytes released.
   LineageReleasedCallback on_lineage_released_;
+  /// The callback to delete the in-process (memory store) value of objects that
+  /// go out of scope through internal paths that cannot report them through a
+  /// caller-provided `deleted` vector. Set by the core worker. It is not
+  /// guarded by a lock because it is set once during initialization, before any
+  /// object can go out of scope.
+  std::function<void(const std::vector<ObjectID> &)> delete_from_memory_store_;
   /// Optional shutdown hook to call when all references have gone
   /// out of scope.
   std::function<void()> shutdown_hook_ ABSL_GUARDED_BY(mutex_) = nullptr;
