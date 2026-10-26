@@ -2455,6 +2455,12 @@ class TestRouterMetricsManager:
                 r = random.choice(replica_ids)
                 running_requests[r] += 1
                 metrics_manager.inc_num_running_requests_for_replica(r)
+            custom_router_metrics = {
+                "outstanding_effective_prefill_tokens": 123.0,
+                "active_decode_requests": 7.0,
+            }
+            metrics_manager.set_custom_router_metrics(custom_router_metrics)
+            metrics_manager._add_autoscaling_metrics_point()
 
             # Which wire format we chose to send. The kill switch is the only thing
             # deciding it, so both of its positions are asserted here.
@@ -2478,10 +2484,19 @@ class TestRouterMetricsManager:
                 assert set(report["replica_keys"]) == {
                     r.to_full_id_str() for r in running_requests
                 }
+                assert set(report["router_metric_names"]) == set(custom_router_metrics)
+                assert report["router_val"].tolist() == list(
+                    custom_router_metrics.values()
+                )
             else:
                 report = decompress_metric_report(payload)
                 assert report.deployment_id == deployment_id
                 assert report.handle_id == handle_id
+                assert {
+                    name: series[-1].value
+                    for name, series in report.router_metrics.items()
+                    if name in custom_router_metrics
+                } == custom_router_metrics
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,

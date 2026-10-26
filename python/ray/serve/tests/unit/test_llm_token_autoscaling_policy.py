@@ -26,7 +26,7 @@ def _context(
         }
 
     return SimpleNamespace(
-        raw_metrics={
+        raw_router_metrics={
             OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: to_series(prefill_by_replica or {}),
             ACTIVE_DECODE_REQUESTS: to_series(decode_by_replica or {}),
         },
@@ -34,6 +34,7 @@ def _context(
         config=SimpleNamespace(look_back_period_s=30),
         running_replicas=list(replica_ids),
         target_num_replicas=target_num_replicas,
+        total_queued_requests=0,
     )
 
 
@@ -56,7 +57,7 @@ def test_scales_from_max_global_snapshot_across_reporters():
     assert state["decode_required_replicas"] == 3
 
 
-def test_keeps_one_engine_relay_when_idle():
+def test_scales_to_zero_when_idle():
     policy = LLMTokenAutoscalingPolicy(100, 4)
 
     replicas, _ = policy(
@@ -65,6 +66,19 @@ def test_keeps_one_engine_relay_when_idle():
             decode_by_replica={"a": (99, 0)},
         )
     )
+
+    assert replicas == 0
+
+
+def test_keeps_one_replica_when_requests_are_queued():
+    policy = LLMTokenAutoscalingPolicy(100, 4)
+    ctx = _context(
+        prefill_by_replica={"a": (99, 0)},
+        decode_by_replica={"a": (99, 0)},
+    )
+    ctx.total_queued_requests = 1
+
+    replicas, _ = policy(ctx)
 
     assert replicas == 1
 
@@ -86,6 +100,21 @@ def test_holds_target_for_partial_or_stale_snapshot(
         _context(
             prefill_by_replica=prefill_by_replica,
             decode_by_replica=decode_by_replica,
+            target_num_replicas=7,
+        )
+    )
+
+    assert replicas == 7
+    assert state == {}
+
+
+def test_holds_target_for_mismatched_snapshot_timestamps():
+    policy = LLMTokenAutoscalingPolicy(100, 4)
+
+    replicas, state = policy(
+        _context(
+            prefill_by_replica={"a": (98, 100)},
+            decode_by_replica={"a": (99, 2)},
             target_num_replicas=7,
         )
     )

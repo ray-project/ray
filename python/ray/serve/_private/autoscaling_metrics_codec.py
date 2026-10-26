@@ -19,6 +19,7 @@ from typing import Any, Dict, List, TypedDict
 import numpy as np
 
 from ray.serve._private.common import (
+    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
@@ -124,6 +125,17 @@ def _encode_handle(rep: HandleMetricReport) -> bytes:
         off += n
     q_ts = [p.timestamp for p in rep.queued_requests]
     q_val = [p.value for p in rep.queued_requests]
+    router_metric_names = [
+        name for name in rep.router_metrics if name != QUEUED_REQUESTS_KEY
+    ]
+    router_entries, router_series = [], []
+    router_off = 0
+    for i, name in enumerate(router_metric_names):
+        series = rep.router_metrics[name]
+        router_entries.append((i, router_off, len(series)))
+        router_series.append(series)
+        router_off += len(series)
+    router_ts, router_val = _flatten_series(router_series)
     arrays = {
         "entries": (
             np.array(entries, dtype="<i8") if entries else np.zeros((0, 4), "<i8")
@@ -132,6 +144,13 @@ def _encode_handle(rep: HandleMetricReport) -> bytes:
         "val": np.array(val, dtype="<f8"),
         "q_ts": np.array(q_ts, dtype="<f8"),
         "q_val": np.array(q_val, dtype="<f8"),
+        "router_entries": (
+            np.array(router_entries, dtype="<i8")
+            if router_entries
+            else np.zeros((0, 3), "<i8")
+        ).reshape(-1, 3),
+        "router_ts": np.array(router_ts, dtype="<f8"),
+        "router_val": np.array(router_val, dtype="<f8"),
     }
     descriptors, blob = _pack(arrays)
     header = {
@@ -143,6 +162,7 @@ def _encode_handle(rep: HandleMetricReport) -> bytes:
         "timestamp": rep.timestamp,
         "metric_names": metric_names,
         "replica_keys": replica_keys,
+        "router_metric_names": router_metric_names,
         "arrays": descriptors,
     }
     return _frame(header, blob)
@@ -185,10 +205,16 @@ def decode(buf: bytes) -> Dict[str, Any]:
     out = {"header": header}
     for name in desc:
         out[name] = _view(desc, raw, base, name)  # zero-copy float64/int64 views
+    router_ts = np.asarray(out.get("router_ts", ()))
+    router_val = np.asarray(out.get("router_val", ()))
     # Sanity-check the ragged index HERE so a malformed frame fails as one isolated
     # ingest error instead of raising inside the control loop's merge every tick until
     # the entry ages out. Unconditional: a header field must not be able to skip it.
-    if out["val"].size != out["ts"].size or out["q_ts"].size != out["q_val"].size:
+    if (
+        out["val"].size != out["ts"].size
+        or out["q_ts"].size != out["q_val"].size
+        or router_ts.size != router_val.size
+    ):
         raise ValueError("columnar frame corrupt: array length mismatch")
     entries = out["entries"]
     if entries.size and (
@@ -198,6 +224,19 @@ def decode(buf: bytes) -> Dict[str, Any]:
         or int((entries[:, 2] + entries[:, 3]).max()) > out["ts"].size
     ):
         raise ValueError("columnar frame corrupt: ragged index out of bounds")
+    router_entries = out.get("router_entries")
+    if (
+        router_entries is not None
+        and router_entries.size
+        and (
+            int(router_entries.min()) < 0
+            or int(router_entries[:, 0].max())
+            >= len(header.get("router_metric_names", []))
+            or int((router_entries[:, 1] + router_entries[:, 2]).max())
+            > out["router_ts"].size
+        )
+    ):
+        raise ValueError("columnar frame corrupt: router ragged index out of bounds")
     return out
 
 
@@ -223,6 +262,10 @@ class FlatHandleReport(TypedDict):
     replica_keys: List[str]
     q_ts: np.ndarray
     q_val: np.ndarray
+    router_metric_names: List[str]
+    router_entries: np.ndarray
+    router_ts: np.ndarray
+    router_val: np.ndarray
 
 
 def decode_handle_flat(payload: bytes) -> FlatHandleReport:
@@ -246,4 +289,14 @@ def decode_handle_flat(payload: bytes) -> FlatHandleReport:
         "replica_keys": h["replica_keys"],
         "q_ts": np.ascontiguousarray(view["q_ts"], dtype=np.float64),
         "q_val": np.ascontiguousarray(view["q_val"], dtype=np.float64),
+        "router_metric_names": h.get("router_metric_names", []),
+        "router_entries": np.ascontiguousarray(
+            view.get("router_entries", np.zeros((0, 3))), dtype=np.int64
+        ).reshape(-1, 3),
+        "router_ts": np.ascontiguousarray(
+            view.get("router_ts", np.array([])), dtype=np.float64
+        ),
+        "router_val": np.ascontiguousarray(
+            view.get("router_val", np.array([])), dtype=np.float64
+        ),
     }

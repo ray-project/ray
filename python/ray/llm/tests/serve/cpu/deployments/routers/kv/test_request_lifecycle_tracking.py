@@ -752,18 +752,26 @@ async def test_active_load_tracking():
 async def test_autoscaling_snapshot_tracks_request_phases():
     actor = LocalKVTokenTracker(block_size=16)
     actor._svc.effective_prefill_tokens = 3
+    published = []
+    actor.set_autoscaling_metrics_sink(lambda snapshot: published.append(snapshot))
+    assert published[-1] == {
+        "outstanding_effective_prefill_tokens": 0,
+        "active_decode_requests": 0,
+    }
 
     await reserve(actor, "cached", 1, list(range(20)))
     assert await actor.get_autoscaling_snapshot() == {
         "outstanding_effective_prefill_tokens": 3,
         "active_decode_requests": 0,
     }
+    assert published[-1] == await actor.get_autoscaling_snapshot()
 
     await actor.on_prefill_complete("cached")
     assert await actor.get_autoscaling_snapshot() == {
         "outstanding_effective_prefill_tokens": 0,
         "active_decode_requests": 1,
     }
+    assert published[-1] == await actor.get_autoscaling_snapshot()
 
     # Duplicate lifecycle events are idempotent.
     await actor.on_prefill_complete("cached")
@@ -774,6 +782,29 @@ async def test_autoscaling_snapshot_tracks_request_phases():
 
     await actor.on_request_completed("cached")
     assert await actor.get_autoscaling_snapshot() == {
+        "outstanding_effective_prefill_tokens": 0,
+        "active_decode_requests": 0,
+    }
+    assert published[-1] == await actor.get_autoscaling_snapshot()
+
+
+@pytest.mark.asyncio
+async def test_autoscaling_snapshot_publishes_once_per_lifecycle_batch():
+    actor = LocalKVTokenTracker(block_size=16)
+    published = []
+    actor.set_autoscaling_metrics_sink(lambda snapshot: published.append(snapshot))
+    await reserve(actor, "batched", 1, list(range(20)))
+
+    before_batch = len(published)
+    await actor.on_lifecycle_events(
+        [
+            ("on_prefill_complete", ("batched",)),
+            ("on_request_completed", ("batched",)),
+        ]
+    )
+
+    assert len(published) == before_batch + 1
+    assert published[-1] == {
         "outstanding_effective_prefill_tokens": 0,
         "active_decode_requests": 0,
     }

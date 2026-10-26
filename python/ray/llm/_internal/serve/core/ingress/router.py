@@ -179,6 +179,10 @@ class LLMRouter:
 
             self._token_sender = token_channel.TokenSender()
         self._handle._init()
+        if self._kv_token_tracker is not None:
+            self._kv_token_tracker.set_autoscaling_metrics_sink(
+                self._handle._set_router_autoscaling_metrics
+            )
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -303,16 +307,6 @@ class LLMRouter:
     async def on_reservations_created(self, batch):
         """Ingress-facing intake for already-selected reservation bookings."""
         return await self._kv_token_tracker.on_reservations_created(batch)
-
-    async def get_autoscaling_snapshot(self) -> Dict[str, int]:
-        """Return the KV tracker's current global work estimate.
-
-        A non-KV-aware router has no tracker and therefore cannot provide the
-        cache-aware signal. Engine relays ignore an empty response.
-        """
-        if self._kv_token_tracker is None:
-            return {}
-        return await self._kv_token_tracker.get_autoscaling_snapshot()
 
     def _push_prompt_tokens(
         self,

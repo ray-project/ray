@@ -22,6 +22,7 @@ from ray.serve._private import (
 )
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import (
+    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
@@ -114,6 +115,16 @@ def _rich_handle_report():
         queued_requests=[TimeStampedValue(9.0 + i, float(i)) for i in range(4)],
         metrics=metrics,
         timestamp=123.5,
+        router_metrics={
+            "outstanding_effective_prefill_tokens": [
+                TimeStampedValue(10.0, 1200.0),
+                TimeStampedValue(11.0, 800.0),
+            ],
+            "active_decode_requests": [
+                TimeStampedValue(10.0, 14.0),
+                TimeStampedValue(11.0, 17.0),
+            ],
+        },
     )
 
 
@@ -236,6 +247,46 @@ def test_encode_decode_round_trip_preserves_every_series():
         for metric, per_replica in rep.metrics.items()
         for key, series in per_replica.items()
     }
+    got_router = {}
+    for metric_idx, off, n in flat["router_entries"].tolist():
+        got_router[flat["router_metric_names"][metric_idx]] = list(
+            zip(
+                flat["router_ts"][off : off + n].tolist(),
+                flat["router_val"][off : off + n].tolist(),
+            )
+        )
+    assert got_router == {
+        metric: [(p.timestamp, p.value) for p in series]
+        for metric, series in rep.router_metrics.items()
+        if metric != QUEUED_REQUESTS_KEY
+    }
+
+
+@pytest.mark.parametrize("columnar", [False, True])
+def test_context_exposes_raw_router_metrics_by_handle(columnar):
+    report = _rich_handle_report()
+    state = _state()
+    if columnar:
+        state.record_columnar_metrics_for_handle(
+            codec.decode_handle_flat(codec.encode(report))
+        )
+    else:
+        state.record_request_metrics_for_handle(report)
+
+    raw = state.get_autoscaling_context(1).raw_router_metrics
+    assert raw is not None
+    assert raw[QUEUED_REQUESTS_KEY][report.handle_id] == report.queued_requests
+    for metric_name in (
+        "outstanding_effective_prefill_tokens",
+        "active_decode_requests",
+    ):
+        assert [
+            (point.timestamp, point.value)
+            for point in raw[metric_name][report.handle_id]
+        ] == [
+            (point.timestamp, point.value)
+            for point in report.router_metrics[metric_name]
+        ]
 
 
 def test_decode_validates_every_frame_whatever_the_header_says():
