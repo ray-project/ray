@@ -155,6 +155,7 @@ def test_read_parquet_v2_columns_rejects_string(tmp_path, restore_ctx):
     restore_ctx.use_datasource_v2 = True
     # Without the check, ``"ab"`` would silently select ``["a", "b"]``.
     with pytest.raises(TypeError, match="`columns` must be a list of strings."):
+        # pyrefly: ignore[bad-argument-type]  # the wrong type is the point
         ray.data.read_parquet(str(tmp_path), columns="ab")
 
 
