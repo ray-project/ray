@@ -112,7 +112,7 @@ type AcceleratorMemoryEntryProps = {
   slot: number;
   utilization: number;
   total: number;
-  utilPercent?: number;
+  utilPercent?: number | null;
 };
 
 const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({

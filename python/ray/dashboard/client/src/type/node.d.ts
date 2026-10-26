@@ -65,14 +65,14 @@ export type GPUStats = {
   uuid: string;
   index: number;
   name: string;
-  utilizationGpu?: number;
+  utilizationGpu?: number | null;
   memoryUsed: number;
   memoryTotal: number;
-  processesPids?: ProcessGPUUsage[];
+  processesPids?: ProcessGPUUsage[] | null;
   /** Current power draw in milliwatts (e.g. NVIDIA, AMD) */
-  powerMw?: number;
+  powerMw?: number | null;
   /** Temperature in Celsius (e.g. NVIDIA) */
-  temperatureC?: number;
+  temperatureC?: number | null;
 };
 
 export type ProcessTPUUsage = {
@@ -89,9 +89,9 @@ export type TPUStats = {
   tpuTopology: string;
   memoryUsed: number;
   memoryTotal: number;
-  tensorcoreUtilization?: number;
-  hbmUtilization?: number;
-  processesPids?: ProcessTPUUsage[];
+  tensorcoreUtilization?: number | null;
+  hbmUtilization?: number | null;
+  processesPids?: ProcessTPUUsage[] | null;
 };
 
 export type NodeDetailExtend = {

@@ -10,7 +10,7 @@ export type UnifiedAcceleratorStat = {
   name: string;
   index: number;
   type: "GPU" | "TPU";
-  utilization?: number;
+  utilization?: number | null;
   memoryUsed: number;
   memoryTotal: number;
   processesPids?: UnifiedProcessAcceleratorUsage[];
