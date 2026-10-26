@@ -863,6 +863,14 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
+# When metrics need the token (token auth on, RAY_AUTH_SKIP_METRICS unset),
+# HAProxy serves its exporter and stats page only on this 0600 unix socket, and
+# HAProxyManager serves them on the metrics port behind the token check that
+# Ray's other metrics endpoints use.
+RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH", "/tmp/haproxy-serve/exporter.sock"
+)
+
 # Per-worker-node override for the proxy's HTTP/gRPC bind ports. Head node exempt.
 # Prefer http_options.port / grpc_options.port. This override only matters when
 # proxies are colocated on one machine and need distinct ports without SO_REUSEPORT.
