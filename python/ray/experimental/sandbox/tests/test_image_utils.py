@@ -6,6 +6,7 @@ import json
 import mmap
 import os
 import re
+import stat
 import sys
 import tarfile
 import threading
@@ -313,6 +314,117 @@ def test_extract_tar_layer_whiteouts(tmp_path):
     assert not (dest / "app" / "file2.txt").exists()
     assert not (dest / "app" / "file3.txt").exists()
     assert (dest / "app" / "file4.txt").read_bytes() == b"file4 content"
+
+
+def _ordered_layer(*entries):
+    """Build a layer tar with entries in the given order.
+
+    Each entry is (name, contents[, owner]). Use None for directory contents.
+    The optional owner sets both uid and gid; it defaults to 0.
+    """
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name, data, *owner in entries:
+            uid = owner[0] if owner else 0
+            if data is None:
+                _add_member(
+                    tar, name, uid=uid, gid=uid, mode=0o755, typ=tarfile.DIRTYPE
+                )
+            else:
+                _add_member(tar, name, data, uid=uid, gid=uid)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("whiteout_first", [True, False])
+@pytest.mark.parametrize(
+    "whiteout", ["cache/.wh..wh..opq", ".wh.cache", ".wh..wh..opq"]
+)
+def test_whiteout_hides_only_lower_layers(tmp_path, whiteout, whiteout_first):
+    """Preserve current-layer entries whether the whiteout comes before or
+    after them."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    ownership = {}
+    lower = _ordered_layer(
+        ("cache", None),
+        ("cache/stale.txt", b"stale", 5),
+        ("cache/sub", None),
+        ("cache/sub/old.txt", b"old"),
+    )
+    extract_tar_layer(lower, str(dest), ownership=ownership)
+
+    written = [
+        ("cache", None),
+        ("cache/fresh.txt", b"fresh", 7),
+        ("cache/sub", None),
+        ("cache/sub/new.txt", b"new"),
+    ]
+    entries = (
+        [(whiteout, b""), *written] if whiteout_first else [*written, (whiteout, b"")]
+    )
+    extract_tar_layer(_ordered_layer(*entries), str(dest), ownership=ownership)
+
+    files = sorted(str(p.relative_to(dest)) for p in dest.rglob("*") if p.is_file())
+    assert files == ["cache/fresh.txt", "cache/sub/new.txt"]
+    assert ownership == {"cache/fresh.txt": (7, 7)}
+
+
+@pytest.mark.parametrize("whiteout_first", [True, False])
+def test_whiteout_keeps_a_file_its_layer_writes(tmp_path, whiteout_first):
+    """A ``.wh.<name>`` hides the lower layer's ``name``, not the one its own
+    layer writes."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    ownership = {}
+    lower = _ordered_layer(("cache", None), ("cache/app.conf", b"lower", 5))
+    extract_tar_layer(lower, str(dest), ownership=ownership)
+
+    entries = [("cache/.wh.app.conf", b""), ("cache/app.conf", b"upper", 7)]
+    if not whiteout_first:
+        entries.reverse()
+    extract_tar_layer(_ordered_layer(*entries), str(dest), ownership=ownership)
+
+    assert (dest / "cache" / "app.conf").read_bytes() == b"upper"
+    assert ownership == {"cache/app.conf": (7, 7)}
+
+
+def test_whiteout_skips_a_directory_it_cannot_list(tmp_path):
+    """A lower-layer directory the extracting user can't list doesn't fail
+    the pull, even when the layer that whites it out also makes it readable
+    again."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        _add_member(tar, "spool", mode=0o300, typ=tarfile.DIRTYPE)
+        _add_member(tar, "spool/old", b"old")
+    extract_tar_layer(buf.getvalue(), str(dest))
+
+    upper = _ordered_layer(("spool", None), ("spool/new", b"new"), (".wh.spool", b""))
+    try:
+        extract_tar_layer(upper, str(dest))
+
+        assert (dest / "spool" / "new").read_bytes() == b"new"
+        assert stat.S_IMODE((dest / "spool").stat().st_mode) == 0o755
+    finally:
+        # A failed run would otherwise leave a directory pytest can't delete
+        os.chmod(dest / "spool", 0o755)
+
+
+@pytest.mark.parametrize("name", ["app/.wh..", "app/.wh...", ".wh..", ".wh..."])
+def test_dot_whiteouts_are_ignored(tmp_path, name):
+    """Ignore whiteouts targeting "." or ".."."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    (tmp_path / "beside.txt").write_bytes(b"beside")
+    extract_tar_layer(
+        _ordered_layer(("app", None), ("app/keep.txt", b"keep")), str(dest)
+    )
+
+    extract_tar_layer(_ordered_layer((name, b"")), str(dest))
+
+    assert (dest / "app" / "keep.txt").read_bytes() == b"keep"
+    assert (tmp_path / "beside.txt").read_bytes() == b"beside"
 
 
 def test_pull_and_extract_local_tar(tmp_path):

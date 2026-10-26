@@ -21,7 +21,18 @@ import urllib.request
 import uuid
 from collections import deque
 from functools import lru_cache
-from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    AbstractSet,
+    BinaryIO,
+    Deque,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 from ray.experimental.sandbox._internal import docker_config
 from ray.experimental.sandbox.exceptions import SandboxCreationError
@@ -360,21 +371,71 @@ def get_registry_auth_headers(
 
 
 def _drop_ownership_children(
-    ownership: Dict[str, Tuple[int, int]], parent: str
+    ownership: Dict[str, Tuple[int, int]],
+    parent: str,
+    keep: AbstractSet[str] = frozenset(),
 ) -> None:
-    """Forget recorded owners for everything under ``parent`` ("." for all)."""
-    if parent == ".":
-        ownership.clear()
-        return
-    prefix = parent + "/"
-    for key in [k for k in ownership if k.startswith(prefix)]:
+    """Remove recorded owners for descendants of ``parent``, except paths in ``keep``.
+
+    Use "." to include all recorded paths.
+    """
+    prefix = "" if parent == "." else parent + "/"
+    for key in [k for k in ownership if k.startswith(prefix) and k not in keep]:
         del ownership[key]
 
 
-def _drop_ownership_subtree(ownership: Dict[str, Tuple[int, int]], name: str) -> None:
-    """Forget recorded owners for a deleted path and everything under it."""
-    ownership.pop(name, None)
-    _drop_ownership_children(ownership, name)
+def _drop_ownership_subtree(
+    ownership: Dict[str, Tuple[int, int]],
+    name: str,
+    keep: AbstractSet[str] = frozenset(),
+) -> None:
+    """Remove recorded owners for ``name`` and its descendants, except paths
+    in ``keep``."""
+    if name not in keep:
+        ownership.pop(name, None)
+    _drop_ownership_children(ownership, name, keep)
+
+
+def _add_with_parents(paths: Set[str], rel: str) -> None:
+    """Add ``rel`` and its parent directories to ``paths``."""
+    while rel != "." and rel not in paths:
+        paths.add(rel)
+        rel = os.path.dirname(rel) or "."
+
+
+def _remove_lower(path: str, rel: str, written: AbstractSet[str]) -> None:
+    """Remove lower-layer entries without deleting paths written by this layer.
+
+    ``rel`` is the path relative to the extraction root. ``written`` contains
+    paths extracted so far and their parent directories. For directories in
+    ``written``, check each child instead of deleting the whole directory.
+    """
+    if rel not in written:
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.lexists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    elif os.path.isdir(path) and not os.path.islink(path):
+        _remove_lower_children(path, rel, written)
+
+
+def _remove_lower_children(path: str, rel: str, written: AbstractSet[str]) -> None:
+    """Apply ``_remove_lower`` to each child of the directory ``path``.
+
+    Skip a directory that can't be listed. Whiteout removal is best-effort,
+    like the deletions in ``_remove_lower``.
+    """
+    try:
+        items = os.listdir(path)
+    except OSError:
+        return
+    for item in items:
+        _remove_lower(
+            os.path.join(path, item), os.path.normpath(os.path.join(rel, item)), written
+        )
 
 
 # Linux's MAXSYMLINKS: the hop count past which path resolution gives ELOOP.
@@ -450,6 +511,9 @@ def extract_tar_layer(
     entry at; whiteouts and root-owned replacements drop entries. The
     extracted files themselves stay owned by the extracting user; the EROFS
     image build restores the recorded owners.
+
+    Whiteouts remove entries from lower layers, not entries from the current
+    layer. This applies regardless of their order in the archive.
     """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
@@ -457,6 +521,7 @@ def extract_tar_layer(
         tar_fileobj = tar_input
 
     dir_mtimes = []
+    written: Set[str] = set()
     # Iterating reads the layer once; getmembers() first would decompress it
     # twice, since extractfile() then rewinds a compressed stream. Not stream
     # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
@@ -484,36 +549,21 @@ def extract_tar_layer(
             # Handle OCI opaque whiteout (.wh..wh..opq)
             if basename == ".wh..wh..opq":
                 if ownership is not None:
-                    _drop_ownership_children(ownership, parent_rel)
-                if os.path.isdir(parent_dir):
-                    for item in os.listdir(parent_dir):
-                        item_path = os.path.join(parent_dir, item)
-                        if os.path.isdir(item_path) and not os.path.islink(item_path):
-                            shutil.rmtree(item_path, ignore_errors=True)
-                        else:
-                            try:
-                                os.remove(item_path)
-                            except OSError:
-                                pass
+                    _drop_ownership_children(ownership, parent_rel, written)
+                _remove_lower_children(parent_dir, parent_rel, written)
                 continue
 
-            # Handle OCI deletion whiteout (.wh.<filename>)
+            # Handle deletion whiteouts (.wh.<name>). Ignore empty names, ".",
+            # and ".." so a malformed whiteout cannot delete its directory or
+            # its parent.
             if basename.startswith(".wh."):
                 del_name = basename[4:]
-                if not del_name:
+                if del_name in ("", ".", ".."):
                     continue
-                del_path = os.path.join(parent_dir, del_name)
+                del_rel = os.path.normpath(os.path.join(parent_rel, del_name))
                 if ownership is not None:
-                    _drop_ownership_subtree(
-                        ownership, os.path.normpath(os.path.join(parent_rel, del_name))
-                    )
-                if os.path.isdir(del_path) and not os.path.islink(del_path):
-                    shutil.rmtree(del_path, ignore_errors=True)
-                elif os.path.exists(del_path) or os.path.islink(del_path):
-                    try:
-                        os.remove(del_path)
-                    except OSError:
-                        pass
+                    _drop_ownership_subtree(ownership, del_rel, written)
+                _remove_lower(os.path.join(parent_dir, del_name), del_rel, written)
                 continue
 
             # Remove conflicting existing file/dir if member type differs
@@ -591,6 +641,8 @@ def extract_tar_layer(
                         )
                     except OSError:
                         pass
+
+            _add_with_parents(written, rel)
 
             # Hardlinks are recorded under their own name too: the re-pack
             # looks owners up by path, and whichever name of the inode it
