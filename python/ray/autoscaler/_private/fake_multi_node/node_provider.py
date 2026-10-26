@@ -15,8 +15,8 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import build_address
 from ray.autoscaler._private.auth_token import (
-    load_or_create_cluster_token,
-    token_auth_disabled_locally,
+    load_local_token,
+    token_auth_enabled_locally,
 )
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
@@ -247,8 +247,9 @@ def create_node_spec(
 
 
 def _write_cluster_auth_token(path: str) -> None:
-    """Write the token `ray up` would ship, creating one if none exists."""
-    token = load_or_create_cluster_token()
+    """Write the local token for the nodes to mount. Never creates one: every
+    CLI command that builds this provider, such as `ray down`, gets here."""
+    token = load_local_token()
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "w") as f:
@@ -523,7 +524,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         self._docker_compose_config = None
 
         self._auth_token_path = None
-        if not token_auth_disabled_locally():
+        if token_auth_enabled_locally():
             self._auth_token_path = os.path.join(self._volume_dir, "auth_token")
             # Written once per volume dir: later constructions, such as for
             # `ray down`, reuse it, and nodes have the file bind-mounted.

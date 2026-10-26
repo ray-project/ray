@@ -3,12 +3,13 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 from unittest.mock import patch
 
 import pytest
 import yaml
 
+from ray._private.authentication_test_utils import reset_auth_token_state
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
@@ -48,11 +49,24 @@ CLUSTER_CONFIG = {
 
 
 @pytest.fixture
-def clean_auth_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+def clean_auth_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
+    """An empty HOME and no token sources, with this process in token mode."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    for var in ["RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"]:
+    for var in ["RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"]:
         monkeypatch.delenv(var, raising=False)
-    return tmp_path
+    set_local_auth_mode(monkeypatch, "token")
+    yield tmp_path
+    set_local_auth_mode(monkeypatch, None)
+
+
+def set_local_auth_mode(monkeypatch: pytest.MonkeyPatch, mode: Optional[str]) -> None:
+    """Set RAY_AUTH_MODE in this process, or unset it for None, and refresh the
+    cached RayConfig that get_authentication_mode reads."""
+    if mode is None:
+        monkeypatch.delenv("RAY_AUTH_MODE", raising=False)
+    else:
+        monkeypatch.setenv("RAY_AUTH_MODE", mode)
+    reset_auth_token_state()
 
 
 class RayUpResult:
@@ -139,6 +153,7 @@ def test_ships_env_var_token_through_owner_only_temp_file(clean_auth_env, monkey
     [(source, content, mode)] = result.token_uploads
     assert (content, mode) == ("env-token", 0o600)
     assert not os.path.exists(source)
+    assert not any("env-token" in str(cmd) for cmd in result.runner.calls)
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
     assert result.remote_config["file_mounts"][REMOTE_TOKEN_PATH] == REMOTE_TOKEN_PATH
 
@@ -155,9 +170,10 @@ def test_ships_token_from_token_path(clean_auth_env, monkeypatch):
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
 
 
-@pytest.mark.parametrize("auth_mode", ["disabled", "DISABLED", "none"])
+# None (RAY_AUTH_MODE unset) means disabled until AUTH_MODE defaults to token.
+@pytest.mark.parametrize("auth_mode", ["disabled", "DISABLED", "none", None])
 def test_disabled_auth_mode_ships_no_token(clean_auth_env, monkeypatch, auth_mode):
-    monkeypatch.setenv("RAY_AUTH_MODE", auth_mode)
+    set_local_auth_mode(monkeypatch, auth_mode)
 
     result = ray_up()
 
@@ -234,7 +250,7 @@ def test_fake_docker_cluster_mounts_token_read_only(clean_auth_env, monkeypatch)
 
 def test_fake_docker_cluster_disabled_auth_mounts_no_token(clean_auth_env, monkeypatch):
     monkeypatch.setenv("RAY_FAKE_CLUSTER", "1")
-    monkeypatch.setenv("RAY_AUTH_MODE", "disabled")
+    set_local_auth_mode(monkeypatch, "disabled")
     volume_dir = clean_auth_env / "fake_docker"
     volume_dir.mkdir()
 
@@ -318,9 +334,9 @@ def test_ray_up_and_fake_provider_agree_on_unexpanded_token_path(
 
 def test_reup_of_cluster_without_token_mount_ships_token(clean_auth_env, monkeypatch):
     provider = MockProvider()
-    monkeypatch.setenv("RAY_AUTH_MODE", "disabled")
+    set_local_auth_mode(monkeypatch, "disabled")
     ray_up(provider=provider)
-    monkeypatch.delenv("RAY_AUTH_MODE")
+    set_local_auth_mode(monkeypatch, "token")
 
     result = ray_up(provider=provider)
 
@@ -448,6 +464,33 @@ def test_fake_docker_provider_writes_token_only_once(clean_auth_env, monkeypatch
 
     assert (volume_dir / "auth_token").read_text() == "env-token"
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
+
+
+def test_ships_symlinked_token_file_contents(clean_auth_env, monkeypatch):
+    # rsync copies a symlink as a symlink, which would arrive dangling.
+    token_path = clean_auth_env / "real_token"
+    token_path.write_text("linked-token")
+    token_path.chmod(0o600)
+    link_path = clean_auth_env / "token_link"
+    link_path.symlink_to(token_path)
+    monkeypatch.setenv("RAY_AUTH_TOKEN_PATH", str(link_path))
+
+    result = ray_up()
+
+    assert result.token_uploads == [(str(token_path), "linked-token", 0o600)]
+
+
+def test_fake_docker_provider_never_creates_a_token(clean_auth_env, monkeypatch):
+    # `ray down` also builds the provider; only `ray up` may create a token.
+    monkeypatch.setenv("RAY_FAKE_CLUSTER", "1")
+    volume_dir = clean_auth_env / "fake_docker"
+    volume_dir.mkdir()
+
+    with pytest.raises(AuthenticationError):
+        make_fake_docker_provider(volume_dir)
+
+    assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
+    assert not (volume_dir / "auth_token").exists()
 
 
 if __name__ == "__main__":

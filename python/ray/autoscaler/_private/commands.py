@@ -28,7 +28,7 @@ from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.auth_token import (
     AUTH_TOKEN_REMOTE_PATH,
     load_or_create_cluster_token,
-    token_auth_disabled_locally,
+    token_auth_enabled_locally,
 )
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -860,9 +860,15 @@ def get_or_create_head_node(
             # The mount's source may be a temp file whose path changes on every
             # run, so hash the token itself: a changed token, or a cluster that
             # lacked it, syncs it.
-            hashed_config = copy.deepcopy(config)
-            del hashed_config["file_mounts"][AUTH_TOKEN_REMOTE_PATH]
-            hashed_config["auth_token_sha256"] = auth_token_sha256
+            hashed_config = {
+                **config,
+                "file_mounts": {
+                    remote: local
+                    for remote, local in config["file_mounts"].items()
+                    if remote != AUTH_TOKEN_REMOTE_PATH
+                },
+                "auth_token_sha256": auth_token_sha256,
+            }
         # TODO(ekl) right now we always update the head node even if the
         # hash matches.
         # We could prompt the user for what they want to do here.
@@ -1105,9 +1111,13 @@ def _add_auth_token_file_mount(
     Returns:
         The temporary file holding a RAY_AUTH_TOKEN value, or None; keep it
         open until the file mounts are synced. Then the token's SHA-256 hex
-        digest, or None when token auth is off or the YAML mounts the token.
+        digest, or None when this process isn't in token auth mode or the YAML
+        mounts the token.
     """
-    if token_auth_disabled_locally() or AUTH_TOKEN_REMOTE_PATH in config["file_mounts"]:
+    if (
+        not token_auth_enabled_locally()
+        or AUTH_TOKEN_REMOTE_PATH in config["file_mounts"]
+    ):
         return None, None
     token = load_or_create_cluster_token()
     token_sha256 = hashlib.sha256(token.encode()).hexdigest()
@@ -1122,9 +1132,9 @@ def _add_auth_token_file_mount(
     token_path = os.environ.get("RAY_AUTH_TOKEN_PATH")
     if not os.environ.get("RAY_AUTH_TOKEN"):
         # Mount the token file itself: Ray writes no copy of a token it can read
-        # from a file.
-        config["file_mounts"][AUTH_TOKEN_REMOTE_PATH] = token_path or str(
-            _get_default_token_path()
+        # from a file. rsync would copy a symlink as a dangling link.
+        config["file_mounts"][AUTH_TOKEN_REMOTE_PATH] = os.path.realpath(
+            token_path or _get_default_token_path()
         )
         return None, token_sha256
 
