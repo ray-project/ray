@@ -951,6 +951,23 @@ class NodeManagerOnObjectFreedTest : public NodeManagerTest {
     node_manager_->HandleSpilledCopyDeleted(object_id_, producer_id_);
   }
 
+  // The producer's pin, which this node records as the primary copy.
+  void Pin(const WorkerID &producer_worker_id) {
+    local_object_manager_->primary_copies.insert(object_id_);
+    local_object_manager_->producer_worker_ids[object_id_] = producer_worker_id;
+  }
+
+  // An actor task on this node takes the object as an arg.
+  void Consume(bool is_move = true) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id_.Binary());
+    node_manager_->HandleMovedActorCallArgs(WorkerID::FromRandom(), {ref}, {is_move});
+  }
+
+  bool FiredAtConsume() const {
+    return node_manager_->objects_freed_at_consume_.contains(object_id_);
+  }
+
   // The objects the producer was told about, in order.
   std::vector<ObjectID> FreedObjects() const {
     std::vector<ObjectID> freed;
@@ -1021,6 +1038,114 @@ TEST_F(NodeManagerOnObjectFreedTest, NoProducerDoesNotFire) {
   AddRamCopy(WorkerID::Nil());
   DeleteRamCopy();
   EXPECT_TRUE(FreedObjects().empty());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MoveFiresOnceAndTheFreeDoesNotFireAgain) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  Consume();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  // A retry of the consuming task, or the same arg moved twice.
+  Consume();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MoveBeforeThePinFiresFromTheCopyList) {
+  AddRamCopy(producer_id_);
+  Consume();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest,
+       MovedSpilledObjectDoesNotFireAgainWhenRamCopyIsLast) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  Consume();
+  DeleteDiskCopy();
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest,
+       MovedSpilledObjectDoesNotFireAgainWhenDiskCopyIsLast) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  Consume();
+  DeleteRamCopy();
+  EXPECT_TRUE(FiredAtConsume());
+  DeleteDiskCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MoveAfterEvictionFiresFromThePinRecord) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  Consume();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  // Restored for the consumer, then freed with the disk copy deleted first.
+  AddRamCopy(WorkerID::Nil());
+  DeleteDiskCopy();
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MovedRestoredObjectDoesNotFireAgainWhenDiskIsLast) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  Consume();
+  AddRamCopy(WorkerID::Nil());
+  DeleteRamCopy();
+  DeleteDiskCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, FreeDuringTheRestoreDoesNotFireAgain) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  Consume();
+  // The free deletes the disk copy before the restored copy is sealed.
+  DeleteDiskCopy();
+  EXPECT_FALSE(FiredAtConsume());
+  AddRamCopy(WorkerID::Nil());
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, ArgThatIsNotMovedFiresAtTheFree) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  Consume(/*is_move=*/false);
+  EXPECT_TRUE(FreedObjects().empty());
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MoveOfACopyFromAnotherNodeDoesNotFire) {
+  // A received copy, pinned here by the move with no producer.
+  AddRamCopy(WorkerID::Nil());
+  Pin(WorkerID::Nil());
+  Consume();
+  DeleteRamCopy();
+  EXPECT_TRUE(FreedObjects().empty());
+  EXPECT_FALSE(FiredAtConsume());
 }
 
 TEST_F(NodeManagerOnObjectFreedTest, DeadProducerDoesNotFire) {
