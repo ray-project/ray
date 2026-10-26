@@ -70,7 +70,7 @@ A trial's lifecycle consists of six stages:
 
 * `RUNNING`: A running trial has an assigned Ray actor. Multiple trials can run in parallel. For more details, see the {ref}`trainable execution <trainable-execution>` section.
 
-* `ERRORED`: If a running trial throws an exception, Tune catches the exception and marks the trial as errored. Exceptions can propagate from an actor to the main Tune driver process. If you set `max_retries`, Tune sets the trial back to `PENDING` and later starts it from the last checkpoint.
+* `ERROR`: If a running trial throws an exception, Tune catches the exception and marks the trial as errored. Exceptions can propagate from an actor to the main Tune driver process. If you set `max_failures`, Tune sets the trial back to `PENDING` and later starts it from the last checkpoint.
 
 * `TERMINATED`: A trial terminates if a stopper or scheduler stops it. With the function API, the trial also terminates when the function stops.
 
@@ -101,13 +101,13 @@ The following figure shows the high-level training flow and how some of the comp
 
 [[source code](https://github.com/ray-project/ray/blob/master/python/ray/tune/execution/tune_controller.py)] `TuneController` is the main driver of the training loop. It uses the `TrialScheduler` to prioritize and execute trials, queries the `SearchAlgorithm` for new configurations to evaluate, and handles the fault-tolerance logic.
 
-For fault tolerance, the `TuneController` executes checkpointing if you set `checkpoint_freq`. If you set `max_failures`, it also restarts trials automatically when they fail. For example, suppose a node is lost while a trial's trainable is still executing on that node. If checkpointing is enabled, the trial reverts to the `PENDING` state and resumes from the last available checkpoint when it runs. The `TuneController` also checkpoints the entire experiment execution state on each loop iteration, so you can restart your experiment after a machine failure.
+For fault tolerance, the `TuneController` executes checkpointing if you set `checkpoint_frequency` in `CheckpointConfig`. If you set `max_failures`, it also restarts trials automatically when they fail. For example, suppose a node is lost while a trial's trainable is still executing on that node. If checkpointing is enabled, the trial reverts to the `PENDING` state and resumes from the last available checkpoint when it runs. The `TuneController` also checkpoints the entire experiment execution state on each loop iteration, so you can restart your experiment after a machine failure.
 
 See the {class}`~ray.tune.execution.tune_controller.TuneController` docstring.
 
 ### Trial objects
 
-[[source code](https://github.com/ray-project/ray/blob/master/python/ray/tune/experiment/trial.py)] A `Trial` object is an internal data structure that contains metadata about each training run. Each `Trial` object maps one-to-one to a `Trainable` object, but `Trial` objects themselves aren't distributed or remote. `Trial` objects transition among the following states: `PENDING`, `RUNNING`, `PAUSED`, `ERRORED`, and `TERMINATED`.
+[[source code](https://github.com/ray-project/ray/blob/master/python/ray/tune/experiment/trial.py)] A `Trial` object is an internal data structure that contains metadata about each training run. Each `Trial` object maps one-to-one to a `Trainable` object, but `Trial` objects themselves aren't distributed or remote. `Trial` objects transition among the following states: `PENDING`, `RUNNING`, `PAUSED`, `ERROR`, and `TERMINATED`.
 
 For the docstring, see {ref}`trial-docstring`.
 
@@ -127,4 +127,4 @@ A trial scheduler can kill or pause trials, and can also reorder or prioritize i
 
 [[source code](https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable/trainable.py)] Trainables are user-provided objects that run the training process. If you provide a class, it's expected to conform to the `Trainable` interface. If you provide a function, Tune wraps it in a `Trainable` class and executes the function itself on a separate thread.
 
-A trainable executes one step of `train()` before notifying the TrialRunner.
+A trainable executes one step of `train()` before notifying the `TuneController`.

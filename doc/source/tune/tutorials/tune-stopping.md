@@ -13,7 +13,7 @@ When you run a Ray Tune experiment, it can be hard to know in advance how long t
 
 For example, you might want to stop in any of the following cases:
 
-- End the experiment after `N` epochs or when the reported evaluation score passes a threshold, whichever comes first.
+- End each trial after `N` epochs or when the reported evaluation score passes a threshold, whichever comes first.
 - Stop the experiment after `T` seconds.
 - Stop the experiment when trials encounter runtime errors.
 - Stop underperforming trials early with Tune's early-stopping schedulers.
@@ -54,7 +54,7 @@ This includes {ref}`auto-filled metrics <tune-autofilled-metrics>` such as `trai
 
 In the following example, each trial stops when it completes `10` iterations or when it reaches a mean accuracy of `0.8` or more, whichever comes first.
 
-Tune assumes these metrics are increasing, so a trial stops once the reported metric exceeds the threshold in the dictionary.
+Tune assumes these metrics are increasing, so a trial stops once the reported metric reaches or exceeds the threshold in the dictionary.
 
 ```{literalinclude} /tune/doc_code/stopping.py
 :language: python
@@ -144,7 +144,7 @@ This is useful when you're debugging a Tune experiment with many trials.
 
 ## Stop trials early with Tune schedulers
 
-You can also stop Tune experiments with early-stopping schedulers. These schedulers monitor trial performance and stop trials early if they aren't making sufficient progress.
+You can also stop trials with early-stopping schedulers. These schedulers monitor trial performance and stop trials early if they aren't making sufficient progress.
 
 {class}`~ray.tune.schedulers.AsyncHyperBandScheduler` and {class}`~ray.tune.schedulers.HyperBandForBOHB` are examples of early-stopping schedulers built into Tune. For a full list and more realistic examples, see {ref}`the Tune scheduler API reference <tune-schedulers>`.
 

@@ -205,7 +205,7 @@ For example, if your trainable uses Modin DataFrames, operations on them spawn R
 
 ## How can I pass further parameter values to my trainable?
 
-Ray Tune expects your trainable functions to accept at most two parameters, `config` and `checkpoint_dir`. Sometimes, though, you want to pass constant arguments, such as the number of epochs to run or a dataset to train on. For that, Ray Tune offers a wrapper function, {func}`tune.with_parameters() <ray.tune.with_parameters>`:
+Ray Tune expects your trainable functions to accept a single `config` parameter. Sometimes, though, you want to pass constant arguments, such as the number of epochs to run or a dataset to train on. For that, Ray Tune offers a wrapper function, {func}`tune.with_parameters() <ray.tune.with_parameters>`:
 
 ```{literalinclude} doc_code/faq.py
 :language: python
@@ -389,7 +389,7 @@ You can specify a grid search or sampling distribution through the dictionary yo
 :end-before: __grid_search_end__
 ```
 
-By default, Tune samples each random variable and grid search point once. To take multiple random samples, add `num_samples: N` to the experiment configuration. If you provide `grid_search` as an argument, Tune repeats the grid `num_samples` times.
+By default, Tune samples each random variable and grid search point once. To take multiple random samples, set `num_samples=N` in `tune.TuneConfig`. If you provide `grid_search` as an argument, Tune repeats the grid `num_samples` times.
 
 ```{literalinclude} doc_code/faq.py
 :language: python
