@@ -163,6 +163,121 @@ class DummyProcessorConfig(ProcessorConfig):
     pass
 
 
+@pytest.mark.parametrize("num_stages", [1, 2, 3, 5])
+@pytest.mark.parametrize("reuse_instance", [False, True])
+def test_processor_preserves_repeated_stages(num_stages, reuse_instance):
+    stages = [DummyStage() for _ in range(num_stages)]
+    if reuse_instance:
+        stages = [stages[0]] * num_stages
+
+    processor = Processor(ProcessorConfig(), stages)
+
+    expected_names = [
+        "DummyStage",
+        "DummyStage_1",
+        "DummyStage_2",
+        "DummyStage_3",
+        "DummyStage_4",
+    ][:num_stages]
+    assert processor.list_stage_names() == expected_names
+    for name, stage in zip(expected_names, stages):
+        assert processor.get_stage_by_name(name) is stage
+
+
+@pytest.mark.parametrize(
+    "class_names, expected_names",
+    [
+        (
+            ["DummyStage", "OtherStage", "DummyStage", "DummyStage"],
+            ["DummyStage", "OtherStage", "DummyStage_1", "DummyStage_2"],
+        ),
+        (
+            ["DummyStage", "DummyStage", "DummyStage"],
+            ["DummyStage", "DummyStage_1", "DummyStage_2"],
+        ),
+        (
+            ["DummyStage", "DummyStage_1", "DummyStage", "DummyStage"],
+            ["DummyStage", "DummyStage_1", "DummyStage_2", "DummyStage_3"],
+        ),
+        (
+            ["DummyStage", "DummyStage", "DummyStage_1"],
+            ["DummyStage", "DummyStage_1", "DummyStage_1_1"],
+        ),
+    ],
+    ids=[
+        "interleaved",
+        "different_types_same_name",
+        "suffix_taken",
+        "class_name_taken",
+    ],
+)
+def test_processor_preserves_stages_with_colliding_names(class_names, expected_names):
+    # Distinct classes can share a name or collide with a generated suffix.
+    stages = [
+        type(name, (DummyStage,), {"__module__": __name__})() for name in class_names
+    ]
+    processor = Processor(ProcessorConfig(), stages)
+
+    assert processor.list_stage_names() == expected_names
+    for name, stage in zip(expected_names, stages):
+        assert processor.get_stage_by_name(name) is stage
+
+
+def test_builder_overrides_each_repeated_stage(monkeypatch):
+    stages = [DummyStage() for _ in range(3)]
+    monkeypatch.setattr(ProcessorBuilder, "_registry", {})
+    ProcessorBuilder.register(
+        DummyProcessorConfig, lambda config: Processor(config, stages)
+    )
+    visited = []
+
+    def override(name, stage):
+        visited.append((name, stage))
+        stage.map_batches_kwargs["concurrency"] = len(visited)
+
+    processor = ProcessorBuilder.build(
+        DummyProcessorConfig(), override_stage_config_fn=override
+    )
+
+    assert [name for name, _ in visited] == [
+        "DummyStage",
+        "DummyStage_1",
+        "DummyStage_2",
+    ]
+    for index, ((name, stage), expected_stage) in enumerate(zip(visited, stages), 1):
+        assert stage is expected_stage
+        assert processor.get_stage_by_name(name) is stage
+        assert stage.map_batches_kwargs["concurrency"] == index
+
+
+def test_processor_executes_repeated_stages_in_order():
+    class AppendDigitUDF(StatefulStageUDF):
+        def __init__(self, data_column, expected_input_keys, digit):
+            super().__init__(data_column, expected_input_keys)
+            self.digit = digit
+
+        async def udf(self, rows):
+            for row in rows:
+                yield {
+                    "value": row["value"] * 10 + self.digit,
+                    self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
+                }
+
+    processor = Processor(
+        ProcessorConfig(batch_size=1),
+        stages=[
+            StatefulStage(fn=AppendDigitUDF, fn_constructor_kwargs={"digit": digit})
+            for digit in [1, 2, 3]
+        ],
+    )
+
+    # Appending digits is order-sensitive. Reusing the processor must preserve
+    # all three transformations on each execution.
+    for value, expected in [(0, 123), (4, 4123)]:
+        result = processor(ray.data.from_items([{"value": value}])).take_all()
+        assert result == [{"value": expected}]
+
+
 def test_does_not_emit_ray_remote_args_fn_deprecation_warning():
     processor = Processor(
         config=ProcessorConfig(batch_size=64),

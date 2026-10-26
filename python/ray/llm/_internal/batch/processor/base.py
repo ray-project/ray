@@ -291,19 +291,18 @@ class Processor:
 
     def _append_stage(self, stage: StatefulStage) -> None:
         """Append a stage before postprocess. The stage class name will be used as
-        the stage name. If there are multiple stages with the same type, a suffix
-        will be added to the stage name to avoid conflicts.
+        the stage name. If that name is already in use, an increasing numeric
+        suffix will be added until the name is unique.
 
         Args:
             stage: The stage to append.
         """
-        stage_name = type(stage).__name__
-
-        # When a processor has multiple stages with the same type,
-        # append a index suffix to the stage name to avoid conflicts.
-        if stage_name in self.stages:
-            num_same_type_stage = len([s for s in self.stages.values() if s is stage])
-            stage_name = f"{stage_name}_{num_same_type_stage + 1}"
+        base_name = type(stage).__name__
+        stage_name = base_name
+        suffix = 1
+        while stage_name in self.stages:
+            stage_name = f"{base_name}_{suffix}"
+            suffix += 1
         self.stages[stage_name] = stage
 
     def list_stage_names(self) -> List[str]:
