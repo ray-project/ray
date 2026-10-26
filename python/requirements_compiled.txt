@@ -51,10 +51,11 @@ aiofiles==25.1.0
     # via aim
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
@@ -75,7 +76,7 @@ aiorwlock==1.5.1
     # via -r python/requirements.txt
 aiosignal==1.4.0
     # via aiohttp
-ale-py==0.10.1
+ale-py==0.10.1 ; python_version < "3.14"
     # via -r python/requirements/ml/rllib-test-requirements.txt
 alembic==1.18.4
     # via
@@ -198,9 +199,12 @@ azure-mgmt-core==1.6.0
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
 azure-mgmt-network==29.0.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-resource==24.0.0
+    # via -r python/requirements/test-requirements.txt
+azure-mgmt-resource-deployments==2.0.0
     # via -r python/requirements/test-requirements.txt
 azure-storage-blob==12.28.0
     # via
@@ -281,7 +285,7 @@ cachetools==5.5.2
     #   pyiceberg
 celery==5.6.3
     # via -r python/requirements.txt
-certifi==2026.4.22
+certifi==2026.10.19
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/security-requirements.txt
@@ -293,7 +297,7 @@ certifi==2026.4.22
     #   requests
     #   sentry-sdk
     #   snowflake-connector-python
-cffi==1.17.1
+cffi==1.17.1 ; python_version < "3.14"
     # via
     #   -r python/requirements/test-requirements.txt
     #   argon2-cffi-bindings
@@ -395,7 +399,7 @@ contourpy==1.3.3 ; python_version >= "3.11"
     #   matplotlib
 cramjam==2.11.0
     # via python-snappy
-crc32c==2.3
+crc32c==2.3 ; python_version < "3.14"
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
@@ -416,7 +420,7 @@ cryptography==44.0.3
     #   pyopenssl
     #   snowflake-connector-python
     #   trustme
-cupy-cuda12x==13.6.0 ; sys_platform != "darwin"
+cupy-cuda12x==13.6.0 ; sys_platform != "darwin" and python_version < "3.14"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -441,7 +445,7 @@ datasets==4.8.5
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/train-requirements.txt
     #   evaluate
-datasketches==5.2.0
+datasketches==5.2.0 ; python_version < "3.14"
     # via -r python/requirements/ml/data-test-requirements.txt
 debugpy==1.8.20
     # via ipykernel
@@ -477,7 +481,7 @@ dill==0.4.1
     #   multiprocess
 directsearch==1.0.1
     # via nevergrad
-distlib==0.4.0
+distlib==0.4.3
     # via virtualenv
 distributed==2026.3.0
     # via
@@ -551,7 +555,7 @@ fasteners==0.20
     #   zarr
 fastjsonschema==2.21.2
     # via nbformat
-fastrlock==0.8.3 ; sys_platform != "darwin"
+fastrlock==0.8.3 ; sys_platform != "darwin" and python_version < "3.14"
     # via
     #   -r python/requirements/test-requirements.txt
     #   cupy-cuda12x
@@ -771,7 +775,7 @@ h11==0.16.0
     #   -r python/requirements/test-requirements.txt
     #   httpcore
     #   uvicorn
-h5py==3.12.1
+h5py==3.12.1 ; python_version < "3.14"
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   keras
@@ -813,7 +817,7 @@ httpx==0.28.1
     #   jupyterlab
     #   openlineage-python
     #   safehttpx
-hudi==0.4.0
+hudi==0.5.0
     # via -r python/requirements/ml/data-test-requirements.txt
 huey==2.6.0
     # via mlflow
@@ -886,17 +890,18 @@ isodate==0.7.2
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
     #   azure-storage-blob
     #   msrest
 isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.2.0
     # via flask
-jax==0.4.33 ; sys_platform != "darwin"
+jax==0.4.33 ; sys_platform != "darwin" and python_version < "3.14"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-jaxlib==0.4.33 ; sys_platform != "darwin"
+jaxlib==0.4.33 ; sys_platform != "darwin" and python_version < "3.14"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -1047,7 +1052,7 @@ linear-operator==0.6.1
     #   gpytorch
 linkify-it-py==2.1.0
     # via markdown-it-py
-llvmlite==0.44.0
+llvmlite==0.44.0 ; python_version < "3.14"
     # via
     #   -r python/requirements/test-requirements.txt
     #   numba
@@ -1113,7 +1118,7 @@ memray==1.19.3 ; platform_system != "Windows" and sys_platform != "darwin" and p
     #   -r python/requirements/test-requirements.txt
 microsoft-security-utilities-secret-masker==1.0.0b4
     # via azure-cli-core
-minigrid==2.3.1
+minigrid==2.3.1 ; python_version < "3.14"
     # via -r python/requirements/ml/rllib-test-requirements.txt
 mistune==3.2.0
     # via nbconvert
@@ -1185,7 +1190,7 @@ msrest==0.7.1
     # via msrestazure
 msrestazure==0.6.4.post1
     # via -r python/requirements/test-requirements.txt
-mujoco==3.2.4
+mujoco==3.2.4 ; python_version < "3.14"
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   dm-control
@@ -1247,11 +1252,11 @@ nodeenv==1.10.0
     #   pyright
 notebook-shim==0.2.4
     # via jupyterlab
-numba==0.61.2
+numba==0.61.2 ; python_version < "3.14"
     # via
     #   -r python/requirements/test-requirements.txt
     #   statsforecast
-numcodecs==0.15.1 ; python_version >= "3.11"
+numcodecs==0.15.1 ; python_version >= "3.11" and python_version < "3.14"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   zarr
@@ -1378,7 +1383,7 @@ onnxruntime==1.24.4 ; (sys_platform != "darwin" or platform_machine != "arm64") 
     # via -r python/requirements/ml/rllib-test-requirements.txt
 onnxscript==0.7.1 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-test-requirements.txt
-open-spiel==1.4
+open-spiel==1.4 ; python_version < "3.14"
     # via -r python/requirements/ml/rllib-test-requirements.txt
 openapi-schema-validator==0.6.3
     # via
@@ -1471,7 +1476,7 @@ ormsgpack==1.12.2
     #   -r python/requirements/ml/rllib-requirements.txt
 overrides==7.7.0
     # via jupyter-server
-packaging==25.0
+packaging==26.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1529,6 +1534,7 @@ packaging==25.0
     #   torchmetrics
     #   transformers
     #   utilsforecast
+    #   virtualenv
     #   wandb
     #   wheel
 pandas==2.3.3
@@ -1595,7 +1601,6 @@ platformdirs==4.9.6
     #   black
     #   jupyter-core
     #   moocore
-    #   python-discovery
     #   snowflake-connector-python
     #   textual
     #   virtualenv
@@ -1753,7 +1758,7 @@ pydot==1.4.2
     # via -r python/requirements/test-requirements.txt
 pydub==0.25.1
     # via gradio
-pygame==2.5.2
+pygame==2.5.2 ; python_version < "3.14"
     # via
     #   -r python/requirements/test-requirements.txt
     #   minigrid
@@ -1766,7 +1771,7 @@ pygments==2.18.0
     #   knack
     #   nbconvert
     #   rich
-pyiceberg==0.11.0
+pyiceberg==0.11.0 ; python_version < "3.14"
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.12.1
     # via
@@ -1778,11 +1783,11 @@ pylance==4.0.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
-pymongo==4.3.2
+pymongo==4.3.2 ; python_version < "3.14"
     # via -r python/requirements/test-requirements.txt
 pymoo==0.6.1.6
     # via botorch
-pymunk==6.2.1
+pymunk==6.2.1 ; python_version < "3.14"
     # via -r python/requirements/ml/rllib-test-requirements.txt
 pymysql==1.1.3
     # via -r python/requirements/serve/serve-test-requirements.txt
@@ -1829,7 +1834,7 @@ pyspark==3.4.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   raydp
-pytest==7.4.4
+pytest==7.4.4 ; python_version < "3.14"
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
@@ -1910,7 +1915,7 @@ python-dateutil==2.9.0.post0
     #   pandas
     #   segment-analytics-python
     #   strictyaml
-python-discovery==1.2.2
+python-discovery==1.6.1
     # via virtualenv
 python-dotenv==1.2.2
     # via
@@ -1985,7 +1990,7 @@ ray-haproxy==2.8.25 ; sys_platform == "linux"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
-raydp==1.7.0b20250423.dev0
+raydp==1.7.0b20250423.dev0 ; python_version < "3.14"
     # via -r python/requirements/ml/data-test-requirements.txt
 redis==4.5.4
     # via
@@ -2100,7 +2105,7 @@ ruamel-yaml-clib==0.2.15
     # via ruamel-yaml
 s3fs==2023.12.1
     # via -r python/requirements/ml/core-requirements.txt
-s3torchconnector==1.4.3
+s3torchconnector==1.4.3 ; python_version < "3.14"
     # via -r python/requirements/ml/train-test-requirements.txt
 s3torchconnectorclient==1.4.3
     # via s3torchconnector
@@ -2253,7 +2258,7 @@ statsmodels==0.14.6
     #   statsforecast
 strictyaml==1.7.3
     # via pyiceberg
-supersuit==3.9.3
+supersuit==3.9.3 ; python_version < "3.14"
     # via -r python/requirements/ml/rllib-test-requirements.txt
 sympy==1.14.0
     # via
@@ -2296,7 +2301,7 @@ tensorboardx==2.6.5
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
-tensordict==0.8.3 ; sys_platform != "darwin"
+tensordict==0.8.3 ; sys_platform != "darwin" and python_version < "3.14"
     # via -r python/requirements/test-requirements.txt
 tensorflow==2.19.1 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
     # via
@@ -2355,7 +2360,7 @@ timm==0.9.2
     # via -r python/requirements/ml/tune-test-requirements.txt
 tinycss2==1.4.0
     # via bleach
-tinyscaler==1.2.8
+tinyscaler==1.2.8 ; python_version < "3.14"
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   supersuit
@@ -2412,7 +2417,7 @@ torchmetrics==0.10.3
     #   lightning
     #   mosaicml
     #   pytorch-lightning
-torchtext==0.18.0
+torchtext==0.18.0 ; python_version < "3.14"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torchvision==0.25.0
     # via
@@ -2501,7 +2506,7 @@ types-setuptools==80.9.0.20250822
     # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2516,6 +2521,7 @@ typing-extensions==4.15.0
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
     #   azure-storage-blob
     #   botorch
     #   cfn-lint
@@ -2621,9 +2627,10 @@ vine==5.1.0
     #   amqp
     #   celery
     #   kombu
-virtualenv==21.2.4
+virtualenv==21.14.12
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   pre-commit
     #   pytest-virtualenv
@@ -2701,7 +2708,7 @@ xyzservices==2026.3.0
     # via bokeh
 yahp==0.1.1
     # via mosaicml
-yarl==1.23.0
+yarl==1.25.1
     # via
     #   aiohttp
     #   delta-sharing
@@ -2709,7 +2716,7 @@ yq==3.2.2
     # via
     #   -r python/requirements/lint-requirements.txt
     #   -r python/requirements/test-requirements.txt
-zarr==2.18.7 ; python_version >= "3.11"
+zarr==2.18.7 ; python_version >= "3.11" and python_version < "3.14"
     # via -r python/requirements/ml/data-test-requirements.txt
 zict==3.0.0
     # via distributed
