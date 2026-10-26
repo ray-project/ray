@@ -171,6 +171,10 @@ class OngoingRequest:
     # which bundle (e.g. Ray Train subtracts its trainer bundle, always
     # submitted first, from the first node it fits on), so don't reorder it.
     reserved_resources: ReservedResources
+    # The part of ``reserved_resources`` placed for ``requested_resources``,
+    # without leftover shares, in the same order. The next refresh tries these
+    # nodes first, so the reservation stays put when other nodes join or leave.
+    explicit_reserved_resources: ReservedResources
     # Per-bundle label selectors, parallel to ``requested_resources``.
     # Empty dicts mean no label constraint on that bundle. Required to have
     # the same length as ``requested_resources``.
@@ -503,6 +507,7 @@ class _AutoscalingCoordinatorActor:
                     priority=priority.value,
                     expiration_time=now + expire_after_s,
                     reserved_resources={},
+                    explicit_reserved_resources={},
                     strategy=strategy,
                 )
             # Write subcluster after all validations so a rejected call
@@ -694,6 +699,12 @@ class _AutoscalingCoordinatorActor:
 
         Each requester's subcluster comes from its ``subcluster_selector``.
         A requester without one is eligible only for the ``None`` bucket.
+
+        Explicit reservations are sticky. In priority order, each requester
+        tries the nodes it held last time first, then nodes no other requester
+        held, then the rest. So a node joining or leaving doesn't move
+        requesters that weren't on it, and a requester that has to move takes
+        free capacity before capacity another requester holds.
         """
         now = self._get_current_time()
         cluster_node_resources = copy.deepcopy(self._cluster_node_resources)
@@ -708,15 +719,32 @@ class _AutoscalingCoordinatorActor:
             selector = self._subcluster_selectors.get(requester_id)
             return (selector or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
 
+        # Nodes each requester's explicit reservation was on before this refresh.
+        previously_held = {
+            req_id: list(req.explicit_reserved_resources) for req_id, req in live_items
+        }
+
         # TODO(hchen): Optimize the following triple loop.
         for requester_id, ongoing_req in live_items:
             ongoing_req.reserved_resources = {}
             subcluster = _subcluster_of(requester_id)
             node_resources = cluster_node_resources.get(subcluster, {})
+            held_by_others = {
+                node_id
+                for other_id, node_ids in previously_held.items()
+                if other_id != requester_id
+                for node_id in node_ids
+            }
             reservations = _compute_reservations(
                 ongoing_request=ongoing_req,
                 node_resources=node_resources,
+                node_order=_sticky_node_order(
+                    node_ids=list(node_resources),
+                    held=previously_held[requester_id],
+                    held_by_others=held_by_others,
+                ),
             )
+            ongoing_req.explicit_reserved_resources = reservations
             for node_id, bundle in reservations.items():
                 _subtract_bundle_in_place(node_resources[node_id], bundle)
                 _add_bundle_in_place(
@@ -773,9 +801,39 @@ class _AutoscalingCoordinatorActor:
             logger.debug(msg)
 
 
+def _sticky_node_order(
+    node_ids: List[NodeIdStr],
+    held: List[NodeIdStr],
+    held_by_others: Set[NodeIdStr],
+) -> List[NodeIdStr]:
+    """Order nodes for placing one requester so its reservation stays put.
+
+    Args:
+        node_ids: The nodes to order, in the cluster's preference order.
+        held: The nodes of the requester's previous explicit reservation, in
+            the order they were placed.
+        held_by_others: The nodes of other live requesters' previous explicit
+            reservations.
+
+    Returns:
+        ``node_ids`` reordered: first the nodes in ``held``, in their previous
+        order so bundles land on the same nodes as before; then nodes nobody
+        held; then nodes other requesters held. The last two groups keep the
+        order of ``node_ids``.
+    """
+    available = set(node_ids)
+    own = [node_id for node_id in held if node_id in available]
+    held_set = set(held)
+    rest = [node_id for node_id in node_ids if node_id not in held_set]
+    free = [node_id for node_id in rest if node_id not in held_by_others]
+    taken = [node_id for node_id in rest if node_id in held_by_others]
+    return own + free + taken
+
+
 def _compute_reservations(
     ongoing_request: OngoingRequest,
     node_resources: NodeResources,
+    node_order: List[NodeIdStr],
 ) -> ReservedResources:
     """Compute per-node reservations for ``ongoing_request`` without mutating inputs.
 
@@ -788,15 +846,14 @@ def _compute_reservations(
         ongoing_request: The request to place.
         node_resources: Remaining per-node capacity. Not mutated; a working copy
             is used so later bundles in this request see prior placements.
+        node_order: Every node in ``node_resources``, in the order to try them.
 
     Returns:
         Resources to reserve, keyed by node id.
     """
     # Working copy so placement can account for earlier bundles in this request
     # without mutating the caller's remaining capacity.
-    available = {
-        node_id: dict(resources) for node_id, resources in node_resources.items()
-    }
+    available = {node_id: dict(node_resources[node_id]) for node_id in node_order}
     node_items = list(available.items())
     if not node_items or not ongoing_request.requested_resources:
         return {}
