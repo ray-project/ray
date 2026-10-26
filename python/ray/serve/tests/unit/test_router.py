@@ -57,6 +57,7 @@ from ray.serve._private.router import (
     CurrentLoopRouter,
     RouterMetricsManager,
     SingletonThreadRouter,
+    _ClaimableFuture,
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import (
@@ -3583,6 +3584,7 @@ async def test_current_loop_claim_refuses_once_routing_starts(
     fake_request_router.unblock_requests(1)
     await task
     assert len(replica._requests_sent) == 1
+    assert response._pending_call is None
 
 
 @pytest.fixture
@@ -3603,21 +3605,18 @@ async def _routed(ran):
     return "result"
 
 
-async def _fails():
-    raise ValueError("boom")
+def test_claimable_call_routes_while_the_callers_loop_is_blocked(thread_router):
+    routed = threading.Event()
 
+    async def routing():
+        routed.set()
+        return "result"
 
-def test_default_mode_hands_off_on_the_callers_next_turn(thread_router):
     async def run():
-        ran = []
-        future = thread_router._wrap_asyncio_call_in_future(
-            _routed(ran), defer_on=asyncio.get_running_loop()
-        )
-        # A handler returning now still finds the call unrouted.
-        assert future._pending is not None
-        await asyncio.sleep(0)
-        assert future._pending is None
-        assert await asyncio.wrap_future(future) == "result" and ran
+        future = thread_router._wrap_asyncio_call_in_future(routing(), claimable=True)
+        # Blocks this loop, like a handler waiting on the call's side effect.
+        assert routed.wait(timeout=5)
+        assert future.result(timeout=5) == "result"
 
     asyncio.run(run())
 
@@ -3626,21 +3625,24 @@ def test_claimed_call_never_reaches_the_router_thread(thread_router):
     async def run():
         ran = []
         coro = _routed(ran)
-        future = thread_router._wrap_asyncio_call_in_future(
-            coro, defer_on=asyncio.get_running_loop()
-        )
+        release = threading.Event()
+        # Holds the router thread so the claim comes first.
+        thread_router._asyncio_loop.call_soon_threadsafe(release.wait, 5)
+        future = thread_router._wrap_asyncio_call_in_future(coro, claimable=True)
         assert future.claim()
+        release.set()
         with pytest.raises(concurrent.futures.CancelledError):
             future.result(timeout=5)
-        await asyncio.sleep(0.05)
-        assert not ran
         # Closed, so it doesn't warn that it was never awaited.
-        assert inspect.getcoroutinestate(coro) == inspect.CORO_CLOSED
+        await async_wait_for_condition(
+            lambda: inspect.getcoroutinestate(coro) == inspect.CORO_CLOSED
+        )
+        assert not ran
 
     asyncio.run(run())
 
 
-def test_claim_refuses_a_call_handed_off_on_another_thread(thread_router):
+def test_claim_refuses_a_call_the_router_thread_started(thread_router):
     started = threading.Event()
 
     async def routing():
@@ -3650,17 +3652,12 @@ def test_claim_refuses_a_call_handed_off_on_another_thread(thread_router):
         return "result"
 
     async def run():
-        future = thread_router._wrap_asyncio_call_in_future(
-            routing(), defer_on=asyncio.get_running_loop()
-        )
+        future = thread_router._wrap_asyncio_call_in_future(routing(), claimable=True)
         response = DeploymentResponse(
             future,
             RequestMetadata(request_id="r", internal_request_id="i"),
             _pending_call=("handle", (), {}),
         )
-        waiter = threading.Thread(target=lambda: future.result(timeout=5), daemon=True)
-        waiter.start()
-        # Blocks this loop, so only the waiter's own wait can hand the call off.
         assert started.wait(timeout=5)
         assert response._claim_pending_call() is None
         assert await asyncio.wrap_future(future) == "result"
@@ -3668,75 +3665,28 @@ def test_claim_refuses_a_call_handed_off_on_another_thread(thread_router):
     asyncio.run(run())
 
 
-def test_blocking_wait_hands_off_without_the_callers_loop(thread_router):
+def test_response_drops_its_pending_call_once_routing_ends(thread_router):
     async def run():
-        loop = asyncio.get_running_loop()
-        # Each sync wait blocks this loop, so neither may wait for the loop to turn.
-        future = thread_router._wrap_asyncio_call_in_future(_routed([]), defer_on=loop)
-        assert future.result(timeout=5) == "result"
-        failing = thread_router._wrap_asyncio_call_in_future(_fails(), defer_on=loop)
-        assert isinstance(failing.exception(timeout=5), ValueError)
-
-    asyncio.run(run())
-
-
-def test_await_hands_off_without_the_callers_loop(thread_router):
-    # A caller loop that never turns, like one blocked waiting on this call.
-    stalled = asyncio.new_event_loop()
-
-    async def run():
-        future = thread_router._wrap_asyncio_call_in_future(
-            _routed([]), defer_on=stalled
-        )
+        future = thread_router._wrap_asyncio_call_in_future(_routed([]), claimable=True)
         response = DeploymentResponse(
-            future, RequestMetadata(request_id="r", internal_request_id="i")
-        )
-        result = await asyncio.wait_for(response._fetch_future_result_async(), 5)
-        assert result == "result"
-
-    try:
-        asyncio.run(run())
-    finally:
-        stalled.close()
-
-
-def test_hand_off_schedules_the_call_once(thread_router):
-    errors = []
-    thread_router._asyncio_loop.set_exception_handler(
-        lambda loop, context: errors.append(context)
-    )
-
-    async def run():
-        future = thread_router._wrap_asyncio_call_in_future(
-            _routed([]), defer_on=asyncio.get_running_loop()
-        )
-        future.hand_off()
-        future.hand_off()
-        assert await asyncio.wrap_future(future) == "result"
-        await asyncio.sleep(0.05)
-
-    asyncio.run(run())
-    assert not errors
-
-
-def test_handed_off_future_is_freed_without_the_cycle_collector(thread_router):
-    async def run():
-        future = thread_router._wrap_asyncio_call_in_future(
-            _routed([]), defer_on=asyncio.get_running_loop()
+            future,
+            RequestMetadata(request_id="r", internal_request_id="i"),
+            _pending_call=("handle", ("arg",), {}),
         )
         assert await asyncio.wrap_future(future) == "result"
-        return weakref.ref(future)
+        assert response._pending_call is None
+        return weakref.ref(future), weakref.ref(response)
 
     gc.disable()
     try:
-        ref = asyncio.run(run())
-        # Refcounting alone frees it once the router thread drops its callbacks.
-        wait_for_condition(lambda: ref() is None, timeout=5)
+        refs = asyncio.run(run())
+        # Refcounting alone frees both once the router thread drops its callbacks.
+        wait_for_condition(lambda: all(ref() is None for ref in refs), timeout=5)
     finally:
         gc.enable()
 
 
-def test_assign_request_defers_only_in_a_forwardable_request(thread_router):
+def test_assign_request_is_claimable_only_in_a_forwardable_request(thread_router):
     thread_router._asyncio_router = SimpleNamespace(
         assign_request=lambda meta: _routed([])
     )
@@ -3749,14 +3699,11 @@ def test_assign_request_defers_only_in_a_forwardable_request(thread_router):
         return thread_router.assign_request(meta)
 
     async def run():
-        # Other requests route at once, as does a sync handler, whose thread has no
-        # loop to wait for.
-        for future in (call(False), await asyncio.to_thread(call, True)):
-            assert future._pending is None
+        plain, claimable = call(False), call(True)
+        assert not isinstance(plain, _ClaimableFuture)
+        assert isinstance(claimable, _ClaimableFuture)
+        for future in (plain, claimable):
             assert await asyncio.wrap_future(future) == "result"
-        deferred = call(True)
-        assert deferred._pending is not None
-        assert await asyncio.wrap_future(deferred) == "result"
 
     asyncio.run(run())
 

@@ -4387,7 +4387,7 @@ class UserCallableWrapper:
             # Non-FastAPI HTTP handlers take only the starlette `Request`.
             request_args = (starlette.requests.Request(scope, receive, send),)
         if not user_method_info.is_asgi_app:
-            # Its calls wait for its step to end, so one it returns can be forwarded.
+            # Its calls stay claimable until routed, so one it returns can be forwarded.
             ray.serve.context._serve_request_context.set(
                 replace(  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
                     ray.serve.context._get_serve_request_context(), _forwardable=True

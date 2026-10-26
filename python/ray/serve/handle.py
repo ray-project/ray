@@ -1,8 +1,10 @@
 import asyncio
 import concurrent.futures
+import functools
 import logging
 import time
 import warnings
+import weakref
 from contextlib import asynccontextmanager
 from typing import (
     Any,
@@ -45,7 +47,7 @@ from ray.serve._private.handle_options import (
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
-from ray.serve._private.router import Router, _HandOffFuture
+from ray.serve._private.router import Router, _ClaimableFuture
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -72,6 +74,12 @@ class _PendingCall(NamedTuple):
     handle: "DeploymentHandle"
     args: Tuple[Any, ...]
     kwargs: Dict[str, Any]
+
+
+def _drop_pending_call(response_ref: weakref.ref, _: Any) -> None:
+    response = response_ref()
+    if response is not None:
+        response._pending_call = None
 
 
 class _DeploymentHandleBase(Generic[T]):
@@ -368,16 +376,23 @@ class _DeploymentResponseBase(Generic[R]):
         self._request_metadata: RequestMetadata = request_metadata
         self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
         self._pending_call = _pending_call
+        if _pending_call is not None:
+            # Once routing ends the call can't be claimed, so stop holding its args.
+            replica_result_future.add_done_callback(
+                functools.partial(_drop_pending_call, weakref.ref(self))
+            )
 
     def _claim_pending_call(self) -> Optional[_PendingCall]:
         """Take over this call before it is routed, so Serve can forward it instead.
 
-        A call made in a plain HTTP handler reaches the router after the handler's step.
+        This works only until the router starts the call.
         """
+        # Read first: cancelling the future runs the callback that drops it.
+        call = self._pending_call
         future = self._replica_result_future
-        if self._pending_call is None or self._cancelled or future.done():
+        if call is None or self._cancelled or future.done():
             return None
-        if isinstance(future, _HandOffFuture):
+        if isinstance(future, _ClaimableFuture):
             if not future.claim():
                 return None
         elif self._request_metadata._routing_started:
@@ -385,7 +400,7 @@ class _DeploymentResponseBase(Generic[R]):
             return None
         else:
             future.cancel()
-        call, self._pending_call = self._pending_call, None
+        self._pending_call = None
         return call
 
     @property
@@ -441,9 +456,6 @@ class _DeploymentResponseBase(Generic[R]):
                     "concurrent.futures.Future[ReplicaResult]",
                     self._replica_result_future,
                 )
-                if isinstance(concurrent_future, _HandOffFuture):
-                    # An awaited call can't be returned unawaited, so route it now.
-                    concurrent_future.hand_off()
                 result: ReplicaResult = await asyncio.wrap_future(concurrent_future)
                 self._replica_result = result
             else:
