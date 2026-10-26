@@ -1524,6 +1524,16 @@ def test_instance_details_echo_config_id_and_versions(serve_instance):
     wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != old_pid)
     wait_for_condition(check, timeout=60)
 
+    # A config without an id clears the echo rather than keeping a stale one.
+    client.deploy_apps(_rolling_update_config())
+    wait_for_condition(
+        lambda: ray.get(client._controller.get_serve_instance_details.remote()).get(
+            "applied_config_id"
+        )
+        is None,
+        timeout=60,
+    )
+
 
 @pytest.mark.parametrize("restart_controller", [False, True])
 def test_sparse_config_rollback_restores_code_defined_options(

@@ -1407,8 +1407,11 @@ class ReplicaDetails(ServeActorDetails):
     version: Optional[str] = Field(
         default=None,
         description=(
-            "The deployment version this replica runs. Differs from the deployment's "
-            "`target_version` until a rolling update has replaced or reconfigured it."
+            "The deployment version the controller tracks for this replica. While "
+            "UPDATING it is the version being applied, and while RECOVERING it is the "
+            "deployment's target until the live actor reports its own, so a match "
+            "with `target_version` only means the replica is current once it is "
+            "RUNNING."
         ),
     )
 
@@ -1512,7 +1515,8 @@ class DeploymentDetails(BaseModel):
         default=None,
         description=(
             "The deployment version replicas are converging to. A rolling update is "
-            "complete once every live replica reports this `version`."
+            "complete once no replica other than stopping ones is on another "
+            "`version` or still UPDATING or RECOVERING."
         ),
     )
     replicas: List[ReplicaDetails] = Field(
@@ -1969,7 +1973,10 @@ class ServeInstanceDetails(BaseModel):
     )
     applied_config_id: Optional[str] = Field(
         default=None,
-        description="The `config_id` of the most recently applied config, if any.",
+        description=(
+            "The `config_id` of the config the controller last accepted. It says "
+            "which config the deployments are converging to, not that they have."
+        ),
     )
 
     @staticmethod
