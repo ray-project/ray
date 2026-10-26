@@ -88,6 +88,11 @@ def _execute(cursor: Cursor, sql: str, params: Optional[Any]) -> None:
 
 class SQLDatasource(Datasource):
     MIN_ROWS_PER_READ_TASK = 50
+    # Modulo syntaxes to probe, in preference order. ``MOD()`` is the
+    # SQL-standard function (Oracle, MySQL, PostgreSQL); ``%`` is the fallback
+    # for databases without ``MOD()`` (SQL Server, and SQLite built without
+    # math functions).
+    _MODULO_SYNTAXES = ("MOD", "%")
 
     def __init__(
         self,
@@ -107,12 +112,35 @@ class SQLDatasource(Datasource):
         self.shard_hash_fn = shard_hash_fn
         self.connection_factory = connection_factory
         self.sql_params = sql_params
+        # Modulo syntax detected by ``supports_sharding()``: ``"MOD"`` or
+        # ``"%"``. Stays ``None`` until a probe succeeds.
+        self._modulo_syntax = None
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def supports_sharding(self, parallelism: int) -> bool:
-        """Check if database supports sharding with the required operations.
+    def _build_modulo_expr(self, syntax: str, hash_fn: str, parallelism: int) -> str:
+        """Build the modulo expression used to bucket rows into shards.
+
+        ``"MOD"`` renders the SQL-standard ``MOD(x, n)`` function; ``"%"``
+        renders the ``x % n`` operator. The operand is wrapped in ``ABS()`` so
+        the bucket index is always in ``[0, parallelism)``, independent of how
+        each database signs negative modulo results.
+        """
+        operand = f"ABS({hash_fn}({self.shard_keys}))"
+        if syntax == "MOD":
+            return f"MOD({operand}, {parallelism})"
+        return f"({operand} % {parallelism})"
+
+        """Check if the database supports hash sharding.
+
+        Sharding needs ``ABS``, the configured hash function, ``CONCAT`` (for
+        multi-column keys), ``COALESCE``, and a modulo operation. The modulo
+        syntax is not portable -- ``MOD()`` is missing on SQL Server and on
+        SQLite built without math functions, while the ``%`` operator is missing
+        on Oracle -- so this probes ``MOD()`` first and falls back to ``%``. The
+        winning syntax is cached in ``self._modulo_syntax`` so the per-task read
+        queries match the probe.
 
         Args:
             parallelism: The number of shards to split the read into.
@@ -123,21 +151,25 @@ class SQLDatasource(Datasource):
         if parallelism <= 1 or self.shard_keys is None:
             return False
 
-        # Test the operations used by the shard predicate (MOD, ABS, the hash
-        # function, CONCAT for multiple keys, and COALESCE) against the database.
         hash_fn = self.shard_hash_fn
-        bucket = f"MOD(ABS({hash_fn}({self.shard_keys})), {parallelism})"
-        query = (
-            f"SELECT COUNT(1) FROM ({self.sql}) as T"
-            f" WHERE COALESCE({bucket}, 0) = 0"
-        )
-        try:
-            with _connect(self.connection_factory) as cursor:
-                _execute(cursor, query, self.sql_params)
+        for syntax in self._MODULO_SYNTAXES:
+            modulo_expr = self._build_modulo_expr(syntax, hash_fn, parallelism)
+            bucket = f"COALESCE({modulo_expr}, 0)"
+            query = f"SELECT COUNT(1) FROM ({self.sql}) as T WHERE {bucket} = 0"
+            try:
+                with _connect(self.connection_factory) as cursor:
+                    _execute(cursor, query, self.sql_params)
+            except Exception as e:
+                logger.debug(f"Sharding probe using {syntax!r} failed: {str(e)}.")
+                continue
+            self._modulo_syntax = syntax
             return True
-        except Exception as e:
-            logger.info(f"Database does not support sharding: {str(e)}.")
-            return False
+
+        logger.info(
+            "Database does not support sharding: neither the MOD() function "
+            "nor the % operator is available."
+        )
+        return False
 
     def get_read_tasks(
         self,
@@ -198,11 +230,13 @@ class SQLDatasource(Datasource):
 
     def _create_parallel_read_fn(self, task_id: int, parallelism: int):
         hash_fn = self.shard_hash_fn
-        bucket = f"MOD(ABS({hash_fn}({self.shard_keys})), {parallelism})"
-        # A NULL bucket can result from NULL shard keys or from the hash function
-        # itself (for example, SQLite's unicode('')). Route those rows to task 0;
-        # rows with a usable bucket keep their normal shard assignment.
-        predicate = f"COALESCE({bucket}, 0) = {task_id}"
+        # Use the modulo syntax detected by supports_sharding(); default to
+        # MOD() if no probe has run yet.
+        syntax = self._modulo_syntax or "MOD"
+        modulo_expr = self._build_modulo_expr(syntax, hash_fn, parallelism)
+        # A NULL hash produces a NULL bucket. Route those rows to task 0 while
+        # keeping every row with a usable bucket in its normal shard.
+        predicate = f"COALESCE({modulo_expr}, 0) = {task_id}"
 
         query = f"SELECT * FROM ({self.sql}) AS T WHERE {predicate}"
 
