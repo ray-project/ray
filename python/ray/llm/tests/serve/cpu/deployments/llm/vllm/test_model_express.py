@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from ray.llm._internal.serve.engines.vllm import model_express
-from ray.llm._internal.serve.engines.vllm.compile_cache_compat import _rewrite
+from ray.llm._internal.serve.engines.vllm.patches.compile_cache_compat import _rewrite
 from ray.llm._internal.serve.serving_patterns.model_express import envs as mx_envs
 from ray.llm._internal.serve.serving_patterns.model_express.mx_server import (
     ModelExpressServer,

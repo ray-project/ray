@@ -16,6 +16,6 @@ def _worker_process_setup_hook():
         import vllm  # noqa: F401
     except ImportError:
         return
-    from ray.llm._internal.serve.engines.vllm import compile_cache_compat
+    from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat
 
     compile_cache_compat.apply()
