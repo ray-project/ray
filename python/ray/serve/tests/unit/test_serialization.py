@@ -79,6 +79,32 @@ open(sys.argv[1], "wb").write(cloudpickle.dumps(app))
     assert client.post("/", json={}).status_code == 422
 
 
+def test_pydantic_deferred_model_deployment_works_where_unpickled(tmp_path):
+    """A deployment without serve.ingress is pickled at decoration, often before Ray
+    starts; its deferred models must still work in the replica that unpickles it."""
+    script = """
+import sys
+from pydantic import BaseModel, ConfigDict
+from ray import serve
+
+
+class Msg(BaseModel):
+    model_config = ConfigDict(defer_build=True)
+    text: str
+
+
+@serve.deployment
+class Echo:
+    def __call__(self, text: str) -> str:
+        return Msg(text=text).text.upper()
+
+
+open(sys.argv[1], "wb").write(Echo._replica_config.serialized_deployment_def)
+"""
+    echo_cls = _load_from_fresh_process(tmp_path, script)
+    assert echo_cls()("hi") == "HI"
+
+
 def test_pydantic_nested_deferred_models_work_where_unpickled(tmp_path):
     """A restored model that embeds another must not reuse the empty schema of the
     field-less class cloudpickle builds before restoring the inner one."""

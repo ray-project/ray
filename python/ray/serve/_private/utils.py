@@ -354,13 +354,16 @@ def _register_pydantic_mock_serializer(serialization_context):
     )
 
 
+# Serve pickles user code in many places, some before Ray starts, so register on import.
+_register_pydantic_mock_serializer(StandaloneSerializationContext())
+
+
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
     ray.util.serialization_addons.apply(ctx)
     _register_thread_lock_serializer(ctx)
-    _register_pydantic_mock_serializer(ctx)
 
 
 def msgpack_serialize(obj):
