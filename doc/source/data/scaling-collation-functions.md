@@ -136,9 +136,7 @@ The following examples use a mock text dataset to demonstrate the optimization. 
 
 The following example shows a typical collate function that runs on the training worker:
 
-```{testcode}
-:skipif: True
-
+```python
 from transformers import AutoTokenizer
 import torch
 import numpy as np
@@ -192,9 +190,7 @@ result = trainer.fit()
 
 The following example moves the collate function to Ray Data preprocessing:
 
-```{testcode}
-:skipif: True
-
+```python
 from transformers import AutoTokenizer
 import numpy as np
 from typing import Dict
@@ -314,9 +310,7 @@ Use {ref}`train-collate-utils` as a reference implementation, and adapt it to yo
 
 The following example uses tensor serialization for a collate function that must return PyTorch tensors. This approach requires `repartition` before `map_batches` because the collate function changes the number of output rows. Each batch becomes a single serialized row.
 
-```{testcode}
-:skipif: True
-
+```python
 from transformers import AutoTokenizer
 import torch
 from typing import Dict

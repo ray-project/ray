@@ -1,5 +1,7 @@
 import pickle
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+from types import GeneratorType
 from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Union
 
 import ray
@@ -112,6 +114,7 @@ def make_callable_class_single_threaded(callable_cls: CallableClass) -> Callable
     class _SingleThreadedWrapper(callable_cls):
         def __init__(self, *args, **kwargs):
             self.thread_pool_executor = ThreadPoolExecutor(max_workers=1)
+            self._udf_lock = Lock()
             super().__init__(*args, **kwargs)
 
         def __repr__(self):
@@ -120,6 +123,26 @@ def make_callable_class_single_threaded(callable_cls: CallableClass) -> Callable
         def __call__(self, *args, **kwargs):
             # ThreadPoolExecutor will reuse the same thread for every submit call.
             future = self.thread_pool_executor.submit(super().__call__, *args, **kwargs)
-            return future.result()
+            result = future.result()
+            if not isinstance(result, GeneratorType):
+                return result
+
+            def iterate():
+                # Keep the lock across yields, but wait for it outside the executor.
+                with self._udf_lock:
+                    try:
+                        while True:
+                            try:
+                                item = self.thread_pool_executor.submit(
+                                    next, result
+                                ).result()
+                            except StopIteration:
+                                return
+                            yield item
+                            del item
+                    finally:
+                        self.thread_pool_executor.submit(result.close).result()
+
+            return iterate()
 
     return _SingleThreadedWrapper

@@ -78,8 +78,8 @@ Learn more about model serving with the following resources.
 
 - [[Talk] Productionizing ML at Scale with Ray Serve](https://www.youtube.com/watch?v=UtH-CMpmxvI)
 - [[Blog] Simplify your MLOps with Ray & Ray Serve](https://www.anyscale.com/blog/simplify-your-mlops-with-ray-and-ray-serve)
-- {doc}`[Guide] Getting Started with Ray Serve </serve/getting_started>`
-- {doc}`[Guide] Model Composition in Serve </serve/model_composition>`
+- {doc}`[Guide] Getting Started with Ray Serve </serve/getting-started>`
+- {doc}`[Guide] Model Composition in Serve </serve/model-composition>`
 - {doc}`[Gallery] Serve Examples Gallery </serve/examples>`
 - [[Gallery] More Serve Use Cases on the Blog](https://www.anyscale.com/blog?tag=ray_serve)
 
@@ -97,7 +97,7 @@ Distributed tuning with distributed training per trial.
 
 Learn more about the Tune library with the following talks and user guides.
 
-- {doc}`[Guide] Getting Started with Ray Tune </tune/getting-started>`
+- {doc}`[Guide] Get started with Ray Tune </tune/getting-started>`
 - [[Blog] How to distribute hyperparameter tuning with Ray Tune](https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune)
 - [[Talk] Simple Distributed Hyperparameter Optimization](https://www.youtube.com/watch?v=KgYZtlbFYXE)
 - [[Blog] Hyperparameter Search with 🤗 Transformers](https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune)
