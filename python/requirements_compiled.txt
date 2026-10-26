@@ -279,7 +279,7 @@ cachetools==5.5.2
     #   pyiceberg
 celery==5.6.3
     # via -r python/requirements.txt
-certifi==2026.4.22
+certifi==2026.10.19
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/security-requirements.txt
