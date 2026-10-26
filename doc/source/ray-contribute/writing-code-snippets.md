@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Guide to writing runnable, CI-tested code examples for Ray docs using doctest-style, code-output-style, and literalinclude formats, and to debugging one that fails. Read this when adding code snippets to docstrings or user guides so they keep working for users."
+    description: "Guide to writing runnable, CI-tested code examples for Ray docs: doctest-style examples in docstrings, and code-output-style and literalinclude examples on documentation pages. Also covers debugging an example that fails. Read this when adding code snippets to docstrings or user guides so they keep working for users."
 ---
 
 (writing-code-snippets_ref)=
@@ -18,15 +18,14 @@ The examples in this guide use reStructuredText. If you're writing Markdown, use
 
 ## Types of examples
 
-There are three types of examples: *doctest-style*, *code-output-style*, and *literalinclude*.
+There are three types of examples: *doctest-style*, *code-output-style*, and *literalinclude*. Use *doctest-style* in docstrings, and the other two on documentation pages.
 
 ### *doctest-style* examples
 
-*doctest-style* examples mimic interactive Python sessions.
+*doctest-style* examples mimic interactive Python sessions. Write them in docstrings, under an `Example:` section:
 
 ```
-.. doctest::
-
+Example:
     >>> def is_even(x):
     ...     return (x % 2) == 0
     >>> is_even(0)
@@ -46,18 +45,8 @@ True
 False
 ```
 
-:::{tip}
-If you're writing docstrings, exclude `.. doctest::` to simplify your code:
-
-```
-Example:
-    >>> def is_even(x):
-    ...     return (x % 2) == 0
-    >>> is_even(0)
-    True
-    >>> is_even(1)
-    False
-```
+:::{note}
+Don't use *doctest-style* examples on documentation pages. On a page, use *code-output-style* or *literalinclude* instead.
 :::
 
 ### *code-output-style* examples
@@ -119,19 +108,18 @@ They're rendered like this:
 
 ## Which type of example should you write?
 
-There's no hard rule about which style you should use. Choose the style that best illustrates your API.
+Where the example lives decides most of the choice. In a docstring, use *doctest-style*. On a documentation page, choose between *code-output-style* and *literalinclude*, whichever best illustrates your API.
 
 :::{tip}
-If you're not sure which style to use, use *code-output-style*.
+If you're not sure which style to use on a documentation page, use *code-output-style*.
 :::
 
 ### When to use *doctest-style*
 
-If you're writing a small example that emphasizes object representations, or if you want to print intermediate objects, use *doctest-style*.
+Use *doctest-style* in docstrings. It suits small examples that emphasize object representations or print intermediate objects:
 
 ```
-.. doctest::
-
+Example:
     >>> import ray
     >>> ds = ray.data.range(100)
     >>> ds.schema()
@@ -144,7 +132,7 @@ If you're writing a small example that emphasizes object representations, or if 
 
 ### When to use *code-output-style*
 
-If you're writing a longer example, or if object representations aren't relevant to your example, use *code-output-style*.
+On a documentation page, use *code-output-style* for an example whose output you want to show, including object representations.
 
 ```
 .. testcode::
@@ -205,8 +193,7 @@ A `testcode` block tells readers and maintainers that CI runs the code. Use it o
 To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code.
 
 ```
-.. doctest::
-
+Example:
     >>> import ray
     >>> ray.data.read_images("s3://private-bucket")  # doctest: +SKIP
 ```
