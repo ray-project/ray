@@ -352,6 +352,29 @@ def test_a_slab_no_admit_takes_is_released_when_idle(monkeypatch):
     assert left == ["pg-used"]
 
 
+def test_a_full_node_grows_no_slab():
+    """Ray omits a resource with nothing left from a node's available ones;
+    the host reads that as none free rather than as unknown, and reserves
+    nothing (a slab there could never be placed)."""
+
+    async def scenario():
+        host = _host()
+        host._slab_shape = {"CPU": 4.0}
+        host._node_free = lambda: {"memory": 1e9}  # CPU fully reserved
+        grown = []
+
+        async def grow_one(shape):
+            grown.append(shape)
+            return None
+
+        host._grow_one = grow_one
+        demand = {"CPU": 0.25}
+        host._waiting.append(demand)
+        return await host._grow(demand), grown
+
+    assert asyncio.run(scenario()) == (None, [])
+
+
 def test_a_repeated_admit_takes_its_share_once():
     """A repeat of an admit (a lost reply replayed through Ray) that arrives
     while the first waits must not charge the slab twice."""

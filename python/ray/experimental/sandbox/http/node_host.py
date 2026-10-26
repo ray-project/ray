@@ -475,16 +475,18 @@ class SandboxNodeHost:
             shape = {}
             for k, v in demand.items():
                 want = max(v, self._slab_shape.get(k, 0.0))
-                if free is not None and k in free:
-                    want = min(want, free[k])
+                if free is not None:
+                    # Ray leaves a resource with nothing left out of a node's
+                    # available ones, so a missing one has none free.
+                    want = min(want, free.get(k, 0.0))
                 shape[k] = want
             if any(shape[k] + _EPSILON < demand[k] for k in demand):
                 break  # no room left for even this sandbox
             shapes.append(shape)
             for k in demand:
                 need[k] -= shape[k]
-                if free is not None and k in free:
-                    free[k] -= shape[k]
+                if free is not None:
+                    free[k] = free.get(k, 0.0) - shape[k]
             if all(need[k] <= _EPSILON for k in demand) or len(shapes) >= 64:
                 break
         if not shapes:
