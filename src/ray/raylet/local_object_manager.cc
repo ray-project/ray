@@ -54,6 +54,12 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       pinned_objects_size_ += object->GetSize();
       pinned_objects_.emplace(object_id, std::move(object));
     } else {
+      // A pin without a producer, such as a re-executed task's, can arrive before the
+      // producer's own pin.
+      LocalObjectInfo &local_object = inserted.first->second;
+      if (local_object.producer_worker_id_.IsNil()) {
+        local_object.producer_worker_id_ = producer_worker_id;
+      }
       auto original_worker_id =
           WorkerID::FromBinary(inserted.first->second.owner_address_.worker_id());
       auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());

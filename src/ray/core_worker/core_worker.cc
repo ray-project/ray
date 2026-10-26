@@ -3564,9 +3564,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     // if the raylet fails. We expect the owner of the object to handle that
     // case (e.g., by detecting the raylet failure and storing an error).
     // The existing copy was created by an earlier execution, so this worker isn't its
-    // producer. If this pin reaches the raylet before the earlier execution's own pin,
-    // the copy's pin records no producer. That's rare: the earlier pin has to be
-    // delayed until the task is retried and reaches this return again.
+    // producer.
     local_raylet_rpc_client_->PinObjectIDs(
         owner_address,
         {return_id},

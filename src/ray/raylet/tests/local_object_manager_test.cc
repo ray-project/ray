@@ -1490,7 +1490,7 @@ TEST_F(LocalObjectManagerTest, TestProducerWorkerIdLastsUntilTheObjectIsDeleted)
   const WorkerID producer_worker_id = WorkerID::FromRandom();
   const ObjectID in_memory_id = ObjectID::FromRandom();
   const ObjectID spilled_id = ObjectID::FromRandom();
-  const ObjectID no_producer_id = ObjectID::FromRandom();
+  const ObjectID late_producer_id = ObjectID::FromRandom();
   auto make_objects = [this](const std::vector<ObjectID> &object_ids) {
     std::vector<std::unique_ptr<RayObject>> objects;
     for (const ObjectID &object_id : object_ids) {
@@ -1512,19 +1512,26 @@ TEST_F(LocalObjectManagerTest, TestProducerWorkerIdLastsUntilTheObjectIsDeleted)
                                    /*generator_id=*/ObjectID::Nil(),
                                    producer_worker_id);
   manager.PinObjectsAndWaitForFree(
-      {no_producer_id}, make_objects({no_producer_id}), owner_address);
+      {late_producer_id}, make_objects({late_producer_id}), owner_address);
   ASSERT_EQ(manager.GetProducerWorkerId(in_memory_id), producer_worker_id);
   ASSERT_EQ(manager.GetProducerWorkerId(spilled_id), producer_worker_id);
-  ASSERT_TRUE(manager.GetProducerWorkerId(no_producer_id).IsNil());
+  ASSERT_TRUE(manager.GetProducerWorkerId(late_producer_id).IsNil());
   ASSERT_TRUE(manager.GetProducerWorkerId(ObjectID::FromRandom()).IsNil());
 
-  // A second pin of a pinned object keeps the first pin's producer.
+  // A second pin of a pinned object keeps the first pin's producer, unless the first
+  // pin recorded none.
   manager.PinObjectsAndWaitForFree({in_memory_id},
                                    make_objects({in_memory_id}),
                                    owner_address,
                                    /*generator_id=*/ObjectID::Nil(),
                                    WorkerID::FromRandom());
   ASSERT_EQ(manager.GetProducerWorkerId(in_memory_id), producer_worker_id);
+  manager.PinObjectsAndWaitForFree({late_producer_id},
+                                   make_objects({late_producer_id}),
+                                   owner_address,
+                                   /*generator_id=*/ObjectID::Nil(),
+                                   producer_worker_id);
+  ASSERT_EQ(manager.GetProducerWorkerId(late_producer_id), producer_worker_id);
 
   manager.SpillObjects({spilled_id},
                        [](const Status &status) { ASSERT_TRUE(status.ok()); });
