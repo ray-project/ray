@@ -198,19 +198,13 @@ class SQLDatasource(Datasource):
 
     def _create_parallel_read_fn(self, task_id: int, parallelism: int):
         hash_fn = self.shard_hash_fn
-        hash_fn = self.shard_hash_fn
         hash_predicate = (
-            f"MOD(ABS({hash_fn}({self.shard_keys})), "
-            f"{parallelism}) = {task_id}"
+            f"MOD(ABS({hash_fn}({self.shard_keys})), " f"{parallelism}) = {task_id}"
         )
 
         if self.shard_key_list:
-            null_conditions = [
-                f"{key} IS NULL" for key in self.shard_key_list
-            ]
-            non_null_conditions = [
-                f"{key} IS NOT NULL" for key in self.shard_key_list
-            ]
+            null_conditions = [f"{key} IS NULL" for key in self.shard_key_list]
+            non_null_conditions = [f"{key} IS NOT NULL" for key in self.shard_key_list]
             null_predicate = "(" + " OR ".join(null_conditions) + ")"
             non_null_predicate = "(" + " AND ".join(non_null_conditions) + ")"
 
