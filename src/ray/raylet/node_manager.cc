@@ -2436,6 +2436,19 @@ void NodeManager::HandleMovedActorCallArgs(const WorkerID &worker_id,
       continue;
     }
     const ObjectID object_id = ObjectRefToId(refs[i]);
+    // An object created on this node now belongs to the consumer, so its producer's
+    // hook runs here instead of when the last copy is deleted. The copy list knows the
+    // producer even if its pin hasn't arrived yet, and the pin record knows it after
+    // the in-memory copy of a spilled object is evicted.
+    WorkerID producer_worker_id =
+        object_manager_.GetLocalObjectProducerWorkerId(object_id);
+    if (producer_worker_id.IsNil()) {
+      producer_worker_id = local_object_manager_.GetProducerWorkerId(object_id);
+    }
+    if (!producer_worker_id.IsNil() &&
+        objects_freed_at_consume_.insert(object_id).second) {
+      FireOnObjectFreed(object_id, producer_worker_id);
+    }
     if (local_object_manager_.HoldsPrimaryCopy(object_id)) {
       // This node already holds the primary copy; there is nothing to move.
       continue;
@@ -2623,9 +2636,18 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id,
   }
   RAY_LOG(DEBUG) << result.str();
 
+  // A restored or received copy records no producer, but its hook may have run when
+  // the object was moved.
+  if (producer_worker_id.IsNil() && !objects_freed_at_consume_.contains(object_id)) {
+    return;
+  }
   // If the object is spilled, its disk copy is the last one, and deleting it runs the
   // hook instead.
-  if (!producer_worker_id.IsNil() && !local_object_manager_.HasDiskCopy(object_id)) {
+  if (local_object_manager_.HasDiskCopy(object_id)) {
+    return;
+  }
+  // The hook already ran if an actor task on this node moved the object.
+  if (objects_freed_at_consume_.erase(object_id) == 0) {
     FireOnObjectFreed(object_id, producer_worker_id);
   }
 }
@@ -2637,7 +2659,10 @@ void NodeManager::HandleSpilledCopyDeleted(const ObjectID &object_id,
   if (object_manager_.SetLocalObjectProducerWorkerId(object_id, producer_worker_id)) {
     return;
   }
-  FireOnObjectFreed(object_id, producer_worker_id);
+  // The hook already ran if an actor task on this node moved the object.
+  if (objects_freed_at_consume_.erase(object_id) == 0) {
+    FireOnObjectFreed(object_id, producer_worker_id);
+  }
 }
 
 void NodeManager::FireOnObjectFreed(const ObjectID &object_id,
