@@ -37,7 +37,7 @@ head_start_ray_commands:
 :::
 
 :::{tab-item} KubeRay
-View the [specifying non-default ports](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#specifying-non-default-ports) page for details.
+View the [specifying non-default ports](../kuberay/user-guides/config.md#specifying-non-default-ports) page for details.
 :::
 
 ::::
@@ -63,6 +63,16 @@ $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
 ```
 
 The dashboard is now visible at ``http://localhost:8265``.
+:::
+
+:::{tab-item} Manual configuration
+**Port forwarding** <br/> If you started the cluster manually with ``ray start``, forward a local port to the dashboard port on the head node over SSH:
+
+```shell
+ssh -L 8265:localhost:8265 <username>@<head-node-address>
+```
+
+Keep the SSH session open, and view the dashboard at ``http://localhost:8265``. If you started the head node with a non-default ``--dashboard-port``, use that port in place of the second ``8265``.
 :::
 
 :::{tab-item} KubeRay
@@ -123,6 +133,8 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
       [[http.services.dashboard.loadBalancer.servers]]
         url = "http://localhost:8265"
 ```
+
+Ray reports the head node's own dashboard address by default, which users behind the proxy might not be able to reach. To report the proxied URL instead, set the ``RAY_OVERRIDE_DASHBOARD_URL`` environment variable in the process that connects to Ray, for example ``RAY_OVERRIDE_DASHBOARD_URL=www.my-website.com/ray/dashboard/``. Ray then uses that URL when it reports the dashboard address to users, such as in the message it logs when a driver connects. The variable changes only the reported URL. It doesn't change the address the dashboard listens on.
 
 ```{admonition} Warning
 :class: warning

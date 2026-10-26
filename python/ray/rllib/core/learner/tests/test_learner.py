@@ -416,7 +416,8 @@ class TestLearner(unittest.TestCase):
             },
             env_steps=64,
         )
-        self.assertTrue(learner._should_skip_update(partly_empty_batch))
+        # An empty module next to a non-empty one is no reason to skip.
+        self.assertFalse(learner._should_skip_update(partly_empty_batch))
         reader = get_cartpole_dataset_reader(batch_size=64)
         self.assertFalse(learner._should_skip_update(reader.next().as_multi_agent()))
         for plan in (
@@ -485,7 +486,17 @@ class TestLearner(unittest.TestCase):
         # 2 minibatches, each taking the 129 rows of the widest module from both
         # modules (`mod2` cycles): exactly `num_epochs` passes, not the 9 that
         # `ceil(2 * 129 / 32)` would have made of the env step count.
-        self.assertEqual([UpdatePlan(skip=False, num_minibatches=2)], proposed)
+        self.assertEqual(
+            [
+                UpdatePlan(
+                    skip=False,
+                    num_minibatches=2,
+                    modules_with_data=(True, True),
+                    modules_without_data=(False, False),
+                )
+            ],
+            proposed,
+        )
         self.assertEqual(2 * 129 * 2, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
 
     def test_epochs_survive_a_dropped_module(self):
@@ -537,8 +548,22 @@ class TestLearner(unittest.TestCase):
             # minibatch count, ceil(512 / 128) = 4.
             self.assertEqual(
                 [
-                    mock.call(UpdatePlan(skip=True, num_minibatches=0)),
-                    mock.call(UpdatePlan(skip=False, num_minibatches=4)),
+                    mock.call(
+                        UpdatePlan(
+                            skip=True,
+                            num_minibatches=0,
+                            modules_with_data=(False,),
+                            modules_without_data=(True,),
+                        )
+                    ),
+                    mock.call(
+                        UpdatePlan(
+                            skip=False,
+                            num_minibatches=4,
+                            modules_with_data=(True,),
+                            modules_without_data=(False,),
+                        )
+                    ),
                 ],
                 sync.call_args_list,
             )

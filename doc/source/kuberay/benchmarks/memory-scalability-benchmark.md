@@ -16,7 +16,7 @@ This architecture is not a good practice, but it can fulfill the current require
 
 ## Preparation
 
-Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch. This tutorial requires several files in the repository.
+Clone the [KubeRay repository](https://github.com/kuberay-project/kuberay) and checkout the `master` branch. This tutorial requires several files in the repository.
 
 ## Step 1: Create a new Kubernetes cluster
 

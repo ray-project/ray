@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ray._private.authentication.authentication_constants import (
-    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+    TOKEN_AUTH_ERROR_MESSAGE,
 )
 from ray._private.authentication.authentication_token_generator import (
     generate_new_authentication_token,
@@ -162,6 +162,4 @@ def ensure_token_if_auth_enabled(
             # Reload the cache so subsequent calls to token_loader read the new token.
             token_loader.reset_cache()
         else:
-            raise AuthenticationError(
-                TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
-            )
+            raise AuthenticationError(TOKEN_AUTH_ERROR_MESSAGE)

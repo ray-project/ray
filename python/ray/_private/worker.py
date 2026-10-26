@@ -93,6 +93,7 @@ from ray._raylet import (
 from ray.actor import ActorClass
 from ray.exceptions import (
     ActorHandleNotFoundError,
+    AuthenticationError,
     ObjectStoreFullError,
     RayError,
     RaySystemError,
@@ -1996,6 +1997,9 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
+        except AuthenticationError:
+            # A ConnectionError subclass; keep its fix text instead of wrapping it.
+            raise
         except (ConnectionError, RuntimeError) as e:
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
