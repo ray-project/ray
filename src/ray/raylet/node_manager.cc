@@ -2607,7 +2607,8 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   SpillIfOverPrimaryObjectsThreshold();
 }
 
-void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
+void NodeManager::HandleObjectMissing(const ObjectID &object_id,
+                                      const WorkerID &producer_worker_id) {
   // Notify the lease dependency manager that this object is no longer local.
   const auto waiting_lease_ids = lease_dependency_manager_.HandleObjectMissing(object_id);
   std::stringstream result;
@@ -2621,6 +2622,46 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     }
   }
   RAY_LOG(DEBUG) << result.str();
+
+  // If the object is spilled, its disk copy is the last one, and deleting it runs the
+  // hook instead.
+  if (!producer_worker_id.IsNil() && !local_object_manager_.HasDiskCopy(object_id)) {
+    FireOnObjectFreed(object_id, producer_worker_id);
+  }
+}
+
+void NodeManager::HandleSpilledCopyDeleted(const ObjectID &object_id,
+                                           const WorkerID &producer_worker_id) {
+  // If an in-memory copy remains, deleting it runs the hook instead. That copy may be
+  // restored or received, which records no producer, so it gets this one.
+  if (object_manager_.SetLocalObjectProducerWorkerId(object_id, producer_worker_id)) {
+    return;
+  }
+  FireOnObjectFreed(object_id, producer_worker_id);
+}
+
+void NodeManager::FireOnObjectFreed(const ObjectID &object_id,
+                                    const WorkerID &producer_worker_id) {
+  std::shared_ptr<WorkerInterface> worker =
+      worker_pool_.GetRegisteredWorker(producer_worker_id);
+  if (worker == nullptr) {
+    return;
+  }
+  rpc::OnObjectFreedRequest request;
+  request.set_intended_worker_id(producer_worker_id.Binary());
+  request.set_object_id(object_id.Binary());
+  worker->rpc_client()->OnObjectFreed(
+      request,
+      [object_id, producer_worker_id](const Status &status,
+                                      const rpc::OnObjectFreedReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(DEBUG) << absl::StrFormat(
+              "Failed to tell worker %s that object %s was freed: %s",
+              producer_worker_id.Hex(),
+              object_id.Hex(),
+              status.ToString());
+        }
+      });
 }
 
 void NodeManager::ProcessSubscribePlasmaReady(
