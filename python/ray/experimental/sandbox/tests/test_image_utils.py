@@ -1,4 +1,5 @@
 import contextlib
+import errno
 import hashlib
 import http.server
 import io
@@ -316,115 +317,268 @@ def test_extract_tar_layer_whiteouts(tmp_path):
     assert (dest / "app" / "file4.txt").read_bytes() == b"file4 content"
 
 
-def _ordered_layer(*entries):
-    """Build a layer tar with entries in the given order.
+def _dir(name, mode=0o755):
+    return {"name": name, "typ": tarfile.DIRTYPE, "mode": mode}
 
-    Each entry is (name, contents[, owner]). Use None for directory contents.
-    The optional owner sets both uid and gid; it defaults to 0.
-    """
+
+def _file(name, data=b"new", owner=0):
+    return {"name": name, "data": data, "uid": owner, "gid": owner}
+
+
+def _link(name, target):
+    return {"name": name, "typ": tarfile.SYMTYPE, "linkname": target}
+
+
+def _whiteout(name):
+    return {"name": name}
+
+
+def _tar_layer(entries):
+    """A layer tarball of ``entries``, in order, as ``_add_member`` arguments."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
-        for name, data, *owner in entries:
-            uid = owner[0] if owner else 0
-            if data is None:
-                _add_member(
-                    tar, name, uid=uid, gid=uid, mode=0o755, typ=tarfile.DIRTYPE
-                )
-            else:
-                _add_member(tar, name, data, uid=uid, gid=uid)
+        for entry in entries:
+            _add_member(tar, **entry)
     return buf.getvalue()
 
 
-@pytest.mark.parametrize("whiteout_first", [True, False])
+def _describe(root, path):
+    full = os.path.join(root, path)
+    if os.path.islink(full):
+        return "->" + os.readlink(full)
+    if os.path.isdir(full):
+        return f"dir{sorted(os.listdir(full))}"
+    if os.path.isfile(full):
+        with open(full, encoding="utf-8") as f:
+            return "file:" + f.read()
+    return "missing"
+
+
+_CACHE = [
+    _dir("cache", 0o700),
+    _file("cache/stale.txt", b"stale", owner=5),
+    _file("cache/app.conf", b"lower"),
+    _dir("cache/sub"),
+    _file("cache/sub/old.txt", b"old"),
+]
+_LINK = [_dir("bar"), _file("bar/a", b"a"), _link("foo", "bar")]
+_CHAIN = [_dir("bar"), _file("bar/a", b"a"), _link("baz", "bar"), _link("foo", "baz")]
+_FRESH = [_dir("cache"), _file("cache/fresh.txt", b"fresh", owner=7)]
+
+# {case: (lower layer, upper entries, upper whiteouts, expected tree, expected
+# owners or None)}. Each expectation applies the upper layer's whiteouts to the
+# lower layer and only then its other entries, as the OCI image layer spec has
+# it, whatever their order in the archive.
+_WHITEOUT_CASES = {
+    "opaque": (
+        _CACHE,
+        _FRESH,
+        [_whiteout("cache/.wh..wh..opq")],
+        {"cache": "dir['fresh.txt']"},
+        {"cache/fresh.txt": (7, 7)},
+    ),
+    "whiteout-directory": (
+        _CACHE,
+        _FRESH,
+        [_whiteout(".wh.cache")],
+        {"cache": "dir['fresh.txt']"},
+        {"cache/fresh.txt": (7, 7)},
+    ),
+    "whiteout-file-and-re-add-it": (
+        _CACHE,
+        [_file("cache/app.conf", b"upper", owner=7)],
+        [_whiteout("cache/.wh.app.conf")],
+        {
+            "cache": "dir['app.conf', 'stale.txt', 'sub']",
+            "cache/app.conf": "file:upper",
+            "cache/sub": "dir['old.txt']",
+        },
+        {"cache/stale.txt": (5, 5), "cache/app.conf": (7, 7)},
+    ),
+    "opaque-root": (
+        _CACHE,
+        _FRESH,
+        [_whiteout(".wh..wh..opq")],
+        {".": "dir['cache']", "cache": "dir['fresh.txt']"},
+        {"cache/fresh.txt": (7, 7)},
+    ),
+    "symlink-then-directory": (
+        _LINK,
+        [_dir("foo")],
+        [_whiteout(".wh.foo")],
+        {"foo": "dir[]", "bar": "dir['a']"},
+        None,
+    ),
+    "symlink-then-directory-and-child": (
+        _LINK,
+        [_dir("foo"), _file("foo/x", b"x")],
+        [_whiteout(".wh.foo")],
+        {"foo": "dir['x']", "bar": "dir['a']"},
+        None,
+    ),
+    "symlink-then-child": (
+        _LINK,
+        [_file("foo/x", b"x")],
+        [_whiteout(".wh.foo")],
+        {"foo": "dir['x']", "bar": "dir['a']"},
+        None,
+    ),
+    "symlink-chain-then-directory": (
+        _CHAIN,
+        [_dir("foo")],
+        [_whiteout(".wh.foo")],
+        {"foo": "dir[]", "bar": "dir['a']", "baz": "->bar"},
+        None,
+    ),
+    "whiteouts-of-a-symlink-and-through-it": (
+        _LINK,
+        [],
+        [_whiteout(".wh.foo"), _whiteout("foo/.wh.a")],
+        {"foo": "missing", "bar": "dir[]"},
+        None,
+    ),
+    "whiteouts-of-a-directory-and-below-it": (
+        [_dir("a"), _dir("a/b"), _file("a/b/c")],
+        [],
+        [_whiteout(".wh.a"), _whiteout("a/b/.wh.c")],
+        {"a": "missing"},
+        None,
+    ),
+    "opaque-and-whiteout-in-one-directory": (
+        _CACHE,
+        [],
+        [_whiteout("cache/.wh..wh..opq"), _whiteout("cache/.wh.stale.txt")],
+        {"cache": "dir[]"},
+        {},
+    ),
+    "whiteout-under-the-layers-own-symlink": (
+        [_dir("b"), _file("b/x", b"x")],
+        [_link("a", "b")],
+        [_whiteout("a/.wh.x")],
+        {"a": "->b", "b": "dir['x']"},
+        None,
+    ),
+    # Paths resolve through lower-layer symlinks, as the extractor already
+    # does (UsrMerge); the spec leaves this open.
+    "whiteout-through-a-lower-symlink": (
+        _LINK,
+        [_file("foo/x", b"x")],
+        [_whiteout("foo/.wh.a")],
+        {"foo": "->bar", "bar": "dir['x']"},
+        None,
+    ),
+}
+
+
+def _orders(entries, whiteouts):
+    """The distinct archive orders a case runs in, by name."""
+    candidates = {
+        "whiteouts-first": whiteouts + entries,
+        "whiteouts-last": entries + whiteouts,
+        "whiteouts-reversed": whiteouts[::-1] + entries,
+        "interleaved": entries[:1] + whiteouts + entries[1:],
+    }
+    orders = {}
+    for name, order in candidates.items():
+        if order not in orders.values():
+            orders[name] = order
+    return orders
+
+
+_WHITEOUT_ORDERS = [
+    (case, order)
+    for case, (_, entries, whiteouts, _, _) in _WHITEOUT_CASES.items()
+    for order in _orders(entries, whiteouts)
+]
+
+
 @pytest.mark.parametrize(
-    "whiteout", ["cache/.wh..wh..opq", ".wh.cache", ".wh..wh..opq"]
+    "case, order", _WHITEOUT_ORDERS, ids=[f"{c}-{o}" for c, o in _WHITEOUT_ORDERS]
 )
-def test_whiteout_hides_only_lower_layers(tmp_path, whiteout, whiteout_first):
-    """Preserve current-layer entries whether the whiteout comes before or
-    after them."""
+def test_whiteouts_apply_to_lower_layers_in_any_order(tmp_path, case, order):
+    """A layer's whiteouts hide only what lower layers left, as if applied
+    before its other entries, and none affects another's target."""
+    lower, entries, whiteouts, tree, owners = _WHITEOUT_CASES[case]
     dest = tmp_path / "rootfs"
     dest.mkdir()
     ownership = {}
-    lower = _ordered_layer(
-        ("cache", None),
-        ("cache/stale.txt", b"stale", 5),
-        ("cache/sub", None),
-        ("cache/sub/old.txt", b"old"),
-    )
-    extract_tar_layer(lower, str(dest), ownership=ownership)
+    extract_tar_layer(_tar_layer(lower), str(dest), ownership=ownership)
 
-    written = [
-        ("cache", None),
-        ("cache/fresh.txt", b"fresh", 7),
-        ("cache/sub", None),
-        ("cache/sub/new.txt", b"new"),
-    ]
-    entries = (
-        [(whiteout, b""), *written] if whiteout_first else [*written, (whiteout, b"")]
-    )
-    extract_tar_layer(_ordered_layer(*entries), str(dest), ownership=ownership)
+    upper = _tar_layer(_orders(entries, whiteouts)[order])
+    extract_tar_layer(upper, str(dest), ownership=ownership)
 
-    files = sorted(str(p.relative_to(dest)) for p in dest.rglob("*") if p.is_file())
-    assert files == ["cache/fresh.txt", "cache/sub/new.txt"]
-    assert ownership == {"cache/fresh.txt": (7, 7)}
+    assert {path: _describe(dest, path) for path in tree} == tree
+    if owners is not None:
+        assert ownership == owners
 
 
 @pytest.mark.parametrize("whiteout_first", [True, False])
-def test_whiteout_keeps_a_file_its_layer_writes(tmp_path, whiteout_first):
-    """A ``.wh.<name>`` hides the lower layer's ``name``, not the one its own
-    layer writes."""
+def test_whiteout_hides_a_lower_directorys_mode(tmp_path, whiteout_first):
+    """A whiteout hides a lower directory's metadata too, when the layer
+    writes into a directory of that name without shipping it."""
     dest = tmp_path / "rootfs"
     dest.mkdir()
-    ownership = {}
-    lower = _ordered_layer(("cache", None), ("cache/app.conf", b"lower", 5))
-    extract_tar_layer(lower, str(dest), ownership=ownership)
+    extract_tar_layer(
+        _tar_layer([_dir("cache", 0o700), _file("cache/old.txt")]), str(dest)
+    )
 
-    entries = [("cache/.wh.app.conf", b""), ("cache/app.conf", b"upper", 7)]
-    if not whiteout_first:
+    entries = [_file("cache/fresh.txt"), _whiteout(".wh.cache")]
+    if whiteout_first:
         entries.reverse()
-    extract_tar_layer(_ordered_layer(*entries), str(dest), ownership=ownership)
+    extract_tar_layer(_tar_layer(entries), str(dest))
 
-    assert (dest / "cache" / "app.conf").read_bytes() == b"upper"
-    assert ownership == {"cache/app.conf": (7, 7)}
-
-
-def test_whiteout_skips_a_directory_it_cannot_list(tmp_path):
-    """A lower-layer directory the extracting user can't list doesn't fail
-    the pull, even when the layer that whites it out also makes it readable
-    again."""
-    dest = tmp_path / "rootfs"
-    dest.mkdir()
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w") as tar:
-        _add_member(tar, "spool", mode=0o300, typ=tarfile.DIRTYPE)
-        _add_member(tar, "spool/old", b"old")
-    extract_tar_layer(buf.getvalue(), str(dest))
-
-    upper = _ordered_layer(("spool", None), ("spool/new", b"new"), (".wh.spool", b""))
-    try:
-        extract_tar_layer(upper, str(dest))
-
-        assert (dest / "spool" / "new").read_bytes() == b"new"
-        assert stat.S_IMODE((dest / "spool").stat().st_mode) == 0o755
-    finally:
-        # A failed run would otherwise leave a directory pytest can't delete
-        os.chmod(dest / "spool", 0o755)
+    assert os.listdir(dest / "cache") == ["fresh.txt"]
+    assert stat.S_IMODE((dest / "cache").stat().st_mode) != 0o700
 
 
-@pytest.mark.parametrize("name", ["app/.wh..", "app/.wh...", ".wh..", ".wh..."])
-def test_dot_whiteouts_are_ignored(tmp_path, name):
-    """Ignore whiteouts targeting "." or ".."."""
+@pytest.mark.parametrize(
+    "name", [".wh.", "app/.wh.", "app/.wh..", ".wh...", "app/.wh..."]
+)
+def test_invalid_whiteout_fails_the_layer_before_removing_anything(tmp_path, name):
+    """A whiteout must name an entry of its directory: the spec has an
+    empty name rejected, and ``.`` or ``..`` would name the directory or its
+    parent."""
     dest = tmp_path / "rootfs"
     dest.mkdir()
     (tmp_path / "beside.txt").write_bytes(b"beside")
     extract_tar_layer(
-        _ordered_layer(("app", None), ("app/keep.txt", b"keep")), str(dest)
+        _tar_layer([_dir("app"), _file("app/keep.txt", b"keep")]), str(dest)
     )
 
-    extract_tar_layer(_ordered_layer((name, b"")), str(dest))
+    with pytest.raises(ValueError, match="invalid whiteout"):
+        extract_tar_layer(
+            _tar_layer([_whiteout("app/.wh.keep.txt"), _whiteout(name)]), str(dest)
+        )
 
     assert (dest / "app" / "keep.txt").read_bytes() == b"keep"
     assert (tmp_path / "beside.txt").read_bytes() == b"beside"
+
+
+@pytest.mark.parametrize(
+    "whiteout, failing",
+    [("spool/.wh..wh..opq", ["listdir"]), (".wh.spool", ["unlink", "rmdir"])],
+    ids=["opaque-cannot-list", "whiteout-cannot-remove"],
+)
+def test_whiteout_removal_is_best_effort(tmp_path, monkeypatch, whiteout, failing):
+    """A whiteout whose directory can't be listed, or whose target can't be
+    removed, leaves the lower layer's entries in place instead of failing
+    the layer."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    extract_tar_layer(
+        _tar_layer([_dir("spool"), _file("spool/old", b"old")]), str(dest)
+    )
+    upper = _tar_layer([_dir("spool"), _file("spool/new", b"new"), _whiteout(whiteout)])
+
+    def deny(*args, **kwargs):
+        raise PermissionError(errno.EACCES, "denied")
+
+    with monkeypatch.context() as patch:
+        for name in failing:
+            patch.setattr(os, name, deny)
+        extract_tar_layer(upper, str(dest))
+
+    assert sorted(os.listdir(dest / "spool")) == ["new", "old"]
 
 
 def test_pull_and_extract_local_tar(tmp_path):
@@ -1345,22 +1499,72 @@ def test_a_layer_cut_short_fails_the_pull(tmp_path, monkeypatch):
             )
 
 
+class _CountingReader(io.BytesIO):
+    """Counts the bytes read from it, through ``read`` or ``readinto``."""
+
+    bytes_read = 0
+
+    def read(self, size=-1):
+        data = super().read(size)
+        self.bytes_read += len(data)
+        return data
+
+    def readinto(self, buffer):
+        count = super().readinto(buffer)
+        self.bytes_read += count
+        return count
+
+
 def test_extract_tar_layer_reads_a_layer_once(tmp_path):
     """A compressed layer is decompressed in one pass, not read twice."""
     blob = _gz_layer(("a", os.urandom(1 << 20)), ("b", os.urandom(1 << 20)))
 
-    class CountingReader(io.BytesIO):
-        bytes_read = 0
-
-        def read(self, size=-1):
-            data = super().read(size)
-            self.bytes_read += len(data)
-            return data
-
-    reader = CountingReader(blob)
+    reader = _CountingReader(blob)
     extract_tar_layer(reader, str(tmp_path))
     assert (tmp_path / "b").stat().st_size == 1 << 20
     assert reader.bytes_read <= len(blob)
+
+
+@pytest.mark.parametrize("cut", [0.5, -1], ids=["half", "last-byte"])
+@pytest.mark.parametrize("compression", ["gz", "bz2", "xz"])
+def test_extract_tar_layer_fails_on_a_truncated_compressed_layer(
+    tmp_path, compression, cut
+):
+    """A compressed layer cut short fails before any of it is extracted."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode=f"w:{compression}") as tar:
+        for name in ("a", "b"):
+            _add_member(tar, name, os.urandom(1 << 16))
+    layer = buf.getvalue()
+    layer = layer[: int(len(layer) * cut)] if cut > 0 else layer[:cut]
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    with pytest.raises(EOFError):
+        extract_tar_layer(layer, str(dest))
+    assert os.listdir(dest) == []
+
+
+@pytest.mark.parametrize("compression", ["gz", "bz2", "xz"])
+def test_extract_tar_layer_reads_each_compression_once(tmp_path, compression):
+    """Each compression is decompressed once, though the layer is applied in
+    two passes, its whiteouts first."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    extract_tar_layer(_tar_layer([_dir("app"), _file("app/old.txt")]), str(dest))
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode=f"w:{compression}") as tar:
+        for entry in [
+            _file("app/new.txt", os.urandom(1 << 16)),
+            _whiteout("app/.wh.old.txt"),
+        ]:
+            _add_member(tar, **entry)
+
+    reader = _CountingReader(buf.getvalue())
+    extract_tar_layer(reader, str(dest))
+
+    assert os.listdir(dest / "app") == ["new.txt"]
+    assert reader.bytes_read <= len(buf.getvalue())
 
 
 if __name__ == "__main__":

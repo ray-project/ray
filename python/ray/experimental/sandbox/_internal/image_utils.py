@@ -1,11 +1,14 @@
+import bz2
 import concurrent.futures
 import contextlib
 import errno
 import fcntl
+import gzip
 import hashlib
 import io
 import json
 import logging
+import lzma
 import mmap
 import os
 import platform
@@ -22,14 +25,13 @@ import uuid
 from collections import deque
 from functools import lru_cache
 from typing import (
-    AbstractSet,
     BinaryIO,
     Deque,
     Dict,
+    Generator,
     Iterator,
     List,
     Optional,
-    Set,
     Tuple,
     Union,
 )
@@ -371,71 +373,21 @@ def get_registry_auth_headers(
 
 
 def _drop_ownership_children(
-    ownership: Dict[str, Tuple[int, int]],
-    parent: str,
-    keep: AbstractSet[str] = frozenset(),
+    ownership: Dict[str, Tuple[int, int]], parent: str
 ) -> None:
-    """Remove recorded owners for descendants of ``parent``, except paths in ``keep``.
-
-    Use "." to include all recorded paths.
-    """
-    prefix = "" if parent == "." else parent + "/"
-    for key in [k for k in ownership if k.startswith(prefix) and k not in keep]:
+    """Forget recorded owners for everything under ``parent`` ("." for all)."""
+    if parent == ".":
+        ownership.clear()
+        return
+    prefix = parent + "/"
+    for key in [k for k in ownership if k.startswith(prefix)]:
         del ownership[key]
 
 
-def _drop_ownership_subtree(
-    ownership: Dict[str, Tuple[int, int]],
-    name: str,
-    keep: AbstractSet[str] = frozenset(),
-) -> None:
-    """Remove recorded owners for ``name`` and its descendants, except paths
-    in ``keep``."""
-    if name not in keep:
-        ownership.pop(name, None)
-    _drop_ownership_children(ownership, name, keep)
-
-
-def _add_with_parents(paths: Set[str], rel: str) -> None:
-    """Add ``rel`` and its parent directories to ``paths``."""
-    while rel != "." and rel not in paths:
-        paths.add(rel)
-        rel = os.path.dirname(rel) or "."
-
-
-def _remove_lower(path: str, rel: str, written: AbstractSet[str]) -> None:
-    """Remove lower-layer entries without deleting paths written by this layer.
-
-    ``rel`` is the path relative to the extraction root. ``written`` contains
-    paths extracted so far and their parent directories. For directories in
-    ``written``, check each child instead of deleting the whole directory.
-    """
-    if rel not in written:
-        if os.path.isdir(path) and not os.path.islink(path):
-            shutil.rmtree(path, ignore_errors=True)
-        elif os.path.lexists(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-    elif os.path.isdir(path) and not os.path.islink(path):
-        _remove_lower_children(path, rel, written)
-
-
-def _remove_lower_children(path: str, rel: str, written: AbstractSet[str]) -> None:
-    """Apply ``_remove_lower`` to each child of the directory ``path``.
-
-    Skip a directory that can't be listed. Whiteout removal is best-effort,
-    like the deletions in ``_remove_lower``.
-    """
-    try:
-        items = os.listdir(path)
-    except OSError:
-        return
-    for item in items:
-        _remove_lower(
-            os.path.join(path, item), os.path.normpath(os.path.join(rel, item)), written
-        )
+def _drop_ownership_subtree(ownership: Dict[str, Tuple[int, int]], name: str) -> None:
+    """Forget recorded owners for a deleted path and everything under it."""
+    ownership.pop(name, None)
+    _drop_ownership_children(ownership, name)
 
 
 # Linux's MAXSYMLINKS: the hop count past which path resolution gives ELOOP.
@@ -493,12 +445,135 @@ def _create_nofollow(path: str) -> None:
     os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o644))
 
 
+# The compressions tarfile's "r:*" mode reads, by magic number.
+_LAYER_COMPRESSIONS = (
+    (b"\x1f\x8b", gzip.open),
+    (b"BZh", bz2.open),
+    (b"\xfd7zXZ\x00", lzma.open),
+)
+
+
+@contextlib.contextmanager
+def _uncompressed_layer(
+    fileobj: BinaryIO, spool_dir: str
+) -> Generator[BinaryIO, None, None]:
+    """``fileobj``, a layer tarball, as an uncompressed file at its start.
+
+    A gzip, bzip2 or xz layer is decompressed once, as it is read, into an
+    anonymous file in ``spool_dir``, so reading the layer twice doesn't
+    decompress it twice. Its reader checks where the compressed stream ends,
+    so a layer cut short fails here. Any other layer is read in place.
+    """
+    start = fileobj.tell()
+    reader = fileobj if hasattr(fileobj, "peek") else io.BufferedReader(fileobj)
+    head = reader.peek(6)[:6]
+    open_compressed = next(
+        (opener for magic, opener in _LAYER_COMPRESSIONS if head.startswith(magic)),
+        None,
+    )
+    if open_compressed is None:
+        if reader is not fileobj:
+            reader.detach()
+        fileobj.seek(start)
+        yield fileobj
+        return
+    with tempfile.TemporaryFile(dir=spool_dir) as spool:
+        try:
+            with open_compressed(reader) as stream:
+                shutil.copyfileobj(stream, spool, 1 << 20)
+        finally:
+            if reader is not fileobj:
+                reader.detach()
+        spool.seek(0)
+        yield spool
+
+
+def _remove_entry(path: str) -> None:
+    """Remove ``path`` and all under it, best-effort, not through a symlink."""
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path, ignore_errors=True)
+    elif os.path.lexists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def _apply_whiteouts(
+    tar: tarfile.TarFile,
+    dest_dir: str,
+    ownership: Optional[Dict[str, Tuple[int, int]]],
+) -> None:
+    """Apply a layer's whiteouts to the tree its lower layers left.
+
+    Each whiteout's parent is resolved, and each opaque directory listed,
+    before anything is removed, so no whiteout changes what another one
+    hides. The target itself isn't dereferenced: a whiteout of a symlink
+    removes the symlink. A directory that can't be listed is skipped.
+
+    Args:
+        tar: The layer, opened for reading.
+        dest_dir: The tree extracted from the lower layers.
+        ownership: Recorded owners, or None; records for removed paths go.
+
+    Raises:
+        ValueError: A whiteout names no entry of its directory.
+    """
+    opaque: List[Tuple[str, str]] = []
+    removals: List[Tuple[str, str]] = []
+    for member in tar:
+        name = member.name.lstrip("/")
+        if ".." in name.split("/"):
+            continue
+        dirname, basename = os.path.split(os.path.normpath(name))
+        if not basename.startswith(".wh."):
+            continue
+        if basename in (".wh.", ".wh..", ".wh..."):
+            raise ValueError(f"invalid whiteout '{member.name}'")
+        try:
+            parent_dir, parent_rel = _resolve_in_root(dest_dir, dirname)
+        except OSError:
+            continue
+        if basename == ".wh..wh..opq":
+            opaque.append((parent_dir, parent_rel))
+        else:
+            target = basename[len(".wh.") :]
+            removals.append(
+                (
+                    os.path.join(parent_dir, target),
+                    os.path.normpath(os.path.join(parent_rel, target)),
+                )
+            )
+
+    for parent_dir, parent_rel in opaque:
+        try:
+            items = os.listdir(parent_dir)
+        except OSError:
+            continue
+        if ownership is not None:
+            _drop_ownership_children(ownership, parent_rel)
+        removals.extend(
+            (
+                os.path.join(parent_dir, item),
+                os.path.normpath(os.path.join(parent_rel, item)),
+            )
+            for item in items
+        )
+
+    for path, rel in removals:
+        if ownership is not None:
+            _drop_ownership_subtree(ownership, rel)
+        _remove_entry(path)
+
+
 def extract_tar_layer(
     tar_input: Union[bytes, io.IOBase, BinaryIO],
     dest_dir: str,
     ownership: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> None:
     """Extract a tar archive layer onto dest_dir with OCI whiteout handling.
+
+    ``tar_input`` is the layer's bytes or a seekable binary file.
 
     Member paths are resolved as the sandbox will see them, with ``dest_dir``
     as ``/`` (see ``_resolve_in_root``), so a member under a symlinked
@@ -512,147 +587,138 @@ def extract_tar_layer(
     extracted files themselves stay owned by the extracting user; the EROFS
     image build restores the recorded owners.
 
-    Whiteouts remove entries from lower layers, not entries from the current
-    layer. This applies regardless of their order in the archive.
+    As the OCI image layer spec has it, the layer's whiteouts apply to the
+    lower layers only, before its other entries, whatever their order in the
+    archive (see ``_apply_whiteouts``). The layer is read twice to do so, but
+    a compressed layer is decompressed once (see ``_uncompressed_layer``).
     """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
     else:
         tar_fileobj = tar_input
 
+    with _uncompressed_layer(
+        tar_fileobj, os.path.dirname(os.path.abspath(dest_dir))
+    ) as layer:
+        start = layer.tell()
+        with tarfile.open(fileobj=layer, mode="r:*") as tar:
+            _apply_whiteouts(tar, dest_dir, ownership)
+        layer.seek(start)
+        with tarfile.open(fileobj=layer, mode="r:*") as tar:
+            _apply_entries(tar, dest_dir, ownership)
+
+
+def _apply_entries(
+    tar: tarfile.TarFile,
+    dest_dir: str,
+    ownership: Optional[Dict[str, Tuple[int, int]]],
+) -> None:
+    """Extract a layer's entries other than its whiteouts onto ``dest_dir``."""
     dir_mtimes = []
-    written: Set[str] = set()
-    # Iterating reads the layer once; getmembers() first would decompress it
-    # twice, since extractfile() then rewinds a compressed stream. Not stream
-    # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
-    # short on a member boundary would extract without an error.
-    with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
-        for member in tar:
-            name = member.name.lstrip("/")
+    for member in tar:
+        name = member.name.lstrip("/")
 
-            # Prevent path traversal
-            if ".." in name.split("/"):
-                continue
+        # Prevent path traversal
+        if ".." in name.split("/"):
+            continue
 
-            # The parent is resolved inside dest_dir, so every operation below
-            # stays in the tree and ``rel`` is the canonical path. The last
-            # component is never dereferenced: a symlink there is replaced or
-            # kept as such, not written through.
-            dirname, basename = os.path.split(os.path.normpath(name))
+        # The parent is resolved inside dest_dir, so every operation below
+        # stays in the tree and ``rel`` is the canonical path. The last
+        # component is never dereferenced: a symlink there is replaced or
+        # kept as such, not written through.
+        dirname, basename = os.path.split(os.path.normpath(name))
+        if basename.startswith(".wh."):
+            continue
+        try:
+            parent_dir, parent_rel = _resolve_in_root(dest_dir, dirname)
+        except OSError:
+            continue
+        target_path = os.path.join(parent_dir, basename)
+        rel = os.path.normpath(os.path.join(parent_rel, basename))
+
+        # Remove conflicting existing file/dir if member type differs
+        if os.path.exists(target_path) or os.path.islink(target_path):
+            if not (os.path.isdir(target_path) and member.isdir()):
+                try:
+                    if os.path.isdir(target_path) and not os.path.islink(target_path):
+                        shutil.rmtree(target_path, ignore_errors=True)
+                    else:
+                        os.remove(target_path)
+                except OSError:
+                    pass
+            else:
+                # If target_path is a directory or a symlink to an existing directory
+                # inside dest_dir, preserve it (e.g. UsrMerge /bin -> usr/bin).
+                pass
+
+        # Use safe extraction
+        member.name = name
+        if member.isreg():
+            os.makedirs(parent_dir, exist_ok=True)
+            # The conflict pass above removed any symlink at target_path;
+            # O_NOFOLLOW turns a leftover one into an error, not a write
+            # through it.
+            fd = os.open(
+                target_path,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                0o666,
+            )
+            with open(fd, "wb") as f_out:
+                f_in = tar.extractfile(member)
+                if f_in:
+                    shutil.copyfileobj(f_in, f_out)
+            if member.mode:
+                os.chmod(target_path, member.mode)
+            # Preserve the archived mtime: tools inside the sandbox rely
+            # on it (apt revalidates its package lists with
+            # If-Modified-Since from the file mtime, and a reset-to-now
+            # mtime makes mirrors answer 304 for stale baked lists).
+            # Best-effort, like the directory pass below.
             try:
-                parent_dir, parent_rel = _resolve_in_root(dest_dir, dirname)
+                os.utime(target_path, (member.mtime, member.mtime))
             except OSError:
-                continue
-            target_path = os.path.join(parent_dir, basename)
-            rel = os.path.normpath(os.path.join(parent_rel, basename))
-
-            # Handle OCI opaque whiteout (.wh..wh..opq)
-            if basename == ".wh..wh..opq":
-                if ownership is not None:
-                    _drop_ownership_children(ownership, parent_rel, written)
-                _remove_lower_children(parent_dir, parent_rel, written)
-                continue
-
-            # Handle deletion whiteouts (.wh.<name>). Ignore empty names, ".",
-            # and ".." so a malformed whiteout cannot delete its directory or
-            # its parent.
-            if basename.startswith(".wh."):
-                del_name = basename[4:]
-                if del_name in ("", ".", ".."):
-                    continue
-                del_rel = os.path.normpath(os.path.join(parent_rel, del_name))
-                if ownership is not None:
-                    _drop_ownership_subtree(ownership, del_rel, written)
-                _remove_lower(os.path.join(parent_dir, del_name), del_rel, written)
-                continue
-
-            # Remove conflicting existing file/dir if member type differs
-            if os.path.exists(target_path) or os.path.islink(target_path):
-                if not (os.path.isdir(target_path) and member.isdir()):
-                    try:
-                        if os.path.isdir(target_path) and not os.path.islink(
-                            target_path
-                        ):
-                            shutil.rmtree(target_path, ignore_errors=True)
-                        else:
-                            os.remove(target_path)
-                    except OSError:
-                        pass
-                else:
-                    # If target_path is a directory or a symlink to an existing directory
-                    # inside dest_dir, preserve it (e.g. UsrMerge /bin -> usr/bin).
-                    pass
-
-            # Use safe extraction
-            member.name = name
-            if member.isreg():
-                os.makedirs(parent_dir, exist_ok=True)
-                # The conflict pass above removed any symlink at target_path;
-                # O_NOFOLLOW turns a leftover one into an error, not a write
-                # through it.
-                fd = os.open(
-                    target_path,
-                    os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
-                    0o666,
-                )
-                with open(fd, "wb") as f_out:
-                    f_in = tar.extractfile(member)
-                    if f_in:
-                        shutil.copyfileobj(f_in, f_out)
-                if member.mode:
-                    os.chmod(target_path, member.mode)
-                # Preserve the archived mtime: tools inside the sandbox rely
-                # on it (apt revalidates its package lists with
-                # If-Modified-Since from the file mtime, and a reset-to-now
-                # mtime makes mirrors answer 304 for stale baked lists).
-                # Best-effort, like the directory pass below.
+                pass
+        elif member.isdir():
+            os.makedirs(target_path, exist_ok=True)
+            # Deferred to the post-loop pass: tar lists a directory
+            # before its contents, so a restrictive archived mode (0500)
+            # applied here would break extracting the children. Preserved
+            # symlinks (UsrMerge) are skipped: chmod/utime follow them.
+            if not os.path.islink(target_path):
+                dir_mtimes.append((target_path, member.mode, member.mtime))
+        elif member.issym():
+            os.makedirs(parent_dir, exist_ok=True)
+            try:
+                os.symlink(member.linkname, target_path)
+            except OSError:
+                pass
+        elif member.islnk():
+            os.makedirs(parent_dir, exist_ok=True)
+            link_name = member.linkname.lstrip("/")
+            if ".." not in link_name.split("/"):
+                link_dir, link_base = os.path.split(os.path.normpath(link_name))
                 try:
-                    os.utime(target_path, (member.mtime, member.mtime))
+                    link_parent, _ = _resolve_in_root(dest_dir, link_dir)
+                    # A hardlink names another member; if that is a
+                    # symlink, link the symlink itself, not what it
+                    # points at on the host.
+                    os.link(
+                        os.path.join(link_parent, link_base),
+                        target_path,
+                        follow_symlinks=False,
+                    )
                 except OSError:
                     pass
-            elif member.isdir():
-                os.makedirs(target_path, exist_ok=True)
-                # Deferred to the post-loop pass: tar lists a directory
-                # before its contents, so a restrictive archived mode (0500)
-                # applied here would break extracting the children. Preserved
-                # symlinks (UsrMerge) are skipped: chmod/utime follow them.
-                if not os.path.islink(target_path):
-                    dir_mtimes.append((target_path, member.mode, member.mtime))
-            elif member.issym():
-                os.makedirs(parent_dir, exist_ok=True)
-                try:
-                    os.symlink(member.linkname, target_path)
-                except OSError:
-                    pass
-            elif member.islnk():
-                os.makedirs(parent_dir, exist_ok=True)
-                link_name = member.linkname.lstrip("/")
-                if ".." not in link_name.split("/"):
-                    link_dir, link_base = os.path.split(os.path.normpath(link_name))
-                    try:
-                        link_parent, _ = _resolve_in_root(dest_dir, link_dir)
-                        # A hardlink names another member; if that is a
-                        # symlink, link the symlink itself, not what it
-                        # points at on the host.
-                        os.link(
-                            os.path.join(link_parent, link_base),
-                            target_path,
-                            follow_symlinks=False,
-                        )
-                    except OSError:
-                        pass
 
-            _add_with_parents(written, rel)
-
-            # Hardlinks are recorded under their own name too: the re-pack
-            # looks owners up by path, and whichever name of the inode it
-            # emits first decides the owner mkfs.erofs stores.
-            if ownership is not None and rel != ".":
-                if member.uid or member.gid:
-                    ownership[rel] = (member.uid, member.gid)
-                else:
-                    # A later layer re-shipping the path as root wins.
-                    ownership.pop(rel, None)
+        # Hardlinks are recorded under their own name too: the re-pack
+        # looks owners up by path, and whichever name of the inode it
+        # emits first decides the owner mkfs.erofs stores.
+        if ownership is not None and rel != ".":
+            if member.uid or member.gid:
+                ownership[rel] = (member.uid, member.gid)
+            else:
+                # A later layer re-shipping the path as root wins.
+                ownership.pop(rel, None)
 
     # Children first, so a parent's restrictive mode cannot block them.
     for dir_path, mode, mtime in reversed(dir_mtimes):
