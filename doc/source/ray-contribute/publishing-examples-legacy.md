@@ -14,7 +14,7 @@ This page describes the legacy flow for publishing an example: commit a notebook
 Prefer the template-collections flow for new examples. See {ref}`publishing-examples`. Only a couple of examples still use this flow, and you maintain and run every part of its release test yourself. The in-tree example release tests aren't run on a schedule, so treat the release test as an on-demand check you trigger manually. Use this flow only for an example that can't be a template.
 :::
 
-For how to write the notebook content itself, such as cells, tags, and local testing, see {ref}`creating-notebook-example`. This page picks up once you have a finished notebook, and covers placing it and wiring CI.
+This page picks up once you have a finished notebook, and covers placing it, controlling how its cells render, and wiring CI.
 
 ## Set up your working directory
 
@@ -50,6 +50,27 @@ Put your finished notebook under `content/`. Sphinx discovers `.ipynb`, `.md`, a
 If your notebook uses IPython syntax such as `!pip install`, set its lexer so the build can parse it. In the notebook's `metadata.language_info`, set `pygments_lexer` to `ipython3`. Otherwise the default `python3` lexer fails the build on those cells.
 
 A page that the gallery links to through `examples.yml` rather than through a `toctree` triggers a warning that it can't be reached from a parent. Mark it as an orphan to suppress the warning. In an `.ipynb`, add `"orphan": true` to the notebook's top-level `metadata`. In a MyST `.md` page, add `orphan: true` to the YAML front matter. This is common for Ray Train examples.
+
+## Hide and remove cells
+
+To control how a cell renders, add tags to the cell's `metadata.tags` list in the `.ipynb` file:
+
+- `hide-cell`, `hide-input`, and `hide-output` collapse the whole cell, its input, or its output. Readers click to expand it.
+- `remove-cell`, `remove-input`, and `remove-output` drop the cell, its input, or its output from the rendered page. The cell still runs when the notebook runs.
+
+Removed cells keep compute-intensive examples fast to test. Show the realistic values you want readers to use in a visible cell:
+
+```python
+num_workers = 8
+num_gpus = 2
+```
+
+Then follow it with a cell tagged `remove-cell` that overrides them with small values, so the test runs quickly:
+
+```python
+num_workers = 0
+num_gpus = 0
+```
 
 ## Add the CI test
 
