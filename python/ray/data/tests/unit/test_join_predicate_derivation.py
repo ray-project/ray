@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Optional, Tuple
+from typing import Optional, Tuple, cast
 
 import pytest
 
-from ray.data._internal.logical.operators import JoinSide
+from ray.data._internal.logical.operators import Join, JoinSide
 from ray.data._internal.logical.rules.predicate_pushdown import PredicatePushdown
 from ray.data.expressions import Expr, col
 
@@ -157,8 +157,9 @@ def _assert_predicate_matches(
 @pytest.mark.parametrize("test_case", TEST_CASES, ids=lambda tc: tc.description)
 def test_derive_one_sided_predicate(test_case: DerivationTestCase):
     # Only ``allows_predicate_pushdown_to`` is consulted on the join.
-    join = SimpleNamespace(
-        allows_predicate_pushdown_to=lambda side: test_case.allowed_sides[side.value]
+    allowed = test_case.allowed_sides
+    join = cast(
+        Join, SimpleNamespace(allows_predicate_pushdown_to=lambda s: allowed[s.value])
     )
     output_to_input_by_side = (LEFT_COLUMNS, RIGHT_COLUMNS)
 
