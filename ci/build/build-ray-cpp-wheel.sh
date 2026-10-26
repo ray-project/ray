@@ -20,7 +20,7 @@ PYTHON="cp310-cp310"
 mkdir -p .whl
 cd python
 
-/opt/python/"${PYTHON}"/bin/pip install -q cython==3.0.12 setuptools==80.9.0
+/opt/python/"${PYTHON}"/bin/pip install -q cython==3.3.0 setuptools==80.9.0
 
 # Set the commit SHA in _version.py
 if [[ -n "$TRAVIS_COMMIT" ]]; then

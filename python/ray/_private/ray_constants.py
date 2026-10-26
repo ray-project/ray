@@ -140,6 +140,9 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
 # For example, `pip` and `conda` users can use this environment variable to locate the
 # `requirements.txt` file.
 RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR = "RAY_RUNTIME_ENV_CREATE_WORKING_DIR"
+# If set to 0, the runtime env agent does not run the `py_executable` once at
+# environment creation to check that it can import a matching Ray.
+RAY_PY_EXECUTABLE_CHECK_ENABLED = env_bool("RAY_PY_EXECUTABLE_CHECK_ENABLED", True)
 # Defaults to 10 minutes. This should be longer than the total time it takes for
 # the local working_dir and py_modules to be uploaded, or these files might get
 # garbage collected before the job starts.

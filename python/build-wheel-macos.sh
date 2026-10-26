@@ -73,7 +73,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   fi
 
   pushd python
-    $PIP_CMD install -q setuptools==80.9.0 cython==3.0.12 wheel
+    $PIP_CMD install -q setuptools==80.9.0 cython==3.3.0 wheel
     # Set the commit SHA in _version.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       echo "TRAVIS_COMMIT variable detected. ray.__commit__ will be set to $TRAVIS_COMMIT"
