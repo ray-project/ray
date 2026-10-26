@@ -158,7 +158,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
   // The lease timeout only applies to reuse; a newly granted worker always gets its
   // first task.
   const bool lease_expired =
-      lease_entry.has_pushed_task &&
+      lease_entry.has_executed_task &&
       clock_.SteadyNowMillis() >= lease_entry.lease_expiration_time;
   if ((was_error || worker_exiting || lease_expired) || current_queue.empty()) {
     RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
@@ -175,7 +175,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       current_queue.pop_front();
 
       lease_entry.is_busy = true;
-      lease_entry.has_pushed_task = true;
+      lease_entry.has_executed_task = true;
 
       // Increment the total number of tasks in flight to any worker associated with the
       // current scheduling_key
