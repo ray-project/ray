@@ -1,98 +1,140 @@
 ---
-jupytext:
-    text_representation:
-        extension: .md
-        format_name: myst
-kernelspec:
-    display_name: Python 3
-    language: python
-    name: python3
+myst:
+  html_meta:
+    description: "<One or two sentences that say what the reader builds and which Ray libraries the guide uses.>"
 ---
 
+<!--
+Template for an end-to-end guide in the Ray documentation.
 
-(document-tag-to-refer-to)=
+Copy this file into the directory of the library your guide covers, rename it, and replace every <placeholder>. Then add the page to a toctree or an examples.yml gallery. Delete these comments before you open a pull request.
 
-# Creating an Example
+Ray CI doesn't run the code in this guide. Run every step yourself against the Ray version you name in the note below the title, and update that version whenever you re-verify the guide.
 
-This is an example template file for writing Jupyter Notebooks in markdown, using MyST. For more information on MyST notebooks, see the [MyST-NB documentation](https://myst-nb.readthedocs.io/en/latest/index.html). If you want to learn more about the MyST parser, see the [MyST documentation](https://myst-parser.readthedocs.io/en/latest/).
+Write the guide as plain MyST Markdown. Don't add Jupyter front matter such as `jupytext` or `kernelspec`, `{code-cell}` blocks, or a companion `.ipynb` file. Ray doesn't execute them, and the Ray documentation is retiring in-tree notebooks. To publish an example that Ray tests and keeps current, use the template-collections flow in doc/source/ray-contribute/publishing-examples.md instead.
 
-MyST is CommonMark compliant, so you can use plain markdown here. In case you need to execute restructured text (rST) directives, you can use `{eval-rst}` to execute the code. For instance, here's a note written in rST:
+Follow the Ray documentation style guide in doc/source/ray-contribute/writing-style.md.
+-->
 
-```{eval-rst}
-.. note::
+(<your-guide-label>)=
 
-   A note written in reStructuredText.
-```
+# <Task-oriented title in sentence case, such as "Classify images in parallel with Ray Data">
 
-```{margin}
-You can create margins with this syntax for smaller notes that don't make it into the main
-text.
-```
-
-You can also easily define footnotes.[^example]
-
-[^example]: This is a footnote.
-
-## Adding code cells
-
-
-```{code-cell} python3
-
-import ray
-import ray.rllib.agents.ppo as ppo
-from ray import serve
-
-def train_ppo_model():
-    trainer = ppo.PPOTrainer(
-        config={"framework": "torch", "num_workers": 0},
-        env="CartPole-v0",
-    )
-    # Train for one iteration
-    trainer.train()
-    trainer.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
-
-
-checkpoint_path = train_ppo_model()
-```
-
-
-## Hiding and removing cells
-
-You can hide cells, so that they toggle when you click the cell header. You can use different `:tags:` like `hide-cell`, `hide-input`, or `hide-output` to hide cell content, and you can use `remove-cell`, `remove-input`, or `remove-output` to completely remove the cell when rendered. Those cells still show up in the notebook itself.
-
-```{code-cell} python3
-:tags: [hide-cell]
-# This can be useful if you don't want to clutter the page with details.
-
-import ray
-import ray.rllib.agents.ppo as ppo
-from ray import serve
-```
-
-:::{tip}
-Here's a quick tip.
-:::
-
+This guide shows how to <do the task>. <One or two sentences on what the reader has at the end and why they'd want it.>
 
 :::{note}
-And this is a note.
+Ray CI doesn't test this guide. The author last ran it with Ray <x.y.z>. If a step fails on a newer Ray version, [open an issue](https://github.com/ray-project/ray/issues/new/choose).
 :::
 
-The following cell doesn't render:
+## Prerequisites
 
-```{code-cell} python3
-:tags: [remove-cell]
+Before you start, make sure you have the following:
+
+- Python <version> or later.
+- <Hardware, accounts, credentials, or datasets the guide needs, such as a GPU or an S3 bucket.>
+
+## Install dependencies
+
+Install Ray and the other packages this guide uses:
+
+```bash
+pip install -U "ray[default]" <other-packages>
+```
+
+## Start Ray
+
+Start Ray on your machine, or connect to a Ray cluster that's already running:
+
+::::{tab-set}
+
+:::{tab-item} Local machine
+```python
+import ray
+
+# Start a local Ray instance.
+ray.init()
+```
+:::
+
+:::{tab-item} Existing cluster
+```python
+import ray
+
+# Connect to the cluster that `ray start` started on this machine.
+ray.init(address="auto")
+```
+:::
+
+::::
+
+To learn more about starting Ray, see {ref}`start-ray-cli`.
+
+(<your-guide-label>-run)=
+
+## <First step, written as an imperative, such as "Define the work">
+
+<Explain what this step does and why, in prose. Introduce each code block with a sentence.>
+
+The following function squares a number. The {py:func}`ray.remote` decorator turns it into a task that Ray can schedule on any worker in the cluster:
+
+```python
+@ray.remote
+def square(x: int) -> int:
+    return x * x
+```
+
+## <Next step, such as "Run the tasks in parallel">
+
+Submit four tasks and wait for the results with {py:func}`ray.get`:
+
+```python
+# Submit the tasks. Each call returns immediately with an object reference.
+futures = [square.remote(i) for i in range(4)]
+
+# Block until every task finishes, then collect the results.
+print(ray.get(futures))
+```
+
+The script prints the following:
+
+```text
+[0, 1, 4, 9]
+```
+
+<!--
+Show output that's long or that the reader only sometimes needs in a dropdown, so it doesn't interrupt the steps.
+-->
+
+:::{dropdown} Example: Full output
+```text
+<Paste the complete output from your own run here.>
+```
+:::
+
+:::{tip}
+<An optional shortcut or a suggestion for scaling the example up.>
+:::
+
+<!--
+To add a diagram or a screenshot, put the image in an images/ directory next to your guide, link it with a relative path, and give it alt text that says what it shows:
+
+![<What the image shows>](images/<your-image>.png)
+-->
+
+## Clean up
+
+Disconnect from Ray when you're done:
+
+```python
 ray.shutdown()
 ```
 
-## Equations
+If you started a local Ray instance, this also stops it.
 
-\begin{equation}
-\frac {\partial u}{\partial x} + \frac{\partial v}{\partial y} = - \, \frac{\partial w}{\partial z}
-\end{equation}
+## Next steps
 
-\begin{align*}
-2x - 5y &=  8 \\
-3x + 9y &=  -12
-\end{align*}
+To keep learning, see the following pages:
+
+- {ref}`core-walkthrough`
+- {ref}`cluster-index`
+- <Links to the library guides and API pages that go deeper on what this guide covers.>

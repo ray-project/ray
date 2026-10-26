@@ -249,7 +249,7 @@ Choose the level by severity. Use `tip` for optional advice, `note` for supporti
 
 Tag every fenced code block with a language: `python`, `bash`, `yaml`, `json`, `text`, or `dockerfile`. Don't prefix shell commands with `$` or `#`, so readers can copy and paste them.
 
-Every runnable snippet in the docs is tested. Write examples that run out of the box, and use `literalinclude` or a testable code cell rather than pasting untested code. See {ref}`How to write code snippets <writing-code-snippets_ref>`.
+Write examples that run out of the box. To show code that Ray CI tests, put it in a script under the library's `doc_code/` directory and include it with `literalinclude`. CI doesn't run a plain fenced code block, so use one only for code you've run yourself, and don't present it as tested. See {ref}`How to write code snippets <writing-code-snippets_ref>`.
 
 In code comments, start with a capital letter and use the imperative.
 
