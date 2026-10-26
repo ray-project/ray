@@ -21,7 +21,6 @@ from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.serving_patterns.model_express.envs import (
     get_mx_app_name,
     get_mx_metadata_port_base,
-    get_mx_ready_port_base,
     get_mx_worker_grpc_port_base,
 )
 from ray.llm._internal.serve.serving_patterns.model_express.mx_server import (
@@ -48,13 +47,6 @@ async def _mx_server_address(app_name: str) -> str:
     return await handle.address.remote()
 
 
-def _port_offset(llm_config: LLMConfig) -> int:
-    # Ranks are scoped to the deployment, so colocated replicas of one deployment
-    # get disjoint port ranges. MX itself adds the worker's local device index.
-    rank = serve.get_replica_context().rank
-    return rank.local_rank * llm_config.get_engine_config().num_devices
-
-
 def _set_default(name: str, value: str) -> None:
     if name not in os.environ:
         os.environ[name] = value
@@ -76,26 +68,28 @@ class _ReadyHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-def _start_ready_server(host: str, port: int) -> None:
+def _start_ready_server(host: str) -> int:
+    """Serve the readiness endpoint on a free port; returns the port."""
     global _ready_server
-    if _ready_server is not None:
-        return
-    _ready_server = http.server.ThreadingHTTPServer((host, port), _ReadyHandler)
-    threading.Thread(
-        target=_ready_server.serve_forever, name="mx-ready-server", daemon=True
-    ).start()
+    if _ready_server is None:
+        _ready_server = http.server.ThreadingHTTPServer((host, 0), _ReadyHandler)
+        threading.Thread(
+            target=_ready_server.serve_forever, name="mx-ready-server", daemon=True
+        ).start()
+    return _ready_server.server_address[1]
 
 
 async def setup_model_express(llm_config: LLMConfig) -> None:
     """Configure the MX client for this replica. Runs before the engine starts."""
     engine_config = llm_config.get_engine_config()
     node_ip = ray.util.get_node_ip_address()
-    offset = _port_offset(llm_config)
 
     if "MX_SERVER_ADDRESS" not in os.environ:
         os.environ["MX_SERVER_ADDRESS"] = await _mx_server_address(get_mx_app_name())
-    _set_default("MX_METADATA_PORT", str(get_mx_metadata_port_base() + offset))
-    _set_default("MX_WORKER_GRPC_PORT", str(get_mx_worker_grpc_port_base() + offset))
+    # MX adds each worker's device index to these. vLLM's Ray workers address
+    # GPUs by physical index, so the ports are unique per node without an offset.
+    _set_default("MX_METADATA_PORT", str(get_mx_metadata_port_base()))
+    _set_default("MX_WORKER_GRPC_PORT", str(get_mx_worker_grpc_port_base()))
     _set_default("MX_WORKER_HOST", node_ip)
     # Node init may rewrite hf_model_id to a local path; keep the P2P identity
     # on the model id so every replica matches.
@@ -106,8 +100,7 @@ async def setup_model_express(llm_config: LLMConfig) -> None:
 
     _set_default("MX_ARTIFACT_TRANSFER", "1")
     _set_default("MX_ARTIFACT_BACKEND", "nixl")
-    ready_port = get_mx_ready_port_base() + offset
-    _start_ready_server(node_ip, ready_port)
+    ready_port = _start_ready_server(node_ip)
     os.environ["MX_ARTIFACT_READY_URL"] = f"http://{node_ip}:{ready_port}/ready"
 
     _append_env_prefixes_to_copy()

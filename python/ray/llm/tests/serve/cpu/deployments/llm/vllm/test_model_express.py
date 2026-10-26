@@ -17,7 +17,6 @@ from ray.llm._internal.serve.serving_patterns.model_express.mx_server import (
     ModelExpressServer,
 )
 from ray.serve.llm import LLMConfig
-from ray.serve.schema import ReplicaRank
 
 MX_ADDRESS = "10.0.0.1:41000"
 
@@ -28,11 +27,10 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture
-def ready_port_base():
+@pytest.fixture(autouse=True)
+def reset_ready_server():
     """Reset the module's process-wide ready server between tests."""
-    base = _free_port()
-    yield base
+    yield
     if model_express._ready_server is not None:
         model_express._ready_server.shutdown()
         model_express._ready_server.server_close()
@@ -47,9 +45,8 @@ def _llm_config() -> LLMConfig:
     )
 
 
-def _setup(ready_port_base: int, local_rank: int, env: dict):
+def _setup(env: dict):
     """Run setup_model_express; returns the env and the app names looked up."""
-    env = {"RAY_MX_READY_PORT_BASE": str(ready_port_base), **env}
     looked_up = []
 
     def get_deployment_handle(deployment_name, app_name):
@@ -60,12 +57,9 @@ def _setup(ready_port_base: int, local_rank: int, env: dict):
 
         return SimpleNamespace(address=SimpleNamespace(remote=address))
 
-    replica_context = SimpleNamespace(
-        rank=ReplicaRank(rank=5, node_rank=0, local_rank=local_rank)
-    )
     with patch.dict("os.environ", env, clear=True), patch(
-        "ray.serve.get_replica_context", return_value=replica_context
-    ), patch("ray.serve.get_deployment_handle", get_deployment_handle), patch(
+        "ray.serve.get_deployment_handle", get_deployment_handle
+    ), patch(
         "ray.util.get_node_ip_address", return_value="127.0.0.1"
     ):
         asyncio.run(model_express.setup_model_express(_llm_config()))
@@ -79,31 +73,28 @@ def test_is_model_express():
     )
 
 
-def test_setup_sets_client_env(ready_port_base):
-    env, looked_up = _setup(ready_port_base, local_rank=1, env={})
+def test_setup_sets_client_env():
+    env, looked_up = _setup(env={})
 
     # The server's address comes from the `mx` app's deployment.
     assert looked_up == [("ModelExpressServer", "mx")]
     assert env["MX_SERVER_ADDRESS"] == MX_ADDRESS
-    # Colocated replicas of a deployment get disjoint blocks of num_devices ports.
-    offset = 1 * 2
-    assert env["MX_METADATA_PORT"] == str(15555 + offset)
-    assert env["MX_WORKER_GRPC_PORT"] == str(16555 + offset)
+    # MX adds each worker's GPU index to the bases.
+    assert env["MX_METADATA_PORT"] == "15555"
+    assert env["MX_WORKER_GRPC_PORT"] == "16555"
     assert env["MX_WORKER_HOST"] == "127.0.0.1"
     assert env["MX_MODEL_NAME_OVERRIDE"] == "Qwen/Qwen3-0.6B"
     assert env["MX_ARTIFACT_TRANSFER"] == "1"
-    assert env["MX_ARTIFACT_READY_URL"] == (
-        f"http://127.0.0.1:{ready_port_base + offset}/ready"
-    )
+    # The ready endpoint listens on the port in the URL.
+    ready_port = model_express._ready_server.server_address[1]
+    assert env["MX_ARTIFACT_READY_URL"] == f"http://127.0.0.1:{ready_port}/ready"
     # vLLM only copies listed env prefixes into its Ray workers.
     prefixes = env["VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY"].split(",")
     assert {"MX_", "MODEL_EXPRESS_"} <= set(prefixes)
 
 
-def test_setup_uses_configured_env(ready_port_base):
+def test_setup_uses_configured_env():
     env, looked_up = _setup(
-        ready_port_base,
-        local_rank=1,
         env={
             "RAY_MX_APP_NAME": "mx-2",
             "RAY_MX_METADATA_PORT_BASE": "25555",
@@ -111,13 +102,13 @@ def test_setup_uses_configured_env(ready_port_base):
         },
     )
     assert looked_up == [("ModelExpressServer", "mx-2")]
-    assert env["MX_METADATA_PORT"] == str(25555 + 2)
-    assert env["MX_WORKER_GRPC_PORT"] == str(26555 + 2)
+    assert env["MX_METADATA_PORT"] == "25555"
+    assert env["MX_WORKER_GRPC_PORT"] == "26555"
 
 
-def test_setup_logs_mx_env(ready_port_base):
+def test_setup_logs_mx_env():
     with patch.object(model_express.logger, "info") as info:
-        env, _ = _setup(ready_port_base, local_rank=0, env={"OTHER": "x"})
+        env, _ = _setup(env={"OTHER": "x"})
     message = info.call_args.args[0] % info.call_args.args[1:]
     logged = dict(item.split("=", 1) for item in message.split(": ", 1)[1].split())
     assert logged == {
@@ -128,10 +119,8 @@ def test_setup_logs_mx_env(ready_port_base):
     assert "MX_SERVER_ADDRESS" in logged and "OTHER" not in logged
 
 
-def test_setup_keeps_user_env(ready_port_base):
+def test_setup_keeps_user_env():
     env, looked_up = _setup(
-        ready_port_base,
-        local_rank=0,
         env={
             "MX_SERVER_ADDRESS": "mx:9000",
             "MX_METADATA_PORT": "40000",
@@ -148,8 +137,8 @@ def test_setup_keeps_user_env(ready_port_base):
     ]
 
 
-def test_ready_endpoint_reports_engine_start(ready_port_base):
-    env, _ = _setup(ready_port_base, local_rank=0, env={})
+def test_ready_endpoint_reports_engine_start():
+    env, _ = _setup(env={})
     url = env["MX_ARTIFACT_READY_URL"]
 
     with pytest.raises(urllib.error.HTTPError) as e:
@@ -166,7 +155,6 @@ def test_mx_server_envs():
         assert mx_envs.get_mx_app_name() == "mx"
         assert mx_envs.get_mx_metadata_port_base() == 15555
         assert mx_envs.get_mx_worker_grpc_port_base() == 16555
-        assert mx_envs.get_mx_ready_port_base() == 17555
         assert mx_envs.get_mx_server_port() == 8931
         assert importlib.reload(mx_envs).MX_SERVER_HEALTH_CHECK_PERIOD_S == 10
     with patch.dict(
