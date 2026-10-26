@@ -560,15 +560,6 @@ doc/source/_intersphinx/
 @ doc
 ;
 
-# The notebook authoring boilerplate. Sphinx never reads it:
-# `_templates/template.ipynb` is a file contributors copy, not a page, nothing
-# includes it, and it backs no bazel target. So the catch-all was starting the
-# core docs example step for a file that step cannot run and the build does not
-# read.
-doc/source/_templates/
-# pass
-;
-
 # Test harness and target definitions outside the library dirs above keep the
 # core docs example step as their default owner. These aren't doc assets, so
 # they run tests without the opt-in label.

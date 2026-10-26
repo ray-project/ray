@@ -229,9 +229,9 @@ Depending on the type of document you're adding, you might also have to make cha
 
 This section covers authoring a notebook. To publish a finished example and set up CI so it keeps working, see {ref}`publishing-examples`.
 
-To add a new executable example to the Ray documentation, you can start from our [MyST notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) or [Jupyter notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.ipynb). You could also download the document you're reading right now and start modifying it. Click the download button at the top of this page to get the `.ipynb` file. All the example notebooks in Ray Tune are automatically tested by our CI system, provided you place them in the [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples). If you have questions about how to test your notebook when contributing to other Ray sub-projects, ask in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub when opening your pull request.
+To add a new executable example to the Ray documentation, start from the [MyST notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md). If you have questions about how to test your notebook, ask in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub when opening your pull request.
 
-To work from an existing example, look at the [Ray Tune Hyperopt example (`.ipynb`)](https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/hyperopt-example.ipynb) or the [Ray Serve guide for text classification (`.md`)](https://github.com/ray-project/ray/blob/master/doc/source/serve/tutorials/text-classification.md). We recommend that you start with an `.md` file and convert it to an `.ipynb` notebook at the end of the process. We'll walk you through this process below.
+To work from an existing example, look at the [Ray Serve guide for text classification](https://github.com/ray-project/ray/blob/master/doc/source/serve/tutorials/text-classification.md). Write your example as a MyST Markdown file.
 
 What makes these notebooks different from other documents is that they combine code and text in one document, and you can launch them in the browser. We also make sure our CI system tests them before we add them to our documentation. To make this work, notebooks need to define a _kernel specification_ to tell a notebook server how to interpret and run the code. For instance, here's the kernel specification of a Python notebook:
 
@@ -278,7 +278,7 @@ algo.train()
 
 ### Tags for your notebook
 
-What makes this work is the `:tags: [hide-cell]` directive in the `code-cell`. The reason we suggest starting with `.md` files is that it's much easier to add tags to them, as you've seen. You can also add tags to `.ipynb` files, but you'll need to start a notebook server for that first, which you may not want to do to contribute a piece of documentation.
+To hide a cell so that readers click to expand it, add `:tags: [hide-cell]` to its `code-cell` directive.
 
 Apart from `hide-cell`, you also have `hide-input` and `hide-output` tags that hide the input and output of a cell. Also, if you need code that runs in the notebook but you don't want to show it in the documentation, you can use the `remove-cell`, `remove-input`, and `remove-output` tags in the same way.
 
@@ -325,15 +325,15 @@ num_gpus = 0
 ```
 ````
 
-### Converting markdown notebooks to ipynb
+### Converting notebooks with `jupytext`
 
-Once you're finished writing your example, you can convert it to an `.ipynb` notebook using `jupytext`:
+To convert an existing `.ipynb` notebook to a MyST Markdown notebook, use `jupytext`:
 
 ```shell
-jupytext your-example.md --to ipynb
+jupytext your-example.ipynb --to myst
 ```
 
-In the same way, you can convert `.ipynb` notebooks to `.md` notebooks with `--to myst`. And if you want to convert your notebook to a Python file, for example, to test whether your whole script runs without errors, you can use `--to py` instead.
+To convert your notebook to a Python file instead, for example, to test whether your whole script runs without errors, use `--to py`.
 
 (vale)=
 
