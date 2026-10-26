@@ -3,8 +3,8 @@
 ARG BASE_IMAGE
 
 # Build the ModelExpress (MX) server on the same base image, so the binary links
-# against the final image's glibc; only the binary is copied into the final image.
-# Keep MODELEXPRESS_REF in sync with the modelexpress client version.
+# against the final image's glibc, and the matching Python client wheel from the
+# same commit; only these two are copied into the final image.
 FROM "$BASE_IMAGE" AS mx-server-builder
 
 ARG MODELEXPRESS_REF="e865b20f2771f594b06dede75fc6ef0718af186e"
@@ -36,6 +36,8 @@ git checkout -q FETCH_HEAD
 # (single server, no external store) needs the feature.
 PROTOC="$HOME/protoc/bin/protoc" "$HOME/.cargo/bin/cargo" build --release \
     -p modelexpress-server --features memory-backend --bin modelexpress-server
+
+python -m pip wheel --no-deps --wheel-dir "$HOME/mx-wheel" modelexpress_client/python
 EOF
 
 FROM "$BASE_IMAGE"
@@ -44,6 +46,7 @@ FROM "$BASE_IMAGE"
 # (python/ray/llm/_internal/serve/serving_patterns/model_express/envs.py).
 COPY --from=mx-server-builder /home/ray/modelexpress/target/release/modelexpress-server \
     /usr/local/bin/modelexpress-server
+COPY --from=mx-server-builder /home/ray/mx-wheel/ ./mx-wheel/
 
 COPY python/deplocks/llm/rayllm_*.lock ./
 COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch \
@@ -85,6 +88,11 @@ uv pip install --system --no-cache-dir --no-deps \
     --index-strategy unsafe-best-match \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
+
+# The MX client that load_format="modelexpress" imports, from the same commit as
+# the server binary. Its import-time dependencies are already installed;
+# runai-model-streamer (streaming weights from object storage) is not.
+uv pip install --system --no-cache-dir --no-deps ./mx-wheel/modelexpress-*.whl
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
