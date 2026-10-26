@@ -80,7 +80,7 @@ class RayletClientInterface {
   /// Notify raylets to release unused workers.
   /// \param workers_in_use Workers currently in use.
   /// \param callback Callback that will be called after raylet completes the release of
-  /// unused workers. \return ray::Status
+  /// unused workers.
   virtual void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) = 0;

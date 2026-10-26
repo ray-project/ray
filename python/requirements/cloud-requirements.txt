@@ -16,7 +16,7 @@ openlineage-python>=1.36.0
 boto3==1.29.7
 botocore==1.32.7
 aiohttp>=3.7.4.post0
-certifi>=2024.8.30
+certifi>=2026.10.19
 Click>=7.0
 colorama
 GitPython

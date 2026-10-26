@@ -19,6 +19,10 @@ import ray
 from ray import serve
 from ray.serve._private.test_utils import SERVE_INSTANCE_SIGNAL_ACTOR_NAME
 
+# The HAProxy shard drains for 0.01s, shorter than the reload that stops routing to a
+# stopping replica, so it closes connections HAProxy still sends on. Traffic tests use 5s.
+INGRESS_DRAIN_ENV = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "5"}
+
 
 def _rank_and_world_size() -> Tuple[int, int]:
     context = serve.get_replica_context()
@@ -63,3 +67,9 @@ class FailOnFlag:
 
 def build(args):
     return FailOnFlag.bind(args.get("fail", False))
+
+
+def build_draining(args):
+    """build() with INGRESS_DRAIN_ENV code-defined, so dropping config overrides keeps it."""
+    options = {"runtime_env": {"env_vars": INGRESS_DRAIN_ENV}}
+    return FailOnFlag.options(ray_actor_options=options).bind(args.get("fail", False))

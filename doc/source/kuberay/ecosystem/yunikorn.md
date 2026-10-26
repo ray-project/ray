@@ -83,7 +83,7 @@ Next, create a RayCluster with a head node with 1 CPU and 2GiB of RAM, and two w
 # - `ray.io/gang-scheduling-enabled`: Set to `true` to enable gang scheduling.
 # - `yunikorn.apache.org/app-id`: Set to a unique identifier for the application in Kubernetes, even across different namespaces.
 # - `yunikorn.apache.org/queue`: Set to the name of one of the queues in Apache YuniKorn.
-wget https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.yunikorn-scheduler.yaml
+wget https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.yunikorn-scheduler.yaml
 kubectl apply -f ray-cluster.yunikorn-scheduler.yaml
 ```
 
