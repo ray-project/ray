@@ -264,13 +264,23 @@ class ObjectManager : public ObjectManagerInterface,
       const NodeID &node_id) const override;
 
   /**
-   * @brief The producer worker recorded when the object was created in local plasma.
+   * @brief The producer worker recorded for the object's copy in local plasma.
    *
    * @param object_id The object to look up.
    * @return The producer's ID, or Nil if the object isn't in local plasma or was created
    * without one.
    */
   WorkerID GetLocalObjectProducerWorkerId(const ObjectID &object_id) const override;
+
+  /**
+   * @brief Records the producer on the object's copy in local plasma.
+   *
+   * @param object_id The object to update.
+   * @param producer_worker_id The producer to record.
+   * @return False if the object isn't in local plasma.
+   */
+  bool SetLocalObjectProducerWorkerId(const ObjectID &object_id,
+                                      const WorkerID &producer_worker_id) override;
 
   /// Returns debug string for class.
   ///
