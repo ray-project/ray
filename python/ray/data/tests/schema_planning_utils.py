@@ -10,14 +10,25 @@ import ray
 
 class RecordingLocalFileSystem(LocalFileSystem):
     def __init__(
-        self, trace_path=None, require_env=None, deny_open_path=None, **kwargs
+        self,
+        trace_path=None,
+        require_env=None,
+        require_env_for_info=None,
+        deny_open_path=None,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.trace_path = trace_path
         self.require_env = require_env
+        self.require_env_for_info = require_env_for_info
         self.deny_open_path = deny_open_path
         self.opens = []
         self.fail_open = False
+
+    def info(self, path, **kwargs):
+        if self.require_env_for_info is not None:
+            assert os.environ.get(self.require_env_for_info) == "enabled"
+        return super().info(path, **kwargs)
 
     def _open(self, path, mode="rb", block_size=None, **kwargs):
         assert not self.fail_open, f"Unexpected metadata read: {path}"

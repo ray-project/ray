@@ -4,6 +4,7 @@ import os
 from collections import Counter
 from dataclasses import replace
 from datetime import datetime
+from typing import Any, Dict
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -25,8 +26,14 @@ from ray.data._internal.datasource_v2.common.listing_utils import (
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
+from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+    OrcDatasourceV2,
+)
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import FooterReader
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+    ParquetDatasourceV2,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
@@ -39,6 +46,11 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 )
 from ray.data._internal.datasource_v2.interfaces.supports_metadata import MetadataType
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.count_operator import Count
+from ray.data._internal.logical.operators.map_operator import MapBatches
+from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
+from ray.data._internal.logical.rules.pushdown_count_files import PushdownCountFiles
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data._internal.util import unify_schemas_with_validation
@@ -47,7 +59,10 @@ from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.expressions import col
 from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
 from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
 
 
 def _filesystem(**kwargs):
@@ -360,6 +375,78 @@ def test_orc_default_does_not_add_metadata_count():
     )
 
 
+@pytest.mark.parametrize("format_name", ["parquet", "orc"])
+@pytest.mark.parametrize(
+    "options_case",
+    ["default", "runtime_env", "hard_affinity", "pg", "inherit", "resources"],
+)
+def test_count_rewrite_preserves_read_remote_args(tmp_path, format_name, options_case):
+    remote_args: Dict[str, Any] = {}
+    if options_case != "default":
+        remote_args["runtime_env"] = {"env_vars": {"STORAGE_ACCESS": "enabled"}}
+    if options_case == "hard_affinity":
+        remote_args.update(
+            num_cpus=0,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                ray.NodeID.from_random().hex(), soft=False
+            ),
+        )
+    elif options_case == "pg":
+        pg = PlacementGroup(PlacementGroupID.from_random(), bundle_cache=[{"CPU": 0.1}])
+        remote_args.update(
+            num_cpus=0.1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                pg, placement_group_bundle_index=0
+            ),
+        )
+    elif options_case == "inherit":
+        remote_args.update(num_cpus=0.1, scheduling_strategy=None)
+    elif options_case == "resources":
+        remote_args.update(
+            num_cpus=2,
+            num_gpus=1,
+            memory=1024,
+            resources={"storage": 1},
+            label_selector={"zone": "a"},
+            fallback_strategy=[{"label_selector": {"zone": "b"}}],
+            accelerator_type="test",
+            max_calls=1,
+            max_retries=0,
+        )
+    original = remote_args.copy()
+    paths = [str(tmp_path / f"data.{format_name}")]
+    datasource = (
+        ParquetDatasourceV2(paths)
+        if format_name == "parquet"
+        else OrcDatasourceV2(paths, reuse_file_metadata=True)
+    )
+    schema = pa.schema([("id", pa.int64())])
+    list_files = ListFiles(
+        paths=paths,
+        source_paths=paths,
+        file_indexer=NonSamplingFileIndexer(ignore_missing_paths=False),
+        filesystem=datasource.filesystem,
+    )
+    read_files = ReadFiles(
+        datasource_name=datasource.name,
+        scanner=datasource.create_scanner(schema=schema),
+        schema=schema,
+        parallelism=-1,
+        ray_remote_args=remote_args,
+        input_dependencies=[list_files],
+    )
+    plan = LogicalPlan(
+        Count(input_dependencies=[read_files]), DataContext.get_current()
+    )
+
+    rewritten = PushdownCountFiles().apply(plan).dag
+
+    assert isinstance(rewritten, MapBatches)
+    assert rewritten.ray_remote_args == {"num_cpus": 0.5, **original}
+    assert rewritten.ray_remote_args is not remote_args
+    assert read_files.ray_remote_args == original
+
+
 def test_parquet_metadata_count_without_known_file_size(tmp_path):
     path = tmp_path / "data.parquet"
     pq.write_table(pa.table({"id": [1, 2]}), path)
@@ -644,7 +731,16 @@ def test_small_or_cpu_limited_plans_keep_driver_io(monkeypatch, count, cpus):
 
 
 @pytest.mark.parametrize("offset", [0, 1], ids=["at_threshold", "above_threshold"])
-@pytest.mark.parametrize("scheduling", ["default", "placement_group", "inherit"])
+@pytest.mark.parametrize(
+    "scheduling",
+    [
+        "default",
+        "placement_group",
+        "inherit",
+        "hard_node_affinity",
+        "soft_node_affinity",
+    ],
+)
 def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling):
     count = inference._SCHEMA_READ_MIN_FILES + offset
     paths = list(map(str, range(count)))
@@ -655,7 +751,7 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling)
     read_paths = []
     concurrency = []
     submissions = []
-    remote_args = {"num_cpus": 0.1}
+    remote_args: Dict[str, Any] = {"num_cpus": 0.1}
     if scheduling == "placement_group":
         pg = PlacementGroup(PlacementGroupID.from_random(), bundle_cache=[{"CPU": 0.1}])
         remote_args["scheduling_strategy"] = PlacementGroupSchedulingStrategy(
@@ -663,7 +759,11 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling)
         )
     elif scheduling == "inherit":
         remote_args["scheduling_strategy"] = None
-    distributed = bool(offset) and scheduling == "default"
+    elif scheduling in ("hard_node_affinity", "soft_node_affinity"):
+        remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.NodeID.from_random().hex(), soft=scheduling == "soft_node_affinity"
+        )
+    distributed = bool(offset) and scheduling in ("default", "soft_node_affinity")
 
     def read_batch(files, *args, io_concurrency=4):
         read_paths.extend(file.path for file in files)

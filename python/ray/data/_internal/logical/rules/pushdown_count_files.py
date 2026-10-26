@@ -49,8 +49,8 @@ class PushdownCountFiles(Rule):
     every file during listing and pack them into a single read unit.
     """
 
-    # Default CPU allocation per task is 1; lower it so at least 2 footer-read
-    # tasks can run per core (the work is network-bound, not CPU-bound).
+    # Default to two footer-read tasks per core for this network-bound work.
+    # Explicit read resources must stay compatible with their placement options.
     _PER_TASK_NUM_CPUS_ALLOCATION = 0.5
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
@@ -138,7 +138,12 @@ class PushdownCountFiles(Rule):
             min_rows_per_bundled_input=batch_size,
             zero_copy_batch=True,
             can_modify_num_rows=True,
-            ray_remote_args={"num_cpus": self._PER_TASK_NUM_CPUS_ALLOCATION},
+            # Counting still accesses storage. Keep the read environment and
+            # placement together with the resources requested for that placement.
+            ray_remote_args={
+                "num_cpus": self._PER_TASK_NUM_CPUS_ALLOCATION,
+                **read_files.ray_remote_args,
+            },
         )
 
         return LogicalPlan(count_rows_op, plan.context)

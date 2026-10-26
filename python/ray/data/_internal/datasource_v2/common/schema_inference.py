@@ -24,7 +24,10 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
 
 # Bound submitted reads, not just executing threads, for full inference.
 _SCHEMA_READ_BATCH_SIZE = 256
@@ -221,6 +224,14 @@ def _schema_task_options(remote_args: Dict[str, Any]) -> Optional[Dict[str, Any]
         scheduling_strategy, PlacementGroupSchedulingStrategy
     ):
         logger.debug("Using driver schema reads for placement group scheduling")
+        return None
+    if (
+        isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+        and not scheduling_strategy.soft
+    ):
+        # The target node may fit read tasks but not the metadata task's CPU
+        # reservation, even when other nodes have enough cluster resources.
+        logger.debug("Using driver schema reads for hard node affinity")
         return None
     supported = {
         "runtime_env",

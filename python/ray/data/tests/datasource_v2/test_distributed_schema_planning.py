@@ -3,6 +3,7 @@
 import json
 import os
 from collections import Counter
+from typing import List, cast
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -20,13 +21,17 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_METADATA_COLUMN_NAME,
 )
+from ray.data._internal.logical.operators import ListFiles
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
 from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
 from ray.exceptions import RayTaskError
 from ray.util.placement_group import placement_group, remove_placement_group
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
 
 
 def _filesystem(**kwargs):
@@ -140,6 +145,7 @@ def test_full_schema_uses_driver_for_fractional_cpu_placement_group(
             )
             == 3
         )
+        assert dataset.count() == 3
         assert sorted(dataset.take_all(), key=lambda row: row["id"]) == [
             {"id": 0, "late": None},
             {"id": 1, "late": None},
@@ -147,6 +153,119 @@ def test_full_schema_uses_driver_for_fractional_cpu_placement_group(
         ]
     finally:
         remove_placement_group(pg)
+
+
+@pytest.mark.parametrize(
+    "format_name,write,read",
+    [
+        ("parquet", pq.write_table, ray.data.read_parquet),
+        ("orc", orc.write_table, ray.data.read_orc),
+    ],
+)
+def test_full_schema_uses_driver_for_hard_node_affinity(
+    monkeypatch, tmp_path, ray_start_cluster, format_name, write, read
+):
+    cluster = ray_start_cluster
+    target = cluster.add_node(num_cpus=0, object_store_memory=100 * 1024 * 1024)
+    cluster.add_node(num_cpus=2, object_store_memory=100 * 1024 * 1024)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    target_id = target.node_id
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(inference, "_SCHEMA_READ_MIN_FILES", 0)
+    paths = [tmp_path / f"f{i}.{format_name}" for i in range(3)]
+    for i, path in enumerate(paths):
+        table = pa.table({"id": [i]})
+        if i == 2:
+            table = table.append_column("late", pa.array(["value"]))
+        write(table, path)
+    trace = tmp_path / "opens.jsonl"
+    filesystem, _ = _filesystem(trace_path=str(trace))
+    dataset = read(
+        [str(path) for path in paths],
+        filesystem=filesystem,
+        merge_schema=True,
+        num_cpus=0,
+        ray_remote_args={
+            "scheduling_strategy": NodeAffinitySchedulingStrategy(target_id, soft=False)
+        },
+        override_num_blocks=1,
+    )
+    records = [json.loads(line) for line in trace.read_text().splitlines()]
+    assert Counter(record["path"] for record in records) == {
+        str(path): 1 for path in paths
+    }
+    assert all(record["pid"] == os.getpid() for record in records)
+    assert dataset.schema().base_schema == pa.schema(
+        [("id", pa.int64()), ("late", pa.string())]
+    )
+    remote_args = dataset._logical_plan.dag.ray_remote_args
+    assert remote_args["num_cpus"] == 0
+    strategy = remote_args["scheduling_strategy"]
+    assert isinstance(strategy, NodeAffinitySchedulingStrategy)
+    assert strategy.node_id == target_id
+    assert not strategy.soft
+    assert dataset.count() == 3
+    read_trace_offset = len(trace.read_text().splitlines())
+    assert sorted(dataset.take_all(), key=lambda row: row["id"]) == [
+        {"id": 0, "late": None},
+        {"id": 1, "late": None},
+        {"id": 2, "late": "value"},
+    ]
+    records = [
+        json.loads(line) for line in trace.read_text().splitlines()[read_trace_offset:]
+    ]
+    # ListFiles needs one CPU, so it cannot open files on this zero-CPU node.
+    # Arrow I/O threads can lack task names; use process and node identity.
+    worker_reads = [
+        record
+        for record in records
+        if record["pid"] != os.getpid() and record["node"] == target_id
+    ]
+    assert {record["path"] for record in worker_reads} == {str(path) for path in paths}
+
+
+@pytest.mark.parametrize(
+    "cache_metadata", [True, False], ids=["cache_hit", "cache_miss"]
+)
+def test_orc_count_preserves_read_runtime_env(
+    monkeypatch, tmp_path, ray_start_2_cpus, cache_metadata
+):
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    if not cache_metadata:
+        monkeypatch.setattr(inference, "_SCHEMA_METADATA_BUDGET", 0)
+    env_key = "RAY_ORC_COUNT_ACCESS"
+    # The cluster starts before setting the driver's environment, so default
+    # workers cannot inherit this value from the raylet.
+    monkeypatch.setenv(env_key, "enabled")
+    paths = [tmp_path / f"f{i}.orc" for i in range(2)]
+    for i, path in enumerate(paths):
+        orc.write_table(pa.table({"id": [i]}), path)
+    trace = tmp_path / "opens.jsonl"
+    filesystem, _ = _filesystem(
+        trace_path=str(trace), require_env=env_key, require_env_for_info=env_key
+    )
+    dataset = ray.data.read_orc(
+        [str(path) for path in paths],
+        filesystem=filesystem,
+        merge_schema=True,
+        runtime_env={"env_vars": {env_key: "enabled"}},
+        override_num_blocks=1,
+    )
+    blocks = cast(
+        List[pa.Table],
+        cast(
+            ListFiles, dataset._logical_plan.dag.input_dependencies[0]
+        ).prelisted_file_infos,
+    )
+    assert all(FILE_METADATA_COLUMN_NAME in block.column_names for block in blocks) == (
+        cache_metadata
+    )
+    assert dataset.count() == 2
+    records = [json.loads(line) for line in trace.read_text().splitlines()]
+    assert sum(record["pid"] != os.getpid() for record in records) == (
+        0 if cache_metadata else 2
+    )
 
 
 @pytest.mark.parametrize(
