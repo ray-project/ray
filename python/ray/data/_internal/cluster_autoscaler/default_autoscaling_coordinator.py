@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, FrozenSet, List, Optional, Set
 
 import ray
+import ray._private.state
 import ray.exceptions
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
@@ -322,6 +323,16 @@ def _default_send_resources_request(
     )
 
 
+def _default_get_draining_node_ids() -> Set[NodeIdStr]:
+    """Default ``get_draining_node_ids`` implementation for the actor."""
+    # Unit tests build the actor without ``ray.init()``. There's no cluster
+    # then, so nothing is draining.
+    if not ray.is_initialized():
+        return set()
+    # Maps each draining node's id to its drain deadline; only the ids matter.
+    return set(ray._private.state.state.get_draining_nodes())
+
+
 class _AutoscalingCoordinatorActor:
     """An actor to coordinate autoscaling resource requests from different components.
 
@@ -339,10 +350,14 @@ class _AutoscalingCoordinatorActor:
             [List[ResourceDict], Optional[List[LabelSelector]]], None
         ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
+        get_draining_node_ids: Callable[
+            [], Set[NodeIdStr]
+        ] = _default_get_draining_node_ids,
     ):
         self._get_current_time = get_current_time
         self._send_resources_request = send_resources_request
         self._get_cluster_nodes = get_cluster_nodes
+        self._get_draining_node_ids = get_draining_node_ids
 
         self._ongoing_reqs: Dict[RequesterId, OngoingRequest] = {}
         # Map from requester id to its subcluster selector.
@@ -350,6 +365,9 @@ class _AutoscalingCoordinatorActor:
         # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
         # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
         self._cluster_node_resources: Dict[Optional[LabelValue], NodeResources] = {}
+        # Whether the last draining-nodes query failed. Used to warn once per
+        # run of failures instead of on every tick.
+        self._draining_query_failing = False
         # Lock for thread-safe access to shared state from the background
         self._lock = threading.RLock()
         self._update_cluster_node_resources()
@@ -579,12 +597,37 @@ class _AutoscalingCoordinatorActor:
                 return {}
             return self._ongoing_reqs[requester_id].reserved_resources
 
+    def _get_draining_node_ids_or_empty(self) -> Set[NodeIdStr]:
+        """Get the ids of draining nodes, or an empty set if the query fails.
+
+        Draining info only narrows the view, so a failed query shouldn't fail
+        the whole refresh. Warns on the first failure of a run, not every tick.
+        """
+        try:
+            draining_node_ids = set(self._get_draining_node_ids())
+        except Exception:
+            if not self._draining_query_failing:
+                logger.warning(
+                    "AutoscalingCoordinator failed to get draining nodes;"
+                    " treating every alive node as available until it succeeds.",
+                    exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
+                )
+            self._draining_query_failing = True
+            return set()
+        self._draining_query_failing = False
+        return draining_node_ids
+
     def _update_cluster_node_resources(self) -> bool:
         """Update cluster resources bucketed by subcluster. Return True if changed."""
+        draining_node_ids = self._get_draining_node_ids_or_empty()
 
         def _is_node_eligible(node):
             # Exclude dead nodes.
             if not node["Alive"]:
+                return False
+            # Exclude draining nodes. They still report as alive, but the
+            # scheduler won't place new work on them.
+            if node.get("NodeID", "") in draining_node_ids:
                 return False
             resources = node["Resources"]
             # Exclude the head node if it doesn't have CPUs and GPUs,

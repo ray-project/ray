@@ -1,10 +1,13 @@
 import copy
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.data._internal.cluster_autoscaler import (
+    default_autoscaling_coordinator as coordinator_module,
+)
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
     ResourceRequestStrategy,
@@ -1032,6 +1035,68 @@ def test_forced_read_drops_a_node_that_has_since_died():
         "n2": {"GPU": 1},
     }
     assert coord.get_reserved_resources("train", recompute=True) == {"n1": {"GPU": 1}}
+
+
+def test_draining_node_is_excluded_until_the_drain_clears():
+    """A draining node still reports ``Alive``, but the scheduler won't place
+    new work on it, so reserving it promises capacity nobody can use."""
+    nodes = _nodes(n1={"GPU": 4}, n2={"GPU": 4})
+    draining = {"n1"}
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: nodes,
+        get_draining_node_ids=lambda: draining,
+    )
+    coord.request_resources(
+        requester_id="train", resources=[{"GPU": 4}] * 2, expire_after_s=10
+    )
+    assert coord.get_reserved_resources("train") == {"n2": {"GPU": 4}}
+
+    draining.clear()
+
+    assert coord.get_reserved_resources("train", recompute=True) == {
+        "n1": {"GPU": 4},
+        "n2": {"GPU": 4},
+    }
+
+
+def test_failing_draining_query_does_not_break_the_tick():
+    """Losing draining info must not stop the rest of the view refreshing, and
+    a query that keeps failing warns once, not on every tick."""
+    nodes = _nodes(n1={"GPU": 4})
+    get_draining_node_ids = Mock(side_effect=RuntimeError("GCS unavailable"))
+    with patch.object(coordinator_module.logger, "warning") as warning:
+        coord = _AutoscalingCoordinatorActor(
+            get_current_time=lambda: 0,
+            send_resources_request=Mock(),
+            get_cluster_nodes=lambda: nodes,
+            get_draining_node_ids=get_draining_node_ids,
+        )
+        coord.request_resources(
+            requester_id="train", resources=[{"GPU": 4}] * 2, expire_after_s=10
+        )
+        assert coord.get_reserved_resources("train") == {"n1": {"GPU": 4}}
+
+        # A node joining while the query keeps failing is still picked up.
+        nodes.extend(_nodes(n2={"GPU": 4}))
+        coord._tick()
+
+        assert coord.get_reserved_resources("train") == {
+            "n1": {"GPU": 4},
+            "n2": {"GPU": 4},
+        }
+        assert get_draining_node_ids.call_count == 2
+        assert warning.call_count == 1
+
+        # Once the query recovers, a later failure is worth warning about again.
+        get_draining_node_ids.side_effect = None
+        get_draining_node_ids.return_value = set()
+        coord._tick()
+        get_draining_node_ids.side_effect = RuntimeError("GCS unavailable")
+        coord._tick()
+
+        assert warning.call_count == 2
 
 
 def test_strategy_is_per_requester():
