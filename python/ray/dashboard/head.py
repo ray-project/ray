@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -40,6 +41,15 @@ if TYPE_CHECKING:
     from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 
 logger = logging.getLogger(__name__)
+
+
+def _is_all_interfaces(host: str) -> bool:
+    """Whether `host` is an all-interfaces address such as 0.0.0.0 or ::."""
+    try:
+        return ipaddress.ip_address(host).is_unspecified
+    except ValueError:
+        return False
+
 
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
@@ -527,9 +537,11 @@ class DashboardHead:
         else:
             logger.info("http server disabled.")
 
-        # We need to expose dashboard's node's ip for other worker nodes
-        # if it's not localhost.
-        dashboard_http_host = self.ip if not is_localhost(self.http_host) else http_host
+        # Advertise an address that other nodes and clients can connect to: the
+        # node IP when listening on all interfaces, otherwise the bound host.
+        dashboard_http_host = (
+            self.ip if _is_all_interfaces(self.http_host) else http_host
+        )
         # This synchronous code inside an async context is not great.
         # It is however acceptable, because this only gets run once
         # during initialization and therefore cannot block the event loop.
