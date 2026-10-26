@@ -229,13 +229,13 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                                     fbb.CreateString(owner_address.ip_address()),
                                     owner_address.port(),
                                     fbb.CreateString(owner_address.worker_id()),
-                                    fbb.CreateString(producer_worker_id.Binary()),
                                     is_experimental_mutable_object,
                                     data_size,
                                     metadata_size,
                                     source,
                                     device_num,
-                                    try_immediately);
+                                    try_immediately,
+                                    fbb.CreateString(producer_worker_id.Binary()));
   return PlasmaSend(store_conn, MessageType::PlasmaCreateRequest, &fbb, message);
 }
 
