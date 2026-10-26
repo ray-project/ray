@@ -20,6 +20,9 @@ from ray.llm._internal.common.utils.download_utils import MODEL_EXPRESS_LOAD_FOR
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.serving_patterns.model_express.envs import (
     get_mx_app_name,
+    get_mx_metadata_port_base,
+    get_mx_ready_port_base,
+    get_mx_worker_grpc_port_base,
 )
 from ray.llm._internal.serve.serving_patterns.model_express.mx_server import (
     MX_SERVER_DEPLOYMENT_NAME,
@@ -28,16 +31,8 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-# experimental_configs keys and defaults.
-MX_APP_NAME_KEY = "MX_APP_NAME"
-MX_METADATA_PORT_BASE_KEY = "MX_METADATA_PORT_BASE"
-MX_WORKER_GRPC_PORT_BASE_KEY = "MX_WORKER_GRPC_PORT_BASE"
-MX_READY_PORT_BASE_KEY = "MX_READY_PORT_BASE"
-DEFAULT_MX_METADATA_PORT_BASE = 15555
-DEFAULT_MX_WORKER_GRPC_PORT_BASE = 16555
-DEFAULT_MX_READY_PORT_BASE = 17555
-
-# vLLM copies only a fixed set of env prefixes into its Ray workers.
+# The MX client's env vars. vLLM copies only a fixed set of env prefixes into
+# its Ray workers, so these are added to that set.
 _MX_ENV_PREFIXES = ("MX_", "MODEL_EXPRESS_")
 
 _engine_ready = threading.Event()
@@ -93,32 +88,14 @@ def _start_ready_server(host: str, port: int) -> None:
 
 async def setup_model_express(llm_config: LLMConfig) -> None:
     """Configure the MX client for this replica. Runs before the engine starts."""
-    configs = llm_config.experimental_configs
     engine_config = llm_config.get_engine_config()
     node_ip = ray.util.get_node_ip_address()
     offset = _port_offset(llm_config)
 
     if "MX_SERVER_ADDRESS" not in os.environ:
-        app_name = configs.get(MX_APP_NAME_KEY) or get_mx_app_name()
-        os.environ["MX_SERVER_ADDRESS"] = await _mx_server_address(app_name)
-    _set_default(
-        "MX_METADATA_PORT",
-        str(
-            int(configs.get(MX_METADATA_PORT_BASE_KEY, DEFAULT_MX_METADATA_PORT_BASE))
-            + offset
-        ),
-    )
-    _set_default(
-        "MX_WORKER_GRPC_PORT",
-        str(
-            int(
-                configs.get(
-                    MX_WORKER_GRPC_PORT_BASE_KEY, DEFAULT_MX_WORKER_GRPC_PORT_BASE
-                )
-            )
-            + offset
-        ),
-    )
+        os.environ["MX_SERVER_ADDRESS"] = await _mx_server_address(get_mx_app_name())
+    _set_default("MX_METADATA_PORT", str(get_mx_metadata_port_base() + offset))
+    _set_default("MX_WORKER_GRPC_PORT", str(get_mx_worker_grpc_port_base() + offset))
     _set_default("MX_WORKER_HOST", node_ip)
     # Node init may rewrite hf_model_id to a local path; keep the P2P identity
     # on the model id so every replica matches.
@@ -129,21 +106,17 @@ async def setup_model_express(llm_config: LLMConfig) -> None:
 
     _set_default("MX_ARTIFACT_TRANSFER", "1")
     _set_default("MX_ARTIFACT_BACKEND", "nixl")
-    ready_port = (
-        int(configs.get(MX_READY_PORT_BASE_KEY, DEFAULT_MX_READY_PORT_BASE)) + offset
-    )
+    ready_port = get_mx_ready_port_base() + offset
     _start_ready_server(node_ip, ready_port)
     os.environ["MX_ARTIFACT_READY_URL"] = f"http://{node_ip}:{ready_port}/ready"
 
     _append_env_prefixes_to_copy()
-    logger.info(
-        "ModelExpress enabled: server=%s metadata_port=%s worker_grpc_port=%s "
-        "ready_url=%s",
-        os.environ["MX_SERVER_ADDRESS"],
-        os.environ["MX_METADATA_PORT"],
-        os.environ["MX_WORKER_GRPC_PORT"],
-        os.environ["MX_ARTIFACT_READY_URL"],
+    mx_env = " ".join(
+        f"{name}={value}"
+        for name, value in sorted(os.environ.items())
+        if name.startswith(_MX_ENV_PREFIXES)
     )
+    logger.info("ModelExpress enabled: %s", mx_env)
 
 
 def mark_engine_ready() -> None:

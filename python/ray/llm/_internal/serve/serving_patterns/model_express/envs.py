@@ -32,6 +32,33 @@ def get_mx_app_name() -> str:
     return os.environ.get("RAY_MX_APP_NAME", "mx")
 
 
+def get_mx_metadata_port_base() -> int:
+    """Base of the LLM replicas' MX NIXL metadata ports (RAY_MX_METADATA_PORT_BASE).
+
+    Returns:
+        The base port; each replica adds its rank-based offset.
+    """
+    return int(os.environ.get("RAY_MX_METADATA_PORT_BASE", "15555"))
+
+
+def get_mx_worker_grpc_port_base() -> int:
+    """Base of the LLM replicas' MX worker gRPC ports (RAY_MX_WORKER_GRPC_PORT_BASE).
+
+    Returns:
+        The base port; each replica adds its rank-based offset.
+    """
+    return int(os.environ.get("RAY_MX_WORKER_GRPC_PORT_BASE", "16555"))
+
+
+def get_mx_ready_port_base() -> int:
+    """Base of the LLM replicas' readiness endpoint ports (RAY_MX_READY_PORT_BASE).
+
+    Returns:
+        The base port; each replica adds its rank-based offset.
+    """
+    return int(os.environ.get("RAY_MX_READY_PORT_BASE", "17555"))
+
+
 def get_mx_server_port() -> int:
     """gRPC port of the MX server.
 

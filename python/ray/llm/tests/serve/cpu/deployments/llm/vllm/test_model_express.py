@@ -40,19 +40,16 @@ def ready_port_base():
     model_express._engine_ready.clear()
 
 
-def _llm_config(ready_port_base: int, **experimental) -> LLMConfig:
+def _llm_config() -> LLMConfig:
     return LLMConfig(
         model_loading_config=dict(model_id="Qwen/Qwen3-0.6B"),
         engine_kwargs=dict(load_format="modelexpress", tensor_parallel_size=2),
-        experimental_configs={
-            model_express.MX_READY_PORT_BASE_KEY: ready_port_base,
-            **experimental,
-        },
     )
 
 
-def _setup(llm_config: LLMConfig, local_rank: int, env: dict):
+def _setup(ready_port_base: int, local_rank: int, env: dict):
     """Run setup_model_express; returns the env and the app names looked up."""
+    env = {"RAY_MX_READY_PORT_BASE": str(ready_port_base), **env}
     looked_up = []
 
     def get_deployment_handle(deployment_name, app_name):
@@ -71,19 +68,19 @@ def _setup(llm_config: LLMConfig, local_rank: int, env: dict):
     ), patch("ray.serve.get_deployment_handle", get_deployment_handle), patch(
         "ray.util.get_node_ip_address", return_value="127.0.0.1"
     ):
-        asyncio.run(model_express.setup_model_express(llm_config))
+        asyncio.run(model_express.setup_model_express(_llm_config()))
         return dict(os.environ), looked_up
 
 
 def test_is_model_express():
-    assert model_express.is_model_express(_llm_config(0))
+    assert model_express.is_model_express(_llm_config())
     assert not model_express.is_model_express(
         LLMConfig(model_loading_config=dict(model_id="Qwen/Qwen3-0.6B"))
     )
 
 
 def test_setup_sets_client_env(ready_port_base):
-    env, looked_up = _setup(_llm_config(ready_port_base), local_rank=1, env={})
+    env, looked_up = _setup(ready_port_base, local_rank=1, env={})
 
     # The server's address comes from the `mx` app's deployment.
     assert looked_up == [("ModelExpressServer", "mx")]
@@ -103,23 +100,37 @@ def test_setup_sets_client_env(ready_port_base):
     assert {"MX_", "MODEL_EXPRESS_"} <= set(prefixes)
 
 
-@pytest.mark.parametrize(
-    "experimental, env, expected",
-    [
-        ({}, {"RAY_MX_APP_NAME": "mx-env"}, "mx-env"),
-        ({"MX_APP_NAME": "mx-2"}, {"RAY_MX_APP_NAME": "mx-env"}, "mx-2"),
-    ],
-)
-def test_setup_uses_configured_app_name(ready_port_base, experimental, env, expected):
-    _, looked_up = _setup(
-        _llm_config(ready_port_base, **experimental), local_rank=0, env=env
+def test_setup_uses_configured_env(ready_port_base):
+    env, looked_up = _setup(
+        ready_port_base,
+        local_rank=1,
+        env={
+            "RAY_MX_APP_NAME": "mx-2",
+            "RAY_MX_METADATA_PORT_BASE": "25555",
+            "RAY_MX_WORKER_GRPC_PORT_BASE": "26555",
+        },
     )
-    assert looked_up == [("ModelExpressServer", expected)]
+    assert looked_up == [("ModelExpressServer", "mx-2")]
+    assert env["MX_METADATA_PORT"] == str(25555 + 2)
+    assert env["MX_WORKER_GRPC_PORT"] == str(26555 + 2)
+
+
+def test_setup_logs_mx_env(ready_port_base):
+    with patch.object(model_express.logger, "info") as info:
+        env, _ = _setup(ready_port_base, local_rank=0, env={"OTHER": "x"})
+    message = info.call_args.args[0] % info.call_args.args[1:]
+    logged = dict(item.split("=", 1) for item in message.split(": ", 1)[1].split())
+    assert logged == {
+        name: value
+        for name, value in env.items()
+        if name.startswith(("MX_", "MODEL_EXPRESS_"))
+    }
+    assert "MX_SERVER_ADDRESS" in logged and "OTHER" not in logged
 
 
 def test_setup_keeps_user_env(ready_port_base):
     env, looked_up = _setup(
-        _llm_config(ready_port_base),
+        ready_port_base,
         local_rank=0,
         env={
             "MX_SERVER_ADDRESS": "mx:9000",
@@ -138,7 +149,7 @@ def test_setup_keeps_user_env(ready_port_base):
 
 
 def test_ready_endpoint_reports_engine_start(ready_port_base):
-    env, _ = _setup(_llm_config(ready_port_base), local_rank=0, env={})
+    env, _ = _setup(ready_port_base, local_rank=0, env={})
     url = env["MX_ARTIFACT_READY_URL"]
 
     with pytest.raises(urllib.error.HTTPError) as e:
@@ -153,6 +164,9 @@ def test_mx_server_envs():
     with patch.dict("os.environ", {}, clear=True):
         assert mx_envs.get_mx_server_binary() == "/usr/local/bin/modelexpress-server"
         assert mx_envs.get_mx_app_name() == "mx"
+        assert mx_envs.get_mx_metadata_port_base() == 15555
+        assert mx_envs.get_mx_worker_grpc_port_base() == 16555
+        assert mx_envs.get_mx_ready_port_base() == 17555
         assert mx_envs.get_mx_server_port() == 8931
         assert importlib.reload(mx_envs).MX_SERVER_HEALTH_CHECK_PERIOD_S == 10
     with patch.dict(
