@@ -1623,7 +1623,7 @@ def test_details_report_versions_through_recovery(mock_deployment_state_manager)
     dsm.save_checkpoint()
     old_replicas = ds._replicas.get()
 
-    # Start replacing the replicas, then lose the controller.
+    # Checkpoint the new target, then simulate a controller restart.
     info_2, v2 = deployment_info(
         num_replicas=2, version="2", autoscaling_config=autoscaling_config
     )
@@ -1644,9 +1644,8 @@ def test_details_report_versions_through_recovery(mock_deployment_state_manager)
         [(ReplicaState.RECOVERING, v2.version_id)] * 2,
     )
 
-    # One actor answers with the new version, the other is still recovering
-    # when the autoscaler acts: the intermediate state looks converged by
-    # version alone and must be told apart by the RECOVERING state.
+    # Recover one actor at the new version, then autoscale. Both version IDs
+    # match the target, but the other actor's version is still unconfirmed.
     recovering = new_ds._replicas.get()
     recovering[0]._actor.set_ready(v2)
     new_dsm.update()

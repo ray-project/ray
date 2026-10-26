@@ -1153,9 +1153,8 @@ class ServeDeploySchema(BaseModel):
     config_id: Optional[str] = Field(
         default=None,
         description=(
-            "Opaque identifier for this config, reported back as `applied_config_id` "
-            "in the details API once the config is applied. Has no effect on "
-            "deployment versions."
+            "Identifier echoed as `applied_config_id` when the controller accepts "
+            "this config. Does not affect deployment versions."
         ),
     )
 
@@ -1407,11 +1406,10 @@ class ReplicaDetails(ServeActorDetails):
     version: Optional[str] = Field(
         default=None,
         description=(
-            "The deployment version the controller tracks for this replica. While "
-            "UPDATING it is the version being applied, and while RECOVERING it is the "
-            "deployment's target until the live actor reports its own, so a match "
-            "with `target_version` only means the replica is current once it is "
-            "RUNNING."
+            "Deployment version tracked by the controller. During UPDATING, this "
+            "is the version being applied. During RECOVERING, it may be the "
+            "target version until the actor reports its actual version. Check "
+            "the replica state before treating a matching version as applied."
         ),
     )
 
@@ -1514,9 +1512,8 @@ class DeploymentDetails(BaseModel):
     target_version: Optional[str] = Field(
         default=None,
         description=(
-            "The deployment version replicas are converging to. A rolling update is "
-            "complete once no replica other than stopping ones is on another "
-            "`version` or still UPDATING or RECOVERING."
+            "Target deployment version. Use each replica's `version` and `state` "
+            "together to track rollout progress."
         ),
     )
     replicas: List[ReplicaDetails] = Field(
@@ -1974,8 +1971,8 @@ class ServeInstanceDetails(BaseModel):
     applied_config_id: Optional[str] = Field(
         default=None,
         description=(
-            "The `config_id` of the config the controller last accepted. It says "
-            "which config the deployments are converging to, not that they have."
+            "Identifier of the last config accepted by the controller. Replica "
+            "updates may still be in progress."
         ),
     )
 

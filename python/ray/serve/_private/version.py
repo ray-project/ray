@@ -64,7 +64,7 @@ class DeploymentVersion:
 
     @property
     def version_id(self) -> str:
-        """String form of the identity used by ``__eq__``."""
+        """Hexadecimal form of the version hash used for equality."""
         return f"{self._hash:08x}"
 
     def __eq__(self, other: Any) -> bool:

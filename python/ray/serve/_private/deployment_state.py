@@ -2369,7 +2369,7 @@ class DeploymentReplica:
             actor_id=self._actor.actor_id,
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
-            # Recovery takes the version from the live actor, not the target.
+            # Successful recovery replaces the provisional version with the actor's.
             version=self._actor.version.version_id,
         )
 
