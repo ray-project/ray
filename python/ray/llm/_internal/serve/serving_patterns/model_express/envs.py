@@ -18,3 +18,15 @@ def get_mx_server_binary() -> str:
     return os.environ.get(
         "RAY_MX_SERVER_BINARY_PATH", "/usr/local/bin/modelexpress-server"
     )
+
+
+def get_mx_server_port() -> int:
+    """gRPC port of the MX server.
+
+    The server listens on it and advertises it to LLM replicas, so set
+    RAY_MX_SERVER_PORT cluster-wide when overriding it.
+
+    Returns:
+        The port.
+    """
+    return int(os.environ.get("RAY_MX_SERVER_PORT", "8931"))

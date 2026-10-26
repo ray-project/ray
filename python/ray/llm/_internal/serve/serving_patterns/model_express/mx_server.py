@@ -3,29 +3,24 @@
 One replica runs the MX server binary. It is a registry of serving peers: LLM
 replicas publish themselves to it and look up sources in it, while weights and
 JIT caches move directly between LLM replicas. LLM replicas find the server
-through this deployment's ``address()``.
+through this deployment's ``address()``, so they don't depend on where it runs.
+The server's output goes to this replica's log.
 """
 
 import os
 import socket
 import subprocess
 import time
-from typing import Optional
 
 import ray
 from ray import serve
 from ray.llm._internal.serve.serving_patterns.model_express.envs import (
     MX_SERVER_HEALTH_CHECK_PERIOD_S,
     get_mx_server_binary,
+    get_mx_server_port,
 )
 
 MX_SERVER_DEPLOYMENT_NAME = "ModelExpressServer"
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
 
 
 @serve.deployment(
@@ -37,23 +32,12 @@ def _free_port() -> int:
     health_check_period_s=MX_SERVER_HEALTH_CHECK_PERIOD_S,
 )
 class ModelExpressServer:
-    def __init__(
-        self,
-        port: Optional[int] = None,
-        metadata_backend: str = "memory",
-        cache_dir: Optional[str] = None,
-        log_path: Optional[str] = None,
-        startup_timeout_s: float = 30,
-    ):
+    def __init__(self, metadata_backend: str = "memory", startup_timeout_s: float = 30):
         """Start the MX server.
 
         Args:
-            port: gRPC port to listen on; a free port when unset.
             metadata_backend: "memory" or "redis". For "redis", set REDIS_URL
                 in the replica's environment.
-            cache_dir: Server-side model file cache directory.
-            log_path: File to append the server's output to. By default the
-                output goes to this replica's log.
             startup_timeout_s: How long to wait for the server to listen.
         """
         binary = get_mx_server_binary()
@@ -62,25 +46,14 @@ class ModelExpressServer:
                 f"MX server binary not found at {binary}. Set "
                 "RAY_MX_SERVER_BINARY_PATH when not using the ray-llm image."
             )
-        if port is None:
-            port = _free_port()
+        port = get_mx_server_port()
         env = dict(os.environ)
         env.update(
             MX_METADATA_BACKEND=metadata_backend,
             MODEL_EXPRESS_SERVER_PORT=str(port),
             MODEL_EXPRESS_SERVER_METRICS_PORT="0",
         )
-        if cache_dir:
-            os.makedirs(cache_dir, exist_ok=True)
-            env["MODEL_EXPRESS_CACHE_DIRECTORY"] = cache_dir
-        if log_path:
-            # The child keeps its own copy of the file descriptor.
-            with open(log_path, "ab") as out:
-                self._proc = subprocess.Popen(
-                    [binary], env=env, stdout=out, stderr=subprocess.STDOUT
-                )
-        else:
-            self._proc = subprocess.Popen([binary], env=env)
+        self._proc = subprocess.Popen([binary], env=env)
         self._address = f"{ray.util.get_node_ip_address()}:{port}"
 
         deadline = time.monotonic() + startup_timeout_s

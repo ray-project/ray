@@ -144,15 +144,18 @@ def test_ready_endpoint_reports_engine_start(ready_port_base):
 def test_mx_server_envs():
     with patch.dict("os.environ", {}, clear=True):
         assert mx_envs.get_mx_server_binary() == "/usr/local/bin/modelexpress-server"
+        assert mx_envs.get_mx_server_port() == 8931
         assert importlib.reload(mx_envs).MX_SERVER_HEALTH_CHECK_PERIOD_S == 10
     with patch.dict(
         "os.environ",
         {
             "RAY_MX_SERVER_BINARY_PATH": "/opt/mx/server",
+            "RAY_MX_SERVER_PORT": "9100",
             "RAY_MX_SERVER_HEALTH_CHECK_PERIOD_S": "2.5",
         },
     ):
         assert mx_envs.get_mx_server_binary() == "/opt/mx/server"
+        assert mx_envs.get_mx_server_port() == 9100
         assert importlib.reload(mx_envs).MX_SERVER_HEALTH_CHECK_PERIOD_S == 2.5
     importlib.reload(mx_envs)
 
@@ -167,20 +170,18 @@ def test_mx_server_missing_binary():
     not os.access(mx_envs.get_mx_server_binary(), os.X_OK),
     reason="MX server binary not installed",
 )
-@pytest.mark.parametrize("use_log_path", [False, True])
-def test_mx_server_picks_free_port(tmp_path, use_log_path):
-    log_path = str(tmp_path / "mx.log") if use_log_path else None
-    with patch("ray.util.get_node_ip_address", return_value="127.0.0.1"):
-        server = ModelExpressServer.func_or_class(
-            cache_dir=str(tmp_path / "cache"), log_path=log_path
-        )
+def test_mx_server_listens_on_configured_port(tmp_path, monkeypatch):
+    # The server's default cache directory is relative to its working directory.
+    monkeypatch.chdir(tmp_path)
+    port = _free_port()
+    with patch.dict("os.environ", {"RAY_MX_SERVER_PORT": str(port)}), patch(
+        "ray.util.get_node_ip_address", return_value="127.0.0.1"
+    ):
+        server = ModelExpressServer.func_or_class()
     try:
-        host, port = server.address().rsplit(":", 1)
-        assert host == "127.0.0.1"
-        socket.create_connection((host, int(port)), timeout=5).close()
+        assert server.address() == f"127.0.0.1:{port}"
+        socket.create_connection(("127.0.0.1", port), timeout=5).close()
         server.check_health()
-        if use_log_path:
-            assert os.path.getsize(log_path) > 0
     finally:
         server._proc.terminate()
         server._proc.wait(timeout=10)
