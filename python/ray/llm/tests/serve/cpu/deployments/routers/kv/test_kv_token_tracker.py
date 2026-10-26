@@ -174,7 +174,6 @@ async def test_lifecycle_booking_end_to_end():
     """End-to-end router-local path on the real Dynamo selection service:
     select_and_reserve books load immediately, and engine lifecycle events move
     prefill to decode and then free the request."""
-    pytest.importorskip("dynamo.llm")
     worker_id = get_worker_id("replica-0")
 
     tracker = _NoLongPollTracker()
@@ -213,7 +212,6 @@ async def test_lifecycle_booking_end_to_end():
 async def test_peer_trackers_converge_through_request_lifecycle():
     """One atomic selection is replicated so every selection service books the
     same request, applies prefill completion, and frees it."""
-    pytest.importorskip("dynamo.llm")
 
     routing = _NoLongPollTracker(ingress_replica_rank=0)
     peer = _NoLongPollTracker(ingress_replica_rank=1)
@@ -298,7 +296,6 @@ async def test_peer_trackers_converge_through_request_lifecycle():
 async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
     """The selecting ingress must ignore its own reservation broadcast even if
     the request completed before that background broadcast is delivered."""
-    pytest.importorskip("dynamo.llm")
     worker_id = get_worker_id("engine-replica-0")
     token_ids = list(range(64))
 
@@ -345,7 +342,6 @@ async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
 async def test_delayed_peer_broadcast_does_not_resurrect_completed_request():
     """A peer that sees completion before reservation admission must not
     recreate active load when the delayed reservation broadcast is applied."""
-    pytest.importorskip("dynamo.llm")
     worker_id = get_worker_id("engine-replica-0")
     token_ids = list(range(64))
 
@@ -468,7 +464,6 @@ async def _broadcast(handle, method_name, *args):
 @pytest.mark.asyncio
 async def test_serve_replicas_converge_through_request_lifecycle(serve_instance):
     """The production Serve self-broadcast keeps independent services aligned."""
-    pytest.importorskip("dynamo.llm")
     module = sys.modules[__name__]
     ray.cloudpickle.register_pickle_by_value(module)
     request_id = "req-serve-broadcast"
