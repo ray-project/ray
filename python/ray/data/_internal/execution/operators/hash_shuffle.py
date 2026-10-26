@@ -1254,6 +1254,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         }
 
     def current_logical_usage(self) -> ExecutionResources:
+        if self._shutdown:
+            return ExecutionResources.zero()
+
         # Current processors resource usage is comprised by
         #   - Base Aggregator actors resource utilization (captured by
         #     `base_resource_usage` method)
@@ -1276,7 +1279,10 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             ),
             gpu=(
                 self._aggregator_pool.num_aggregators
-                * self._aggregator_pool._aggregator_ray_remote_args.get("num_gpus", 0)
+                * (
+                    self._aggregator_pool._aggregator_ray_remote_args.get("num_gpus")
+                    or 0
+                )
             ),
             memory=(
                 self._aggregator_pool.num_aggregators
