@@ -39,7 +39,8 @@ EOF
 
 FROM "$BASE_IMAGE"
 
-# Default for RAY_MX_SERVER_BINARY_PATH (ray.llm._internal.serve.constants).
+# Default for RAY_MX_SERVER_BINARY_PATH
+# (python/ray/llm/_internal/serve/serving_patterns/model_express/envs.py).
 COPY --from=mx-server-builder /home/ray/modelexpress/target/release/modelexpress-server \
     /usr/local/bin/modelexpress-server
 

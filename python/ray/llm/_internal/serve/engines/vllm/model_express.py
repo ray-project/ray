@@ -18,16 +18,19 @@ import ray
 from ray import serve
 from ray.llm._internal.common.utils.download_utils import MODEL_EXPRESS_LOAD_FORMATS
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.serving_patterns.model_express.mx_server import (
+    MX_SERVER_DEPLOYMENT_NAME,
+)
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # experimental_configs keys and defaults.
-MX_SERVER_PORT_KEY = "MX_SERVER_PORT"
+MX_APP_NAME_KEY = "MX_APP_NAME"
 MX_METADATA_PORT_BASE_KEY = "MX_METADATA_PORT_BASE"
 MX_WORKER_GRPC_PORT_BASE_KEY = "MX_WORKER_GRPC_PORT_BASE"
 MX_READY_PORT_BASE_KEY = "MX_READY_PORT_BASE"
-DEFAULT_MX_SERVER_PORT = 8001
+DEFAULT_MX_APP_NAME = "mx"
 DEFAULT_MX_METADATA_PORT_BASE = 15555
 DEFAULT_MX_WORKER_GRPC_PORT_BASE = 16555
 DEFAULT_MX_READY_PORT_BASE = 17555
@@ -43,11 +46,9 @@ def is_model_express(llm_config: LLMConfig) -> bool:
     return llm_config.engine_kwargs.get("load_format") in MODEL_EXPRESS_LOAD_FORMATS
 
 
-def _head_node_ip() -> str:
-    for node in ray.nodes():
-        if node["Alive"] and "node:__internal_head__" in node["Resources"]:
-            return node["NodeManagerAddress"]
-    raise RuntimeError("Could not find the head node to reach the MX server.")
+async def _mx_server_address(app_name: str) -> str:
+    handle = serve.get_deployment_handle(MX_SERVER_DEPLOYMENT_NAME, app_name=app_name)
+    return await handle.address.remote()
 
 
 def _port_offset(llm_config: LLMConfig) -> int:
@@ -88,15 +89,16 @@ def _start_ready_server(host: str, port: int) -> None:
     ).start()
 
 
-def setup_model_express(llm_config: LLMConfig) -> None:
+async def setup_model_express(llm_config: LLMConfig) -> None:
     """Configure the MX client for this replica. Runs before the engine starts."""
     configs = llm_config.experimental_configs
     engine_config = llm_config.get_engine_config()
     node_ip = ray.util.get_node_ip_address()
     offset = _port_offset(llm_config)
 
-    server_port = int(configs.get(MX_SERVER_PORT_KEY, DEFAULT_MX_SERVER_PORT))
-    _set_default("MX_SERVER_ADDRESS", f"{_head_node_ip()}:{server_port}")
+    if "MX_SERVER_ADDRESS" not in os.environ:
+        app_name = configs.get(MX_APP_NAME_KEY, DEFAULT_MX_APP_NAME)
+        os.environ["MX_SERVER_ADDRESS"] = await _mx_server_address(app_name)
     _set_default(
         "MX_METADATA_PORT",
         str(

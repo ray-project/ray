@@ -28,11 +28,6 @@ ENABLE_WORKER_PROCESS_SETUP_HOOK = (
     os.environ.get("RAYLLM_ENABLE_WORKER_PROCESS_SETUP_HOOK", "1") == "1"
 )
 
-# Where the ray-llm image installs the ModelExpress (MX) server binary
-# (docker/ray-llm/Dockerfile). Override with RAY_MX_SERVER_BINARY_PATH for a
-# custom image.
-DEFAULT_MX_SERVER_BINARY_PATH = "/usr/local/bin/modelexpress-server"
-
 
 CLOUD_OBJECT_MISSING_EXPIRE_S = 30
 CLOUD_OBJECT_EXISTS_EXPIRE_S = 60 * 60

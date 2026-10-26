@@ -330,8 +330,6 @@ class VLLMEngine(LLMEngine):
             )
         assign_replica_kv_events_endpoint(self.llm_config)
         self.llm_config.setup_engine_backend()
-        if is_model_express(self.llm_config):
-            setup_model_express(self.llm_config)
 
         self._running = False
         # Routing stats advertised to Serve's request router; populated in
@@ -406,6 +404,9 @@ class VLLMEngine(LLMEngine):
             return
 
         from vllm.entrypoints.openai.api_server import init_app_state
+
+        if is_model_express(self.llm_config):
+            await setup_model_express(self.llm_config)
 
         callback = self.llm_config.get_or_create_callback()
         await callback.run_callback("on_before_node_init")
