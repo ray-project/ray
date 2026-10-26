@@ -1,4 +1,5 @@
 import random
+from unittest import mock
 
 import pandas as pd
 import pyarrow as pa
@@ -7,8 +8,8 @@ import pytest
 import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.top_n_operator import (
-    TOP_N_MAX_CANDIDATE_ROWS_CONFIG_KEY,
     TopNMergeOperator,
+    _batch_candidates,
 )
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.rules.top_n_rewrite import (
@@ -149,18 +150,37 @@ def test_top_n_shuffle_v2_preserves_invalid_key_error(
         ray.data.range(5).sort("missing").limit(3).take_all()
 
 
-def test_top_n_fails_before_final_merge_when_actual_candidates_exceed_cap(
+def test_top_n_merges_candidates_in_batches(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
-    ctx.set_config(TOP_N_MAX_CANDIDATE_ROWS_CONFIG_KEY, 1)
-    ds = ray.data.range(10, override_num_blocks=2).sort("id").limit(3)
+    ds = ray.data.range(100, override_num_blocks=20).sort("id", descending=True)
 
-    with pytest.raises(ValueError, match="actual=.*rows.*limits=.*rows"):
-        ds.take_all()
+    ref_batches = []
+
+    def record_batches(entries):
+        batches, merge_bytes = _batch_candidates(entries)
+        ref_batches.extend(batches)
+        return batches, merge_bytes
+
+    # Force one candidate block per batch so the merge runs 20 rounds.
+    with (
+        mock.patch(
+            "ray.data._internal.execution.operators.top_n_operator._MERGE_BATCH_BYTES",
+            1,
+        ),
+        mock.patch(
+            "ray.data._internal.execution.operators.top_n_operator._batch_candidates",
+            side_effect=record_batches,
+        ),
+    ):
+        result = ds.limit(3).take_all()
+
+    assert [len(batch) for batch in ref_batches] == [1] * 20
+    assert result == [{"id": 99}, {"id": 98}, {"id": 97}]
 
 
 def test_top_n_shuffle_v2_arrow_nulls_last(

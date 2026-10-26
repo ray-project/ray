@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, Generator, List, Optional, Union, cast
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union, cast
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -40,13 +40,9 @@ from ray.data.context import DataContext
 from ray.exceptions import TaskCancelledError
 from ray.types import ObjectRef
 
-TOP_N_MAX_CANDIDATE_BLOCKS_CONFIG_KEY = "top_n_max_candidate_blocks"
-TOP_N_MAX_CANDIDATE_ROWS_CONFIG_KEY = "top_n_max_candidate_rows"
-TOP_N_MAX_CANDIDATE_BYTES_CONFIG_KEY = "top_n_max_candidate_bytes"
-
-DEFAULT_TOP_N_MAX_CANDIDATE_BLOCKS = 4_096
-DEFAULT_TOP_N_MAX_CANDIDATE_ROWS = 2_000_000
-DEFAULT_TOP_N_MAX_CANDIDATE_BYTES = 256 * 1024 * 1024
+# Candidates the final merge fetches at once. Peak merge memory is one batch
+# plus the running top-N, independent of the total number of candidates.
+_MERGE_BATCH_BYTES = 128 * 1024 * 1024
 
 
 class TopNMergeOperator(InternalQueueOperatorMixin, PhysicalOperator):
@@ -73,6 +69,7 @@ class TopNMergeOperator(InternalQueueOperatorMixin, PhysicalOperator):
         self._ray_remote_args = dict(ray_remote_args)
         self._output_schema = output_schema
         self._candidate_summary = {"blocks": 0, "rows": 0, "bytes": 0}
+        self._merge_memory_bytes = 0
         self._input_buffer = FIFOBundleQueue()
         self._output_buffer = FIFOBundleQueue()
         self._merge_inputs: List[RefBundle] = []
@@ -99,10 +96,8 @@ class TopNMergeOperator(InternalQueueOperatorMixin, PhysicalOperator):
         assert not self._inputs_complete
         super().all_inputs_done()
         try:
-            entries = _check_candidate_budget(
-                self._input_buffer.to_list(),
-                self.data_context,
-                self._candidate_summary,
+            entries = _collect_candidates(
+                self._input_buffer.to_list(), self._candidate_summary
             )
 
             if not entries:
@@ -130,12 +125,13 @@ class TopNMergeOperator(InternalQueueOperatorMixin, PhysicalOperator):
                     self._queue_output(output)
                 return
 
+            ref_batches, self._merge_memory_bytes = _batch_candidates(entries)
             remote_args = self._merge_task_remote_args()
             block_gen = (
                 cached_remote_fn(_final_top_n_task)
                 .options(**remote_args)
                 .remote(
-                    [entry.ref for entry in entries],
+                    ref_batches,
                     self._sort_key,
                     self._limit,
                     self._output_schema,
@@ -174,10 +170,9 @@ class TopNMergeOperator(InternalQueueOperatorMixin, PhysicalOperator):
             {"num_cpus": 1, **self._ray_remote_args},
             self.data_context.execution_options.label_selector,
         )
-        candidate_bytes = self._candidate_summary["bytes"]
-        if candidate_bytes:
-            # Concatenation and selection can hold both candidates and their copy.
-            remote_args.setdefault("memory", 2 * candidate_bytes)
+        if self._merge_memory_bytes:
+            # Concatenation and selection can hold both a batch and its copy.
+            remote_args.setdefault("memory", 2 * self._merge_memory_bytes)
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         return remote_args
@@ -281,31 +276,34 @@ def _empty_block_from_schema(schema: Schema) -> Block:
 
 
 def _final_top_n_task(
-    candidate_refs: List[ray.ObjectRef],
+    candidate_ref_batches: List[List[ray.ObjectRef]],
     sort_key: SortKey,
     limit: int,
     output_schema: Optional[Schema],
     data_context: DataContext,
 ) -> Generator[Union[Block, bytes], None, None]:
-    """Merge candidate blocks and yield the global Top-N with execution metadata."""
+    """Merge candidate batches into a running Top-N and yield the global result."""
     start_time_s = time.perf_counter()
     stats = BlockExecStats.builder()
-    blocks: List[Block] = ray.get(candidate_refs)
-    if not blocks:
-        raise ValueError("TopN final merge received no candidate blocks.")
+    result: Optional[Block] = None
     with DataContext.current(data_context):
-        blocks = TableBlockAccessor.normalize_block_types(blocks)
-
-        if output_schema is not None and all(
-            BlockAccessor.for_block(block).num_rows() == 0 for block in blocks
-        ):
-            result = _empty_block_from_schema(output_schema)
-        else:
+        for refs in candidate_ref_batches:
+            blocks: List[Block] = ray.get(refs)
+            if result is not None:
+                blocks.append(result)
+            blocks = TableBlockAccessor.normalize_block_types(blocks)
             builder = DelegatingBlockBuilder()
             for block in blocks:
                 builder.add_block(block)
-            candidates = builder.build()
-            result = BlockAccessor.for_block(candidates).top_n(sort_key, limit)
+            result = BlockAccessor.for_block(builder.build()).top_n(sort_key, limit)
+
+        if result is None:
+            raise ValueError("TopN final merge received no candidate blocks.")
+        if (
+            output_schema is not None
+            and BlockAccessor.for_block(result).num_rows() == 0
+        ):
+            result = _empty_block_from_schema(output_schema)
 
     stats.finish()
 
@@ -324,70 +322,35 @@ def _final_top_n_task(
     yield from yield_block_with_stats(result, build_metadata)
 
 
-def _get_positive_config(context: DataContext, key: str, default: int) -> int:
-    """Read a strictly positive integer configuration value from the context."""
-    value = context.get_config(key, default)
-    if type(value) is not int or value <= 0:
-        raise ValueError(
-            f"TopN config {key!r} must be a positive integer, got {value!r}."
-        )
-    return value
-
-
-def _check_candidate_budget(
+def _collect_candidates(
     input_bundles: List[RefBundle],
-    data_context: DataContext,
-    candidate_summary: Optional[Dict[str, int]] = None,
+    candidate_summary: Dict[str, int],
 ) -> List[BlockEntry]:
-    """Validate that candidates fit within the final single-task merge budget."""
+    """Return the candidate blocks and record their totals for metrics."""
     entries = [entry for bundle in input_bundles for entry in bundle.blocks]
-    max_blocks = _get_positive_config(
-        data_context,
-        TOP_N_MAX_CANDIDATE_BLOCKS_CONFIG_KEY,
-        DEFAULT_TOP_N_MAX_CANDIDATE_BLOCKS,
+    candidate_summary.update(
+        blocks=len(entries),
+        rows=sum(entry.metadata.num_rows or 0 for entry in entries),
+        bytes=sum(entry.metadata.size_bytes or 0 for entry in entries),
     )
-    max_rows = _get_positive_config(
-        data_context,
-        TOP_N_MAX_CANDIDATE_ROWS_CONFIG_KEY,
-        DEFAULT_TOP_N_MAX_CANDIDATE_ROWS,
-    )
-    max_bytes = _get_positive_config(
-        data_context,
-        TOP_N_MAX_CANDIDATE_BYTES_CONFIG_KEY,
-        DEFAULT_TOP_N_MAX_CANDIDATE_BYTES,
-    )
-
-    candidate_rows = 0
-    candidate_bytes = 0
-    for entry in entries:
-        metadata = entry.metadata
-        if metadata.num_rows is None or metadata.size_bytes is None:
-            raise ValueError(
-                "TopN candidate metadata must include num_rows and size_bytes "
-                "before the final merge."
-            )
-        candidate_rows += metadata.num_rows
-        candidate_bytes += metadata.size_bytes
-
-    actual = {
-        "blocks": len(entries),
-        "rows": candidate_rows,
-        "bytes": candidate_bytes,
-    }
-    if candidate_summary is not None:
-        candidate_summary.update(actual)
-    limits = {
-        "blocks": max_blocks,
-        "rows": max_rows,
-        "bytes": max_bytes,
-    }
-    exceeded = [name for name in actual if actual[name] > limits[name]]
-    if exceeded:
-        # TODO(vicwen): Replace this fail-closed single-task budget with a
-        # bounded hierarchical or distributed overflow path.
-        raise ValueError(
-            "TopN candidates exceed the experimental single-task merge budget: "
-            f"actual={actual}, limits={limits}, exceeded={exceeded}."
-        )
-
     return entries
+
+
+def _batch_candidates(
+    entries: List[BlockEntry],
+) -> Tuple[List[List[ray.ObjectRef]], int]:
+    """Split candidates into batches of about `_MERGE_BATCH_BYTES`."""
+    batches: List[List[ray.ObjectRef]] = []
+    batch_bytes = 0
+    max_batch_bytes = 0
+    max_block_bytes = 0
+    for entry in entries:
+        size_bytes = entry.metadata.size_bytes or 0
+        if not batches or batch_bytes + size_bytes > _MERGE_BATCH_BYTES:
+            batches.append([])
+            batch_bytes = 0
+        batches[-1].append(entry.ref)
+        batch_bytes += size_bytes
+        max_batch_bytes = max(max_batch_bytes, batch_bytes)
+        max_block_bytes = max(max_block_bytes, size_bytes)
+    return batches, max_batch_bytes + max_block_bytes
