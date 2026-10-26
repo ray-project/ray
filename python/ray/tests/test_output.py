@@ -199,7 +199,9 @@ ray.get(A.remote().__ray_ready__.remote())
         address=ray_start_cluster_head_with_env_vars.address
     )
 
-    proc = run_string_as_driver_nonblocking(script, env={"PYTHONUNBUFFERED": "1"})
+    proc = run_string_as_driver_nonblocking(
+        script, env={**os.environ, "PYTHONUNBUFFERED": "1"}
+    )
 
     def _check_for_infeasible_msg():
         l = proc.stdout.readline().decode("ascii")
