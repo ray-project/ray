@@ -138,6 +138,11 @@ WorkerID LocalObjectManager::GetProducerWorkerId(const ObjectID &object_id) cons
   return it == local_objects_.end() ? WorkerID::Nil() : it->second.producer_worker_id_;
 }
 
+bool LocalObjectManager::HasDiskCopy(const ObjectID &object_id) const {
+  return spilled_objects_url_.contains(object_id) ||
+         objects_pending_spill_.contains(object_id);
+}
+
 void LocalObjectManager::FlushFreeObjects() {
   if (!objects_pending_deletion_.empty()) {
     RAY_LOG(DEBUG) << "Freeing " << objects_pending_deletion_.size()
@@ -557,6 +562,12 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
       RAY_CHECK(local_objects_.contains(object_id))
           << "local objects should contain the spilled object: " << object_id;
       spilled_bytes_current_ -= local_objects_.at(object_id).object_size_;
+
+      const WorkerID &producer_worker_id =
+          local_objects_.at(object_id).producer_worker_id_;
+      if (!producer_worker_id.IsNil()) {
+        on_spilled_copy_deleted_(object_id, producer_worker_id);
+      }
     } else {
       // If the object was not spilled, it gets pinned again. Unpin here to
       // prevent a memory leak.
