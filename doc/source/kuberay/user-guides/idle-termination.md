@@ -6,11 +6,11 @@ myst:
 
 (kuberay-idle-termination)=
 
-# Idle termination
+# KubeRay idle termination
 
-Idle termination reclaims a RayCluster that has no drivers connected. It requires KubeRay 1.8.0 or later and Ray 2.60.0 or later.
+Idle termination reclaims a RayCluster that has no drivers connected. The Ray autoscaler can scale worker Pods down to zero based on `idleTimeoutSeconds`, but the head Pod keeps running and might reserve capacity even when the Ray cluster is idle. With idle termination, the KubeRay operator and Ray autoscaler v2 work together to suspend or delete a RayCluster after it has had no active drivers for a configured period.
 
-Worker-level idle scaling only removes idle worker Pods. Idle termination goes further and suspends or deletes the entire RayCluster, including the head Pod.
+## Overview
 
 Idle termination offers two policies:
 
@@ -21,13 +21,15 @@ The Ray autoscaler applies the policy once the Ray cluster has had no drivers co
 
 ## Prerequisites
 
-To use idle termination, the RayCluster must meet the following requirements:
+Idle termination has the following requirements:
 
-- `enableInTreeAutoscaling` is `true`.
-- Autoscaler v2 is enabled. Set `spec.autoscalerOptions.version` to `v2`, or set the `RAY_enable_autoscaler_v2=1` environment variable on the head container.
-- `spec.rayVersion` is 2.60.0 or later.
+- Ray autoscaler v2 is enabled on the RayCluster. See {ref}`kuberay-autoscaler-v2`.
+- Ray is 2.60.0 or later.
+- KubeRay is v1.8.0 or later.
 
-The KubeRay operator validates these requirements and rejects a RayCluster that doesn't meet them.
+The KubeRay operator validates the RayCluster against these requirements and rejects a RayCluster that doesn't meet them.
+
+## RBAC and security
 
 Idle termination doesn't need extra RBAC setup. The KubeRay operator creates a Role for the Ray autoscaler of each RayCluster that grants `get`, `patch`, and `delete` on `rayclusters`. The Role uses `resourceNames` to limit these permissions to the autoscaler's own RayCluster, so the autoscaler can't suspend or delete any other RayCluster.
 
