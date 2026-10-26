@@ -1543,6 +1543,82 @@ def test_deploy_new_config_same_code_version(
     )
 
 
+def test_details_report_replica_and_target_versions(mock_deployment_state_manager):
+    """Replica versions tell a rolling update apart from autoscaling churn."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 10,
+        "initial_replicas": 3,
+        "upscale_delay_s": 0,
+        "downscale_delay_s": 0,
+    }
+    ds = _deploy_running(
+        dsm,
+        TEST_DEPLOYMENT_ID,
+        num_replicas=3,
+        version="1",
+        autoscaling_config=autoscaling_config,
+    )
+    v1 = ds.target_version
+
+    def versions():
+        details = dsm.get_deployment_details(TEST_DEPLOYMENT_ID)
+        return details.target_version, sorted(
+            (r.state, r.version) for r in details.replicas
+        )
+
+    def settle_one_batch():
+        for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+
+    assert versions() == (v1.version_id, [(ReplicaState.RUNNING, v1.version_id)] * 3)
+
+    # A code change replaces replicas one at a time. Once a new one runs,
+    # autoscaling hides the rolling update behind an UPSCALING status while an
+    # old replica is still RUNNING.
+    info_2, v2 = deployment_info(
+        num_replicas=3, version="2", autoscaling_config=autoscaling_config
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+    settle_one_batch()
+    assert dsm.autoscale(TEST_DEPLOYMENT_ID, 6)
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+    target, replicas = versions()
+    assert target == v2.version_id != v1.version_id
+    assert (ReplicaState.RUNNING, v1.version_id) in replicas
+    assert (ReplicaState.RUNNING, v2.version_id) in replicas
+
+    for _ in range(6):
+        settle_one_batch()
+    assert versions() == (v2.version_id, [(ReplicaState.RUNNING, v2.version_id)] * 6)
+
+
+def test_details_report_version_while_reconfiguring(mock_deployment_state_manager):
+    """A replica mid-reconfigure already carries the new version."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, version="1")
+    v1 = ds.target_version
+
+    info_2, v2 = deployment_info(version="1", user_config={"a": 1})
+    assert v2 != v1
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+    details = dsm.get_deployment_details(TEST_DEPLOYMENT_ID)
+    assert details.target_version == v2.version_id
+    assert [(r.state, r.version) for r in details.replicas] == [
+        (ReplicaState.UPDATING, v2.version_id)
+    ]
+
+
 def test_deploy_new_config_same_code_version_2(mock_deployment_state_manager):
     """Make sure we don't transition from STARTING to UPDATING directly."""
 

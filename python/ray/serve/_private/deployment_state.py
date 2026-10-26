@@ -2118,6 +2118,7 @@ class DeploymentReplica:
             replica_id=self._replica_id.unique_id,
             state=ReplicaState.STARTING,
             start_time_s=0,
+            version=version.version_id if version is not None else None,
         )
         self._multiplexed_model_ids: List[str] = []
         self._routing_stats: Dict[str, Any] = {}
@@ -2304,7 +2305,9 @@ class DeploymentReplica:
 
         Returns: whether the actor is being updated.
         """
-        return self._actor.reconfigure(version, rank=rank)
+        updating = self._actor.reconfigure(version, rank=rank)
+        self.update_actor_details(version=version.version_id)
+        return updating
 
     def recover(self, deployment_info: DeploymentInfo) -> bool:
         """
@@ -2366,6 +2369,8 @@ class DeploymentReplica:
             actor_id=self._actor.actor_id,
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
+            # Recovery takes the version from the live actor, not the target.
+            version=self._actor.version.version_id,
         )
 
         return is_ready
@@ -7128,6 +7133,7 @@ class DeploymentStateManager:
                 ),
                 target_num_replicas=deployment_state._target_state.target_num_replicas,
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
+                target_version=deployment_state.target_version.version_id,
                 replicas=deployment_state.list_replica_details(),
                 recent_dead_replicas=deployment_state.list_recent_dead_replicas(),
             )

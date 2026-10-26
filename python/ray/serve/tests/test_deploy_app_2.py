@@ -1490,6 +1490,41 @@ def test_instance_details_report_restoring_unset_options(serve_instance):
     assert details["restores_unset_config_options"] is True
 
 
+def test_instance_details_echo_config_id_and_versions(serve_instance):
+    """The applied config id and replica versions survive a controller restart."""
+    client = serve_instance
+    client.deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                {
+                    "name": SERVE_DEFAULT_APP_NAME,
+                    "import_path": FAIL_ON_FLAG_IMPORT_PATH,
+                }
+            ],
+            config_id="c1",
+        )
+    )
+    wait_for_condition(lambda: len(_running_replica_pids(client)) == 2, timeout=60)
+
+    def check():
+        details = ServeInstanceDetails(
+            **ray.get(client._controller.get_serve_instance_details.remote())
+        )
+        deployment = details.applications[SERVE_DEFAULT_APP_NAME].deployments[
+            "FailOnFlag"
+        ]
+        assert details.applied_config_id == "c1"
+        assert deployment.target_version
+        assert {r.version for r in deployment.replicas} == {deployment.target_version}
+        return True
+
+    check()
+    old_pid = ray.get(client._controller.get_pid.remote())
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != old_pid)
+    wait_for_condition(check, timeout=60)
+
+
 @pytest.mark.parametrize("restart_controller", [False, True])
 def test_sparse_config_rollback_restores_code_defined_options(
     serve_instance, restart_controller

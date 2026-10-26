@@ -1150,6 +1150,14 @@ class ServeDeploySchema(BaseModel):
         ..., description="The set of applications to run on the Ray cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+    config_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Opaque identifier for this config, reported back as `applied_config_id` "
+            "in the details API once the config is applied. Has no effect on "
+            "deployment versions."
+        ),
+    )
 
     @field_validator("applications")
     @classmethod
@@ -1396,6 +1404,13 @@ class ReplicaDetails(ServeActorDetails):
             "state from the running replica actor."
         )
     )
+    version: Optional[str] = Field(
+        default=None,
+        description=(
+            "The deployment version this replica runs. Differs from the deployment's "
+            "`target_version` until a rolling update has replaced or reconfigured it."
+        ),
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -1492,6 +1507,13 @@ class DeploymentDetails(BaseModel):
     )
     required_resources: Dict = Field(
         description="The resources required per replica of this deployment."
+    )
+    target_version: Optional[str] = Field(
+        default=None,
+        description=(
+            "The deployment version replicas are converging to. A rolling update is "
+            "complete once every live replica reports this `version`."
+        ),
     )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
@@ -1944,6 +1966,10 @@ class ServeInstanceDetails(BaseModel):
             "Whether removing a deployment config override restores the value "
             "defined in code. Older versions omit this field and keep the override."
         ),
+    )
+    applied_config_id: Optional[str] = Field(
+        default=None,
+        description="The `config_id` of the most recently applied config, if any.",
     )
 
     @staticmethod
