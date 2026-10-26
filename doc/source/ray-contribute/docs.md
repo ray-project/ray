@@ -179,7 +179,7 @@ These directives appear throughout the API reference, such as the [Tune API docu
 
 If you want to change the content of the API documentation, you must edit the function or class signatures directly in the source code. For example, in the above `autofunction` call, to change the API reference for `ray.tune.register_env`, you would edit its docstring in the [source file](https://github.com/ray-project/ray/blob/master/python/ray/tune/registry.py).
 
-To show the usage of APIs, it's important to have small usage examples embedded in the API documentation. These should be self-contained and run out of the box, so a user can copy and paste them into a Python interpreter and play around with them. For example, if applicable, they should point to example data. Users often rely on these examples to build their applications. To learn more about writing examples, read [How to write code snippets](writing-code-snippets).
+To show the usage of APIs, it's important to have small usage examples embedded in the API documentation. These should be self-contained and run out of the box, so a user can copy and paste them into a Python interpreter and play around with them. For example, if applicable, they should point to example data. Users often rely on these examples to build their applications. To learn more about writing examples, read [How to write code snippets](writing-code-snippets.md).
 
 (api-ref-build-behavior)=
 
@@ -193,7 +193,7 @@ The API reference is generated from your source code: autodoc imports the module
 
 ## Adding code to an `.rST` or `.md` file
 
-Modifying text in an existing documentation file is easy, but adding code takes more care. To show code that Ray CI tests, use a `testcode` block or include a script that CI runs. Use these only for code that runs as written. To learn how to write tested code snippets, read [How to write code snippets](writing-code-snippets).
+Modifying text in an existing documentation file is easy, but adding code takes more care. To show code that Ray CI tests, use a `testcode` block or include a script that CI runs. Use these only for code that runs as written. To learn how to write tested code snippets, read [How to write code snippets](writing-code-snippets.md).
 
 ```python
 from ray import train
