@@ -858,6 +858,38 @@ def test_unify_fixed_shaped_with_lower_ndim_variable_shaped_null_rows(
             np.testing.assert_array_equal(row, exp)
 
 
+@pytest.mark.parametrize("fixed_first", [True, False])
+@pytest.mark.parametrize("ragged_kind", ["all_null", "empty"])
+def test_unify_fixed_shaped_with_lower_ndim_variable_shaped_no_valid_rows(
+    ragged_kind, fixed_first, tensor_format_context
+):
+    # With no valid rows, pa.array() can't infer the shape type from the
+    # values, so it has to be passed explicitly.
+    fixed = np.arange(8).reshape((2, 2, 2))
+    ta_fixed = ArrowTensorArray.from_numpy(fixed)
+    ta_ragged = ArrowVariableShapedTensorArray.from_numpy([np.arange(2), np.arange(3)])
+    if ragged_kind == "all_null":
+        ta_ragged = ta_ragged.take(pa.array([None, None], type=pa.int64()))
+        expected = [*fixed, None, None]
+    else:
+        ta_ragged = ta_ragged.slice(0, 0)
+        expected = [*fixed]
+    arrs = [ta_fixed, ta_ragged]
+    if not fixed_first:
+        arrs.reverse()
+        expected = expected[2:] + expected[:2]
+
+    ta = concat_tensor_arrays(unify_tensor_arrays(arrs))
+    assert ta.type.ndim == 2
+    assert ta.is_null().to_pylist() == [exp is None for exp in expected]
+    for i, exp in enumerate(expected):
+        row = ta[i].as_py()
+        if exp is None:
+            assert row is None
+        else:
+            np.testing.assert_array_equal(row, exp)
+
+
 def test_variable_shaped_tensor_array_uniform_dim(tensor_format_context):
     shape1 = (3, 2, 2)
     shape2 = (3, 4, 4)

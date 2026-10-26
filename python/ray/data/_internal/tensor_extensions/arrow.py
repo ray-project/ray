@@ -1466,7 +1466,8 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             [
                 None if s is None else _pad_shape_with_singleton_axes(tuple(s), ndim)
                 for s in shapes_array.to_pylist()
-            ]
+            ],
+            type=shapes_array.type,
         )
 
         storage = pa.StructArray.from_arrays(
