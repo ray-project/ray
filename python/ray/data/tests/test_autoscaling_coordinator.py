@@ -10,6 +10,7 @@ from ray.data._internal.cluster_autoscaler import (
 )
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
+    ResourceRequestPriority,
     ResourceRequestStrategy,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
@@ -1097,6 +1098,80 @@ def test_failing_draining_query_does_not_break_the_tick():
         coord._tick()
 
         assert warning.call_count == 2
+
+
+def _gpu_node(node_id, memory_gib, num_gpus=4):
+    """A GPU node. Nodes of the same type differ only in ``memory``, which Ray
+    derives from the free system memory when the raylet starts."""
+    return {
+        "NodeID": node_id,
+        "Resources": {
+            "CPU": 12 * num_gpus,
+            "GPU": num_gpus,
+            "memory": memory_gib * GiB,
+            "object_store_memory": 20 * GiB,
+        },
+        "Labels": {},
+        "Alive": True,
+    }
+
+
+def test_same_type_nodes_keep_their_order_when_a_node_joins():
+    """Nodes of the same type are ordered by when they joined, not by small
+    differences in ``memory``, so a new node can't jump ahead of them."""
+    nodes = [_gpu_node("n2", memory_gib=140.0), _gpu_node("n1", memory_gib=139.9)]
+    coord = _make_coordinator(nodes)
+    assert list(coord._cluster_node_resources[None]) == ["n1", "n2"]
+
+    # Same type, a little more memory, and a NodeID that sorts first.
+    nodes.append(_gpu_node("n0", memory_gib=140.2))
+    coord._tick()
+    assert list(coord._cluster_node_resources[None]) == ["n1", "n2", "n0"]
+
+    # A larger node still goes first.
+    nodes.append(_gpu_node("n9", memory_gib=100.0, num_gpus=8))
+    coord._tick()
+    assert list(coord._cluster_node_resources[None]) == ["n9", "n1", "n2", "n0"]
+
+
+def test_node_joining_does_not_move_existing_reservations():
+    """Two runs each hold a node when a node of the same type with slightly more
+    ``memory`` joins. Neither reservation may move, or a restarting run would be
+    placed on the node where the other run's workers are still running."""
+    nodes = [
+        _gpu_node("n1", memory_gib=140.1),
+        _gpu_node("n2", memory_gib=140.0),
+        _gpu_node("n3", memory_gib=139.9),
+    ]
+    now = 0
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: now,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: nodes,
+    )
+    for requester_id in ("train-A", "train-B"):
+        now += 1
+        coord.request_resources(
+            requester_id=requester_id,
+            resources=[{"GPU": 1}] * 4,
+            expire_after_s=180,
+            priority=ResourceRequestPriority.HIGH,
+        )
+
+    def reservations():
+        return {
+            requester_id: copy.deepcopy(
+                coord.get_reserved_resources(requester_id, recompute=True)
+            )
+            for requester_id in ("train-A", "train-B")
+        }
+
+    before = reservations()
+    assert before == {"train-A": {"n1": {"GPU": 4}}, "train-B": {"n2": {"GPU": 4}}}
+
+    nodes.append(_gpu_node("n0", memory_gib=140.2))
+
+    assert reservations() == before
 
 
 def test_strategy_is_per_requester():

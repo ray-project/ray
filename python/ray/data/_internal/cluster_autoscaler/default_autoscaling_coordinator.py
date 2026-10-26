@@ -365,6 +365,11 @@ class _AutoscalingCoordinatorActor:
         # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
         # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
         self._cluster_node_resources: Dict[Optional[LabelValue], NodeResources] = {}
+        # The view update in which each node in the view was first seen. Among
+        # nodes of the same shape, a node seen earlier sorts first, so a node
+        # that joins later never jumps ahead of the existing ones.
+        self._node_first_seen: Dict[NodeIdStr, int] = {}
+        self._num_view_updates = 0
         # Whether the last draining-nodes query failed. Used to warn once per
         # run of failures instead of on every tick.
         self._draining_query_failing = False
@@ -639,19 +644,34 @@ class _AutoscalingCoordinatorActor:
             return True
 
         nodes = list(filter(_is_node_eligible, self._get_cluster_nodes()))
+        # Nodes first seen in the same update get the same value, so NodeID
+        # orders them. Nodes that left the view are forgotten.
+        node_first_seen: Dict[NodeIdStr, int] = {}
+        for node in nodes:
+            node_id = node.get("NodeID", "")
+            node_first_seen[node_id] = self._node_first_seen.get(
+                node_id, self._num_view_updates
+            )
+        self._node_first_seen = node_first_seen
+        self._num_view_updates += 1
 
         def _sort_key(node):
-            # Mirrors Ray Core's bundle ordering in scarcest resource first, most of it first.
-            # Core also ranks custom resources (between GPU and object store
-            # memory); we skip them, since it's opaque to us. NodeID breaks ties so
-            # the order is stable across ticks.
+            # Largest node first, mirroring Ray Core's bundle ordering (scarcest
+            # resource first, most of it first). Only GPU and CPU are compared,
+            # since the node's type fixes them. `memory` and `object_store_memory`
+            # come from free memory at raylet start, so they differ slightly
+            # between nodes of the same type, and comparing them would let a newly
+            # joined node jump ahead of existing ones. Core also ranks custom
+            # resources; we skip them, since they're opaque to us. Among nodes of
+            # the same shape, the one seen first comes first, then NodeID breaks
+            # ties, so the order is stable across ticks.
             resources = node.get("Resources", {})
+            node_id = node.get("NodeID", "")
             return (
                 -resources.get("GPU", 0),
-                -resources.get("object_store_memory", 0),
-                -resources.get("memory", 0),
                 -resources.get("CPU", 0),
-                node.get("NodeID", ""),
+                self._node_first_seen[node_id],
+                node_id,
             )
 
         nodes = sorted(nodes, key=_sort_key)
