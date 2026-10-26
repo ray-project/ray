@@ -338,9 +338,9 @@ def _collect_candidates(
 
 def _batch_candidates(
     entries: List[BlockEntry],
-) -> Tuple[List[List[ray.ObjectRef]], int]:
+) -> Tuple[List[List[ObjectRef[Block]]], int]:
     """Split candidates into batches of about `_MERGE_BATCH_BYTES`."""
-    batches: List[List[ray.ObjectRef]] = []
+    batches: List[List[ObjectRef[Block]]] = []
     batch_bytes = 0
     max_batch_bytes = 0
     max_block_bytes = 0

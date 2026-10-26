@@ -39,7 +39,9 @@ def _make_context(*, enabled: bool = True) -> DataContext:
 
 
 def _optimize_dag(operator: LogicalOperator, context: DataContext) -> LogicalOperator:
-    return LogicalOptimizer().optimize(LogicalPlan(operator, context)).dag
+    dag = LogicalOptimizer().optimize(LogicalPlan(operator, context)).dag
+    assert isinstance(dag, LogicalOperator)
+    return dag
 
 
 def _make_sort(

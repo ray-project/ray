@@ -67,6 +67,7 @@ def _assert_owned_bundles_destroyed(
 
 
 def test_batch_candidates_splits_by_bytes():
+    refs = [mock.sentinel.a, mock.sentinel.b, mock.sentinel.c, mock.sentinel.d]
     entries = [
         BlockEntry(
             ref,
@@ -74,7 +75,7 @@ def test_batch_candidates_splits_by_bytes():
                 num_rows=1, size_bytes=size, input_files=None, exec_stats=None
             ),
         )
-        for ref, size in zip(["a", "b", "c", "d"], [40, 30, 50, 10])
+        for ref, size in zip(refs, [40, 30, 50, 10])
     ]
 
     with mock.patch(
@@ -83,7 +84,7 @@ def test_batch_candidates_splits_by_bytes():
     ):
         batches, merge_bytes = _batch_candidates(entries)
 
-    assert batches == [["a", "b"], ["c", "d"]]
+    assert batches == [refs[:2], refs[2:]]
     # Largest batch (70) plus the running Top-N (at most the largest block, 50).
     assert merge_bytes == 120
 
