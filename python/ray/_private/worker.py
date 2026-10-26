@@ -66,7 +66,7 @@ from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
     maybe_enable_token_auth_if_token_available,
 )
-from ray._private.client_mode_hook import client_mode_hook
+from ray._private.client_mode_hook import client_mode_hook, client_mode_should_convert
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -1757,7 +1757,7 @@ def init(
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
 
-    if ray._private.client_mode_hook.is_client_mode_enabled:
+    if client_mode_should_convert():
         raise RuntimeError(
             "Ray Client is already initialized in this process. "
             "ray.init() can't start or connect to a Ray cluster without ray://."
