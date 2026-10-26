@@ -26,6 +26,7 @@ import (
 	dashboardevent "github.com/ray-project/ray/go/internal/dashboard/event"
 	"github.com/ray-project/ray/go/internal/dashboard/healthz"
 	dashboardlog "github.com/ray-project/ray/go/internal/dashboard/log"
+	dashboardreporter "github.com/ray-project/ray/go/internal/dashboard/reporter"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
@@ -67,6 +68,7 @@ var (
 
 	// Optional behavior flags.
 	disableMetricsCollection bool
+	isHeadFlag               string
 
 	// Reserved flags (P0 deferred).
 	minimal bool
@@ -79,6 +81,10 @@ var loadGCSClientFn = plugin.LoadGCSClient
 // validatePluginLoadableFn wraps plugin.CheckPluginLoadable (the startup
 // plugin loadability pre-check) so tests can inject a fake.
 var validatePluginLoadableFn = plugin.CheckPluginLoadable
+
+// runAgentFn wraps agent.Run so tests can capture the assembled Config and
+// stop before any server binds.
+var runAgentFn = agent.Run
 
 // DashboardAgentCmd is the `dashboard-agent` subcommand of raygo.
 var DashboardAgentCmd = &cobra.Command{
@@ -130,6 +136,7 @@ func init() {
 
 	// Optional behavior flags.
 	DashboardAgentCmd.Flags().BoolVar(&disableMetricsCollection, "disable-metrics-collection", false, "Disable metrics collection for this agent.")
+	DashboardAgentCmd.Flags().StringVar(&isHeadFlag, "is-head", "", "Whether this node is the head node (\"true\" or \"false\"). When set, it is used directly and GCS is not consulted.")
 
 	// Reserved flags.
 	DashboardAgentCmd.Flags().BoolVar(&minimal, "minimal", false, "Run a minimal dashboard agent (not supported yet).")
@@ -250,6 +257,29 @@ func resolveIsHeadRetry(ctx context.Context, gcsClient gcs.Client, nodeID ids.No
 	return false, lastErr
 }
 
+// determineIsHead resolves is_head, preferring the explicit --is-head value
+// over GCS derivation.
+//
+// raylet launches the dashboard agent before it registers its own node in GCS:
+// it waits for the agent to publish metrics_agent_port_<node_id> and only then
+// registers the node. Deriving is_head from the GCS node table on that launch
+// path is therefore a circular wait (the agent polls for a node that raylet
+// only registers once the agent is ready). services.py already knows the
+// topology when it builds the command and passes --is-head explicitly; an
+// empty value keeps the GCS-derived path for callers that do not.
+func determineIsHead(ctx context.Context, gcsClient gcs.Client, nodeID ids.NodeID, explicit string) (bool, error) {
+	switch explicit {
+	case "":
+		return resolveIsHead(ctx, gcsClient, nodeID)
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid --is-head %q, want \"true\", \"false\" or empty", explicit)
+	}
+}
+
 // runDashboardAgent sets up logging, connects to GCS, builds the agent
 // Config and delegates to agent.Run.
 func runDashboardAgent(ctx context.Context) error {
@@ -298,7 +328,7 @@ func runDashboardAgent(ctx context.Context) error {
 	}
 	cfg.GCS = gcsClient
 
-	isHead, err := resolveIsHead(ctx, gcsClient, cfg.NodeID)
+	isHead, err := determineIsHead(ctx, gcsClient, cfg.NodeID, isHeadFlag)
 	if err != nil {
 		return fmt.Errorf("resolve is_head: %w", err)
 	}
@@ -315,7 +345,7 @@ func runDashboardAgent(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return agent.Run(ctx, *cfg, mods)
+	return runAgentFn(ctx, *cfg, mods)
 }
 
 // buildModules assembles the modules the dashboard agent runs with. The log
@@ -334,7 +364,11 @@ func buildModules(cfg agent.Config) ([]agent.Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create event module: %w", err)
 	}
-	return []agent.Module{logAgent, healthzAgent, eventAgent}, nil
+	reporterAgent, err := dashboardreporter.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create reporter module: %w", err)
+	}
+	return []agent.Module{logAgent, healthzAgent, eventAgent, reporterAgent}, nil
 }
 
 // isValidLogLevel reports whether level is one of common.LoggerLevelChoices.

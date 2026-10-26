@@ -208,3 +208,31 @@ What stood between section 6's red and this green: the wire-convention fix (task
 **Runtime-vs-pod-restart (section 4's "in-pod sync does not survive a restart" item):** the worker pod was deleted and its replacement pulled the same image; after re-syncing only the `userfuncs.so` plugin (the one artifact still deliberately not baked), the full lane re-ran **9/9 (exit 0)** (`/tmp/lane-run-24n.log` on the client host). The Ray runtime itself — `raygo` and `go_runtime.so` — now survives pod replacement from the image, closing the section 4 item for the runtime; the plugin remains a manual sync step by design until the lane's packaging work (section 4's CI item) takes it.
 
 Not covered by this round's machine run: the lane's `Exit()` leg lives in the probe, not in `test_python_call_go.py` itself — folding it into the lane (and the plugin's packaging) belongs to the next round that touches the lane. `LocalModeObjectStore` and the graceful-kill path (section 5) remain untouched by design.
+
+## 8. Reporter migration and the dashboard-agent switch path ([25/N])
+
+This section records the first real-machine run of the migrated Go reporter module ([25/N]) and — for the first time on a cluster — the `RAY_ENABLE_GO_DASHBOARD_AGENT` switch itself. Environment: a fresh two-node Kuberay cluster; the image was built from this branch's cp311 wheel layered on the previous round's image (the wheel carries `raygo` and `go_runtime.so`); the switch was enabled on both head and worker via pod environment; the `userfuncs.so` plugin was synced manually as before. Pre-flight: the wheel's `raygo` and `go_runtime.so` and a freshly built `userfuncs.so` shared one package hash (`go/check_pkghash.py`), and the image's `raygo` was asserted to expose the round's new `--is-head` flag before deployment.
+
+**Four defects found and fixed on this path (all inherited from the reference implementation — design gaps that upstream-Ray deployment semantics expose):**
+
+1. **Startup deadlock in `is_head` resolution.** The raylet launches the agent and waits (CHECK, 15 s) for it to persist its gRPC port file, and only registers its own node in GCS afterwards; the agent's `resolveIsHeadRetry` polls the GCS node table for its own node (30 s budget) — a circular wait, both sides time out, `ray start` aborts. Fixed by passing `--is-head` explicitly from `services.py` (which knows the topology) and honoring it in the agent; the GCS-derived path remains as the fallback for callers that do not pass the flag.
+2. **The port-persistence protocol was not implemented.** With dynamically assigned ports (the production default, `--grpc-port=0`), the raylet waits for `metrics_agent_port_<node_id>` / `metrics_export_port_<node_id>` / `dashboard_agent_listen_port_<node_id>` files. The Python agent writes them after binding (writing `-1` for services it does not run); the Go agent wrote none. Fixed: the agent persists the actual bound gRPC and HTTP ports and `-1` for metrics export (the agent does not export metrics — the Python minimal-mode precedent).
+3. **GCS registration used the configured (0) ports.** With dynamic ports the agent registered `[ip, 0, 0]`; fixed to register the actual bound ports, from the same values the persistence step writes.
+4. **HTTP bound to the node IP only.** The operator's readiness probe dials `localhost:<listen port>` from inside the container; a node-IP-only bind refuses it, so the pod never reached Ready. The Python agent's health endpoint answers on both. Fixed: the HTTP server binds on all interfaces.
+
+**Results:**
+
+| case | metric | value |
+| --- | --- | --- |
+| uncached union bazel (final head) | tests | 108/108 pass |
+| pytest raygo + log_monitor | tests | 14/14 pass |
+| package hash (wheel raygo / go_runtime.so / userfuncs.so) | check | all equal |
+| head pod readiness with the switch on | time to 1/1 | ~33 s, 0 restarts (previously: permanent 0/1 or crash loop) |
+| probe 1 — publish loop health | errors | agent started once; 0 `failed to publish node resource usage` lines over the window; all three port files present; agent process alive |
+| probe 2 — end-to-end publish → subscribe | delivery | `RAY_REPORTER:<node id>` received by a Python `GcsAioResourceUsageSubscriber` with a parseable payload (cpu/memory/disk/agent keys — the container's real readings) |
+| lane, run 1 | tests | 9/9 pass, exit 0 |
+| lane, run 2 after worker-pod replacement + plugin resync | tests | 9/9 pass, exit 0 |
+
+Probe 2's shape: subscribe to `RAY_NODE_RESOURCE_USAGE_CHANNEL` via `ray._private.gcs_pubsub.GcsAioResourceUsageSubscriber` (the same channel the Python head dashboard consumes), then long-poll. Two probe-side corrections worth recording: the subscriber must call `subscribe()` before polling (messages published before registration are not retained), and the local rehearsal was abandoned because the development host runs unrelated Ray installs that collide on the agent port and token file — the cluster run above is the authoritative evidence.
+
+**Recorded as observations (not asserted):** the agent-side Prometheus registry remains module-private with no HTTP export point (the same shape as the reference tree; the export logic is covered by the migrated `metrics_service_test`). With the gRPC bind fixed, the raylet can push `ReportOCMetrics` into the agent, but the received gauges still land in this module-private registry with no HTTP export point, so the metrics pipeline remains write-only end to end (deliberate staged delivery; see the JAX-style gap note below); the `event` module logs transient `report_events` connection errors while the head dashboard is unavailable (expected on a cluster without the Python dashboard head, self-heals when it comes up). **Capability gap recorded per the round's ruling:** the OSS Python reporter's JAX profiling path has no Go counterpart (the reference tree has none either); with the Go agent enabled, JAX profiling is unavailable — the same trade the reference tree makes, now narrowed from "the whole reporter is missing" to "JAX profiling only".

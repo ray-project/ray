@@ -34,8 +34,10 @@ import (
 //     wrapping a serialized rpc::RayException whose language is GO and whose
 //     formatted_exception_string carries the human-readable message.
 //
-// The Go driver reads this object through ErrorObjectFromNative exactly like a
-// C++ error object (numeric metadata + msgpack-wrapped RayErrorInfo).
+// The Go driver reads this object through ErrorObjectFromNative with the
+// dual-dialect reader: a Go-written payload (RayException PB, Language: GO)
+// is accepted first, and a C++-written payload (RayErrorInfo) falls through
+// to extractErrorInfoMessage as the fallback dialect.
 func TestMarshalTaskExecutionErrorData_WireForm(t *testing.T) {
 	data, err := MarshalTaskExecutionErrorData("boom: the real cause")
 	require.NoError(t, err)

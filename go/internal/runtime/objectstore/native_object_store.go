@@ -231,12 +231,9 @@ func releasePlasmaBuffer(handle uint64) {
 // derived ObjectID, the direct write pointer, and a buffer handle owning the
 // shared_ptr<Buffer>. The caller must WriteData then SealOwned, or ReleaseBuffer
 // on any failure.
-func (n *NativeObjectStore) nativeCreateOwned(metadata, ownerAddress []byte, dataSize int) (*ids.ObjectID, uintptr, uint64, error) {
+func (n *NativeObjectStore) nativeCreateOwned(metadata []byte, dataSize int) (*ids.ObjectID, uintptr, uint64, error) {
 	metadataPtr, metadataSize, metadataPinner := cgoByteSlice(metadata)
 	defer metadataPinner.Unpin()
-
-	ownerPtr, ownerSize, ownerPinner := cgoByteSlice(ownerAddress)
-	defer ownerPinner.Unpin()
 
 	var cObjectID *C.char
 	var cObjectIDSize C.int
@@ -244,7 +241,7 @@ func (n *NativeObjectStore) nativeCreateOwned(metadata, ownerAddress []byte, dat
 
 	rc := C.CObjectStore_CreateOwned(
 		metadataPtr, metadataSize, C.int(dataSize),
-		ownerPtr, ownerSize,
+		nil, 0,
 		&cObjectID, &cObjectIDSize,
 		&cResult,
 	)
@@ -349,8 +346,8 @@ func (n *NativeObjectStore) nativeSeal(objectID *ids.ObjectID, ownerAddress []by
 }
 
 // nativeSealOwned finalizes an object created by nativeCreateOwned.
-func (n *NativeObjectStore) nativeSealOwned(objectID *ids.ObjectID, ownerAddress []byte) error {
-	return n.nativeSeal(objectID, ownerAddress, true)
+func (n *NativeObjectStore) nativeSealOwned(objectID *ids.ObjectID) error {
+	return n.nativeSeal(objectID, nil, true)
 }
 
 // nativeSealExisting finalizes an object created by nativeCreateExisting.
@@ -387,7 +384,7 @@ func (n *NativeObjectStore) PutRawWithID(obj *object.NativeRayObject, objectID *
 func (n *NativeObjectStore) CreateOwned(metadata *object.NativeRayObject, dataSize int) (*ids.ObjectID, uintptr, uint64, error) {
 	n.cgoMu.Lock()
 	defer n.cgoMu.Unlock()
-	return n.nativeCreateOwned(metadata.Metadata, nil, dataSize)
+	return n.nativeCreateOwned(metadata.Metadata, dataSize)
 }
 
 func (n *NativeObjectStore) SealOwned(objectID *ids.ObjectID, handle uint64) error {
@@ -397,7 +394,7 @@ func (n *NativeObjectStore) SealOwned(objectID *ids.ObjectID, handle uint64) err
 	// CreateOwned; the Go side must release it here to avoid leaking the write
 	// buffer. Releasing a zero handle is a no-op.
 	defer releasePlasmaBuffer(handle)
-	return n.nativeSealOwned(objectID, nil)
+	return n.nativeSealOwned(objectID)
 }
 
 func (n *NativeObjectStore) CreateExisting(metadata *object.NativeRayObject, dataSize int, objectID *ids.ObjectID) (uintptr, uint64, error) {
@@ -512,7 +509,7 @@ func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject) (*ids.ObjectI
 	n.cgoMu.Lock()
 	defer n.cgoMu.Unlock()
 
-	objectID, writePtr, handle, err := n.nativeCreateOwned(obj.Metadata, nil, len(obj.Data))
+	objectID, writePtr, handle, err := n.nativeCreateOwned(obj.Metadata, len(obj.Data))
 	if err != nil {
 		return nil, err
 	}
@@ -520,7 +517,7 @@ func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject) (*ids.ObjectI
 	// data == nullptr: object already exists in plasma; Seal to finalize the
 	// OBJECT_IN_PLASMA entry without writing.
 	if handle == 0 {
-		if err := n.nativeSealOwned(objectID, nil); err != nil {
+		if err := n.nativeSealOwned(objectID); err != nil {
 			return nil, err
 		}
 		return objectID, nil
@@ -536,7 +533,7 @@ func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject) (*ids.ObjectI
 	// handle allocated by CreateOwned; release it here regardless to avoid a
 	// per-Put leak of the write buffer.
 	defer releasePlasmaBuffer(handle)
-	if err := n.nativeSealOwned(objectID, nil); err != nil {
+	if err := n.nativeSealOwned(objectID); err != nil {
 		return nil, err
 	}
 	return objectID, nil

@@ -92,6 +92,19 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 		return fmt.Errorf("create gRPC server: %w", err)
 	}
 
+	// Publish the bound ports before registering the agent: when a port is 0,
+	// raylet waits for these files before it registers this node in GCS, so
+	// writing them after registration would deadlock the startup.
+	grpcPort := listenerPort(grpcSrv.listener)
+	listenPort := -1
+	if httpSrv != nil {
+		listenPort = listenerPort(httpSrv.listener)
+	}
+	if err := persistAgentPorts(cfg, grpcPort, listenPort); err != nil {
+		shutdownServers(httpSrv, grpcSrv)
+		return fmt.Errorf("persist dashboard agent ports: %w", err)
+	}
+
 	// Start every module before serving so configuration or initialization
 	// errors surface before any traffic is accepted.
 	for _, m := range mods {
@@ -101,7 +114,10 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 	}
 
 	if httpSrv != nil {
-		if err := registerAgentToGCS(ctx, cfg, cfg.GRPCPort, cfg.ListenPort); err != nil {
+		// Register the actual bound ports: with dynamic allocation the
+		// configured ports are 0, and a 0 in GCS makes head-side lookups
+		// through ports_by_node resolve to port 0.
+		if err := registerAgentToGCS(ctx, cfg, grpcPort, listenPort); err != nil {
 			return fmt.Errorf("register agent to GCS: %w", err)
 		}
 	}

@@ -2006,8 +2006,10 @@ def start_raylet(
 
     if ray_constants.ENABLE_GO_DASHBOARD_AGENT:
         # Launch the Go dashboard agent (raygo dashboard-agent) instead of the
-        # Python one. The Go command derives is_head from GCS itself, so the
-        # Python-only --head / --minimal / logging appends below are skipped.
+        # Python one. is_head is passed explicitly because raylet starts the
+        # agent before registering its own node in GCS; deriving it from the
+        # node table here would deadlock the startup. The Python-only --head /
+        # --minimal / logging appends below are skipped.
         dashboard_agent_command = [
             RAYGO_EXECUTABLE,
             "dashboard-agent",
@@ -2026,6 +2028,7 @@ def start_raylet(
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
             f"--cluster-id-hex={cluster_id}",
+            f"--is-head={'true' if is_head_node else 'false'}",
         ]
         if dashboard_agent_stdout_filepath:
             dashboard_agent_command.append(

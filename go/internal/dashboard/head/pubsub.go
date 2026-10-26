@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc/codes"
@@ -32,11 +33,6 @@ import (
 // UniqueID, which is 28 (kUniqueIDSize) random bytes. See the Python
 // _SubscriberBase for the reference.
 const subscriberIDLength = 28
-
-// reporterPrefix is the key id prefix for the node resource usage channel.
-// The key id is of the form "RAY_REPORTER:<node id hex>", matching
-// python/ray/dashboard/modules/reporter/reporter_consts.py.
-const reporterPrefix = "RAY_REPORTER:"
 
 // pollTimeout is the long-poll deadline for each Poll call. GCS flushes an
 // empty reply when the connection sits idle, so a long poll keeps the
@@ -283,7 +279,7 @@ func (s *ResourceUsageSubscriber) Updates(ctx context.Context) (<-chan *Resource
 			return nil, false
 		}
 		return &ResourceUsageUpdate{
-			NodeID: strings.TrimPrefix(string(m.KeyId), reporterPrefix),
+			NodeID: strings.TrimPrefix(string(m.KeyId), gcs.ReporterPrefix),
 			JSON:   usage.Json,
 		}, true
 	})

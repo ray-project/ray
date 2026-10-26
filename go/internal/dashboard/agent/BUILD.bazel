@@ -7,6 +7,7 @@ go_library(
         "consts.go",
         "grpc_server.go",
         "http_server.go",
+        "port_persistence.go",
     ],
     importpath = "github.com/ray-project/ray/go/internal/dashboard/agent",
     visibility = ["//go:__subpackages__"],
@@ -15,6 +16,8 @@ go_library(
         "//go/pkg/ids",
         "//go/pkg/log",
         "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//status",
     ],
 )
 
@@ -25,6 +28,10 @@ go_test(
     deps = [
         "//go/pkg/gcs",
         "//go/pkg/ids",
+        "//go/proto",
         "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//status",
     ],
 )

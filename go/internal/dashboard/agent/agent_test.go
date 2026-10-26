@@ -19,12 +19,19 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // fakeKVClient is a minimal in-memory gcs.Client used to observe KV writes.
@@ -102,19 +109,53 @@ func TestRunStartsAllModules(t *testing.T) {
 	}
 }
 
-// TestNewHTTPServerBindsBeforeServe verifies the listen socket is bound by
-// the constructor, so the socket accepts connections before the agent
-// publishes its address in GCS.
+// TestNewHTTPServerBindsBeforeServe verifies the listen socket is bound by the
+// constructor (so it accepts connections before the agent publishes its address
+// in GCS) and that it is reachable both from localhost (the in-container
+// readiness probe) and from this host's non-loopback address (head-side
+// consumers dialing the pod IP resolved through ports_by_node).
 func TestNewHTTPServerBindsBeforeServe(t *testing.T) {
 	httpSrv, err := newHTTPServer(Config{NodeIP: "127.0.0.1", ListenPort: 0}, []Module{&stubModule{}})
 	if err != nil {
 		t.Fatalf("newHTTPServer: %v", err)
 	}
-	conn, err := net.Dial("tcp", httpSrv.listener.Addr().String())
-	if err != nil {
-		t.Fatalf("dial bound listener before serve: %v", err)
+	port := listenerPort(httpSrv.listener)
+	if port <= 0 {
+		t.Fatalf("listener port = %d, want a bound ephemeral port", port)
 	}
-	conn.Close()
+	dialBeforeServe := func(addr string) {
+		t.Helper()
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err != nil {
+			t.Errorf("dial %s before serve: %v", addr, err)
+			return
+		}
+		conn.Close()
+	}
+	dialBeforeServe(fmt.Sprintf("localhost:%d", port))
+	if ip := nonLoopbackIPv4(t); ip != "" {
+		dialBeforeServe(fmt.Sprintf("%s:%d", ip, port))
+	}
+}
+
+// nonLoopbackIPv4 returns this host's first non-loopback IPv4 address, or ""
+// when the host has none.
+func nonLoopbackIPv4(t *testing.T) string {
+	t.Helper()
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		t.Fatalf("InterfaceAddrs: %v", err)
+	}
+	for _, a := range addrs {
+		ipNet, ok := a.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		if ip4 := ipNet.IP.To4(); ip4 != nil {
+			return ip4.String()
+		}
+	}
+	return ""
 }
 
 // TestRunDegradesWhenHTTPPortTaken verifies the Python parity contract for an
@@ -155,5 +196,208 @@ func TestRunDegradesWhenHTTPPortTaken(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return after cancellation")
+	}
+}
+
+// readPersistedPort reads a port-discovery file written by the agent. The file
+// name is "{port_name}_{node_id_hex}" and the content is the decimal port,
+// mirroring ray::PersistPort.
+func readPersistedPort(t *testing.T, dir string, nodeID ids.NodeID, name string) int {
+	t.Helper()
+	path := filepath.Join(dir, name+"_"+nodeID.Hex())
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	port, err := strconv.Atoi(string(data))
+	if err != nil {
+		t.Fatalf("parse %s content %q: %v", name, data, err)
+	}
+	return port
+}
+
+// TestRunPersistsDashboardAgentPorts verifies the agent publishes the port
+// files raylet's WaitForDashboardAgentPorts waits on when a port is 0
+// (dynamic allocation). raylet blocks for these files and CHECK-fails after
+// 15s if they never appear, so failing to write them kills startup.
+func TestRunPersistsDashboardAgentPorts(t *testing.T) {
+	dir := t.TempDir()
+	nodeID := ids.NewNodeID()
+	fake := &fakeKVClient{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := Run(ctx, Config{
+		NodeIP:     "127.0.0.1",
+		NodeID:     nodeID,
+		SessionDir: dir,
+		GCS:        fake,
+	}, nil); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	grpcPort := readPersistedPort(t, dir, nodeID, "metrics_agent_port")
+	if grpcPort <= 0 {
+		t.Errorf("metrics_agent_port = %d, want a bound ephemeral port", grpcPort)
+	}
+	if got := readPersistedPort(t, dir, nodeID, "metrics_export_port"); got != -1 {
+		t.Errorf("metrics_export_port = %d, want -1 (the Go agent does not export metrics)", got)
+	}
+	listenPort := readPersistedPort(t, dir, nodeID, "dashboard_agent_listen_port")
+	if listenPort <= 0 {
+		t.Errorf("dashboard_agent_listen_port = %d, want a bound ephemeral port", listenPort)
+	}
+
+	// The GCS address registration must carry the same actual bound ports, not
+	// the configured 0 that dynamic allocation starts from; head-side lookups
+	// through ports_by_node would otherwise resolve to port 0.
+	want := fmt.Sprintf("[%q, %d, %d]", "127.0.0.1", listenPort, grpcPort)
+	key := DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX + nodeID.Hex()
+	if got := string(fake.kv[KVNamespaceDashboard][key]); got != want {
+		t.Errorf("registered agent address = %q, want %q", got, want)
+	}
+}
+
+// TestPersistAgentPorts verifies the exact file names and decimal contents for
+// injected bound ports. The Go agent does not export metrics, so
+// metrics_export_port must be -1.
+func TestPersistAgentPorts(t *testing.T) {
+	dir := t.TempDir()
+	nodeID, err := ids.NodeIDFromHex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c")
+	if err != nil {
+		t.Fatalf("NodeIDFromHex: %v", err)
+	}
+	if err := persistAgentPorts(Config{SessionDir: dir, NodeID: nodeID}, 12345, 54321); err != nil {
+		t.Fatalf("persistAgentPorts: %v", err)
+	}
+	for _, c := range []struct {
+		name string
+		want string
+	}{
+		{"metrics_agent_port", "12345"},
+		{"metrics_export_port", "-1"},
+		{"dashboard_agent_listen_port", "54321"},
+	} {
+		path := filepath.Join(dir, c.name+"_"+nodeID.Hex())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", c.name, err)
+		}
+		if got := string(data); got != c.want {
+			t.Errorf("%s content = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestNewGRPCServerBindsAllInterfaces verifies the gRPC listener is reachable
+// from both localhost (the raylet's MetricsAgentClient dials localhost) and
+// this host's non-loopback address (head-side consumers dial the pod IP
+// resolved through ports_by_node).
+func TestNewGRPCServerBindsAllInterfaces(t *testing.T) {
+	srv, err := newGRPCServer(Config{NodeIP: "127.0.0.1", GRPCPort: 0}, nil)
+	if err != nil {
+		t.Fatalf("newGRPCServer: %v", err)
+	}
+	defer srv.listener.Close()
+	port := listenerPort(srv.listener)
+	if port <= 0 {
+		t.Fatalf("listener port = %d, want a bound ephemeral port", port)
+	}
+	dial := func(addr string) {
+		t.Helper()
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err != nil {
+			t.Errorf("dial %s: %v", addr, err)
+			return
+		}
+		conn.Close()
+	}
+	dial(fmt.Sprintf("localhost:%d", port))
+	if ip := nonLoopbackIPv4(t); ip != "" {
+		dial(fmt.Sprintf("%s:%d", ip, port))
+	}
+}
+
+// recoveryTestModule registers a minimal gRPC service with one panicking and
+// one healthy unary method, exercising the agent's panic recovery end to end.
+type recoveryTestModule struct{}
+
+func (m *recoveryTestModule) Start(context.Context) error       { return nil }
+func (m *recoveryTestModule) RegisterHTTP(*http.ServeMux) error { return nil }
+func (m *recoveryTestModule) RegisterGRPC(s *grpc.Server) error {
+	s.RegisterService(&recoveryTestServiceDesc, &recoveryTestService{})
+	return nil
+}
+
+type recoveryTestService struct{}
+
+var recoveryTestServiceDesc = grpc.ServiceDesc{
+	ServiceName: "test.RecoveryService",
+	HandlerType: (*interface{})(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Panic",
+			Handler: func(_ interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+				in := new(proto.ListLogsRequest)
+				if err := dec(in); err != nil {
+					return nil, err
+				}
+				handler := func(context.Context, interface{}) (interface{}, error) {
+					panic("boom")
+				}
+				if interceptor == nil {
+					return handler(ctx, in)
+				}
+				info := &grpc.UnaryServerInfo{FullMethod: "/test.RecoveryService/Panic"}
+				return interceptor(ctx, in, info, handler)
+			},
+		},
+		{
+			MethodName: "Healthy",
+			Handler: func(_ interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+				in := new(proto.ListLogsRequest)
+				if err := dec(in); err != nil {
+					return nil, err
+				}
+				handler := func(context.Context, interface{}) (interface{}, error) {
+					return &proto.ListLogsReply{}, nil
+				}
+				if interceptor == nil {
+					return handler(ctx, in)
+				}
+				info := &grpc.UnaryServerInfo{FullMethod: "/test.RecoveryService/Healthy"}
+				return interceptor(ctx, in, info, handler)
+			},
+		},
+	},
+}
+
+// TestUnaryRecoveryInterceptorKeepsServerAlive verifies that a panicking unary
+// handler surfaces as codes.Internal to the client and does not kill the
+// agent: a subsequent request is still served.
+func TestUnaryRecoveryInterceptorKeepsServerAlive(t *testing.T) {
+	srv, err := newGRPCServer(Config{NodeIP: "127.0.0.1", GRPCPort: 0}, []Module{&recoveryTestModule{}})
+	if err != nil {
+		t.Fatalf("newGRPCServer: %v", err)
+	}
+	go srv.serve()
+	defer srv.stop()
+
+	conn, err := grpc.DialContext(context.Background(),
+		fmt.Sprintf("127.0.0.1:%d", listenerPort(srv.listener)),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = conn.Invoke(ctx, "/test.RecoveryService/Panic", &proto.ListLogsRequest{}, &proto.ListLogsReply{})
+	if st, ok := status.FromError(err); !ok || st.Code() != codes.Internal {
+		t.Fatalf("panic call error = %v, want codes.Internal", err)
+	}
+	if err := conn.Invoke(ctx, "/test.RecoveryService/Healthy", &proto.ListLogsRequest{}, &proto.ListLogsReply{}); err != nil {
+		t.Fatalf("healthy call after a recovered panic = %v, want nil", err)
 	}
 }

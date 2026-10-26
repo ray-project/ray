@@ -25,6 +25,7 @@ import (
 	dashboardevent "github.com/ray-project/ray/go/internal/dashboard/event"
 	"github.com/ray-project/ray/go/internal/dashboard/healthz"
 	dashboardlog "github.com/ray-project/ray/go/internal/dashboard/log"
+	dashboardreporter "github.com/ray-project/ray/go/internal/dashboard/reporter"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/proto"
@@ -197,13 +198,13 @@ func (f *buildModulesFakeGCS) GetAll(_ context.Context, nodeIDs []ids.NodeID) (m
 // serving.
 func TestBuildModules(t *testing.T) {
 	fakeGCS := &buildModulesFakeGCS{}
-	t.Run("returns log, healthz and event modules", func(t *testing.T) {
+	t.Run("returns log, healthz, event and reporter modules", func(t *testing.T) {
 		mods, err := buildModules(agent.Config{LogDir: t.TempDir(), GCS: fakeGCS})
 		if err != nil {
 			t.Fatalf("buildModules: %v", err)
 		}
-		if len(mods) != 3 {
-			t.Fatalf("buildModules returned %d modules, want 3", len(mods))
+		if len(mods) != 4 {
+			t.Fatalf("buildModules returned %d modules, want 4", len(mods))
 		}
 		if _, ok := mods[0].(*dashboardlog.LogAgentModule); !ok {
 			t.Errorf("module[0] type = %T, want *log.LogAgentModule", mods[0])
@@ -213,6 +214,9 @@ func TestBuildModules(t *testing.T) {
 		}
 		if _, ok := mods[2].(*dashboardevent.EventAgent); !ok {
 			t.Errorf("module[2] type = %T, want *event.EventAgent", mods[2])
+		}
+		if _, ok := mods[3].(*dashboardreporter.ReporterModule); !ok {
+			t.Errorf("module[3] type = %T, want *reporter.ReporterModule", mods[3])
 		}
 	})
 
@@ -304,5 +308,76 @@ func TestRunDashboardAgentConnectsThroughPluginSeam(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to connect to GCS client") {
 		t.Fatalf("error %q does not mention failed to connect to GCS client", err)
+	}
+}
+
+// rejectGetAllGCS fails the test when the node table is queried, proving that
+// an explicit --is-head value short-circuits GCS derivation. Deriving is_head
+// from GCS on the raylet-launched path would deadlock: raylet starts the agent
+// before registering its own node, so the agent would poll for a node that only
+// appears once the agent is ready.
+type rejectGetAllGCS struct {
+	gcs.Client
+	t *testing.T
+}
+
+func (f *rejectGetAllGCS) GetAll(_ context.Context, _ []ids.NodeID) (map[ids.NodeID]*proto.GcsNodeInfo, error) {
+	f.t.Error("GetAll called: an explicit --is-head must skip GCS derivation")
+	return nil, errors.New("GetAll must not be called")
+}
+
+// Close is a no-op so runDashboardAgent's deferred Close does not dispatch to
+// the nil embedded gcs.Client.
+func (f *rejectGetAllGCS) Close() error { return nil }
+
+// TestRunDashboardAgentExplicitIsHeadSkipsGCS verifies that an explicit
+// --is-head value is used as-is and that GCS is never consulted, breaking the
+// startup deadlock where raylet waits for the agent while the agent waits for
+// raylet to register the node in GCS.
+func TestRunDashboardAgentExplicitIsHeadSkipsGCS(t *testing.T) {
+	origIsHead := isHeadFlag
+	defer func() { isHeadFlag = origIsHead }()
+
+	for _, tc := range []struct {
+		flag string
+		want bool
+	}{
+		{flag: "true", want: true},
+		{flag: "false", want: false},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			args := testArgs(map[string]string{
+				"log-dir": t.TempDir(),
+				"is-head": tc.flag,
+			})
+			if err := DashboardAgentCmd.ParseFlags(args); err != nil {
+				t.Fatalf("parse flags: %v", err)
+			}
+
+			origLoad := loadGCSClientFn
+			loadGCSClientFn = func(gcs.ClientOptions) (gcs.Client, error) {
+				return &rejectGetAllGCS{t: t}, nil
+			}
+			defer func() { loadGCSClientFn = origLoad }()
+
+			origValidate := validatePluginLoadableFn
+			validatePluginLoadableFn = func() error { return nil }
+			defer func() { validatePluginLoadableFn = origValidate }()
+
+			var got agent.Config
+			origRun := runAgentFn
+			runAgentFn = func(_ context.Context, cfg agent.Config, _ []agent.Module) error {
+				got = cfg
+				return nil
+			}
+			defer func() { runAgentFn = origRun }()
+
+			if err := runDashboardAgent(context.Background()); err != nil {
+				t.Fatalf("runDashboardAgent: %v", err)
+			}
+			if got.IsHead != tc.want {
+				t.Errorf("cfg.IsHead = %v, want %v", got.IsHead, tc.want)
+			}
+		})
 	}
 }

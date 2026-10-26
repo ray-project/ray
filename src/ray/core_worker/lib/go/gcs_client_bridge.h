@@ -236,6 +236,15 @@ int ray_gcs_client_publisher_publish_log_batch(CGcsClient *client,
                                                const char *task_name,
                                                int64_t timeout_ms,
                                                char **error_out);
+// Publishes a node resource usage report to GCS under the RAY_NODE_RESOURCE_USAGE
+// channel. key_id is the GCS key (with the RAY_REPORTER: prefix) and
+// node_resource_usage_json is the JSON-serialized resource usage payload.
+// Returns 1 on success, 0 on failure (error_out holds details).
+int ray_gcs_client_publisher_publish_node_resource_usage(
+    CGcsClient *client,
+    const char *key_id,
+    const char *node_resource_usage_json,
+    char **error_out);
 
 // Autoscaler
 // Returns the protobuf-serialized AutoscalingState; the Go side parses it to judge the

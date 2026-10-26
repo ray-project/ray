@@ -15,11 +15,15 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"time"
 
+	"github.com/ray-project/ray/go/pkg/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // grpcMaxMessageSize caps both outgoing and incoming gRPC messages handled by
@@ -39,19 +43,38 @@ type grpcServer struct {
 	listener net.Listener
 }
 
+// unaryRecoveryInterceptor converts a panic in a unary handler into an
+// Internal error instead of letting it crash the long-lived agent process. A
+// malformed ReportOCMetrics payload, for example, must not take the agent down.
+func unaryRecoveryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Log.Error(fmt.Errorf("recovered panic: %v", r), "gRPC handler panicked", "method", info.FullMethod)
+			resp = nil
+			err = status.Error(codes.Internal, "internal error")
+		}
+	}()
+	return handler(ctx, req)
+}
+
 // newGRPCServer builds the gRPC server, registers services from every module,
 // and binds the configured listen address.
 func newGRPCServer(cfg Config, mods []Module) (*grpcServer, error) {
 	s := grpc.NewServer(
 		grpc.MaxRecvMsgSize(grpcMaxMessageSize),
 		grpc.MaxSendMsgSize(grpcMaxMessageSize),
+		grpc.ChainUnaryInterceptor(unaryRecoveryInterceptor),
 	)
 	for _, m := range mods {
 		if err := m.RegisterGRPC(s); err != nil {
 			return nil, fmt.Errorf("register gRPC services: %w", err)
 		}
 	}
-	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.NodeIP, cfg.GRPCPort))
+	// Bind on all interfaces: the raylet's MetricsAgentClient dials localhost
+	// from inside the container, while head-side consumers dial the pod IP
+	// resolved through ports_by_node, so both must reach this listener. Mirror
+	// the Python agent, which binds non-localhost nodes on all interfaces.
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
 		return nil, fmt.Errorf("listen on gRPC addr: %w", err)
 	}

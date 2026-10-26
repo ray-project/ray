@@ -43,7 +43,11 @@ func newHTTPServer(cfg Config, mods []Module) (*httpServer, error) {
 			return nil, fmt.Errorf("register HTTP routes: %w", err)
 		}
 	}
-	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.NodeIP, cfg.ListenPort))
+	// Bind on all interfaces rather than only cfg.NodeIP: the in-container
+	// readiness probe dials localhost, while head-side consumers dial the pod
+	// IP resolved through ports_by_node, so both must reach this listener. The
+	// Python agent's healthz likewise answers on localhost and the pod IP.
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.ListenPort))
 	if err != nil {
 		return nil, fmt.Errorf("listen on HTTP addr: %w", err)
 	}

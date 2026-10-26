@@ -96,3 +96,27 @@ type AutoscalerInterface interface {
 type LogBatchPublisher interface {
 	PublishLogBatch(ctx context.Context, payload LogBatchPayload) error
 }
+
+// ReporterPrefix is the single source of truth for the key prefix used when
+// publishing node resource usage to GCS. It is shared by the reporter module
+// (publishing under "RAY_REPORTER:<node id hex>") and the head pubsub
+// subscriber (trimming the prefix when parsing key ids), aligned with the
+// Python reporter_consts.REPORTER_PREFIX.
+const ReporterPrefix = "RAY_REPORTER:"
+
+// NodeResourceUsagePublisher publishes node resource usage to GCS.
+// It mirrors the Python reporter's RAY_NODE_RESOURCE_USAGE_CHANNEL
+// (see internal/dashboard/reporter/consts.go ReporterPrefix/ReporterChannel),
+// where keyID corresponds to the RAY_REPORTER: prefixed key and jsonPayload
+// carries the serialized node resource usage report. It is kept as an
+// independent interface (rather than merged into PublisherInterface) to
+// preserve backward compatibility for existing implementations. Implemented
+// by the cgo native layer inside go_runtime.so; the thin layer holds this
+// interface.
+type NodeResourceUsagePublisher interface {
+	// PublishNodeResourceUsage publishes the node resource usage of a node.
+	// keyID is the GCS key (with the RAY_REPORTER: prefix) under which the
+	// usage is stored, and jsonPayload is the JSON-serialized resource usage
+	// payload. It returns an error if the publication fails.
+	PublishNodeResourceUsage(ctx context.Context, keyID, jsonPayload string) error
+}

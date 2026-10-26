@@ -35,6 +35,9 @@ go_library(
 # Tests for the GCS singleton accessors.
 go_test(
     name = "gcs_test",
-    srcs = ["client_test.go"],
+    srcs = [
+        "client_test.go",
+        "interfaces_test.go",
+    ],
     embed = [":gcs"],
 )
