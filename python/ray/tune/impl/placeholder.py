@@ -180,8 +180,14 @@ def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
         return prefix, config
 
     key = path[0]
-    if isinstance(config, tuple):
-        if config[0] in (_FunctionResolver.TOKEN, _RefResolver.TOKEN):
+    # Placeholders are tuples, but come back as lists after a JSON round trip
+    # (e.g. restoring trial state in Tuner.restore).
+    if isinstance(config, (tuple, list)):
+        if (
+            config
+            and isinstance(config[0], str)
+            and config[0] in (_FunctionResolver.TOKEN, _RefResolver.TOKEN)
+        ):
             # Found a matching placeholder.
             # Note that we do not require that the full path are consumed before
             # declaring a match. Because this placeholder may be part of a nested
@@ -196,13 +202,11 @@ def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
             # After expansion though, the choosen placeholder will live under path
             # ("param1", 0) like this: config = {"param1": (Placeholder1, 2, 3)}
             return prefix, config
-        elif key < len(config):
+        elif isinstance(key, int) and key < len(config):
             return _get_placeholder(
                 config[key], prefix=prefix + (path[0],), path=path[1:]
             )
-    elif (isinstance(config, dict) and key in config) or (
-        isinstance(config, list) and key < len(config)
-    ):
+    elif isinstance(config, dict) and key in config:
         # Expand config tree recursively.
         return _get_placeholder(config[key], prefix=prefix + (path[0],), path=path[1:])
 
@@ -228,7 +232,7 @@ def resolve_placeholders(config: Any, replaced: defaultdict):
 
             prefix, ph = _get_placeholder(config, (), path)
             if not (
-                isinstance(ph, tuple)
+                isinstance(ph, (tuple, list))
                 and len(ph) == 2
                 and isinstance(ph[0], str)
                 and ph[0] == resolver_type.TOKEN
