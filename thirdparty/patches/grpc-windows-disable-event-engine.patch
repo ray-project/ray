@@ -1,9 +1,12 @@
 diff -u src/core/lib/experiments/experiments.cc
 --- src/core/lib/experiments/experiments.cc
 +++ src/core/lib/experiments/experiments.cc
-@@ -363,7 +363,7 @@
+@@ -361,9 +361,9 @@
+      true, true},
+     {"event_engine_callback_cq", description_event_engine_callback_cq,
       additional_constraints_event_engine_callback_cq,
-      required_experiments_event_engine_callback_cq, 1, true, true},
+-     required_experiments_event_engine_callback_cq, 1, true, true},
++     required_experiments_event_engine_callback_cq, 1, false, true},
      {"event_engine_client", description_event_engine_client,
 -     additional_constraints_event_engine_client, nullptr, 0, true, true},
 +     additional_constraints_event_engine_client, nullptr, 0, false, true},
