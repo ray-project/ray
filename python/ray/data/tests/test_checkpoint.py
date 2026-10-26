@@ -2195,7 +2195,8 @@ def test_write_block_checkpoint_with_pandas_df(restore_data_context, tmp_path):
     assert written_ids == expected_ids
 
 
-def test_filter_rows_for_block():
+@pytest.mark.parametrize("block_format", ["arrow", "pandas"])
+def test_filter_rows_for_block(block_format):
     """Test NumpyArrayBasedCheckpointFilter.filter_rows_for_block."""
 
     # Common test setup
@@ -2235,13 +2236,60 @@ def test_filter_rows_for_block():
             "data": ["0", "3", "5", "7"],
         }
     )
+    if block_format == "pandas":
+        block = block.to_pandas()
+        expected_block = expected_block.to_pandas()
 
     filter_instance = NumpyArrayBasedCheckpointFilter(config, checkpointed_ids_ref)
     filtered_block = filter_instance.filter_rows_for_block(
         block=block,
     )
 
-    assert filtered_block.equals(expected_block)
+    if block_format == "pandas":
+        # The filtered block must stay a pandas block.
+        assert isinstance(filtered_block, pd.DataFrame)
+        pd.testing.assert_frame_equal(filtered_block, expected_block)
+    else:
+        assert filtered_block.equals(expected_block)
+
+
+def test_checkpoint_resume_with_pandas_blocks(
+    ray_start_10_cpus_shared, tmp_path, checkpoint_path
+):
+    """Resuming a job whose read yields pandas blocks must skip committed rows.
+
+    V1 ``read_json(lines=True)`` (``PandasJSONDatasource``) produces pandas
+    blocks, so the checkpoint filter must handle non-Arrow blocks.
+    """
+    input_file = os.path.join(tmp_path, "input.jsonl")
+    with open(input_file, "w") as f:
+        for i in range(SAMPLE_DATA_NUM_ROWS):
+            f.write(f'{{"{ID_COL}": {i}}}\n')
+
+    # A previous run committed IDs 0-4.
+    committed_ids = list(range(SAMPLE_DATA_NUM_ROWS // 2))
+    expected_remaining_ids = list(
+        range(SAMPLE_DATA_NUM_ROWS // 2, SAMPLE_DATA_NUM_ROWS)
+    )
+    os.makedirs(checkpoint_path, exist_ok=True)
+    pq.write_table(
+        pa.table({ID_COL: committed_ids}),
+        os.path.join(checkpoint_path, "prev_run.parquet"),
+    )
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    output_path = os.path.join(tmp_path, "output")
+    ray.data.read_json(input_file, lines=True).write_parquet(output_path)
+
+    ctx.checkpoint_config = None
+    actual_output = sorted(pq.read_table(output_path)[ID_COL].to_pylist())
+    assert actual_output == expected_remaining_ids
 
 
 def test_checkpoint_restore_after_full_execution(

@@ -14,7 +14,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators import Read
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_read_op import plan_read_op
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.checkpoint.checkpoint_filter import (
     IdColumnCheckpointManager,
     NumpyArrayBasedCheckpointFilter,
@@ -139,7 +139,9 @@ class _CheckpointFilterFn:
         assert self._filter is not None, "checkpoint filter was not initialized!"
         for block in blocks:
             filtered_block = self._filter.filter_rows_for_block(block)
-            if filtered_block.num_rows > 0:
+            # Use BlockAccessor so pandas blocks (and any other block format a
+            # custom ``checkpoint_filter_cls`` returns) are counted correctly.
+            if BlockAccessor.for_block(filtered_block).num_rows() > 0:
                 yield filtered_block
 
 

@@ -589,15 +589,11 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
         if self.checkpointed_ids.shape[0] == 0 or len(block) == 0:
             return block
 
-        assert isinstance(block, pyarrow.Table)
-
         # The checkpointed_ids block is sorted (see load_checkpoint).
         # We'll use binary search to filter out processed rows.
 
         # Convert the block's ID column to a numpy array for fast processing.
-        block_ids = transform_pyarrow.to_numpy(
-            block[self.id_column], zero_copy_only=False
-        )
+        block_ids = BlockAccessor.for_block(block).to_numpy(self.id_column)
 
         # Start with a mask of all True (keep all rows).
         mask = np.ones(len(block_ids), dtype=bool)
@@ -611,7 +607,8 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
         # Mark matched IDs as False (filter out these rows).
         mask[valid_indices] = ~matched
 
-        # Convert the final mask to a PyArrow array and filter the block.
-        mask_array = pyarrow.array(mask)
-        filtered_block = block.filter(mask_array)
-        return filtered_block
+        if isinstance(block, pyarrow.Table):
+            return block.filter(pyarrow.array(mask))
+        # Pandas blocks (e.g. from ``from_pandas`` or pandas-based reads) stay
+        # in their own format so downstream operators see the usual block type.
+        return BlockAccessor.for_block(block).take(np.flatnonzero(mask))
