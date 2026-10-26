@@ -48,7 +48,7 @@ The following example uses Tune to run `N` independent model training trials as 
 
 **Step 5:** Inspect the results. Until the experiment finishes, Tune periodically prints a summary of its status to stdout, similar to the following:
 
-```
+```text
 == Status ==
 Current time: 2022-09-21 10:19:34 (running for 00:00:04.54)
 Memory usage on this node: 6.9/31.1 GiB
@@ -73,7 +73,7 @@ Number of trials: 100/100 (100 TERMINATED)
 
 The final result objects contain metadata for the finished trials:
 
-```
+```text
 Result(metrics={'score': 'model_0', 'other_data': Ellipsis, 'done': True, 'trial_id': '8d627_00000', 'experiment_tag': '0_model_id=model_0'}, error=None, log_dir=PosixPath('/home/ubuntu/ray_results/train_model_2022-09-21_10-19-26/train_model_8d627_00000_0_model_id=model_0_2022-09-21_10-19-30'))
 Result(metrics={'score': 'model_1', 'other_data': Ellipsis, 'done': True, 'trial_id': '8d627_00001', 'experiment_tag': '1_model_id=model_1'}, error=None, log_dir=PosixPath('/home/ubuntu/ray_results/train_model_2022-09-21_10-19-26/train_model_8d627_00001_1_model_id=model_1_2022-09-21_10-19-31'))
 Result(metrics={'score': 'model_2', 'other_data': Ellipsis, 'done': True, 'trial_id': '8d627_00002', 'experiment_tag': '2_model_id=model_2'}, error=None, log_dir=PosixPath('/home/ubuntu/ray_results/train_model_2022-09-21_10-19-26/train_model_8d627_00002_2_model_id=model_2_2022-09-21_10-19-31'))
