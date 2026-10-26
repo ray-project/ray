@@ -65,6 +65,22 @@ class PlaceholderTest(unittest.TestCase):
         self.assertEqual(config["param2"][1].value, "not ok")
         self.assertEqual(config["param3"]["param4"], "not ok")
 
+    def testGridSearchPrimitiveChoice(self):
+        # A chosen option that is not a placeholder must be left as is, even
+        # when another option of the same grid search is a ref.
+        for chosen in (5, 2.5, "a"):
+            config = {"param": tune.grid_search([Dummy("ok"), chosen])}
+
+            replaced = create_resolvers_map()
+            config = inject_placeholders(config, replaced)
+
+            # Pretend we picked the second option from the grid search.
+            config["param"] = chosen
+
+            resolve_placeholders(config, replaced)
+
+            self.assertEqual(config["param"], chosen)
+
     def testCategorical(self):
         config = {
             "param1": "ok",

@@ -227,8 +227,14 @@ def resolve_placeholders(config: Any, replaced: defaultdict):
                 continue
 
             prefix, ph = _get_placeholder(config, (), path)
-            if not ph:
-                # Represents an unchosen value. Just skip.
+            if not (
+                isinstance(ph, tuple)
+                and len(ph) == 2
+                and isinstance(ph[0], str)
+                and ph[0] == resolver_type.TOKEN
+            ):
+                # Represents an unchosen value, or a chosen option that is not a
+                # placeholder (e.g. a primitive next to a ref). Just skip.
                 continue
 
             for resolver in resolvers:
