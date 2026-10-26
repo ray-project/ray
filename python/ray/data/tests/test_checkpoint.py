@@ -18,6 +18,7 @@ from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     TransformClock,
@@ -25,6 +26,9 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators import Read, Write
 from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.planner.checkpoint.plan_from_op import (
+    plan_from_op_with_checkpoint_filter,
+)
 from ray.data._internal.planner.checkpoint.plan_read_op import (
     _get_checkpoint_map_transformer,
     plan_read_op_with_checkpoint_filter,
@@ -2612,6 +2616,140 @@ def test_plan_read_op_with_checkpoint_filter_with_valid_checkpoint(
     # Should return a CheckpointFilter MapOperator
     assert isinstance(physical_op, MapOperator)
     assert physical_op.name == "CheckpointFilter"
+
+
+def test_plan_from_op_with_checkpoint_filter_no_checkpoint_dir(
+    ray_start_10_cpus_shared, tmp_path
+):
+    """Test that when the checkpoint directory does not exist,
+    plan_from_op_with_checkpoint_filter returns the plain InputDataBuffer."""
+    ctx = ray.data.DataContext.get_current()
+
+    # checkpoint_path points to a non-existent directory
+    ckpt_path = os.path.join(str(tmp_path), "non_existent_ckpt_dir")
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    from_op = ray.data.from_items(
+        [{ID_COL: i} for i in range(SAMPLE_DATA_NUM_ROWS)]
+    )._logical_plan.dag
+    physical_op = plan_from_op_with_checkpoint_filter(
+        None,
+        None,
+        op=from_op,
+        physical_children=[],
+        data_context=ctx,
+    )
+
+    assert isinstance(physical_op, InputDataBuffer)
+
+
+def test_plan_from_op_with_checkpoint_filter_with_valid_checkpoint(
+    ray_start_10_cpus_shared, tmp_path
+):
+    """Test that when a valid checkpoint exists,
+    plan_from_op_with_checkpoint_filter returns a CheckpointFilter MapOperator."""
+    ctx = ray.data.DataContext.get_current()
+
+    # Create a checkpoint directory with valid checkpoint data
+    ckpt_path = os.path.join(str(tmp_path), "valid_ckpt_dir")
+    os.makedirs(ckpt_path, exist_ok=True)
+
+    # Write some checkpoint IDs (e.g., IDs 0-4 are already processed)
+    checkpointed_ids = pa.table({ID_COL: list(range(5))})
+    pq.write_table(checkpointed_ids, os.path.join(ckpt_path, "ckpt_0.parquet"))
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    from_op = ray.data.from_items(
+        [{ID_COL: i} for i in range(SAMPLE_DATA_NUM_ROWS)]
+    )._logical_plan.dag
+    physical_op = plan_from_op_with_checkpoint_filter(
+        None,
+        None,
+        op=from_op,
+        physical_children=[],
+        data_context=ctx,
+    )
+
+    # Should return a CheckpointFilter MapOperator on top of the InputDataBuffer
+    assert isinstance(physical_op, MapOperator)
+    assert physical_op.name == "CheckpointFilter"
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+
+
+@pytest.mark.parametrize(
+    "ds_factory,id_column",
+    [
+        pytest.param(
+            lambda n: ray.data.from_items([{ID_COL: i} for i in range(n)]),
+            ID_COL,
+            id="from_items",
+        ),
+        pytest.param(
+            lambda n: ray.data.from_pandas(pd.DataFrame({ID_COL: range(n)})),
+            ID_COL,
+            id="from_pandas",
+        ),
+        pytest.param(
+            lambda n: ray.data.from_arrow(pa.table({ID_COL: list(range(n))})),
+            ID_COL,
+            id="from_arrow",
+        ),
+        pytest.param(
+            lambda n: ray.data.from_numpy(np.arange(n)),
+            # `from_numpy` names its single column "data".
+            "data",
+            id="from_numpy",
+        ),
+        pytest.param(
+            lambda n: ray.data.from_blocks([pa.table({ID_COL: list(range(n))})]),
+            ID_COL,
+            id="from_blocks_arrow",
+        ),
+        pytest.param(
+            lambda n: ray.data.from_blocks([pd.DataFrame({ID_COL: range(n)})]),
+            ID_COL,
+            id="from_blocks_pandas",
+        ),
+    ],
+)
+def test_checkpoint_resume_from_in_memory_data(
+    ray_start_10_cpus_shared, tmp_path, checkpoint_path, ds_factory, id_column
+):
+    """Resuming a job built from in-memory data must skip committed rows."""
+    # A previous run committed IDs 0-4.
+    committed_ids = list(range(SAMPLE_DATA_NUM_ROWS // 2))
+    expected_remaining_ids = list(
+        range(SAMPLE_DATA_NUM_ROWS // 2, SAMPLE_DATA_NUM_ROWS)
+    )
+    os.makedirs(checkpoint_path, exist_ok=True)
+    pq.write_table(
+        pa.table({id_column: committed_ids}),
+        os.path.join(checkpoint_path, "prev_run.parquet"),
+    )
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=id_column,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    output_path = os.path.join(tmp_path, "output")
+    ds_factory(SAMPLE_DATA_NUM_ROWS).write_parquet(output_path)
+
+    ctx.checkpoint_config = None
+    actual_output = sorted(pq.read_table(output_path)[id_column].to_pylist())
+    assert actual_output == expected_remaining_ids
 
 
 @pytest.mark.parametrize(

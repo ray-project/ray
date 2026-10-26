@@ -57,6 +57,7 @@ from ray.data._internal.logical.operators import (
     Zip,
 )
 from ray.data._internal.planner.checkpoint import (
+    plan_from_op_with_checkpoint_filter,
     plan_list_files_op_with_done_read_units,
     plan_read_files_op_with_checkpoint_filter,
     plan_read_files_op_with_done_rows,
@@ -275,7 +276,7 @@ class Planner:
         Download: plan_download_op,
     }
     # Operators that support checkpoint filtering. Subclasses can override.
-    _CHECKPOINT_FILTER_OPS = (Read, ReadFiles)
+    _CHECKPOINT_FILTER_OPS = (Read, ReadFiles, AbstractFrom)
 
     def __init__(self):
         self._supports_checkpointing = False
@@ -541,6 +542,11 @@ class Planner:
             ),
             ReadFiles: partial(
                 plan_read_files_op_with_checkpoint_filter,
+                data_file_dir,
+                data_file_filesystem,
+            ),
+            AbstractFrom: partial(
+                plan_from_op_with_checkpoint_filter,
                 data_file_dir,
                 data_file_filesystem,
             ),
