@@ -289,6 +289,38 @@ class TestMultiplexWrapper:
             assert await holder == "1"
             assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
 
+    async def test_cancelled_waiter_keeps_in_flight_model_id(
+        self, start_serve_with_context
+    ):
+        """Cancelling one of two loads of the same model keeps its ID reported."""
+        release = asyncio.Event()
+
+        async def model_load_func(model_id: str):
+            await release.wait()
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        loop = get_or_create_event_loop()
+        # The first request loads "1" while the second waits for the lock.
+        loader = loop.create_task(multiplexer.load_model("1"))
+        await asyncio.sleep(0.1)
+        waiter = loop.create_task(multiplexer.load_model("1"))
+        await asyncio.sleep(0.1)
+
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        # The first request is still loading "1".
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+
+        release.set()
+        assert await loader == "1"
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+
 
 class TestBasicAPI:
     def test_decorator_validation(self):

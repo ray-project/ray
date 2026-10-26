@@ -2,8 +2,8 @@ import asyncio
 import inspect
 import logging
 import time
-from collections import OrderedDict
-from typing import Any, Callable, List, Set
+from collections import Counter, OrderedDict
+from typing import Any, Callable, List
 
 from ray.serve import metrics
 from ray.serve._private.common import ReplicaID, RequestRoutingInfo
@@ -109,11 +109,11 @@ class _ModelMultiplexWrapper:
 
         # Model cache lock to ensure that only one model is loading/unloading at a time.
         self._model_cache_lock = asyncio.Lock()
-        # The set of model IDs that are being loaded. This is used to early push
-        # model ids info to the controller. The tasks will be added when there is cache
-        # miss, and will be removed when the model is loaded successfully or
-        # failed to load.
-        self._model_load_tasks: Set[str] = set()
+        # The number of in-flight load requests per model ID. This is used to early
+        # push model ids info to the controller. A request is counted when there is
+        # a cache miss, and uncounted when it finishes, fails or is cancelled; the ID
+        # is dropped once no request for it is left.
+        self._model_load_tasks: Counter[str] = Counter()
 
         self.metrics_pusher = MetricsPusher()
         self.metrics_pusher.register_or_update_task(
@@ -196,7 +196,7 @@ class _ModelMultiplexWrapper:
             # id info to the controller/router early, so that requests can be routed to
             # the replica.
             self._push_multiplexed_replica_info = True
-            self._model_load_tasks.add(model_id)
+            self._model_load_tasks[model_id] += 1
             try:
                 async with self._model_cache_lock:
                     # Check if the model has been loaded by another request.
@@ -238,9 +238,15 @@ class _ModelMultiplexWrapper:
                         raise e
             finally:
                 # The ID was pushed while loading. If the load failed or was
-                # cancelled, push again so the controller drops it.
-                self._model_load_tasks.discard(model_id)
-                if model_id not in self.models:
+                # cancelled and no other request is loading it, push again so
+                # the controller drops it.
+                self._model_load_tasks[model_id] -= 1
+                if self._model_load_tasks[model_id] <= 0:
+                    del self._model_load_tasks[model_id]
+                if (
+                    model_id not in self.models
+                    and model_id not in self._model_load_tasks
+                ):
                     self._push_multiplexed_replica_info = True
 
     async def unload_model_lru(self) -> None:
