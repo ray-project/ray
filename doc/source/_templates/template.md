@@ -7,9 +7,9 @@ myst:
 <!--
 Template for an end-to-end guide in the Ray documentation.
 
-Copy this file into the directory of the library your guide covers, rename it, and replace every <placeholder>. Then add the page to a toctree or an examples.yml gallery. Delete these comments before you open a pull request.
+Copy this file into the directory of the library your guide covers, rename it, and replace every <placeholder>. Then add the page to a toctree or an examples.yml gallery. Delete this comment before you open a pull request, but keep the maintainer comment under the title.
 
-Ray CI doesn't run the code in this guide. Run every step yourself against the Ray version you name in the note below the title, and update that version whenever you re-verify the guide.
+Ray CI doesn't run the code in this guide. Run every step yourself, record the Ray version you used in the maintainer comment below the title, and update that version whenever you re-verify the guide.
 
 Write the guide as plain MyST Markdown. Don't add Jupyter front matter such as `jupytext` or `kernelspec`, `{code-cell}` blocks, or a companion `.ipynb` file. Ray doesn't execute them, and the Ray documentation is retiring in-tree notebooks. To publish an example that Ray tests and keeps current, use the template-collections flow in doc/source/ray-contribute/publishing-examples.md instead.
 
@@ -22,9 +22,7 @@ Follow the Ray documentation style guide in doc/source/ray-contribute/writing-st
 
 This guide shows how to <do the task>. <One or two sentences on what the reader has at the end and why they'd want it.>
 
-:::{note}
-Ray CI doesn't test this guide. The author last ran it with Ray <x.y.z>. If a step fails on a newer Ray version, [open an issue](https://github.com/ray-project/ray/issues/new/choose).
-:::
+<!-- Maintainers: Ray CI doesn't test this guide. Its author last ran every step with Ray <x.y.z>. -->
 
 ## Prerequisites
 

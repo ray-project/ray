@@ -193,7 +193,7 @@ The API reference is generated from your source code: autodoc imports the module
 
 ## Adding code to an `.rST` or `.md` file
 
-Modifying text in an existing documentation file is easy, but adding code takes more care. To show code that Ray CI tests, keep it in a script that CI runs and include the script in the page. To learn how to write tested code snippets, read [How to write code snippets](writing-code-snippets).
+Modifying text in an existing documentation file is easy, but adding code takes more care. To show code that Ray CI tests, use a `testcode` block or include a script that CI runs. Use these only for code that runs as written. To learn how to write tested code snippets, read [How to write code snippets](writing-code-snippets).
 
 ```python
 from ray import train
@@ -231,7 +231,7 @@ An _end-to-end guide_ walks the reader through a complete task, from installing 
 
 To start, copy the [end-to-end guide template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) into the directory of the library your guide covers. The template shows the page structure and the syntax Ray uses for admonitions, tabs, dropdowns, and cross-references. Then add the page to a toctree, or to the library's `examples.yml` gallery.
 
-Ray CI doesn't run the code in a guide like this, so the guide is only as current as the last time someone ran it. Run every step yourself before you open a pull request, and record the Ray version you used in the note that the template puts under the title. When you update the guide later, run it again and update the version.
+Ray CI doesn't run the code in a guide like this, so the guide is only as current as the last time someone ran it. Run every step yourself before you open a pull request, and record the Ray version you used in the HTML comment that the template puts under the title. The comment is for maintainers and doesn't render on the page. When you update the guide later, run it again and update the version.
 
 To publish an example that Ray tests and keeps current, use the template-collections flow instead. See {ref}`publishing-examples`.
 
