@@ -214,6 +214,8 @@ Ray Train sets up your distributed process group on each worker. You only need t
 
 The following sections discuss each change.
 
+The `datamodule` in this example is a standard Lightning `LightningDataModule`, which works with Ray Train unchanged. To compare it with Ray Data for loading and preprocessing, see {ref}`train-datasets-pytorch`.
+
 ### Configure the distributed strategy
 
 Ray Train offers several distributed strategies for Lightning, each a subclass of a Lightning base strategy. They accept the same arguments as their base strategy classes, and internally they configure the root device and the distributed sampler arguments. {class}`~ray.train.lightning.RayDDPStrategy` disables `process_group_backend`, `timeout`, and `start_method`. Set them in {class}`~ray.train.torch.TorchConfig` instead. Choose from the following strategies:
