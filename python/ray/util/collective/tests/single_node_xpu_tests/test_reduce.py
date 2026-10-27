@@ -15,7 +15,9 @@ def test_reduce_different_name(ray_start_single_node_2_gpus, group_name, dst_ran
     results = ray.get([a.do_reduce.remote(group_name, dst_rank) for a in actors])
     for i in range(world_size):
         if i == dst_rank:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * world_size).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * world_size
+            ).all()
         else:
             assert (results[i] == torch.ones((10,), dtype=torch.float32)).all()
 
@@ -28,13 +30,17 @@ def test_reduce_different_array_size(
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     ray.wait(
-        [a.set_buffer.remote(torch.ones(array_size, dtype=torch.float32)) for a in actors]
+        [
+            a.set_buffer.remote(torch.ones(array_size, dtype=torch.float32))
+            for a in actors
+        ]
     )
     results = ray.get([a.do_reduce.remote(dst_rank=dst_rank) for a in actors])
     for i in range(world_size):
         if i == dst_rank:
             assert (
-                results[i] == torch.ones((array_size,), dtype=torch.float32) * world_size
+                results[i]
+                == torch.ones((array_size,), dtype=torch.float32) * world_size
             ).all()
         else:
             assert (results[i] == torch.ones((array_size,), dtype=torch.float32)).all()
@@ -61,7 +67,9 @@ def test_reduce_multiple_group(ray_start_single_node_2_gpus, dst_rank, num_group
         )
         for j in range(world_size):
             if j == dst_rank:
-                assert (results[j] == torch.ones((10,), dtype=torch.float32) * (i + 2)).all()
+                assert (
+                    results[j] == torch.ones((10,), dtype=torch.float32) * (i + 2)
+                ).all()
             else:
                 assert (results[j] == torch.ones((10,), dtype=torch.float32)).all()
 
@@ -85,7 +93,9 @@ def test_reduce_different_op(ray_start_single_node_2_gpus, dst_rank):
         if i == dst_rank:
             assert (results[i] == torch.ones((10,), dtype=torch.float32) * 6).all()
         else:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)
+            ).all()
 
     # check min
     ray.wait(
@@ -101,7 +111,9 @@ def test_reduce_different_op(ray_start_single_node_2_gpus, dst_rank):
         if i == dst_rank:
             assert (results[i] == torch.ones((10,), dtype=torch.float32) * 2).all()
         else:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)
+            ).all()
 
     # check max
     ray.wait(
@@ -117,7 +129,9 @@ def test_reduce_different_op(ray_start_single_node_2_gpus, dst_rank):
         if i == dst_rank:
             assert (results[i] == torch.ones((10,), dtype=torch.float32) * 3).all()
         else:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)
+            ).all()
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])

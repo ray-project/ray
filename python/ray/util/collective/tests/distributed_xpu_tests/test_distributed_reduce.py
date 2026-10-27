@@ -3,7 +3,10 @@ import pytest
 import torch
 
 import ray
-from ray.util.collective.tests.xpu_util import cluster_world_size, create_collective_workers
+from ray.util.collective.tests.xpu_util import (
+    cluster_world_size,
+    create_collective_workers,
+)
 from ray.util.collective.types import ReduceOp
 
 
@@ -19,7 +22,9 @@ def test_reduce_different_name(
     results = ray.get([a.do_reduce.remote(group_name, dst_rank) for a in actors])
     for i in range(world_size):
         if i == dst_rank:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * world_size).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * world_size
+            ).all()
         else:
             assert (results[i] == torch.ones((10,), dtype=torch.float32)).all()
 
@@ -34,13 +39,17 @@ def test_reduce_different_array_size(
         pytest.skip(f"dst_rank {dst_rank} needs more than {world_size} GPUs")
     actors, _ = create_collective_workers(world_size)
     ray.wait(
-        [a.set_buffer.remote(torch.ones(array_size, dtype=torch.float32)) for a in actors]
+        [
+            a.set_buffer.remote(torch.ones(array_size, dtype=torch.float32))
+            for a in actors
+        ]
     )
     results = ray.get([a.do_reduce.remote(dst_rank=dst_rank) for a in actors])
     for i in range(world_size):
         if i == dst_rank:
             assert (
-                results[i] == torch.ones((array_size,), dtype=torch.float32) * world_size
+                results[i]
+                == torch.ones((array_size,), dtype=torch.float32) * world_size
             ).all()
         else:
             assert (results[i] == torch.ones((array_size,), dtype=torch.float32)).all()
@@ -70,9 +79,13 @@ def test_reduce_different_op(ray_start_distributed_2_nodes_4_gpus, dst_rank):
     )
     for i in range(world_size):
         if i == dst_rank:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * expected_prod).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * expected_prod
+            ).all()
         else:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)
+            ).all()
 
     # check min
     ray.wait(
@@ -88,7 +101,9 @@ def test_reduce_different_op(ray_start_distributed_2_nodes_4_gpus, dst_rank):
         if i == dst_rank:
             assert (results[i] == torch.ones((10,), dtype=torch.float32) * 2).all()
         else:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)
+            ).all()
 
     # check max
     ray.wait(
@@ -102,9 +117,13 @@ def test_reduce_different_op(ray_start_distributed_2_nodes_4_gpus, dst_rank):
     )
     for i in range(world_size):
         if i == dst_rank:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * expected_max).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * expected_max
+            ).all()
         else:
-            assert (results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)).all()
+            assert (
+                results[i] == torch.ones((10,), dtype=torch.float32) * (i + 2)
+            ).all()
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])

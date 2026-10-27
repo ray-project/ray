@@ -21,11 +21,18 @@ def test_allreduce_different_array_size(ray_start_single_node_2_gpus, array_size
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     ray.wait(
-        [a.set_buffer.remote(torch.ones(array_size, dtype=torch.float32)) for a in actors]
+        [
+            a.set_buffer.remote(torch.ones(array_size, dtype=torch.float32))
+            for a in actors
+        ]
     )
     results = ray.get([a.do_allreduce.remote() for a in actors])
-    assert (results[0] == torch.ones((array_size,), dtype=torch.float32) * world_size).all()
-    assert (results[1] == torch.ones((array_size,), dtype=torch.float32) * world_size).all()
+    assert (
+        results[0] == torch.ones((array_size,), dtype=torch.float32) * world_size
+    ).all()
+    assert (
+        results[1] == torch.ones((array_size,), dtype=torch.float32) * world_size
+    ).all()
 
 
 def test_allreduce_destroy(
@@ -71,7 +78,8 @@ def test_allreduce_multiple_group(
         group_name = "default" if i == 0 else str(i)
         results = ray.get([a.do_allreduce.remote(group_name) for a in actors])
         assert (
-            results[0] == torch.ones((10,), dtype=torch.float32) * (world_size ** (i + 1))
+            results[0]
+            == torch.ones((10,), dtype=torch.float32) * (world_size ** (i + 1))
         ).all()
 
 

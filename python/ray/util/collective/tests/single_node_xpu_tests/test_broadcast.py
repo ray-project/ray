@@ -24,7 +24,9 @@ def test_broadcast_different_name(ray_start_single_node_2_gpus, group_name, src_
         ]
     )
     for i in range(world_size):
-        assert (results[i] == torch.ones((10,), dtype=torch.float32) * (src_rank + 2)).all()
+        assert (
+            results[i] == torch.ones((10,), dtype=torch.float32) * (src_rank + 2)
+        ).all()
 
 
 @pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
@@ -43,7 +45,8 @@ def test_broadcast_different_array_size(
     results = ray.get([a.do_broadcast.remote(src_rank=src_rank) for a in actors])
     for i in range(world_size):
         assert (
-            results[i] == torch.ones((array_size,), dtype=torch.float32) * (src_rank + 2)
+            results[i]
+            == torch.ones((array_size,), dtype=torch.float32) * (src_rank + 2)
         ).all()
 
 

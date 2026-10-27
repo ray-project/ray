@@ -5,7 +5,12 @@ Sizes come from XCCL_SCALE_SIZES; a size is skipped if the cluster has fewer GPU
 import pytest
 
 import ray
-from ray.util.collective.tests.xpu_util import SCALE_SIZES, ScaleWorker, make_runtime_env, require_gpus
+from ray.util.collective.tests.xpu_util import (
+    SCALE_SIZES,
+    ScaleWorker,
+    make_runtime_env,
+    require_gpus,
+)
 
 
 @pytest.fixture
@@ -23,13 +28,23 @@ def test_scale_collectives(ray_scale_cluster, world_size):
         group = f"scale_{world_size}"
         assert all(
             ray.get(
-                [a.init_group.remote(world_size, i, group) for i, a in enumerate(actors)],
+                [
+                    a.init_group.remote(world_size, i, group)
+                    for i, a in enumerate(actors)
+                ],
                 timeout=600,
             )
         )
         results = ray.get([a.run_all.remote() for a in actors], timeout=900)
         for rank, res in enumerate(results):
-            for op in ("allreduce", "broadcast", "allgather", "reducescatter", "barrier", "ring"):
+            for op in (
+                "allreduce",
+                "broadcast",
+                "allgather",
+                "reducescatter",
+                "barrier",
+                "ring",
+            ):
                 assert res[op], f"rank {rank}/{world_size}: {op} gave a wrong result"
         ray.get([a.destroy_group.remote() for a in actors], timeout=120)
     finally:

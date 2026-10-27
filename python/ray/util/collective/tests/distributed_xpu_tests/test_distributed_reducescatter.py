@@ -49,7 +49,9 @@ def test_reducescatter_torch_cupy(ray_start_distributed_2_nodes_4_gpus):
     for i, a in enumerate(actors):
         t = torch.ones(shape, dtype=torch.float32) * (i + 1)
         ray.wait([a.set_buffer.remote(t)])
-        list_buffer = [torch.ones(shape, dtype=torch.float32) for _ in range(world_size)]
+        list_buffer = [
+            torch.ones(shape, dtype=torch.float32) for _ in range(world_size)
+        ]
         ray.wait([a.set_list_buffer.remote(list_buffer)])
     results = ray.get([a.do_reducescatter.remote() for a in actors])
     for i in range(world_size):

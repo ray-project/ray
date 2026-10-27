@@ -3,7 +3,10 @@ import pytest
 import torch
 
 import ray
-from ray.util.collective.tests.xpu_util import cluster_world_size, create_collective_workers
+from ray.util.collective.tests.xpu_util import (
+    cluster_world_size,
+    create_collective_workers,
+)
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
@@ -34,9 +37,11 @@ def test_sendrecv(
     refs[dst_rank] = actors[dst_rank].do_recv.remote(group_name, src_rank)
     results = ray.get(refs)
     assert (
-        results[src_rank] == torch.ones(array_size, dtype=torch.float32) * (src_rank + 1)
+        results[src_rank]
+        == torch.ones(array_size, dtype=torch.float32) * (src_rank + 1)
     ).all()
     assert (
-        results[dst_rank] == torch.ones(array_size, dtype=torch.float32) * (src_rank + 1)
+        results[dst_rank]
+        == torch.ones(array_size, dtype=torch.float32) * (src_rank + 1)
     ).all()
     ray.get([a.destroy_group.remote(group_name) for a in actors])
