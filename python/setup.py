@@ -278,7 +278,7 @@ if setup_spec.type == SetupType.RAY:
         "serve": [
             "uvicorn[standard] >= 0.26.0",  # >= 0.26.0 includes root_path in the ASGI path.
             "requests",
-            "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
+            "starlette >= 1.3.1",  # >= 1.3.1 for CVE fixes (GHSA-82w8-qh3p-5jfq et al).
             "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
             "mmh3",
