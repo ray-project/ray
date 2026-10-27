@@ -16,6 +16,29 @@ KV_TOKEN_KEY_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
 # to LLMRouter.
 KV_TOKEN_METADATA_KEY = "kv_token_metadata"
 
+# P/D: prefill's KV transfer params (base64 JSON) for the selected decode replica.
+KV_TRANSFER_PARAMS_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-transfer-params"
+# P/D: fixed Serve application names. P/D engines in the backend app send
+# lifecycle events to the router app.
+PD_BACKEND_APP_NAME = "pd-backend"
+PD_ROUTER_APP_NAME = "pd-router"
+
+# Selection service cost per replica (lowest wins):
+# - Prefill: 1e6 x (queued prefill tokens + ISL - cached prefix tokens) in
+#   blocks, plus booked KV blocks, which only break ties.
+# - Decode: booked KV blocks, including this request's. KV cache overlap and
+#   prefill tokens don't count.
+# TODO (jeffreywang): Set DYN_ROUTER_TRACK_ACTIVE_BLOCKS=false instead of
+# scaling prefill load, once SelectionService honors it.
+PREFILL_SELECTION_SVC_ENV = {
+    "DYN_ROUTER_PREFILL_LOAD_SCALE": "1000000",  # Prefill cost outweighs KV blocks.
+}
+DECODE_SELECTION_SVC_ENV = {
+    "DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT": "0",  # No credit for KV cache overlap.
+    "DYN_ROUTER_ASSUME_KV_REUSE": "false",  # Book all prompt blocks as new load.
+    "DYN_ROUTER_TRACK_PREFILL_TOKENS": "false",  # Prompt tokens add no prefill load.
+}
+
 # Prompt-token channel resource bounds. Sending is best effort: if a ZMQ
 # pipe is unavailable or backed up, the router omits the token key and the
 # engine falls back to normal tokenization.

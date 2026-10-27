@@ -12,20 +12,40 @@ from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
-from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
+from ray.llm._internal.serve.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
+    get_llm_serve_runtime_env,
+)
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     _build_direct_streaming_llm_deployment,
     _build_openai_ingress_request_router,
+    _get_tokenizing_router_runtime_env,
     _validate_direct_streaming_ingress_config,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.server.builder import build_llm_deployment
+from ray.llm._internal.serve.core.server.builder import (
+    _get_deployment_name,
+    build_llm_deployment,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_KV_EVENTS_PORT_BASE,
+    DEFAULT_KV_TOKEN_PORT_BASE,
+    KV_EVENTS_PORT_BASE_KEY,
+    KV_TOKEN_PORT_BASE_KEY,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    LLM_ROUTER_DEPLOYMENT_NAME,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_deployment,
 )
@@ -123,6 +143,18 @@ class PDServingArgs(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
+    def _default_decode_kv_port_bases(self):
+        """Shift decode's KV event and token ports off prefill's defaults so
+        colocated KV-aware replicas don't collide."""
+        if is_kv_aware(self.decode_config):
+            configs = self.decode_config.experimental_configs
+            configs.setdefault(
+                KV_EVENTS_PORT_BASE_KEY, DEFAULT_KV_EVENTS_PORT_BASE + 100
+            )
+            configs.setdefault(KV_TOKEN_PORT_BASE_KEY, DEFAULT_KV_TOKEN_PORT_BASE + 100)
+        return self
+
+    @model_validator(mode="after")
     def _default_decode_moriio_port_base(self):
         """Shift decode's MoRIIO handshake/notify bases off prefill's defaults.
 
@@ -199,6 +231,11 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             bind_kwargs={"prefill_server": prefill_deployment},
             deployment_cls=decode_cls,
         )
+        if is_kv_aware(pd_config.prefill_config) and is_kv_aware(
+            pd_config.decode_config
+        ):
+            # build_pd_router_app routes this backend.
+            return decode_deployment._with_router_application_target()
         logger.info(
             "Direct streaming enabled for PD: "
             f"{decode_cls.__name__}=ingress, LLMRouter=ingress_request_router"
@@ -241,4 +278,43 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             else {}
         ),
         **ingress_cls_config.ingress_extra_kwargs,
+    )
+
+
+def _get_pd_deployment_name(prefix: str, llm_config: LLMConfig) -> str:
+    name = llm_config.deployment_config.get("name", _get_deployment_name(llm_config))
+    return prefix + name
+
+
+def build_pd_router_app(pd_serving_args: dict) -> Application:
+    """Build the router application for a KV-aware P/D backend.
+
+    Deploy it as ``pd-router``, with the backend from ``build_pd_openai_app``
+    deployed as ``pd-backend``.
+    """
+    from ray.llm._internal.serve.routing_policies.kv_aware.vllm.pd_router import (
+        LLMPDRouter,
+    )
+
+    config = PDServingArgs.model_validate(pd_serving_args)
+    options = maybe_apply_llm_deployment_config_defaults(
+        {
+            # Like the OpenAI ingress: each route call is held through prefill.
+            "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+            "ray_actor_options": {
+                "num_cpus": 0,
+                "runtime_env": get_llm_serve_runtime_env(
+                    _get_tokenizing_router_runtime_env(config.decode_config)
+                ),
+            },
+        },
+        config.ingress_deployment_config,
+    )
+    # Engines send lifecycle events to the deployment by this name.
+    options["name"] = LLM_ROUTER_DEPLOYMENT_NAME
+    return serve.deployment(LLMPDRouter, **options).bind(
+        prefill_deployment=_get_pd_deployment_name("Prefill:", config.prefill_config),
+        decode_deployment=_get_pd_deployment_name("Decode:", config.decode_config),
+        prefill_config=config.prefill_config,
+        decode_config=config.decode_config,
     )

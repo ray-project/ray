@@ -63,7 +63,7 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
                 replica, in seconds. Defaults to 1800 (30 minutes).
                 ``0`` disables session pinning.
         """
-        self._kv_token_tracker = get_kv_token_tracker()
+        self._kv_token_tracker = get_kv_token_tracker(self._deployment_id)
         if self._kv_token_tracker is None:
             logger.warning(
                 "No KVTokenTracker in this process (%s); KVAwareRouter "

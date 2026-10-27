@@ -1,0 +1,27 @@
+# KV-aware P/D: a backend with two prefill and two decode replicas, routed by a
+# router application. Requires RAY_SERVE_ENABLE_HA_PROXY=1 and
+# RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1.
+applications:
+  - name: pd-backend
+    route_prefix: /pd-backend
+    import_path: ray.serve.llm:build_pd_openai_app
+    args: &pd_args
+      prefill_config: &llm_config
+        model_loading_config:
+          model_id: qwen
+          model_source: Qwen/Qwen3-0.6B
+        deployment_config:
+          num_replicas: 2
+          request_router_config:
+            request_router_class: ray.serve.llm.request_router.KVAwareRouter
+        engine_kwargs:
+          max_model_len: 4096
+          enable_prompt_tokens_details: true
+          kv_transfer_config:
+            kv_connector: NixlConnector
+            kv_role: kv_both
+      decode_config: *llm_config
+  - name: pd-router
+    route_prefix: /
+    import_path: ray.llm._internal.serve.serving_patterns.prefill_decode.builder:build_pd_router_app
+    args: *pd_args

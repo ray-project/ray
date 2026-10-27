@@ -964,9 +964,10 @@ RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
 
 # Timeout shared by the ingress-request-router Lua call and the frontend
 # `wait-for-body` directive. Bounds head-of-line blocking on POSTs when a
-# router replica is unhealthy.
+# router replica is unhealthy. Long enough for a router application that runs
+# prefill before it returns a decision.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
-    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 5
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 600
 )
 
 # Opt-in HAProxy retry knobs on the `-via-ingress-request-router` backend.

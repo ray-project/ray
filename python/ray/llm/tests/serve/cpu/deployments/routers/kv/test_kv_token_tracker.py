@@ -4,7 +4,9 @@ registration, ``KVAwareRouter`` binding to it, and the
 """
 
 import asyncio
+import os
 import sys
+from collections import OrderedDict
 from typing import List
 
 import pytest
@@ -30,15 +32,22 @@ from ray.serve.llm.request_router import KVAwareRouter
 
 @pytest.fixture(autouse=True)
 def reset_process_global():
-    set_kv_token_tracker(None)
+    kv_token_tracker._KV_TOKEN_TRACKERS.clear()
     yield
-    set_kv_token_tracker(None)
+    kv_token_tracker._KV_TOKEN_TRACKERS.clear()
 
 
 class _SpyTracker:
     """Records constructor kwargs; skips the real selection service + LongPoll."""
 
-    def __init__(self, *, indexer_threads, serve_deployment_id, session_affinity_ttl_s):
+    def __init__(
+        self,
+        *,
+        indexer_threads,
+        serve_deployment_id,
+        session_affinity_ttl_s,
+        selection_svc_env,
+    ):
         self.session_affinity_ttl_s = session_affinity_ttl_s
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
@@ -85,7 +94,7 @@ def test_build_registers_tracker(monkeypatch):
     id and registers it so the same-process router/ingress can reach it."""
     monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
     tracker = build_kv_token_tracker(_llm_config(), "dep-id")
-    assert get_kv_token_tracker() is tracker
+    assert get_kv_token_tracker("dep-id") is tracker
     assert tracker.serve_deployment_id == "dep-id"
     assert tracker.session_affinity_ttl_s == 1800
 
@@ -115,8 +124,9 @@ def test_session_ttl_config(monkeypatch, ttl_s, as_object):
 def test_router_binds_tracker():
     """KVAwareRouter picks up the tracker the LLMRouter registered."""
     sentinel = object()
-    set_kv_token_tracker(sentinel)
+    set_kv_token_tracker(sentinel, "dep-id")
     router = KVAwareRouter.__new__(KVAwareRouter)
+    router._deployment_id = "dep-id"
     router.initialize_state()
     assert router._kv_token_tracker is sentinel
 
@@ -748,6 +758,48 @@ async def test_longpoll_tracks_membership(serve_instance):
         )
     finally:
         serve.delete(app_name, _blocking=True)
+
+
+def test_override_env_restores_environment(monkeypatch):
+    """Overrides apply only inside the block; prior values and absences return."""
+    monkeypatch.setenv("DYN_ROUTER_SET", "old")
+    monkeypatch.delenv("DYN_ROUTER_UNSET", raising=False)
+    with kv_token_tracker._override_env(
+        {"DYN_ROUTER_SET": "new", "DYN_ROUTER_UNSET": "1"}
+    ):
+        assert os.environ["DYN_ROUTER_SET"] == "new"
+        assert os.environ["DYN_ROUTER_UNSET"] == "1"
+    assert os.environ["DYN_ROUTER_SET"] == "old"
+    assert "DYN_ROUTER_UNSET" not in os.environ
+
+
+@pytest.mark.asyncio
+async def test_cancelled_selection_frees_late_booking():
+    """A booking that lands after its caller was cancelled is freed."""
+    started, finish = asyncio.Event(), asyncio.Event()
+    freed = []
+
+    class _SlowSelectionService:
+        async def select_and_reserve(self, request):
+            started.set()
+            await finish.wait()
+            return {}
+
+        async def free_reservation(self, request_id):
+            freed.append(request_id)
+
+    tracker = KVTokenTracker.__new__(KVTokenTracker)
+    tracker._svc = _SlowSelectionService()
+    tracker._requests = OrderedDict()
+    tracker._completed_request_ids = OrderedDict()
+    tracker._pending_tasks = set()
+    selection = asyncio.create_task(tracker.select_worker("req", [1, 2], [7]))
+    await started.wait()
+    selection.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await selection
+    finish.set()
+    await async_wait_for_condition(lambda: freed == ["req"])
 
 
 if __name__ == "__main__":

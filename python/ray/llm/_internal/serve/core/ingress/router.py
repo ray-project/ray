@@ -14,6 +14,11 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_METADATA_KEY,
     REQUEST_TOKEN_IDS_KWARG,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    KVTokenTracker,
+    get_kv_token_tracker,
+)
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
@@ -141,6 +146,7 @@ class LLMRouter:
         server: DeploymentHandle,
         llm_config: Optional["LLMConfig"] = None,
         base_model_id: Optional[str] = None,
+        selection_svc_env: Optional[Dict[str, str]] = None,
     ):
         self._handle: DeploymentHandle = server
         self._base_model_id = base_model_id
@@ -161,9 +167,11 @@ class LLMRouter:
             )
 
             self._kv_token_tracker = build_kv_token_tracker(
-                llm_config, server.deployment_id
+                llm_config, server.deployment_id, selection_svc_env
             )
-            self._kv_token_tracker.start_replica_broadcast(get_llm_router_handle())
+            self._kv_token_tracker.start_replica_broadcast(
+                get_llm_router_handle(serve.get_replica_context().app_name)
+            )
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
@@ -182,6 +190,14 @@ class LLMRouter:
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
+        # FastAPI calls this function object with self injected, so a subclass
+        # override of route never runs. Subclasses override route_request.
+        try:
+            return await self.route_request(request)
+        except (RuntimeError, DeploymentUnavailableError) as e:
+            raise HTTPException(status_code=503, detail=str(e))
+
+    async def route_request(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         request_body = _parse_request_body(body)
@@ -200,25 +216,11 @@ class LLMRouter:
         # Tokenize only a parseable, routable body; a truncated or unparseable
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
-        stage_token_ids = False
         if self._tokenizer is not None and routing_payload is not None:
-            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (  # noqa: E501
-                is_text_only_chat,
+            request_token_ids = await self._tokenize(
+                vars(routing_payload),
+                request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER),
             )
-            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
-                TokenizeError,
-            )
-
-            payload = vars(routing_payload)
-            request_path = request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
-            try:
-                request_token_ids = await self._tokenizer.tokenize(
-                    payload, request_path=request_path
-                )
-            except TokenizeError as e:
-                raise HTTPException(status_code=e.status_code, detail=e.message)
-            # Media needs engine preprocessing, not just prompt token IDs.
-            stage_token_ids = is_text_only_chat(payload.get("messages", []))
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as
         # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
@@ -239,26 +241,64 @@ class LLMRouter:
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except (RuntimeError, DeploymentUnavailableError) as e:
-            raise HTTPException(status_code=503, detail=str(e))
 
         response = {"host": host, "port": port, "replica_id": replica_id}
-        request_headers = {}
-        if multiplexed_model_id:
-            request_headers[SERVE_MULTIPLEXED_MODEL_ID] = multiplexed_model_id
-        if request_token_ids and stage_token_ids:
-            token_key = self._push_prompt_tokens(
-                token_endpoint=token_endpoint,
-                replica_id=replica_id,
-                request_token_ids=request_token_ids,
-            )
-            if token_key:
-                request_headers[KV_TOKEN_KEY_HEADER] = token_key
+        request_headers = self._build_request_headers(
+            multiplexed_model_id,
+            replica_id=replica_id,
+            token_endpoint=token_endpoint,
+            request_token_ids=request_token_ids,
+            messages=(request_body or {}).get("messages", []),
+        )
         if request_headers:
             response[
                 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
             ] = request_headers
         return response
+
+    async def _tokenize(
+        self, payload: Any, request_path: Optional[str] = None
+    ) -> Optional[List[int]]:
+        """Prompt token IDs from vLLM's renderer. ``payload`` is a body dict or an
+        already validated request. A renderer rejection becomes an HTTP error."""
+        from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
+            TokenizeError,
+        )
+
+        try:
+            return await self._tokenizer.tokenize(payload, request_path=request_path)
+        except TokenizeError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    def _build_request_headers(
+        self,
+        multiplexed_model_id: str,
+        *,
+        replica_id: Optional[str] = None,
+        token_endpoint: Optional[str] = None,
+        request_token_ids: Optional[List[int]] = None,
+        messages: Any = (),
+    ) -> Dict[str, str]:
+        """Headers HAProxy stamps on the forwarded request: the adapter ID and,
+        when prompt token IDs were staged on the replica, their key."""
+        headers = {}
+        if multiplexed_model_id:
+            headers[SERVE_MULTIPLEXED_MODEL_ID] = multiplexed_model_id
+        if request_token_ids:
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (  # noqa: E501
+                is_text_only_chat,
+            )
+
+            # Media needs engine preprocessing, not just prompt token IDs.
+            if is_text_only_chat(messages):
+                token_key = self._push_prompt_tokens(
+                    token_endpoint=token_endpoint,
+                    replica_id=replica_id,
+                    request_token_ids=request_token_ids,
+                )
+                if token_key:
+                    headers[KV_TOKEN_KEY_HEADER] = token_key
+        return headers
 
     def _get_multiplexed_model_id(self, request_body: Optional[Dict[str, Any]]) -> str:
         """Return the requested adapter ID when this deployment enables LoRA."""
@@ -291,18 +331,30 @@ class LLMRouter:
         if token_sender is not None:
             token_sender.close()
 
-    async def on_lifecycle_events(self, batch):
+    def _get_tracker(self, deployment_id: Optional[DeploymentID]) -> KVTokenTracker:
+        # Only P/D senders name a deployment; it picks the P or D tracker.
+        if deployment_id is None:
+            return self._kv_token_tracker
+        return get_kv_token_tracker(deployment_id)
+
+    async def on_lifecycle_events(
+        self, batch, deployment_id: Optional[DeploymentID] = None
+    ):
         """Engine-facing intake for request lifecycle events.
 
         Engine replicas broadcast each batch to every LLMRouter replica to
         book request load; this applies it to the KVTokenTracker on this
         ingress replica's event loop.
         """
-        return await self._kv_token_tracker.on_lifecycle_events(batch)
+        tracker = self._get_tracker(deployment_id)
+        return await tracker.on_lifecycle_events(batch)
 
-    async def on_replica_updates(self, source_writer_id, batch):
+    async def on_replica_updates(
+        self, source_writer_id, batch, deployment_id: Optional[DeploymentID] = None
+    ):
         """Accept load and affinity updates from peer ingress replicas."""
-        return await self._kv_token_tracker.on_replica_updates(source_writer_id, batch)
+        tracker = self._get_tracker(deployment_id)
+        return await tracker.on_replica_updates(source_writer_id, batch)
 
     def _push_prompt_tokens(
         self,
