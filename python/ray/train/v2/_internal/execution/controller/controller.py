@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import pandas as pd
 
@@ -314,7 +314,6 @@ class TrainController:
             self._start_worker_group(
                 num_workers=decision.num_workers,
                 resources_per_worker=decision.resources_per_worker,
-                reserved_label_selectors=decision.label_selectors,
             )
 
         return TrainControllerLoopIterationResult(
@@ -438,19 +437,12 @@ class TrainController:
         self._latest_poll_time = time_monotonic()
         return status
 
-    def _start_worker_group(
-        self,
-        num_workers: int,
-        resources_per_worker: dict,
-        reserved_label_selectors: Optional[List[Dict[str, str]]] = None,
-    ) -> None:
+    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> None:
         """Start the worker group and launch the train function.
 
         Args:
             num_workers: The number of workers to start.
             resources_per_worker: The resources per worker to start.
-            reserved_label_selectors: Per-worker pins to the
-                AutoscalingCoordinator reservation, from the scaling decision.
 
         Raises:
             Exception: If the worker group failed to start.
@@ -471,25 +463,6 @@ class TrainController:
                         f"with label_selector returned by user-specified callback {selector}"
                     )
                 label_selector = [selector.copy() for _ in range(num_workers)]
-
-        # Pin workers to AutoscalingCoordinator reservations, so that two
-        # concurrent runs aren't both scheduled onto the same capacity. The
-        # scaling policy builds the pins from the same reservation snapshot that
-        # chose `num_workers` (see `ScalingPolicy._should_pin_to_reservation`
-        # for when it skips pinning).
-        # A `label_selector` from a callback still wins: the coordinator picks
-        # nodes by resource fit and never matches `label_selectors` against node
-        # labels, so its pins can name a node that violates the selector.
-        # Combining the two would produce an unsatisfiable selector and a
-        # placement group that never becomes ready.
-        # TODO: Reconcile w/ ray core later
-        if reserved_label_selectors is not None and not label_selector:
-            assert len(reserved_label_selectors) == num_workers
-            # `placement_strategy` is deliberately left alone: the pins already
-            # determine the layout, and keeping the strategy lets the placement
-            # group reject a layout that contradicts it rather than silently
-            # downgrading e.g. STRICT_SPREAD to co-located workers.
-            label_selector = reserved_label_selectors
 
         # Calculate num_slices for the worker group if using TPU.
         num_slices = 1
