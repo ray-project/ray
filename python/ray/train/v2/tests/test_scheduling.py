@@ -1,7 +1,10 @@
 import asyncio
+import signal
+import subprocess
 import sys
 import time
 from collections import defaultdict
+from typing import Optional
 
 import pytest
 
@@ -18,6 +21,7 @@ from ray.train import ScalingConfig
 from ray.train.v2._internal.constants import WORKER_GROUP_START_TIMEOUT_S_ENV_VAR
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.state import list_actors
 
 # Workers can't import this test module, so ship its functions by value.
 ray.cloudpickle.register_pickle_by_value(sys.modules[__name__])
@@ -262,16 +266,26 @@ def _submit_fit(head_node_id: str, *args, **kwargs) -> ray.ObjectRef:
     )
 
 
-def _fit_one_slot_run(head_node_id: str, storage_path: str) -> str:
-    """Run a one-worker, one-slot run to completion and return its node."""
+def _fit_one_slot_run(
+    head_node_id: str,
+    storage_path: str,
+    scaling_config: Optional[ScalingConfig] = None,
+    timeout_s: float = RUN_DEADLINE_S,
+) -> str:
+    """Run a run to completion with one worker on one slot, and return its node.
+
+    By default the run has a fixed size of one worker. An elastic
+    ``scaling_config`` must end up with one worker too.
+    """
     gate = _Gate.options(scheduling_strategy=_on_head(head_node_id)).remote()
     _get_with_deadline(
         _submit_fit(
             head_node_id,
             {"gate": gate, "run_name": "run"},
-            _slot_scaling_config(),
+            scaling_config or _slot_scaling_config(),
             storage_path,
-        )
+        ),
+        timeout_s=timeout_s,
     )
     (node_id,) = ray.get(gate.started_on.remote())["run"]
     return node_id
@@ -406,6 +420,137 @@ def test_waits_while_only_a_draining_node_would_make_room(
     assert sorted(ray.get(gate.started_on.remote())["run"]) == sorted(
         [b.node_id, c.node_id]
     )
+
+
+@pytest.mark.parametrize(
+    "make_unusable",
+    [
+        pytest.param(
+            _hold_slot_outside_the_coordinator,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason=(
+                    "An elastic run sizes itself from each node's total capacity, "
+                    "so it keeps retrying two workers when only one slot is free."
+                ),
+            ),
+        ),
+        _drain,
+    ],
+    ids=["slot_held_outside_the_coordinator", "draining"],
+)
+def test_elastic_run_starts_when_a_node_is_unusable(
+    head_node_cluster, tmp_path, make_unusable
+):
+    """An elastic run of one or two workers, with node X unusable, must start with
+    one worker on node Y."""
+    head_node_id = ray.get_runtime_context().get_node_id()
+    x = _add_slot_node(head_node_cluster, sort_first=True)
+    y = _add_slot_node(head_node_cluster)
+    _holders = make_unusable(x.node_id)  # Keep the actors alive.
+
+    node_id = _fit_one_slot_run(
+        head_node_id,
+        str(tmp_path),
+        ScalingConfig(num_workers=(1, 2), resources_per_worker={"slot": 1}),
+        # A run that starts does so within a few attempts. Fail faster when it
+        # doesn't, since the xfail case always runs to the deadline.
+        timeout_s=30,
+    )
+    assert node_id == y.node_id
+
+
+_WAITING_DRIVER = """
+import sys
+
+import ray
+from ray.train import RunConfig, ScalingConfig
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+
+ray.init(address=sys.argv[1])
+DataParallelTrainer(
+    lambda: None,
+    scaling_config=ScalingConfig(num_workers=(2, 3), resources_per_worker={"slot": 1}),
+    run_config=RunConfig(storage_path=sys.argv[2]),
+).fit()
+"""
+
+
+def test_ctrl_c_aborts_a_run_waiting_for_workers(head_node_cluster, tmp_path):
+    """An elastic run needs at least two workers, but there is only one slot, so
+    it waits. Ctrl-C on its driver must still abort it promptly."""
+    _add_slot_node(head_node_cluster)
+
+    # A real driver process: a task blocked in `ray.get` doesn't run Python
+    # signal handlers, so it can't stand in for one.
+    driver = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            _WAITING_DRIVER,
+            head_node_cluster.address,
+            str(tmp_path),
+        ]
+    )
+    try:
+        deadline = time.monotonic() + RUN_DEADLINE_S
+        while not list_actors(
+            filters=[("class_name", "=", "TrainController"), ("state", "=", "ALIVE")]
+        ):
+            assert time.monotonic() < deadline, "The controller never started."
+            time.sleep(0.5)
+        # Give the controller time to start waiting for workers.
+        time.sleep(5)
+
+        driver.send_signal(signal.SIGINT)
+        try:
+            driver.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            pytest.fail("The run didn't abort within 30s of Ctrl-C.")
+    finally:
+        driver.kill()
+
+
+@ray.remote(num_cpus=0)
+def _start_coordinator():
+    coordinator = get_or_create_autoscaling_coordinator()
+    ray.get(coordinator.get_reserved_resources.remote("probe"))
+
+
+def test_run_restarts_after_the_coordinators_first_caller_dies(
+    head_node_cluster, tmp_path
+):
+    """The first caller to need the coordinator creates it, here on node X. An
+    elastic run starts with workers on X and Y, then X dies. The run, which
+    already holds a handle to the coordinator and sizes itself from it, must
+    restart with one worker on Y."""
+    head_node_id = ray.get_runtime_context().get_node_id()
+    x = _add_slot_node(head_node_cluster)
+    y = _add_slot_node(head_node_cluster)
+    ray.get(
+        _start_coordinator.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(x.node_id, soft=False)
+        ).remote()
+    )
+    gate = _Gate.options(scheduling_strategy=_on_head(head_node_id)).remote(
+        released=False
+    )
+    ref = _submit_fit(
+        head_node_id,
+        {"gate": gate, "run_name": "run"},
+        ScalingConfig(num_workers=(1, 2), resources_per_worker={"slot": 1}),
+        str(tmp_path),
+        max_failures=1,
+    )
+    started_on = _wait_for_starts(gate, {"run": 2})
+    assert set(started_on["run"]) == {x.node_id, y.node_id}
+
+    head_node_cluster.remove_node(x)
+
+    started_on = _wait_for_starts(gate, {"run": 3})
+    assert started_on["run"][2:] == [y.node_id]
+    ray.get(gate.release.remote())
+    _get_with_deadline(ref)
 
 
 def test_runs_queue_for_a_single_slot(head_node_cluster, tmp_path):
