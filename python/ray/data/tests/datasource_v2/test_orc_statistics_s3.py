@@ -7,6 +7,9 @@ import random
 import statistics
 import threading
 import time
+from contextlib import nullcontext
+from typing import Any, Dict, List, Tuple, cast
+from unittest.mock import patch
 
 import boto3
 import pyarrow as pa
@@ -210,10 +213,10 @@ def _run_s3_matrix(
 
         original_read = orc_metadata._read
 
-        def metadata_read(*args):
+        def metadata_read(source, offset: int, length: int) -> bytes:
             purpose.name = "statistics"
             try:
-                return original_read(*args)
+                return original_read(source, offset, length)
             finally:
                 purpose.name = "decoder"
 
@@ -223,7 +226,7 @@ def _run_s3_matrix(
             result = callback(observed)
         finally:
             orc_metadata._read = original_read
-        metrics = {}
+        metrics: Dict[str, Any] = {}
         for name in ("statistics", "decoder"):
             reads = [event for event in events if event[0] == name]
             metrics[name] = {
@@ -292,14 +295,17 @@ def _run_s3_matrix(
                 for value in batch["x"].to_pylist()
             ]
 
-        if extended_predicate:
-            OrcFileReader._scan_with_statistics = scan
-            orc.ORCFile = TrackingFile
-        try:
-            rows, application = counted(scanner.filesystem, execute)
-        finally:
-            OrcFileReader._scan_with_statistics = original_scan
-            orc.ORCFile = original_file
+        with (
+            patch.object(orc, "ORCFile", TrackingFile)
+            if extended_predicate
+            else nullcontext()
+        ):
+            if extended_predicate:
+                OrcFileReader._scan_with_statistics = scan
+            try:
+                rows, application = counted(scanner.filesystem, execute)
+            finally:
+                OrcFileReader._scan_with_statistics = original_scan
         if extended_predicate:
             assert application is not None
             application["streamed_files"] = streamed
@@ -387,9 +393,9 @@ def _run_s3_matrix(
     read = ray.remote(_worker_read)
     plan = ray.remote(_worker_plan)
     discover = ray.remote(_worker_discover)
-    metrics = {}
+    metrics: Dict[str, Any] = {}
     for mode in ("off", "file", "stripe"):
-        application = {}
+        application: Dict[str, Any] = {}
         phase[0] = mode + ":discovery"
         discovered, application["discovery"] = ray.get(
             discover.remote(filesystem, manifest)
@@ -413,7 +419,7 @@ def _run_s3_matrix(
         rows, application["execution"] = ray.get(read.remote(scanner, manifest))
         wait_for_responses()
         assert rows == list(range(threshold, row_count))
-        phases = {}
+        phases: Dict[str, Any] = {}
         for stage in ("discovery", "sampling", "execution"):
             entries = [
                 record for record in records if record["phase"] == mode + ":" + stage
@@ -460,14 +466,16 @@ def _run_s3_matrix(
         metrics[mode] = phases
         if trace_application:
             phases["application"] = application
-            assert application["sampling"]["decoder"]["bytes"] > 0
-            assert application["sampling"]["statistics"]["bytes"] == 0
-            assert (application["execution"]["statistics"]["bytes"] == 0) == (
-                mode == "off"
-            )
-            assert application["execution"]["statistics"]["stripe_region_bytes"] == 0
+            sampling = application["sampling"]
+            execution = application["execution"]
+            assert sampling is not None and execution is not None
+            assert sampling["decoder"]["bytes"] > 0
+            assert sampling["statistics"]["bytes"] == 0
+            assert (execution["statistics"]["bytes"] == 0) == (mode == "off")
+            assert execution["statistics"]["stripe_region_bytes"] == 0
         if extended_predicate:
             execution = application["execution"]
+            assert execution is not None
             if mode == "off":
                 assert sorted(execution["streamed_files"]) == sorted(paths)
             elif mode == "file":
@@ -643,7 +651,7 @@ def _measure_default_pruning_costs(measured_s3, workload, delay_seconds):
     samples = []
     for repetition in range(3):
         for mode in ("off", "file") if repetition % 2 == 0 else ("file", "off"):
-            sample = {"mode": mode, "repetition": repetition}
+            sample: Dict[str, Any] = {"mode": mode, "repetition": repetition}
             for stage in ("planning", "execution"):
                 label = f"cost:{repetition}:{mode}:{stage}"
                 phase[0] = label
@@ -662,8 +670,9 @@ def _measure_default_pruning_costs(measured_s3, workload, delay_seconds):
                         statistics_pruning=mode,
                         batch_size=127,
                     )
-                    streamed, statistics_reads = ray.get(
-                        read_remote.remote(scanner, manifest, expected_ref)
+                    streamed, statistics_reads = cast(
+                        Tuple[List[str], int],
+                        ray.get(read_remote.remote(scanner, manifest, expected_ref)),
                     )
                     kept = paths[1:] if workload == "low_pruning" else paths
                     assert sorted(streamed) == sorted(paths if mode == "off" else kept)

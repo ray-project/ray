@@ -6,6 +6,7 @@ import pickle
 import random
 from dataclasses import replace
 from pathlib import Path
+from typing import Generator, cast
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -217,6 +218,7 @@ def test_partial_stripe_filter_only_projection_batch_and_limit(
 
         def read_stripe(self, index, columns=None):
             decoded.append(index)
+            assert columns is not None
             assert set(columns) == {"x", "payload"}
             return self.file.read_stripe(index, columns=columns)
 
@@ -405,12 +407,108 @@ def test_mode_capture_validation_and_serialization(monkeypatch):
         pickle.loads(pickle.dumps(scanner)),
         scanner.push_limit(3),
     ):
+        assert isinstance(copy_scanner, OrcScanner)
         assert copy_scanner.statistics_pruning == "stripe"
         assert copy_scanner.create_reader()._statistics_pruning == "stripe"
     with pytest.raises(ValueError):
         context.orc_statistics_pruning = "invalid"
     with pytest.raises(ValueError):
         replace(scanner, statistics_pruning="invalid")
+
+
+@pytest.mark.parametrize("mode", ["off", "file", "stripe"])
+def test_statistics_and_batch_sizing_config_survive_pushdowns(
+    tmp_path, monkeypatch, mode
+):
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+
+    table = pa.table({"x": range(16), "payload": ["value"] * 16})
+    path = tmp_path / "data.orc"
+    _write(path, table)
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "orc_statistics_pruning", mode)
+    monkeypatch.setattr(context, "target_max_block_size", 4096)
+    scanner = OrcDatasourceV2([str(path)]).create_scanner(table.schema)
+    monkeypatch.setattr(context, "orc_statistics_pruning", "off")
+    monkeypatch.setattr(context, "target_max_block_size", 1)
+    pushed, residual = scanner.push_filters(col("x") >= 8)
+    assert residual is None
+    pushed = pushed.prune_columns(["payload"]).push_limit(3)
+    for copied in (
+        pushed,
+        copy.deepcopy(pushed),
+        pickle.loads(pickle.dumps(pushed)),
+    ):
+        assert isinstance(copied, OrcScanner)
+        reader = copied.create_reader()
+        assert copied.statistics_pruning == reader._statistics_pruning == mode
+        assert copied.target_block_size == reader._target_block_size == 4096
+        assert reader._explicit_batch_size is None
+        assert pa.concat_tables(list(reader.read(_manifest(path)))).equals(
+            table.slice(8, 3).select(["payload"])
+        )
+
+
+@pytest.mark.parametrize("mode", ["off", "file", "stripe"])
+@pytest.mark.parametrize("batch_size", [None, 37], ids=["estimated", "explicit"])
+def test_statistics_pruning_preserves_batch_sizing(
+    striped_file, monkeypatch, mode, batch_size
+):
+    path, table = striped_file
+    estimated, decoded = [], []
+    original_estimate = reader_module.estimate_batch_size
+    original_read_stripe = orc.ORCFile.read_stripe
+
+    def estimate(*args, **kwargs):
+        result = original_estimate(*args, **kwargs)
+        estimated.append(result)
+        return result
+
+    def read_stripe(self, index, **kwargs):
+        decoded.append(index)
+        return original_read_stripe(self, index, **kwargs)
+
+    monkeypatch.setattr(reader_module, "estimate_batch_size", estimate)
+    monkeypatch.setattr(orc.ORCFile, "read_stripe", read_stripe)
+    predicate = (col("x") >= 3500) & (col("x") < 3800)
+    scanner = OrcScanner(
+        schema=table.schema,
+        statistics_pruning=mode,
+        target_block_size=4096,
+        batch_size=batch_size,
+    )
+    scanner, residual = scanner.push_filters(predicate)
+    assert residual is None
+    scanner = scanner.prune_columns(["payload"]).push_limit(73)
+    batches = list(scanner.create_reader().read(_manifest(path)))
+    assert pa.concat_tables(batches).equals(
+        table.filter(predicate.to_pyarrow()).slice(0, 73).select(["payload"])
+    )
+    if batch_size is None:
+        assert len(estimated) == 1 and estimated[0] is not None
+        initial_size = estimated[0]
+        assert 1 < initial_size < 73
+    else:
+        assert estimated == []
+        initial_size = batch_size
+    assert len(batches) > 1
+    assert all(batch.num_rows <= initial_size for batch in batches)
+    if mode == "stripe":
+        with pa.OSFile(str(path), "rb") as source:
+            metadata = read_metadata(source)
+            statistics = read_stripe_statistics(source, metadata)
+        selected = [
+            index
+            for index, stat in enumerate(statistics)
+            if cast(int, stat["x"].maximum) >= 3500
+            and cast(int, stat["x"].minimum) < 3800
+        ]
+        assert decoded == selected[: len(decoded)]
+        assert 0 < len(decoded) < len(metadata.stripes)
+    else:
+        assert decoded == []
 
 
 @pytest.mark.parametrize("mode", ["off", "file", "stripe"])
@@ -999,7 +1097,7 @@ def test_statistics_handle_lifetime(tmp_path, monkeypatch, operation):
     )
     if operation == "early_close":
         next(iterator)
-        iterator.close()
+        cast(Generator[pa.Table, None, None], iterator).close()
     elif operation == "init_failure":
         with pytest.raises(OSError, match="test decoder initialization"):
             list(iterator)

@@ -3,7 +3,7 @@
 import re
 import zlib
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Protocol, Tuple
 
 import pyarrow as pa
 from google.protobuf.message import DecodeError
@@ -134,13 +134,22 @@ class ColumnStatistics:
     true_count: Optional[int] = None
 
 
+class _PostScriptFields(Protocol):
+    metadata_length: int
+    compression: int
+    compression_block_size: int
+
+    def HasField(self, name: str) -> bool:
+        ...
+
+
 @dataclass(frozen=True)
 class OrcMetadata:
     rows: int
     stripes: Tuple[Tuple[int, int, int], ...]
     columns: Dict[str, Tuple[int, int]]
     statistics: Dict[str, ColumnStatistics]
-    postscript: object
+    postscript: _PostScriptFields
     metadata_offset: int
     string_statistics_safe: bool
 

@@ -136,6 +136,29 @@ def test_boot_create_failure_cleans_up_nothing_and_reports() -> None:
     assert "runsc not found" in info["error"]
 
 
+def test_unsupported_limits_fail_before_image_pull() -> None:
+    runtime = FakeSandboxRuntime()
+    runtime.resource_error = SandboxCreationError("Cannot enforce sandbox resources")
+    host = _make_host(runtime)
+    asyncio.run(host.boot())
+    info = asyncio.run(host.describe())
+    assert info["status"] == "error"
+    assert "Cannot enforce" in info["error"]
+    assert not runtime.pull_calls
+    assert not runtime.create_calls
+
+
+def test_memory_oom_is_reported_without_killing_host() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(runtime)
+    asyncio.run(host.boot())
+    runtime.termination_reason = "Sandbox exceeded its enforced memory limit"
+    info = asyncio.run(host.describe())
+    assert info["status"] == "error"
+    assert info["error"] == runtime.termination_reason
+    assert runtime.deleted == []
+
+
 def test_boot_is_idempotent() -> None:
     runtime = FakeSandboxRuntime()
     host = _make_host(runtime)

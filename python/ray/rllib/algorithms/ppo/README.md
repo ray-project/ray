@@ -40,6 +40,6 @@ gradient descent on.
 
 ### Proximal Policy Optimization (PPO).
 
-**[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#ppo)**
+**[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#ppo)**
 
 **[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ppo/ppo.py)**

@@ -7,7 +7,16 @@ must not be replaced with default scalar values when interpreting statistics.
 This is metadata only; no streams, row indexes, or data encodings are decoded.
 """
 
+from typing import Any, Callable, Protocol, Type, cast
+
 from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
+from google.protobuf.descriptor import Descriptor
+from google.protobuf.message import Message
+
+
+class _LegacyMessageFactory(Protocol):
+    def GetPrototype(self, descriptor: Descriptor) -> Type[Message]:
+        ...
 
 
 def _message_types():
@@ -95,11 +104,13 @@ def _message_types():
         if hasattr(message_factory, "GetMessageClass"):
             result[name] = message_factory.GetMessageClass(desc)
         else:
-            result[name] = message_factory.MessageFactory(pool).GetPrototype(desc)
+            factory = cast(_LegacyMessageFactory, message_factory.MessageFactory(pool))
+            result[name] = factory.GetPrototype(desc)
     return result
 
 
 _TYPES = _message_types()
-PostScript = _TYPES["PostScript"]
-Footer = _TYPES["Footer"]
-Metadata = _TYPES["Metadata"]
+# Descriptor-defined fields are absent from protobuf's static Message base type.
+PostScript: Callable[..., Any] = _TYPES["PostScript"]
+Footer: Callable[..., Any] = _TYPES["Footer"]
+Metadata: Callable[..., Any] = _TYPES["Metadata"]

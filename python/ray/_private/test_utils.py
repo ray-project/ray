@@ -89,6 +89,42 @@ def auth_token_grpc_metadata():
     return tuple(_auth_token_header().items())
 
 
+def call_with_auth_token(rpc, request, **kwargs):
+    """Call a gRPC stub method with the auth token this process has, if any."""
+    import grpc
+
+    from ray._private.authentication.authentication_constants import (
+        TOKEN_AUTH_ERROR_MESSAGE,
+    )
+
+    try:
+        return rpc(request, metadata=auth_token_grpc_metadata(), **kwargs)
+    except grpc.RpcError as e:
+        # The token comes from this process's token file whatever the cluster's
+        # mode, and a cluster with auth disabled rejects it.
+        if TOKEN_AUTH_ERROR_MESSAGE not in (e.details() or ""):
+            raise
+        return rpc(request, **kwargs)
+
+
+def _shutdown_raylet(raylet_address, graceful):
+    import grpc
+    from grpc._channel import _InactiveRpcError
+
+    from ray.core.generated import node_manager_pb2_grpc
+
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(
+        grpc.insecure_channel(raylet_address)
+    )
+    try:
+        call_with_auth_token(
+            stub.ShutdownRaylet,
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+        )
+    except _InactiveRpcError:
+        assert not graceful
+
+
 def get_gpu_visible_devices_env_var() -> Optional[str]:
     """Name of the visible devices env var for this node's GPU family, or None.
 
@@ -1613,21 +1649,7 @@ class RayletKiller(NodeKillerBase):
         return True
 
     def _kill_raylet(self, ip, port, graceful=False):
-        import grpc
-        from grpc._channel import _InactiveRpcError
-
-        from ray.core.generated import node_manager_pb2_grpc
-
-        raylet_address = build_address(ip, port)
-        channel = grpc.insecure_channel(raylet_address)
-        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        try:
-            stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
-                metadata=auth_token_grpc_metadata(),
-            )
-        except _InactiveRpcError:
-            assert not graceful
+        _shutdown_raylet(build_address(ip, port), graceful)
 
 
 @ray.remote(num_cpus=0)
@@ -1981,23 +2003,10 @@ def get_load_metrics_report(webui_url):
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
-    import grpc
-    from grpc._channel import _InactiveRpcError
-
-    from ray.core.generated import node_manager_pb2_grpc
-
-    raylet_address = build_address(
-        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    _shutdown_raylet(
+        build_address(raylet["NodeManagerAddress"], raylet["NodeManagerPort"]),
+        graceful,
     )
-    channel = grpc.insecure_channel(raylet_address)
-    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    try:
-        stub.ShutdownRaylet(
-            node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
-            metadata=auth_token_grpc_metadata(),
-        )
-    except _InactiveRpcError:
-        assert not graceful
 
 
 def get_gcs_memory_used():

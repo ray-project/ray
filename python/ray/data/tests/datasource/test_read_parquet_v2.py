@@ -11,9 +11,11 @@ import logging
 from dataclasses import dataclass
 from typing import cast
 
+import fsspec
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from pyarrow.fs import FSSpecHandler, PyFileSystem
 
 import ray
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
@@ -145,6 +147,55 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
     assert ds.take_all() == [{"a": 1, "path": str(tmp_path / "data.parquet")}]
+
+
+def test_read_parquet_v2_columns_rejects_string(tmp_path, restore_ctx):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    # Without the check, ``"ab"`` would silently select ``["a", "b"]``.
+    with pytest.raises(TypeError, match="`columns` must be a list of strings."):
+        # pyrefly: ignore[bad-argument-type]  # the wrong type is the point
+        ray.data.read_parquet(str(tmp_path), columns="ab")
+
+
+class _FailFirstCallHandler(FSSpecHandler):
+    """Local filesystem whose first call to each listing or open method raises."""
+
+    def __init__(self):
+        super().__init__(fsspec.filesystem("file"))
+        self._failed_methods = set()
+
+    def _fail_first_call(self, method: str):
+        if method not in self._failed_methods:
+            self._failed_methods.add(method)
+            raise OSError(f"Transient error in {method}")
+
+    def get_file_info(self, paths):
+        self._fail_first_call("get_file_info")
+        return super().get_file_info(paths)
+
+    def get_file_info_selector(self, selector):
+        self._fail_first_call("get_file_info_selector")
+        return super().get_file_info_selector(selector)
+
+    def open_input_file(self, path):
+        self._fail_first_call("open_input_file")
+        return super().open_input_file(path)
+
+
+def test_read_parquet_v2_retries_transient_filesystem_errors(
+    tmp_path, restore_data_context
+):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_data_context.use_datasource_v2 = True
+    restore_data_context.retried_io_errors.append("Transient error")
+    filesystem = PyFileSystem(_FailFirstCallHandler())
+
+    ds = ray.data.read_parquet(str(tmp_path), filesystem=filesystem)
+
+    assert sorted(row["a"] for row in ds.take_all()) == [1, 2, 3]
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
