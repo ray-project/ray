@@ -17,6 +17,7 @@ from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware import kv_token_tracker
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     KVTokenTracker,
+    ReservationBroadcastForwarder,
     build_kv_token_tracker,
     get_kv_token_tracker,
     get_worker_id,
@@ -89,6 +90,20 @@ def test_router_binds_tracker():
     router = KVAwareRouter.__new__(KVAwareRouter)
     router.initialize_state()
     assert router._kv_token_tracker is sentinel
+
+
+def test_router_binds_tracker_for_its_deployment():
+    first = _SpyTracker(indexer_threads=1, serve_deployment_id="dep-1")
+    second = _SpyTracker(indexer_threads=1, serve_deployment_id="dep-2")
+    set_kv_token_tracker(first)
+    set_kv_token_tracker(second)
+
+    router = KVAwareRouter.__new__(KVAwareRouter)
+    router._deployment_id = "dep-1"
+    router.initialize_state()
+
+    assert router._kv_token_tracker is first
+    assert get_kv_token_tracker("dep-2") is second
 
 
 def test_router_degrades_without_tracker():
@@ -167,6 +182,28 @@ class _RecordingSelectionService:
     async def create_reservation(self, request):
         self.create_reservation_calls.append(dict(request))
         return await self._inner.create_reservation(request)
+
+
+@pytest.mark.asyncio
+async def test_reservation_broadcast_targets_router_application_model():
+    class Target:
+        def __init__(self):
+            self.calls = []
+
+        async def on_model_reservations_created(self, model_id, reservations):
+            self.calls.append((model_id, reservations))
+
+    target = Target()
+    forwarder = ReservationBroadcastForwarder(
+        _TrackerBroadcastHandle(target), model_id="model-a"
+    )
+    reservation = object()
+
+    forwarder.report(reservation)
+    await forwarder.flush()
+
+    assert target.calls == [("model-a", [reservation])]
+    forwarder.close()
 
 
 @pytest.mark.asyncio

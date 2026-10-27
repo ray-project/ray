@@ -38,18 +38,19 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
     """Routes each request to the candidate that best balances expected KV-cache
     overlap against the worker's current prefill/decode load.
 
-    Scoring is delegated to the ``KVTokenTracker`` (which owns the
-    Dynamo selection service and the global KV index) built by the LLMRouter in
-    this same ingress process; this per-handle router stays thin and simply maps
-    candidate replicas to/from Dynamo worker ids.
+    Scoring is delegated to the deployment's process-local ``KVTokenTracker``,
+    which owns the Dynamo selection service and global KV index. This router
+    maps candidate replicas to and from Dynamo worker ids.
     """
 
     def initialize_state(self):
-        """Bind to the ``KVTokenTracker`` the LLMRouter registered in this
-        process. When absent (e.g. the proxy's fallback router), KV-aware
-        routing degrades to load-balanced selection instead of erroring.
+        """Bind to the tracker registered for this deployment.
+
+        When absent, KV-aware routing degrades to load-balanced selection.
         """
-        self._kv_token_tracker = get_kv_token_tracker()
+        self._kv_token_tracker = get_kv_token_tracker(
+            getattr(self, "_deployment_id", None)
+        )
         if self._kv_token_tracker is None:
             logger.warning(
                 "No KVTokenTracker in this process (%s); KVAwareRouter "

@@ -460,6 +460,11 @@ SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER = (
     SERVE_INGRESS_ROUTER_HEADER_PREFIX + "original-method"
 )
 
+# Identifies the router application that selected a request's target replica.
+SERVE_ROUTER_APPLICATION_NAME_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "application"
+)
+
 # Original client request target forwarded by HAProxy to /internal/route. Router
 # applications receive the path and query; ingress request routers receive the path.
 SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (

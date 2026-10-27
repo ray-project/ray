@@ -13,8 +13,9 @@ import json
 import os
 import secrets
 import time
+import uuid
 from types import SimpleNamespace
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import unquote
 
 from fastapi import FastAPI, Request, status
@@ -33,8 +34,17 @@ from ray.llm._internal.serve.core.ingress.router import (
     _get_routing_payload_from_body,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TOKEN_KEY_HEADER,
+    KV_TOKEN_METADATA_KEY,
+    REQUEST_TOKEN_IDS_KWARG,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
@@ -71,6 +81,14 @@ DEFAULT_INGRESS_OPTIONS = {
         "target_ongoing_requests": 100,
     },
 }
+
+
+class _RouterTokenizeError(Exception):
+    def __init__(self, message: str, status_code: int, type: str):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.type = type
 
 
 def _response(
@@ -177,14 +195,43 @@ class RouterApplication:
         self._api_key_hashes = {
             config.model_id: _api_key_hashes(config) for config in llm_configs
         }
+        self._llm_configs = {config.model_id: config for config in llm_configs}
+        self._kv_model_ids = {
+            config.model_id for config in llm_configs if is_kv_aware(config)
+        }
+        self._kv_trackers = {}
+        self._tokenizers = {}
+        self._token_sender = None
+        self._warned_no_token_endpoint = False
+        if self._kv_model_ids:
+            from ray.llm._internal.serve.routing_policies.kv_aware import (
+                token_channel,
+            )
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
+                Tokenizer,
+            )
+
+            context = serve.get_replica_context()
+            self._self_handle = serve.get_deployment_handle(
+                context.deployment, app_name=context.app_name
+            )
+            self._token_sender = token_channel.TokenSender()
+            self._tokenizers = {
+                model_id: asyncio.create_task(
+                    asyncio.to_thread(Tokenizer, self._llm_configs[model_id])
+                )
+                for model_id in self._kv_model_ids
+            }
         # Resolve every handle in parallel without gating router health on them.
         self._handles: Dict[str, "asyncio.Task[DeploymentHandle]"] = {
-            model_id: asyncio.create_task(self._resolve_handle(app_name))
+            model_id: asyncio.create_task(self._resolve_handle(model_id, app_name))
             for model_id, app_name in self._model_applications.items()
         }
 
     async def check_health(self):
-        pass
+        for tokenizer_task in self._tokenizers.values():
+            if tokenizer_task.done():
+                tokenizer_task.result()
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -337,8 +384,7 @@ class RouterApplication:
             "BadRequestError",
         )
 
-    @staticmethod
-    async def _resolve_handle(app_name: str) -> DeploymentHandle:
+    async def _resolve_handle(self, model_id: str, app_name: str) -> DeploymentHandle:
         """Look up the application's handle, retrying until it is deployed."""
         backoff_s = HANDLE_RETRY_INITIAL_S
         first_failure_s = None
@@ -369,6 +415,16 @@ class RouterApplication:
                 backoff_s = min(backoff_s * 2, HANDLE_RETRY_MAX_S)
         if first_failure_s is not None:
             logger.info("Model application %s is now available.", app_name)
+        if model_id in self._kv_model_ids:
+            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+                build_kv_token_tracker,
+            )
+
+            tracker = build_kv_token_tracker(
+                self._llm_configs[model_id], handle.deployment_id
+            )
+            tracker.start_reservation_broadcast(self._self_handle, model_id=model_id)
+            self._kv_trackers[model_id] = tracker
         # Start tracking replicas now, on the replica's event loop.
         if not handle.is_initialized:
             handle._init()
@@ -390,11 +446,23 @@ class RouterApplication:
             session_id = session_id_from_headers(request.headers)
             if session_id:
                 handle = handle.options(session_id=session_id)
-            replica_id = await self._choose_replica(
-                handle,
+            request_token_ids = await self._tokenize(
+                model_id,
                 routing_payload,
+                request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER),
                 timeout_s=max(0, deadline_s - time.monotonic()),
             )
+            replica_id, token_endpoint = await self._choose_replica(
+                handle,
+                routing_payload,
+                request_token_ids=request_token_ids,
+                timeout_s=max(0, deadline_s - time.monotonic()),
+            )
+            request_headers = self._stage_prompt_tokens(
+                replica_id, token_endpoint, request_token_ids, routing_payload
+            )
+        except _RouterTokenizeError as e:
+            return _error(e.status_code, e.message, e.type)
         except ValueError as e:
             return _error(
                 status.HTTP_400_BAD_REQUEST,
@@ -418,25 +486,119 @@ class RouterApplication:
                 "ServiceUnavailableError",
                 headers={"Retry-After": str(RETRY_AFTER_S)},
             )
-        return {"application": application_name, "replica_id": replica_id}
+        decision = {"application": application_name, "replica_id": replica_id}
+        if request_headers:
+            decision[
+                RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
+            ] = request_headers
+        return decision
+
+    async def _tokenize(
+        self,
+        model_id: str,
+        routing_payload: Optional[SimpleNamespace],
+        request_path: Optional[str],
+        timeout_s: float,
+    ) -> Optional[List[int]]:
+        tokenizer_task = self._tokenizers.get(model_id)
+        if tokenizer_task is None or routing_payload is None:
+            return None
+        tokenizer = await asyncio.wait_for(
+            asyncio.shield(tokenizer_task), timeout=timeout_s
+        )
+        from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
+            TokenizeError,
+        )
+
+        try:
+            return await tokenizer.tokenize(
+                vars(routing_payload), request_path=request_path
+            )
+        except TokenizeError as e:
+            raise _RouterTokenizeError(e.message, e.status_code, e.type) from e
+
+    def _stage_prompt_tokens(
+        self,
+        replica_id: str,
+        token_endpoint: Optional[str],
+        request_token_ids: Optional[List[int]],
+        routing_payload: Optional[SimpleNamespace],
+    ) -> Dict[str, str]:
+        if not request_token_ids or routing_payload is None:
+            return {}
+        from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (  # noqa: E501
+            is_text_only_chat,
+        )
+
+        if not is_text_only_chat(getattr(routing_payload, "messages", [])):
+            return {}
+        if not token_endpoint or self._token_sender is None:
+            if not self._warned_no_token_endpoint:
+                self._warned_no_token_endpoint = True
+                logger.warning(
+                    "Selected replica %s did not advertise a prompt-token "
+                    "ZMQ endpoint; falling back to engine tokenization.",
+                    replica_id,
+                )
+            return {}
+
+        from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+
+        key = uuid.uuid4().hex
+        try:
+            payload = token_channel.encode_prompt_token_ids(request_token_ids)
+        except Exception as e:
+            logger.warning(
+                "Failed to encode prompt token IDs for selected replica %s; "
+                "falling back to engine tokenization: %s",
+                replica_id,
+                e,
+            )
+            return {}
+        if not self._token_sender.push(token_endpoint, key, payload):
+            return {}
+        return {KV_TOKEN_KEY_HEADER: key}
+
+    async def on_model_lifecycle_events(self, model_id: str, batch):
+        tracker = self._kv_trackers.get(model_id)
+        if tracker is not None:
+            await tracker.on_lifecycle_events(batch)
+
+    async def on_model_reservations_created(self, model_id: str, batch):
+        tracker = self._kv_trackers.get(model_id)
+        if tracker is not None:
+            await tracker.on_reservations_created(batch)
 
     @staticmethod
     async def _choose_replica(
         handle: DeploymentHandle,
         routing_payload: Optional[SimpleNamespace],
+        request_token_ids: Optional[List[int]],
         timeout_s: float,
-    ) -> str:
+    ) -> Tuple[str, Optional[str]]:
         """Pick a replica without dispatching; HAProxy sends the request.
 
         Pick-only registers no autoscaling demand, so if it finds no replica
         quickly, wait on the reserving path, which lets the model scale from zero.
         """
         route_args = (routing_payload,) if routing_payload is not None else ()
+        choose_replica_kwargs = {}
+        if request_token_ids is not None:
+            choose_replica_kwargs[REQUEST_TOKEN_IDS_KWARG] = request_token_ids
         deadline_s = time.monotonic() + timeout_s
 
-        async def pick(**kwargs) -> str:
-            async with handle.choose_replica(*route_args, **kwargs) as selection:
-                return selection._replica.replica_id.to_full_id_str()
+        async def pick(**kwargs) -> Tuple[str, Optional[str]]:
+            async with handle.choose_replica(
+                *route_args, **choose_replica_kwargs, **kwargs
+            ) as selection:
+                replica = selection._replica
+                token_metadata = replica.routing_stats.get(KV_TOKEN_METADATA_KEY)
+                token_endpoint = (
+                    token_metadata.get("endpoint")
+                    if isinstance(token_metadata, dict)
+                    else None
+                )
+                return replica.replica_id.to_full_id_str(), token_endpoint
 
         try:
             return await asyncio.wait_for(
@@ -449,7 +611,29 @@ class RouterApplication:
             )
 
     @classmethod
-    def get_deployment_options(cls) -> Dict[str, Any]:
+    def get_deployment_options(
+        cls, llm_configs: Optional[List[LLMConfig]] = None
+    ) -> Dict[str, Any]:
         options = copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
-        options["ray_actor_options"]["runtime_env"] = get_llm_serve_runtime_env()
+        env_vars = {}
+        for config in llm_configs or []:
+            if not is_kv_aware(config):
+                continue
+            env_vars = (config.runtime_env or {}).get("env_vars") or {}
+            for name, value in env_vars.items():
+                if name == "VLLM_API_KEY":
+                    continue
+                if name in env_vars and env_vars[name] != value:
+                    raise ValueError(
+                        f"KV-aware model configs must agree on runtime env var {name}."
+                    )
+                env_vars[name] = value
+        options["ray_actor_options"]["runtime_env"] = get_llm_serve_runtime_env(
+            {"env_vars": env_vars}
+        )
         return options
+
+    def __del__(self) -> None:
+        token_sender = getattr(self, "_token_sender", None)
+        if token_sender is not None:
+            token_sender.close()

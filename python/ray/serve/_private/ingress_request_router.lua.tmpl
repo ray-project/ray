@@ -49,18 +49,6 @@ local function request_headers_for_router(headers)
     return table.concat(lines)
 end
 
-local function set_router_response_headers(txn, json_body)
-    local headers = json_body:match('"request_headers"%s*:%s*{(.-)}')
-    if not headers then
-        return
-    end
-    for name, value in headers:gmatch('"%s*([^"]-)%s*"%s*:%s*"([^"]*)"') do
-        if name ~= "" then
-            txn.http:req_set_header(name, value)
-        end
-    end
-end
-
 local function route(txn, app, pool, replica_map)
     local body = FORWARD_BODY and (txn.sf:req_body() or "") or ""
     local hdrs = txn.http:req_get_headers()
