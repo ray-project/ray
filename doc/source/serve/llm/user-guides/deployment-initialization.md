@@ -416,6 +416,10 @@ Unlike the `abfss://` and `azure://` schemes, which download the model to disk b
 
 For an end-to-end AKS walkthrough that provisions the cluster, workload identity, and Blob storage, and benchmarks streaming against download-then-load, see [Stream models from Azure Blob Storage into vLLM with the RunAI Model Streamer](https://blog.aks.azure.com/2026/07/13/runai-streamer-vllm).
 
+## Load from a running replica
+
+When the deployment already has a serving replica, a new replica can copy its weights and compile caches GPU to GPU instead of loading from storage. See {doc}`Fast scale-out with ModelExpress <model-express>`.
+
 ## Additional Optimizations
 
 ### Torch Compile Cache
@@ -508,5 +512,6 @@ config = LLMConfig(
 
 ## See also
 
+- {doc}`Fast scale-out with ModelExpress <model-express>` - Load new replicas from a running replica
 - {doc}`Quickstart <../quick-start>` - Basic LLM deployment examples
 
