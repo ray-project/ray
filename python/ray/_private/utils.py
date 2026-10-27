@@ -35,6 +35,7 @@ from ray._common.utils import (
     get_ray_address_file,
     get_system_memory,
     is_cgroup_v2_root,
+    read_cgroup_file,
 )
 from ray._raylet import GcsClient
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
@@ -374,14 +375,54 @@ def _count_cpuset_cpus(cpuset_string: str) -> int:
     Returns:
         The number of CPUs the list names.
     """
-    cpu_ids = []
-    for num_or_range in cpuset_string.strip().split(","):
+    count = 0
+    for num_or_range in cpuset_string.split(","):
+        if not num_or_range:
+            continue
         if "-" in num_or_range:
             start, end = num_or_range.split("-")
-            cpu_ids.extend(list(range(int(start), int(end) + 1)))
+            count += int(end) - int(start) + 1
         else:
-            cpu_ids.append(int(num_or_range))
-    return len(cpu_ids)
+            count += 1
+    return count
+
+
+def _cfs_quota(cgroup_dir: str, quota_name: str, period_name: str) -> Optional[float]:
+    """Return the cgroup v1 CPU quota of one level in CPUs, or None if unset."""
+    try:
+        quota = float(read_cgroup_file(os.path.join(cgroup_dir, quota_name)))
+        period = float(read_cgroup_file(os.path.join(cgroup_dir, period_name)))
+    except (TypeError, ValueError):
+        return None
+    # -1 means no quota on this level.
+    return quota / period if quota >= 0 and period > 0 else None
+
+
+def _cpu_max_quota(cgroup_dir: str, max_name: str) -> Optional[float]:
+    """Return the cgroup v2 ``cpu.max`` quota of one level in CPUs, or None."""
+    value = read_cgroup_file(os.path.join(cgroup_dir, max_name))
+    parts = value.split() if value else []
+    # "max <period>" means no quota on this level.
+    if len(parts) != 2 or not (parts[0].isnumeric() and parts[1].isnumeric()):
+        return None
+    return float(parts[0]) / float(parts[1])
+
+
+def _nearest_cpuset(cgroup_dirs: List[str], cpuset_name: str) -> Optional[int]:
+    """Return the CPU count of the nearest cgroup that has a cpuset, or None.
+
+    In cgroup v1 a child's cpuset is a subset of its parent's, and cgroup v2's
+    ``cpuset.cpus.effective`` already accounts for every parent, so the
+    nearest level is the binding one.
+    """
+    for cgroup_dir in cgroup_dirs:
+        value = read_cgroup_file(os.path.join(cgroup_dir, cpuset_name))
+        if value:
+            try:
+                return _count_cpuset_cpus(value)
+            except ValueError:
+                continue
+    return None
 
 
 def _get_docker_cpus(
@@ -400,95 +441,48 @@ def _get_docker_cpus(
     # docker, the number of vCPUs on a machine is whichever is set (ties broken
     # by smaller value).
     #
-    # The limits are read on the process's own cgroup and every parent up to
-    # the mount root, and the smallest one wins, because that is the quota the
-    # kernel enforces. The directory of each file name is the mount root.
+    # Each limit is read from the process's own cgroup up to the mount root
+    # (the directory of the given file) and the smallest level wins, because
+    # that is the quota the kernel enforces.
 
     cpu_quota = None
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
-    if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
-        try:
+    try:
+        if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
             root, quota_name = os.path.split(cpu_quota_file_name)
             period_name = os.path.basename(cpu_period_file_name)
-            for cgroup_dir in get_cgroup_dirs(root, "cpu", proc_self_cgroup_filename):
-                quota_path = os.path.join(cgroup_dir, quota_name)
-                period_path = os.path.join(cgroup_dir, period_name)
-                if not (os.path.exists(quota_path) and os.path.exists(period_path)):
-                    continue
-                with open(quota_path, "r") as quota_file, open(
-                    period_path, "r"
-                ) as period_file:
-                    quota = float(quota_file.read())
-                    period = float(period_file.read())
-                # -1 means no quota on this level.
-                if quota < 0 or period <= 0:
-                    continue
-                if cpu_quota is None or quota / period < cpu_quota:
-                    cpu_quota = quota / period
-        except Exception:
-            logger.exception("Unexpected error calculating docker cpu quota.")
-    # Look at cpu.max for cgroups v2. The root of a cgroup v2 host has no
-    # cpu.max file; the quota, if any, is on the process's own cgroup.
-    elif os.path.exists(cpu_max_file_name) or is_cgroup_v2_root(
-        os.path.dirname(cpu_max_file_name)
-    ):
-        try:
+            dirs = get_cgroup_dirs(root, "cpu", proc_self_cgroup_filename)
+            quotas = [_cfs_quota(d, quota_name, period_name) for d in dirs]
+        # cgroups v2. The root of a bare host has no cpu.max; the quota, if
+        # any, is on the process's own cgroup.
+        elif os.path.exists(cpu_max_file_name) or is_cgroup_v2_root(
+            os.path.dirname(cpu_max_file_name)
+        ):
             root, max_name = os.path.split(cpu_max_file_name)
-            for cgroup_dir in get_cgroup_dirs(root, None, proc_self_cgroup_filename):
-                max_path = os.path.join(cgroup_dir, max_name)
-                if not os.path.exists(max_path):
-                    continue
-                with open(max_path, "r") as max_file:
-                    quota_str, period_str = max_file.read().split()
-                # quota_str is "max" when the cpu quota is unset on this level.
-                if not (quota_str.isnumeric() and period_str.isnumeric()):
-                    continue
-                level_quota = float(quota_str) / float(period_str)
-                if cpu_quota is None or level_quota < cpu_quota:
-                    cpu_quota = level_quota
-        except Exception:
-            logger.exception("Unexpected error calculating docker cpu quota.")
-    if (cpu_quota is not None) and (cpu_quota < 0):
-        cpu_quota = None
-    elif cpu_quota == 0:
+            dirs = get_cgroup_dirs(root, None, proc_self_cgroup_filename)
+            quotas = [_cpu_max_quota(d, max_name) for d in dirs]
+        else:
+            quotas = []
+        quotas = [q for q in quotas if q is not None]
+        cpu_quota = min(quotas) if quotas else None
+    except Exception:
+        logger.exception("Unexpected error calculating docker cpu quota.")
+    if cpu_quota == 0:
         # Round up in case the cpu limit is less than 1.
         cpu_quota = 1
 
     cpuset_num = None
-    if os.path.exists(cpuset_file_name):
-        try:
+    try:
+        if os.path.exists(cpuset_file_name):
             root, cpuset_name = os.path.split(cpuset_file_name)
-            # In cgroups v1 a child's cpuset is always a subset of its parent's,
-            # so the nearest cgroup with a cpuset is the binding one.
-            for cgroup_dir in get_cgroup_dirs(
-                root, "cpuset", proc_self_cgroup_filename
-            ):
-                cpuset_path = os.path.join(cgroup_dir, cpuset_name)
-                if not os.path.exists(cpuset_path):
-                    continue
-                with open(cpuset_path) as cpuset_file:
-                    ranges_as_string = cpuset_file.read().strip()
-                if ranges_as_string:
-                    cpuset_num = _count_cpuset_cpus(ranges_as_string)
-                    break
-        except Exception:
-            logger.exception("Unexpected error calculating docker cpuset ids.")
-    elif os.path.exists(cpuset_effective_file_name_v2):
-        try:
+            dirs = get_cgroup_dirs(root, "cpuset", proc_self_cgroup_filename)
+            cpuset_num = _nearest_cpuset(dirs, cpuset_name)
+        elif os.path.exists(cpuset_effective_file_name_v2):
             root, cpuset_name = os.path.split(cpuset_effective_file_name_v2)
-            # cpuset.cpus.effective already accounts for every parent, so the
-            # nearest cgroup that has it is the binding one.
-            for cgroup_dir in get_cgroup_dirs(root, None, proc_self_cgroup_filename):
-                cpuset_path = os.path.join(cgroup_dir, cpuset_name)
-                if not os.path.exists(cpuset_path):
-                    continue
-                with open(cpuset_path) as cpuset_file:
-                    ranges_as_string = cpuset_file.read().strip()
-                if ranges_as_string:
-                    cpuset_num = _count_cpuset_cpus(ranges_as_string)
-                    break
-        except Exception:
-            logger.exception("Unexpected error calculating docker cpuset ids.")
+            dirs = get_cgroup_dirs(root, None, proc_self_cgroup_filename)
+            cpuset_num = _nearest_cpuset(dirs, cpuset_name)
+    except Exception:
+        logger.exception("Unexpected error calculating docker cpuset ids.")
 
     if cpu_quota and cpuset_num:
         return min(cpu_quota, cpuset_num)
