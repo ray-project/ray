@@ -97,25 +97,21 @@ class LocustClient:
             ):
                 if exception and response.status_code != 0:
                     request_id = context["request_id"]
+                    # Set before reading .text: locust 2.18 raises on a
+                    # response with no charset instead of guessing one.
+                    response.encoding = "utf-8"
+                    err = FailedRequest(
+                        request_id=request_id,
+                        status_code=response.status_code,
+                        exception=response.text,
+                        response_time_ms=response_time,
+                        start_time_s=start_time,
+                    )
+                    self.errors.append(err)
                     print(
                         f"Request '{request_id}' failed with exception:\n"
                         f"{exception}\n{response.text}"
                     )
-
-                    if response.status_code != 0:
-                        response.encoding = "utf-8"
-                        err = FailedRequest(
-                            request_id=request_id,
-                            status_code=response.status_code,
-                            exception=response.text,
-                            response_time_ms=response_time,
-                            start_time_s=start_time,
-                        )
-                        self.errors.append(err)
-                        print(
-                            f"Request '{request_id}' failed with exception:\n"
-                            f"{exception}\n{response.text}"
-                        )
 
         self.user_class = EndpointUser
 

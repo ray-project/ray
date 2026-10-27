@@ -179,6 +179,10 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
     # Collect results and metrics
     stats: LocustTestResults = ray.get(master_ref)
     ray.get(worker_refs)
+    if stats.num_failures > 0:
+        raise RuntimeError(
+            f"{stats.num_failures} of {stats.total_requests} requests failed."
+        )
     return stats
 
 
