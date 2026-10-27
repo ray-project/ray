@@ -367,9 +367,11 @@ class Gauge(Metric):
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
+        # Record under the lock so concurrent updates export in the same order
+        # they are applied to _values.
         with self._values_lock:
+            self._record(value, tags)
             self._values[self._values_key(tags)] = value
-        self._record(value, tags)
 
     def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
         """Increment the gauge by `value` (defaults to 1).
@@ -389,8 +391,8 @@ class Gauge(Metric):
         with self._values_lock:
             key = self._values_key(tags)
             new_value = self._values.get(key, 0) + value
+            self._record(new_value, tags)
             self._values[key] = new_value
-        self._record(new_value, tags)
 
     def dec(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
         """Decrement the gauge by `value` (defaults to 1).
