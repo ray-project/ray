@@ -556,6 +556,10 @@ class DataOpTask(OpTask):
             # earlier abort); firing it twice would double-release the task's
             # resource reservations.
             return
+        # A task either failed (``exception`` set) or was aborted, never both:
+        # ``aborted`` is derived as ``exception is None``. Only a lineage-tracked
+        # task can be aborted, because reconstruction re-runs it and counts the
+        # replacement; any other task must report why it failed.
         assert exception is not None or self.is_lineage_tracked
         self._task_done_callback(
             exception,

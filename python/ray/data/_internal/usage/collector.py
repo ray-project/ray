@@ -46,7 +46,7 @@ _OOM_KILL_METRIC = "ray_memory_manager_worker_eviction_total"
 _UNEXPECTED_WORKER_KILL_METRIC = "ray_node_manager_unexpected_worker_failure_total"
 # Core worker counters for lost-object recovery and task retries.
 _OBJECT_RECOVERY_ATTEMPTS_METRIC = "ray_object_recovery_attempts_total"
-_TASK_SUBMISSIONS_METRIC = "ray_task_submissions_total"
+_TASK_RETRY_SUBMISSIONS_METRIC = "ray_task_retry_submissions_total"
 
 
 @dataclass(frozen=True)
@@ -87,11 +87,15 @@ class WorkloadInfo:
     plan_str_with_ids: Optional[str] = None
 
 
+# Execution settings by name, as collected from ``_EXECUTION_SETTINGS``. Values
+# are ``None`` or JSON scalars.
+ContextInfo = Dict[str, Any]
+
+
 @dataclass(frozen=True)
 class EnvInfo:
     pyarrow: Optional[str]
-    # Whitelisted execution settings (see ``_CONTEXT_WHITELIST``).
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: ContextInfo = field(default_factory=dict)
 
 
 # Metric names shared by the poller (metric-value keys), the execution callback,
@@ -174,10 +178,10 @@ OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 # Allows subclasses to add custom anonymization logic.
 OpNameFn = Callable[[LogicalOperator], str]
 
-# Execution settings recorded with each execution, keyed by name and mapped to
-# how to read them off the executor. Only add fields whose values are not
-# user-defined data (no paths, names, or free-form strings).
-_CONTEXT_WHITELIST: Dict[str, Callable[["StreamingExecutor"], Any]] = {
+# Settings the ``StreamingExecutor`` ran with, recorded with each execution and
+# keyed by name. Each maps to how to read it off the executor. Only add fields
+# whose values are not user-defined data (no paths, names, or free-form strings).
+_EXECUTION_SETTINGS: Dict[str, Callable[["StreamingExecutor"], Any]] = {
     "enable_ray_data_reconstruction": lambda executor: (
         executor.ray_data_reconstruction_enabled
     ),
@@ -272,13 +276,11 @@ def cluster_object_reconstruction_attempts() -> Optional[int]:
 
 
 def cluster_task_retries() -> Optional[int]:
-    """Cluster-wide cumulative retried task submissions from Prometheus, scoped
-    to this session. None if the query failed.
+    """Cluster-wide cumulative task retries from Prometheus, scoped to this
+    session. None if the query failed.
     """
     return query_prometheus_counter(
-        _session_scoped_metric_query(
-            _TASK_SUBMISSIONS_METRIC, _session_name(), {"IsRetry": "true"}
-        )
+        _session_scoped_metric_query(_TASK_RETRY_SUBMISSIONS_METRIC, _session_name())
     )
 
 
@@ -399,22 +401,22 @@ def collect_issues(
 def collect_env(executor: "StreamingExecutor") -> EnvInfo:
     return EnvInfo(
         pyarrow=_safe_version("pyarrow"),
-        context=collect_context(executor, _CONTEXT_WHITELIST),
+        context=collect_context(executor, _EXECUTION_SETTINGS),
     )
 
 
 def collect_context(
     executor: "StreamingExecutor",
     readers: Dict[str, Callable[["StreamingExecutor"], Any]],
-) -> Dict[str, Any]:
+) -> ContextInfo:
     """Read each field in ``readers`` off ``executor``. Values other than
-    ``None`` and JSON scalars are recorded as their string form. A field whose
-    reader raises is recorded as ``None``."""
-    result: Dict[str, Any] = {}
+    ``None`` and JSON scalars are recorded as their string form. A field the
+    executor doesn't have is recorded as ``None``."""
+    result: ContextInfo = {}
     for name, read in readers.items():
         try:
             value = read(executor)
-        except Exception:
+        except AttributeError:
             logger.debug(f"Failed to read context field {name}", exc_info=True)
             value = None
         result[name] = (

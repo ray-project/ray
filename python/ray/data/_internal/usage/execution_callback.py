@@ -59,9 +59,10 @@ class UsageCallback(ExecutionCallback):
         self._cluster_deltas: Optional[Dict[str, Optional[int]]] = None
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
-        # Set once collection starts, so per-step sampling skips the opt-out
-        # check and is a no-op when collection is disabled.
-        self._collecting = False
+        # Set once the start entry is recorded, so per-step sampling skips the
+        # opt-out check and is a no-op when collection is disabled or failed
+        # to start.
+        self._collection_enabled = False
         # Ray Data's object store usage, sampled on every scheduling loop step.
         self._object_store_memory = DistributionTracker()
         # Aggregates across operators, computed once at execution end.
@@ -77,12 +78,12 @@ class UsageCallback(ExecutionCallback):
             self._executor = executor
             self.on_collection_start(executor)
             collector.record_usage_info(self.build_usage_info())
-            self._collecting = True
+            self._collection_enabled = True
         except Exception:
             logger.debug("Usage collection failed at start", exc_info=True)
 
     def on_execution_step(self, executor: "StreamingExecutor") -> None:
-        if not self._collecting:
+        if not self._collection_enabled:
             return
         try:
             self._object_store_memory.add_sample(
@@ -107,7 +108,7 @@ class UsageCallback(ExecutionCallback):
         try:
             self._executor = executor
             self._finished = True
-            self._collecting = False
+            self._collection_enabled = False
             self.on_collection_end(executor, error)
             collector.record_usage_info(self.build_usage_info())
         except Exception:

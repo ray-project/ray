@@ -187,20 +187,25 @@ def test_executor_reconstruction_enabled_follows_lineage_tracker():
     assert executor.ray_data_reconstruction_enabled is True
 
 
-def test_context_field_reader_error_recorded_as_none():
+def test_execution_setting_missing_on_executor_recorded_as_none():
+    def missing(executor):
+        raise AttributeError("missing")
+
     def fail(executor):
         raise RuntimeError("boom")
 
-    assert collector.collect_context(MagicMock(), {"field": fail}) == {"field": None}
+    assert collector.collect_context(MagicMock(), {"field": missing}) == {"field": None}
+    with pytest.raises(RuntimeError):
+        collector.collect_context(MagicMock(), {"field": fail})
 
 
-def test_context_whitelist_reads_real_executor(reset_collector, mock_record):
-    """Every whitelisted reader works against a real ``StreamingExecutor``."""
+def test_execution_settings_read_real_executor(reset_collector, mock_record):
+    """Every execution setting reader works against a real ``StreamingExecutor``."""
     ray.data.range(1).materialize()
 
     _, payload_json = mock_record[-1]
     context = json.loads(payload_json)["executions"][0]["env"]["context"]
-    assert context.keys() == collector._CONTEXT_WHITELIST.keys()
+    assert context.keys() == collector._EXECUTION_SETTINGS.keys()
     assert None not in context.values()
 
 
@@ -479,7 +484,7 @@ def test_session_scoped_metric_query():
         ),
         (
             collector.cluster_task_retries,
-            "sum(ray_task_submissions_total{IsRetry='true',SessionName='s1'})",
+            "sum(ray_task_retry_submissions_total{SessionName='s1'})",
         ),
     ],
 )
