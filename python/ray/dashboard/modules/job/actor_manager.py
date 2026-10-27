@@ -1,9 +1,12 @@
 import asyncio
 import collections
+import concurrent.futures
 import contextlib
+import hashlib
 import importlib
 import inspect
 import io
+import json
 import logging
 import math
 import os
@@ -13,7 +16,7 @@ import time
 import traceback
 import types
 import uuid
-from typing import Any, Deque, Dict, List, Optional, Set
+from typing import Any, Deque, Dict, List, Optional, Set, Union
 
 import ray
 import ray._private.worker
@@ -86,15 +89,56 @@ def _validate_ttl_seconds(ttl_seconds: Any) -> Optional[float]:
     if ttl_seconds is None:
         return None
     if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, (int, float)):
-        raise ValueError(
-            f"ttl_seconds must be a finite number or None, got {ttl_seconds!r}."
-        )
+        raise ValueError(f"ttl_seconds must be > 0 or None, got {ttl_seconds!r}.")
     val = float(ttl_seconds)
-    if not math.isfinite(val) or val < 0:
-        raise ValueError(
-            f"ttl_seconds must be a non-negative finite number or None, got {ttl_seconds!r}."
-        )
+    if not math.isfinite(val) or val <= 0:
+        raise ValueError(f"ttl_seconds must be > 0 or None, got {ttl_seconds!r}.")
     return val
+
+
+def _validate_get_if_exists(get_if_exists: Any) -> Union[bool, str]:
+    if isinstance(get_if_exists, bool) or get_if_exists == "recreate":
+        return get_if_exists
+    raise ValueError(
+        f"get_if_exists must be True, False, or 'recreate', got {get_if_exists!r}."
+    )
+
+
+def _compute_spec_hash(
+    spec: Dict[str, Any],
+    kind: str,
+    target_name: str,
+    num_cpus: Any,
+    max_concurrency: Any,
+) -> str:
+    canonical = {
+        "kind": kind,
+        "target_name": target_name,
+        "module_source": spec.get("module_source"),
+        "module": spec.get("module"),
+        "captured_globals": spec.get("captured_globals") or {},
+        "args": spec.get("args") or [],
+        "kwargs": spec.get("kwargs") or {},
+        "runtime_env": spec.get("runtime_env") or {},
+        "num_cpus": (
+            float(num_cpus) if isinstance(num_cpus, (int, float)) else num_cpus
+        ),
+        "num_gpus": (
+            float(spec["num_gpus"])
+            if isinstance(spec.get("num_gpus"), (int, float))
+            else spec.get("num_gpus")
+        ),
+        "resources": spec.get("resources") or {},
+        "max_concurrency": (
+            int(max_concurrency)
+            if isinstance(max_concurrency, int)
+            else max_concurrency
+        ),
+    }
+    payload = json.dumps(
+        canonical, sort_keys=True, separators=(",", ":"), default=repr
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _format_exception_dict(exc: BaseException) -> Dict[str, Any]:
@@ -225,14 +269,22 @@ def _load_user_target(
     )
 
 
-async def _await_coro_catching_system_exit(coro: Any) -> Any:
+async def _await_coro_catching_system_exit(
+    coro: Any, task_holder: Optional[List[Any]] = None
+) -> Any:
+    if task_holder is not None:
+        task_holder.append(asyncio.current_task())
     try:
         return False, await coro
     except SystemExit as exc:
         return True, exc.code
 
 
-async def _anext_catching_system_exit(agen: Any) -> Any:
+async def _anext_catching_system_exit(
+    agen: Any, task_holder: Optional[List[Any]] = None
+) -> Any:
+    if task_holder is not None:
+        task_holder.append(asyncio.current_task())
     try:
         return "item", await agen.__anext__()
     except StopAsyncIteration:
@@ -266,6 +318,7 @@ class _ClientRootActor:
             spec.get("ttl_seconds", 1800.0)
         )
         self._ephemeral: bool = bool(spec.get("ephemeral", self._kind == "function"))
+        self._spec_hash: Optional[str] = spec.get("spec_hash")
         self._created_at: float = time.time()
         self._last_active: float = time.time()
         self._last_active_mono: float = time.monotonic()
@@ -274,6 +327,8 @@ class _ClientRootActor:
         self._cancelled_streams: Set[str] = set()
         self._placement_groups: List[Any] = []
         self._shutting_down = False
+        self._cleaned_up = False
+        self._cleanup_lock = threading.RLock()
 
         self._log_buffer: Deque[str] = collections.deque()
         self._log_lock = threading.Lock()
@@ -404,16 +459,43 @@ class _ClientRootActor:
                 return
 
     def _cleanup_resources(self) -> None:
-        with self._state_lock:
-            self._shutting_down = True
-            pgs = list(self._placement_groups)
-            self._placement_groups.clear()
-        for pg in pgs:
-            with contextlib.suppress(Exception):
-                ray.util.remove_placement_group(pg)
-        if self._async_loop is not None:
-            with contextlib.suppress(Exception):
-                self._async_loop.call_soon_threadsafe(self._async_loop.stop)
+        with self._cleanup_lock:
+            with self._state_lock:
+                if self._cleaned_up:
+                    return
+                self._cleaned_up = True
+                self._shutting_down = True
+                pgs = list(self._placement_groups)
+                self._placement_groups.clear()
+            if self._instance is not None:
+                try:
+                    close_fn = getattr(self._instance, "close", None)
+                    if callable(close_fn):
+                        res = close_fn()
+                        if inspect.iscoroutine(res):
+                            asyncio.run_coroutine_threadsafe(
+                                res, self._ensure_async_loop()
+                            ).result(timeout=_CONTROL_TIMEOUT_S)
+                    else:
+                        exit_fn = getattr(self._instance, "__exit__", None)
+                        if callable(exit_fn):
+                            res = exit_fn(None, None, None)
+                            if inspect.iscoroutine(res):
+                                asyncio.run_coroutine_threadsafe(
+                                    res, self._ensure_async_loop()
+                                ).result(timeout=_CONTROL_TIMEOUT_S)
+                except BaseException:
+                    logger.debug(
+                        "Error in user cleanup hook for actor '%s'",
+                        self._name,
+                        exc_info=True,
+                    )
+            for pg in pgs:
+                with contextlib.suppress(Exception):
+                    ray.util.remove_placement_group(pg)
+            if self._async_loop is not None:
+                with contextlib.suppress(Exception):
+                    self._async_loop.call_soon_threadsafe(self._async_loop.stop)
 
     def _ensure_async_loop(self) -> asyncio.AbstractEventLoop:
         with self._async_lock:
@@ -428,6 +510,38 @@ class _ClientRootActor:
                 self._async_loop = loop
                 self._async_thread = thread
             return self._async_loop
+
+    def _is_current_task_canceled(self) -> bool:
+        if self._shutting_down:
+            return True
+        with contextlib.suppress(Exception):
+            return bool(ray.get_runtime_context().is_canceled())
+        return False
+
+    def _wait_coroutine_future(
+        self,
+        fut: concurrent.futures.Future,
+        loop: asyncio.AbstractEventLoop,
+        task_holder: List[Any],
+        stream_id: Optional[str] = None,
+    ) -> Any:
+        while True:
+            try:
+                return fut.result(timeout=0.05)
+            except concurrent.futures.TimeoutError:
+                cancelled = self._is_current_task_canceled()
+                if not cancelled and stream_id is not None:
+                    with self._state_lock:
+                        cancelled = stream_id in self._cancelled_streams
+                if cancelled:
+                    if task_holder and task_holder[0] is not None:
+                        loop.call_soon_threadsafe(task_holder[0].cancel)
+                    else:
+                        fut.cancel()
+                    with contextlib.suppress(BaseException):
+                        fut.result(timeout=1.0)
+                    fut.cancel()
+                    raise asyncio.CancelledError("Task was cancelled")
 
     def _begin_call(self) -> None:
         with self._state_lock:
@@ -451,6 +565,10 @@ class _ClientRootActor:
                 return self._fn
             raise AttributeError(
                 f"Driver function '{self._target_name}' does not have method '{method_name}'."
+            )
+        if method_name.startswith("_") and method_name != "__call__":
+            raise AttributeError(
+                f"Cannot call private method '{method_name}' on actor '{self._name}'."
             )
         if not hasattr(self._instance, method_name):
             raise AttributeError(
@@ -479,6 +597,7 @@ class _ClientRootActor:
             "namespace": self._namespace,
             "status": "ALIVE",
             "ephemeral": self._ephemeral,
+            "spec_hash": self._spec_hash,
             "active_calls": active_calls,
             "ttl_seconds": ttl,
             "remaining_ttl_seconds": remaining_ttl,
@@ -519,22 +638,30 @@ class _ClientRootActor:
             target = self._resolve_callable(method_name)
             try:
                 if inspect.iscoroutinefunction(target):
+                    loop = self._ensure_async_loop()
+                    task_holder: List[Any] = []
                     fut = asyncio.run_coroutine_threadsafe(
-                        _await_coro_catching_system_exit(target(*args, **kwargs)),
-                        self._ensure_async_loop(),
+                        _await_coro_catching_system_exit(
+                            target(*args, **kwargs), task_holder
+                        ),
+                        loop,
                     )
-                    is_exit, val = fut.result()
+                    is_exit, val = self._wait_coroutine_future(fut, loop, task_holder)
                     if is_exit:
                         raise SystemExit(val)
                     res = val
                 else:
                     res = target(*args, **kwargs)
                     if inspect.iscoroutine(res):
+                        loop = self._ensure_async_loop()
+                        task_holder = []
                         fut = asyncio.run_coroutine_threadsafe(
-                            _await_coro_catching_system_exit(res),
-                            self._ensure_async_loop(),
+                            _await_coro_catching_system_exit(res, task_holder),
+                            loop,
                         )
-                        is_exit, val = fut.result()
+                        is_exit, val = self._wait_coroutine_future(
+                            fut, loop, task_holder
+                        )
                         if is_exit:
                             raise SystemExit(val)
                         res = val
@@ -551,7 +678,11 @@ class _ClientRootActor:
             )
             _validate_strict_json(res, label)
             return {"ok": True, "result": res}
-        except Exception as exc:
+        except (
+            Exception,
+            asyncio.CancelledError,
+            concurrent.futures.CancelledError,
+        ) as exc:
             return {
                 "ok": False,
                 "error": _format_exception_dict(exc),
@@ -583,10 +714,15 @@ class _ClientRootActor:
                     with self._state_lock:
                         if stream_id in self._cancelled_streams:
                             break
+                    if self._is_current_task_canceled():
+                        break
+                    task_holder: List[Any] = []
                     fut = asyncio.run_coroutine_threadsafe(
-                        _anext_catching_system_exit(gen), loop
+                        _anext_catching_system_exit(gen, task_holder), loop
                     )
-                    tag, item = fut.result()
+                    tag, item = self._wait_coroutine_future(
+                        fut, loop, task_holder, stream_id=stream_id
+                    )
                     if tag == "stop":
                         break
                     if tag == "exit":
@@ -598,10 +734,17 @@ class _ClientRootActor:
                         self._last_active_mono = time.monotonic()
                         if stream_id in self._cancelled_streams:
                             break
+                    if self._is_current_task_canceled():
+                        break
                     _validate_strict_json(item, label)
                     yield {"ok": True, "item": item}
             elif inspect.isgenerator(gen):
                 while True:
+                    with self._state_lock:
+                        if stream_id in self._cancelled_streams:
+                            break
+                    if self._is_current_task_canceled():
+                        break
                     try:
                         item = next(gen)
                     except StopIteration:
@@ -615,21 +758,29 @@ class _ClientRootActor:
                         self._last_active_mono = time.monotonic()
                         if stream_id in self._cancelled_streams:
                             break
+                    if self._is_current_task_canceled():
+                        break
                     _validate_strict_json(item, label)
                     yield {"ok": True, "item": item}
                     with self._state_lock:
                         if stream_id in self._cancelled_streams:
                             break
+                    if self._is_current_task_canceled():
+                        break
             else:
                 raise TypeError(
                     f"'{self._target_name}.{method_name}' is not a generator function."
                 )
-        except GeneratorExit:
+        except (
+            GeneratorExit,
+            asyncio.CancelledError,
+            concurrent.futures.CancelledError,
+        ):
             pass
         except Exception as exc:
             with self._state_lock:
                 cancelled = stream_id in self._cancelled_streams
-            if not cancelled:
+            if not cancelled and not self._is_current_task_canceled():
                 yield {
                     "ok": False,
                     "error": _format_exception_dict(exc),
@@ -760,6 +911,7 @@ class ActorManager:
                 "kind": info.get("kind", "class"),
                 "namespace": info.get("namespace", CLIENT_ACTOR_NAMESPACE),
                 "ephemeral": bool(info.get("ephemeral", False)),
+                "spec_hash": info.get("spec_hash"),
                 "ttl_seconds": ttl,
                 "created_at": info.get("created_at", time.time()),
                 "last_active": info.get("last_active", time.time()),
@@ -772,6 +924,35 @@ class ActorManager:
             return meta
         except Exception:
             return None
+
+    async def _terminate_actor_for_recreate(
+        self, name: str, namespace: str, no_restart: bool = True
+    ) -> bool:
+        async with self._lock:
+            meta = self._actors.pop(name, None)
+        handle = meta["handle"] if meta is not None else None
+        if handle is None:
+            try:
+                handle = ray.get_actor(name, namespace=namespace)
+            except Exception:
+                return False
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(handle.shutdown.remote(), timeout=2.0)
+        try:
+            ray.kill(handle, no_restart=no_restart)
+        except ValueError:
+            if meta is None:
+                return False
+        except Exception:
+            pass
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            try:
+                ray.get_actor(name, namespace=namespace)
+            except Exception:
+                break
+            await asyncio.sleep(0.02)
+        return True
 
     async def create_actor(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         self._ensure_reaper()
@@ -789,27 +970,43 @@ class ActorManager:
                     "exc_message": "Actor spec must specify 'class_name' or 'fn_name'.",
                 },
             }
+        has_explicit_ttl = "ttl_seconds" in spec
         try:
             ttl_seconds = _validate_ttl_seconds(
-                spec["ttl_seconds"] if "ttl_seconds" in spec else 1800.0
+                spec["ttl_seconds"] if has_explicit_ttl else 1800.0
             )
+            get_if_exists = _validate_get_if_exists(spec.get("get_if_exists", True))
         except ValueError as exc:
             return {"ok": False, "error": _format_exception_dict(exc)}
 
         name = spec.get("name") or f"{target_name}_{uuid.uuid4().hex[:8]}"
         # Driver functions are single-use: the call that runs them also kills them.
         ephemeral = bool(spec.get("ephemeral", kind == "function"))
+        num_cpus = spec.get("num_cpus")
+        if num_cpus is None:
+            num_cpus = 0 if kind == "function" else 1
+        max_concurrency = (
+            spec["max_concurrency"] if spec.get("max_concurrency") is not None else 10
+        )
+        spec_hash = _compute_spec_hash(
+            spec, kind, target_name, num_cpus, max_concurrency
+        )
         spec = dict(
-            spec, name=name, kind=kind, ttl_seconds=ttl_seconds, ephemeral=ephemeral
+            spec,
+            name=name,
+            kind=kind,
+            ttl_seconds=ttl_seconds,
+            ephemeral=ephemeral,
+            spec_hash=spec_hash,
         )
         namespace = spec.get("namespace") or CLIENT_ACTOR_NAMESPACE
-        get_if_exists = bool(spec.get("get_if_exists", True))
 
         name_lock = await self._get_name_lock(name)
         async with name_lock:
-            if get_if_exists:
+            if get_if_exists in (True, "recreate"):
                 existing = await self._lookup_actor(name)
                 if existing is not None:
+                    recreate_existing = False
                     try:
                         info = await asyncio.wait_for(
                             existing["handle"].get_info.remote(),
@@ -818,11 +1015,20 @@ class ActorManager:
                         existing_cls = info.get("class_name") or existing.get(
                             "class_name"
                         )
-                        if (
+                        existing_hash = info.get("spec_hash") or existing.get(
+                            "spec_hash"
+                        )
+                        class_mismatch = bool(
                             spec.get("class_name")
                             and existing_cls
                             and existing_cls != target_name
-                        ):
+                        )
+                        spec_mismatch = bool(
+                            class_mismatch or existing_hash != spec_hash
+                        )
+                        if get_if_exists == "recreate" and spec_mismatch:
+                            recreate_existing = True
+                        elif class_mismatch:
                             return {
                                 "ok": False,
                                 "error": {
@@ -833,37 +1039,35 @@ class ActorManager:
                                     ),
                                 },
                             }
-                        if "ttl_seconds" in spec:
-                            info = await asyncio.wait_for(
-                                existing["handle"].set_ttl.remote(ttl_seconds),
-                                timeout=_CONTROL_TIMEOUT_S,
+                        else:
+                            if has_explicit_ttl:
+                                info = await asyncio.wait_for(
+                                    existing["handle"].set_ttl.remote(ttl_seconds),
+                                    timeout=_CONTROL_TIMEOUT_S,
+                                )
+                                existing["ttl_seconds"] = ttl_seconds
+                            existing["generator_methods"] = set(
+                                info.get("generator_methods") or []
                             )
-                            existing["ttl_seconds"] = ttl_seconds
-                        existing["generator_methods"] = set(
-                            info.get("generator_methods") or []
-                        )
-                        existing["last_active"] = time.time()
-                        existing["last_active_mono"] = time.monotonic()
-                        return {
-                            **info,
-                            "ok": True,
-                            "name": name,
-                            "created": False,
-                        }
+                            existing["last_active"] = time.time()
+                            existing["last_active_mono"] = time.monotonic()
+                            return {
+                                **info,
+                                "ok": True,
+                                "name": name,
+                                "created": False,
+                                "spec_hash": existing_hash or spec_hash,
+                                "spec_mismatch": spec_mismatch,
+                            }
                     except Exception:
-                        async with self._lock:
-                            self._actors.pop(name, None)
+                        recreate_existing = True
+                    if recreate_existing:
+                        await self._terminate_actor_for_recreate(name, namespace)
+                elif get_if_exists == "recreate":
+                    await self._terminate_actor_for_recreate(name, namespace)
 
             handle = None
             try:
-                num_cpus = spec.get("num_cpus")
-                if num_cpus is None:
-                    num_cpus = 0 if kind == "function" else 1
-                max_concurrency = (
-                    spec["max_concurrency"]
-                    if spec.get("max_concurrency") is not None
-                    else 10
-                )
                 options: Dict[str, Any] = {
                     "name": name,
                     "namespace": namespace,
@@ -902,6 +1106,7 @@ class ActorManager:
                         "kind": kind,
                         "namespace": namespace,
                         "ephemeral": ephemeral,
+                        "spec_hash": spec_hash,
                         "ttl_seconds": ttl_seconds,
                         "created_at": now,
                         "last_active": now,
@@ -914,6 +1119,8 @@ class ActorManager:
                     "ok": True,
                     "name": name,
                     "created": True,
+                    "spec_hash": spec_hash,
+                    "spec_mismatch": False,
                 }
             except Exception as exc:
                 if handle is not None:
@@ -959,6 +1166,7 @@ class ActorManager:
                     "kind": meta.get("kind", "class"),
                     "namespace": meta.get("namespace", CLIENT_ACTOR_NAMESPACE),
                     "status": "ALIVE",
+                    "spec_hash": meta.get("spec_hash"),
                     "active_calls": meta.get("active_calls", 0),
                     "ttl_seconds": meta.get("ttl_seconds"),
                     "created_at": meta.get("created_at"),
@@ -1029,7 +1237,7 @@ class ActorManager:
                 return await obj_ref
             except asyncio.TimeoutError:
                 with contextlib.suppress(Exception):
-                    ray.cancel(obj_ref, recursive=False)
+                    ray.cancel(obj_ref, force=False, recursive=True)
                 return {
                     "ok": False,
                     "error": {
@@ -1043,7 +1251,7 @@ class ActorManager:
             except asyncio.CancelledError:
                 # The caller went away, e.g. the HTTP client disconnected.
                 with contextlib.suppress(Exception):
-                    ray.cancel(obj_ref, recursive=False)
+                    ray.cancel(obj_ref, force=False, recursive=True)
                 raise
             except Exception as exc:
                 return {"ok": False, "error": _format_exception_dict(exc)}
@@ -1137,30 +1345,20 @@ class ActorManager:
                     with contextlib.suppress(Exception):
                         handle.cancel_stream.remote(stream_id)
                     with contextlib.suppress(Exception):
-                        ray.cancel(gen, recursive=False)
+                        ray.cancel(gen, force=False, recursive=True)
                 if ephemeral:
                     await self._reap_ephemeral(name)
 
     async def kill_actor(
         self, name: str, no_restart: bool = True
     ) -> Optional[Dict[str, Any]]:
-        async with self._lock:
-            meta = self._actors.pop(name, None)
-            self._name_locks.pop(name, None)
-        handle = meta["handle"] if meta is not None else None
-        if handle is None:
-            try:
-                handle = ray.get_actor(name, namespace=CLIENT_ACTOR_NAMESPACE)
-            except ValueError:
-                return None
-        with contextlib.suppress(Exception):
-            await asyncio.wait_for(handle.shutdown.remote(), timeout=2.0)
-        try:
-            ray.kill(handle, no_restart=no_restart)
-        except ValueError:
+        name_lock = await self._get_name_lock(name)
+        async with name_lock:
+            killed = await self._terminate_actor_for_recreate(
+                name, CLIENT_ACTOR_NAMESPACE, no_restart=no_restart
+            )
+        if not killed:
             return None
-        except Exception:
-            pass
         return {"ok": True, "name": name, "killed": True}
 
 

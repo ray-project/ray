@@ -16,6 +16,7 @@ import types
 import unittest
 import urllib.parse
 import uuid
+import warnings
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -44,6 +45,15 @@ from ray_client.packaging import (
     extract_function_source_and_globals,
 )
 
+from ray.dashboard.modules.job.actor_manager import (
+    _ClientRootActor,
+    _compute_spec_hash,
+    _load_user_target,
+    _LogTeeStream,
+    _validate_get_if_exists,
+    _validate_ttl_seconds,
+)
+
 GLOBAL_SCALE = 42
 
 
@@ -64,6 +74,28 @@ class _MockClusterState:
         self.job_logs_gets = 0
         self.lock = threading.Lock()
 
+    def _cleanup_actor_locked(self, act: Optional[Dict[str, Any]]) -> None:
+        if not act or act.get("cleaned_up"):
+            return
+        act["cleaned_up"] = True
+        inst = act.get("instance")
+        if inst is None:
+            return
+        try:
+            close_fn = getattr(inst, "close", None)
+            if callable(close_fn):
+                res = close_fn()
+                if inspect.iscoroutine(res):
+                    import asyncio
+
+                    asyncio.run(res)
+            else:
+                exit_fn = getattr(inst, "__exit__", None)
+                if callable(exit_fn):
+                    exit_fn(None, None, None)
+        except Exception:
+            pass
+
     def check_ttls_locked(self) -> None:
         now = time.monotonic()
         for name, act in list(self.actors.items()):
@@ -74,7 +106,8 @@ class _MockClusterState:
                 and act.get("active_calls", 0) == 0
                 and (now - act["last_active"]) >= ttl
             ):
-                self.actors.pop(name, None)
+                popped = self.actors.pop(name, None)
+                self._cleanup_actor_locked(popped)
 
 
 class _MockJobServerHandler(BaseHTTPRequestHandler):
@@ -249,6 +282,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         "status": "ALIVE",
                         "active_calls": act.get("active_calls", 0),
                         "ttl_seconds": act["ttl_seconds"],
+                        "spec_hash": act.get("spec_hash", ""),
                     }
                     for name, act in self.state.actors.items()
                 ]
@@ -275,6 +309,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                             "status": "ALIVE",
                             "active_calls": act.get("active_calls", 0),
                             "ttl_seconds": act["ttl_seconds"],
+                            "spec_hash": act.get("spec_hash", ""),
                         },
                     )
                     return
@@ -317,7 +352,9 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             actor_name = path[len("/api/actors/") :]
             with self.state.lock:
                 self.state.check_ttls_locked()
-                existed = self.state.actors.pop(actor_name, None) is not None
+                popped = self.state.actors.pop(actor_name, None)
+                existed = popped is not None
+                self.state._cleanup_actor_locked(popped)
             self._send_json(200 if existed else 404, {"ok": existed, "killed": existed})
             return
         self._send_json(404, {"error": "unknown endpoint"})
@@ -368,21 +405,68 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             with self.state.lock:
                 self.state.last_created_actor_spec = dict(body)
                 self.state.check_ttls_locked()
-                if body.get("get_if_exists", True) and name in self.state.actors:
-                    act = self.state.actors[name]
-                    act["last_active"] = time.monotonic()
-                    self._send_json(
-                        200,
-                        {
-                            "ok": True,
-                            "name": name,
-                            "class_name": act["class_name"],
-                            "created": False,
-                        },
-                    )
-                    return
 
                 try:
+                    ttl_seconds = _validate_ttl_seconds(body.get("ttl_seconds", 1800.0))
+                    get_if_exists = _validate_get_if_exists(
+                        body.get("get_if_exists", True)
+                    )
+                    num_cpus = body.get("num_cpus")
+                    if num_cpus is None:
+                        num_cpus = 0 if kind == "function" else 1
+                    max_concurrency = (
+                        int(body["max_concurrency"])
+                        if body.get("max_concurrency") is not None
+                        else 10
+                    )
+                    spec_hash = _compute_spec_hash(
+                        body,
+                        kind,
+                        target_name,
+                        num_cpus,
+                        max_concurrency,
+                    )
+
+                    if name in self.state.actors:
+                        if get_if_exists is False:
+                            raise ValueError(
+                                f"Actor '{name}' already exists. Pass get_if_exists=True "
+                                "or use cluster.get_actor() to reattach."
+                            )
+                        act = self.state.actors[name]
+                        spec_mismatch = bool(
+                            act.get("spec_hash") and act.get("spec_hash") != spec_hash
+                        )
+                        class_mismatch = bool(
+                            act.get("class_name")
+                            and act.get("class_name") != target_name
+                        )
+                        if get_if_exists == "recreate" and (
+                            spec_mismatch or class_mismatch
+                        ):
+                            popped = self.state.actors.pop(name, None)
+                            self.state._cleanup_actor_locked(popped)
+                        else:
+                            if class_mismatch:
+                                raise ValueError(
+                                    f"Actor '{name}' already exists with class "
+                                    f"'{act['class_name']}', cannot reattach as "
+                                    f"'{target_name}'."
+                                )
+                            act["last_active"] = time.monotonic()
+                            self._send_json(
+                                200,
+                                {
+                                    "ok": True,
+                                    "name": name,
+                                    "class_name": act["class_name"],
+                                    "created": False,
+                                    "spec_hash": act.get("spec_hash", ""),
+                                    "spec_mismatch": spec_mismatch,
+                                },
+                            )
+                            return
+
                     work_dir, env_vars = self._unpack_actor_runtime_env_locked(
                         name, body.get("runtime_env")
                     )
@@ -392,7 +476,8 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         "kind": kind,
                         "ephemeral": ephemeral,
                         "class_name": target_name,
-                        "ttl_seconds": body.get("ttl_seconds", 1800.0),
+                        "spec_hash": spec_hash,
+                        "ttl_seconds": ttl_seconds,
                         "last_active": time.monotonic(),
                         "active_calls": 0,
                         "work_dir": work_dir,
@@ -439,6 +524,8 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                             "name": name,
                             "class_name": target_name,
                             "created": True,
+                            "spec_hash": spec_hash,
+                            "spec_mismatch": False,
                         },
                     )
                 except Exception as exc:
@@ -487,6 +574,10 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     if act["kind"] == "function":
                         target_callable = act["fn"]
                     else:
+                        if method_name.startswith("_") and method_name != "__call__":
+                            raise AttributeError(
+                                f"Cannot call private method '{method_name}' on actor '{actor_name}'."
+                            )
                         target_callable = getattr(act["instance"], method_name)
 
                     out = self._exec_in_actor_env(act, target_callable, args, kwargs)
@@ -539,7 +630,8 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         act["active_calls"] = max(0, act.get("active_calls", 1) - 1)
                         act["last_active"] = time.monotonic()
                         if act.get("ephemeral") or body.get("ephemeral"):
-                            self.state.actors.pop(actor_name, None)
+                            popped = self.state.actors.pop(actor_name, None)
+                            self.state._cleanup_actor_locked(popped)
                 return
 
         self._send_json(404, {"error": "unknown endpoint"})
@@ -1292,6 +1384,12 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             def __init__(self, init_val: int = 0):
                 self.val = init_val + offset
 
+            def _secret(self) -> int:
+                return 999
+
+            def __call__(self, bonus: int = 0) -> int:
+                return self.val + bonus
+
             def make_batch(self, count: int) -> list:
                 return [self.val + i for i in range(count)]
 
@@ -1308,6 +1406,14 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         self.assertEqual(captured, {"GLOBAL_SCALE": 42, "offset": 5})
 
         cluster = RayCluster(address=self.address)
+        # Validate client-side rejection of ttl_seconds <= 0 and invalid get_if_exists
+        for bad_ttl in (0, 0.0, -5.0, float("nan"), float("inf"), True):
+            with self.assertRaises(ValueError):
+                cluster.actor(Accumulator, 1, ttl_seconds=bad_ttl)
+        for bad_gie in ("force", 1, None):
+            with self.assertRaises(ValueError):
+                cluster.actor(Accumulator, 1, get_if_exists=bad_gie)  # type: ignore[arg-type]
+
         a1 = cluster.actor(Accumulator, 10, name="acc_a", ttl_seconds=60.0)
         self.assertIsNotNone(self.state.last_created_actor_spec)
         self.assertEqual(self.state.last_created_actor_spec["num_cpus"], 1)
@@ -1316,10 +1422,55 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         self.assertIsInstance(a1, ActorHandle)
         self.assertTrue(a1.created)
 
-        # Reattaching to existing actor
+        # Reattaching with identical spec emits no warning
+        with warnings.catch_warnings(record=True) as caught_same:
+            warnings.simplefilter("always")
+            a1_same = cluster.actor(Accumulator, 10, name="acc_a", ttl_seconds=60.0)
+        self.assertFalse(a1_same.created)
+        self.assertEqual(len(caught_same), 0)
+
+        # Reattaching with different spec (init_val=50 vs 10) emits UserWarning
+        with warnings.catch_warnings(record=True) as caught_diff:
+            warnings.simplefilter("always")
+            a1_mismatch = cluster.actor(
+                Accumulator, 50, name="acc_a", ttl_seconds=60.0, get_if_exists=True
+            )
+        self.assertFalse(a1_mismatch.created)
+        self.assertEqual(len(caught_diff), 1)
+        self.assertIs(caught_diff[0].category, UserWarning)
+        self.assertIn("differ from the requested spec", str(caught_diff[0].message))
+        self.assertIn("get_if_exists='recreate'", str(caught_diff[0].message))
+        # State on the cluster was preserved (10 + 5 = 15, not 50 + 5 = 55)
+        self.assertEqual(a1_mismatch.make_batch(1), [15])
+
+        # get_if_exists="recreate" replaces the actor when spec differs, and reattaches when identical
+        a1_recreated = cluster.actor(
+            Accumulator, 50, name="acc_a", ttl_seconds=60.0, get_if_exists="recreate"
+        )
+        self.assertTrue(a1_recreated.created)
+        self.assertEqual(a1_recreated.make_batch(1), [55])
+
+        a1_reattach_after = cluster.actor(
+            Accumulator, 50, name="acc_a", ttl_seconds=60.0, get_if_exists="recreate"
+        )
+        self.assertFalse(a1_reattach_after.created)
+        # Switch back to init_val=10 for remaining checks
+        a1 = cluster.actor(
+            Accumulator, 10, name="acc_a", ttl_seconds=60.0, get_if_exists="recreate"
+        )
+        self.assertTrue(a1.created)
+
+        # Reattaching to existing actor via get_actor
         a1_re = cluster.get_actor("acc_a")
         self.assertFalse(a1_re.created)
         self.assertEqual(len(cluster.list_actors()), 2)
+
+        # __call__ is allowed, while private _secret is rejected with AttributeError
+        self.assertEqual(a1.call("__call__", 5), 20)
+        with self.assertRaises(RayJobExecutionError) as priv_ctx:
+            a1.call("_secret")
+        self.assertEqual(priv_ctx.exception.exc_type, "AttributeError")
+        self.assertIn("Cannot call private method '_secret'", str(priv_ctx.exception))
 
         batch_a = a1.make_batch(3)
         self.assertEqual(batch_a, [15, 16, 17])
@@ -1337,6 +1488,14 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
         self.assertTrue(a1.kill())
         self.assertTrue(a2.kill())
+
+        # ActorHandle context manager (`with cluster.actor(...) as ctx_act:`) kills actor on exit
+        with cluster.actor(Accumulator, 7, name="scoped_ctx_actor") as ctx_act:
+            self.assertEqual(ctx_act.make_batch(1), [12])
+            self.assertIn(
+                "scoped_ctx_actor", [a["name"] for a in cluster.list_actors()]
+            )
+        self.assertNotIn("scoped_ctx_actor", [a["name"] for a in cluster.list_actors()])
 
         # Idle TTL cleanup test (only reaps when active_calls == 0)
         short_actor = cluster.actor(
@@ -1359,13 +1518,6 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         import linecache
         import typing
         from os import path as osp
-
-        from ray.dashboard.modules.job.actor_manager import (
-            _ClientRootActor,
-            _load_user_target,
-            _LogTeeStream,
-            _validate_ttl_seconds,
-        )
 
         # 1. P6: Dotted annotations (datetime.date), callable annotations, get_type_hints, and os.path
         class _LocalPkg:
@@ -1574,12 +1726,18 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     "tpu-workers", replicas=2, resources={"TPU": 4}
                 )
 
-        # 9. P10, P12, P16: Direct unit tests for _LogTeeStream, _validate_ttl_seconds, _ClientRootActor
-        for bad_ttl in (-1.0, float("nan"), float("inf"), True):
+        # 9. P10, P12, P16: Direct unit tests for _LogTeeStream, _validate_ttl_seconds, _validate_get_if_exists, _ClientRootActor
+        for bad_ttl in (0, 0.0, -1.0, float("nan"), float("inf"), True):
             with self.assertRaises(ValueError):
                 _validate_ttl_seconds(bad_ttl)
         self.assertIsNone(_validate_ttl_seconds(None))
-        self.assertEqual(_validate_ttl_seconds(0), 0.0)
+        self.assertEqual(_validate_ttl_seconds(1.5), 1.5)
+
+        for good_gie in (True, False, "recreate"):
+            self.assertEqual(_validate_get_if_exists(good_gie), good_gie)
+        for bad_gie in ("force", 1, 0, None):
+            with self.assertRaises(ValueError):
+                _validate_get_if_exists(bad_gie)
 
         from collections import deque
 
@@ -1592,6 +1750,8 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
         # Verify _ClientRootActor catches SystemExit in async methods and generators without crashing,
         # does not evaluate @property getters when scanning for generator methods during __init__,
+        # cancels async coroutines / async generators when _is_current_task_canceled() or cancel_stream() triggers,
+        # rejects private _method calls while allowing __call__, invokes user close() / __exit__() once on shutdown,
         # and _install_ray_hooks isolates child actors in f"ray_client_{name}" while falling back
         # to "ray_client" on ray.get_actor(name).
         import ray._private.worker
@@ -1626,19 +1786,51 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             raise ValueError(f"Actor {name!r} not found in namespace {namespace!r}")
 
         async_src = (
+            "import asyncio\n"
+            "EVENTS = []\n"
             "class AsyncExitActor:\n"
             "    @property\n"
             "    def boom_prop(self):\n"
             "        raise RuntimeError('property getter should not run during __init__')\n"
+            "    def _private_helper(self):\n"
+            "        return 'secret'\n"
+            "    def __call__(self, x: int) -> int:\n"
+            "        return x + 1\n"
+            "    def read_events(self):\n"
+            "        return list(EVENTS)\n"
             "    async def exit_zero(self):\n"
             "        raise SystemExit(0)\n"
             "    async def exit_nonzero(self):\n"
             "        raise SystemExit(3)\n"
+            "    async def cancellable_sleep(self):\n"
+            "        try:\n"
+            "            await asyncio.sleep(10.0)\n"
+            "        except asyncio.CancelledError:\n"
+            "            EVENTS.append('coro_cancelled_swallowed')\n"
+            "            return 'swallowed_value'\n"
+            "    async def cancellable_async_gen(self):\n"
+            "        try:\n"
+            "            yield {'step': 0}\n"
+            "            await asyncio.sleep(10.0)\n"
+            "        except asyncio.CancelledError:\n"
+            "            EVENTS.append('agen_cancelled')\n"
+            "            raise\n"
             "    def gen_exit(self):\n"
             "        yield {'step': 1}\n"
             "        raise SystemExit(4)\n"
+            "    async def close(self):\n"
+            "        EVENTS.append('async_closed')\n"
+        )
+        exit_ctx_src = (
+            "import time\n"
+            "CTX_EVENTS = []\n"
+            "class ContextExitActor:\n"
+            "    def __exit__(self, exc_type, exc_val, exc_tb):\n"
+            "        time.sleep(0.12)\n"
+            "        CTX_EVENTS.append(('exit', exc_type, exc_val, exc_tb))\n"
         )
         root_act = None
+        ctx_act = None
         try:
             ray.get_actor = fake_get_actor
             ActorClass._remote = fake_actor_remote
@@ -1704,11 +1896,97 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertFalse(res_nonzero["ok"])
             self.assertEqual(res_nonzero["error"]["exc_type"], "SystemExit")
 
+            # Private method rejection vs __call__ allowance
+            res_call = root_act.invoke("__call__", [41], {})
+            self.assertEqual(res_call, {"ok": True, "result": 42})
+            res_priv = root_act.invoke("_private_helper", [], {})
+            self.assertFalse(res_priv["ok"])
+            self.assertEqual(res_priv["error"]["exc_type"], "AttributeError")
+            self.assertIn(
+                "Cannot call private method '_private_helper'",
+                res_priv["error"]["exc_message"],
+            )
+
+            # Async coroutine cancellation when _is_current_task_canceled() becomes True
+            # (even when the coroutine catches CancelledError and returns a fallback value)
+            cancel_flag = [False]
+            with patch.object(
+                root_act,
+                "_is_current_task_canceled",
+                side_effect=lambda: cancel_flag[0],
+            ):
+                t_cancel = threading.Timer(
+                    0.06, lambda: cancel_flag.__setitem__(0, True)
+                )
+                t_cancel.start()
+                t0 = time.monotonic()
+                res_canc = root_act.invoke("cancellable_sleep", [], {})
+                elapsed = time.monotonic() - t0
+                t_cancel.cancel()
+            self.assertLess(elapsed, 2.0)
+            self.assertFalse(res_canc["ok"])
+            self.assertIn(
+                "coro_cancelled_swallowed",
+                root_act.invoke("read_events", [], {})["result"],
+            )
+
+            # Async generator cancellation when cancel_stream() is called while awaiting
+            agen_iter = root_act.invoke_stream(
+                "cancellable_async_gen", [], {}, "stream_cancel_1"
+            )
+            first_frame = next(agen_iter)
+            self.assertEqual(first_frame, {"ok": True, "item": {"step": 0}})
+            t_stream_cancel = threading.Timer(
+                0.06, lambda: root_act.cancel_stream("stream_cancel_1")
+            )
+            t_stream_cancel.start()
+            t0 = time.monotonic()
+            remaining_frames = list(agen_iter)
+            elapsed_stream = time.monotonic() - t0
+            t_stream_cancel.cancel()
+            self.assertLess(elapsed_stream, 2.0)
+            self.assertEqual(remaining_frames, [])
+            self.assertIn(
+                "agen_cancelled",
+                root_act.invoke("read_events", [], {})["result"],
+            )
+
             gen_frames = list(root_act.invoke_stream("gen_exit", [], {}, "s1"))
             self.assertEqual(gen_frames[0], {"ok": True, "item": {"step": 1}})
             self.assertFalse(gen_frames[1]["ok"])
             self.assertEqual(gen_frames[1]["error"]["exc_type"], "SystemExit")
+
+            # Verify async close() runs exactly once across multiple _cleanup_resources() / shutdown() calls
+            mod_events = sys.modules[root_act._instance.__class__.__module__].EVENTS
+            root_act._cleanup_resources()
+            root_act.shutdown()
+            self.assertEqual(mod_events.count("async_closed"), 1)
+
+            # Verify __exit__(None, None, None) fallback when close() is not defined,
+            # and verify a concurrent shutdown() call waits until _cleanup_resources() completes
+            ctx_act = _ClientRootActor(
+                {
+                    "name": "test_ctx_exit",
+                    "kind": "class",
+                    "class_name": "ContextExitActor",
+                    "module_source": exit_ctx_src,
+                    "ttl_seconds": None,
+                }
+            )
+            ctx_mod_events = sys.modules[
+                ctx_act._instance.__class__.__module__
+            ].CTX_EVENTS
+            t_bg_cleanup = threading.Thread(target=ctx_act._cleanup_resources)
+            t_bg_cleanup.start()
+            time.sleep(0.02)
+            # Calling shutdown() while _cleanup_resources() is sleeping inside __exit__
+            # must block until __exit__ has appended to CTX_EVENTS
+            ctx_act.shutdown()
+            self.assertEqual(ctx_mod_events, [("exit", None, None, None)])
+            t_bg_cleanup.join(timeout=1.0)
         finally:
+            if ctx_act is not None:
+                ctx_act.shutdown()
             if root_act is not None:
                 root_act.shutdown()
             sys.stdout, sys.stderr = orig_stdout, orig_stderr

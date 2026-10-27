@@ -77,6 +77,12 @@ class ActorHandle:
             is_actor_method=True,
         )
 
+    def __enter__(self) -> "ActorHandle":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.kill()
+
     def kill(self) -> bool:
         resp = self._cluster.request("DELETE", f"/api/actors/{self._name}")
         if resp.status_code == 404:

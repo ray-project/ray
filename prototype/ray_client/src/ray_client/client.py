@@ -3,10 +3,12 @@
 import copy
 import inspect
 import json
+import math
 import os
 import threading
 import time
 import uuid
+import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -147,6 +149,25 @@ def _parse_entrypoint_str(target: str, kind: str) -> Tuple[str, str]:
             f"{kind} string entrypoint must be 'module:name' or 'module.name', got {target!r}."
         )
     return mod_path.strip(), attr_name.strip()
+
+
+def _validate_ttl_seconds(ttl_seconds: Any) -> Optional[float]:
+    if ttl_seconds is None:
+        return None
+    if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, (int, float)):
+        raise ValueError(f"ttl_seconds must be > 0 or None, got {ttl_seconds!r}.")
+    val = float(ttl_seconds)
+    if not math.isfinite(val) or val <= 0:
+        raise ValueError(f"ttl_seconds must be > 0 or None, got {ttl_seconds!r}.")
+    return val
+
+
+def _validate_get_if_exists(get_if_exists: Any) -> Union[bool, str]:
+    if isinstance(get_if_exists, bool) or get_if_exists == "recreate":
+        return get_if_exists
+    raise ValueError(
+        f"get_if_exists must be True, False, or 'recreate', got {get_if_exists!r}."
+    )
 
 
 class JobResult:
@@ -1075,10 +1096,12 @@ class RayCluster:
         resources: Optional[Dict[str, float]] = None,
         max_concurrency: Optional[int] = None,
         ttl_seconds: Optional[float] = 1800.0,
-        get_if_exists: bool = True,
+        get_if_exists: Union[bool, str] = True,
         timeout: Optional[float] = None,
     ) -> ActorHandle:
         """Deploys or reattaches to a persistent top-level Ray Actor on `/api/actors`."""
+        validated_ttl = _validate_ttl_seconds(ttl_seconds)
+        validated_get_if_exists = _validate_get_if_exists(get_if_exists)
         default_opts = (
             getattr(cls_or_path, "_default_options", None)
             if not isinstance(cls_or_path, str)
@@ -1155,11 +1178,21 @@ class RayCluster:
             "num_gpus": num_gpus,
             "resources": resources,
             "max_concurrency": resolved_concurrency,
-            "ttl_seconds": ttl_seconds,
-            "get_if_exists": get_if_exists,
+            "ttl_seconds": validated_ttl,
+            "get_if_exists": validated_get_if_exists,
         }
         spec = {k: v for k, v in spec.items() if v is not None or k == "ttl_seconds"}
         data = self._deploy_actor_spec(spec, actor_name, timeout=timeout)
+        if data.get("spec_mismatch"):
+            warnings.warn(
+                f"Reattached to existing actor '{data['name']}', but its source, "
+                "arguments, or resource configuration differ from the requested spec "
+                "(the existing actor was not updated). Pass get_if_exists='recreate' "
+                "to automatically replace stale actors, get_if_exists=False to require "
+                f"a new actor, or call cluster.kill_actor({data['name']!r}) first.",
+                UserWarning,
+                stacklevel=2,
+            )
         return ActorHandle(
             name=data["name"],
             cluster=self,

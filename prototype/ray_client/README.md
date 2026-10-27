@@ -4,14 +4,16 @@
 
 | Method | What you pass | How it runs | Use-case |
 | :--- | :--- | :--- | :--- |
-| `cluster.submit_job("python job.py")` | Shell command | Submits entrypoint script to `/api/jobs/` as a Ray Job, returning a `JobResult` handle (`status()`, `logs()`, `wait()`, `stop()`) | Existing CLI scripts, replaces `JobSubmissionClient` |
-| `cluster.run(fn, ...)` | Python function | Packages function source and runs it in an ephemeral top-level Ray Actor (`num_cpus=0` by default) on `/api/actors`, returning JSON (or streaming yielded JSON items over SSE for generators) | Self-contained functions or generators that run once to completion |
-| `cluster.actor(Cls, ...)` | Python class | Instantiates class as a persistent top-level Ray Actor (`num_cpus=1` by default) on `/api/actors` across calls | Interactive notebooks or agents needing persistent state, SSE generator streaming, and concurrent mid-run steering |
+| `cluster.submit_job("python job.py")` | Shell command | Submits an entrypoint script to `/api/jobs/` as a Ray Job and returns a `JobResult` handle. | Existing CLI scripts (replaces `JobSubmissionClient`). |
+| `cluster.run(fn, ...)` | Python function | Runs `fn` in an ephemeral Ray Actor (`num_cpus=0` by default) on `/api/actors`, returning JSON or an SSE stream. | Self-contained functions or generators that run once to completion. |
+| `cluster.actor(Cls, ...)` | Python class | Deploys `Cls` as a persistent Ray Actor (`num_cpus=1` by default) on `/api/actors` across calls. | Interactive notebooks or agents needing persistent state, SSE streaming, and concurrent mid-run steering. |
 
 ## Prerequisites
 
-- Client environment: Python 3.9+ and `requests>=2.28.0` (no `ray` or `cloudpickle` required on the client).
-- Cluster environment: A running Ray cluster with the Ray Dashboard HTTP server reachable on port `8265` by default.
+The client and cluster require the following setup:
+
+- **Client environment**: Python 3.9+ and `requests>=2.28.0`, with no `ray` or `cloudpickle` dependency on the client.
+- **Cluster environment**: A running Ray cluster with the Ray Dashboard HTTP server reachable on port `8265`.
 
 Install in editable mode from this directory:
 
@@ -43,14 +45,20 @@ def main(n: int) -> dict:
 class Trainer:
     def __init__(self, lr: float = 1e-3):
         self.lr = lr
+        self.step = 0
+        self.loss = 1.0
+
+    def train_step(self) -> dict:
+        self.step += 1
+        self.loss = 1.0 / self.step
+        return self.get_metrics()
+
+    def get_metrics(self) -> dict:
+        return {"step": self.step, "loss": self.loss, "lr": self.lr}
 
     def update_lr(self, lr: float) -> dict:
         self.lr = lr
         return {"lr": self.lr}
-
-    def train_steps(self, steps: int):
-        for step in range(steps):
-            yield {"step": step, "loss": 1.0 / (step + 1), "lr": self.lr}
 
 
 cluster = RayCluster("http://127.0.0.1:8265")
@@ -59,22 +67,29 @@ cluster = RayCluster("http://127.0.0.1:8265")
 result = cluster.run(main, 4)
 print(result)  # {"sum": 60, "values": [0, 10, 20, 30]}
 
-# 2. Stateful actor session with SSE streaming and mid-run steering
-trainer = cluster.actor(Trainer, kwargs={"lr": 1e-3}, name="exp-1")
-for metrics in trainer.train_steps(100):
-    if metrics["step"] == 20:
-        trainer.update_lr(1e-4)
-    if metrics["loss"] < 0.02:
-        break
-trainer.kill()
+# 2. Stateful actor session with step-by-step monitoring and mid-run steering
+with cluster.actor(
+    Trainer, kwargs={"lr": 1e-3}, name="exp-1", get_if_exists="recreate"
+) as trainer:
+    for _ in range(100):
+        metrics = trainer.train_step()
+        if metrics["step"] == 20:
+            trainer.update_lr(1e-4)
+        if metrics["loss"] < 0.02:
+            break
 ```
 
 ## Cluster execution
 
-- **Head-node driver scheduling (`num_cpus=0`)**: `cluster.run(fn, ...)` defaults to `num_cpus=0`. Any root actor with `num_cpus=0` and no GPU, memory, custom resource, or label-selector options is scheduled on the head node (unless `RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES=1`, matching `submit_job`), so driver functions start immediately on `num-cpus=0` head nodes and never steal CPUs from worker placement groups. When a call completes or the client disconnects mid-call, the server kills ephemeral `run()` actors outright; on persistent `actor()` sessions (`num_cpus=1` by default), a client disconnect cancels the call if it has not started yet and stops a generator at its next `yield` (a synchronous method already executing runs to completion).
-- **Child namespace isolation**: Non-detached child actors created in the root actor process default to a per-actor Ray namespace (`ray_client_<name>`), while `lifetime="detached"` child actors default to `"ray_client"` and `ray.get_actor(name)` checks `ray_client_<name>` before falling back to `"ray_client"`. Isolation and fallback apply to actors created and looked up in the root actor process; nested tasks or child actors must pass `namespace=` explicitly (for example, forwarding `ray.get_runtime_context().namespace` from the root).
-- **Root actor log scope**: `GET /api/actors/{name}/logs` (`actor.logs()`) captures `stdout` and `stderr` of the root actor process, whereas `submit_job` (`job.logs()`) aggregates logs across all job workers.
-- **Cluster activity reporting**: Active `/api/actors` sessions report cluster activity to `/api/component_activities` so auto-terminating clusters do not shut down while `run()` or `actor()` workloads are active.
+The Ray Dashboard runs `run()` and `actor()` workloads in top-level Ray Actors on `/api/actors`:
+
+- **Head-node driver scheduling (`num_cpus=0`)**: `cluster.run(fn, ...)` defaults to `num_cpus=0`. Root actors with `num_cpus=0` and no placement options run on the head node unless `RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES=1` is set. This matches `submit_job` and reserves worker CPUs for placement groups.
+- **Disconnect and timeout cancellation**: Ephemeral `run()` actors are killed when a call finishes or the client disconnects. On persistent `actor()` sessions, a disconnect or timeout calls `ray.cancel(..., recursive=True)` to cancel queued calls, active `async` coroutines, generators, and child tasks.
+- **Stale actor detection (`get_if_exists`)**: Named actors compute a SHA-256 `spec_hash` over their source, arguments, `runtime_env`, and resources. Reattaching with `get_if_exists=True` emits a `UserWarning` on a mismatch, whereas `get_if_exists="recreate"` replaces the actor when `spec_hash` changes.
+- **Graceful teardown (`close()`, `ttl_seconds`)**: Using `with cluster.actor(...) as actor:` kills the actor on block exit. Before an actor is killed or reaped by idle `ttl_seconds`, it runs user-defined `close()` or `__exit__()` hooks and removes owned placement groups and child actors.
+- **Child namespace isolation**: Non-detached child actors created in the root actor process use namespace `ray_client_<name>`, while detached child actors use `"ray_client"`. `ray.get_actor(name)` in the root process checks `ray_client_<name>` before falling back to `"ray_client"`; nested tasks and child actors must pass `namespace=` explicitly.
+- **Root actor log scope**: `actor.logs()` (`GET /api/actors/{name}/logs`) returns `stdout` and `stderr` from the root actor process. `job.logs()` (`submit_job`) aggregates logs across all job workers.
+- **Cluster activity reporting**: Active `/api/actors` sessions report activity to `/api/component_activities` so auto-terminating clusters stay alive while `run()` or `actor()` workloads are running.
 
 ## Running tests
 

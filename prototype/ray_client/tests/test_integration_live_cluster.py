@@ -4,18 +4,26 @@ Run with:
     RAY_LIVE_CLUSTER_ADDRESS=http://127.0.0.1:8265 pytest prototype/ray_client/tests/
 """
 
+import asyncio
 import math
 import os
 import sys
 import tempfile
 import time
 import unittest
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List
 
-from ray_client import ActorHandle, JobResult, RayCluster, RayJobExecutionError
+from ray_client import (
+    ActorHandle,
+    JobResult,
+    RayCluster,
+    RayJobExecutionError,
+    RayJobTimeoutError,
+)
 
 import ray
 
@@ -315,10 +323,29 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         self.assertIn("about to crash inside driver actor", ctx.exception.logs)
 
     def test_stateful_actor_steering_early_break_cancel_logs_and_idle_ttl(self):
+        class EventRecorder:
+            def __init__(self):
+                self.events = []
+
+            def record(self, event: str) -> int:
+                self.events.append(event)
+                return len(self.events)
+
+            def get_events(self) -> list:
+                return list(self.events)
+
         class Trainer:
-            def __init__(self, lr: float = 1e-3):
+            def __init__(self, lr: float = 1e-3, tag: str = "v1"):
                 self.lr = lr
+                self.tag = tag
                 self.steps_executed = 0
+                self.async_cancelled = 0
+
+            def _secret(self) -> str:
+                return "hidden"
+
+            def __call__(self, x: int) -> int:
+                return x + 1
 
             def update_lr(self, lr: float) -> dict:
                 self.lr = lr
@@ -326,11 +353,34 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 return {"lr": self.lr}
 
             def get_state(self) -> dict:
-                return {"lr": self.lr, "steps_executed": self.steps_executed}
+                return {
+                    "lr": self.lr,
+                    "tag": self.tag,
+                    "steps_executed": self.steps_executed,
+                    "async_cancelled": self.async_cancelled,
+                }
 
             def slow_call(self, duration: float) -> str:
                 time.sleep(duration)
                 return "done"
+
+            async def cancellable_async_sleep(self, duration: float) -> str:
+                try:
+                    await asyncio.sleep(duration)
+                    return "completed"
+                except asyncio.CancelledError:
+                    self.async_cancelled += 1
+                    raise
+
+            def spawn_blocking_child_task(self, duration: float) -> str:
+                import ray
+
+                @ray.remote(num_cpus=0)
+                def child_sleeper(sec: float) -> str:
+                    time.sleep(sec)
+                    return "finished"
+
+                return ray.get(child_sleeper.remote(duration))
 
             def train_steps(self, steps: int):
                 for step in range(steps):
@@ -342,16 +392,107 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                     }
                     time.sleep(0.12)
 
+            def close(self) -> None:
+                import ray
+
+                try:
+                    rec = ray.get_actor("live_cleanup_recorder")
+                    ray.get(rec.invoke.remote("record", [f"closed:{self.tag}"], {}))
+                except Exception:
+                    pass
+
+        with self.assertRaises(ValueError):
+            self.cluster.actor(Trainer, ttl_seconds=0)
+
+        recorder = self.cluster.actor(
+            EventRecorder,
+            name="live_cleanup_recorder",
+            get_if_exists="recreate",
+        )
         trainer = self.cluster.actor(
             Trainer,
-            kwargs={"lr": 1e-3},
+            kwargs={"lr": 1e-3, "tag": "v1"},
             name="live_trainer",
             ttl_seconds=60.0,
-            get_if_exists=False,
+            get_if_exists="recreate",
         )
         self.assertIsInstance(trainer, ActorHandle)
         try:
-            # 1. Concurrent mid-run steering + early-break SSE cancellation
+            # 1. Private method rejection vs __call__ allowance
+            self.assertEqual(trainer.call("__call__", 9), 10)
+            with self.assertRaises(RayJobExecutionError) as priv_ctx:
+                trainer.call("_secret")
+            self.assertEqual(priv_ctx.exception.exc_type, "AttributeError")
+            self.assertIn(
+                "Cannot call private method '_secret'", str(priv_ctx.exception)
+            )
+
+            # 2. Stale actor warning on get_if_exists=True vs replacement on get_if_exists="recreate"
+            with warnings.catch_warnings(record=True) as caught_same:
+                warnings.simplefilter("always")
+                same_trainer = self.cluster.actor(
+                    Trainer,
+                    kwargs={"lr": 1e-3, "tag": "v1"},
+                    name="live_trainer",
+                    ttl_seconds=60.0,
+                    get_if_exists=True,
+                )
+            self.assertFalse(same_trainer.created)
+            self.assertEqual(len(caught_same), 0)
+
+            with warnings.catch_warnings(record=True) as caught_diff:
+                warnings.simplefilter("always")
+                stale_reattach = self.cluster.actor(
+                    Trainer,
+                    kwargs={"lr": 5e-4, "tag": "v2"},
+                    name="live_trainer",
+                    ttl_seconds=60.0,
+                    get_if_exists=True,
+                )
+            self.assertFalse(stale_reattach.created)
+            self.assertEqual(len(caught_diff), 1)
+            self.assertIs(caught_diff[0].category, UserWarning)
+            self.assertIn("differ from the requested spec", str(caught_diff[0].message))
+            self.assertEqual(stale_reattach.get_state()["tag"], "v1")
+
+            # Recreate replaces v1 (running v1's close() hook) and deploys v2
+            trainer = self.cluster.actor(
+                Trainer,
+                kwargs={"lr": 1e-3, "tag": "v2"},
+                name="live_trainer",
+                ttl_seconds=60.0,
+                get_if_exists="recreate",
+            )
+            self.assertTrue(trainer.created)
+            self.assertEqual(trainer.get_state()["tag"], "v2")
+            self.assertIn("closed:v1", recorder.get_events())
+
+            # Calling get_if_exists="recreate" with identical v2 spec reattaches without recreating
+            reattached_v2 = self.cluster.actor(
+                Trainer,
+                kwargs={"lr": 1e-3, "tag": "v2"},
+                name="live_trainer",
+                ttl_seconds=60.0,
+                get_if_exists="recreate",
+            )
+            self.assertFalse(reattached_v2.created)
+
+            # 3. Async coroutine cancellation on timeout runs except asyncio.CancelledError on cluster
+            with self.assertRaises(RayJobTimeoutError):
+                trainer.cancellable_async_sleep.call(30.0, timeout=0.35)
+            time.sleep(0.25)
+            self.assertEqual(trainer.get_state()["async_cancelled"], 1)
+
+            # 4. Recursive child @ray.remote task cancellation on timeout unblocks ray.get()
+            t0 = time.monotonic()
+            with self.assertRaises(RayJobTimeoutError):
+                trainer.spawn_blocking_child_task.call(30.0, timeout=0.35)
+            time.sleep(0.3)
+            # Actor is immediately responsive and active_calls returns to 0
+            self.assertLess(time.monotonic() - t0, 5.0)
+            self.assertEqual(trainer.info()["active_calls"], 0)
+
+            # 5. Concurrent mid-run steering + early-break SSE cancellation
             seen = []
             for metrics in trainer.train_steps(50):
                 seen.append(metrics)
@@ -376,22 +517,87 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         finally:
             trainer.kill()
 
-        # 2. Verify ttl_seconds does not kill actor while a call is active (active_calls > 0)
+        # Verify trainer.kill() invoked v2's close() hook
+        self.assertIn("closed:v2", recorder.get_events())
+
+        # 6. ActorHandle context manager (`with self.cluster.actor(...) as ctx_trainer:`),
+        # including immediate reuse of the same name with get_if_exists=False
+        with self.cluster.actor(
+            Trainer,
+            kwargs={"lr": 2e-3, "tag": "ctx_scoped_1"},
+            name="ctx_scoped_trainer",
+            get_if_exists=False,
+        ) as ctx_trainer:
+            self.assertEqual(ctx_trainer.get_state()["tag"], "ctx_scoped_1")
+        with self.cluster.actor(
+            Trainer,
+            kwargs={"lr": 3e-3, "tag": "ctx_scoped_2"},
+            name="ctx_scoped_trainer",
+            get_if_exists=False,
+        ) as ctx_trainer_2:
+            self.assertEqual(ctx_trainer_2.get_state()["tag"], "ctx_scoped_2")
+        self.assertNotIn(
+            "ctx_scoped_trainer", [a["name"] for a in self.cluster.list_actors()]
+        )
+        self.assertIn("closed:ctx_scoped_1", recorder.get_events())
+        self.assertIn("closed:ctx_scoped_2", recorder.get_events())
+
+        # 7. Concurrent get_if_exists="recreate" calls and replacing an external detached actor
+        def spawn_external_detached_actor(name: str) -> str:
+            import ray
+
+            @ray.remote(num_cpus=0)
+            class ExternalDetached:
+                def ping(self) -> str:
+                    return "external"
+
+            act = ExternalDetached.options(name=name, lifetime="detached").remote()
+            assert ray.get(act.ping.remote()) == "external"
+            return name
+
+        self.cluster.run(spawn_external_detached_actor, "recreate_race_target")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f1 = pool.submit(
+                self.cluster.actor,
+                Trainer,
+                kwargs={"lr": 1e-3, "tag": "race_a"},
+                name="recreate_race_target",
+                get_if_exists="recreate",
+            )
+            f2 = pool.submit(
+                self.cluster.actor,
+                Trainer,
+                kwargs={"lr": 2e-3, "tag": "race_b"},
+                name="recreate_race_target",
+                get_if_exists="recreate",
+            )
+            h1, h2 = f1.result(), f2.result()
+        try:
+            self.assertIn(h1.get_state()["tag"], ("race_a", "race_b"))
+            self.assertEqual(h1.name, h2.name)
+        finally:
+            h1.kill()
+
+        # 8. Verify ttl_seconds does not kill actor while a call is active (active_calls > 0),
+        # and runs user close() hook when reaped on idle TTL expiry.
         busy_actor = self.cluster.actor(
             Trainer,
+            kwargs={"lr": 1e-3, "tag": "ttl_reaped"},
             name="busy_ttl_actor",
             ttl_seconds=0.6,
-            get_if_exists=False,
+            get_if_exists="recreate",
         )
         try:
             # Run a 1.0s call (> 0.6s TTL): must succeed without being reaped mid-call
             self.assertEqual(busy_actor.slow_call(1.0), "done")
-            # Once idle for > 0.6s, actor is automatically reaped
+            # Once idle for > 0.6s, actor is automatically reaped and close() runs
             time.sleep(0.9)
             active_names = [a["name"] for a in self.cluster.list_actors()]
             self.assertNotIn("busy_ttl_actor", active_names)
+            self.assertIn("closed:ttl_reaped", recorder.get_events())
         finally:
             busy_actor.kill()
+            recorder.kill()
 
     def test_examples_run_end_to_end(self):
         examples_dir = Path(__file__).resolve().parents[1] / "examples"
