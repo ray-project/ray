@@ -95,6 +95,7 @@ from ray.util.state.common import (
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_cli import (
     AvailableFormat,
+    _get_terminal_width,
     _normalize_filter_keys,
     _parse_filter,
     format_list_api_output,
@@ -731,6 +732,21 @@ def test_list_nodes_truncates_node_id_only_when_terminal_is_narrow(monkeypatch):
     assert lines[1].startswith("057ae870... ")
     assert lines[2].startswith("657faaaa... ")
     assert all(len(line) <= 100 for line in lines)
+
+
+@pytest.mark.parametrize("fileno", [None, 3])
+def test_terminal_width_with_non_callable_stdout_fileno(monkeypatch, fileno):
+    """A replaced stdout whose `fileno` is not callable is treated as not a
+    terminal instead of crashing the CLI."""
+
+    class FakeStdout:
+        pass
+
+    fake = FakeStdout()
+    fake.fileno = fileno
+    monkeypatch.delenv("COLUMNS", raising=False)
+    monkeypatch.setattr(sys, "stdout", fake)
+    assert _get_terminal_width() is None
 
 
 def test_list_nodes_table_does_not_mutate_rows(monkeypatch):

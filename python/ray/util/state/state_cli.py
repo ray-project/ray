@@ -246,7 +246,7 @@ def _get_terminal_width() -> Optional[int]:
             pass
     try:
         return os.get_terminal_size(sys.stdout.fileno()).columns
-    except (AttributeError, ValueError, OSError):
+    except (AttributeError, TypeError, ValueError, OSError):
         return None
 
 
