@@ -2949,27 +2949,6 @@
     timeout: 1800
     script: python experimental/rdt_single_node_microbenchmark.py
 
-# Cross-node copy of rdt_single_node_T4_microbenchmark_torch_cu133: two 1-GPU
-# nodes, so every NCCL transfer goes over the network between nodes.
-- name: rdt_T4_2x1_microbenchmark_torch_cu133
-  python: "3.11"
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: torch-cu133
-    cluster_compute: experimental/compute_t4_gpu_2x1_aws.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/rdt_single_node_microbenchmark.py
-    wait_for_nodes:
-      num_nodes: 2
-
 - name: rdt_single_node_A100_microbenchmark
   python: "3.12"
   group: core-daily-test
