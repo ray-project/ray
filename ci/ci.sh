@@ -46,8 +46,8 @@ compile_pip_dependencies() {
 
   (
     cd "${WORKSPACE_DIR}"
-    # Match the uv that raydepsets pins (uv_x86_64-linux in WORKSPACE).
-    pip install "uv==0.9.26"
+    # uv 0.13.4 bundles webpki roots without the compromised eMudhra CAs.
+    pip install "uv==0.13.4"
 
     # uv writes whatever index it used into the lockfile. Keep CI's temporary
     # mirror URL out, or the regenerated file stops matching the committed one.
@@ -95,7 +95,7 @@ compile_pip_dependencies_py314() {
 
   (
     cd "${WORKSPACE_DIR}"
-    pip install "uv==0.9.26"
+    pip install "uv==0.13.4"
 
     # Ray images are glibc 2.35 (Ubuntu 22.04), hence manylinux_2_35.
     env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
