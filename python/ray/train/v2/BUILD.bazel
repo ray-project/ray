@@ -671,24 +671,8 @@ py_test(
 
 py_test(
     name = "test_scheduling",
-    size = "medium",
-    srcs = ["tests/test_scheduling.py"],
-    env = _TRAIN_V2_TEST_ENV,
-    tags = [
-        "exclusive",
-        "team:ml",
-        "train_v2",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_scheduling_regressions",
     size = "large",
-    srcs = ["tests/test_scheduling_regressions.py"],
+    srcs = ["tests/test_scheduling.py"],
     env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
