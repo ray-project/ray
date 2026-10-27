@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections import Counter
 from typing import List, Set
 
 import httpx
@@ -75,7 +76,7 @@ class TestMultiplexWrapper:
         multiplexer = _ModelMultiplexWrapper(None, None, max_num_models_per_replica=1)
         multiplexer.models = {"1": "1", "2": "2"}
         assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == ["1", "2"]
-        multiplexer._model_load_tasks = {"3"}
+        multiplexer._model_load_tasks = Counter({"3": 1})
         assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == [
             "1",
             "2",
@@ -310,16 +311,64 @@ class TestMultiplexWrapper:
         await asyncio.sleep(0.1)
         waiter = loop.create_task(multiplexer.load_model("1"))
         await asyncio.sleep(0.1)
+        # The loading ID has been pushed.
+        multiplexer._push_multiplexed_replica_info = False
 
         waiter.cancel()
         with pytest.raises(asyncio.CancelledError):
             await waiter
-        # The first request is still loading "1".
+        # The first request is still loading "1", so the pushed IDs are unchanged.
         assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+        assert not multiplexer._push_multiplexed_replica_info
 
         release.set()
         assert await loader == "1"
         assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+        assert not multiplexer._push_multiplexed_replica_info
+
+    async def test_failed_eviction_pushes_with_queued_request(
+        self, start_serve_with_context
+    ):
+        """An evicted model is re-pushed even if its unload fails while another
+        request for the incoming model is queued."""
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+                self.fail_unload = model_id == "1"
+
+            def __del__(self):
+                # Fail only the eviction, not the later garbage collection.
+                if self.fail_unload:
+                    self.fail_unload = False
+                    raise RuntimeError("unload failed")
+
+        async def model_load_func(model_id: str) -> MyModel:
+            return MyModel(model_id)
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+        await multiplexer.load_model("1")
+
+        # Queue two requests for "2" behind the cache lock.
+        loop = get_or_create_event_loop()
+        await multiplexer._model_cache_lock.acquire()
+        evicting = loop.create_task(multiplexer.load_model("2"))
+        queued = loop.create_task(multiplexer.load_model("2"))
+        await asyncio.sleep(0.1)
+        # The loading ID has been pushed.
+        multiplexer._push_multiplexed_replica_info = False
+        multiplexer._model_cache_lock.release()
+
+        # The first request evicts "1", whose unload fails.
+        with pytest.raises(RuntimeError, match="unload failed"):
+            await evicting
+        assert (await queued).model_id == "2"
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["2"]
+        # "1" left the cache, so it must be pushed again.
+        assert multiplexer._push_multiplexed_replica_info
 
 
 class TestBasicAPI:

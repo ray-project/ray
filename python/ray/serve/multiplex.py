@@ -212,7 +212,6 @@ class _ModelMultiplexWrapper:
                         ):
                             # Unload the least recently used model.
                             await self.unload_model_lru()
-                            self._push_multiplexed_replica_info = True
 
                         # Load the model.
                         logger.debug(f"Loading model '{model_id}'.")
@@ -255,6 +254,9 @@ class _ModelMultiplexWrapper:
         self.models_unload_counter.inc()
         unload_start_time = time.time()
         model_id, model = self.models.popitem(last=False)
+        # The model left the cache, so push even if its unload fails or is
+        # cancelled.
+        self._push_multiplexed_replica_info = True
         logger.debug(f"Unloading model '{model_id}'.")
 
         # If the model has __del__ attribute, call it.
