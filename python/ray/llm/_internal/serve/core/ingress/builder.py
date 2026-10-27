@@ -1,6 +1,6 @@
 import os
 import pprint
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Mapping, Optional, Type, Union
 
 from pydantic import Field, field_validator, model_validator
 
@@ -20,6 +20,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
@@ -28,7 +29,10 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
-from ray.serve._private.constants import RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
+)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -161,6 +165,26 @@ class IngressClsConfig(BaseModelExtended):
         return value
 
 
+def _parse_llm_configs(
+    value: List[Union[str, dict, LLMConfig]],
+) -> List[LLMConfig]:
+    llm_configs = []
+    for config in value:
+        if isinstance(config, str):
+            if not os.path.exists(config):
+                raise ValueError(
+                    f"Could not load model config from {config}, as the file does not exist."
+                )
+            llm_configs.append(LLMConfig.from_file(config))
+        elif isinstance(config, dict):
+            llm_configs.append(LLMConfig.model_validate(config))
+        elif isinstance(config, LLMConfig):
+            llm_configs.append(config)
+        else:
+            raise TypeError(f"Invalid LLMConfig type: {type(config)}")
+    return llm_configs
+
+
 class LLMServingArgs(BaseModelExtended):
     llm_configs: List[Union[str, dict, LLMConfig]] = Field(
         description="A list of LLMConfigs, or dicts representing LLMConfigs, or paths to yaml files defining LLMConfigs.",
@@ -190,21 +214,7 @@ class LLMServingArgs(BaseModelExtended):
     def _validate_llm_configs(
         cls, value: List[Union[str, dict, LLMConfig]]
     ) -> List[LLMConfig]:
-        llm_configs = []
-        for config in value:
-            if isinstance(config, str):
-                if not os.path.exists(config):
-                    raise ValueError(
-                        f"Could not load model config from {config}, as the file does not exist."
-                    )
-                llm_configs.append(LLMConfig.from_file(config))
-            elif isinstance(config, dict):
-                llm_configs.append(LLMConfig.model_validate(config))
-            elif isinstance(config, LLMConfig):
-                llm_configs.append(config)
-            else:
-                raise TypeError(f"Invalid LLMConfig type: {type(config)}")
-        return llm_configs
+        return _parse_llm_configs(value)
 
     @model_validator(mode="after")
     def _validate_model_ids(self):
@@ -310,4 +320,84 @@ def build_openai_app(builder_config: dict) -> Application:
         model_cards=model_cards,
         lora_paths=lora_paths,
         **ingress_cls_config.ingress_extra_kwargs,
+    )
+
+
+def _validate_model_applications(
+    model_applications: Mapping[str, str],
+) -> Dict[str, str]:
+    if not isinstance(model_applications, Mapping):
+        raise TypeError(
+            "model_applications must be a mapping of model IDs to app names."
+        )
+
+    result = dict(model_applications)
+    if not result:
+        raise ValueError("model_applications must contain at least one model.")
+    for model_id, application_name in result.items():
+        if not isinstance(model_id, str) or not model_id:
+            raise ValueError("Model IDs must be nonempty strings.")
+        if not isinstance(application_name, str) or not application_name:
+            raise ValueError("Application names must be nonempty strings.")
+    if len(set(result.values())) != len(result):
+        raise ValueError("Each model must reference a different Serve application.")
+    return result
+
+
+class OpenAIRouterArgs(BaseModelExtended):
+    """Configuration for the multi-application OpenAI router."""
+
+    model_applications: Dict[str, str]
+    llm_configs: List[Union[str, dict, LLMConfig]]
+
+    @field_validator("model_applications", mode="before")
+    @classmethod
+    def _validate_mapping(cls, value: Any) -> Dict[str, str]:
+        return _validate_model_applications(value)
+
+    @field_validator("llm_configs")
+    @classmethod
+    def _validate_llm_configs(
+        cls, value: List[Union[str, dict, LLMConfig]]
+    ) -> List[LLMConfig]:
+        return _parse_llm_configs(value)
+
+    @model_validator(mode="after")
+    def _validate_model_configs(self):
+        if any(config.lora_config is not None for config in self.llm_configs):
+            raise ValueError("build_openai_router_app does not support LoRA configs.")
+
+        config_model_ids = [config.model_id for config in self.llm_configs]
+        if len(set(config_model_ids)) != len(config_model_ids):
+            raise ValueError("Duplicate models found. Make sure model ids are unique.")
+        if set(config_model_ids) != set(self.model_applications):
+            raise ValueError(
+                "llm_configs must contain exactly one config for each model in "
+                "model_applications."
+            )
+        return self
+
+
+def build_openai_router_app(
+    router_args: dict,
+) -> Application:
+    """Build a router for independently deployed OpenAI model applications."""
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        raise ValueError(
+            "build_openai_router_app requires HAProxy. Set "
+            "RAY_SERVE_ENABLE_HA_PROXY=1 on the Ray cluster."
+        )
+    if not RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        raise ValueError(
+            "build_openai_router_app requires direct streaming. Set "
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 on the Ray cluster."
+        )
+
+    args = OpenAIRouterArgs.model_validate(router_args)
+    return serve.deployment(
+        RouterApplication,
+        **RouterApplication.get_deployment_options(),
+    ).bind(
+        model_applications=args.model_applications,
+        llm_configs=args.llm_configs,
     )
