@@ -595,60 +595,82 @@ def get_cgroup_used_memory(
     return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
-def get_cgroup_mem_stats() -> Optional[Tuple[int, int]]:
+def get_cgroup_mem_stats(
+    cgroup_v1_root: str = "/sys/fs/cgroup/memory",
+    cgroup_v2_root: str = "/sys/fs/cgroup",
+    proc_self_cgroup_filename: str = PROC_SELF_CGROUP_FILENAME,
+) -> Optional[Tuple[int, int]]:
+    """Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
+
+    Supports both cgroups v1 and v2. Usage is read from the cgroup that holds
+    the smallest limit between the process's cgroup and the root, so it
+    matches the limit ``get_system_memory()`` returns. Total is capped at the
+    host physical memory.
+
+    Args:
+        cgroup_v1_root: The cgroup v1 memory controller mount.
+        cgroup_v2_root: The cgroup v2 mount.
+        proc_self_cgroup_filename: The ``/proc/self/cgroup`` file used to
+            resolve the process's own cgroup.
+
+    Returns:
+        ``(used_bytes, total_bytes)``, or ``None`` when no cgroup accounting
+        applies to the process.
     """
-    Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
-
-    Supports both cgroups v1 and v2. Total is capped at the host physical
-    memory.
-    """
-    mem_usage_v1_file = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
-    mem_stat_v1_file = "/sys/fs/cgroup/memory/memory.stat"
-    mem_limit_v1_file = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-    mem_usage_v2_file = "/sys/fs/cgroup/memory.current"
-    mem_stat_v2_file = "/sys/fs/cgroup/memory.stat"
-    mem_limit_v2_file = "/sys/fs/cgroup/memory.max"
-
-    cgroup_used = None
-    cgroup_total = None
-    system_total = get_system_memory()
-
-    if os.path.exists(mem_usage_v1_file) and os.path.exists(mem_stat_v1_file):
-        cgroup_used = get_cgroup_used_memory(
-            mem_stat_v1_file,
-            mem_usage_v1_file,
+    system_total = get_system_memory(
+        memory_limit_filename=os.path.join(cgroup_v1_root, "memory.limit_in_bytes"),
+        memory_limit_filename_v2=os.path.join(cgroup_v2_root, "memory.max"),
+        proc_self_cgroup_filename=proc_self_cgroup_filename,
+    )
+    hierarchies = (
+        # root, controller, usage, stat, limit, inactive key, active key
+        (
+            cgroup_v1_root,
+            "memory",
+            "memory.usage_in_bytes",
+            "memory.stat",
+            "memory.limit_in_bytes",
             "total_inactive_file",
             "total_active_file",
+        ),
+        (
+            cgroup_v2_root,
+            None,
+            "memory.current",
+            "memory.stat",
+            "memory.max",
+            "inactive_file",
+            "active_file",
+        ),
+    )
+    for root, controller, usage, stat, limit, inactive_key, active_key in hierarchies:
+        if controller is not None and not os.path.exists(os.path.join(root, usage)):
+            continue
+        if controller is None and not is_cgroup_v2_root(root):
+            continue
+        # The cgroup with the smallest limit is the one the kernel enforces,
+        # so its usage is the one to compare against that limit.
+        binding, binding_limit = None, None
+        for cgroup_dir in get_cgroup_dirs(root, controller, proc_self_cgroup_filename):
+            value = read_cgroup_file(os.path.join(cgroup_dir, limit))
+            if value is None or not value.isnumeric():
+                continue
+            if binding_limit is None or int(value) < binding_limit:
+                binding, binding_limit = cgroup_dir, int(value)
+        if binding is None:
+            # No limit on any level: keep the root accounting, as before.
+            binding = root
+        stat_file = os.path.join(binding, stat)
+        usage_file = os.path.join(binding, usage)
+        if not (os.path.exists(stat_file) and os.path.exists(usage_file)):
+            return None
+        used = get_cgroup_used_memory(stat_file, usage_file, inactive_key, active_key)
+        if used is None:
+            return None
+        total = (
+            system_total if binding_limit is None else min(binding_limit, system_total)
         )
-        try:
-            with open(mem_limit_v1_file, "r") as f:
-                cgroup_total = min(int(f.read().strip()), system_total)
-        except Exception as exception:
-            logger.warning(
-                f"Failed to obtain current container memory limit from {mem_limit_v1_file}: {repr(exception)}. "
-                "Falling back to system total memory."
-            )
-            cgroup_total = system_total
-    elif os.path.exists(mem_usage_v2_file) and os.path.exists(mem_stat_v2_file):
-        cgroup_used = get_cgroup_used_memory(
-            mem_stat_v2_file, mem_usage_v2_file, "inactive_file", "active_file"
-        )
-        try:
-            with open(mem_limit_v2_file, "r") as f:
-                max_val = f.read().strip()
-            if max_val.isnumeric():
-                cgroup_total = min(int(max_val), system_total)
-            else:
-                cgroup_total = system_total
-        except Exception as exception:
-            logger.warning(
-                f"Failed to obtain current container memory limit from {mem_limit_v2_file}: {repr(exception)}. "
-                "Falling back to system total memory."
-            )
-            cgroup_total = system_total
-
-    if cgroup_used is not None and cgroup_total is not None:
-        return cgroup_used, cgroup_total
+        return used, total
     return None
 
 

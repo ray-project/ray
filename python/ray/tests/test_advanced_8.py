@@ -444,6 +444,14 @@ def test_detect_docker_cpus():
         )
 
 
+def _make_cgroup_tree(root, files):
+    """Create a fake cgroup tree: ``files`` maps relative path to content."""
+    for rel, content in {"cgroup.controllers": "cpu cpuset memory", **files}.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(content + "\n")
+    return root
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
 @pytest.mark.parametrize(
     "files, proc_cgroup, expected",
@@ -487,10 +495,7 @@ def test_detect_docker_cpus():
 def test_detect_docker_cpus_nested_cgroup(tmp_path, files, proc_cgroup, expected):
     """The enforced quota is the smallest one from the process's cgroup up to
     the root, each level divided by its own period."""
-    root = tmp_path / "cgroup"
-    for rel, content in {"cgroup.controllers": "cpu cpuset memory", **files}.items():
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(content + "\n")
+    root = _make_cgroup_tree(tmp_path / "cgroup", files)
     (tmp_path / "proc_self_cgroup").write_text(proc_cgroup + "\n")
     v1 = "cpu/cpu.cfs_quota_us" in files
     assert (
@@ -504,6 +509,84 @@ def test_detect_docker_cpus_nested_cgroup(tmp_path, files, proc_cgroup, expected
         )
         == expected
     )
+
+
+_STAT_V2 = "inactive_file 20971520\nactive_file 0"
+_STAT_V2_EMPTY = "inactive_file 0\nactive_file 0"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
+@pytest.mark.parametrize(
+    "files, proc_cgroup, expected",
+    [
+        # v2: usage comes from the cgroup that holds the smallest limit.
+        (
+            {
+                "memory.max": "1073741824",
+                "memory.current": "838860800",
+                "memory.stat": _STAT_V2_EMPTY,
+                "job/memory.max": "268435456",
+                "job/memory.current": "104857600",
+                "job/memory.stat": _STAT_V2,
+            },
+            "0::/job",
+            (104857600 - 20971520, 268435456),
+        ),
+        # v2: no limit on any level keeps the root accounting and host total.
+        (
+            {
+                "memory.max": "max",
+                "memory.current": "838860800",
+                "memory.stat": _STAT_V2_EMPTY,
+                "job/memory.max": "max",
+                "job/memory.current": "1",
+                "job/memory.stat": _STAT_V2_EMPTY,
+            },
+            "0::/job",
+            (838860800, None),
+        ),
+        # v2: bare host without a limit, the root has no memory.current.
+        (
+            {
+                "user.slice/run-1.scope/memory.max": "max",
+                "user.slice/run-1.scope/memory.current": "1",
+                "user.slice/run-1.scope/memory.stat": _STAT_V2_EMPTY,
+            },
+            "0::/user.slice/run-1.scope",
+            None,
+        ),
+        # v1: usage comes from the leaf that holds the limit.
+        (
+            {
+                "memory/memory.limit_in_bytes": "9223372036854771712",
+                "memory/memory.usage_in_bytes": "838860800",
+                "memory/memory.stat": "total_inactive_file 0\ntotal_active_file 0",
+                "memory/job/memory.limit_in_bytes": "268435456",
+                "memory/job/memory.usage_in_bytes": "104857600",
+                "memory/job/memory.stat": "total_inactive_file 20971520\ntotal_active_file 0",
+            },
+            "11:memory:/job",
+            (104857600 - 20971520, 268435456),
+        ),
+    ],
+)
+def test_get_cgroup_mem_stats_nested_cgroup(tmp_path, files, proc_cgroup, expected):
+    """Usage and limit must come from the same cgroup, the one the kernel
+    enforces, so that total minus used never goes negative."""
+    root = _make_cgroup_tree(tmp_path / "cgroup", files)
+    (tmp_path / "proc_self_cgroup").write_text(proc_cgroup + "\n")
+    stats = ray._private.utils.get_cgroup_mem_stats(
+        cgroup_v1_root=str(root / "memory"),
+        cgroup_v2_root=str(root),
+        proc_self_cgroup_filename=str(tmp_path / "proc_self_cgroup"),
+    )
+    if expected is None:
+        assert stats is None
+    else:
+        used, total = expected
+        host = psutil.virtual_memory().total
+        assert stats == (used, host if total is None else total)
+        assert stats[1] - stats[0] >= 0
 
 
 @pytest.mark.skipif(
