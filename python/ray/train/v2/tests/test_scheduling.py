@@ -232,6 +232,8 @@ def _train_fn(config: dict):
     node_id = ray.get_runtime_context().get_node_id()
     ray.get(gate.started.remote(config["run_name"], node_id))
     ray.get(gate.wait.remote())
+    if config.get("fail"):
+        raise RuntimeError("Injected failure.")
 
 
 @ray.remote(num_cpus=0)
@@ -365,6 +367,47 @@ def test_starts_when_a_node_is_unusable(head_node_cluster, tmp_path, make_unusab
     assert _fit_one_slot_run(head_node_id, str(tmp_path)) == y.node_id
 
 
+@pytest.mark.parametrize(
+    "scaling_kwargs",
+    [
+        dict(num_workers=2),
+        dict(num_workers=2, placement_strategy="STRICT_SPREAD"),
+        dict(num_workers=(2, 3)),
+    ],
+    ids=["fixed", "strict_spread", "elastic"],
+)
+def test_waits_while_only_a_draining_node_would_make_room(
+    head_node_cluster, tmp_path, scaling_kwargs
+):
+    """A run needs two slots. Node A drains and node B joins, so counting A
+    there are two slots, but only B's is usable. The run must keep waiting, then
+    start on B and C once C joins."""
+    head_node_id = ray.get_runtime_context().get_node_id()
+    a = _add_slot_node(head_node_cluster)
+    _holders = _drain(a.node_id)  # Keep the actors alive.
+    b = _add_slot_node(head_node_cluster)
+    gate = _Gate.options(scheduling_strategy=_on_head(head_node_id)).remote()
+    ref = _submit_fit(
+        head_node_id,
+        {"gate": gate, "run_name": "run"},
+        ScalingConfig(resources_per_worker={"slot": 1}, **scaling_kwargs),
+        str(tmp_path),
+    )
+
+    # Longer than one worker group start timeout, so the run has failed at least
+    # one attempt and must have retried.
+    time.sleep(8)
+    assert "run" not in ray.get(gate.started_on.remote())
+    ready, _ = ray.wait([ref], timeout=0)
+    assert not ready, "The run gave up while waiting for a usable slot."
+
+    c = _add_slot_node(head_node_cluster)
+    _get_with_deadline(ref)
+    assert sorted(ray.get(gate.started_on.remote())["run"]) == sorted(
+        [b.node_id, c.node_id]
+    )
+
+
 def test_runs_queue_for_a_single_slot(head_node_cluster, tmp_path):
     """Run A holds the only slot when run B starts. B must keep retrying while A
     runs, then start on the same node once A finishes."""
@@ -446,13 +489,27 @@ def test_concurrent_runs_survive_node_churn(head_node_cluster, tmp_path):
     _get_with_deadline([refs["a"], refs["b"]])
 
 
-def test_a_finished_run_releases_its_resources(head_node_cluster, tmp_path):
-    """A run that finishes gives back its placement group and its coordinator
-    reservation, so the next requester can use the same node."""
+@pytest.mark.parametrize("fail", [False, True], ids=["succeeded", "failed"])
+def test_a_finished_run_releases_its_resources(head_node_cluster, tmp_path, fail):
+    """A run that finishes, whether it succeeds or fails, gives back its
+    placement group and its coordinator reservation, so the next requester can
+    use the same node."""
     head_node_id = ray.get_runtime_context().get_node_id()
     slot_node = _add_slot_node(head_node_cluster)
 
-    assert _fit_one_slot_run(head_node_id, str(tmp_path / "a")) == slot_node.node_id
+    gate = _Gate.options(scheduling_strategy=_on_head(head_node_id)).remote()
+    ref = _submit_fit(
+        head_node_id,
+        {"gate": gate, "run_name": "a", "fail": fail},
+        _slot_scaling_config(),
+        str(tmp_path / "a"),
+    )
+    if fail:
+        with pytest.raises(ray.exceptions.RayTaskError, match="Injected failure"):
+            _get_with_deadline(ref)
+    else:
+        _get_with_deadline(ref)
+    assert ray.get(gate.started_on.remote())["a"] == [slot_node.node_id]
 
     pg_states = {pg["state"] for pg in ray.util.placement_group_table().values()}
     assert pg_states <= {"REMOVED"}, _placement_diagnostics()
