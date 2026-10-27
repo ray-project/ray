@@ -321,6 +321,12 @@ class RunningReplica:
     async def get_queue_len(self, *, deadline_s: float) -> int:
         """Returns current queue len for the replica.
         `deadline_s` is passed to verify backoff for testing.
+
+        This is the queue length probe the request router calls. The router
+        cancels it at the response deadline, or when the routing task is
+        cancelled, and waits for it to finish before acting on the results, so it
+        must handle cancellation promptly: here the RPC is cancelled and the
+        `CancelledError` re-raised right away.
         """
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to

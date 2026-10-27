@@ -1492,7 +1492,7 @@ async def test_slow_to_cancel_get_queue_len_does_not_block_routing(pow_2_router)
 
     start = time.monotonic()
     task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
-    assert (await asyncio.wait_for(task, timeout=100)) == r2
+    assert (await asyncio.wait_for(task, timeout=5)) == r2
     # One round: the probe deadline plus the bounded wait, with slack for CI.
     assert time.monotonic() - start < 1
     assert r1.num_cleanups_finished == 0
@@ -1510,7 +1510,7 @@ async def test_routing_task_cancelled_while_cancelled_probe_finishes(pow_2_route
     """
     s = pow_2_router
     # Long enough that the cancellation, not the deadline, ends the wait.
-    s.queue_len_response_deadline_s = 1
+    s.queue_len_response_deadline_s = 2
     loop = get_or_create_event_loop()
 
     r1 = SlowToCancelReplica("r1", cleanup_s=100)
@@ -1521,9 +1521,13 @@ async def test_routing_task_cancelled_while_cancelled_probe_finishes(pow_2_route
     assert s.curr_num_routing_tasks == 1
 
     task.cancel()
+    start = time.monotonic()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
     await async_wait_for_condition(lambda: s.curr_num_routing_tasks == 0, timeout=5)
+    # The routing task's cancellation ends the wait instead of being held until
+    # its bound.
+    assert time.monotonic() - start < 0.5
 
     r1.finish_cleanup()
     await async_wait_for_condition(
@@ -1559,6 +1563,14 @@ async def test_cancelled_probe_error_is_logged(pow_2_router):
     try:
         with patch.object(request_router_module.logger, "warning") as warning:
             assert await s._probe_queue_lens([r1], 0) == [(r1, None)]
+            # Wait for the done callback here rather than rely on the router's
+            # wait for cancelled probes having run it.
+            await async_wait_for_condition(
+                lambda: any(
+                    "raised RuntimeError('cleanup failed')" in call.args[0]
+                    for call in warning.call_args_list
+                )
+            )
         gc.collect()
         await asyncio.sleep(0)
     finally:
@@ -1619,7 +1631,7 @@ async def test_probe_results_kept_when_cancelled_during_probe_cleanup(pow_2_rout
     """
     s = pow_2_router
     # Long enough that the cancellation, not the deadline, ends the wait.
-    s.queue_len_response_deadline_s = 1
+    s.queue_len_response_deadline_s = 2
     loop = get_or_create_event_loop()
 
     r1 = FakeRunningReplica("r1")
@@ -1635,8 +1647,11 @@ async def test_probe_results_kept_when_cancelled_during_probe_cleanup(pow_2_rout
     # r2's probe timed out and was cancelled, so the task is waiting for it.
     await async_wait_for_condition(lambda: r2.num_cleanups_started == 2)
     task.cancel()
+    start = time.monotonic()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
+    # The cancellation ends the wait instead of being held until its bound.
+    assert time.monotonic() - start < 0.5
 
     # r1's ActorDiedError was still acted on.
     assert r1.replica_id not in s.curr_replicas

@@ -1,6 +1,7 @@
 import asyncio
 import pickle
 import sys
+import time
 from types import SimpleNamespace
 from typing import Union
 
@@ -99,6 +100,20 @@ class BlockingReserveActor:
 
     def get_released_tokens(self):
         return list(self._released_tokens)
+
+
+@ray.remote(num_cpus=0)
+class BlockingQueueLenActor:
+    """Actor whose queue length call signals entry, then blocks until cancelled."""
+
+    def __init__(self, executing_signal_actor, cancelled_signal_actor):
+        self._executing_signal = executing_signal_actor
+        self._cancelled_signal = cancelled_signal_actor
+
+    async def get_num_ongoing_requests(self) -> int:
+        async with send_signal_on_cancellation(self._cancelled_signal):
+            await self._executing_signal.send.remote()
+        return 0
 
 
 @ray.remote(num_cpus=0)
@@ -443,6 +458,34 @@ def _spawn_running_replica(actor_cls, replica_id_str: str, *actor_args, **actor_
 
 def _dummy_request_metadata() -> RequestMetadata:
     return RequestMetadata(request_id="abc", internal_request_id="def")
+
+
+@pytest.mark.asyncio
+async def test_get_queue_len_cancellation_cancels_rpc(ray_instance):
+    """Cancelling `get_queue_len` finishes right away and cancels the RPC on the
+    replica, since the request router waits for cancelled probes to finish.
+    """
+    executing_signal = SignalActor.remote()
+    cancelled_signal = SignalActor.remote()
+    replica, _ = _spawn_running_replica(
+        BlockingQueueLenActor, "queue-len-replica", executing_signal, cancelled_signal
+    )
+
+    task = get_or_create_event_loop().create_task(replica.get_queue_len(deadline_s=10))
+    # Wait for the actor to enter the call. A fixed deadline does not cover
+    # actor startup.
+    await executing_signal.wait.remote()
+    assert not task.done()
+
+    task.cancel()
+    start = time.monotonic()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=5)
+    # The cancellation doesn't wait for the replica.
+    assert time.monotonic() - start < 1
+
+    # The call was cancelled on the replica.
+    await asyncio.wait_for(cancelled_signal.wait.remote(), timeout=10)
 
 
 @pytest.mark.asyncio
