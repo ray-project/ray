@@ -141,7 +141,7 @@ def test_iter_batches_reconstruction_matches_baseline(
 
 @reconstruction_enabled
 def test_two_losses_under_one_seed_match_baseline(
-    ray_start_regular_shared, restore_data_context, lose_output  # noqa: F405
+    ray_start_regular_shared, restore_data_context, trackers, lose_output  # noqa: F405
 ):
     """Two children of one seed lose their output; the seed re-runs, every row once.
 
@@ -160,6 +160,8 @@ def test_two_losses_under_one_seed_match_baseline(
 
     assert sorted(fired) == [0, 1]
     _assert_every_row_once((row["id"] for row in rows), [i + 1 for i in range(20)])
+    # One reconstruction attempt per lost object.
+    assert [t.num_object_reconstruction_attempts for t in trackers] == [2]
 
 
 @pytest.mark.parametrize("reads_before_loss", [5, 10])

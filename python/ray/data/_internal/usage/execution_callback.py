@@ -201,6 +201,14 @@ class UsageCallback(ExecutionCallback):
         performance = None
         if self._finished:
             metric_deltas = self._cluster_deltas or {}
+            if self._executor.ray_data_reconstruction_enabled:
+                object_reconstruction_attempts = (
+                    self._executor._lineage_tracker.num_object_reconstruction_attempts
+                )
+            else:
+                object_reconstruction_attempts = metric_deltas.get(
+                    collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS
+                )
             performance = PipelinePerf(
                 bytes_spilled=metric_deltas.get(collector.METRIC_BYTES_SPILLED),
                 node_deaths=metric_deltas.get(collector.METRIC_NODE_DEATHS),
@@ -214,9 +222,7 @@ class UsageCallback(ExecutionCallback):
                 ),
                 task_max_uss_bytes=self._task_max_uss_bytes,
                 lineage_reconstruction=LineageReconstructionInfo(
-                    object_reconstruction_attempts=metric_deltas.get(
-                        collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS
-                    ),
+                    object_reconstruction_attempts=object_reconstruction_attempts,
                     num_object_lost_task_failures=self._num_object_lost_task_failures,
                 ),
             )

@@ -123,8 +123,11 @@ class MemoryStats:
 
 @dataclass(frozen=True)
 class LineageReconstructionInfo:
-    # Lost objects Ray Core tried to rebuild via lineage reconstruction. Counted
-    # per object, so one re-run task producing many lost blocks counts many times.
+    # Lost objects that lineage reconstruction tried to rebuild. Counted per
+    # object, so one re-run task producing many lost blocks counts many times.
+    # Counted by Ray Data when ``env.context.enable_ray_data_reconstruction`` is
+    # set (Ray Core lineage reconstruction is then off for the job), else by Ray
+    # Core.
     object_reconstruction_attempts: Optional[int] = None
     # Failed tasks whose error was caused by a lost object (e.g. lineage
     # reconstruction failed or the object's owner died).

@@ -976,6 +976,7 @@ def process_completed_tasks(
                                 f'operator "{state.op.name}"; attempting lineage '
                                 "reconstruction."
                             )
+                            lineage_tracker.num_object_reconstruction_attempts += 1
                             try:
                                 _reconstruct_lost_object(
                                     topology, lineage_tracker, state, task, e

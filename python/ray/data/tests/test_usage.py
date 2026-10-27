@@ -121,6 +121,7 @@ def test_memory_and_object_lost_stats_in_payload(reset_collector, mock_record):
 
     executor = MagicMock()
     executor.issue_detector_manager = None
+    executor.ray_data_reconstruction_enabled = False
     executor._topology = {map_op: None, shuffle_op: None}
 
     ds = ray.data.range(1).map_batches(lambda b: b)
@@ -151,6 +152,38 @@ def test_memory_and_object_lost_stats_in_payload(reset_collector, mock_record):
         "variance": 10000,
     }
     assert perf["lineage_reconstruction"]["num_object_lost_task_failures"] == 3
+
+
+@pytest.mark.parametrize("ray_data_reconstruction,expected", [(True, 3), (False, 5)])
+def test_object_reconstruction_attempts_follow_reconstruction_flag(
+    reset_collector,
+    mock_record,
+    executor,
+    monkeypatch,
+    ray_data_reconstruction,
+    expected,
+):
+    """With Ray Data reconstruction, attempts are counted by the executor's
+    lineage tracker (3); otherwise they come from Ray Core's counter in
+    Prometheus (5)."""
+    executor.ray_data_reconstruction_enabled = ray_data_reconstruction
+    executor._lineage_tracker.num_object_reconstruction_attempts = 3
+    monkeypatch.setattr(
+        UsageCallback,
+        "_compute_cluster_deltas",
+        lambda self: {collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS: 5},
+    )
+
+    callback = UsageCallback(ray.data.range(1)._logical_plan)
+    callback.before_execution_starts(executor)
+    callback.after_execution_succeeds(executor)
+
+    entry = json.loads(mock_record[-1][1])["executions"][0]
+    assert entry["env"]["context"]["enable_ray_data_reconstruction"] is (
+        ray_data_reconstruction
+    )
+    lineage = entry["performance"]["lineage_reconstruction"]
+    assert lineage["object_reconstruction_attempts"] == expected
 
 
 def test_execution_step_no_op_when_disabled(
