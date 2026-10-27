@@ -18,7 +18,7 @@ from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
     _validate_shuffle_arg,
 )
-from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
+from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
@@ -93,8 +93,11 @@ class FileScanner(Scanner[FileManifest], SupportsPartitionPruning):
 
     @override
     def pushed_partition_pruner(self) -> Optional["FilePruner"]:
+        return self._create_partition_pruner()
+
+    def _create_partition_pruner(self) -> Optional["FilePruner"]:
+        """Build the read-side pruner independently of the optional listing hook."""
         if self.partition_predicate is None or self.partitioning is None:
-            # No spec, no partition values -- same guard as ``prune_input_split``.
             return None
         return PartitionPredicatePruner(self.partitioning, self.partition_predicate)
 
@@ -106,14 +109,14 @@ class FileScanner(Scanner[FileManifest], SupportsPartitionPruning):
         Partition values are parsed out of each file path by
         :class:`PathPartitionParser`.
         """
-        if self.partition_predicate is None or self.partitioning is None:
+        pruner = self._create_partition_pruner()
+        if pruner is None:
             return input_split
 
-        parser = PathPartitionParser(self.partitioning)
         keep_indices = []
 
         for i, path in enumerate(input_split.paths):
-            if parser.evaluate_predicate_on_partition(path, self.partition_predicate):
+            if pruner.should_include(path):
                 keep_indices.append(i)
 
         if len(keep_indices) == len(input_split):

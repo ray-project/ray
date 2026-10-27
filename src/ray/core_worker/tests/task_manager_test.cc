@@ -1097,6 +1097,69 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
+// Lineage pinning enabled; budget large enough to avoid implicit eviction.
+class TaskManagerLineageEvictionTest : public TaskManagerTest {
+ public:
+  TaskManagerLineageEvictionTest()
+      : TaskManagerTest(/*lineage_pinning_enabled=*/true,
+                        /*max_lineage_bytes=*/1024 * 1024) {}
+};
+
+// EvictLineage() must report released bytes as non-negative and stop at the
+// target. RemoveLineageReference() used to return `new - prev`, so the
+// accumulator never advanced and the loop drained the whole queue.
+TEST_F(TaskManagerLineageEvictionTest, TestEvictLineageStopsAtTarget) {
+  rpc::Address caller_address;
+  // Infinite retries, so that completed tasks stay reconstructable (ELIGIBLE).
+  const int max_retries = -1;
+
+  auto add_and_complete_task = [this, &caller_address]() {
+    auto spec = CreateTaskHelper(/*num_returns=*/1, /*dependencies=*/{});
+    manager_.AddPendingTask(caller_address, spec, "", max_retries);
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+    rpc::PushTaskReply reply;
+    auto return_object = reply.add_return_objects();
+    return_object->set_object_id(spec.ReturnId(0).Binary());
+    return_object->set_in_plasma(true);
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+    return spec;
+  };
+
+  auto older_spec = add_and_complete_task();
+  auto newer_spec = add_and_complete_task();
+
+  const int64_t total_footprint = manager_.TotalLineageFootprintBytes();
+  ASSERT_GT(total_footprint, 0);
+
+  const auto older_return_id = older_spec.ReturnId(0);
+  const auto newer_return_id = newer_spec.ReturnId(0);
+  ASSERT_EQ(reference_counter_->GetLineageReconstructionEligibility(older_return_id),
+            LineageReconstructionEligibility::ELIGIBLE);
+  ASSERT_EQ(reference_counter_->GetLineageReconstructionEligibility(newer_return_id),
+            LineageReconstructionEligibility::ELIGIBLE);
+
+  // Evicting a single byte must release exactly one task's lineage and stop.
+  const int64_t released_bytes =
+      reference_counter_->EvictLineage(/*min_bytes_to_evict=*/1);
+
+  // Pre-fix this was negative (the raw footprint delta).
+  ASSERT_GT(released_bytes, 0);
+  ASSERT_EQ(manager_.TotalLineageFootprintBytes(), total_footprint - released_bytes);
+
+  // Only the oldest object was evicted; the queue was not drained.
+  ASSERT_EQ(reference_counter_->GetLineageReconstructionEligibility(older_return_id),
+            LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED);
+  ASSERT_EQ(reference_counter_->GetLineageReconstructionEligibility(newer_return_id),
+            LineageReconstructionEligibility::ELIGIBLE);
+
+  // Release the remaining references so that AssertNoLeaks() passes.
+  reference_counter_->RemoveLocalReference(newer_return_id, nullptr);
+  reference_counter_->RemoveLocalReference(older_return_id, nullptr);
+  ASSERT_EQ(manager_.TotalLineageFootprintBytes(), 0);
+}
+
 // Test to make sure that the task spec and dependencies for an object are
 // evicted if the object is returned by value, instead of stored in plasma.
 TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
