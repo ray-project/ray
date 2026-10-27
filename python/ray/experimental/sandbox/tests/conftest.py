@@ -47,8 +47,8 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
         "#!/bin/sh\n"
         'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
         'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
-        'eval "tar_arg=\\${$#}"\n'
-        'eval "out_arg=\\${$(($# - 1))}"\n'
+        "# args: [options...] OUT TAR\n"
+        'for arg in "$@"; do out_arg=$tar_arg; tar_arg=$arg; done\n'
         'cp "$tar_arg" "$out_arg"\n'
     )
     script.chmod(0o755)
