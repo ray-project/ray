@@ -299,13 +299,38 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
                          << " bundle(s) for placement group " << placement_group_id
                          << " at node " << node_id << ". Status: " << status
                          << ". Retrying while the node is alive.";
-        execute_after(
-            io_context_,
-            [this, placement_group_id, bundle_specs, node_id] {
-              RemovePlacementGroupBundles(placement_group_id, bundle_specs, node_id);
-            },
-            std::chrono::milliseconds(1000) /* milliseconds */);
+        RetryRemovePlacementGroupBundlesLater(placement_group_id, bundle_specs, node_id);
       });
+}
+
+void GcsPlacementGroupScheduler::RetryRemovePlacementGroupBundlesLater(
+    const PlacementGroupID &placement_group_id,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+    const NodeID &node_id) {
+  execute_after(
+      io_context_,
+      [this, placement_group_id, bundle_specs, node_id] {
+        // A failed prepare reschedules the same bundle IDs, so a late retry must not
+        // cancel what a newer scheduling attempt reserved. Wait until that attempt
+        // finishes, then skip the bundles it committed on this node.
+        if (placement_group_leasing_in_progress_.contains(placement_group_id)) {
+          RetryRemovePlacementGroupBundlesLater(
+              placement_group_id, bundle_specs, node_id);
+          return;
+        }
+        std::vector<std::shared_ptr<const BundleSpecification>> remaining;
+        for (const auto &bundle : bundle_specs) {
+          const auto location =
+              committed_bundle_location_index_.GetBundleLocation(bundle->BundleId());
+          if (!location.has_value() || *location != node_id) {
+            remaining.push_back(bundle);
+          }
+        }
+        if (!remaining.empty()) {
+          RemovePlacementGroupBundles(placement_group_id, remaining, node_id);
+        }
+      },
+      std::chrono::milliseconds(1000) /* milliseconds */);
 }
 
 std::shared_ptr<RayletClientInterface>
