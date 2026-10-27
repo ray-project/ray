@@ -20,6 +20,10 @@ from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
 )
+from ray.experimental.sandbox._internal.image_utils import (
+    ROOTFS_IMAGE,
+    erofs_superblock_fingerprint,
+)
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -662,7 +666,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         try:
             # The instance id pins the image in the cache while this sandbox
             # lives (its EROFS image is the sandbox's root filesystem).
-            self._image_manager.pull_image(
+            image_dir = self._image_manager.pull_image(
                 config.image,
                 timeout_seconds=config.timeout_seconds,
                 instance_id=sandbox_id,
@@ -697,6 +701,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             owner_file,
             cgroup,
         )
+        # The cached image this sandbox pins, for checkpoints to fingerprint.
+        self._sandbox_metadata[sandbox_id]["image_dir"] = image_dir
 
     def _prepare_bundle(
         self,
@@ -1533,13 +1539,36 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     checkpoint_args.append("--direct")
                 checkpoint_args.append(sandbox_id)
 
-                res = subprocess.run(
-                    checkpoint_args,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_seconds,
-                )
-                if res.returncode != 0:
+                try:
+                    res = subprocess.run(
+                        checkpoint_args,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_seconds,
+                    )
+                except subprocess.TimeoutExpired:
+                    # The timeout kills only the runsc client: the save goes
+                    # on inside the sandbox, which stops once the image is
+                    # written. Give it as long again to finish.
+                    proc = meta.get("proc")
+                    try:
+                        if proc is not None:
+                            proc.wait(timeout=timeout_seconds)
+                    except subprocess.TimeoutExpired:
+                        # Still saving (or never started): deleting the
+                        # staging directory under the save would lose both
+                        # the checkpoint and, once it stops, the sandbox.
+                        stage.keep_staging = True
+                        raise SandboxTimeoutError(
+                            f"Checkpoint of sandbox '{sandbox_id}' didn't finish "
+                            f"within {2 * timeout_seconds:g} seconds. A save in "
+                            "progress can't be cancelled: it goes on writing to "
+                            f"'{stage.staging_path}', which is left in place, and "
+                            "stops the sandbox when it's done. Retry with a larger "
+                            "timeout_seconds."
+                        ) from None
+                    res = None
+                if res is not None and res.returncode != 0:
                     # A failed checkpoint normally leaves the sandbox running;
                     # if it didn't, get_status reports it terminated.
                     raise SandboxError(
@@ -1566,6 +1595,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         remote=remote,
                         node_id=node_id,
                         compression=compression,
+                        # set_egress_allowlist may have changed it since.
+                        cidr_allowlist=meta.get("egress_allowlist"),
+                        image_fingerprint=self._image_fingerprint(meta),
                     )
                     stage.write_manifest(manifest)
                     stage.harden_permissions(rootless=config.rootless, remote=remote)
@@ -1620,6 +1652,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "remote": remote,
             "node_id": node_id,
         }
+
+    @staticmethod
+    def _image_fingerprint(meta: Dict) -> Optional[str]:
+        """The superblock fingerprint of the image a sandbox runs on, if known."""
+        image_dir = meta.get("image_dir")
+        if not isinstance(image_dir, str):
+            return None
+        return erofs_superblock_fingerprint(os.path.join(image_dir, ROOTFS_IMAGE))
 
     def _reap_launch_process(
         self, meta: Dict, sandbox_id: str, timeout_seconds: float
@@ -1764,8 +1804,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         restore = _RestoreImage(state_dir, background=background, direct=direct)
 
         def start(config, sandbox_id, root_dir, owner_file, cgroup):
-            workdir_path, container_cwd = self._prepare_restored_bundle(
-                config, checkpoint_path, sandbox_id, root_dir
+            image_dir, workdir_path, container_cwd = self._prepare_restored_bundle(
+                config,
+                checkpoint_path,
+                sandbox_id,
+                root_dir,
+                manifest.get("image_fingerprint"),
             )
             self._launch_sandbox(
                 config,
@@ -1777,6 +1821,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 cgroup,
                 restore=restore,
             )
+            self._sandbox_metadata[sandbox_id]["image_dir"] = image_dir
 
         # Step 3: Allocate a new ID, bundle, owner file and cgroup, and restore into them.
         sandbox_id = self._provision(config, cgroups, start, action="restore")
@@ -1789,7 +1834,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         checkpoint_path: str,
         sandbox_id: str,
         root_dir: str,
-    ) -> Tuple[Optional[str], str]:
+        image_fingerprint: Optional[str] = None,
+    ) -> Tuple[str, Optional[str], str]:
         """Fill a new bundle from a checkpoint bundle.
 
         Copies the checkpoint's filesystem state into the bundle, then
@@ -1802,18 +1848,35 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             checkpoint_path: The checkpoint bundle directory.
             sandbox_id: The restored sandbox's ID.
             root_dir: The restored sandbox's new bundle directory.
+            image_fingerprint: The superblock fingerprint of the image the
+                checkpoint was taken on, if recorded.
 
         Returns:
-            The host directory mounted at the workdir (or None), and the
-            sandbox's working directory.
+            The cached image directory, the host directory mounted at the
+            workdir (or None), and the sandbox's working directory.
         """
         try:
             # Pin this node's copy of the image for the restored sandbox.
-            self._image_manager.pull_image(
+            image_dir = self._image_manager.pull_image(
                 config.image,
                 timeout_seconds=config.timeout_seconds,
                 instance_id=sandbox_id,
             )
+            local_fingerprint = (
+                erofs_superblock_fingerprint(os.path.join(image_dir, ROOTFS_IMAGE))
+                if isinstance(image_dir, str)
+                else None
+            )
+            if image_fingerprint and local_fingerprint not in (None, image_fingerprint):
+                # gVisor would panic on it ("superblock mismatch detected on
+                # restore").
+                raise SandboxError(
+                    f"This node's build of image {config.image!r} differs from "
+                    "the one the checkpoint was taken on, so gVisor can't "
+                    "restore it. The tag may have moved since, or the image "
+                    "was rebuilt by a mkfs.erofs without --mkfs-time "
+                    "(erofs-utils 1.8+), which can't reproduce a build exactly."
+                )
             container_cwd = (
                 config.workdir or self._image_manager.get_workdir(config.image) or "/"
             )
@@ -1853,7 +1916,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         saved_hosts = os.path.join(checkpoint_path, "hosts")
         if os.path.isfile(saved_hosts):
             shutil.copy2(saved_hosts, os.path.join(root_dir, "hosts"))
-        return workdir_path, container_cwd
+        return image_dir, workdir_path, container_cwd
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""

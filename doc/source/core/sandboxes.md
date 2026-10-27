@@ -359,12 +359,12 @@ ray.get(base_sb.delete.remote())
 
 #### Suspend and resume for multi-turn rollouts
 
-To free memory during idle multi-turn rollouts (such as between LLM reasoning turns), you can checkpoint a sandbox and terminate the base process with `leave_running=False`. When the next turn arrives, restore the sandbox from the saved checkpoint to continue execution:
+To free memory during idle multi-turn rollouts (such as between LLM reasoning turns), you can checkpoint a sandbox and stop it with `leave_running=False`. The `Sandbox` actor keeps its CPU and memory reservation until it exits, so kill it too. When the next turn arrives, restore the sandbox from the saved checkpoint to continue execution:
 
 ```python
-# Checkpoint and terminate the running sandbox to free resources between turns
+# Checkpoint and stop the running sandbox, then release the actor's resources
 checkpoint_path = ray.get(sb.checkpoint.remote(leave_running=False))
-ray.get(sb.delete.remote())
+ray.kill(sb)
 
 # Later, resume execution for the next turn
 resumed_sb = sandbox.restore(checkpoint_path)
@@ -376,7 +376,10 @@ res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
 * **Node-local vs. remote/shared storage:**
   * **Node-local storage (default, ``remote=False``):** When saving to local disk or NVMe SSD (such as ``/tmp/ray``), the checkpoint only resides on that worker VM. ``sandbox.restore()`` automatically pins the restored actor to the same worker node via Ray's ``NodeAffinitySchedulingStrategy``.
   * **Remote / shared mount (``remote=True``):** When saving to a shared filesystem accessible across all nodes (such as NFS, GCP Filestore, or Cloud Storage FUSE), pass ``remote=True`` to ``base_sb.checkpoint.remote(checkpoint_path, remote=True)``. This allows Ray to schedule restored sandboxes across any VM node in the cluster, enabling horizontal scale-out branching.
-* **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, `cidr_allowlist`, `capabilities`, and `disk` overrides. The saved state depends on `image`, `network`, `readonly`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them.
+* **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, and `cidr_allowlist` overrides. The saved state depends on `image`, `network`, `readonly`, `capabilities`, `disk`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them. A sandbox created with an `_oci_spec_transform_fn` must be restored with the same function, because the checkpoint can't save it.
+* **Egress allowlist:** a checkpoint saves the allowlist in force when it's taken, including changes from `set_egress_allowlist()`.
+* **Checkpoint path:** `checkpoint()` replaces an earlier checkpoint at the same path, but refuses a non-empty directory that doesn't hold one.
+* **Image builds:** gVisor restores only onto a byte-identical build of the sandbox's image. With erofs-utils 1.8 or later, every node builds the same image identically. With an older `mkfs.erofs`, or if the image's tag moved, restoring on another node or after the image was evicted from the cache fails with an error that says so.
 * **Compression:** `checkpoint(compression="flate-best-speed")` writes a smaller checkpoint. gVisor loads guest memory in the background only from uncompressed checkpoints, so a sandbox restored from a compressed one starts after all of its memory is loaded.
 :::
 

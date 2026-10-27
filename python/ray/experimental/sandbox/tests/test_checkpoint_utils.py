@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import pytest
 
@@ -121,9 +122,13 @@ class TestCheckpointUtils(unittest.TestCase):
                 "readonly": True,
                 "workdir": "/workspace",
                 "rootless": False,
+                "capabilities": None,
+                "disk": "1Gi",
             }
         }
         for field, value in (
+            ("capabilities", ["CAP_NET_ADMIN"]),
+            ("disk", "2Gi"),
             ("image", "alpine:latest"),
             ("network", "public"),
             ("readonly", False),
@@ -151,9 +156,47 @@ class TestCheckpointUtils(unittest.TestCase):
         }
         assert build_restored_config(manifest, workdir="/other").workdir == "/other"
 
+    def test_build_restored_config_requires_the_source_transform(self):
+        manifest = {
+            "oci_spec_transform": True,
+            "config": {"image": "busybox:latest", "rootless": False},
+        }
+        with pytest.raises(SandboxError, match="_oci_spec_transform_fn"):
+            build_restored_config(manifest)
+        assert build_restored_config(manifest, _oci_spec_transform_fn=lambda s: s)
+
+    def test_copy_fs_tree_keeps_owners_as_root(self):
+        src = os.path.join(self.temp_dir, "owned_src")
+        os.makedirs(os.path.join(src, "sub"))
+        with open(os.path.join(src, "sub", "f.txt"), "w") as f:
+            f.write("x")
+        dst = os.path.join(self.temp_dir, "owned_dst")
+
+        real_lstat = os.lstat
+
+        def lstat(path):
+            st = real_lstat(path)
+            # Pretend a guest user (uid 1234) owns everything in src.
+            if path.startswith(src):
+                return os.stat_result((st.st_mode, 0, 0, 0, 1234, 1234, 0, 0, 0, 0))
+            return st
+
+        chowned = {}
+        with (
+            patch("os.geteuid", return_value=0),
+            patch("os.lstat", side_effect=lstat),
+            patch("os.lchown", side_effect=lambda p, u, g: chowned.update({p: (u, g)})),
+        ):
+            copy_fs_tree(src, dst)
+        for rel in ("", "sub", os.path.join("sub", "f.txt")):
+            assert chowned[os.path.normpath(os.path.join(dst, rel))] == (1234, 1234)
+
     def test_staged_checkpoint_atomic_swap_and_rollback(self):
         target_dir = os.path.join(self.temp_dir, "bundle")
         os.makedirs(target_dir, exist_ok=True)
+        # An earlier checkpoint, which a new one may replace.
+        with open(os.path.join(target_dir, "manifest.json"), "w") as f:
+            f.write("{}")
         with open(os.path.join(target_dir, "old_file.txt"), "w") as f:
             f.write("original")
 

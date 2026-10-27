@@ -25,15 +25,43 @@ from ray.experimental.sandbox.exceptions import (
 logger = logging.getLogger(__name__)
 
 
+def _copy_ownership(src: str, dst: str) -> None:
+    """Give every entry under ``dst`` the owner of its counterpart in ``src``.
+
+    ``shutil.copytree`` keeps modes and times but not owners, so without
+    this a guest user's files would come back owned by whoever copied them.
+    Only root can hand files to other users; anyone else keeps their own.
+    """
+    if os.geteuid() != 0:
+        return
+    for dirpath, dirnames, filenames in os.walk(dst):
+        rel = os.path.relpath(dirpath, dst)
+        for name in [None, *dirnames, *filenames]:
+            dst_path = dirpath if name is None else os.path.join(dirpath, name)
+            src_path = os.path.normpath(
+                os.path.join(src, rel) if name is None else os.path.join(src, rel, name)
+            )
+            try:
+                st = os.lstat(src_path)
+                os.lchown(dst_path, st.st_uid, st.st_gid)
+            except FileNotFoundError:
+                continue
+
+
 def copy_fs_tree(
     src: str,
     dst: str,
     ignore_patterns: Optional[List[str]] = None,
 ) -> None:
-    """Copy a filesystem directory tree, with sudo fallback for root-owned guest files."""
+    """Copy a filesystem directory tree, keeping modes, times and owners.
+
+    Falls back to ``sudo cp -a`` for root-owned guest files that the caller
+    can't read.
+    """
     ignore_fn = shutil.ignore_patterns(*ignore_patterns) if ignore_patterns else None
     try:
         shutil.copytree(src, dst, dirs_exist_ok=True, ignore=ignore_fn, symlinks=True)
+        _copy_ownership(src, dst)
     except (PermissionError, shutil.Error) as err:
         if os.geteuid() != 0 and shutil.which("sudo"):
             os.makedirs(dst, exist_ok=True)
@@ -122,8 +150,32 @@ def create_manifest(
     remote: bool = False,
     node_id: Optional[str] = None,
     compression: str = "none",
+    cidr_allowlist: Optional[List[str]] = None,
+    image_fingerprint: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Generate the manifest metadata dictionary for a checkpoint bundle."""
+    """Generate the manifest metadata dictionary for a checkpoint bundle.
+
+    Args:
+        sandbox_id: The checkpointed sandbox's ID.
+        config: The checkpointed sandbox's configuration.
+        cwd: The sandbox's working directory.
+        workdir: The host directory mounted at the workdir, if any.
+        leave_running: Whether the source kept running.
+        remote: Whether the checkpoint is on storage that every node shares.
+        node_id: The node the checkpoint was taken on; the current one if
+            None.
+        compression: The memory image's compression.
+        cidr_allowlist: The egress allowlist in force at the checkpoint,
+            which ``set_egress_allowlist`` may have changed since creation;
+            ``config.cidr_allowlist`` if None.
+        image_fingerprint: ``erofs_superblock_fingerprint`` of the root
+            filesystem image the sandbox ran on, if known.
+
+    Returns:
+        The manifest.
+    """
+    if cidr_allowlist is None:
+        cidr_allowlist = config.cidr_allowlist
     return {
         "version": "1.0",
         "created_at": time.time(),
@@ -134,6 +186,12 @@ def create_manifest(
         # the background only from an uncompressed one.
         "compression": compression,
         "image": config.image,
+        # The root filesystem image's superblock: a restore needs an
+        # identical one (see erofs_superblock_fingerprint).
+        "image_fingerprint": image_fingerprint,
+        # The source's config came through an _oci_spec_transform_fn, which
+        # can't be saved; a restore must pass the same one.
+        "oci_spec_transform": config._oci_spec_transform_fn is not None,
         "cwd": cwd,
         "workdir": workdir,
         "config": {
@@ -148,7 +206,7 @@ def create_manifest(
             "workdir": config.workdir,
             "capabilities": config.capabilities,
             "dns": config.dns,
-            "cidr_allowlist": config.cidr_allowlist,
+            "cidr_allowlist": cidr_allowlist,
             "disk": config.disk,
             "_ignore_cgroups": getattr(config, "_ignore_cgroups", False),
         },
@@ -187,9 +245,20 @@ def load_checkpoint_manifest(checkpoint_path: str) -> Tuple[Dict[str, Any], str]
 
 # Configuration that the checkpointed memory state depends on: the image
 # and the mounts, root filesystem mode and network stack that the guest
-# kernel was saved with. A restore can't change them. ``workdir`` is one of
-# them only on a readonly rootfs, where it is a host-backed mount.
-_RESTORE_IMMUTABLE_FIELDS = ("image", "network", "readonly", "workdir", "rootless")
+# kernel was saved with, plus what runsc's restore spec validation (on by
+# default) compares: process.capabilities and the dev.gvisor.* annotations,
+# which carry ``disk`` as the rootfs overlay size. A restore can't change
+# them. ``workdir`` is one of them only on a readonly rootfs, where it is a
+# host-backed mount.
+_RESTORE_IMMUTABLE_FIELDS = (
+    "image",
+    "network",
+    "readonly",
+    "workdir",
+    "rootless",
+    "capabilities",
+    "disk",
+)
 
 
 def build_restored_config(
@@ -202,9 +271,9 @@ def build_restored_config(
 
     The restored sandbox keeps the checkpointed configuration. Overrides in
     ``cpu``, ``memory`` and ``kwargs`` (such as ``env``, ``dns``,
-    ``capabilities``, ``disk``, ``cidr_allowlist``, ``timeout_seconds``,
-    ``_oci_spec_transform_fn`` and ``_ignore_cgroups``) replace the recorded
-    values; None means no override.
+    ``cidr_allowlist``, ``timeout_seconds``, ``_oci_spec_transform_fn`` and
+    ``_ignore_cgroups``) replace the recorded values; None means no
+    override.
 
     Args:
         manifest: The checkpoint's manifest.
@@ -218,7 +287,8 @@ def build_restored_config(
     Raises:
         SandboxError: If an override changes a field in
             ``_RESTORE_IMMUTABLE_FIELDS``, which the restored memory state
-            depends on.
+            depends on, or if the source used an ``_oci_spec_transform_fn``
+            and the restore doesn't pass one.
     """
     cfg_dict = dict(manifest.get("config", {}))
     if cpu is not None:
@@ -227,6 +297,15 @@ def build_restored_config(
         cfg_dict["memory"] = memory
 
     valid_fields = {f.name for f in dataclasses.fields(SandboxConfig)}
+    if (
+        manifest.get("oci_spec_transform")
+        and kwargs.get("_oci_spec_transform_fn") is None
+    ):
+        raise SandboxError(
+            "The checkpointed sandbox was created with an _oci_spec_transform_fn, "
+            "which a checkpoint can't save, and runsc restores only into the same "
+            "spec. Pass the same _oci_spec_transform_fn to restore."
+        )
     for k, v in kwargs.items():
         if k not in valid_fields or v is None:
             continue
@@ -267,8 +346,23 @@ class StagedCheckpoint:
         self.fs_dir = os.path.join(self.staging_path, "fs")
         self._has_backup = False
         self._swap_succeeded = False
+        # Leave the staging directory in place if the checkpoint fails, for
+        # a save that may still be writing into it.
+        self.keep_staging = False
 
     def __enter__(self) -> "StagedCheckpoint":
+        # The swap moves whatever is at target_path aside and deletes it, so
+        # only ever replace an earlier checkpoint.
+        if (
+            os.path.isdir(self.target_path)
+            and os.listdir(self.target_path)
+            and not os.path.isfile(os.path.join(self.target_path, "manifest.json"))
+        ):
+            raise SandboxError(
+                f"Checkpoint path '{self.target_path}' is a non-empty directory "
+                "that doesn't hold a checkpoint. Choose a new or empty directory, "
+                "or an earlier checkpoint to replace."
+            )
         parent_dir = os.path.dirname(self.target_path)
         os.makedirs(parent_dir, mode=0o700, exist_ok=True)
         os.makedirs(self.staging_path, mode=0o700, exist_ok=True)
@@ -346,8 +440,13 @@ class StagedCheckpoint:
         if not rootless and os.geteuid() != 0 and shutil.which("sudo"):
             uid = os.getuid()
             gid = os.getgid()
+            # Not fs/: the guest's files keep their owners.
             subprocess.run(
-                ["sudo", "chown", "-R", f"{uid}:{gid}", self.staging_path],
+                ["sudo", "chown", f"{uid}:{gid}", *paths_to_harden],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["sudo", "chown", "-R", f"{uid}:{gid}", self.state_dir],
                 capture_output=True,
             )
             for path in paths_to_harden:
@@ -383,7 +482,7 @@ class StagedCheckpoint:
         if exc_type is not None:
             # Operation failed: clean up staging directory.
             # Any previously valid checkpoint at target_path is untouched.
-            if os.path.exists(self.staging_path):
+            if not self.keep_staging and os.path.exists(self.staging_path):
                 shutil.rmtree(self.staging_path, ignore_errors=True)
             return False
 

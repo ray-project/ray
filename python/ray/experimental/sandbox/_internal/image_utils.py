@@ -623,15 +623,61 @@ def mkfs_erofs_path() -> Optional[str]:
     path = shutil.which("mkfs.erofs")
     if path is None:
         return None
+    if "--tar" not in _mkfs_erofs_help(path):
+        return None
+    return path
+
+
+@lru_cache(maxsize=4)
+def _mkfs_erofs_help(path: str) -> str:
+    """What ``mkfs.erofs --help`` prints, or "" if it can't run."""
     try:
         res = subprocess.run(
             [path, "--help"], capture_output=True, text=True, timeout=30
         )
     except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return res.stdout + res.stderr
+
+
+def mkfs_erofs_pins_build_time() -> bool:
+    """Whether ``mkfs.erofs`` has ``--mkfs-time`` (erofs-utils 1.8+).
+
+    With it, ``-T0 --mkfs-time`` fixes only the superblock's build time and
+    leaves each file's mtime alone; without it, ``-T`` would also reset
+    every file's mtime.
+    """
+    path = mkfs_erofs_path()
+    return path is not None and "--mkfs-time" in _mkfs_erofs_help(path)
+
+
+# EROFS keeps its superblock at this offset, in this many bytes.
+_EROFS_SUPERBLOCK_OFFSET = 1024
+_EROFS_SUPERBLOCK_SIZE = 128
+
+
+def erofs_superblock_fingerprint(image_path: str) -> Optional[str]:
+    """SHA-256 of an EROFS image's superblock, or None if it can't be read.
+
+    gVisor refuses to restore a checkpoint over an EROFS root filesystem
+    whose superblock differs in any field from the one it was saved with
+    (it panics with "superblock mismatch detected on restore"), so two
+    builds of an image are interchangeable for restore exactly when their
+    fingerprints match.
+
+    Args:
+        image_path: Path of the EROFS image.
+
+    Returns:
+        The hex digest, or None if the image can't be read.
+    """
+    try:
+        with open(image_path, "rb") as f:
+            f.seek(_EROFS_SUPERBLOCK_OFFSET)
+            superblock = f.read(_EROFS_SUPERBLOCK_SIZE)
+    except OSError:
         return None
-    if "--tar" not in res.stdout + res.stderr:
-        return None
-    return path
+    return hashlib.sha256(superblock).hexdigest()
 
 
 def require_mkfs_erofs() -> str:
@@ -748,14 +794,17 @@ def build_erofs_image(
                 "--tar=f",
                 f"-b{mmap.PAGESIZE}",
                 "-E^inline_data",
-                # Restoring a checkpoint on another node maps that node's
-                # build of the image in place of this one, so builds of the
-                # same image must lay it out the same way. Extended inodes
-                # (which carry each file's own mtime) keep the layout
-                # independent of when mkfs runs, as a fixed UUID keeps the
-                # superblock; files keep their mtimes.
+                # Restoring a checkpoint on another node, or after the image
+                # was evicted and rebuilt, maps a different build of the
+                # image, and gVisor rejects one whose superblock differs at
+                # all. Extended inodes (which carry each file's own mtime)
+                # keep the layout independent of when mkfs runs, and a fixed
+                # UUID and build time keep the superblock the same; files
+                # keep their mtimes. A restore checks the superblock either
+                # way (see erofs_superblock_fingerprint).
                 "-Eforce-inode-extended",
                 "-U00000000-0000-0000-0000-000000000000",
+                *(["-T0", "--mkfs-time"] if mkfs_erofs_pins_build_time() else []),
                 out_path,
                 flat_tar,
             ],

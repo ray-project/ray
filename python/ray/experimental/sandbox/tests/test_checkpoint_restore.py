@@ -2,6 +2,7 @@ import contextlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -17,7 +18,11 @@ from ray.experimental.sandbox.backend.gvisor import (
     _RestoreImage,
 )
 from ray.experimental.sandbox.config import SandboxConfig
-from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
+from ray.experimental.sandbox.exceptions import (
+    SandboxCreationError,
+    SandboxError,
+    SandboxTimeoutError,
+)
 from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -504,6 +509,9 @@ class TestCheckpointRestore(unittest.TestCase):
         os.makedirs(old_rootfs, exist_ok=True)
         os.makedirs(old_workdir, exist_ok=True)
 
+        # An earlier checkpoint at the same path.
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            f.write("{}")
         stale_dump = os.path.join(state_dir, "stale_dump.img")
         stale_rootfs = os.path.join(old_rootfs, "deleted_guest_file.txt")
         stale_workdir = os.path.join(old_workdir, "deleted_script.py")
@@ -562,6 +570,11 @@ class TestCheckpointRestore(unittest.TestCase):
                 assert "sudo" in cmd
                 assert "chmod" in cmd
                 assert "go+rX" not in " ".join(cmd)
+            # Ownership changes skip fs/, so guest files keep their owners.
+            for cmd in self._runsc_calls(mock_run, "chown"):
+                assert not any(arg.endswith("/fs") or "/fs/" in arg for arg in cmd)
+                if "-R" in cmd:
+                    assert cmd[-1].endswith("/state")
 
     def test_checkpoint_failure_preserves_previously_valid_bundle(self):
         sandbox_id, _ = self._create_mock_sandbox(rootless=False)
@@ -841,9 +854,7 @@ class TestCheckpointRestore(unittest.TestCase):
             restored_id = self.backend.restore_sandbox(
                 ckpt_dir,
                 env={"FOO": "NEW_BAR", "EXTRA": "VAL"},
-                capabilities=["CAP_NET_BIND_SERVICE"],
                 dns=["1.1.1.1"],
-                disk="2Gi",
                 cidr_allowlist=["198.51.100.0/24"],
                 _oci_spec_transform_fn=sample_transform,
             )
@@ -851,9 +862,8 @@ class TestCheckpointRestore(unittest.TestCase):
         prep = self.image_manager.prepare_oci_bundle.call_args.kwargs
         assert prep["root_dir"] == meta["root_dir"]
         assert prep["env_dict"] == {"FOO": "NEW_BAR", "EXTRA": "VAL"}
-        assert prep["capabilities"] == ["CAP_NET_BIND_SERVICE"]
         assert prep["dns"] == ["1.1.1.1"]
-        assert prep["disk"] == "2Gi"
+        assert prep["disk"] == "1Gi"
         assert prep["network"] == "public"
         assert prep["readonly"] is True
         assert prep["_oci_spec_transform_fn"] is sample_transform
@@ -1249,6 +1259,112 @@ class TestCheckpointRestore(unittest.TestCase):
         # than stuck in PAUSED.
         assert os.path.isfile(os.path.join(ckpt_dir, "manifest.json"))
         assert self.backend.get_status(sandbox_id) == SandboxStatus.TERMINATED
+
+    def test_checkpoint_saves_the_allowlist_in_force(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False, network="public")
+        # Narrowed with set_egress_allowlist after creation (cidr_allowlist=None).
+        self.backend._sandbox_metadata[sandbox_id]["egress_allowlist"] = ["10.0.0.5/32"]
+        ckpt_dir = os.path.join(self.temp_dir, "allowlist_ckpt")
+        stack, _, _ = self._fake_runsc()
+        with stack, patch.object(self.backend, "delete_sandbox"):
+            self.backend.checkpoint_sandbox(
+                sandbox_id, checkpoint_path=ckpt_dir, leave_running=False
+            )
+        with open(os.path.join(ckpt_dir, "manifest.json")) as f:
+            manifest = json.load(f)
+        assert manifest["config"]["cidr_allowlist"] == ["10.0.0.5/32"]
+
+    def test_checkpoint_refuses_a_directory_that_is_not_a_checkpoint(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        project = os.path.join(self.temp_dir, "project")
+        os.makedirs(project)
+        with open(os.path.join(project, "data.csv"), "w") as f:
+            f.write("keep me")
+
+        stack, mock_run, _ = self._fake_runsc()
+        with stack:
+            with pytest.raises(SandboxError, match="doesn't hold a checkpoint"):
+                self.backend.checkpoint_sandbox(sandbox_id, checkpoint_path=project)
+        assert os.listdir(project) == ["data.csv"]
+        assert not self._runsc_calls(mock_run, "checkpoint")
+        assert self.backend.get_status(sandbox_id) == SandboxStatus.RUNNING
+
+    def _timing_out_checkpoint(self, mock_run):
+        def run(args, *a, **k):
+            if isinstance(args, list) and "checkpoint" in args:
+                raise subprocess.TimeoutExpired(args, k.get("timeout"))
+            return fake_run(args, *a, **k)
+
+        fake_run = mock_run.side_effect
+        mock_run.side_effect = run
+
+    def test_checkpoint_timeout_keeps_a_save_in_progress(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        ckpt_dir = os.path.join(self.temp_dir, "slow_ckpt")
+        proc = self.backend._sandbox_metadata[sandbox_id]["proc"]
+        # The save is still going: the launch process doesn't exit.
+        proc.wait.side_effect = subprocess.TimeoutExpired("runsc", 1)
+        stack, mock_run, mock_popen = self._fake_runsc()
+        with stack:
+            self._timing_out_checkpoint(mock_run)
+            with pytest.raises(SandboxTimeoutError, match="left in place"):
+                self.backend.checkpoint_sandbox(
+                    sandbox_id, checkpoint_path=ckpt_dir, timeout_seconds=1
+                )
+        # The staging directory the save writes to survives, and nothing
+        # restores over the still-saving sandbox.
+        staging = [
+            d for d in os.listdir(self.temp_dir) if d.startswith("slow_ckpt.tmp.")
+        ]
+        assert len(staging) == 1
+        assert not mock_popen.called
+
+    def test_checkpoint_timeout_waits_for_the_save_to_finish(self):
+        sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
+        ckpt_dir = os.path.join(self.temp_dir, "late_ckpt")
+        stack, mock_run, mock_popen = self._fake_runsc()
+        with stack:
+            self._timing_out_checkpoint(mock_run)
+            # The launch process exits once the save stops the sandbox.
+            self.backend.checkpoint_sandbox(
+                sandbox_id, checkpoint_path=ckpt_dir, timeout_seconds=1
+            )
+        assert os.path.isfile(os.path.join(ckpt_dir, "manifest.json"))
+        (launch,) = self._launch_commands(mock_popen)
+        assert " restore --bundle " + root_dir in launch
+
+    def _write_image(self, name, superblock_byte):
+        image_dir = os.path.join(self.temp_dir, "images", name)
+        os.makedirs(image_dir, exist_ok=True)
+        with open(os.path.join(image_dir, "rootfs.erofs"), "wb") as f:
+            f.write(b"\0" * 1024 + bytes([superblock_byte]) * 128 + b"\0" * 2944)
+        return image_dir
+
+    def test_restore_refuses_a_different_build_of_the_image(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        self.backend._sandbox_metadata[sandbox_id]["image_dir"] = self._write_image(
+            "source", 1
+        )
+        ckpt_dir = os.path.join(self.temp_dir, "fingerprint_ckpt")
+        stack, _, mock_popen = self._fake_runsc()
+        with stack:
+            self.backend.checkpoint_sandbox(
+                sandbox_id, checkpoint_path=ckpt_dir, leave_running=False
+            )
+            with open(os.path.join(ckpt_dir, "manifest.json")) as f:
+                assert json.load(f)["image_fingerprint"]
+            mock_popen.reset_mock()
+
+            # An identical build restores.
+            self.image_manager.pull_image.return_value = self._write_image("same", 1)
+            self.backend.restore_sandbox(ckpt_dir)
+            assert mock_popen.call_count == 1
+
+            # Another build would make gVisor panic: refuse it up front.
+            self.image_manager.pull_image.return_value = self._write_image("other", 2)
+            with pytest.raises(SandboxCreationError, match="differs from the one"):
+                self.backend.restore_sandbox(ckpt_dir)
+            assert mock_popen.call_count == 1
 
 
 if __name__ == "__main__":
