@@ -281,10 +281,13 @@ class ActorPoolDrainPolicy(BackpressurePolicy):
                         # `max_size` reports an unbounded ceiling (`inf`), and
                         # `%d` on it raises OverflowError.
                         "Stepped down adaptive max size of %s pool: %s -> %d "
-                        "(output not read for %.0f%% of the last %ss)",
+                        "(current size=%d, decay base=%d; output backpressured "
+                        "for %.0f%% of the last %ss)",
                         op,
                         "unbounded" if math.isinf(ceiling) else ceiling,
                         new_ceiling,
+                        size,
+                        base,
                         stalled_fraction * 100,
                         self._window_s,
                     )
@@ -309,10 +312,12 @@ class ActorPoolDrainPolicy(BackpressurePolicy):
                 adjusted = True
                 logger.info(
                     "Stepped up adaptive max size of %s pool: %s -> %d "
-                    "(output read for %.0f%% of the last %ss)",
+                    "(current size=%d; output not backpressured for %.0f%% "
+                    "of the last %ss)",
                     op,
                     "unbounded" if math.isinf(ceiling) else ceiling,
                     new_ceiling,
+                    pool.current_size(),
                     (1 - stalled_fraction) * 100,
                     self._window_s,
                 )
