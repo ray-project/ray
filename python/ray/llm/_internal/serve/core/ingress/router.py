@@ -178,6 +178,7 @@ class LLMRouter:
             )
 
             self._token_sender = token_channel.TokenSender()
+            self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
         self._handle._init()
 
     @router_app.post("/internal/route")
