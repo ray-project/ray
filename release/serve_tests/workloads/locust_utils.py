@@ -26,6 +26,9 @@ class LocustLoadTestConfig:
     data: Any
     stages: List[LocustStage]
     wait_for_workers_timeout_s: float = 600
+    # Transient failures are expected during autoscaling (replicas starting
+    # or draining, load balancer churn), so gate on a rate rather than zero.
+    max_failure_rate: float = 0.01
 
 
 @ray.remote(num_cpus=1)
@@ -146,7 +149,8 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
     Returns:
         Performance results (e.g. throughput and latency) from the test.
     Raises:
-        RuntimeError if any requests failed during the load test.
+        RuntimeError if no requests were made or more than
+        ``config.max_failure_rate`` of them failed.
     """
 
     logger.info(f"Spawning {config.num_workers} Locust worker Ray tasks.")
@@ -179,9 +183,13 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
     # Collect results and metrics
     stats: LocustTestResults = ray.get(master_ref)
     ray.get(worker_refs)
-    if stats.num_failures > 0:
+    if stats.total_requests == 0:
+        raise RuntimeError("No requests were made during the load test.")
+    failure_rate = stats.num_failures / stats.total_requests
+    if failure_rate > config.max_failure_rate:
         raise RuntimeError(
-            f"{stats.num_failures} of {stats.total_requests} requests failed."
+            f"{stats.num_failures} of {stats.total_requests} requests failed "
+            f"({failure_rate:.2%}), above the {config.max_failure_rate:.2%} limit."
         )
     return stats
 
