@@ -8,7 +8,7 @@ import time
 from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -38,6 +38,7 @@ from ray.dashboard.modules.job import job_agent as job_agent_module
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    JobInfo,
     JobInfoStorageClient,
     JobSubmitRequest,
     validate_request_type,
@@ -710,12 +711,31 @@ def _make_job_agent(*, is_head: bool, **kwargs) -> JobAgent:
     return JobAgent(dashboard_agent)
 
 
+def _job_info(status: JobStatus) -> JobInfo:
+    return JobInfo(status=status, entrypoint="echo hi")
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("is_head", [True, False])
-async def test_job_agent_run_creates_job_manager_only_on_head(is_head):
+@pytest.mark.parametrize(
+    "is_head,statuses,expect_job_manager",
+    [
+        # Unfinished jobs on the head: connect and recover them at startup.
+        (True, [JobStatus.SUCCEEDED, JobStatus.RUNNING], True),
+        (True, [JobStatus.PENDING], True),
+        # Nothing to recover: stay lazy and do not connect to Ray as a driver.
+        (True, [], False),
+        (True, [JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.STOPPED], False),
+        # Other nodes never create the JobManager at startup.
+        (False, [JobStatus.RUNNING], False),
+    ],
+)
+async def test_job_agent_run_creates_job_manager_only_for_unfinished_jobs(
+    is_head, statuses, expect_job_manager
+):
     """The head agent creates its JobManager at startup, connecting to Ray off
-    the event loop thread. Other agents keep creating it lazily."""
+    the event loop thread, only when there are unfinished jobs to recover."""
     agent = _make_job_agent(is_head=is_head)
+    jobs = {f"job_{i}": _job_info(status) for i, status in enumerate(statuses)}
     init_threads = []
 
     def init_ray_connection(gcs_address):
@@ -723,11 +743,17 @@ async def test_job_agent_run_creates_job_manager_only_on_head(is_head):
         init_threads.append(threading.current_thread())
 
     with patch.object(
+        JobInfoStorageClient, "get_all_jobs", AsyncMock(return_value=jobs)
+    ) as get_all_jobs, patch.object(
         optional_utils, "init_ray_connection", side_effect=init_ray_connection
-    ), patch.object(job_agent_module, "JobManager") as job_manager_cls:
+    ), patch.object(
+        job_agent_module, "JobManager"
+    ) as job_manager_cls:
         await agent.run(server=None)
 
-    if is_head:
+    if not is_head:
+        get_all_jobs.assert_not_called()
+    if expect_job_manager:
         assert len(init_threads) == 1
         assert init_threads[0] is not threading.current_thread()
         job_manager_cls.assert_called_once()
@@ -739,15 +765,21 @@ async def test_job_agent_run_creates_job_manager_only_on_head(is_head):
 
 
 @pytest.mark.asyncio
-async def test_job_agent_run_falls_back_to_lazy_init_on_failure():
-    """A failure to connect at startup must not fail the agent; the JobManager
-    is then created on the next Job API request as before."""
+@pytest.mark.parametrize("failing_step", ["list_jobs", "connect"])
+async def test_job_agent_run_falls_back_to_lazy_init_on_failure(failing_step):
+    """A failure to list jobs or to connect at startup must not fail the agent;
+    the JobManager is then created on the next Job API request as before."""
     agent = _make_job_agent(is_head=True)
+    error = ConnectionError("GCS is unavailable")
+    get_all_jobs = AsyncMock(
+        side_effect=error if failing_step == "list_jobs" else None,
+        return_value={"job": _job_info(JobStatus.RUNNING)},
+    )
 
-    with patch.object(
+    with patch.object(JobInfoStorageClient, "get_all_jobs", get_all_jobs), patch.object(
         optional_utils,
         "init_ray_connection",
-        side_effect=ConnectionError("GCS is unavailable"),
+        side_effect=error if failing_step == "connect" else None,
     ), patch.object(job_agent_module, "JobManager") as job_manager_cls:
         await agent.run(server=None)
         job_manager_cls.assert_not_called()
