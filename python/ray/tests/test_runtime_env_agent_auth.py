@@ -9,7 +9,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.authentication.authentication_constants import (
-    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+    TOKEN_AUTH_ERROR_MESSAGE,
 )
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
@@ -70,8 +70,7 @@ def test_runtime_env_agent_requires_auth_missing_token(setup_cluster_with_token_
     assert exc_info.value.code == 401
     body = exc_info.value.read().decode("utf-8", "ignore")
     assert "Missing authentication token" in body
-    formatted = format_authentication_http_error(401, body)
-    assert formatted.startswith("Authentication required")
+    assert format_authentication_http_error(401, body) == TOKEN_AUTH_ERROR_MESSAGE
 
 
 def test_runtime_env_agent_rejects_invalid_token(setup_cluster_with_token_auth):
@@ -159,7 +158,7 @@ def test_inject_token_if_enabled_raises_without_token(cleanup_auth_token_env):
 
     # The C++ token loader raises this, so equality also checks that its
     # message matches the Python constant.
-    assert exc_info.value.message == TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
+    assert exc_info.value.message == TOKEN_AUTH_ERROR_MESSAGE
 
 
 def test_format_authentication_http_error_non_auth_status():
