@@ -348,7 +348,7 @@ Each step covers one or more pipeline stages. The following table describes what
 * - Collate
   - Running your `collate_fn`.
 * - Finalize
-  - Running your `finalize_fn`. For GPU training, this is the host-to-device transfer.
+  - Running the finalize function. Only {meth}`~ray.data.DataIterator.iter_torch_batches` sets one, which moves the batch to the target device.
 ```
 
 When data loading latency matters, such as in model training, knowing these stages and the parameters that control them, such as `prefetch_batches` and `batch_size`, helps you reduce the time the user thread waits for the next batch.
