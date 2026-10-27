@@ -132,12 +132,6 @@ message Instance {
   string launch_config_hash = 13;
   // The ray node kind, e.g. head, worker, etc.
   NodeKind node_kind = 14;
-  // Lifetime transition counts keyed by InstanceStatus, independent of the
-  // bounded status_history used for diagnostics.
-  map<int32, uint64> status_transition_counts = 15;
-  // First transition timestamps keyed by InstanceStatus, in nanoseconds.
-  // Retained independently of status_history to preserve scheduling order.
-  map<int32, int64> first_status_transition_times_ns = 16;
 }
 
 // Update event for an instance.

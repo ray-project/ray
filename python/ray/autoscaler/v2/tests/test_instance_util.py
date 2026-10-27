@@ -160,7 +160,7 @@ class InstanceUtilTest(unittest.TestCase):
 
     @patch("ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH", 10)
     @patch("time.time_ns")
-    def test_status_history_summary_survives_serialization(self, mock_time):
+    def test_status_history_is_bounded(self, mock_time):
         mock_time.return_value = 0
         instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
         for attempt in range(100):
@@ -171,82 +171,10 @@ class InstanceUtilTest(unittest.TestCase):
 
         instance = Instance.FromString(instance.SerializeToString())
         assert len(instance.status_history) == 10
-        assert (
-            InstanceUtil.get_status_transition_count(instance, Instance.REQUESTED)
-            == 100
-        )
-        assert (
-            InstanceUtil.get_status_transition_count(instance, Instance.QUEUED) == 101
-        )
-        assert (
-            InstanceUtil.get_first_status_transition_time_ns(instance, Instance.QUEUED)
-            == 0
-        )
-        assert (
-            InstanceUtil.get_first_status_transition_time_ns(
-                instance, Instance.REQUESTED
-            )
-            == 1
-        )
-        assert InstanceUtil.get_status_transition_count(instance, Instance.UNKNOWN) == 0
-        assert (
-            InstanceUtil.get_first_status_transition_time_ns(instance, Instance.UNKNOWN)
-            is None
-        )
-        assert len(instance.status_transition_counts) == 2
-        assert len(instance.first_status_transition_times_ns) == 2
+        assert instance.status_history[0].timestamp_ns == 191
+        assert instance.status_history[-1].timestamp_ns == 200
         mock_time.return_value += 2 * 1_000_000_000
         assert InstanceUtil.has_timeout(instance, timeout_s=1)
-
-    @patch("ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH", 10)
-    @patch("time.time_ns")
-    def test_initialize_status_summary_from_legacy_history(self, mock_time):
-        # Older serialized instances have history but no lifetime summaries.
-        instance = Instance(
-            status=Instance.QUEUED,
-            status_history=[
-                Instance.StatusHistory(
-                    instance_status=(
-                        Instance.QUEUED if i % 2 == 0 else Instance.REQUESTED
-                    ),
-                    timestamp_ns=i,
-                )
-                for i in range(201)
-            ],
-        )
-        assert not instance.status_transition_counts
-        assert (
-            InstanceUtil.get_status_transition_count(instance, Instance.REQUESTED)
-            == 100
-        )
-        assert (
-            InstanceUtil.get_first_status_transition_time_ns(instance, Instance.QUEUED)
-            == 0
-        )
-        assert InstanceUtil.get_status_transition_count(instance, Instance.UNKNOWN) == 0
-        assert (
-            InstanceUtil.get_first_status_transition_time_ns(instance, Instance.UNKNOWN)
-            is None
-        )
-
-        mock_time.return_value = 201
-        assert InstanceUtil.set_status(instance, Instance.REQUESTED)
-        instance = Instance.FromString(instance.SerializeToString())
-        assert len(instance.status_history) == 10
-        assert (
-            InstanceUtil.get_status_transition_count(instance, Instance.REQUESTED)
-            == 101
-        )
-        assert (
-            InstanceUtil.get_first_status_transition_time_ns(instance, Instance.QUEUED)
-            == 0
-        )
-        assert (
-            InstanceUtil.get_first_status_transition_time_ns(
-                instance, Instance.REQUESTED
-            )
-            == 1
-        )
 
     @patch("time.time_ns")
     def test_get_last_status_transition(self, mock_time):

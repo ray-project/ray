@@ -2,7 +2,7 @@ import os
 import sys
 import unittest
 from collections import defaultdict
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # coding: utf-8
 import pytest
@@ -22,6 +22,185 @@ from ray.core.generated.instance_manager_pb2 import (
 
 
 class InstanceManagerTest(unittest.TestCase):
+    @staticmethod
+    def _update_instance_status(im, status):
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=-1,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id="id-1",
+                        new_instance_status=status,
+                        instance_type="type-1",
+                        launch_request_id="request-1",
+                        upsert=True,
+                    )
+                ],
+            )
+        )
+        assert reply.status.code == StatusCode.OK
+        reply = im.get_instance_manager_state(GetInstanceManagerStateRequest())
+        return reply.state.instances[0]
+
+    @patch("ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH", 10)
+    @patch("time.time_ns")
+    def test_status_summary_survives_storage_round_trip(self, mock_time):
+        storage = InstanceStorage("cluster-id", InMemoryStorage())
+        im = InstanceManager(storage, [])
+        mock_time.return_value = 0
+        self._update_instance_status(im, Instance.QUEUED)
+        for attempt in range(100):
+            mock_time.return_value = 2 * attempt + 1
+            self._update_instance_status(im, Instance.REQUESTED)
+            mock_time.return_value += 1
+            self._update_instance_status(im, Instance.QUEUED)
+
+        # Every read creates a new protobuf object from serialized storage.
+        instances, _ = storage.get_instances()
+        instance = instances["id-1"]
+        assert len(instance.status_history) == 10
+        assert im.get_status_transition_count(instance, Instance.REQUESTED) == 100
+        assert im.get_status_transition_count(instance, Instance.QUEUED) == 101
+        assert im.get_first_status_transition_time_ns(instance, Instance.QUEUED) == 0
+        assert im.get_first_status_transition_time_ns(instance, Instance.REQUESTED) == 1
+        assert im.get_status_transition_count(instance, Instance.UNKNOWN) == 0
+        assert (
+            im.get_first_status_transition_time_ns(instance, Instance.UNKNOWN) is None
+        )
+
+        # Summaries are scoped to the manager, even with the same instance id.
+        other = InstanceManager(InstanceStorage("other-cluster", InMemoryStorage()), [])
+        mock_time.return_value = 300
+        other_instance = self._update_instance_status(other, Instance.QUEUED)
+        assert (
+            other.get_status_transition_count(other_instance, Instance.REQUESTED) == 0
+        )
+        assert (
+            other.get_first_status_transition_time_ns(other_instance, Instance.QUEUED)
+            == 300
+        )
+        assert im.get_status_transition_count(instance, Instance.REQUESTED) == 100
+
+        # A failed deletion must not discard counts already trimmed from history.
+        assert not im.delete_instances(["id-1"], expected_storage_version=0).success
+        assert im.get_status_transition_count(instance, Instance.REQUESTED) == 100
+        assert im.delete_instances(
+            ["id-1"], expected_storage_version=instance.version
+        ).success
+        assert not im._status_summaries
+        assert not storage.get_instances()[0]
+        recreated = self._update_instance_status(im, Instance.QUEUED)
+        assert im.get_status_transition_count(recreated, Instance.REQUESTED) == 0
+        assert im.get_first_status_transition_time_ns(recreated, Instance.QUEUED) == 300
+
+    @patch("ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH", 10)
+    @patch("time.time_ns", return_value=201)
+    def test_initialize_status_summary_from_existing_history(self, mock_time):
+        for read_before_update in (False, True):
+            with self.subTest(read_before_update=read_before_update):
+                storage = InstanceStorage("cluster-id", InMemoryStorage())
+                im = InstanceManager(storage, [])
+                instance = Instance(
+                    instance_id="id-1",
+                    status=Instance.QUEUED,
+                    status_history=[
+                        Instance.StatusHistory(
+                            instance_status=(
+                                Instance.QUEUED if i % 2 == 0 else Instance.REQUESTED
+                            ),
+                            timestamp_ns=i,
+                        )
+                        for i in range(201)
+                    ],
+                )
+                assert storage.upsert_instance(instance).success
+                if read_before_update:
+                    assert (
+                        im.get_status_transition_count(instance, Instance.REQUESTED)
+                        == 100
+                    )
+                    assert (
+                        im.get_first_status_transition_time_ns(
+                            instance, Instance.QUEUED
+                        )
+                        == 0
+                    )
+
+                instance = self._update_instance_status(im, Instance.REQUESTED)
+                assert len(instance.status_history) == 10
+                assert (
+                    im.get_status_transition_count(instance, Instance.REQUESTED) == 101
+                )
+                assert im.get_status_transition_count(instance, Instance.QUEUED) == 101
+                assert (
+                    im.get_first_status_transition_time_ns(instance, Instance.QUEUED)
+                    == 0
+                )
+                assert (
+                    im.get_first_status_transition_time_ns(instance, Instance.REQUESTED)
+                    == 1
+                )
+
+    @patch("time.time_ns")
+    def test_failed_updates_do_not_change_status_summary(self, mock_time):
+        storage = InstanceStorage("cluster-id", InMemoryStorage())
+        subscriber = MockSubscriber()
+        im = InstanceManager(storage, [subscriber])
+        mock_time.return_value = 0
+        instance = self._update_instance_status(im, Instance.QUEUED)
+        subscriber.clear()
+        mock_time.return_value = 1
+        updates = [
+            InstanceUpdateEvent(
+                instance_id="id-1",
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="request-1",
+                instance_type="type-1",
+            ),
+            InstanceUpdateEvent(
+                instance_id="id-2",
+                new_instance_status=Instance.QUEUED,
+                instance_type="type-1",
+                upsert=True,
+            ),
+        ]
+        # Both read-time and write-time failures must leave summaries unchanged.
+        reply = im.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(expected_version=0, updates=updates)
+        )
+        assert reply.status.code == StatusCode.VERSION_MISMATCH
+        for failed_version, expected_code in (
+            (instance.version + 1, StatusCode.VERSION_MISMATCH),
+            (instance.version, StatusCode.UNKNOWN_ERRORS),
+        ):
+            with patch.object(
+                storage,
+                "batch_upsert_instances",
+                return_value=StoreStatus(False, failed_version),
+            ):
+                reply = im.update_instance_manager_state(
+                    UpdateInstanceManagerStateRequest(
+                        expected_version=instance.version, updates=updates
+                    )
+                )
+            assert reply.status.code == expected_code
+            assert im.get_status_transition_count(instance, Instance.REQUESTED) == 0
+            assert (
+                im.get_first_status_transition_time_ns(instance, Instance.REQUESTED)
+                is None
+            )
+            assert im.get_status_transition_count(instance, Instance.QUEUED) == 1
+            assert (
+                im.get_first_status_transition_time_ns(instance, Instance.QUEUED) == 0
+            )
+            assert "id-2" not in im._status_summaries
+            assert not subscriber.events
+
+        # Retrying the update records exactly one successful request.
+        instance = self._update_instance_status(im, Instance.REQUESTED)
+        assert im.get_status_transition_count(instance, Instance.REQUESTED) == 1
+        assert im.get_first_status_transition_time_ns(instance, Instance.REQUESTED) == 1
+
     def test_instances_version_mismatch(self):
         ins_storage = MagicMock()
         subscriber = MockSubscriber()
