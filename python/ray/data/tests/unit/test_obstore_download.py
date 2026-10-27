@@ -13,11 +13,13 @@ from freezegun.api import FrozenDateTimeFactory
 from ray.data._internal.planner._obstore_download import (
     _BUCKET_REGION_CACHE,
     _FILE_SIZE_COLUMN_PREFIX,
+    DownloadError,
     StoreRegistry,
     _discover_aws_bucket_region,
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _is_permanent_download_error,
     _native_s3_obstore_kwargs,
     _obstore_client_options_from_env,
     _obstore_filesystem_requires_threaded_download,
@@ -931,6 +933,30 @@ def _spy_resolve(fake_fn=None):
     )
 
 
+def _deny_normalize_for(suffix: str):
+    """A ``_resolve_paths_and_filesystem`` stand-in for ``_spy_resolve``.
+
+    Answers PyArrow's spelling of an S3 403 for URIs ending in ``suffix`` on
+    the per-URI normalize step (a filesystem is supplied); the one-time
+    probe (no filesystem) and other URIs use the real function.
+    """
+    from ray.data._internal.planner import plan_download_op as pdo
+
+    original = pdo._resolve_paths_and_filesystem
+
+    def fake(uri, filesystem=None, **kw):
+        if filesystem is None or not uri.endswith(suffix):
+            return original(uri, filesystem=filesystem, **kw)
+        # HEAD carries no body, so there is no S3 error code to read.
+        raise OSError(
+            "When reading information for key 'k' in bucket 'b': "
+            "AWS Error ACCESS_DENIED during HeadObject operation: "
+            "No response body."
+        )
+
+    return fake
+
+
 class TestThreadedDownloadPreResolve:
     """``download_bytes_threaded`` probes the filesystem once and shares it
     across workers, instead of each worker inferring it (the IMDS herd)."""
@@ -1669,12 +1695,18 @@ class TestObstoreRangeSplitDownload:
         )
 
 
-def _start_status_sequence_server(statuses, content=b"ok"):
+def _start_status_sequence_server(
+    statuses, content=b"ok", error_body=b"", on_request=None
+):
     """Serve ``content`` over loopback HTTP, answering one status per request.
 
     Statuses are consumed in order; once the sequence is exhausted the last
-    one repeats. Returns ``(server, port, served)`` where ``served`` records
-    every status actually sent. Call ``server.shutdown()`` when done.
+    one repeats. Non-200 responses carry ``error_body`` (for example an
+    S3-style XML error). Range headers are ignored: a 200 always carries the
+    whole body. ``on_request`` is called with the handler for every GET, for
+    example to record its headers. Returns ``(server, port, served)`` where
+    ``served`` records every status actually sent. Call ``server.shutdown()``
+    when done.
     """
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from threading import Thread
@@ -1683,9 +1715,11 @@ def _start_status_sequence_server(statuses, content=b"ok"):
 
     class _Handler(BaseHTTPRequestHandler):
         def _respond(self, with_body: bool):
+            if on_request is not None:
+                on_request(self)
             status = statuses[min(len(served), len(statuses) - 1)]
             served.append(status)
-            body = content if status == 200 else b""
+            body = content if status == 200 else error_body
             self.send_response(status)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -1696,7 +1730,10 @@ def _start_status_sequence_server(statuses, content=b"ok"):
             self._respond(with_body=True)
 
         def do_HEAD(self):
-            self._respond(with_body=False)
+            # Size probes always succeed; only GET follows the status sequence.
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
 
         def log_message(self, format, *args):
             pass
@@ -1712,7 +1749,18 @@ _RETRY_ENV_VARS = (
     "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
     "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
     "RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S",
+    "RAY_DATA_DOWNLOAD_MAX_ATTEMPTS",
+    "RAY_DATA_DOWNLOAD_RETRY_BACKOFF_MS",
 )
+
+
+def _logged_warnings(mock_logger) -> list:
+    """Render every ``logger.warning(fmt, *args)`` call on a mock to text."""
+    messages = []
+    for call in mock_logger.warning.call_args_list:
+        fmt, *args = call.args
+        messages.append(fmt % tuple(args) if args else fmt)
+    return messages
 
 
 class TestObstoreRetryConfig:
@@ -1937,6 +1985,585 @@ class TestObstoreRetryConfig:
 
         assert results == [content]
         assert served == [503, 503, 200]
+
+
+class TestDownloadErrorClassification:
+    """Transient download failures raise instead of yielding None.
+
+    Only URIs that can never be downloaded (missing object, permission denied,
+    invalid URI) yield ``None``. Anything obstore gives up on after its retries
+    raises ``DownloadError`` so task-level retry and ``max_errored_blocks``
+    apply instead of the row silently going missing.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _tiny_retry_budget(self, monkeypatch):
+        for var in _RETRY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "1")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "1")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS", "2")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_TIMEOUT_S", "5")
+        # One block-level attempt and no backoff, so tests assert the
+        # classification itself; the re-fetch loop has its own tests.
+        monkeypatch.setenv("RAY_DATA_DOWNLOAD_MAX_ATTEMPTS", "1")
+        monkeypatch.setenv("RAY_DATA_DOWNLOAD_RETRY_BACKOFF_MS", "0")
+
+    @staticmethod
+    def _download(uris, **kwargs):
+        with patch("ray.data._internal.planner._obstore_download.logger"):
+            return asyncio.run(_download_uris_with_obstore(uris, "uri", **kwargs))
+
+    @pytest.mark.parametrize(
+        "exc, permanent",
+        [
+            (FileNotFoundError("missing"), True),
+            (PermissionError("denied"), True),
+            (ValueError("bad uri"), True),
+            (pa.ArrowInvalid("bad uri"), True),
+            (OSError("connection reset by peer"), False),
+            (TimeoutError("timed out"), False),
+            (RuntimeError("boom"), False),
+            # PyArrow's S3 spellings: a 403 is row-local, a 400 (expired or
+            # malformed token) is not.
+            (
+                OSError(
+                    "When reading information for key 'k' in bucket 'b': "
+                    "AWS Error ACCESS_DENIED during HeadObject operation: "
+                    "No response body."
+                ),
+                True,
+            ),
+            (
+                OSError(
+                    "When reading information for key 'k' in bucket 'b': "
+                    "AWS Error UNKNOWN (HTTP status 400) during HeadObject "
+                    "operation: No response body."
+                ),
+                False,
+            ),
+        ],
+    )
+    def test_builtin_classification(self, exc, permanent):
+        assert _is_permanent_download_error(exc) is permanent
+
+    @pytest.mark.parametrize(
+        "name, permanent",
+        [
+            ("NotFoundError", True),
+            ("PermissionDeniedError", True),
+            ("InvalidPathError", True),
+            ("NotSupportedError", True),
+            ("GenericError", False),
+            ("UnauthenticatedError", False),
+            ("JoinError", False),
+        ],
+    )
+    def test_obstore_classification(self, name, permanent):
+        exceptions = pytest.importorskip("obstore.exceptions")
+        assert _is_permanent_download_error(getattr(exceptions, name)("x")) is (
+            permanent
+        )
+
+    def test_503_forever_raises_download_error(self):
+        pytest.importorskip("obstore")
+        from obstore.exceptions import GenericError
+
+        server, port, served = _start_status_sequence_server([503])
+        try:
+            with pytest.raises(
+                DownloadError,
+                match=(
+                    rf"Failed to download 'http://127\.0\.0\.1:{port}/f\.bin' "
+                    r"\(column 'uri'\) after 1 attempt\(s\): GenericError:"
+                ),
+            ) as exc_info:
+                self._download([f"http://127.0.0.1:{port}/f.bin"])
+        finally:
+            server.shutdown()
+
+        assert isinstance(exc_info.value.__cause__, GenericError)
+        # One attempt plus the single retry allowed by the budget.
+        assert served == [503, 503]
+
+    @pytest.mark.parametrize(
+        "status, reason",
+        [(404, "missing"), (403, "access denied")],
+    )
+    def test_http_missing_or_forbidden_returns_none(self, tmp_path, status, reason):
+        pytest.importorskip("obstore")
+        # A readable sibling keeps the block from being "all denied", which
+        # raises (test_all_denied_raises_on_both_backends).
+        (tmp_path / "ok.bin").write_bytes(b"data")
+        server, port, _ = _start_status_sequence_server([status])
+        try:
+            with patch(
+                "ray.data._internal.planner._obstore_download.logger"
+            ) as mock_logger:
+                results = asyncio.run(
+                    _download_uris_with_obstore(
+                        [
+                            f"http://127.0.0.1:{port}/f.bin",
+                            f"file://{tmp_path}/ok.bin",
+                        ],
+                        "uri",
+                    )
+                )
+        finally:
+            server.shutdown()
+        assert results == [None, b"data"]
+        # The skip is visible at warning level, once per block, with a reason.
+        summaries = [m for m in _logged_warnings(mock_logger) if "Skipped" in m]
+        assert len(summaries) == 1
+        assert "Skipped 1 of 2 URIs" in summaries[0]
+        assert f"1 {reason}" in summaries[0]
+
+    def test_credential_403_raises(self):
+        pytest.importorskip("obstore")
+        from obstore.exceptions import PermissionDeniedError
+
+        # S3 reports bad credentials as a 403 with a distinct error code in
+        # the body; that affects every request and must not become nulls.
+        server, port, _ = _start_status_sequence_server(
+            [403],
+            error_body=b"<Error><Code>InvalidAccessKeyId</Code></Error>",
+        )
+        try:
+            with pytest.raises(DownloadError, match="InvalidAccessKeyId") as exc_info:
+                self._download([f"http://127.0.0.1:{port}/f.bin"])
+        finally:
+            server.shutdown()
+        assert isinstance(exc_info.value.__cause__, PermissionDeniedError)
+
+    def test_credential_code_overrides_permission_denied(self):
+        exceptions = pytest.importorskip("obstore.exceptions")
+        denied = exceptions.PermissionDeniedError(
+            "403 Forbidden: <Error><Code>AccessDenied</Code></Error>"
+        )
+        bad_key = exceptions.PermissionDeniedError(
+            "403 Forbidden: <Error><Code>SignatureDoesNotMatch</Code></Error>"
+        )
+        assert _is_permanent_download_error(denied)
+        assert not _is_permanent_download_error(bad_key)
+
+    @pytest.mark.parametrize("backend", ["obstore", "threaded"])
+    def test_access_denied_is_row_local_on_both_backends(
+        self, tmp_path, backend, monkeypatch
+    ):
+        # Both backends must agree: a per-object 403 next to a readable
+        # object yields None with a warning, whichever one
+        # _plan_obstore_routing picks.
+        (tmp_path / "ok.bin").write_bytes(b"data")
+        if backend == "obstore":
+            pytest.importorskip("obstore")
+            server, port, _ = _start_status_sequence_server(
+                [403], error_body=b"<Error><Code>AccessDenied</Code></Error>"
+            )
+            try:
+                with patch(
+                    "ray.data._internal.planner._obstore_download.logger"
+                ) as mock_logger:
+                    results = asyncio.run(
+                        _download_uris_with_obstore(
+                            [
+                                f"http://127.0.0.1:{port}/denied.bin",
+                                f"file://{tmp_path}/ok.bin",
+                            ],
+                            "uri",
+                        )
+                    )
+            finally:
+                server.shutdown()
+            assert results == [None, b"data"]
+        else:
+            (tmp_path / "denied.bin").write_bytes(b"data")
+            table = pa.table(
+                {
+                    "uri": [
+                        f"file://{tmp_path}/denied.bin",
+                        f"file://{tmp_path}/ok.bin",
+                    ]
+                }
+            )
+            spy, _, _ = _spy_resolve(_deny_normalize_for("denied.bin"))
+            # The per-block skip summary is logged by the shared helper in
+            # ``_obstore_download`` on both backends.
+            with spy, patch(
+                "ray.data._internal.planner._obstore_download.logger"
+            ) as mock_logger:
+                out = list(
+                    download_bytes_threaded(
+                        table, ["uri"], ["bytes"], DataContext.get_current()
+                    )
+                )
+            assert out[0].column("bytes").to_pylist() == [None, b"data"]
+        summaries = [m for m in _logged_warnings(mock_logger) if "Skipped" in m]
+        assert len(summaries) == 1 and "1 access denied" in summaries[0]
+
+    @pytest.mark.parametrize("backend", ["obstore", "threaded"])
+    def test_all_denied_raises_on_both_backends(self, tmp_path, backend):
+        # One denied object is row-local, but a block in which every object
+        # is denied points at the credentials or the bucket policy and must
+        # not become a column of nulls. On the PyArrow backend this is the
+        # only credential signal: a HEAD response carries no S3 error code.
+        if backend == "obstore":
+            pytest.importorskip("obstore")
+            server, port, _ = _start_status_sequence_server(
+                [403], error_body=b"<Error><Code>AccessDenied</Code></Error>"
+            )
+            try:
+                with pytest.raises(DownloadError, match="Access denied for all 2"):
+                    self._download(
+                        [
+                            f"http://127.0.0.1:{port}/a.bin",
+                            f"http://127.0.0.1:{port}/b.bin",
+                        ]
+                    )
+            finally:
+                server.shutdown()
+        else:
+            (tmp_path / "a.bin").write_bytes(b"data")
+            (tmp_path / "b.bin").write_bytes(b"data")
+            table = pa.table(
+                {"uri": [f"file://{tmp_path}/a.bin", f"file://{tmp_path}/b.bin"]}
+            )
+            spy, _, _ = _spy_resolve(_deny_normalize_for(".bin"))
+            with spy, patch(
+                "ray.data._internal.planner.plan_download_op.logger"
+            ), pytest.raises(DownloadError, match="Access denied for all 2"):
+                list(
+                    download_bytes_threaded(
+                        table, ["uri"], ["bytes"], DataContext.get_current()
+                    )
+                )
+
+    def test_store_config_error_propagates(self):
+        pytest.importorskip("obstore")
+        # A bad store option is a configuration bug, not a per-URI failure:
+        # it must surface as the real error, not turn every row into None.
+        # (HTTP and S3 stores validate client options; local stores ignore
+        # them.) Construction fails before any request is made.
+        with pytest.raises(ValueError, match="bogus") as exc_info:
+            self._download(
+                ["http://127.0.0.1:1/f.bin"],
+                fs_kwargs={"client_options": {"bogus": True}},
+            )
+        assert not isinstance(exc_info.value, DownloadError)
+
+    def test_unrecognised_store_url_is_row_local(self, tmp_path):
+        pytest.importorskip("obstore")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        # The block's first store builds fine, so a later URI whose store
+        # obstore cannot recognise is a per-row failure: null plus a count,
+        # not a failed block. (obstore raises GenericError for these, which
+        # would otherwise read as transient.)
+        uris = [f"file://{tmp_path}/f.bin", "ftp://host/x.bin", "s3:///no-bucket"]
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            results = asyncio.run(_download_uris_with_obstore(uris, "uri"))
+        assert results == [b"data", None, None]
+        summaries = [m for m in _logged_warnings(mock_logger) if "Skipped" in m]
+        assert len(summaries) == 1 and "Skipped 2 of 3 URIs" in summaries[0]
+
+    def test_malformed_first_uri_does_not_fail_block(self, tmp_path):
+        pytest.importorskip("obstore")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        # The outcome must not depend on URI order: a bad store URL in the
+        # first position is just as row-local as in any other position.
+        uris = ["s3:///no-bucket", f"file://{tmp_path}/f.bin"]
+        with patch("ray.data._internal.planner._obstore_download.logger"):
+            results = asyncio.run(_download_uris_with_obstore(uris, "uri"))
+        assert results == [None, b"data"]
+
+    def test_all_stores_failing_raises_the_real_error(self):
+        pytest.importorskip("obstore")
+        from obstore.exceptions import GenericError
+
+        # When no store in the block can be built, the shared configuration
+        # (or the block's whole scheme) is at fault, so the error surfaces
+        # instead of every row quietly becoming None.
+        with pytest.raises(GenericError, match="Unable to recognise URL"):
+            self._download(["ftp://host/a.bin", "ftp://host/b.bin"])
+
+    def test_non_string_uris_yield_none(self, tmp_path):
+        pytest.importorskip("obstore")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        uris = [None, float("nan"), "", f"file://{tmp_path}/f.bin"]
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            results = asyncio.run(_download_uris_with_obstore(uris, "uri"))
+        assert results == [None, None, None, b"data"]
+        # None is a legitimate null input; NaN and "" are counted as invalid.
+        summaries = [m for m in _logged_warnings(mock_logger) if "Skipped" in m]
+        assert len(summaries) == 1 and "2 invalid uri" in summaries[0]
+
+    def test_transient_failure_refetched_within_block(self, tmp_path, monkeypatch):
+        pytest.importorskip("obstore")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "0")
+        monkeypatch.setenv("RAY_DATA_DOWNLOAD_MAX_ATTEMPTS", "2")
+        (tmp_path / "ok.bin").write_bytes(b"data")
+        content = b"second time lucky"
+        server, port, served = _start_status_sequence_server([503, 200], content)
+        try:
+            with patch(
+                "ray.data._internal.planner._obstore_download.logger"
+            ) as mock_logger:
+                results = asyncio.run(
+                    _download_uris_with_obstore(
+                        [f"file://{tmp_path}/ok.bin", f"http://127.0.0.1:{port}/f.bin"],
+                        "uri",
+                    )
+                )
+        finally:
+            server.shutdown()
+        assert results == [b"data", content]
+        # Only the failed URI was re-fetched, and the retry was logged.
+        assert served == [503, 200]
+        assert any(
+            "Re-fetching 1 of 2 URIs" in m for m in _logged_warnings(mock_logger)
+        )
+
+    def test_transient_failure_exhausts_attempts(self, monkeypatch):
+        pytest.importorskip("obstore")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "0")
+        monkeypatch.setenv("RAY_DATA_DOWNLOAD_MAX_ATTEMPTS", "2")
+        server, port, served = _start_status_sequence_server([503])
+        try:
+            with pytest.raises(DownloadError, match=r"after 2 attempt\(s\)"):
+                self._download([f"http://127.0.0.1:{port}/f.bin"])
+        finally:
+            server.shutdown()
+        assert served == [503, 503]
+
+    def test_threaded_transient_failure_refetched(self, tmp_path, monkeypatch):
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        monkeypatch.setenv("RAY_DATA_DOWNLOAD_MAX_ATTEMPTS", "2")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        table = pa.table({"uri": [f"file://{tmp_path}/f.bin"]})
+        original = pdo._resolve_paths_and_filesystem
+        failures = []
+
+        def fake(uri, filesystem=None, **kw):
+            if filesystem is not None and not failures:
+                failures.append(uri)
+                raise OSError("connection reset by peer")
+            return original(uri, filesystem=filesystem, **kw)
+
+        spy, _, _ = _spy_resolve(fake)
+        with spy, patch("ray.data._internal.planner.plan_download_op.logger"):
+            out = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+        assert out[0].column("bytes").to_pylist() == [b"data"]
+        assert len(failures) == 1
+
+    def test_threaded_stream_close_failure_yields_one_outcome_per_uri(
+        self, tmp_path, monkeypatch
+    ):
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        # Closing the stream raises after its bytes were already read. That
+        # is one failed download of that URI (re-fetched here), not a second
+        # outcome for it that would shift every later row by one.
+        monkeypatch.setenv("RAY_DATA_DOWNLOAD_MAX_ATTEMPTS", "2")
+        (tmp_path / "a.bin").write_bytes(b"a")
+        (tmp_path / "b.bin").write_bytes(b"b")
+        table = pa.table(
+            {"uri": [f"file://{tmp_path}/a.bin", f"file://{tmp_path}/b.bin"]}
+        )
+        opened = []
+
+        class _Stream:
+            def __init__(self, fs, path, fail_close):
+                self._fs, self._path, self._fail_close = fs, path, fail_close
+
+            def __enter__(self):
+                self._stream = self._fs.open_input_stream(self._path)
+                return self._stream
+
+            def __exit__(self, *exc):
+                self._stream.close()
+                if self._fail_close:
+                    raise OSError("connection reset by peer while closing")
+
+        class _FailingCloseFS:
+            def __init__(self, fs):
+                self._fs = fs
+
+            def open_input_stream(self, path):
+                opened.append(path)
+                first_open = opened.count(path) == 1
+                return _Stream(self._fs, path, path.endswith("b.bin") and first_open)
+
+        with patch.object(
+            pdo.RetryingPyFileSystem,
+            "wrap",
+            side_effect=lambda fs, **kwargs: _FailingCloseFS(fs),
+        ), patch("ray.data._internal.planner.plan_download_op.logger"):
+            out = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+        assert out[0].column("bytes").to_pylist() == [b"a", b"b"]
+        assert sum(path.endswith("b.bin") for path in opened) == 2
+
+    def test_unauthenticated_raises(self, tmp_path):
+        obs = pytest.importorskip("obstore")
+        from obstore.exceptions import UnauthenticatedError
+
+        (tmp_path / "f.bin").write_bytes(b"data")
+        with patch.object(
+            obs, "get_async", side_effect=UnauthenticatedError("bad creds")
+        ):
+            with pytest.raises(
+                DownloadError, match="UnauthenticatedError: bad creds"
+            ) as exc_info:
+                self._download([f"file://{tmp_path}/f.bin"])
+        assert isinstance(exc_info.value.__cause__, UnauthenticatedError)
+
+    def test_one_failure_fails_block(self, tmp_path):
+        pytest.importorskip("obstore")
+        (tmp_path / "ok.bin").write_bytes(b"ok")
+        server, port, _ = _start_status_sequence_server([503])
+        try:
+            with pytest.raises(DownloadError, match="f.bin"):
+                self._download(
+                    [f"file://{tmp_path}/ok.bin", f"http://127.0.0.1:{port}/f.bin"]
+                )
+        finally:
+            server.shutdown()
+
+    @staticmethod
+    def _ranged_settings(chunk_size: int):
+        return (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        "status, raises",
+        [pytest.param(503, True, id="503"), pytest.param(404, False, id="404")],
+    )
+    def test_ranged_failure_skips_whole_file_fallback(self, status, raises):
+        pytest.importorskip("obstore")
+        chunk_size = 16
+        ranges = []
+        server, port, served = _start_status_sequence_server(
+            [status],
+            on_request=lambda handler: ranges.append(handler.headers.get("Range")),
+        )
+        threshold, chunk = self._ranged_settings(chunk_size)
+        uri = f"http://127.0.0.1:{port}/f.bin"
+        try:
+            with threshold, chunk:
+                if raises:
+                    with pytest.raises(DownloadError, match="f.bin"):
+                        self._download([uri], file_sizes=[chunk_size * 4])
+                else:
+                    assert self._download([uri], file_sizes=[chunk_size * 4]) == [None]
+        finally:
+            server.shutdown()
+        # obstore already retried the failing range request (503), or the
+        # object is missing (404): a whole-file GET would only repeat the
+        # answer, so every request the server saw carried a Range header.
+        assert served and set(served) == {status}
+        assert ranges and all(header is not None for header in ranges)
+
+    def test_ranged_falls_back_when_range_unsupported(self):
+        pytest.importorskip("obstore")
+        chunk_size = 16
+        content = b"x" * (chunk_size * 4)
+        ranges = []
+        # This server ignores the Range header and answers 200 with the whole
+        # body, which obstore reports as NotSupportedError. That is the case
+        # the whole-file fallback exists for.
+        server, port, _ = _start_status_sequence_server(
+            [200],
+            content=content,
+            on_request=lambda handler: ranges.append(handler.headers.get("Range")),
+        )
+        threshold, chunk = self._ranged_settings(chunk_size)
+        try:
+            with threshold, chunk:
+                results = self._download(
+                    [f"http://127.0.0.1:{port}/f.bin"], file_sizes=[len(content)]
+                )
+        finally:
+            server.shutdown()
+        assert results == [content]
+        # Range requests first, then exactly one whole-file GET.
+        assert ranges[0] is not None
+        assert ranges.count(None) == 1 and ranges[-1] is None
+
+    def test_threaded_missing_file_returns_none(self, tmp_path):
+        table = pa.table({"uri": [f"file://{tmp_path}/missing.bin"]})
+        with patch("ray.data._internal.planner.plan_download_op.logger"):
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+        assert results[0].column("bytes").to_pylist() == [None]
+
+    @pytest.mark.parametrize(
+        "error, expect_none",
+        [
+            pytest.param(pa.ArrowInvalid("bad uri"), True, id="invalid-uri"),
+            pytest.param(
+                OSError("connection reset by peer"), False, id="transient-oserror"
+            ),
+            pytest.param(
+                OSError(
+                    "When reading information for key 'k' in bucket 'b': "
+                    "AWS Error UNKNOWN (HTTP status 400) during HeadObject "
+                    "operation: No response body."
+                ),
+                False,
+                id="expired-token-400",
+            ),
+        ],
+    )
+    def test_threaded_normalize_errors(self, tmp_path, error, expect_none):
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        (tmp_path / "f.bin").write_bytes(b"data")
+        table = pa.table({"uri": [f"file://{tmp_path}/f.bin"]})
+        original = pdo._resolve_paths_and_filesystem
+
+        def fake(uri, filesystem=None, **kw):
+            if filesystem is None:
+                # The one-time probe succeeds; the per-URI normalize fails.
+                return original(uri, filesystem=None, **kw)
+            raise error
+
+        spy, _, _ = _spy_resolve(fake)
+
+        def run():
+            return list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+        with spy, patch("ray.data._internal.planner.plan_download_op.logger"):
+            if expect_none:
+                assert run()[0].column("bytes").to_pylist() == [None]
+            else:
+                with pytest.raises(DownloadError) as exc_info:
+                    run()
+                assert str(error) in str(exc_info.value)
 
 
 if __name__ == "__main__":

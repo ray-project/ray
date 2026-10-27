@@ -25,6 +25,6 @@ to enforce training stability in the asynchronous data-collection setting.
 
 ### [Asynchronous Proximal Policy Optimization (APPO)](https://arxiv.org/abs/1912.00167).
 
-**[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#appo)**
+**[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#appo)**
 
 **[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/appo/appo.py)**

@@ -53,7 +53,9 @@ steps:
     env:
       PYTHON: "3.12"
     depends_on: oss-ci-base_gpu-multipy(python=3.12)
-    tags: cibase
+    tags:
+      - oss
+      - cibase
 
   # type check
   - label: ":python: pyrefly type check"

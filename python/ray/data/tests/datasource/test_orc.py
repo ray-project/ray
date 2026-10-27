@@ -1132,6 +1132,139 @@ def test_read_orc_v2_stored_partition_logical_types(
         ]
 
 
+def _trace_orc_batch_sizing(monkeypatch, trace_path):
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+
+    original_create_scanner = OrcDatasourceV2.create_scanner
+
+    class TracingScanner(OrcScanner):
+        def create_reader(self):
+            import uuid
+
+            reader = super().create_reader()
+            reader_id = uuid.uuid4().hex
+            read_count = 0
+            original_read = reader.read
+            original_iter = reader._iter_fragment_tables
+
+            def traced_read(input_split):
+                nonlocal read_count
+                read_count += 1
+                yield from original_read(input_split)
+
+            def traced_iter(fragment, scanner_kwargs):
+                with open(trace_path, "a") as trace:
+                    trace.write(
+                        json.dumps(
+                            {
+                                "event": "scan",
+                                "reader": reader_id,
+                                "read_count": read_count,
+                                "path": fragment.path,
+                                "target": reader._target_block_size,
+                                "batch_size": scanner_kwargs["batch_size"],
+                            }
+                        )
+                        + "\n"
+                    )
+                for table in original_iter(fragment, scanner_kwargs):
+                    with open(trace_path, "a") as trace:
+                        trace.write(
+                            json.dumps(
+                                {
+                                    "event": "batch",
+                                    "rows": table.num_rows,
+                                    "nbytes": table.nbytes,
+                                }
+                            )
+                            + "\n"
+                        )
+                    yield table
+
+            reader.read = traced_read
+            reader._iter_fragment_tables = traced_iter
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return TracingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(OrcDatasourceV2, "create_scanner", create_scanner)
+
+
+@pytest.mark.parametrize("file_count", [1, 2])
+def test_read_orc_v2_batch_sizing_fallback(
+    ray_start_regular_shared, tmp_path, monkeypatch, file_count
+):
+    from ray.data._internal.datasource_v2.common.file_reader import (
+        _ARROW_DEFAULT_BATCH_SIZE,
+    )
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(DataContext.get_current(), "target_max_block_size", 128)
+    trace_path = str(tmp_path / "batch-sizing.jsonl")
+    _trace_orc_batch_sizing(monkeypatch, trace_path)
+    for index in range(file_count):
+        _write_orc(
+            str(tmp_path / f"part-{index}.orc"),
+            pa.table({"id": [index], "payload": [[None, "x" * 512]]}),
+        )
+    rows = ray.data.read_orc(str(tmp_path), override_num_blocks=file_count).take_all()
+    assert sorted(rows, key=lambda row: row["id"]) == [
+        {"id": index, "payload": [None, "x" * 512]} for index in range(file_count)
+    ]
+    with open(trace_path) as trace:
+        records = [json.loads(line) for line in trace]
+    requests = [record for record in records if record["event"] == "scan"]
+    assert len(requests) == file_count
+    assert all(request["read_count"] == 1 for request in requests)
+    assert all(request["target"] == 128 for request in requests)
+    assert all(
+        request["batch_size"] == _ARROW_DEFAULT_BATCH_SIZE for request in requests
+    )
+
+
+@pytest.mark.parametrize("target", [65536, 131072])
+@pytest.mark.parametrize("project_narrow", [False, True])
+def test_read_orc_v2_initial_batch_sizing(
+    ray_start_regular_shared, tmp_path, monkeypatch, target, project_narrow
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(DataContext.get_current(), "target_max_block_size", target)
+    trace_path = str(tmp_path / "initial-batch-sizing.jsonl")
+    _trace_orc_batch_sizing(monkeypatch, trace_path)
+    table = pa.table({"id": range(256), "payload": ["x" * 4096] * 256})
+    path = str(tmp_path / "data.orc")
+    _write_orc(path, table)
+    dataset = ray.data.read_orc(path, override_num_blocks=1)
+    if project_narrow:
+        dataset = dataset.select_columns(["id"])
+    rows = sorted(dataset.take_all(), key=lambda row: row["id"])
+    assert rows == (table.select(["id"]) if project_narrow else table).to_pylist()
+    with open(trace_path) as trace:
+        records = [json.loads(line) for line in trace]
+    scans = [record for record in records if record["event"] == "scan"]
+    batches = [record for record in records if record["event"] == "batch"]
+    expected_size = 256 if project_narrow else target // 4096
+    assert len(scans) == 1
+    assert scans[0]["read_count"] == 1
+    assert scans[0]["target"] == target
+    assert scans[0]["batch_size"] == expected_size
+    assert batches[0]["rows"] == expected_size
+    assert sum(batch["rows"] for batch in batches) == 256
+    assert all(batch["rows"] <= expected_size for batch in batches)
+    if not project_narrow:
+        assert batches[0]["nbytes"] < table.nbytes
+
+
 def test_read_orc_v1_fallback_preserves_columns_outside_v2_sample(
     ray_start_regular_shared, tmp_path, monkeypatch
 ):
