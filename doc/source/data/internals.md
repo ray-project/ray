@@ -297,13 +297,9 @@ If multiple operators are viable, the executor chooses the operator with the sma
 
 (batch_iteration)=
 
-## How does Ray Data iterate over data?
+### How does Ray Data iterate over data?
 
 While the sections above describe how Ray Data produces blocks, this section describes how Ray Data's iteration APIs consume them, including {meth}`~ray.data.DataIterator.iter_batches`, {meth}`~ray.data.DataIterator.iter_torch_batches`, {meth}`~ray.data.DataIterator.iter_rows`, and {meth}`~ray.data.DataIterator.to_tf`. Each of these APIs uses the pipelining mechanism described below to prepare, process, and finalize batches for your code to consume. Understanding this mechanism helps you identify data ingest bottlenecks in workloads such as model training.
-
-:::{note}
-If you use Ray Train, see {ref}`Debug data loading bottlenecks <train-debugging-data-loading-bottlenecks>` for more detail on debugging slow data loading.
-:::
 
 ```{image} ./batch-iteration-threads.svg
 :alt: Timeline of a user thread, an outer iteration thread, and two worker threads overlapping as three batches are prepared, processed, and finalized.
@@ -356,6 +352,10 @@ Each step covers one or more pipeline stages. The following table describes what
 ```
 
 When data loading latency matters, as in model training, knowing these stages and the parameters that control them helps you reduce the time the user thread waits for the next batch.
+
+:::{note}
+If you use Ray Train, see {ref}`Debug data loading bottlenecks <train-debugging-data-loading-bottlenecks>` for more detail on debugging slow data loading.
+:::
 
 ## How does Ray Data schedule tasks?
 
