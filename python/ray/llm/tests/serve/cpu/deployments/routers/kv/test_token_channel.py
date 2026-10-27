@@ -71,6 +71,17 @@ async def _wait_until_staged(store, keys):
     pytest.fail(f"Timed out waiting for staged prompt tokens: {sorted(remaining)}")
 
 
+def test_sender_exceeds_default_socket_cap():
+    """Opens more sockets than the default context's 1023 cap."""
+    sender = TokenSender(max_sockets=1100)
+    try:
+        for i in range(1100):
+            assert sender._get_socket(f"tcp://127.0.0.1:{20000 + i}") is not None
+        assert len(sender._sockets) == 1100
+    finally:
+        sender.close()
+
+
 def test_bad_endpoint_falls_back():
     """A malformed endpoint must degrade to engine tokenization, not raise."""
     sender = TokenSender()
