@@ -411,8 +411,7 @@ class DataOpTask(OpTask):
 
         if max_bytes_to_read == 0 and has_unread_output:
             # A zero read budget counts as output backpressure only while the
-            # task still has output to consume. Once the stream is exhausted
-            # with no pending output refs, only terminal confirmation remains.
+            # task still has output to consume.
             if self._start_output_backpressure_s is None:
                 self._start_output_backpressure_s = time.perf_counter()
 
