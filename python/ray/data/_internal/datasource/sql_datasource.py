@@ -148,26 +148,44 @@ class SQLDatasource(Datasource):
 
         Returns:
             bool: True if sharding is supported, False otherwise.
+
+        Raises:
+            Exception: Any error raised while establishing the database
+                connection (authentication, network, or configuration problems)
+                is propagated instead of being masked as "sharding not
+                supported".
         """
         if parallelism <= 1 or self.shard_keys is None:
             return False
 
         hash_fn = self.shard_hash_fn
+        last_error: Optional[Exception] = None
         for syntax in self._MODULO_SYNTAXES:
             modulo_expr = self._build_modulo_expr(syntax, hash_fn, parallelism)
             query = f"SELECT COUNT(1) FROM ({self.sql}) as T WHERE {modulo_expr} = 0"
+            connected = False
             try:
                 with _connect(self.connection_factory) as cursor:
+                    connected = True
                     _execute(cursor, query, self.sql_params)
             except Exception as e:
+                # A failure while establishing the connection/cursor is not a
+                # modulo-syntax problem, so surface it instead of misreporting
+                # the database as "sharding not supported".
+                if not connected:
+                    raise
+                last_error = e
                 logger.debug(f"Sharding probe using {syntax!r} failed: {str(e)}.")
                 continue
             self._modulo_syntax = syntax
             return True
 
+        # Every modulo syntax failed. Include the last underlying error at info
+        # level so an unrelated failure (e.g. a misconfigured ``shard_hash_fn``)
+        # is not hidden behind the generic "not supported" message.
         logger.info(
             "Database does not support sharding: neither the MOD() function "
-            "nor the % operator is available."
+            f"nor the % operator is available. Last probe error: {last_error!r}"
         )
         return False
 

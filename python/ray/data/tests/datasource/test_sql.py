@@ -165,43 +165,32 @@ def _all_queries(connection) -> list:
     return [sql for cursor in connection.cursors for sql in cursor.executed]
 
 
-def test_supports_sharding_prefers_mod_when_available():
-    # When MOD() works, it wins the probe and the % fallback is never reached.
-    datasource, connection = _make_probe_datasource(
-        mod_supported=True, percent_supported=True
-    )
-    assert datasource.supports_sharding(4) is True
-    assert datasource._modulo_syntax == "MOD"
+@pytest.mark.parametrize(
+    "mod_supported, percent_supported, expected, expected_syntax",
+    [
+        # MOD() works: it wins the probe and the % operator is never reached.
+        (True, True, True, "MOD"),
+        # MOD() unavailable (SQLite without math functions, SQL Server): fall
+        # back to the % operator.
+        (False, True, True, "%"),
+        # Neither syntax works: sharding is genuinely unsupported.
+        (False, False, False, None),
+    ],
+)
+def test_supports_sharding_probes_modulo_syntaxes(
+    mod_supported: bool, percent_supported: bool, expected: bool, expected_syntax
+):
+    datasource, connection = _make_probe_datasource(mod_supported, percent_supported)
+    assert datasource.supports_sharding(4) is expected
+    assert datasource._modulo_syntax == expected_syntax
     queries = _all_queries(connection)
+    # MOD() is always probed first.
     assert any("MOD(" in q for q in queries)
-    assert not any(" % " in q for q in queries)
-
-
-def test_supports_sharding_falls_back_to_percent_operator():
-    # MOD() is unavailable (e.g. SQLite without math functions, SQL Server),
-    # so the probe should fall back to the % operator and cache that choice.
-    datasource, connection = _make_probe_datasource(
-        mod_supported=False, percent_supported=True
-    )
-    assert datasource.supports_sharding(4) is True
-    assert datasource._modulo_syntax == "%"
-    queries = _all_queries(connection)
-    # MOD() is tried first (and fails), then % wins.
-    assert any("MOD(" in q for q in queries)
-    assert any(" % " in q for q in queries)
-
-
-def test_supports_sharding_false_when_no_modulo_available():
-    # Neither syntax works: sharding is genuinely unsupported.
-    datasource, connection = _make_probe_datasource(
-        mod_supported=False, percent_supported=False
-    )
-    assert datasource.supports_sharding(4) is False
-    assert datasource._modulo_syntax is None
-    queries = _all_queries(connection)
-    # Both syntaxes were probed before giving up.
-    assert any("MOD(" in q for q in queries)
-    assert any(" % " in q for q in queries)
+    # The % operator is only reached once MOD() has failed.
+    if mod_supported:
+        assert not any(" % " in q for q in queries)
+    else:
+        assert any(" % " in q for q in queries)
 
 
 def test_parallel_read_fn_uses_detected_modulo_syntax():
@@ -222,6 +211,53 @@ def test_parallel_read_fn_uses_detected_modulo_syntax():
     assert read_queries, "expected a sharded read query to be executed"
     assert all(" % " in q for q in read_queries)
     assert not any("MOD(" in q for q in read_queries)
+
+
+def test_read_sql_falls_back_to_percent_when_mod_denied(temp_database: str):
+    """End-to-end fallback: deny MOD() via SQLite's set_authorizer and confirm
+    read_sql still shards through the % operator, reading every row exactly once.
+
+    Unlike the cursor-double tests above, this drives the full path (probe ->
+    cached syntax -> per-task reads) against a real SQLite database. Denying
+    MOD() emulates a database without it and is deterministic whether or not the
+    local SQLite build ships the math functions.
+    """
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE grade(name, id, score)")
+    base_tuple = ("xiaoming", 1, 8.2)
+    expected_values = [
+        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(500)
+    ]
+    connection.executemany("INSERT INTO grade VALUES (?, ?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    def deny_mod(action, arg1, arg2, db_name, trigger):
+        # Authorizer callback: refuse the MOD() function so the probe must fall
+        # back to the % operator.
+        if action == sqlite3.SQLITE_FUNCTION and str(arg1).lower() == "mod":
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    def connection_factory():
+        conn = sqlite3.connect(temp_database)
+        conn.set_authorizer(deny_mod)
+        return conn
+
+    num_blocks = 4
+    dataset = ray.data.read_sql(
+        "SELECT * FROM grade",
+        connection_factory,
+        override_num_blocks=num_blocks,
+        shard_hash_fn="unicode",
+        shard_keys=["id"],
+    )
+    dataset = dataset.materialize()
+    # Sharding actually happened (not the single-task fallback)...
+    assert dataset.num_blocks() == num_blocks
+    # ...and every row is read exactly once through the % operator.
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+    assert sorted(actual_values) == sorted(expected_values)
 
 
 # for mysql test
