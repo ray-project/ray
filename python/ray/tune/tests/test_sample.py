@@ -1213,7 +1213,7 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertHyperOptQuantizedInteger(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
-        # Every suggestion must be a value Tune itself would sample.
+        # Suggestions must be exactly the values Tune itself would sample.
         for domain, expected in (
             (tune.qrandint(1, 10, 3), {3, 6, 9}),
             (tune.qrandint(0, 9, 5), {0, 5}),
@@ -1229,7 +1229,7 @@ class SearchSpaceTest(unittest.TestCase):
                     random_state_seed=0,
                 )
                 values = {searcher.suggest(str(i))["a"] for i in range(500)}
-                self.assertEqual(values - expected, set())
+                self.assertEqual(values, expected)
 
     def testSampleBoundsHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
