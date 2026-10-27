@@ -261,6 +261,40 @@ def test_request_remaining_empty_means_no_leftovers():
     assert res == {"": {"CPU": 2}}
 
 
+def test_higher_priority_request_is_reserved_first():
+    """When two requests' bundles don't both fit, a HIGH request, such as a Train
+    run's, gets its bundles ahead of an earlier MEDIUM one, such as Ray Data's."""
+    cluster_nodes = [
+        {
+            "NodeID": "n1",
+            "Resources": {"CPU": 4, "object_store_memory": 1000},
+            "Alive": True,
+        }
+    ]
+    coordinator = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: cluster_nodes,
+    )
+
+    coordinator.request_resources(
+        requester_id="data",
+        resources=[{"CPU": 3}],
+        expire_after_s=100,
+        priority=ResourceRequestPriority.MEDIUM,
+    )
+    assert coordinator.get_reserved_resources("data") == {"n1": {"CPU": 3}}
+
+    coordinator.request_resources(
+        requester_id="train",
+        resources=[{"CPU": 2}],
+        expire_after_s=100,
+        priority=ResourceRequestPriority.HIGH,
+    )
+    assert coordinator.get_reserved_resources("train") == {"n1": {"CPU": 2}}
+    assert coordinator.get_reserved_resources("data") == {}
+
+
 def test_format_node_resources_for_log():
     # Two nodes with standard resources (plus custom labels and GPU: 0) and
     # one node with only custom/zero resources. Custom/zero resources are
