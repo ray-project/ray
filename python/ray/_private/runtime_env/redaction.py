@@ -72,8 +72,18 @@ def redact_serialized_runtime_env(
     if not isinstance(runtime_env, dict):
         return REDACTED_PLACEHOLDER
 
-    if not any(runtime_env.get(field) for field in SECRET_RUNTIME_ENV_FIELDS):
+    if not any(
+        isinstance(runtime_env.get(field), dict) and runtime_env[field]
+        for field in SECRET_RUNTIME_ENV_FIELDS
+    ):
         # Nothing to mask, so keep the original string instead of re-serializing it.
         return serialized_runtime_env
 
-    return json.dumps(redact_runtime_env(runtime_env), sort_keys=True)
+    # Match the compact, sorted, non-ASCII-preserving output of
+    # `RedactSerializedRuntimeEnv` in src/ray/common/runtime_env_redaction.cc.
+    return json.dumps(
+        redact_runtime_env(runtime_env),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )

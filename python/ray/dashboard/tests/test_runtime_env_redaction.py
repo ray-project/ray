@@ -118,6 +118,7 @@ def test_redact_serialized_runtime_env_fails_closed(serialized):
         '{"working_dir":"gcs://_ray_pkg_abc123.zip","pip":["requests"]}',
         '{"pip": ["requests"], "env_vars": {}}',
         '{"env_vars": null}',
+        '{"env_vars": ["not", "a", "dict"]}',
     ],
 )
 def test_redact_serialized_runtime_env_keeps_string_without_secrets(serialized):

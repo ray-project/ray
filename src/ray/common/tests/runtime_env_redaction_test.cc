@@ -76,7 +76,8 @@ TEST(RuntimeEnvRedactionTest, LeavesRuntimeEnvWithoutEnvVarsUnchanged) {
        {std::string(R"({})"),
         std::string(R"({"working_dir":"gcs://_ray_pkg_abc123.zip","pip":["requests"]})"),
         std::string(R"({"pip": ["requests"], "env_vars": {}})"),
-        std::string(R"({"env_vars": null})")}) {
+        std::string(R"({"env_vars": null})"),
+        std::string(R"({"env_vars": ["not", "a", "dict"]})")}) {
     EXPECT_EQ(RedactSerializedRuntimeEnv(serialized), serialized);
   }
 }
