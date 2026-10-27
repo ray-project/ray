@@ -125,10 +125,6 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # The workaround here is to limit capacity to 2GB for Mac by default,
 # and raise error if the capacity is overwritten by user.
 MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = (2) * (2**30)
-# Default object store size cap on Windows (as on macOS). Windows commits the whole
-# object store at raylet startup, so a large default can exhaust system memory when
-# several Ray nodes share one machine.
-WINDOWS_DEFAULT_OBJECT_STORE_MEMORY_LIMIT = (2) * (2**30)
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379

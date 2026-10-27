@@ -635,11 +635,6 @@ def resolve_object_store_memory(
             object_store_memory = min(
                 object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
             )
-        elif sys.platform == "win32":
-            object_store_memory = min(
-                object_store_memory,
-                ray_constants.WINDOWS_DEFAULT_OBJECT_STORE_MEMORY_LIMIT,
-            )
 
         # Cap memory to avoid memory waste and perf issues on large nodes
         if object_store_memory > object_store_memory_cap:
