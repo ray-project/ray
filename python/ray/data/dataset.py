@@ -3244,11 +3244,24 @@ class Dataset:
             if fraction < 1.0 and n_test >= ds_length:
                 n_test = ds_length - 1
 
+        def _normalize_key(key):
+            if hasattr(key, "item"):
+                try:
+                    return key.item()
+                except (AttributeError, ValueError, TypeError):
+                    pass
+            elif hasattr(key, "as_py"):
+                try:
+                    return key.as_py()
+                except (AttributeError, ValueError, TypeError):
+                    pass
+            return key
+
         # Per-class test counts via largest remainder, so flooring can't
         # silently shrink (or empty) the test split, and an int test_size
         # is honored exactly instead of being re-floored per class.
         class_sizes = [
-            (row[stratify], row["count()"])
+            (_normalize_key(row[stratify]), row["count()"])
             for row in ds.groupby(stratify).count().take_all()
         ]
         base = []
@@ -3289,16 +3302,7 @@ class Dataset:
                 key = col.iloc[0]
             except AttributeError:
                 key = col[0]
-            if hasattr(key, "item"):
-                try:
-                    key = key.item()
-                except (AttributeError, ValueError, TypeError):
-                    pass
-            elif hasattr(key, "as_py"):
-                try:
-                    key = key.as_py()
-                except (AttributeError, ValueError, TypeError):
-                    pass
+            key = _normalize_key(key)
             test_count = test_counts.get(key, int(n * fraction))
             test_count = min(max(test_count, 0), n)
             group_batch[_TRAIN_TEST_SPLIT_COLUMN] = np.array(
