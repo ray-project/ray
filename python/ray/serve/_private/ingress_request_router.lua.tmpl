@@ -86,13 +86,16 @@ local function route(txn, app, pool, replica_map)
     end
     local start = _rr_cursor[app] or 0
     _rr_cursor[app] = start + 1
-    local response = nil
+    local response, reason = nil, nil
     for i = 0, n - 1 do
-        response = call_router(
+        response, reason = call_router(
             pool[(start + i) % n + 1],
             {headers = headers, body = body}
         )
-        if response then
+        -- Only an unreachable router is retried on another one. A router that
+        -- timed out is usually overloaded, and sending the same request to the
+        -- next one multiplies the load on a pool that is already behind.
+        if response or reason ~= "router_unreachable" then
             break
         end
     end
