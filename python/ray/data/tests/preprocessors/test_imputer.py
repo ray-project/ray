@@ -241,14 +241,17 @@ def test_imputer_categorical_append_and_existing_category():
     assert pd.isna(out_append["A_cat"].iloc[2])
     assert "three" not in out_append["A_cat"].cat.categories
 
-    # 2. Categorical column where fill_value is already in categories (e.g. most_frequent or constant)
+    # 2. Categorical column where fill_value is already in categories (e.g. most_frequent or constant),
+    # including when the underlying codes buffer is read-only (zero-copy / shared memory).
     df_existing_cat = pd.DataFrame(
         {"A_cat": pd.Categorical(["one", "two", None, "two"])}
     )
     imputer_existing = SimpleImputer(
         columns=["A_cat"], strategy="constant", fill_value="two"
     )
-    out_existing = imputer_existing.transform_batch(df_existing_cat.copy())
+    df_readonly_cat = df_existing_cat.copy(deep=True)
+    df_readonly_cat["A_cat"].values._codes.flags.writeable = False
+    out_existing = imputer_existing.transform_batch(df_readonly_cat)
     np.testing.assert_array_equal(
         out_existing["A_cat"].to_numpy(), ["one", "two", "two", "two"]
     )
