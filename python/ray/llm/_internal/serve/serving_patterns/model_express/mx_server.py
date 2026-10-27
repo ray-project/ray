@@ -23,6 +23,14 @@ from ray.llm._internal.serve.serving_patterns.model_express.envs import (
 MX_SERVER_DEPLOYMENT_NAME = "ModelExpressServer"
 
 
+def _port_in_use(port: int) -> bool:
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=1).close()
+        return True
+    except OSError:
+        return False
+
+
 @serve.deployment(
     name=MX_SERVER_DEPLOYMENT_NAME,
     num_replicas=1,
@@ -32,13 +40,14 @@ MX_SERVER_DEPLOYMENT_NAME = "ModelExpressServer"
     health_check_period_s=MX_SERVER_HEALTH_CHECK_PERIOD_S,
 )
 class ModelExpressServer:
-    def __init__(self, metadata_backend: str = "memory", startup_timeout_s: float = 30):
+    def __init__(self, metadata_backend: str = "memory", startup_timeout_s: float = 60):
         """Start the MX server.
 
         Args:
             metadata_backend: "memory" or "redis". For "redis", set REDIS_URL
                 in the replica's environment.
-            startup_timeout_s: How long to wait for the server to listen.
+            startup_timeout_s: How long to wait for the port to be free and
+                then for the server to listen on it.
         """
         binary = get_mx_server_binary()
         if not os.access(binary, os.X_OK):
@@ -53,19 +62,22 @@ class ModelExpressServer:
             MODEL_EXPRESS_SERVER_PORT=str(port),
             MODEL_EXPRESS_SERVER_METRICS_PORT="0",
         )
+        deadline = time.monotonic() + startup_timeout_s
+        # A rolling update starts this replica while the one it replaces may
+        # still hold the port; starting now would fail to bind.
+        while _port_in_use(port):
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"Port {port} for the MX server is still in use")
+            time.sleep(0.5)
+
         self._proc = subprocess.Popen([binary], env=env)
         self._address = f"{ray.util.get_node_ip_address()}:{port}"
-
-        deadline = time.monotonic() + startup_timeout_s
-        while True:
+        while not _port_in_use(port):
             self.check_health()
-            try:
-                socket.create_connection(("127.0.0.1", port), timeout=1).close()
-                break
-            except OSError:
-                if time.monotonic() > deadline:
-                    raise TimeoutError(f"MX server did not listen on :{port}")
-                time.sleep(0.5)
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"MX server did not listen on :{port}")
+            time.sleep(0.5)
+        self.check_health()
 
     def check_health(self):
         if self._proc.poll() is not None:

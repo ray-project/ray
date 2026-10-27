@@ -3,6 +3,7 @@ import importlib
 import os
 import socket
 import sys
+import threading
 import urllib.error
 import urllib.request
 from types import SimpleNamespace
@@ -60,9 +61,7 @@ def _setup(env: dict):
 
     with patch.dict("os.environ", env, clear=True), patch(
         "ray.serve.get_deployment_handle", get_deployment_handle
-    ), patch(
-        "ray.util.get_node_ip_address", return_value="127.0.0.1"
-    ):
+    ), patch("ray.util.get_node_ip_address", return_value="127.0.0.1"):
         asyncio.run(model_express.setup_model_express(_llm_config()))
         return dict(os.environ), looked_up
 
@@ -204,6 +203,44 @@ def test_mx_server_listens_on_configured_port(tmp_path, monkeypatch):
     finally:
         server._proc.terminate()
         server._proc.wait(timeout=10)
+
+
+@pytest.mark.skipif(
+    not os.access(mx_envs.get_mx_server_binary(), os.X_OK),
+    reason="MX server binary not installed",
+)
+def test_mx_server_waits_for_port_from_replaced_replica(tmp_path, monkeypatch):
+    # The replica being replaced still listens on the port for a moment.
+    monkeypatch.chdir(tmp_path)
+    port = _free_port()
+    old = socket.socket()
+    old.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    old.bind(("127.0.0.1", port))
+    old.listen()
+    threading.Timer(2, old.close).start()
+    with patch.dict("os.environ", {"RAY_MX_SERVER_PORT": str(port)}), patch(
+        "ray.util.get_node_ip_address", return_value="127.0.0.1"
+    ):
+        server = ModelExpressServer.func_or_class()
+    try:
+        server.check_health()
+    finally:
+        server._proc.terminate()
+        server._proc.wait(timeout=10)
+
+
+def test_mx_server_port_never_released():
+    port = _free_port()
+    with socket.socket() as old:
+        old.bind(("127.0.0.1", port))
+        old.listen()
+        with patch.dict(
+            "os.environ",
+            {"RAY_MX_SERVER_PORT": str(port), "RAY_MX_SERVER_BINARY_PATH": "/bin/true"},
+        ), patch("subprocess.Popen") as popen:
+            with pytest.raises(TimeoutError, match="still in use"):
+                ModelExpressServer.func_or_class(startup_timeout_s=1)
+        popen.assert_not_called()
 
 
 def test_compile_cache_compat_rewrites_device_literals():
