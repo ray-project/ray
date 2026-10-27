@@ -233,7 +233,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       uint32_t pid,
       ray::observability::MetricInterface &task_by_state_counter,
       ray::observability::MetricInterface &actor_by_state_counter,
-      ray::observability::MetricInterface &task_submissions_counter,
       ClockInterface &clock);
 
   CoreWorker(CoreWorker const &) = delete;
@@ -2216,9 +2215,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   int64_t max_direct_call_object_size_;
 
   TaskCounter task_counter_;
-
-  /// Counts normal and actor task submissions, tagged by IsRetry.
-  ray::observability::MetricInterface &task_submissions_counter_;
 
   /// Used to guarantee that submitting actor task is thread safe.
   /// NOTE(MissiontoMars,scv119): In particular, without this mutex,

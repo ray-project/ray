@@ -226,7 +226,7 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Gauge> owned_objects_counter_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_size_counter_;
   std::unique_ptr<ray::stats::Count> object_recovery_attempts_counter_;
-  std::unique_ptr<ray::stats::Count> task_submissions_counter_;
+  std::unique_ptr<ray::stats::Count> task_retry_submissions_counter_;
   std::unique_ptr<ray::stats::PercentileMetric> scheduler_placement_time_percentile_ms_;
 };
 }  // namespace core

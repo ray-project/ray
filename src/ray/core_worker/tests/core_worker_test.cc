@@ -199,6 +199,7 @@ class CoreWorkerTest : public ::testing::Test {
         fake_gcs_client_,
         fake_task_by_state_gauge_,
         fake_total_lineage_bytes_gauge_,
+        fake_task_retry_submissions_counter_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
         /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
         /*free_stale_unconsumed_generator_objects_async=*/
@@ -301,7 +302,6 @@ class CoreWorkerTest : public ::testing::Test {
         getpid(),
         fake_task_by_state_gauge_,
         fake_actor_by_state_gauge_,
-        fake_task_submissions_counter_,
         clock_);
   }
 
@@ -337,7 +337,7 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_task_by_state_gauge_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
-  ray::observability::FakeCounter fake_task_submissions_counter_;
+  ray::observability::FakeCounter fake_task_retry_submissions_counter_;
   ray::observability::FakeCounter fake_object_recovery_attempts_counter_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;

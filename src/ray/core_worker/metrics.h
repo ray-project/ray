@@ -75,6 +75,8 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
   };
 }
 
+/// @brief Counter of attempts to recover lost objects owned by this worker.
+/// @return The `object_recovery_attempts` counter, tagged by recovery Type.
 inline ray::stats::Count GetObjectRecoveryAttemptsCountMetric() {
   return ray::stats::Count{
       /*name=*/"object_recovery_attempts",
@@ -90,16 +92,22 @@ inline ray::stats::Count GetObjectRecoveryAttemptsCountMetric() {
   };
 }
 
-inline ray::stats::Count GetTaskSubmissionsCountMetric() {
+/// @brief Counter of task retries scheduled by this worker as the task owner.
+/// @return The `task_retry_submissions` counter, tagged by Reason and Name.
+inline ray::stats::Count GetTaskRetrySubmissionsCountMetric() {
   return ray::stats::Count{
-      /*name=*/"task_submissions",
+      /*name=*/"task_retry_submissions",
       /*description=*/
-      "Total number of normal and actor tasks submitted by this worker. Each retry "
-      "counts as a separate submission.",
+      "Total number of times this worker resubmitted a task it owns, either to retry "
+      "a failed attempt or to reconstruct a lost object.",
       /*unit=*/"",
       // Expected tags:
-      // - IsRetry: "true" if the submission retries a previously submitted task.
-      /*tag_keys=*/{"IsRetry"},
+      // - Reason: the rpc::ErrorType name of the failed attempt (e.g. OUT_OF_MEMORY,
+      //   WORKER_DIED, NODE_DIED), or LINEAGE_RECONSTRUCTION.
+      // - Name: the name of the function called (Keep this tag name in sync with the
+      // TASK_OR_ACTOR_NAME_TAG_KEY in
+      // python/ray/_private/telemetry/metric_cardinality.py)
+      /*tag_keys=*/{"Reason", "Name"},
   };
 }
 

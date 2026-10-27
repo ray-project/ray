@@ -545,6 +545,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       gcs_client,
       *task_by_state_gauge_,
       *total_lineage_bytes_gauge_,
+      *task_retry_submissions_counter_,
       /*free_actor_object_callback=*/
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
@@ -781,7 +782,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    pid,
                                    *task_by_state_gauge_,
                                    *actor_by_state_gauge_,
-                                   *task_submissions_counter_,
                                    clock_);
 
   core_worker->InitializeShutdownExecutor();
@@ -907,8 +907,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   object_recovery_attempts_counter_ = std::unique_ptr<ray::stats::Count>(
       new ray::stats::Count(GetObjectRecoveryAttemptsCountMetric()));
-  task_submissions_counter_ = std::unique_ptr<ray::stats::Count>(
-      new ray::stats::Count(GetTaskSubmissionsCountMetric()));
+  task_retry_submissions_counter_ = std::unique_ptr<ray::stats::Count>(
+      new ray::stats::Count(GetTaskRetrySubmissionsCountMetric()));
   scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
 
   // Dependencies for the RayTaskEventRecorder.
