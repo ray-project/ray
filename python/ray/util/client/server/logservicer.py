@@ -11,10 +11,14 @@ import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray._private.ray_constants import (
+    RAY_DEDUP_LOGS_AGG_WINDOW_S,
+    RAY_DEDUP_LOGS_ALLOW_REGEX,
+    RAY_DEDUP_LOGS_SKIP_REGEX,
+)
 from ray._private.ray_logging import (
+    LogDeduplicator,
     global_worker_stdstream_dispatcher,
-    stderr_deduplicator,
-    stdout_deduplicator,
 )
 from ray._private.worker import print_worker_logs
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
@@ -40,6 +44,16 @@ class StdStreamHandler:
     def __init__(self, queue):
         self.queue = queue
         self.id = str(uuid.uuid4())
+        # Per-handler deduplicators: the dispatcher hands every batch to each
+        # handler (and to the server's own print_to_stdstream), so sharing the
+        # global ones would count each line once per handler and mix clients.
+        dedup_args = (
+            RAY_DEDUP_LOGS_AGG_WINDOW_S,
+            RAY_DEDUP_LOGS_ALLOW_REGEX,
+            RAY_DEDUP_LOGS_SKIP_REGEX,
+        )
+        self.stdout_deduplicator = LogDeduplicator(*dedup_args)
+        self.stderr_deduplicator = LogDeduplicator(*dedup_args)
 
     def handle(self, data):
         is_err = data["is_err"]
@@ -48,7 +62,9 @@ class StdStreamHandler:
         if data.get("pid") in ["autoscaler"]:
             batches = [data]
         else:
-            deduplicator = stderr_deduplicator if is_err else stdout_deduplicator
+            deduplicator = (
+                self.stderr_deduplicator if is_err else self.stdout_deduplicator
+            )
             batches = deduplicator.deduplicate(data)
         self._enqueue(batches, is_err)
 
@@ -71,8 +87,8 @@ class StdStreamHandler:
     def unregister_global(self):
         global_worker_stdstream_dispatcher.remove_handler(self.id)
         # Forward any deduplicated lines still buffered in the aggregation window.
-        self._enqueue(stdout_deduplicator.flush(), is_err=False)
-        self._enqueue(stderr_deduplicator.flush(), is_err=True)
+        self._enqueue(self.stdout_deduplicator.flush(), is_err=False)
+        self._enqueue(self.stderr_deduplicator.flush(), is_err=True)
 
 
 def log_status_change_thread(log_queue, request_iterator):

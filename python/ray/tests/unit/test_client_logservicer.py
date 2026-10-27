@@ -49,6 +49,33 @@ def test_std_stream_handler_deduplicates_worker_logs():
     assert "repeated 2x" in summary.msg
 
 
+def test_std_stream_handlers_do_not_share_dedup_state():
+    """The dispatcher hands every batch to each client handler and to the
+    server's own print_to_stdstream, so sharing deduplicators would count each
+    repeat several times and mix clients."""
+    from ray._private.ray_logging import stdout_deduplicator
+
+    queue1, queue2 = queue.Queue(), queue.Queue()
+    handler1, handler2 = StdStreamHandler(queue1), StdStreamHandler(queue2)
+
+    for pid in (1, 2):
+        batch = _batch(pid, ["shared line 58750"])
+        stdout_deduplicator.deduplicate(dict(batch))  # The server's own printer.
+        handler1.handle(dict(batch))
+        handler2.handle(dict(batch))
+
+    for log_queue, handler in ((queue1, handler1), (queue2, handler2)):
+        assert log_queue.qsize() == 1
+        assert "shared line 58750" in log_queue.get().msg
+        handler.unregister_global()
+        # One real repeat is flushed as the plain line; a shared deduplicator
+        # would report it as "[repeated 3x across cluster]".
+        summary = log_queue.get_nowait()
+        assert "(pid=2)" in summary.msg
+        assert "repeated" not in summary.msg, summary.msg
+    stdout_deduplicator.flush()
+
+
 def test_std_stream_handler_does_not_dedup_autoscaler_logs():
     log_queue = queue.Queue()
     handler = StdStreamHandler(log_queue)
