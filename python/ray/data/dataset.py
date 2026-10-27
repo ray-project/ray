@@ -6900,11 +6900,14 @@ class Dataset:
                 ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
                 ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             _collate_fn: A custom function to collate each batch of data.
 
@@ -7012,12 +7015,14 @@ class Dataset:
                 experimental and is subject to change. You can't use this parameter in
                 conjunction with ``dtypes``.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
                 `TensorBatchType`. It is recommended to use this flag to pin
@@ -7120,12 +7125,14 @@ class Dataset:
                 Note: This function is called in a multi-threaded context; avoid using
                 thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete. Defaults to False.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             synchronize_batches: Whether to synchronize batch shapes across all hosts.
                 Setting this to False can improve performance if you guarantee that all
@@ -7205,12 +7212,14 @@ class Dataset:
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if ``None``, the
                 dtype is inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -7340,14 +7349,14 @@ class Dataset:
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
                 size, then the last batch is smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer is drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
