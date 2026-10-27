@@ -348,6 +348,7 @@ class SandboxRuntime:
         instance_id: str,
         checkpoint_path: Optional[str] = None,
         leave_running: bool = True,
+        remote: bool = False,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> str:
@@ -358,6 +359,7 @@ class SandboxRuntime:
             checkpoint_path: Path where the checkpoint directory will be saved.
                 If None, a default directory inside the sandbox storage root is used.
             leave_running: If True, keep the sandbox running after checkpointing.
+            remote: If True, mark checkpoint as remote/shared across VM nodes.
             timeout_seconds: Timeout for the checkpoint operation.
             **kwargs: Backend-specific arguments.
 
@@ -368,6 +370,7 @@ class SandboxRuntime:
             sandbox_id=instance_id,
             checkpoint_path=checkpoint_path,
             leave_running=leave_running,
+            remote=remote,
             timeout_seconds=timeout_seconds,
             **kwargs,
         )
@@ -386,6 +389,7 @@ class SandboxRuntime:
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         ttl_seconds: Optional[int] = None,
+        remote: Optional[bool] = None,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> str:
@@ -401,6 +405,8 @@ class SandboxRuntime:
             cpu: CPU allocation override.
             memory: Memory allocation override.
             ttl_seconds: Optional time-to-live for the restored sandbox.
+            remote: If True, allow restore on a different VM node than where the
+                checkpoint was taken. If None, inherits from checkpoint manifest.
             timeout_seconds: Timeout for the restore operation.
             **kwargs: Backend-specific arguments.
 
@@ -411,6 +417,7 @@ class SandboxRuntime:
             checkpoint_path=checkpoint_path,
             cpu=cpu,
             memory=memory,
+            remote=remote,
             timeout_seconds=timeout_seconds,
             **kwargs,
         )
