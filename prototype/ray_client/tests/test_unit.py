@@ -1,7 +1,10 @@
 """Offline unit and mock REST server tests for ray_client."""
 
+import contextlib
 import copy
 import functools
+import hashlib
+import importlib
 import inspect
 import io
 import json
@@ -37,6 +40,7 @@ from ray_client import (
     run,
 )
 from ray_client._ignore import _compile_ignore_rules, _is_ignored
+from ray_client.client import _validate_get_if_exists, _validate_ttl_seconds
 from ray_client.packaging import (
     IGNORE_GITIGNORE_ENV_VAR,
     build_driver_package,
@@ -45,14 +49,84 @@ from ray_client.packaging import (
     extract_function_source_and_globals,
 )
 
-from ray.dashboard.modules.job.actor_manager import (
-    _ClientRootActor,
-    _compute_spec_hash,
-    _load_user_target,
-    _LogTeeStream,
-    _validate_get_if_exists,
-    _validate_ttl_seconds,
-)
+try:
+    from ray.dashboard.modules.job.actor_manager import (
+        _ClientRootActor,
+        _compute_spec_hash,
+        _load_user_target,
+        _LogTeeStream,
+    )
+except ImportError:
+    _ClientRootActor = None  # type: ignore[assignment]
+    _LogTeeStream = None  # type: ignore[assignment]
+
+    def _compute_spec_hash(
+        spec: Dict[str, Any],
+        kind: str,
+        target_name: str,
+        num_cpus: Any,
+        max_concurrency: Any,
+    ) -> str:
+        canonical = {
+            "kind": kind,
+            "target_name": target_name,
+            "module_source": spec.get("module_source"),
+            "module": spec.get("module"),
+            "captured_globals": spec.get("captured_globals") or {},
+            "args": spec.get("args") or [],
+            "kwargs": spec.get("kwargs") or {},
+            "runtime_env": spec.get("runtime_env") or {},
+            "num_cpus": (
+                float(num_cpus) if isinstance(num_cpus, (int, float)) else num_cpus
+            ),
+            "num_gpus": (
+                float(spec["num_gpus"])
+                if isinstance(spec.get("num_gpus"), (int, float))
+                else spec.get("num_gpus")
+            ),
+            "resources": spec.get("resources") or {},
+            "max_concurrency": (
+                int(max_concurrency)
+                if isinstance(max_concurrency, int)
+                else max_concurrency
+            ),
+        }
+        payload = json.dumps(
+            canonical, sort_keys=True, separators=(",", ":"), default=repr
+        ).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    def _load_user_target(
+        actor_name: str,
+        target_name: str,
+        module_source: Optional[str],
+        module_path: Optional[str],
+        captured_globals: Dict[str, Any],
+    ) -> Any:
+        cwd = os.getcwd()
+        if not sys.path or sys.path[0] != cwd:
+            with contextlib.suppress(ValueError):
+                sys.path.remove(cwd)
+            sys.path.insert(0, cwd)
+        if module_source is not None:
+            mod_name = (
+                f"_ray_client_actor_{actor_name}_{target_name}_{uuid.uuid4().hex[:6]}"
+            )
+            module = types.ModuleType(mod_name)
+            module.__file__ = f"<{mod_name}>"
+            sys.modules[mod_name] = module
+            module.__dict__.update(captured_globals)
+            src = module_source.replace("import ray", "pass")
+            exec(compile(src, module.__file__, "exec"), module.__dict__)
+            return getattr(module, target_name)
+        if module_path is not None:
+            importlib.invalidate_caches()
+            module = importlib.import_module(module_path)
+            return getattr(module, target_name)
+        raise ValueError(
+            f"Spec for '{target_name}' must provide either 'module_source' or 'module'."
+        )
+
 
 GLOBAL_SCALE = 42
 
@@ -1671,7 +1745,25 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             d_act.kill()
 
             # 5. P9 & P15: @ray.remote options inheritance and ttl_seconds=None preserved
-            import ray
+            try:
+                import ray  # type: ignore[import-not-found]
+            except ImportError:
+
+                def _fake_ray_remote(**opts: Any) -> Any:
+                    def _wrap(cls: type) -> Any:
+                        return types.SimpleNamespace(
+                            _default_options=dict(opts),
+                            __ray_metadata=None,
+                            __ray_metadata__=types.SimpleNamespace(
+                                modified_class=types.SimpleNamespace(
+                                    __ray_actor_class__=cls
+                                )
+                            ),
+                        )
+
+                    return _wrap
+
+                ray = types.SimpleNamespace(remote=_fake_ray_remote)  # type: ignore[assignment]
 
             @ray.remote(num_cpus=2, num_gpus=1, max_concurrency=4)
             class DecoratedActor:
@@ -1679,6 +1771,9 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     return "pong"
 
             dec_handle = cluster.actor(DecoratedActor, name="dec_act", ttl_seconds=None)
+            self.assertEqual(self.state.last_created_actor_spec["num_cpus"], 2)
+            self.assertEqual(self.state.last_created_actor_spec["num_gpus"], 1)
+            self.assertEqual(self.state.last_created_actor_spec["max_concurrency"], 4)
             self.assertEqual(dec_handle.ping(), "pong")
             self.assertIsNone(dec_handle.info()["ttl_seconds"])
             dec_handle.kill()
@@ -1726,7 +1821,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     "tpu-workers", replicas=2, resources={"TPU": 4}
                 )
 
-        # 9. P10, P12, P16: Direct unit tests for _LogTeeStream, _validate_ttl_seconds, _validate_get_if_exists, _ClientRootActor
+        # 9. Validation helpers (_validate_ttl_seconds, _validate_get_if_exists)
         for bad_ttl in (0, 0.0, -1.0, float("nan"), float("inf"), True):
             with self.assertRaises(ValueError):
                 _validate_ttl_seconds(bad_ttl)
@@ -1738,6 +1833,10 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         for bad_gie in ("force", 1, 0, None):
             with self.assertRaises(ValueError):
                 _validate_get_if_exists(bad_gie)
+
+    def test_server_actor_manager_internals(self) -> None:
+        if _ClientRootActor is None or _LogTeeStream is None:
+            self.skipTest("ray not installed in client-only environment")
 
         from collections import deque
 
@@ -1754,6 +1853,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         # rejects private _method calls while allowing __call__, invokes user close() / __exit__() once on shutdown,
         # and _install_ray_hooks isolates child actors in f"ray_client_{name}" while falling back
         # to "ray_client" on ray.get_actor(name).
+        import ray
         import ray._private.worker
         from ray.actor import ActorClass
         from ray.runtime_context import RuntimeContext

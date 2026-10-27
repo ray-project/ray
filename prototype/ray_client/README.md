@@ -1,6 +1,6 @@
 # Ray Client
 
-`ray_client` connects external Python programs (laptops, notebooks, coding agents) to a remote Ray cluster over the Ray Dashboard HTTP API (`:8265`). Only working directory files and JSON data cross the client-cluster boundary:
+`ray_client` connects external Python programs on laptops, notebooks, and coding agents to a remote Ray cluster over the Ray Dashboard HTTP API (`:8265`). Only working directory files and JSON data cross the client-cluster boundary:
 
 | Method | What you pass | How it runs | Use-case |
 | :--- | :--- | :--- | :--- |
@@ -86,20 +86,20 @@ The Ray Dashboard runs `run()` and `actor()` workloads in top-level Ray Actors o
 - **Head-node driver scheduling (`num_cpus=0`)**: `cluster.run(fn, ...)` defaults to `num_cpus=0`. Root actors with `num_cpus=0` and no placement options run on the head node unless `RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES=1` is set. This matches `submit_job` and reserves worker CPUs for placement groups.
 - **Disconnect and timeout cancellation**: Ephemeral `run()` actors are killed when a call finishes or the client disconnects. On persistent `actor()` sessions, a disconnect or timeout calls `ray.cancel(..., recursive=True)` to cancel queued calls, active `async` coroutines, generators, and child tasks.
 - **Stale actor detection (`get_if_exists`)**: Named actors compute a SHA-256 `spec_hash` over their source, arguments, `runtime_env`, and resources. Reattaching with `get_if_exists=True` emits a `UserWarning` on a mismatch, whereas `get_if_exists="recreate"` replaces the actor when `spec_hash` changes.
-- **Graceful teardown (`close()`, `ttl_seconds`)**: Using `with cluster.actor(...) as actor:` kills the actor on block exit. Before an actor is killed or reaped by idle `ttl_seconds`, it runs user-defined `close()` or `__exit__()` hooks and removes owned placement groups and child actors.
+- **Graceful teardown (`close()`, `ttl_seconds`)**: Using `with cluster.actor(...) as actor:` kills the actor on block exit. Before an actor is killed or reaped by idle `ttl_seconds`, it runs any user-defined `close()` or `__exit__()` hook and removes owned placement groups and child actors.
 - **Child namespace isolation**: Non-detached child actors created in the root actor process use namespace `ray_client_<name>`, while detached child actors use `"ray_client"`. `ray.get_actor(name)` in the root process checks `ray_client_<name>` before falling back to `"ray_client"`; nested tasks and child actors must pass `namespace=` explicitly.
 - **Root actor log scope**: `actor.logs()` (`GET /api/actors/{name}/logs`) returns `stdout` and `stderr` from the root actor process. `job.logs()` (`submit_job`) aggregates logs across all job workers.
 - **Cluster activity reporting**: Active `/api/actors` sessions report activity to `/api/component_activities` so auto-terminating clusters stay alive while `run()` or `actor()` workloads are running.
 
 ## Running tests
 
-Offline unit and mock REST server tests (no `ray` required):
+Run the offline unit and mock REST server tests (no `ray` required):
 
 ```bash
 PYTHONPATH=src pytest tests/test_unit.py -v
 ```
 
-Live cluster integration tests:
+Run the live cluster integration tests against a running Ray cluster:
 
 ```bash
 RAY_LIVE_CLUSTER_ADDRESS=http://127.0.0.1:8265 PYTHONPATH=src pytest tests/test_integration_live_cluster.py -v
