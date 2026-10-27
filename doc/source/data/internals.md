@@ -351,7 +351,7 @@ Each step covers one or more pipeline stages. The following table describes what
   - Running your `finalize_fn`. For GPU training, this is the host-to-device transfer.
 ```
 
-When data loading latency matters, as in model training, knowing these stages and the parameters that control them helps you reduce the time the user thread waits for the next batch.
+When data loading latency matters, such as in model training, knowing these stages and the parameters that control them, such as `prefetch_batches` and `batch_size`, helps you reduce the time the user thread waits for the next batch.
 
 :::{note}
 If you use Ray Train, see {ref}`Debug data loading bottlenecks <train-debugging-data-loading-bottlenecks>` for more detail on debugging slow data loading.
