@@ -706,11 +706,26 @@ def expected_extract_marker() -> str:
     return json.dumps({"format": _EXTRACT_FORMAT}, sort_keys=True)
 
 
+# Files seeded after layer extraction (Docker parity for /tmp).
+_SEEDED_FILES = ("tmp/.ray-sandbox-keep",)
+
+
 def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
     """``tar.add`` filter giving members the image's recorded owners."""
 
     def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo:
-        ids = ownership.get(os.path.normpath(ti.name))
+        norm = os.path.normpath(ti.name)
+        # Normalize the build-time timestamps on directories and files seeded
+        # by Ray itself (root, mount point stubs, /tmp seed file) so that
+        # separate nodes and rebuilt image caches produce identical images.
+        if (
+            norm == "."
+            or norm in _MOUNTPOINT_DIRS
+            or norm in _MOUNTPOINT_FILES
+            or norm in _SEEDED_FILES
+        ):
+            ti.mtime = 0
+        ids = ownership.get(norm)
         ti.uid, ti.gid = ids if ids else (0, 0)
         ti.uname = ti.gname = ""
         return ti

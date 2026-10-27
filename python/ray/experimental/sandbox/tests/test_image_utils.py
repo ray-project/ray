@@ -964,6 +964,8 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     # runsc's mount points, which an immutable image cannot grow on demand.
     for mountpoint in ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp"):
         assert owners[mountpoint] == (0, 0)
+        assert tree[mountpoint].mtime == 0
+    assert tree["tmp/.ray-sandbox-keep"].mtime == 0
     # The image's file times survive into the EROFS image: tools such as apt
     # rely on them.
     assert tree["opt/data/f.txt"].mtime == _MEMBER_MTIME
