@@ -37,7 +37,7 @@ results = tuner.fit()
 If you use a search algorithm, you might not be able to specify lambdas or grid search with this interface, because some search algorithms might not be compatible with them.
 :::
 
-To sample multiple times or run multiple trials, specify `tune.RunConfig(num_samples=N`. If you provide `grid_search` as an argument, Tune repeats the *same* grid `N` times, as the following examples show:
+To sample multiple times or run multiple trials, set `num_samples=N` in `tune.TuneConfig`. If you provide `grid_search` as an argument, Tune repeats the *same* grid `N` times, as the following examples show:
 
 ```python
 # 13 different configs.

@@ -96,7 +96,7 @@ To checkpoint trials every *N* iterations, set `checkpoint_frequency=N`, as in t
 
 ### Checkpoint at termination
 
-The `checkpoint_frequency` might not coincide with the exact end of an experiment. To also create a checkpoint at the end of a trial, set `checkpoint_at_end=True`:
+The `checkpoint_frequency` might not coincide with the exact end of a trial. To also create a checkpoint at the end of a trial, set `checkpoint_at_end=True`:
 
 ```{literalinclude} /tune/doc_code/trial_checkpoint.py
 :language: python
