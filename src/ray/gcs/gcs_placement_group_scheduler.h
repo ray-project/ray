@@ -386,24 +386,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param placement_group_id The placement group whose bundles are being removed.
   /// \param bundle_specs Bundles to remove on the node.
-  /// \param node_id The node that the bundles are being removed from. Transient
-  /// RPC failures are retried for as long as this node stays alive.
+  /// \param node_id The node that the bundles are being removed from.
+  /// \param remaining_retries How many more times transient RPC failures are retried.
+  /// std::nullopt retries for as long as the node stays alive.
   void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const NodeID &node_id);
-
-  /// Retry RemovePlacementGroupBundles after a delay. Waits while a newer scheduling
-  /// attempt for the placement group is in flight, then skips bundles it committed
-  /// on this node.
-  ///
-  /// \param placement_group_id The placement group whose bundles are being removed.
-  /// \param bundle_specs Bundles whose removal failed with a retryable status.
-  /// \param node_id The node that the bundles are being removed from.
-  void RetryRemovePlacementGroupBundlesLater(
-      const PlacementGroupID &placement_group_id,
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const NodeID &node_id);
+      const NodeID &node_id,
+      std::optional<int> remaining_retries);
 
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
@@ -436,8 +426,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param placement_group_id The id of a placement group to destroy all prepared
   /// bundles.
+  /// \param max_retries Retry budget for transient RPC failures; std::nullopt retries
+  /// for as long as the node stays alive.
   void DestroyPlacementGroupPreparedBundleResources(
-      const PlacementGroupID &placement_group_id);
+      const PlacementGroupID &placement_group_id, std::optional<int> max_retries);
 
   /// Destroy the committed bundle resources with this placement group.
   /// The method is idempotent, meaning if all bundles are already cancelled,

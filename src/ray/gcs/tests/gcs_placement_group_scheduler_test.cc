@@ -634,9 +634,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupKeepsRetryingLiveNod
   ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
 }
 
-// A failed prepare removes the prepared bundles and reschedules the same bundle IDs.
-// A late retry of that removal must not cancel what the newer attempt committed.
-TEST_F(GcsPlacementGroupSchedulerTest, StaleBundleRemovalRetrySkipsRecommittedBundles) {
+// The prepared bundles of a failed scheduling attempt are removed with a bounded
+// retry budget: the placement group is rescheduled with the same bundle IDs, and a
+// late removal would cancel every lease and worker of the group on that node.
+TEST_F(GcsPlacementGroupSchedulerTest, FailedPrepareCleanupKeepsBoundedRetries) {
   auto node0 = GenNodeInfo(0);
   auto node1 = GenNodeInfo(1);
   AddNode(node0);
@@ -645,40 +646,29 @@ TEST_F(GcsPlacementGroupSchedulerTest, StaleBundleRemovalRetrySkipsRecommittedBu
 
   auto placement_group = std::make_shared<GcsPlacementGroup>(
       GenCreatePlacementGroupRequest(), "", counter_, clock_);
-  auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> placement_group,
-                                bool is_insfeasble) {
-    absl::MutexLock lock(&placement_group_requests_mutex_);
-    failure_placement_groups_.emplace_back(std::move(placement_group));
-  };
-  auto success_handler = [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-    absl::MutexLock lock(&placement_group_requests_mutex_);
-    success_placement_groups_.emplace_back(std::move(placement_group));
-  };
-
-  // First attempt: node0 prepares its bundle, node1 rejects, so GCS removes node0's
-  // prepared bundle and that removal hits a transient failure.
-  scheduler_->ScheduleUnplacedBundles(
-      SchedulePgRequest{placement_group, failure_handler, success_handler});
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      }});
+  // node0 prepares its bundle, node1 rejects, so GCS removes node0's bundle.
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources(false));
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
-  WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
-  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(
-      Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
 
-  // Second attempt places both bundles on node0 and commits them before the retry.
-  RemoveNode(node1);
-  scheduler_->ScheduleUnplacedBundles(
-      SchedulePgRequest{placement_group, failure_handler, success_handler});
-  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
-  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
-
-  // Let the 1s retry timer fire: the bundle is committed on node0 again, so the
-  // stale removal must not be sent.
+  for (int attempt = 0; attempt < 5; ++attempt) {
+    WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+    ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(
+        Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  }
+  // Five attempts in total, then GCS gives up even though the node is alive.
   std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 1);
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 5);
   ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
 }
 
