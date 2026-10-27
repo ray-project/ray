@@ -3,9 +3,13 @@ from types import SimpleNamespace
 import pytest
 
 from ray.serve._private.common import TimeStampedValue
+from ray.serve._private.constants import SERVE_AUTOSCALING_POLICY_METRICS_KEY
 from ray.serve.experimental.llm_token_autoscaling_policy import (
     ACTIVE_DECODE_REQUESTS,
+    DECODE_REQUIRED_REPLICAS,
     OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
+    PREFILL_REQUIRED_REPLICAS,
+    REQUIRED_REPLICAS,
     LLMTokenAutoscalingPolicy,
 )
 
@@ -344,6 +348,27 @@ def test_scales_down_to_lookback_mean():
     # Mean capacity is (3 * 15 + 1 * 15) / 30 = 2; no one-replica step limit.
     assert replicas == 2
     assert state["required_replicas"] == 2
+
+
+def test_publishes_per_dimension_lookback_means():
+    policy = LLMTokenAutoscalingPolicy(100, 4, upscale_lookback_s=30)
+
+    # Prefill is busy for the first half of the window, decode for the second.
+    replicas, state = policy(
+        _context(
+            prefill_by_replica={"a": [(70, 400), (85, 0)]},
+            decode_by_replica={"a": [(70, 0), (85, 16)]},
+            target_num_replicas=1,
+        )
+    )
+
+    # Max of the per-dimension means, not the mean of the per-sample max (4).
+    assert replicas == 2
+    assert state[SERVE_AUTOSCALING_POLICY_METRICS_KEY] == {
+        PREFILL_REQUIRED_REPLICAS: pytest.approx(2.0),
+        DECODE_REQUIRED_REPLICAS: pytest.approx(2.0),
+        REQUIRED_REPLICAS: 2,
+    }
 
 
 def test_proposes_zero_when_lookback_window_is_idle():

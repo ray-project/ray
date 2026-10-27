@@ -1,11 +1,17 @@
 import math
 import time
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
+from ray.serve._private.constants import SERVE_AUTOSCALING_POLICY_METRICS_KEY
 from ray.serve.config import AutoscalingContext
 
 OUTSTANDING_EFFECTIVE_PREFILL_TOKENS = "outstanding_effective_prefill_tokens"
 ACTIVE_DECODE_REQUESTS = "active_decode_requests"
+
+# Policy metrics exported by the controller as serve_autoscaling_policy_metric.
+PREFILL_REQUIRED_REPLICAS = "prefill_required_replicas"
+DECODE_REQUIRED_REPLICAS = "decode_required_replicas"
+REQUIRED_REPLICAS = "required_replicas"
 
 _UpscaleAggregation = Literal["max", "mean"]
 _Snapshot = Tuple[float, float, float]
@@ -72,9 +78,11 @@ def _time_weighted_mean(
 class LLMTokenAutoscalingPolicy:
     """Scale an aggregated LLM deployment from router-owned work snapshots.
 
-    Both directions follow the time-weighted mean of required capacity over
-    ``upscale_lookback_s``. Router replicas report the same global snapshot, so
-    per-reporter means are maximized rather than summed. Asymmetry comes from
+    Both directions follow the larger of the prefill and decode time-weighted
+    mean required replicas over ``upscale_lookback_s``. Router replicas report
+    the same global snapshot, so per-reporter means are maximized rather than
+    summed. Both means are published under ``SERVE_AUTOSCALING_POLICY_METRICS_KEY``
+    for the controller to export. Asymmetry comes from
     Serve's ``upscale_delay_s`` and ``downscale_delay_s``.
 
     ``upscale_aggregation`` and ``scale_down_sensitivity`` are validated but
@@ -121,12 +129,13 @@ class LLMTokenAutoscalingPolicy:
         snapshots_by_source: Dict[str, List[_Snapshot]],
         now: float,
         aggregation: _UpscaleAggregation,
+        capacity_fn: Optional[Callable[[float, float], float]] = None,
     ) -> float:
         window_start = now - self._upscale_lookback_s
         capacity_by_source = []
         for snapshots in snapshots_by_source.values():
             capacity_samples = [
-                (timestamp, self._required_capacity(prefill, decode))
+                (timestamp, (capacity_fn or self._required_capacity)(prefill, decode))
                 for timestamp, prefill, decode in snapshots
             ]
             samples = [
@@ -173,9 +182,23 @@ class LLMTokenAutoscalingPolicy:
             # No complete observation in the scale-up window is also fail-closed.
             return ctx.target_num_replicas, {}
 
-        # Symmetric rule: scale up and down to the lookback mean.
+        # Symmetric rule: scale up and down to the larger of the prefill and
+        # decode lookback means.
+        prefill_required_replicas = self._aggregate_capacity(
+            snapshots_by_source,
+            now,
+            "mean",
+            lambda prefill, _: max(0, prefill)
+            / self._target_prefill_tokens_per_replica,
+        )
+        decode_required_replicas = self._aggregate_capacity(
+            snapshots_by_source,
+            now,
+            "mean",
+            lambda _, decode: max(0, decode) / self._target_decode_requests_per_replica,
+        )
         required_replicas = math.ceil(
-            self._aggregate_capacity(snapshots_by_source, now, "mean")
+            max(prefill_required_replicas, decode_required_replicas)
         )
         if ctx.total_queued_requests > 0:
             required_replicas = max(1, required_replicas)
@@ -188,8 +211,13 @@ class LLMTokenAutoscalingPolicy:
             ACTIVE_DECODE_REQUESTS: max(
                 max(0, decode) for _, _, decode in latest_snapshots
             ),
-            "required_replicas": required_replicas,
+            REQUIRED_REPLICAS: required_replicas,
             "lookback_s": self._upscale_lookback_s,
+            SERVE_AUTOSCALING_POLICY_METRICS_KEY: {
+                PREFILL_REQUIRED_REPLICAS: prefill_required_replicas,
+                DECODE_REQUIRED_REPLICAS: decode_required_replicas,
+                REQUIRED_REPLICAS: required_replicas,
+            },
         }
         return required_replicas, state
 
