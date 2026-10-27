@@ -802,18 +802,9 @@ _get_or_create_lock = threading.Lock()
 
 
 def get_or_create_autoscaling_coordinator():
-    """Get or create the AutoscalingCoordinator actor."""
-    # Run on the head node, which lives as long as the cluster, like Ray Serve's
-    # controller. Every requester on the cluster shares this detached actor, so
-    # it can't be tied to whichever node created it: if that node died, the
-    # actor could never restart. Soft node affinity doesn't help here, because
-    # Ray places an actor that requests no resources on a random node unless
-    # its affinity is hard.
-    #
-    # The explicit "DEFAULT" strategy stops the actor from joining the caller's
-    # placement group, which happens when the caller runs in one that captures
-    # child tasks (Tune trials, Train V1 workers). The bundles don't hold the
-    # head node resource, and a detached actor shouldn't die with the group.
+    """Get or create the AutoscalingCoordinator detached actor on the head node."""
+    # Run on the head node, which lives as long as the cluster. Every requester
+    # on the cluster shares this detached actor.
     actor_cls = ray.remote(
         num_cpus=0,
         resources={HEAD_NODE_RESOURCE_LABEL: 0.001},
