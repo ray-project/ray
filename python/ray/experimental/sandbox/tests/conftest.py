@@ -55,8 +55,9 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
         "#!/bin/sh\n"
         'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
         'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
-        "# args: --tar=f -b<page size> -E^inline_data OUT; the tar is on stdin\n"
-        'cat > "$4"\n'
+        "# args: [options...] OUT; the tar is on stdin\n"
+        'for arg in "$@"; do out_arg=$arg; done\n'
+        'cat > "$out_arg"\n'
     )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
