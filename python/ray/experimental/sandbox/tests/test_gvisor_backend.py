@@ -1,6 +1,7 @@
 import contextlib
 import ctypes
 import errno
+import ipaddress
 import json
 import os
 import shutil
@@ -24,10 +25,21 @@ from ray.experimental.sandbox._internal.image_utils import (
 from ray.experimental.sandbox.backend import gvisor
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import (
+    _RESOLVER_PROBE,
+    _RESOLVER_UNREACHABLE,
     GVisorSandboxBackend,
     _exec_processes,
+    _holder_namespace_ids,
+    _namespace_ids,
+    _render_egress_ruleset,
+    _write_egress_ruleset,
 )
-from ray.experimental.sandbox.config import GVisorSandboxConfig
+from ray.experimental.sandbox.config import (
+    ALLOW_ALL_CIDRS,
+    DEFAULT_PUBLIC_DNS,
+    INTERNET_EXCLUDED_IPV4,
+    GVisorSandboxConfig,
+)
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -42,12 +54,18 @@ _BUSYBOX_CACHE = os.path.join(DEFAULT_IMAGES_DIR, image_cache_name("busybox:late
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
     backend = GVisorSandboxBackend()
+    # Positive limits need a delegated cgroup v2 subtree. On a provisioned
+    # node, file operations and execs also run through the cgroup launcher.
+    limits = (
+        {"cpu": 1.0, "memory": "512Mi"}
+        if os.environ.get("RAY_SANDBOX_CGROUP_PATH")
+        else {}
+    )
     config = GVisorSandboxConfig(
         image="busybox:latest",
         shell="/bin/sh",
         workdir="/workspace",
-        cpu=1.0,
-        memory="512Mi",
+        **limits,
     )
 
     sandbox_id = backend.create_sandbox(config)
@@ -526,11 +544,16 @@ def _public_config() -> GVisorSandboxConfig:
     )
 
 
-def _run_argv(network: str, rootless: bool = True, **backend_kwargs) -> list:
+def _run_argv(
+    network: str, rootless: bool = True, cidr_allowlist=None, **backend_kwargs
+) -> list:
     """`_build_run_command` over fixed paths — pure argv, no side effects."""
     backend = GVisorSandboxBackend(**backend_kwargs)
     cfg = GVisorSandboxConfig(
-        image="busybox:latest", network=network, rootless=rootless
+        image="busybox:latest",
+        network=network,
+        rootless=rootless,
+        cidr_allowlist=cidr_allowlist,
     )
     return backend._build_run_command(cfg, "/tmp/rd", "sb-1")
 
@@ -734,6 +757,14 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     assert "--rootless" not in script
 
 
+def test_build_run_command_public_gives_the_gofer_its_own_netns():
+    """runsc runs in the network="public" script's user namespace, whose gofer
+    can't join the network namespace runsc shares between gofers under --root
+    when a sandbox outside it created that one."""
+    assert "--gofer-network-namespace=new" in _run_argv("public")[2]
+    assert "--gofer-network-namespace=new" not in _run_argv("none")
+
+
 def test_build_run_command_public_keeps_rootless_cgroup_tolerance(monkeypatch):
     """Dropping --rootless must not make runsc start configuring cgroups: the
     wrapper forces --ignore-cgroups for rootless configs, and only for them."""
@@ -798,6 +829,502 @@ def test_terminate_tree_kills_only_a_launch_process_that_hangs(monkeypatch):
     assert (exits.returncode, hangs.returncode) == (0, -signal.SIGKILL)
 
 
+def test_render_egress_ruleset_pins_the_policy():
+    """The ruleset is the enforcement, so pin its exact text: default drop;
+    loopback and DNS to the resolvers on port 53 first; then the denylist;
+    then one accept per allowed network in its family."""
+    text = _render_egress_ruleset(
+        ["52.0.0.0/8", "10.0.1.5/24", "2001:db8::/32"],
+        ["8.8.8.8"],
+        denied=["169.254.0.0/16", "127.0.0.1/32", "127.0.0.0/8", "fe80::/10"],
+    )
+    assert text == (
+        "flush ruleset\n"
+        "table inet ray_sandbox_egress {\n"
+        "    chain output {\n"
+        "        type filter hook output priority 0; policy drop;\n"
+        '        oif "lo" accept\n'
+        "        ip daddr 8.8.8.8 udp dport 53 accept\n"
+        "        ip daddr 8.8.8.8 tcp dport 53 accept\n"
+        "        ip daddr { 127.0.0.0/8, 169.254.0.0/16 } drop\n"
+        "        ip6 daddr { fe80::/10 } drop\n"
+        "        ip daddr 52.0.0.0/8 accept\n"
+        "        ip daddr 10.0.1.0/24 accept\n"
+        "        ip6 daddr 2001:db8::/32 accept\n"
+        "    }\n"
+        "}\n"
+    )
+
+
+def test_render_egress_ruleset_ports_and_internet():
+    """A port entry accepts only that port, for TCP and UDP, after the
+    denylist. "internet" is every address outside the non-public IPv4
+    networks, plus IPv6 global unicast."""
+    text = _render_egress_ruleset(
+        [
+            "10.0.0.5:8000",
+            "[2001:db8::1]:443-444",
+            "169.254.169.254:80",
+            "10.0.0.0/8:22",
+            "internet",
+        ],
+        ["8.8.8.8"],
+        denied=["169.254.0.0/16"],
+    )
+    rules = [line.strip() for line in text.splitlines()[5:-2]]
+    not_public = " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4)
+    assert rules == [
+        "ip daddr 8.8.8.8 udp dport 53 accept",
+        "ip daddr 8.8.8.8 tcp dport 53 accept",
+        "ip daddr { 169.254.0.0/16 } drop",
+        "ip daddr 10.0.0.5/32 tcp dport 8000 accept",
+        "ip daddr 10.0.0.5/32 udp dport 8000 accept",
+        "ip6 daddr 2001:db8::1/128 tcp dport 443-444 accept",
+        "ip6 daddr 2001:db8::1/128 udp dport 443-444 accept",
+        # The denylist's drop above already took it.
+        "ip daddr 169.254.169.254/32 tcp dport 80 accept",
+        "ip daddr 169.254.169.254/32 udp dport 80 accept",
+        "ip daddr 10.0.0.0/8 tcp dport 22 accept",
+        "ip daddr 10.0.0.0/8 udp dport 22 accept",
+        f"{not_public} accept",
+        "ip6 daddr 2000::/3 accept",
+    ]
+    assert "ip daddr != 10.0.0.0/8" in not_public
+    assert "ip daddr != 198.18.0.0/15" in not_public
+
+
+def test_render_egress_ruleset_empty_allowlist_keeps_only_dns():
+    text = _render_egress_ruleset([], ["8.8.8.8", "1.1.1.1"], denied=["169.254.0.0/16"])
+    assert "ip daddr 8.8.8.8 udp dport 53 accept" in text
+    assert "ip daddr 1.1.1.1 tcp dport 53 accept" in text
+    # Loopback plus two resolvers times two protocols: nothing else.
+    assert text.count(" accept") == 5
+    with pytest.raises(ValueError, match="dns"):
+        _render_egress_ruleset([], ["resolver.internal"], denied=[])
+
+
+def test_write_egress_ruleset_defaults_to_public_dns_and_adds_the_guard(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
+    path = _write_egress_ruleset(str(tmp_path), ["10.0.0.0/8"], None)
+    assert path == str(tmp_path / "egress.nft")
+    text = (tmp_path / "egress.nft").read_text()
+    assert "ip daddr 10.0.0.0/8 accept" in text
+    for server in DEFAULT_PUBLIC_DNS:
+        assert f"ip daddr {server} udp dport 53 accept" in text
+    (always_denied,) = [line for line in text.splitlines() if "169.254" in line]
+    assert "10.96.0.1/32" in always_denied and always_denied.endswith(" drop")
+    # Written atomically: no temp file remains.
+    assert [p.name for p in tmp_path.iterdir()] == ["egress.nft"]
+
+
+def test_write_egress_ruleset_writes_nothing_with_a_bad_denylist(tmp_path, monkeypatch):
+    """No ruleset is written when RAY_SANDBOX_EGRESS_DENY can't be read, so a
+    typo there never starts a sandbox without the operator's denylist."""
+    monkeypatch.setenv("RAY_SANDBOX_EGRESS_DENY", "apiserver.internal")
+    with pytest.raises(ValueError, match="apiserver.internal"):
+        _write_egress_ruleset(str(tmp_path), ["internet"], None)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_build_run_command_public_installs_ruleset_before_runsc():
+    """Every public sandbox gets its ruleset once the tap is up and before
+    runsc starts, and a failed install aborts the start instead of leaving
+    egress open."""
+    install = (
+        "nsenter --preserve-credentials -U -n -t $NSPID -- nft -f /tmp/rd/egress.nft || "
+        '{ echo "egress ruleset install failed" >&2; exit 1; }; '
+    )
+    for cidr_allowlist in (None, ["10.0.0.0/8"]):
+        script = _run_argv("public", cidr_allowlist=cidr_allowlist)[2]
+        assert install in script
+        tap_ready = script.index("[ -s /tmp/rd/slirp4netns.ready ] ||")
+        runsc_start = script.index(
+            "nsenter --preserve-credentials -U -n -t $NSPID -- "
+            "setpriv --pdeathsig KILL -- runsc"
+        )
+        assert tap_ready < script.index(install) < runsc_start
+
+
+def test_create_sandbox_requires_nft_for_public(monkeypatch):
+    """A missing nft fails a public sandbox fast, before the image pull, with
+    remediation, whether or not it has an allowlist."""
+
+    class _NoPullImageManager:
+        def pull_image(self, *args, **kwargs):
+            raise AssertionError("image pull must not run when nft is missing")
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.shutil.which",
+        lambda name: None if name == "nft" else f"/usr/bin/{name}",
+    )
+    backend = GVisorSandboxBackend(image_manager=_NoPullImageManager())
+    with pytest.raises(SandboxCreationError, match="nft"):
+        backend.create_sandbox(_public_config())
+
+
+class _StubImageManager:
+    """Just enough of an image manager to reach the run command."""
+
+    def __init__(self):
+        self.released = []
+
+    def pull_image(self, *args, **kwargs):
+        return None
+
+    def get_workdir(self, image):
+        return None
+
+    def prepare_oci_bundle(self, **kwargs):
+        return None
+
+    def release_image(self, image, instance_id):
+        self.released.append(instance_id)
+
+
+def test_create_public_sandbox_installs_the_default_allowlist(tmp_path, monkeypatch):
+    """A public sandbox created without an allowlist runs under the default,
+    the public internet behind the guard; if the guard can't be read, the
+    sandbox doesn't start."""
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor._RAY_SANDBOX_DIR", str(tmp_path)
+    )
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.shutil.which",
+        lambda name: f"/usr/bin/{name}",
+    )
+
+    class _Started(Exception):
+        pass
+
+    rulesets = []
+
+    def fake_popen(args, **kwargs):
+        # The failed create deletes its bundle, so read the ruleset now.
+        (root_dir,) = tmp_path.iterdir()
+        rulesets.append((root_dir / "egress.nft").read_text())
+        raise _Started(args)
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.Popen", fake_popen
+    )
+    backend = GVisorSandboxBackend(image_manager=_StubImageManager())
+    with pytest.raises(SandboxCreationError) as err:
+        backend.create_sandbox(_public_config())
+    assert isinstance(err.value.__cause__, _Started)
+    (text,) = rulesets
+    not_public = " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4)
+    assert f"{not_public} accept" in text
+    assert "169.254.0.0/16" in text
+
+    monkeypatch.setenv("RAY_SANDBOX_EGRESS_DENY", "apiserver.internal")
+    images = _StubImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
+    bundles = set(tmp_path.iterdir())
+    with pytest.raises(SandboxCreationError, match="apiserver.internal"):
+        backend.create_sandbox(_public_config())
+    assert len(images.released) == 1
+    # The failed create deletes its bundle rather than leaving it locked.
+    assert set(tmp_path.iterdir()) <= bundles
+
+
+def test_set_egress_allowlist_needs_a_public_sandbox(tmp_path):
+    """Only a network="public" sandbox has an allowlist, and the change never
+    runs without the namespace holder (`flush ruleset` must not run anywhere
+    but inside the sandbox's own namespace)."""
+    backend = GVisorSandboxBackend(image_manager=object())
+    with pytest.raises(SandboxNotFoundError):
+        backend.set_egress_allowlist("nope", ["10.0.0.0/8"])
+
+    backend._sandbox_metadata["sb-none"] = {
+        "root_dir": str(tmp_path),
+        "config": GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh"),
+        "egress_allowlist": None,
+    }
+    with pytest.raises(SandboxError, match="only network='public'"):
+        backend.set_egress_allowlist("sb-none", ["10.0.0.0/8"])
+
+    backend._sandbox_metadata["sb-public"] = {
+        "root_dir": str(tmp_path),
+        "config": _public_config(),
+        "egress_allowlist": ["internet"],
+    }
+    with pytest.raises(ValueError, match="example.com"):
+        backend.set_egress_allowlist("sb-public", ["example.com"])
+    with pytest.raises(SandboxError, match="namespace holder"):
+        backend.set_egress_allowlist("sb-public", ["10.0.0.0/8"])
+    assert not (tmp_path / "egress.nft").exists()
+
+
+# Tests that use this process as a sandbox's namespace holder.
+_needs_proc_ns = pytest.mark.skipif(
+    not os.path.isdir("/proc/self/ns"), reason="needs Linux /proc/<pid>/ns"
+)
+
+
+def _fd_namespace_ids(fds) -> list:
+    return [(os.fstat(fd).st_dev, os.fstat(fd).st_ino) for fd in fds]
+
+
+@_needs_proc_ns
+def test_set_egress_allowlist_reinstalls_ruleset_in_the_namespace(
+    tmp_path, monkeypatch
+):
+    """The update rewrites the ruleset and loads it through fds of the
+    holder's namespaces, closed afterwards; a failed load keeps the file
+    describing the rules in force."""
+    (tmp_path / "netns.pid").write_text(f"{os.getpid()}\n")
+    holder_ns = _namespace_ids(os.getpid())
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        network="public",
+        cidr_allowlist=["0.0.0.0/0"],
+        dns=["10.0.0.2"],
+    )
+    _write_egress_ruleset(str(tmp_path), cfg.cidr_allowlist, cfg.dns)
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-1"] = {
+        "root_dir": str(tmp_path),
+        "config": cfg,
+        "egress_allowlist": ["0.0.0.0/0"],
+        "netns_ids": holder_ns,
+    }
+
+    class _Completed:
+        def __init__(self, returncode, stderr=b""):
+            self.returncode = returncode
+            self.stderr = stderr
+
+    calls = []
+
+    def fake_run(args, pass_fds=(), **kwargs):
+        calls.append((args, list(pass_fds), _fd_namespace_ids(pass_fds)))
+        return _Completed(0)
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", fake_run
+    )
+    backend.set_egress_allowlist("sb-1", ["52.0.0.1"])
+    ((args, (user_fd, net_fd), passed_ns),) = calls
+    assert args == [
+        "nsenter",
+        "--preserve-credentials",
+        f"--user=/proc/self/fd/{user_fd}",
+        f"--net=/proc/self/fd/{net_fd}",
+        "--",
+        "nft",
+        "-f",
+        str(tmp_path / "egress.nft"),
+    ]
+    assert passed_ns == holder_ns
+    for fd in (user_fd, net_fd):
+        # Closed (or reused for something else): no namespace fd leaks.
+        try:
+            assert _fd_namespace_ids([fd])[0] not in holder_ns
+        except OSError:
+            pass
+    text = (tmp_path / "egress.nft").read_text()
+    assert "ip daddr 52.0.0.1/32 accept" in text
+    assert "0.0.0.0/0" not in text
+    assert "ip daddr 10.0.0.2 udp dport 53 accept" in text
+    assert backend._sandbox_metadata["sb-1"]["egress_allowlist"] == ["52.0.0.1/32"]
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run",
+        lambda args, **kwargs: _Completed(1, b"Error: Protocol not supported"),
+    )
+    with pytest.raises(SandboxError, match="Protocol not supported"):
+        backend.set_egress_allowlist("sb-1", ["10.0.0.0/8"])
+    assert "ip daddr 52.0.0.1/32 accept" in (tmp_path / "egress.nft").read_text()
+    assert backend._sandbox_metadata["sb-1"]["egress_allowlist"] == ["52.0.0.1/32"]
+
+
+@_needs_proc_ns
+def test_set_egress_allowlist_refuses_a_reused_holder_pid(tmp_path, monkeypatch):
+    """Once the holder exits, its pid can name any process. An update must
+    then be refused before nft runs, whatever that process is."""
+    # A live process outside the sandbox's namespaces: this one.
+    (tmp_path / "netns.pid").write_text(f"{os.getpid()}\n")
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        network="public",
+        cidr_allowlist=["1.1.1.1"],
+    )
+    rules = Path(_write_egress_ruleset(str(tmp_path), cfg.cidr_allowlist, cfg.dns))
+    before = rules.read_text()
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run",
+        lambda *args, **kwargs: pytest.fail("nft ran outside the sandbox"),
+    )
+    backend = GVisorSandboxBackend(image_manager=object())
+    # The namespaces recorded at creation, which this process isn't in; then
+    # a sandbox whose namespaces are unknown.
+    for recorded in ([(0, 1), (0, 2)], None):
+        backend._sandbox_metadata["sb-1"] = {
+            "root_dir": str(tmp_path),
+            "config": cfg,
+            "egress_allowlist": ["1.1.1.1/32"],
+            "netns_ids": recorded,
+        }
+        with pytest.raises(SandboxError, match="namespace holder"):
+            backend.set_egress_allowlist("sb-1", list(ALLOW_ALL_CIDRS))
+        assert rules.read_text() == before
+        assert backend._sandbox_metadata["sb-1"]["egress_allowlist"] == ["1.1.1.1/32"]
+
+
+@_needs_proc_ns
+def test_holder_namespace_ids_reject_a_pid_in_the_workers_namespaces(tmp_path):
+    """Creation records the holder's namespaces only if netns.pid names a
+    process outside this one's, so a later update can't be pointed here."""
+    assert _holder_namespace_ids(str(tmp_path)) is None
+    for pid in (str(os.getpid()), "not-a-pid"):
+        (tmp_path / "netns.pid").write_text(f"{pid}\n")
+        assert _holder_namespace_ids(str(tmp_path)) is None
+
+
+@_needs_proc_ns
+def test_set_egress_allowlist_serializes_concurrent_updates(tmp_path, monkeypatch):
+    """Overlapping updates run one at a time, so the ruleset loaded last is
+    the list the backend records."""
+    (tmp_path / "netns.pid").write_text(f"{os.getpid()}\n")
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        network="public",
+        cidr_allowlist=["0.0.0.0/0"],
+        dns=["10.0.0.2"],
+    )
+    _write_egress_ruleset(str(tmp_path), cfg.cidr_allowlist, cfg.dns)
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-1"] = {
+        "root_dir": str(tmp_path),
+        "config": cfg,
+        "egress_allowlist": ["0.0.0.0/0"],
+        "netns_ids": _namespace_ids(os.getpid()),
+    }
+    loaded = []
+    inside = [0, 0]  # [current, peak]
+    counter_lock = threading.Lock()
+
+    class _Completed:
+        returncode = 0
+        stderr = b""
+
+    def slow_nft(args, **kwargs):
+        with counter_lock:
+            inside[0] += 1
+            inside[1] = max(inside[1], inside[0])
+        loaded.append((tmp_path / "egress.nft").read_text())
+        time.sleep(0.05)
+        with counter_lock:
+            inside[0] -= 1
+        return _Completed()
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", slow_nft
+    )
+    threads = [
+        threading.Thread(target=backend.set_egress_allowlist, args=("sb-1", [cidr]))
+        for cidr in ("52.0.0.1", "52.0.0.2", "52.0.0.3")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert inside[1] == 1
+    (recorded,) = backend._sandbox_metadata["sb-1"]["egress_allowlist"]
+    assert f"ip daddr {recorded} accept" in loaded[-1]
+    assert f"ip daddr {recorded} accept" in (tmp_path / "egress.nft").read_text()
+
+
+def _fake_public_sandbox(root_dir: Path, cidrs: list) -> dict:
+    """Metadata of a public sandbox whose namespace holder is this process."""
+    root_dir.mkdir()
+    (root_dir / "netns.pid").write_text(f"{os.getpid()}\n")
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest", shell="/bin/sh", network="public", cidr_allowlist=cidrs
+    )
+    _write_egress_ruleset(str(root_dir), cfg.cidr_allowlist, cfg.dns)
+    return {
+        "root_dir": str(root_dir),
+        "config": cfg,
+        "egress_allowlist": cfg.cidr_allowlist,
+        "netns_ids": _namespace_ids(os.getpid()),
+    }
+
+
+def test_resolver_probe_names_the_first_unreachable_resolver():
+    """The probe sends each resolver one datagram and names the first whose
+    send fails. A broadcast address fails on any host, because the probe's
+    socket doesn't set SO_BROADCAST."""
+    probe = [sys.executable, "-I", "-c", _RESOLVER_PROBE]
+    reached = subprocess.run(
+        probe + ["127.0.0.1"], capture_output=True, text=True, timeout=30
+    )
+    assert reached.returncode == 0, reached.stderr
+    failed = subprocess.run(
+        probe + ["127.0.0.1", "255.255.255.255"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert failed.returncode == _RESOLVER_UNREACHABLE, failed.stderr
+    server, reason = failed.stdout.strip().split("\t")
+    assert server == "255.255.255.255"
+    assert reason
+
+
+@_needs_proc_ns
+def test_unreachable_resolver_probes_inside_the_sandbox(tmp_path, monkeypatch):
+    """The probe runs in the sandbox's network namespace, entered through an
+    fd, and enters its user namespace only if this process isn't root. Only
+    its own verdict counts, so a probe that can't run blocks nothing."""
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-1"] = _fake_public_sandbox(
+        tmp_path / "sb", ["internet"]
+    )
+    results = []
+    calls = []
+
+    def fake_run(args, pass_fds=(), **kwargs):
+        calls.append((args, _fd_namespace_ids(pass_fds)))
+        result = results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", fake_run
+    )
+    results.append(
+        subprocess.CompletedProcess(
+            [], _RESOLVER_UNREACHABLE, "10.16.0.10\tOperation not permitted\n", ""
+        )
+    )
+    assert backend._unreachable_resolver("sb-1", ["10.16.0.10"]) == (
+        "10.16.0.10",
+        "Operation not permitted",
+    )
+    ((args, passed_ns),) = calls
+    assert args[:2] == ["nsenter", "--preserve-credentials"]
+    assert args[-5:] == [sys.executable, "-I", "-c", _RESOLVER_PROBE, "10.16.0.10"]
+    assert passed_ns == _namespace_ids(os.getpid())
+    entered = [arg.split("=")[0] for arg in args if arg.startswith("--") and "=" in arg]
+    assert entered == (["--net"] if os.geteuid() == 0 else ["--user", "--net"])
+
+    for result in (
+        subprocess.CompletedProcess([], 0, "", ""),
+        subprocess.CompletedProcess([], 1, "", "nsenter: reassociate failed"),
+        subprocess.TimeoutExpired("nsenter", 10),
+    ):
+        results.append(result)
+        assert backend._unreachable_resolver("sb-1", ["10.16.0.10"]) is None
+
+
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):
     """Two "public" sandboxes both bind 0.0.0.0:2222 (the terminal-bench QEMU
     hostfwd contract): each reaches its own listener, the bind never surfaces in
@@ -851,6 +1378,273 @@ def test_netns_egress_and_dns(ensure_slirp4netns):
         assert res.exit_code == 0, res.stderr
         assert "Example" in res.stdout
     finally:
+        backend.delete_sandbox(sb)
+
+
+# Exit 0 when a TCP connection to 1.1.1.1:80 succeeds; the connect times out
+# (exit 1) when the egress filter drops the SYN.
+_CONNECT_PROBE = (
+    'python3 -c "import socket; '
+    "socket.create_connection(('1.1.1.1', 80), timeout=5).close()\""
+)
+
+
+def test_netns_egress_allowlist_enforced(ensure_slirp4netns):
+    """Only allowlisted destinations are reachable, DNS to the resolvers stays
+    open although they are not listed, and everything else is dropped."""
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(
+        image="python:3.10-slim", network="public", cidr_allowlist=["1.1.1.1/32"]
+    )
+    sb = backend.create_sandbox(cfg)
+    try:
+        res = backend.exec_command(sb, _CONNECT_PROBE, timeout=60)
+        assert res.exit_code == 0, res.stderr
+
+        # An unlisted address: the SYN is dropped, so the connect times out.
+        # Widening to it afterwards proves the policy, not the network,
+        # blocked it.
+        other = _CONNECT_PROBE.replace("1.1.1.1", "1.0.0.1")
+        res = backend.exec_command(sb, other, timeout=60)
+        assert res.exit_code != 0
+        assert "timed out" in res.stderr, res.stderr
+        backend.set_egress_allowlist(sb, ["1.1.1.1", "1.0.0.1"])
+        res = backend.exec_command(sb, other, timeout=60)
+        assert res.exit_code == 0, res.stderr
+
+        res = backend.exec_command(
+            sb,
+            "python3 -c \"import socket; print(socket.gethostbyname('example.com'))\"",
+            timeout=60,
+        )
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.strip().count(".") == 3
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def _probe(host: str, port: int) -> str:
+    """A command that prints how a TCP connect from the sandbox ends."""
+    return (
+        'python3 -c "import socket\n'
+        "try:\n"
+        f"    socket.create_connection(('{host}', {port}), timeout=5).close(); print('open')\n"
+        "except socket.timeout:\n"
+        "    print('timeout')\n"
+        "except OSError as e:\n"
+        "    print(type(e).__name__)\n"
+        '"'
+    )
+
+
+def test_netns_egress_ports_and_internet(ensure_slirp4netns):
+    """A port entry opens one port on an address that is otherwise closed, and
+    "internet" reaches public addresses but not the node's own network."""
+    host = _host_ip()
+    listeners = [socket.create_server((host, 0)) for _ in range(2)]
+    allowed, other = (s.getsockname()[1] for s in listeners)
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="python:3.10-slim",
+            network="public",
+            cidr_allowlist=["internet", f"{host}:{allowed}"],
+        )
+    )
+    try:
+        reach = {
+            name: backend.exec_command(sb, _probe(h, p), timeout=60).stdout.strip()
+            for name, (h, p) in {
+                "allowed port": (host, allowed),
+                "other port": (host, other),
+                "public address": ("1.1.1.1", 443),
+            }.items()
+        }
+        assert reach == {
+            "allowed port": "open",
+            "other port": "timeout",
+            "public address": "open",
+        }
+    finally:
+        backend.delete_sandbox(sb)
+        for listener in listeners:
+            listener.close()
+
+
+def test_netns_default_policy_leaves_out_internal_addresses(
+    ensure_slirp4netns, monkeypatch
+):
+    """A public sandbox created without an allowlist reaches the internet but
+    not the worker's own address, where Ray's ports listen, because it's an
+    internal address; nor instance metadata or the Kubernetes API, which the
+    denylist closes. Ray doesn't track its nodes, so an allowlist that covers
+    internal networks reaches the worker, until RAY_SANDBOX_EGRESS_DENY
+    lists it."""
+    host = _host_ip()
+    if ipaddress.ip_address(host).is_global:
+        pytest.skip("the worker's address is public, so internet covers it")
+    listener = socket.create_server((host, 0))
+    port = listener.getsockname()[1]
+    targets = {
+        "worker": (host, port),
+        "metadata": ("169.254.169.254", 80),
+        "internet": ("1.1.1.1", 443),
+    }
+    if os.environ.get("KUBERNETES_SERVICE_HOST"):
+        targets["kubernetes"] = (
+            os.environ["KUBERNETES_SERVICE_HOST"],
+            int(os.environ.get("KUBERNETES_SERVICE_PORT", "443")),
+        )
+    closed = {name: "timeout" for name in targets if name != "internet"}
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(image="python:3.10-slim", network="public")
+    )
+
+    def reach() -> dict:
+        return {
+            name: backend.exec_command(sb, _probe(h, p), timeout=60).stdout.strip()
+            for name, (h, p) in targets.items()
+        }
+
+    try:
+        assert reach() == {**closed, "internet": "open"}
+        # A cluster that rewrites Service IPs at connect time, as Cilium does,
+        # sends the Kubernetes API Service to the API server's own address,
+        # which allow-all opens unless RAY_SANDBOX_EGRESS_DENY lists it.
+        targets.pop("kubernetes", None)
+        closed.pop("kubernetes", None)
+        backend.set_egress_allowlist(sb, list(ALLOW_ALL_CIDRS))
+        assert reach() == {**closed, "worker": "open", "internet": "open"}
+        monkeypatch.setenv("RAY_SANDBOX_EGRESS_DENY", f"{host}/32")
+        backend.set_egress_allowlist(sb, list(ALLOW_ALL_CIDRS))
+        assert reach() == {**closed, "internet": "open"}
+    finally:
+        backend.delete_sandbox(sb)
+        listener.close()
+
+
+def test_netns_egress_allowlist_runtime_update(ensure_slirp4netns):
+    """A sandbox created with an allowlist can be widened and narrowed while
+    it runs; each change applies to the next connection."""
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(
+        image="python:3.10-slim", network="public", cidr_allowlist=[]
+    )
+    sb = backend.create_sandbox(cfg)
+    try:
+        assert backend.exec_command(sb, _CONNECT_PROBE, timeout=60).exit_code != 0
+        backend.set_egress_allowlist(sb, ["1.1.1.1"])
+        res = backend.exec_command(sb, _CONNECT_PROBE, timeout=60)
+        assert res.exit_code == 0, res.stderr
+        backend.set_egress_allowlist(sb, [])
+        assert backend.exec_command(sb, _CONNECT_PROBE, timeout=60).exit_code != 0
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_netns_unreachable_dns_resolver_fails_the_create(ensure_slirp4netns):
+    """A dns resolver the sandbox can't reach fails the create with the
+    reason, rather than every lookup in the sandbox. Sandboxes have no IPv6
+    route, so an IPv6 resolver stands in for a Service IP that the cluster's
+    network translates and the egress filter then drops."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="public",
+            dns=["1.1.1.1", "8.8.8.8"],
+        )
+    )
+    backend.delete_sandbox(sb)
+
+    before = _slirp4netns_pids()
+    with pytest.raises(
+        SandboxCreationError, match="2001:4860:4860::8888 .* Network is unreachable"
+    ):
+        backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest",
+                shell="/bin/sh",
+                network="public",
+                dns=["1.1.1.1", "2001:4860:4860::8888"],
+            )
+        )
+    assert backend._sandbox_metadata == {}
+    assert _slirp4netns_pids() == before
+
+
+def _nft_ruleset(*nsenter_target: str) -> tuple:
+    """``nft list ruleset`` here, or in the namespaces nsenter's args name."""
+    enter = ["nsenter", "--preserve-credentials", *nsenter_target, "--"]
+    proc = subprocess.run(
+        (enter if nsenter_target else []) + ["nft", "list", "ruleset"],
+        capture_output=True,
+        text=True,
+    )
+    return proc.returncode, proc.stdout
+
+
+def test_netns_egress_allowlist_update_refuses_a_reused_holder_pid(
+    ensure_slirp4netns,
+):
+    """Once the namespace holder exits, its pid can name another process. An
+    update must then be refused, leaving that process's ruleset alone, whether
+    it shares the worker's namespaces (the pod's ruleset, for a root worker)
+    or has its own, as another sandbox's holder does. The real holder still
+    takes updates afterwards."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="python:3.10-slim", network="public", cidr_allowlist=["1.1.1.1"]
+        )
+    )
+    pidfile = Path(backend._sandbox_metadata[sb]["root_dir"]) / "netns.pid"
+    holder = pidfile.read_text().strip()
+    worker_peer = subprocess.Popen(["sleep", "300"])
+    other_holder = subprocess.Popen(
+        ["unshare", "--user", "--map-root-user", "--net"]
+        + ["sh", "-c", "echo up; exec sleep 300"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert other_holder.stdout.readline() == "up\n"
+        rulesets = {
+            "worker's namespaces": (worker_peer.pid, lambda: _nft_ruleset()),
+            "own namespaces": (
+                other_holder.pid,
+                lambda: _nft_ruleset("-U", "-n", "-t", str(other_holder.pid)),
+            ),
+        }
+        outcomes = {}
+        for name, (pid, ruleset) in rulesets.items():
+            before = ruleset()
+            pidfile.write_text(f"{pid}\n")
+            try:
+                # Open egress, so a regression can't cut off the namespace it
+                # lands in.
+                backend.set_egress_allowlist(sb, list(ALLOW_ALL_CIDRS))
+                refused = False
+            except SandboxError as err:
+                refused = "namespace holder" in str(err)
+            outcomes[name] = {"refused": refused, "untouched": ruleset() == before}
+        assert outcomes == {
+            name: {"refused": True, "untouched": True} for name in rulesets
+        }
+        assert backend._sandbox_metadata[sb]["egress_allowlist"] == ["1.1.1.1/32"]
+        assert "ip daddr 1.1.1.1 accept" in _nft_ruleset("-U", "-n", "-t", holder)[1]
+
+        pidfile.write_text(f"{holder}\n")
+        backend.set_egress_allowlist(sb, ["1.0.0.1"])
+        assert "ip daddr 1.0.0.1 accept" in _nft_ruleset("-U", "-n", "-t", holder)[1]
+        reach = backend.exec_command(sb, _probe("1.0.0.1", 443), timeout=60)
+        assert reach.stdout.strip() == "open", reach.stderr
+    finally:
+        for process in (worker_peer, other_holder):
+            process.kill()
+            process.communicate()
         backend.delete_sandbox(sb)
 
 
@@ -1107,20 +1901,30 @@ def test_reclaim_deletes_the_owner_file_last(private_bundles, monkeypatch):
     assert ("busybox:latest", "ray-sandbox-00000000000e") in images.released
 
 
-@pytest.mark.parametrize("failure", ["pull", "owner file"])
+@pytest.mark.parametrize("failure", ["pull", "owner file", "oci bundle"])
 def test_failed_create_leaves_no_bundle(private_bundles, monkeypatch, failure):
     """A create that fails before its sandbox starts deletes its bundle, even
-    one without an owner file for a reclaim to find."""
-    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    one without an owner file for a reclaim to find, and releases its image."""
+    images = _RecordingImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
     if failure == "owner file":
 
         def no_space(*args):
             raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
         monkeypatch.setattr(backend, "_own_bundle", no_space)
+    elif failure == "oci bundle":
+
+        def bad_spec(**kwargs):
+            raise ValueError("bad OCI spec")
+
+        monkeypatch.setattr(images, "pull_image", lambda *args, **kwargs: "/image")
+        monkeypatch.setattr(images, "get_workdir", lambda image: None, raising=False)
+        monkeypatch.setattr(images, "prepare_oci_bundle", bad_spec, raising=False)
     with pytest.raises(SandboxCreationError):
         backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
     assert os.listdir(gvisor._RAY_SANDBOX_DIR) == []
+    assert [image for image, _ in images.released] == ["busybox:latest"]
 
 
 def test_reclaim_runs_in_the_background(monkeypatch):
