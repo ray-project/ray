@@ -14,6 +14,11 @@ _SLIRP4NETNS_URL = (
     "v1.3.5/slirp4netns-{arch}"
 )
 
+# An empty Docker config directory, so that no pull in these tests uses the
+# registry credentials, or runs the credential helpers, of the machine that
+# runs them.
+_EMPTY_DOCKER_CONFIG = tempfile.mkdtemp(prefix="sandbox-tests-docker-config-")
+
 
 def pytest_runtest_setup(item):
     if not sandbox_test_enabled():
@@ -21,6 +26,7 @@ def pytest_runtest_setup(item):
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
     # A pull mustn't evict cached images because the runner's disk is full.
     os.environ["RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"] = "0"
+    os.environ["DOCKER_CONFIG"] = _EMPTY_DOCKER_CONFIG
 
 
 @pytest.fixture

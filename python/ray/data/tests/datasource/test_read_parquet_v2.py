@@ -11,9 +11,11 @@ import logging
 from dataclasses import dataclass
 from typing import cast
 
+import fsspec
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from pyarrow.fs import FSSpecHandler, PyFileSystem
 
 import ray
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
@@ -22,8 +24,10 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
+from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsLimitPushdown
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
+from ray.data.datasource import FileShuffleConfig
 
 
 def _write(path, table):
@@ -143,6 +147,55 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
     assert ds.take_all() == [{"a": 1, "path": str(tmp_path / "data.parquet")}]
+
+
+def test_read_parquet_v2_columns_rejects_string(tmp_path, restore_ctx):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    # Without the check, ``"ab"`` would silently select ``["a", "b"]``.
+    with pytest.raises(TypeError, match="`columns` must be a list of strings."):
+        # pyrefly: ignore[bad-argument-type]  # the wrong type is the point
+        ray.data.read_parquet(str(tmp_path), columns="ab")
+
+
+class _FailFirstCallHandler(FSSpecHandler):
+    """Local filesystem whose first call to each listing or open method raises."""
+
+    def __init__(self):
+        super().__init__(fsspec.filesystem("file"))
+        self._failed_methods = set()
+
+    def _fail_first_call(self, method: str):
+        if method not in self._failed_methods:
+            self._failed_methods.add(method)
+            raise OSError(f"Transient error in {method}")
+
+    def get_file_info(self, paths):
+        self._fail_first_call("get_file_info")
+        return super().get_file_info(paths)
+
+    def get_file_info_selector(self, selector):
+        self._fail_first_call("get_file_info_selector")
+        return super().get_file_info_selector(selector)
+
+    def open_input_file(self, path):
+        self._fail_first_call("open_input_file")
+        return super().open_input_file(path)
+
+
+def test_read_parquet_v2_retries_transient_filesystem_errors(
+    tmp_path, restore_data_context
+):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_data_context.use_datasource_v2 = True
+    restore_data_context.retried_io_errors.append("Transient error")
+    filesystem = PyFileSystem(_FailFirstCallHandler())
+
+    ds = ray.data.read_parquet(str(tmp_path), filesystem=filesystem)
+
+    assert sorted(row["a"] for row in ds.take_all()) == [1, 2, 3]
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
@@ -1267,6 +1320,78 @@ def test_merge_schema_rejects_schema_override_and_v1(tmp_path, restore_ctx):
     restore_ctx.use_datasource_v2 = False
     with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
         ray.data.read_parquet(str(path), merge_schema=True)
+
+
+def _write_global_ids(path, *, num_files, rows_per_file, row_group_size):
+    """Like ``_write_row_groups``, but ``id`` is unique across files."""
+    for i in range(num_files):
+        start = i * rows_per_file
+        pq.write_table(
+            pa.table({"id": list(range(start, start + rows_per_file))}),
+            str(path / f"f{i:03d}.parquet"),
+            row_group_size=row_group_size,
+        )
+
+
+@pytest.mark.parametrize(
+    "shuffle, listing_limited",
+    [
+        (None, True),
+        ("files", True),
+        (FileShuffleConfig(seed=0), True),
+        (FileShuffleConfig(seed=0, small_chunks_shuffle=True), False),
+    ],
+    ids=["no_shuffle", "files", "file_shuffle_config", "small_chunks_shuffle"],
+)
+def test_small_chunks_shuffle_keeps_limit_out_of_listing(
+    tmp_path, restore_ctx, shuffle, listing_limited
+):
+    """Listing stops early *before* the row-group shuffle, so a listing limit
+    would shrink the shuffle pool to the first files listed. Only the scanner,
+    which reads already-shuffled manifests, may take the limit."""
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    _write_row_groups(tmp_path, num_files=4, rows_per_file=20, row_group_size=5)
+    restore_ctx.use_datasource_v2 = True
+
+    ds = ray.data.read_parquet(str(tmp_path), shuffle=shuffle).limit(7)
+    ops = list(_walk(LogicalOptimizer().optimize(ds._logical_plan).dag))
+
+    (list_files,) = [op for op in ops if isinstance(op, ListFiles)]
+    (read_files,) = [op for op in ops if isinstance(op, ReadFiles)]
+    scanner = read_files.scanner
+    assert isinstance(scanner, SupportsLimitPushdown)
+    assert scanner.pushed_limit() == 7
+    assert list_files.limit == (7 if listing_limited else None)
+
+
+def test_limit_does_not_change_small_chunks_shuffle_output(
+    tmp_path, restore_ctx, monkeypatch
+):
+    """With a fixed seed and ordered execution, ``limit(n)`` must return the
+    first ``n`` rows of the full row-group shuffle -- the same rows as when
+    nothing is pushed down (``map_batches`` blocks limit pushdown)."""
+    _write_global_ids(tmp_path, num_files=50, rows_per_file=40, row_group_size=10)
+    restore_ctx.use_datasource_v2 = True
+    # One row group per shuffle run.
+    monkeypatch.setattr(restore_ctx, "small_shuffle_chunk_size", 1)
+    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
+
+    def read():
+        return ray.data.read_parquet(
+            str(tmp_path),
+            shuffle=FileShuffleConfig(
+                seed=0, reseed_after_execution=False, small_chunks_shuffle=True
+            ),
+        )
+
+    n = 40
+    blocked = read().map_batches(lambda b: b, batch_format="pyarrow").limit(n)
+    pushed = [r["id"] for r in read().limit(n).take_all()]
+    not_pushed = [r["id"] for r in blocked.take_all()]
+
+    assert len(pushed) == n
+    assert pushed == not_pushed
 
 
 if __name__ == "__main__":
