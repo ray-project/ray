@@ -281,7 +281,7 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
     grpc_client->template CallMethod<Request, Reply>(
         prepare_async_function,
         request,
-        [weak_retryable_grpc_client, retryable_grpc_request, callback](
+        [weak_retryable_grpc_client, retryable_grpc_request, callback, call_name](
             const ray::Status &status, Reply &&reply) {
           auto retryable_grpc_client = weak_retryable_grpc_client.lock();
           if (status.ok() || !IsGrpcRetryableStatus(status) || !retryable_grpc_client) {
@@ -291,6 +291,8 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
             }
             return;
           }
+          RAY_LOG(WARNING) << "[diag] queueing " << call_name
+                           << " for retry after status " << status.ToString();
           retryable_grpc_client->Retry(retryable_grpc_request);
         },
         call_name,
