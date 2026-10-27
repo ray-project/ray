@@ -5,7 +5,9 @@ decode deployment owns a real engine and orchestrates remote prefill.
 """
 
 import asyncio
+import base64
 import contextlib
+import json
 import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
@@ -32,6 +34,16 @@ from ray.llm._internal.serve.core.ingress.utils import (
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TRANSFER_PARAMS_HEADER,
+    PD_PREFILL_ENDPOINT_KEY,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.pd_prefill import (
+    PrefillService,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.serve._private.http_util import session_id_from_headers
@@ -91,6 +103,20 @@ async def _pd_http_response(gen) -> Response:
 # ---------------------------------------------------------------------------
 # Mixin: PD Orchestration Logic
 # ---------------------------------------------------------------------------
+
+
+def _forward_prompt_token_ids(request: RequestType, ids: Optional[list]) -> None:
+    """Hand ``ids`` to vLLM's native token reuse so the engine skips tokenizing."""
+    if not ids or not PDOrchestratorMixin._can_reuse_prompt_token_ids(request):
+        return
+    if isinstance(request, CompletionRequest):
+        request.prompt = ids
+        return
+    kv_transfer_params = getattr(request, "kv_transfer_params", None)
+    if not isinstance(kv_transfer_params, dict):
+        kv_transfer_params = {}
+        request.kv_transfer_params = kv_transfer_params
+    kv_transfer_params["prompt_token_ids"] = ids
 
 
 class PDOrchestratorMixin:
@@ -230,17 +256,7 @@ class PDOrchestratorMixin:
 
     def _forward_prefill_token_ids(self, decode_request, prefill_chunk) -> None:
         """Forward prefill ids through vLLM's native reuse interface."""
-        ids = self._decode_reuse_ids(prefill_chunk)
-        if not ids or not self._can_reuse_prompt_token_ids(decode_request):
-            return
-        if isinstance(decode_request, CompletionRequest):
-            decode_request.prompt = ids
-            return
-        kv_transfer_params = getattr(decode_request, "kv_transfer_params", None)
-        if not isinstance(kv_transfer_params, dict):
-            kv_transfer_params = {}
-            decode_request.kv_transfer_params = kv_transfer_params
-        kv_transfer_params["prompt_token_ids"] = ids
+        _forward_prompt_token_ids(decode_request, self._decode_reuse_ids(prefill_chunk))
 
     # ---- Orchestrated Request Flow ----
 
@@ -272,6 +288,18 @@ class PDOrchestratorMixin:
             method = "completions"
         else:
             raise ValueError(f"Unsupported request type: {type(request)}")
+
+        headers = raw_request_info.headers if raw_request_info is not None else {}
+        if KV_TRANSFER_PARAMS_HEADER in headers:
+            # The KV-aware P/D router already ran prefill; decode locally.
+            request.kv_transfer_params = json.loads(
+                base64.b64decode(headers[KV_TRANSFER_PARAMS_HEADER])
+            )
+            async for chunk in await getattr(super(), method)(
+                request, raw_request_info
+            ):
+                yield chunk
+            return
 
         backend = self._get_connector_backend()
 
@@ -660,8 +688,48 @@ class PDPrefillServer(LLMServer):
     """Prefill-side LLM server for P/D disaggregation.
 
     This is a standard LLMServer with an additional ``prewarm_prefill``
-    method used during the pre-warm handshake.
+    method used during the pre-warm handshake. A KV-aware prefill replica also
+    serves the P/D router's prefill calls over ZMQ, running each with
+    ``prefill``.
     """
+
+    _prefill_service: Optional[PrefillService] = None
+    _prefill_endpoint: Optional[str] = None
+
+    async def start(self):
+        await super().start()
+        if is_kv_aware(self._llm_config):
+            # The KV-aware P/D router selects this replica, then runs prefill
+            # here over ZMQ.
+            self._prefill_service = PrefillService(self.prefill)
+            self._prefill_endpoint = await self._prefill_service.start()
+
+    async def prefill(
+        self,
+        request: RequestType,
+        raw_request_info: RawRequestInfo,
+        request_token_ids: List[int],
+    ) -> Union[Dict[str, Any], ErrorResponse]:
+        """Run prefill for the KV-aware P/D router; return D's KV transfer params,
+        or P's ``ErrorResponse`` for the router to return to the client.
+
+        ``request_token_ids`` are the prompt token IDs the router selected this
+        replica with; the engine reuses them instead of tokenizing again.
+        """
+        backend = self._llm_config.kv_connector_backend
+        prefill_request = backend.prepare_prefill_request(request=request, peer=None)
+        _forward_prompt_token_ids(prefill_request, request_token_ids)
+        method = (
+            self.chat
+            if isinstance(request, ChatCompletionRequest)
+            else self.completions
+        )
+        transfer_params = None
+        async for chunk in await method(prefill_request, raw_request_info):
+            if isinstance(chunk, ErrorResponse):
+                return chunk
+            transfer_params = chunk.kv_transfer_params
+        return transfer_params
 
     async def record_replica_metadata(self) -> Dict[str, Any]:
         """Publish this prefill replica's connector coordination metadata.
@@ -676,11 +744,20 @@ class PDPrefillServer(LLMServer):
         server's ``_llm_config``. The replica-metadata hook is captured after
         engine init, so for connector deployments the backend is present by
         then; with no backend stored there is nothing to publish.
+
+        A KV-aware replica also publishes the endpoint that serves the P/D
+        router's prefill calls.
         """
         backend = getattr(self._llm_config, "kv_connector_backend", None)
-        if backend is None:
-            return {}
-        return backend.replica_metadata()
+        metadata = backend.replica_metadata() if backend is not None else {}
+        if self._prefill_endpoint is not None:
+            metadata = {**metadata, PD_PREFILL_ENDPOINT_KEY: self._prefill_endpoint}
+        return metadata
+
+    async def __del__(self) -> None:
+        if self._prefill_service is not None:
+            await self._prefill_service.close()
+        await super().__del__()
 
     async def prewarm_prefill(
         self, prefill_request: CompletionRequest

@@ -251,6 +251,16 @@ def _lua_str(value: str) -> str:
     return f'"{escaped}"'
 
 
+def _hashes_router_application_sessions(backend: "BackendConfig") -> bool:
+    """Whether HAProxy hashes ``backend``'s sessions to its router replicas."""
+    return backend.is_router_application and bool(backend.servers)
+
+
+def _router_application_session_path(backend: "BackendConfig") -> str:
+    """Path on the private listener that selects ``backend``'s session hash."""
+    return f"/router-application/{backend.name}"
+
+
 def _format_router_application_pools_lua(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
@@ -275,9 +285,16 @@ def _format_router_application_pools_lua(
 
         local_pool_lua = format_pool(colocated)
         remote_pool_lua = format_pool(remote)
+        # s: the private-listener path that hashes a session to a router replica.
+        session_lua = (
+            f"s = {_lua_str(_router_application_session_path(backend))}, "
+            if _hashes_router_application_sessions(backend)
+            else ""
+        )
         entries.append(
             f"    [{_lua_str(backend.name)}] = {{ app = {_lua_str(backend.app_name)}, "
             f"p = {_lua_str(backend.path_prefix or '/')}, "
+            f"{session_lua}"
             f"local_pool = {{ {local_pool_lua} }}, "
             f"remote_pool = {{ {remote_pool_lua} }} }}"
         )
@@ -1424,6 +1441,7 @@ class HAProxyApi(ProxyApi):
             ORIGINAL_METHOD_HEADER=SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
             REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
+            ROUTER_SOCKET=_lua_str(self.cfg.ingress_router_socket_path),
             ROUTERS=routers_lua,
             APPS=_format_router_target_apps_lua(backends),
         )
@@ -1478,6 +1496,12 @@ class HAProxyApi(ProxyApi):
             router_application_lua_path = self._write_router_application_lua(
                 http_backends
             )
+            # Router applications hash sessions to their own replicas.
+            router_application_server_ids = {
+                backend.name: _assign_ingress_router_server_ids(backend.servers)
+                for backend in http_backends
+                if _hashes_router_application_sessions(backend)
+            }
 
             # Enrich HTTP backends with precomputed health check configuration strings
             http_backends_with_health_config = [
@@ -1571,6 +1595,7 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "has_router_applications": router_application_lua_path is not None,
                     "router_application_lua_path": router_application_lua_path,
+                    "router_application_server_ids": router_application_server_ids,
                     "metrics_enabled": self.cfg.metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
                     "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,

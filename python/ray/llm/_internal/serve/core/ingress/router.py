@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 import msgspec
 from fastapi import FastAPI, HTTPException, Request
@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.http_util import _matches_session_id_header
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
@@ -30,6 +31,9 @@ from ray.serve.handle import DeploymentHandle
 # remain engine-agnostic.
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+    from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+        KVTokenTracker,
+    )
 
 logger = get_logger(__name__)
 
@@ -73,6 +77,20 @@ def _get_routing_payload_from_body(
 
 def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
     return _get_routing_payload_from_body(_parse_request_body(body))
+
+
+def _with_request_options(
+    handle: DeploymentHandle,
+    multiplexed_model_id: str = "",
+    session_id: Optional[str] = None,
+) -> DeploymentHandle:
+    """``handle`` routing a request for ``multiplexed_model_id`` in ``session_id``,
+    so the request router sees both on the request's metadata."""
+    if multiplexed_model_id:
+        handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+    if session_id:
+        handle = handle.options(session_id=session_id)
+    return handle
 
 
 @serve.ingress(router_app)
@@ -139,25 +157,29 @@ class LLMRouter:
     _warned_no_token_endpoint: bool = False
     _base_model_id: Optional[str] = None
     _kv_token_tracker = None
+    _kv_token_trackers: Sequence["KVTokenTracker"] = ()
 
     async def __init__(
         self,
         server: DeploymentHandle,
         llm_config: Optional["LLMConfig"] = None,
         base_model_id: Optional[str] = None,
+        selection_svc_env: Optional[Dict[str, str]] = None,
     ):
         self._handle: DeploymentHandle = server
         self._base_model_id = base_model_id
         self._tokenizer = None
         self._token_sender = None
-        # The KVTokenTracker (KV-aware deployments only).
+        # Every KVTokenTracker this router owns, one per tracked deployment.
+        self._kv_token_trackers = []
+        # The tracker of ``server``'s deployment (KV-aware deployments only).
         self._kv_token_tracker = None
         # A non-None llm_config signals pre-routing tokenization, which the
         # builder binds only for a KV-aware request router.
         if llm_config is not None:
             # Build the tracker before _handle._init() below, which initializes
             # the KVAwareRouter that looks it up.
-            self._start_kv_token_tracking(llm_config, server)
+            self._start_kv_token_tracking(llm_config, server, selection_svc_env)
             await self._kv_token_tracker.start_lifecycle_receiver()
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
@@ -169,20 +191,18 @@ class LLMRouter:
         self._handle._init()
 
     def _start_kv_token_tracking(
-        self, llm_config: "LLMConfig", server: DeploymentHandle
+        self,
+        llm_config: "LLMConfig",
+        server: DeploymentHandle,
+        selection_svc_env: Optional[Dict[str, str]] = None,
     ) -> None:
         """Build the KV token tracker and subscribe the token sender to it.
 
         Must stay synchronous and run before ``__init__``'s first ``await``, so
         no replica update arrives before the subscription.
         """
-        # server.deployment_id is the tracked LLMServer deployment.
-        from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
-            build_kv_token_tracker,
-        )
-
-        self._kv_token_tracker = build_kv_token_tracker(
-            llm_config, server.deployment_id
+        self._kv_token_tracker = self._build_kv_token_tracker(
+            llm_config, server, selection_svc_env
         )
         # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
         # the non-KV ingress import path.
@@ -191,8 +211,37 @@ class LLMRouter:
         self._token_sender = token_channel.TokenSender()
         self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
 
+    def _build_kv_token_tracker(
+        self,
+        llm_config: "LLMConfig",
+        handle: DeploymentHandle,
+        selection_svc_env: Optional[Dict[str, str]] = None,
+    ) -> "KVTokenTracker":
+        """Build a tracker of ``handle``'s deployment that this router owns.
+
+        Call before ``handle`` is initialized: its KVAwareRouter looks the
+        tracker up by deployment when it starts.
+        """
+        from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+            build_kv_token_tracker,
+        )
+
+        tracker = build_kv_token_tracker(
+            llm_config, handle.deployment_id, selection_svc_env
+        )
+        self._kv_token_trackers.append(tracker)
+        return tracker
+
     @router_app.post("/internal/route")
     async def route(self, request: Request):
+        # FastAPI calls this function object with self injected, so a subclass
+        # override of route never runs. Subclasses override route_request.
+        try:
+            return await self.route_request(request)
+        except (RuntimeError, DeploymentUnavailableError) as e:
+            raise HTTPException(status_code=503, detail=str(e))
+
+    async def route_request(self, request: Request) -> Dict[str, Any]:
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         request_body = _parse_request_body(body)
@@ -211,37 +260,13 @@ class LLMRouter:
         # Tokenize only a parseable, routable body; a truncated or unparseable
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
-        stage_token_ids = False
         if self._tokenizer is not None and routing_payload is not None:
-            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (  # noqa: E501
-                is_text_only_chat,
+            request_token_ids = await self._tokenize(
+                vars(routing_payload),
+                request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER),
             )
-            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
-                TokenizeError,
-            )
-
-            payload = vars(routing_payload)
-            request_path = request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
-            try:
-                request_token_ids = await self._tokenizer.tokenize(
-                    payload, request_path=request_path
-                )
-            except TokenizeError as e:
-                raise HTTPException(status_code=e.status_code, detail=e.message)
-            # Media needs engine preprocessing, not just prompt token IDs.
-            stage_token_ids = is_text_only_chat(payload.get("messages", []))
-        # HAProxy forwards the configured session header on the same name,
-        # but use the same case-insensitive, separator-tolerant matcher as
-        # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
-        # doesn't silently drop session affinity.
-        session_id = next(
-            (v for k, v in request.headers.items() if _matches_session_id_header(k)),
-            None,
-        )
         multiplexed_model_id = self._get_multiplexed_model_id(request_body)
-        handle = self._get_handle(multiplexed_model_id)
-        if session_id:
-            handle = handle.options(session_id=session_id)
+        handle = self._get_handle(multiplexed_model_id, self._get_session_id(request))
         try:
             host, port, replica_id, token_endpoint = await self._pick_replica(
                 handle=handle,
@@ -250,33 +275,82 @@ class LLMRouter:
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except (RuntimeError, DeploymentUnavailableError) as e:
-            raise HTTPException(status_code=503, detail=str(e))
 
         response = {"host": host, "port": port, "replica_id": replica_id}
-        request_headers = {}
+        request_headers = self._build_request_headers(
+            multiplexed_model_id,
+            replica_id=replica_id,
+            token_endpoint=token_endpoint,
+            request_token_ids=request_token_ids,
+            messages=(request_body or {}).get("messages", []),
+        )
+        if request_headers:
+            response[
+                RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
+            ] = request_headers
+        return response
+
+    async def _tokenize(
+        self, payload: Any, request_path: Optional[str] = None
+    ) -> Optional[List[int]]:
+        """Prompt token IDs from vLLM's renderer. ``payload`` is a body dict or an
+        already validated request. A renderer rejection becomes an HTTP error."""
+        from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
+            TokenizeError,
+        )
+
+        try:
+            return await self._tokenizer.tokenize(payload, request_path=request_path)
+        except TokenizeError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    @staticmethod
+    def _get_session_id(request: Request) -> Optional[str]:
+        # Match the session header case-insensitively, treating `-` and `_`
+        # alike, so a separator rewrite anywhere in the path doesn't silently
+        # drop session affinity.
+        return next(
+            (v for k, v in request.headers.items() if _matches_session_id_header(k)),
+            None,
+        )
+
+    def _build_request_headers(
+        self,
+        multiplexed_model_id: str,
+        *,
+        replica_id: Optional[str] = None,
+        token_endpoint: Optional[str] = None,
+        request_token_ids: Optional[List[int]] = None,
+        messages: Any = (),
+    ) -> Dict[str, str]:
+        """Headers HAProxy stamps on the request it forwards to the selected
+        replica: the adapter ID, the key of the prompt token IDs staged on the
+        replica, and where the replica reports the request's lifecycle."""
+        headers = {}
         if multiplexed_model_id:
-            request_headers[SERVE_MULTIPLEXED_MODEL_ID] = multiplexed_model_id
-        if request_token_ids and stage_token_ids:
-            token_key = self._push_prompt_tokens(
-                token_endpoint=token_endpoint,
-                replica_id=replica_id,
-                request_token_ids=request_token_ids,
+            headers[SERVE_MULTIPLEXED_MODEL_ID] = multiplexed_model_id
+        if request_token_ids:
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (  # noqa: E501
+                is_text_only_chat,
             )
-            if token_key:
-                request_headers[KV_TOKEN_KEY_HEADER] = token_key
+
+            # Media needs engine preprocessing, not just prompt token IDs.
+            if is_text_only_chat(messages):
+                token_key = self._push_prompt_tokens(
+                    token_endpoint=token_endpoint,
+                    replica_id=replica_id,
+                    request_token_ids=request_token_ids,
+                )
+                if token_key:
+                    headers[KV_TOKEN_KEY_HEADER] = token_key
         lifecycle_endpoint = (
             self._kv_token_tracker.lifecycle_endpoint
             if self._kv_token_tracker is not None
             else None
         )
         if lifecycle_endpoint:
-            request_headers[KV_LIFECYCLE_OWNER_HEADER] = lifecycle_endpoint
-        if request_headers:
-            response[
-                RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
-            ] = request_headers
-        return response
+            headers[KV_LIFECYCLE_OWNER_HEADER] = lifecycle_endpoint
+        return headers
 
     def _get_multiplexed_model_id(self, request_body: Optional[Dict[str, Any]]) -> str:
         """Return the requested adapter ID when this deployment enables LoRA."""
@@ -293,11 +367,10 @@ class LLMRouter:
             return ""
         return model_id
 
-    def _get_handle(self, multiplexed_model_id: str) -> DeploymentHandle:
-        if not multiplexed_model_id:
-            return self._handle
-
-        return self._handle.options(multiplexed_model_id=multiplexed_model_id)
+    def _get_handle(
+        self, multiplexed_model_id: str, session_id: Optional[str] = None
+    ) -> DeploymentHandle:
+        return _with_request_options(self._handle, multiplexed_model_id, session_id)
 
     @router_app.get("/health")
     async def health(self):
@@ -308,15 +381,17 @@ class LLMRouter:
         token_sender = getattr(self, "_token_sender", None)
         if token_sender is not None:
             token_sender.close()
-        tracker = getattr(self, "_kv_token_tracker", None)
-        if tracker is not None:
+        for tracker in getattr(self, "_kv_token_trackers", ()):
             await tracker.shutdown()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
-        """Advertise this router's replica-mesh endpoint to its peers."""
-        if self._kv_token_tracker is None:
-            return {}
-        return self._kv_token_tracker.replica_sync_routing_stats()
+        """Advertise this router's replica-mesh endpoints to its peers, one per
+        tracked deployment."""
+        stats: Dict[str, Any] = {}
+        for tracker in self._kv_token_trackers:
+            for key, endpoints in tracker.replica_sync_routing_stats().items():
+                stats.setdefault(key, {}).update(endpoints)
+        return stats
 
     def _push_prompt_tokens(
         self,
@@ -361,6 +436,35 @@ class LLMRouter:
     ) -> Tuple[str, int, str, Optional[str]]:
         """Pick a backend HTTP replica via the deployment's request router.
 
+        Returns the replica's backend HTTP host and port, its full replica id,
+        and its prompt-token endpoint.
+        """
+        selection = await self._choose_replica(
+            handle, routing_payload, request_token_ids
+        )
+        replica = selection._replica
+        endpoint = replica.backend_http_endpoint
+        if endpoint is None:
+            raise RuntimeError(
+                f"replica {selection.replica_id} has no backend HTTP endpoint"
+            )
+        host, port = endpoint
+        return (
+            host,
+            port,
+            replica.replica_id.to_full_id_str(),
+            get_token_endpoint(replica.routing_stats),
+        )
+
+    async def _choose_replica(
+        self,
+        handle: DeploymentHandle,
+        routing_payload: Optional[SimpleNamespace] = None,
+        request_token_ids: Optional[List[int]] = None,
+    ) -> ReplicaSelection:
+        """Select a replica via the deployment's request router, without
+        dispatching anything to it.
+
         ``handle`` is the LLMServer deployment handle, optionally configured
         with ``.options(session_id=...)`` by the caller so session-aware
         routers see the session id on ``RequestMetadata``.
@@ -387,16 +491,4 @@ class LLMRouter:
         async with handle.choose_replica(
             *route_args, **choose_replica_kwargs
         ) as selection:
-            replica = selection._replica
-            endpoint = replica.backend_http_endpoint
-            if endpoint is None:
-                raise RuntimeError(
-                    f"replica {selection.replica_id} has no backend HTTP endpoint"
-                )
-            host, port = endpoint
-            return (
-                host,
-                port,
-                replica.replica_id.to_full_id_str(),
-                get_token_endpoint(replica.routing_stats),
-            )
+            return selection

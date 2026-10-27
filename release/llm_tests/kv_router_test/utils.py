@@ -10,11 +10,17 @@ exposes the tracker's state as handle-callable methods.
 import asyncio
 from contextlib import contextmanager
 from dataclasses import asdict
+from pathlib import Path
 import sys
 from unittest import mock
 
+import requests
+import yaml
+
 import ray.cloudpickle
 from ray import serve
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import import_attr
 from ray.llm._internal.serve.core.ingress.router import LLMRouter as _LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     _MODEL_NAME,
@@ -23,7 +29,11 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.pd_router import (
+    LLMPDRouter,
+)
 from ray.serve.config import RequestRouterConfig
+from ray.serve.schema import ServeDeploySchema
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
@@ -375,3 +385,123 @@ def patch_ingress():
             yield
     finally:
         ray.cloudpickle.unregister_pickle_by_value(module)
+
+
+class PDRouter(LLMPDRouter):
+    """(Test only) LLMPDRouter that records its picks and exposes each stage's
+    bookings and replica-mesh peers over the deployment handle."""
+
+    async def __init__(self, *args, **kwargs):
+        await super().__init__(*args, **kwargs)
+        self._picks = []
+
+    async def _choose_replica(self, handle, *args, **kwargs):
+        selection = await super()._choose_replica(handle, *args, **kwargs)
+        is_prefill = handle.deployment_id == self._prefill.deployment_id
+        self._picks.append(
+            (
+                "prefill" if is_prefill else "decode",
+                selection._request_metadata.session_id,
+                selection._replica.replica_id.to_full_id_str(),
+            )
+        )
+        return selection
+
+    def _trackers(self):
+        return {"prefill": self._prefill_tracker, "decode": self._kv_token_tracker}
+
+    def get_picks(self):
+        """(stage, session id, replica id) of every selection this router made."""
+        return self._picks
+
+    def get_in_flight(self):
+        """Requests this router selected and still tracks, per stage."""
+        return {stage: len(t._requests) for stage, t in self._trackers().items()}
+
+    def get_stage_loads(self):
+        """Active requests per worker in each stage's selection service. The
+        replica mesh shares every router's bookings, so all routers agree."""
+        return {
+            stage: {
+                load["worker_id"]: load["active_requests"]
+                for entry in tracker._svc.loads()
+                for load in entry["loads"]
+            }
+            for stage, tracker in self._trackers().items()
+        }
+
+    def get_replica_mesh_peers(self):
+        return {
+            stage: tracker._svc.list_replica_peers()
+            for stage, tracker in self._trackers().items()
+        }
+
+
+def pd_completion(model, prompt, headers=None, **body):
+    """Complete ``prompt`` through the P/D router application."""
+    response = requests.post(
+        "http://127.0.0.1:8000/v1/completions",
+        json={
+            "model": model,
+            "prompt": prompt,
+            "max_tokens": 8,
+            "temperature": 0,
+            **body,
+        },
+        headers=headers,
+        timeout=120,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def prefill_cached_tokens(response):
+    """Prefix-cache hits on the prefill replica, which decode reports as cached."""
+    return response["usage"]["prompt_tokens_details"]["cached_tokens"]
+
+
+@contextmanager
+def deploy_pd_apps(config_file):
+    """Deploy the applications in a P/D Serve config and yield the model ID."""
+    config = ServeDeploySchema.model_validate(
+        yaml.safe_load(Path(__file__).with_name(config_file).read_text())
+    )
+    apps = config.applications
+    model = apps[0].args["decode_config"]["model_loading_config"]["model_id"]
+    if not ray.is_initialized():
+        ray.init()
+    serve.shutdown()
+    # Deploy the router with PDRouter; pickle this module by value so replicas
+    # can load it.
+    module = sys.modules[__name__]
+    ray.cloudpickle.register_pickle_by_value(module)
+    try:
+        with mock.patch(
+            "ray.llm._internal.serve.routing_policies.kv_aware.vllm.pd_router."
+            "LLMPDRouter",
+            PDRouter,
+        ):
+            for app in apps:
+                serve.run(
+                    import_attr(app.import_path)(app.args),
+                    name=app.name,
+                    route_prefix=app.route_prefix,
+                )
+    finally:
+        ray.cloudpickle.unregister_pickle_by_value(module)
+    # Serve readiness can precede HAProxy's final backend reload.
+    wait_for_condition(
+        lambda: requests.post(
+            "http://127.0.0.1:8000/v1/completions",
+            json={"model": model, "prompt": "ready", "max_tokens": 1},
+            timeout=30,
+        ).status_code
+        == 200,
+        timeout=300,
+        retry_interval_ms=1000,
+    )
+    try:
+        yield model
+    finally:
+        serve.shutdown()
+        ray.shutdown()

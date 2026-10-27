@@ -86,8 +86,12 @@ def _build_direct_streaming_llm_deployment(
     )
 
 
-def _get_tokenizing_router_runtime_env(llm_config: LLMConfig) -> dict:
-    env_vars = dict((llm_config.runtime_env or {}).get("env_vars", {}))
+def _get_tokenizing_router_runtime_env(*llm_configs: LLMConfig) -> dict:
+    """Runtime env of a router that tokenizes for ``llm_configs``: their env
+    vars, later configs taking precedence, plus a tokenizer cache default."""
+    env_vars = {}
+    for llm_config in llm_configs:
+        env_vars.update((llm_config.runtime_env or {}).get("env_vars", {}))
     # Budget in MiB, configurable through FASTOKENS_SEGMENT_CACHE.
     # Default headroom for 32 concurrent conversations of about 500k tokens each.
     env_vars.setdefault(

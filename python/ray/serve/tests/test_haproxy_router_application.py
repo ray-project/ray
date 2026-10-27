@@ -3,11 +3,13 @@ import asyncio
 import contextlib
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
 
 import pytest
@@ -25,6 +27,7 @@ from ray.serve._private.constants import (
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -67,7 +70,7 @@ def _backend(app: str, prefix: str, servers, **kwargs) -> BackendConfig:
     )
 
 
-def _haproxy_config(temp_dir: str, port: int) -> HAProxyConfig:
+def _haproxy_config(temp_dir: str, port: int, **kwargs) -> HAProxyConfig:
     return HAProxyConfig(
         http_options=HTTPOptions(host="127.0.0.1", port=port, keep_alive_timeout_s=58),
         stats_port=find_free_port(),
@@ -78,6 +81,7 @@ def _haproxy_config(temp_dir: str, port: int) -> HAProxyConfig:
         health_check_inter="500ms",
         health_check_rise=1,
         health_check_fall=2,
+        **kwargs,
     )
 
 
@@ -157,8 +161,44 @@ class TestRouterApplicationConfig:
                 "http-request lua.route_via_ingress_request_router if "
                 "has_ingress_request_router_app !is_router_request"
             ) in config
+            # Sessions hash to router replicas on the private listener.
+            assert (
+                "use_backend http-router-router-application if "
+                "{ path /router-application/http-router }"
+            ) in config
+            hash_backend = config[
+                config.index("backend http-router-router-application") :
+            ]
+            assert "balance hdr(x-serve-router-session-id)" in hash_backend
+            assert "http-request set-path /internal/route" in hash_backend
+            assert "retry-on conn-failure" in hash_backend
+            assert "server router-r1 127.0.0.1:9000 id " in hash_backend
             with open(lua_path) as f:
-                assert '"SERVE_REPLICA::model-a#Ingress#a1"' in f.read()
+                lua = f.read()
+            assert '"SERVE_REPLICA::model-a#Ingress#a1"' in lua
+            assert 's = "/router-application/http-router"' in lua
+            _check_config(os.path.join(temp_dir, "haproxy.cfg"))
+
+    def test_scaled_to_zero_router_renders_no_session_hash(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = _render(
+                temp_dir,
+                [
+                    _backend(
+                        "router",
+                        "/",
+                        [],
+                        is_router_application=True,
+                        fallback_server=ServerConfig(
+                            name="proxy", host="127.0.0.1", port=9000
+                        ),
+                    ),
+                    _backend("model-a", "/a", [_server("model-a", "a1", 9001)]),
+                ],
+            )
+            assert "router-application" not in config
+            with open(os.path.join(temp_dir, "router_application.lua")) as f:
+                assert 's = "/router-application/' not in f.read()
             _check_config(os.path.join(temp_dir, "haproxy.cfg"))
 
 
@@ -204,6 +244,22 @@ class TestRouterApplicationMaps:
         assert "port = 9001" in remote_lua
         assert "port = 9002" in remote_lua
         assert "port = 9000" in remote_lua
+
+    def test_session_hash_path_only_with_router_replicas(self):
+        def lua(servers):
+            backend = _backend(
+                "router",
+                "/",
+                servers,
+                is_router_application=True,
+                fallback_server=ServerConfig(name="proxy", host="10.0.0.1", port=1),
+            )
+            return _format_router_application_pools_lua([backend], "10.0.0.1")
+
+        assert 's = "/router-application/http-router"' in lua(
+            [_server("router", "r", 9000)]
+        )
+        assert "s = " not in lua([])
 
     def test_target_apps(self):
         backends = [
@@ -256,6 +312,7 @@ def _fake_replica(port: int, name: str) -> uvicorn.Server:
             "query": request.url.query,
             "body": (await request.body()).decode(),
             "request_id": request.headers.get("x-request-id"),
+            "request_headers": dict(request.headers),
             "serve_headers": sorted(
                 k for k in request.headers if k.startswith("x-serve-")
             ),
@@ -483,6 +540,26 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
             assert "x-serve-router-forged" not in call["headers"]
 
     assert len(router.calls) == len(cases)
+
+
+@pytest.mark.asyncio
+async def test_decision_request_headers_reach_replica(router_cluster):
+    """Decision headers are stamped on the forwarded request, replacing client values."""
+    url, router, _ = router_cluster
+    header = "x-serve-router-kv-token-key"
+    router.response = (
+        200,
+        json.dumps(
+            {
+                "application": "model-a",
+                "replica_id": _replica_id("model-a", "a1"),
+                "request_headers": {header: "from-router"},
+            }
+        ),
+    )
+    resp = _chat(url, {"messages": []}, headers={header: "forged"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["request_headers"][header] == "from-router"
 
 
 @pytest.mark.asyncio
@@ -806,6 +883,248 @@ async def test_scaled_to_zero_router(with_fallback):
             assert resp.status_code == 503
             assert resp.headers["x-serve-reason"] == "router_unavailable"
             assert router.calls == []
+
+
+# ---- Session affinity --------------------------------------------------------
+
+
+def _port_closed(port: int) -> bool:
+    with socket.socket() as sock:
+        return sock.connect_ex(("127.0.0.1", port)) != 0
+
+
+@contextlib.asynccontextmanager
+async def _session_routers(num_routers: int = 3, router_prefix: str = "/"):
+    """Router replicas r0, r1, ... at `router_prefix` that all dispatch to
+    model-a's replica a1, served by HAProxy processes from `start_proxy`."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        router_ports = [find_free_port() for _ in range(num_routers)]
+        replica_port = find_free_port()
+        replica = _fake_replica(replica_port, "a1")
+        routers: List[FakeRouter] = []
+        apis: List[HAProxyApi] = []
+        chat_path = router_prefix.rstrip("/") + "/v1/chat/completions"
+
+        def start_router(index: int) -> FakeRouter:
+            router = FakeRouter(router_ports[index], route_prefix=router_prefix)
+            router.decide("model-a", "a1")
+            return router
+
+        def stop_router(index: int) -> None:
+            routers[index].server.should_exit = True
+            wait_for_condition(lambda: _port_closed(router_ports[index]))
+
+        def restart_router(index: int) -> None:
+            routers[index] = start_router(index)
+
+        async def start_proxy(reverse: bool = False, nbthread: int = 1) -> str:
+            proxy_dir = os.path.join(temp_dir, f"proxy-{len(apis)}")
+            os.mkdir(proxy_dir)
+            servers = [
+                _server("router", f"r{i}", port) for i, port in enumerate(router_ports)
+            ]
+            if reverse:
+                servers.reverse()
+            backends = [
+                _backend("router", router_prefix, servers, is_router_application=True),
+                _backend(
+                    "model-a", "/v1/model-a", [_server("model-a", "a1", replica_port)]
+                ),
+            ]
+            port = find_free_port()
+            api = HAProxyApi(
+                cfg=_haproxy_config(
+                    proxy_dir, port, nbthread=nbthread, metrics_port=find_free_port()
+                ),
+                backend_configs={b.name: b for b in backends},
+                config_file_path=os.path.join(proxy_dir, "haproxy.cfg"),
+            )
+            apis.append(api)
+            await api.start()
+            url = f"http://127.0.0.1:{port}"
+            await async_wait_for_condition(
+                lambda: requests.get(f"{url}/-/healthz", timeout=2).ok, timeout=10
+            )
+            return url
+
+        def post(url: str, headers: Optional[Dict] = None) -> requests.Response:
+            return requests.post(
+                f"{url}{chat_path}", json={}, headers=headers, timeout=15
+            )
+
+        def owner(url: str, headers: Optional[Dict] = None) -> int:
+            """Index of the router that decided the request."""
+            calls = [len(router.calls) for router in routers]
+            resp = post(url, headers)
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["replica"] == "a1"
+            (index,) = [
+                i for i, router in enumerate(routers) if len(router.calls) > calls[i]
+            ]
+            return index
+
+        try:
+            routers.extend(start_router(i) for i in range(num_routers))
+            yield SimpleNamespace(
+                routers=routers,
+                start_proxy=start_proxy,
+                stop_router=stop_router,
+                restart_router=restart_router,
+                post=post,
+                owner=owner,
+            )
+        finally:
+            for api in apis:
+                await api.stop()
+            for server in [replica, *(router.server for router in routers)]:
+                server.should_exit = True
+
+
+def _session(session_id: str) -> Dict[str, str]:
+    return {SERVE_SESSION_ID: session_id}
+
+
+@pytest.mark.asyncio
+async def test_session_reaches_same_router_from_every_proxy():
+    async with _session_routers() as cluster:
+        first = await cluster.start_proxy()
+        # Ownership depends on neither server order nor Lua's per-thread state.
+        second = await cluster.start_proxy(reverse=True, nbthread=2)
+        owners = {
+            f"session-{i}": cluster.owner(first, _session(f"session-{i}"))
+            for i in range(32)
+        }
+        assert set(owners.values()) == {0, 1, 2}
+        for session_id, owner in owners.items():
+            assert cluster.owner(first, _session(session_id)) == owner
+            assert cluster.owner(second, _session(session_id)) == owner
+
+
+@pytest.mark.asyncio
+async def test_session_header_controls_router_affinity():
+    async with _session_routers() as cluster:
+        url = await cluster.start_proxy()
+        owner = cluster.owner(url, _session("session-0"))
+        # Matched like replicas match it: in any case, "-" or "_".
+        mixed_header = SERVE_SESSION_ID.upper().replace("-", "_", 1)
+        assert cluster.owner(url, {mixed_header: "session-0"}) == owner
+        other = next(
+            session_id
+            for session_id in (f"session-{i}" for i in range(1, 32))
+            if cluster.owner(url, _session(session_id)) != owner
+        )
+        # A client can't choose the router with the internal hash header.
+        forged = {**_session("session-0"), "x-serve-router-session-id": other}
+        assert cluster.owner(url, forged) == owner
+        # Requests without a session take turns across routers.
+        assert {cluster.owner(url) for _ in range(3)} == {0, 1, 2}
+        assert {cluster.owner(url, _session("")) for _ in range(3)} == {0, 1, 2}
+
+
+@pytest.mark.asyncio
+async def test_session_fails_over_and_recovers():
+    async with _session_routers() as cluster:
+        url = await cluster.start_proxy()
+        owners = {
+            f"session-{i}": cluster.owner(url, _session(f"session-{i}"))
+            for i in range(32)
+        }
+        session_id = next(iter(owners))
+        failed = owners[session_id]
+
+        cluster.stop_router(failed)
+        await async_wait_for_condition(
+            lambda: cluster.owner(url, _session(session_id)) != failed, timeout=10
+        )
+        # Other sessions keep their routers.
+        for other, owner in owners.items():
+            if owner != failed:
+                assert cluster.owner(url, _session(other)) == owner
+
+        cluster.restart_router(failed)
+        await async_wait_for_condition(
+            lambda: cluster.owner(url, _session(session_id)) == failed, timeout=10
+        )
+        for other, owner in owners.items():
+            assert cluster.owner(url, _session(other)) == owner
+
+
+@pytest.mark.asyncio
+async def test_session_decision_request_matches_sessionless():
+    """Hashing a session changes only how a router is selected, not what it is
+    asked."""
+    async with _session_routers(num_routers=1, router_prefix="/llm") as cluster:
+        url = await cluster.start_proxy()
+        router = cluster.routers[0]
+        headers = {"authorization": "Bearer secret", "x-request-id": "req-1"}
+        cluster.owner(url, {**headers, "x-serve-router-forged": "1"})
+        cluster.owner(url, {**headers, **_session("session-1")})
+        sessionless, session = router.calls
+
+        assert session["path"] == sessionless["path"] == "/llm/internal/route"
+        assert session["body"] == sessionless["body"]
+        session_headers = dict(session["headers"])
+        assert session_headers.pop("x-serve-router-session-id") == "session-1"
+        assert session_headers.pop(SERVE_SESSION_ID) == "session-1"
+        # Only the transport differs: the private listener is reached over a
+        # Unix socket and reuses its connections to routers.
+        for name in ("host", "connection"):
+            session_headers.pop(name)
+            sessionless["headers"].pop(name)
+        assert session_headers == sessionless["headers"]
+        assert session_headers[SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER] == (
+            "/v1/chat/completions"
+        )
+
+
+@pytest.mark.asyncio
+async def test_session_returns_router_error_to_client():
+    async with _session_routers(num_routers=1) as cluster:
+        url = await cluster.start_proxy()
+        error = {"error": {"message": "nope", "code": 503}}
+        cluster.routers[0].response = (503, json.dumps(error))
+        cluster.routers[0].response_headers = {"Retry-After": "7"}
+
+        resp = cluster.post(url, _session("session-1"))
+
+        assert resp.status_code == 503
+        assert resp.json() == error
+        assert resp.headers["retry-after"] == "7"
+        assert "x-serve-reason" not in resp.headers
+        # A router that answered isn't asked again.
+        assert len(cluster.routers[0].calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_session_fails_closed_without_router():
+    async with _session_routers(num_routers=1) as cluster:
+        url = await cluster.start_proxy()
+        cluster.stop_router(0)
+
+        resp = cluster.post(url, _session("session-1"))
+
+        assert resp.status_code == 503
+        assert resp.headers["x-serve-reason"] == "router_unreachable"
+        assert resp.headers["retry-after"] == "1"
+        assert resp.text == "Router application failed: router_unreachable"
+
+
+@pytest.mark.asyncio
+async def test_session_fails_closed_when_router_times_out(monkeypatch):
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S",
+        1,
+    )
+    async with _session_routers(num_routers=1) as cluster:
+        url = await cluster.start_proxy()
+        cluster.routers[0].delay_s = 3
+        start = time.monotonic()
+
+        resp = cluster.post(url, _session("session-1"))
+
+        assert resp.status_code == 503
+        assert resp.headers["x-serve-reason"] == "router_timeout"
+        assert time.monotonic() - start < 3
 
 
 if __name__ == "__main__":
