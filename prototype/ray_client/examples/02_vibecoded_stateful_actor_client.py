@@ -1,15 +1,13 @@
-"""Example 2: Live stateful actor client over HTTP (`client.actor` & `RemoteRef`).
+"""Example 2: Stateful actor session over HTTP (`cluster.actor` & `ActorHandle`).
 
-Demonstrates creating and invoking a stateful Ray actor directly over the
-`/api/workspaces/{ws}/actors` REST endpoints without spawning a new driver job
-per method call, as well as chaining calls on in-cluster objects via
-`return_ref=True` (`{"$ray_ref": "..."}`).
+Deploys a Python class as a persistent top-level Ray Actor on `/api/actors`,
+invokes methods across multiple steps, reconnects by name, and inspects logs.
 """
 
 import sys
 from typing import Any, Optional
 
-from ray_client import RayClient
+from ray_client import RayCluster
 
 
 class Counter:
@@ -18,33 +16,28 @@ class Counter:
 
     def add(self, delta: int) -> int:
         self.val += delta
+        print(f"counter updated to {self.val}")
         return self.val
 
     def snapshot(self, tag: str) -> dict:
         return {"tag": tag, "value": self.val}
-
-    def format_snapshot(self, snap: dict) -> str:
-        return f"{snap['tag']}={snap['value']}"
 
     def get(self) -> int:
         return self.val
 
 
 class LiveCounterClient:
-    """Thin client managing a named live actor in a cluster workspace over HTTP."""
-
     def __init__(
         self,
         address: Optional[str] = None,
         actor_name: str = "shared_counter",
-        workspace: str = "counter_demo",
     ):
-        self.client = RayClient(address=address, workspace=workspace)
+        self.cluster = RayCluster(address=address)
         self.actor_name = actor_name
         self.actor = None
 
     def start(self, initial: int = 0) -> dict:
-        self.actor = self.client.actor(
+        self.actor = self.cluster.actor(
             Counter,
             initial,
             name=self.actor_name,
@@ -56,16 +49,14 @@ class LiveCounterClient:
         assert self.actor is not None
         return self.actor.add(delta)
 
-    def snapshot_and_format_in_cluster(self, tag: str) -> str:
-        """Keeps intermediate snapshot dict in-cluster via a `$ray_ref` token."""
-        assert self.actor is not None
-        snap_ref = self.actor.snapshot.ref(tag)
-        return self.actor.format_snapshot(snap_ref)
+    def snapshot(self, tag: str) -> dict:
+        reconnected = self.cluster.get_actor(self.actor_name)
+        return reconnected.snapshot(tag)
 
     def stop(self) -> dict:
         assert self.actor is not None
         self.actor.kill()
-        self.client.close_workspace()
+        self.cluster.close()
         return {"stopped": self.actor_name}
 
 
@@ -74,8 +65,8 @@ def run_demo(address: Optional[str] = None) -> Any:
     counter.start(initial=10)
     v1 = counter.add(5)
     v2 = counter.add(27)
-    formatted = counter.snapshot_and_format_in_cluster("final")
-    assert formatted == "final=42"
+    snap = counter.snapshot("final")
+    assert snap == {"tag": "final", "value": 42}
     counter.stop()
     return {"v1": v1, "v2": v2}
 

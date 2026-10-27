@@ -8,6 +8,7 @@ from packaging.version import Version
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._common.network_utils import build_address, get_localhost_ip, is_localhost
 from ray._common.utils import get_or_create_event_loop
+from ray._private import ray_constants
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
@@ -105,11 +106,12 @@ class HttpServerAgent:
             dashboard_optional_utils.DashboardAgentRouteTable.bind(c)
 
         app = aiohttp.web.Application(
+            client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
                 get_token_auth_middleware(aiohttp, PUBLIC_EXACT_PATHS),
                 # Block all browser requests - agent is only accessed internally
                 dashboard_optional_utils.get_browser_request_middleware(aiohttp),
-            ]
+            ],
         )
         app.add_routes(routes=routes.bound_routes())
 

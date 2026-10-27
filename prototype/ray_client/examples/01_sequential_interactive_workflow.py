@@ -1,14 +1,13 @@
-"""Example 1: Sequential interactive workflow (`main_1` -> `main_2`).
+"""Example 1: Sequential driver function workflow (`main_1` -> `main_2`).
 
-Demonstrates running self-contained functions as stateless workspace tasks
-(`client.run`) and passing JSON state or in-cluster `$ray_ref` handles between
-steps without spawning per-call driver subprocesses.
+Runs self-contained functions as ephemeral top-level driver actors via
+`cluster.run` and passes JSON outputs between steps.
 """
 
 import sys
 from typing import Optional
 
-from ray_client import RayClient
+from ray_client import RayCluster
 
 
 def main_1(records: list) -> dict:
@@ -37,9 +36,9 @@ def main_2(step1_output: dict, threshold: float) -> dict:
 
 def run_demo(address: Optional[str] = None) -> dict:
     sample = [{"id": f"item-{i}", "x": float(i + 1)} for i in range(6)]
-    with RayClient(address=address) as client:
-        step1 = client.run(main_1, sample)
-        return client.run(main_2, step1, 7.5)
+    with RayCluster(address=address) as cluster:
+        step1 = cluster.run(main_1, sample)
+        return cluster.run(main_2, step1, 7.5)
 
 
 if __name__ == "__main__":

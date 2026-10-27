@@ -1,6 +1,5 @@
-"""REST-only RayClient, ActorProxy, RemoteRef, run, and stream."""
+"""RayCluster client, JobResult handle, and top-level run helper."""
 
-import atexit
 import copy
 import inspect
 import json
@@ -8,7 +7,6 @@ import os
 import threading
 import time
 import uuid
-import weakref
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -17,23 +15,25 @@ try:
 except ImportError:  # pragma: no cover - allows `import ray_client.packaging` without requests
     requests = None  # type: ignore[assignment]
 
+from ray_client.actors import ActorHandle
 from ray_client.exceptions import (
     RayClientError,
-    RayExecutionError,
-    RayTimeoutError,
+    RayJobExecutionError,
+    RayJobTimeoutError,
 )
 from ray_client.packaging import (
+    MAX_INLINE_PAYLOAD_BYTES,
+    build_payload_package,
     build_working_dir_package,
     extract_class_source_and_globals,
     extract_function_source_and_globals,
-    normalize_json_refs,
     to_json,
     unwrap_actor_class,
 )
 
 _RETRYABLE_HTTP_STATUS = frozenset({502, 503, 504})
+_TERMINAL_JOB_STATUSES = frozenset({"SUCCEEDED", "FAILED", "STOPPED"})
 _MAX_RETRIES = 5
-_UNSET = object()
 _AUTH_HINT = (
     " The cluster requires token authentication: set RAY_AUTH_TOKEN or "
     "RAY_AUTH_TOKEN_PATH, or pass headers={'Authorization': 'Bearer <token>'}."
@@ -151,325 +151,208 @@ def _parse_entrypoint_str(target: str, kind: str) -> Tuple[str, str]:
     return mod_path.strip(), attr_name.strip()
 
 
-def _raise_remote_error(target: str, err: Dict[str, Any]) -> None:
-    exc_type = err.get("exc_type")
-    exc_message = err.get("exc_message") or f"Remote execution '{target}' failed"
-    if exc_type == "TimeoutError":
-        raise RayTimeoutError(exc_message)
-    raise RayExecutionError(
-        target=target,
-        status="FAILED",
-        message=exc_message,
-        exc_type=exc_type,
-        exc_message=exc_message,
-        remote_traceback=err.get("traceback"),
-    )
-
-
-class RemoteRef:
-    """JSON reference token (`{"$ray_ref": "<ref_id>"}`) to an ObjectRef pinned in a cluster workspace."""
-
-    __ray_client_ref__ = True
+class JobResult:
+    """Handle to a submitted CLI job on `/api/jobs/`."""
 
     def __init__(
         self,
-        ref_id: str,
-        workspace: str,
-        client: "RayClient",
+        submission_id: str,
+        cluster: "RayCluster",
+        *,
         package_uploaded: bool = False,
+        initial_info: Optional[Dict[str, Any]] = None,
     ) -> None:
-        self._ref_id = ref_id
-        self._workspace = workspace
-        self._client = client
+        self._submission_id = submission_id
+        self._cluster = cluster
         self._package_uploaded = package_uploaded
-
-    def __repr__(self) -> str:
-        return f"RemoteRef(ref_id={self._ref_id!r}, workspace={self._workspace!r})"
-
-    @property
-    def ref_id(self) -> str:
-        return self._ref_id
-
-    @property
-    def workspace(self) -> str:
-        return self._workspace
-
-    @property
-    def package_uploaded(self) -> bool:
-        return self._package_uploaded
-
-    def to_json(self) -> Dict[str, str]:
-        return {"$ray_ref": self._ref_id}
-
-    def ready(self, timeout: float = 0.0) -> bool:
-        """Returns True if the referenced ObjectRef has finished executing on the cluster."""
-        q = "?ready_only=1"
-        if timeout and timeout > 0:
-            q += f"&timeout={float(timeout)}"
-        resp = self._client._json(
-            "GET",
-            f"/api/workspaces/{self._workspace}/refs/{self._ref_id}{q}",
-        )
-        if not resp.get("ok", True):
-            _raise_remote_error(self._ref_id, resp.get("error") or {})
-        return bool(resp.get("ready", False))
-
-    def get(self, timeout: Optional[float] = None) -> Any:
-        """Waits for and materializes the referenced object as JSON from the cluster workspace."""
-        q = f"?timeout={float(timeout)}" if timeout is not None else ""
-        http_timeout = (
-            max(float(timeout) + 5.0, self._client._timeout)
-            if timeout is not None
-            else self._client._timeout
-        )
-        try:
-            resp = self._client._json(
-                "GET",
-                f"/api/workspaces/{self._workspace}/refs/{self._ref_id}{q}",
-                timeout=http_timeout,
-            )
-        except RayClientError as exc:
-            if timeout is not None and "timed out" in str(exc).lower():
-                raise RayTimeoutError(
-                    f"Timed out after {timeout}s waiting for {self._ref_id}",
-                    ref=self,
-                ) from exc
-            raise
-        if not resp.get("ok", True):
-            err = resp.get("error") or {}
-            if err.get("exc_type") == "TimeoutError":
-                raise RayTimeoutError(
-                    err.get("exc_message")
-                    or f"Timed out after {timeout}s waiting for {self._ref_id}",
-                    ref=self,
-                )
-            _raise_remote_error(self._ref_id, err)
-        return resp.get("result")
-
-    def cancel(self, force: bool = False) -> bool:
-        """Cancels the in-flight task or actor method producing this reference."""
-        resp = self._client.request(
-            "POST",
-            f"/api/workspaces/{self._workspace}/refs/{self._ref_id}/cancel",
-            json_data={"force": bool(force)},
-            idempotent=False,
-        )
-        if resp.status_code == 404:
-            return False
-        if resp.status_code != 200:
-            raise self._client._http_error(
-                "POST",
-                f"/api/workspaces/{self._workspace}/refs/{self._ref_id}/cancel",
-                resp,
-            )
-        return bool(resp.json().get("cancelled"))
-
-    def delete(self) -> bool:
-        """Releases the reference from the cluster workspace reference table."""
-        resp = self._client.request(
-            "DELETE", f"/api/workspaces/{self._workspace}/refs/{self._ref_id}"
-        )
-        if resp.status_code == 404:
-            return False
-        if resp.status_code != 200:
-            raise self._client._http_error(
-                "DELETE",
-                f"/api/workspaces/{self._workspace}/refs/{self._ref_id}",
-                resp,
-            )
-        return bool(resp.json().get("deleted"))
-
-
-class ActorProxy:
-    """Handle to a live actor running inside a cluster workspace."""
-
-    def __init__(
-        self,
-        name: str,
-        workspace: str,
-        client: "RayClient",
-        created: bool = False,
-        package_uploaded: bool = False,
-    ) -> None:
-        self._name = name
-        self._workspace = workspace
-        self._client = client
-        self._created = created
-        self._package_uploaded = package_uploaded
+        self._terminal_info: Optional[Dict[str, Any]] = None
+        self._terminal_logs: Optional[str] = None
+        if (
+            isinstance(initial_info, dict)
+            and initial_info.get("status") in _TERMINAL_JOB_STATUSES
+        ):
+            self._terminal_info = dict(initial_info)
 
     def __repr__(self) -> str:
         return (
-            f"ActorProxy(name={self._name!r}, workspace={self._workspace!r}, "
-            f"address={self._client.address!r})"
+            f"JobResult(submission_id={self._submission_id!r}, "
+            f"address={self._cluster.address!r})"
         )
 
     @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def workspace(self) -> str:
-        return self._workspace
-
-    @property
-    def created(self) -> bool:
-        return self._created
+    def submission_id(self) -> str:
+        return self._submission_id
 
     @property
     def package_uploaded(self) -> bool:
         return self._package_uploaded
 
     def info(self) -> Dict[str, Any]:
-        return self._client._json(
-            "GET", f"/api/workspaces/{self._workspace}/actors/{self._name}"
-        )
+        if self._terminal_info is not None:
+            return dict(self._terminal_info)
+        data = self._cluster._json("GET", f"/api/jobs/{self._submission_id}")
+        if isinstance(data, dict) and data.get("status") in _TERMINAL_JOB_STATUSES:
+            self._terminal_info = dict(data)
+        return data
 
-    def call(
+    def status(self) -> str:
+        return str(self.info().get("status", "UNKNOWN"))
+
+    def done(self) -> bool:
+        return self.status() in _TERMINAL_JOB_STATUSES
+
+    def logs(self) -> str:
+        if self._terminal_logs is not None:
+            return self._terminal_logs
+        is_terminal = self._terminal_info is not None
+        data = self._cluster._json("GET", f"/api/jobs/{self._submission_id}/logs")
+        text = str(data.get("logs", "")) if isinstance(data, dict) else str(data)
+        if is_terminal:
+            self._terminal_logs = text
+        return text
+
+    def wait(
         self,
-        method: str,
-        *args: Any,
-        kwargs: Optional[Dict[str, Any]] = None,
-        wait: bool = True,
-        return_ref: bool = False,
         timeout: Optional[float] = None,
-    ) -> Any:
-        """Invokes `method(*args, **kwargs)` on the remote actor over HTTP."""
-        to_json(list(args), f"Actor '{self._name}.{method}' positional arguments")
-        to_json(dict(kwargs or {}), f"Actor '{self._name}.{method}' keyword arguments")
-        body: Dict[str, Any] = {
-            "args": normalize_json_refs(list(args)),
-            "kwargs": normalize_json_refs(dict(kwargs or {})),
-            "wait": bool(wait),
-            "return_ref": bool(return_ref),
-        }
-        if timeout is not None:
-            body["timeout"] = float(timeout)
-        endpoint = (
-            f"/api/workspaces/{self._workspace}/actors/{self._name}/methods/{method}"
-        )
-        http_timeout = (
-            max(float(timeout) + 5.0, self._client._timeout)
-            if timeout is not None
-            else self._client._timeout
-        )
-        resp = self._client._json(
+        on_log_line: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
+        delay = 0.1
+        log_offset = 0
+        pending_buf = ""
+
+        def _drain_logs(final: bool = False) -> None:
+            nonlocal log_offset, pending_buf
+            if on_log_line is None:
+                return
+            current = self.logs()
+            if len(current) > log_offset:
+                pending_buf += current[log_offset:]
+                log_offset = len(current)
+            while "\n" in pending_buf:
+                line, pending_buf = pending_buf.split("\n", 1)
+                on_log_line(line.rstrip("\r"))
+            if final and pending_buf:
+                on_log_line(pending_buf.rstrip("\r"))
+                pending_buf = ""
+
+        while True:
+            info = self.info()
+            st = str(info.get("status", "UNKNOWN"))
+            if st in _TERMINAL_JOB_STATUSES:
+                _drain_logs(final=True)
+                return st
+            _drain_logs(final=False)
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RayJobTimeoutError(
+                        f"Job '{self._submission_id}' did not finish within "
+                        f"{timeout}s (last status: {st}).",
+                        job=self,
+                        submission_id=self._submission_id,
+                    )
+                sleep_for = min(delay, remaining)
+            else:
+                sleep_for = delay
+            time.sleep(sleep_for)
+            delay = min(delay * 1.5, 2.0)
+
+    def stop(self) -> bool:
+        resp = self._cluster.request(
             "POST",
-            endpoint,
-            json_data=body,
+            f"/api/jobs/{self._submission_id}/stop",
             idempotent=False,
-            timeout=http_timeout,
-        )
-        if not resp.get("ok", True):
-            _raise_remote_error(
-                f"{self._workspace}:{self._name}.{method}",
-                resp.get("error") or {},
-            )
-        ref_marker = resp.get("ref") or (
-            resp.get("result")
-            if isinstance(resp.get("result"), dict)
-            and set(resp["result"].keys()) == {"$ray_ref"}
-            else None
-        )
-        if (not wait or return_ref) and isinstance(ref_marker, dict):
-            return RemoteRef(ref_marker["$ray_ref"], self._workspace, self._client)
-        return resp.get("result")
-
-    def stream(
-        self,
-        method: str,
-        *args: Any,
-        kwargs: Optional[Dict[str, Any]] = None,
-        timeout: Optional[float] = None,
-    ) -> Iterator[Any]:
-        """Invokes a generator method on the remote actor and yields JSON chunks in real time."""
-        to_json(list(args), f"Actor '{self._name}.{method}' positional arguments")
-        to_json(dict(kwargs or {}), f"Actor '{self._name}.{method}' keyword arguments")
-        body = {
-            "args": normalize_json_refs(list(args)),
-            "kwargs": normalize_json_refs(dict(kwargs or {})),
-            "stream": True,
-        }
-        endpoint = f"/api/workspaces/{self._workspace}/actors/{self._name}/methods/{method}?stream=1"
-        yield from self._client._iter_ndjson_stream(
-            endpoint,
-            body,
-            target=f"{self._workspace}:{self._name}.{method}",
-            timeout=timeout,
-        )
-
-    def kill(self, no_restart: bool = True) -> bool:
-        q = "?no_restart=1" if no_restart else "?no_restart=0"
-        resp = self._client.request(
-            "DELETE",
-            f"/api/workspaces/{self._workspace}/actors/{self._name}{q}",
         )
         if resp.status_code == 404:
             return False
         if resp.status_code != 200:
-            raise self._client._http_error(
-                "DELETE",
-                f"/api/workspaces/{self._workspace}/actors/{self._name}",
-                resp,
+            raise self._cluster._http_error(
+                "POST", f"/api/jobs/{self._submission_id}/stop", resp
             )
-        return bool(resp.json().get("killed"))
+        self._terminal_info = None
+        return bool(resp.json().get("stopped", False))
 
-    def __getattr__(self, method: str) -> "_ActorMethodProxy":
-        if method.startswith("_"):
-            raise AttributeError(method)
-        return _ActorMethodProxy(self, method)
+    def delete(self) -> bool:
+        resp = self._cluster.request("DELETE", f"/api/jobs/{self._submission_id}")
+        if resp.status_code == 404:
+            return False
+        if resp.status_code != 200:
+            raise self._cluster._http_error(
+                "DELETE", f"/api/jobs/{self._submission_id}", resp
+            )
+        return bool(resp.json().get("deleted", False))
 
 
-class _ActorMethodProxy:
-    """Bound method proxy on `ActorProxy` supporting direct calls, `.ref()`, `.remote()`, and `.stream()`."""
+class _SSEStreamIterator(Iterator[Any]):
+    """Iterator over an SSE response stream that guarantees cleanup even if never advanced."""
 
-    def __init__(self, actor: ActorProxy, method: str) -> None:
-        self._actor = actor
-        self._method = method
-        self.__name__ = method
-
-    def __repr__(self) -> str:
-        return (
-            f"ActorMethodProxy(actor={self._actor.name!r}, "
-            f"method={self._method!r}, workspace={self._actor.workspace!r})"
-        )
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        return self._actor.call(self._method, *args, kwargs=kwargs or None)
-
-    def call(
+    def __init__(
         self,
-        *args: Any,
-        kwargs: Optional[Dict[str, Any]] = None,
-        wait: bool = True,
-        return_ref: bool = False,
-        timeout: Optional[float] = None,
-    ) -> Any:
-        return self._actor.call(
-            self._method,
-            *args,
-            kwargs=kwargs,
-            wait=wait,
-            return_ref=return_ref,
-            timeout=timeout,
-        )
+        inner_gen: Iterator[Any],
+        resp: "requests.Response",
+        on_close: Optional[Callable[[], None]] = None,
+    ) -> None:
+        self._inner_gen = inner_gen
+        self._resp = resp
+        self._callbacks: List[Callable[[], None]] = []
+        if on_close is not None:
+            self._callbacks.append(on_close)
+        self._closed = False
 
-    def ref(self, *args: Any, **kwargs: Any) -> RemoteRef:
-        """Executes the method, pins the result in the workspace object store, and returns a `RemoteRef`."""
-        return self._actor.call(
-            self._method, *args, kwargs=kwargs or None, wait=True, return_ref=True
-        )
+    def _add_close_callback(self, cb: Callable[[], None]) -> None:
+        if self._closed:
+            cb()
+        else:
+            self._callbacks.append(cb)
 
-    def remote(self, *args: Any, **kwargs: Any) -> RemoteRef:
-        """Submits the method non-blockingly (`wait=False`) and returns an in-flight `RemoteRef`."""
-        return self._actor.call(self._method, *args, kwargs=kwargs or None, wait=False)
+    def __iter__(self) -> "_SSEStreamIterator":
+        return self
 
-    def stream(self, *args: Any, **kwargs: Any) -> Iterator[Any]:
-        """Streams yielded JSON items from a generator method on the actor."""
-        return self._actor.stream(self._method, *args, kwargs=kwargs or None)
+    def __next__(self) -> Any:
+        if self._closed:
+            raise StopIteration
+        try:
+            return next(self._inner_gen)
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            close_fn = getattr(self._inner_gen, "close", None)
+            if callable(close_fn):
+                close_fn()
+        finally:
+            try:
+                self._resp.close()
+            finally:
+                callbacks = list(self._callbacks)
+                self._callbacks.clear()
+                for cb in callbacks:
+                    try:
+                        cb()
+                    except Exception:
+                        pass
+
+    def __enter__(self) -> "_SSEStreamIterator":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
-class RayClient:
-    """Lightweight HTTP client for running workspaces, live actors, and functions on Ray."""
+class RayCluster:
+    """Unified HTTP client for submitting CLI jobs, driver functions, and stateful actors."""
 
     def __init__(
         self,
@@ -478,19 +361,10 @@ class RayClient:
         verify: Union[bool, str] = True,
         default_runtime_env: Optional[Dict[str, Any]] = None,
         timeout: float = 30.0,
-        *,
-        workspace: Optional[str] = None,
-        ttl_seconds: Any = _UNSET,
-    ):
+    ) -> None:
         if requests is None:
             raise ImportError(
-                "RayClient requires the 'requests' package: pip install requests"
-            )
-        if workspace is not None and (
-            not isinstance(workspace, str) or not workspace.strip()
-        ):
-            raise ValueError(
-                f"workspace must be a non-empty string or None, got {workspace!r}."
+                "RayCluster requires the 'requests' package: pip install requests"
             )
         self._address = _resolve_address(address)
         self._headers = dict(headers or {})
@@ -498,45 +372,36 @@ class RayClient:
         if token and not any(k.lower() == "authorization" for k in self._headers):
             self._headers["Authorization"] = f"Bearer {token}"
         self._verify = verify
-        if workspace is None:
-            self._workspace = f"ws_{uuid.uuid4().hex[:12]}"
-            self._ephemeral_workspace = True
-            self._ttl_seconds: Optional[float] = (
-                300.0 if ttl_seconds is _UNSET else ttl_seconds
-            )
-        else:
-            self._workspace = workspace
-            self._ephemeral_workspace = False
-            self._ttl_seconds = 1800.0 if ttl_seconds is _UNSET else ttl_seconds
         self._default_runtime_env = copy.deepcopy(default_runtime_env) or {}
         self._timeout = timeout
-        self._workspace_registered = False
         self._thread_local = threading.local()
+        self._sessions_lock = threading.Lock()
+        self._sessions: List["requests.Session"] = []
         self._upload_locks_guard = threading.Lock()
         self._upload_locks: Dict[str, threading.Lock] = {}
 
-        if self._ephemeral_workspace:
-            weak_self = weakref.ref(self)
-
-            def _cleanup_ephemeral() -> None:
-                inst = weak_self()
-                if inst is not None and inst._workspace_registered:
-                    try:
-                        inst.close_workspace()
-                    except Exception:
-                        pass
-
-            atexit.register(_cleanup_ephemeral)
-
-    def __enter__(self) -> "RayClient":
+    def __enter__(self) -> "RayCluster":
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
 
+    def close(self) -> None:
+        with self._sessions_lock:
+            sessions = list(self._sessions)
+            self._sessions.clear()
+        self._thread_local.session = None
+        for sess in sessions:
+            try:
+                sess.close()
+            except Exception:
+                pass
+
     def __getstate__(self) -> Dict[str, Any]:
         state = dict(self.__dict__)
         state.pop("_thread_local", None)
+        state.pop("_sessions_lock", None)
+        state.pop("_sessions", None)
         state.pop("_upload_locks_guard", None)
         state.pop("_upload_locks", None)
         return state
@@ -544,6 +409,8 @@ class RayClient:
     def __setstate__(self, state: Dict[str, Any]) -> None:
         self.__dict__.update(state)
         self._thread_local = threading.local()
+        self._sessions_lock = threading.Lock()
+        self._sessions = []
         self._upload_locks_guard = threading.Lock()
         self._upload_locks = {}
 
@@ -552,22 +419,13 @@ class RayClient:
         return self._address
 
     @property
-    def workspace(self) -> str:
-        return self._workspace
-
-    @property
-    def namespace(self) -> str:
-        return f"workspace:{self._workspace}"
-
-    @property
-    def ephemeral_workspace(self) -> bool:
-        return self._ephemeral_workspace
-
-    @property
     def _session(self) -> "requests.Session":
         sess = getattr(self._thread_local, "session", None)
         if sess is None:
-            sess = self._thread_local.session = requests.Session()
+            sess = requests.Session()
+            self._thread_local.session = sess
+            with self._sessions_lock:
+                self._sessions.append(sess)
         return sess
 
     def _uri_lock(self, package_uri: str) -> threading.Lock:
@@ -588,7 +446,7 @@ class RayClient:
         timeout: Optional[float] = None,
         stream: bool = False,
     ) -> "requests.Response":
-        """Sends one HTTP request to the Ray Dashboard Server."""
+        """Sends an HTTP request to the Ray Dashboard server."""
         url = f"{self._address}{endpoint}"
         req_timeout = self._timeout if timeout is None else timeout
         attempts = _MAX_RETRIES if idempotent else 1
@@ -655,45 +513,181 @@ class RayClient:
             f"{method} {endpoint} failed ({resp.status_code}): {resp.text}{hint}"
         )
 
-    def _iter_ndjson_stream(
+    @staticmethod
+    def _raise_remote_error(
+        target: str,
+        err: Dict[str, Any],
+        logs: str = "",
+    ) -> None:
+        exc_type = err.get("exc_type")
+        exc_message = err.get("exc_message") or f"Remote execution '{target}' failed"
+        if err.get("timed_out"):
+            raise RayJobTimeoutError(exc_message, submission_id=target)
+        raise RayJobExecutionError(
+            submission_id=target,
+            status="FAILED",
+            message=exc_message,
+            exc_type=exc_type,
+            exc_message=exc_message,
+            remote_traceback=err.get("traceback"),
+            logs=logs,
+        )
+
+    def _iter_sse_stream_from_resp(
+        self,
+        resp: "requests.Response",
+        *,
+        target: str,
+        submission_id: Optional[str] = None,
+        timeout: Optional[float] = None,
+        on_close: Optional[Callable[[], None]] = None,
+    ) -> Iterator[Any]:
+        sub_id = submission_id or target
+        deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
+
+        def _gen() -> Iterator[Any]:
+            try:
+                try:
+                    for raw_line in resp.iter_lines(decode_unicode=True):
+                        if deadline is not None and time.monotonic() >= deadline:
+                            raise RayJobTimeoutError(
+                                f"Stream '{target}' timed out after {timeout}s.",
+                                submission_id=sub_id,
+                            )
+                        if not raw_line:
+                            continue
+                        line = (
+                            raw_line.decode("utf-8")
+                            if isinstance(raw_line, bytes)
+                            else raw_line
+                        ).strip()
+                        if not line or line.startswith(":"):
+                            continue
+                        if line.startswith("data:"):
+                            line = line[5:].strip()
+                            if not line:
+                                continue
+                        payload = json.loads(line)
+                        if not payload.get("ok", True):
+                            self._raise_remote_error(
+                                target,
+                                payload.get("error") or {},
+                                logs=str(payload.get("logs") or ""),
+                            )
+                        if payload.get("done"):
+                            break
+                        if "item" in payload:
+                            yield payload["item"]
+                        elif "stream" in payload:
+                            for item in payload["stream"]:
+                                yield item
+                except requests.exceptions.RequestException as exc:
+                    if timeout is not None and (
+                        "timed out" in str(exc).lower()
+                        or (deadline is not None and time.monotonic() >= deadline)
+                    ):
+                        raise RayJobTimeoutError(
+                            f"Stream '{target}' timed out after {timeout}s.",
+                            submission_id=sub_id,
+                        ) from exc
+                    raise RayClientError(f"Stream '{target}' failed: {exc}") from exc
+            finally:
+                resp.close()
+                if on_close is not None:
+                    on_close()
+
+        return _SSEStreamIterator(_gen(), resp, on_close=on_close)
+
+    def _call_or_stream_actor_method(
         self,
         endpoint: str,
         body: Dict[str, Any],
         *,
         target: str,
+        submission_id: Optional[str] = None,
         timeout: Optional[float] = None,
-    ) -> Iterator[Any]:
-        resp = self.request(
-            "POST",
-            endpoint,
-            json_data=body,
-            idempotent=False,
-            timeout=timeout,
-            stream=True,
+        on_close: Optional[Callable[[], None]] = None,
+        is_actor_method: bool = False,
+    ) -> Any:
+        sub_id = submission_id or target
+        req_body = dict(body)
+        if timeout is not None:
+            req_body["timeout"] = float(timeout)
+        http_timeout: Any = (
+            (self._timeout, max(float(timeout) + 5.0, self._timeout))
+            if timeout is not None
+            else (self._timeout, None)
         )
-        if resp.status_code != 200:
-            raise self._http_error("POST", endpoint, resp)
+        kind_label = "Actor method" if is_actor_method else "Function"
         try:
-            for raw_line in resp.iter_lines(decode_unicode=True):
-                if not raw_line:
-                    continue
-                line = (
-                    raw_line.decode("utf-8")
-                    if isinstance(raw_line, bytes)
-                    else raw_line
-                ).strip()
-                if not line:
-                    continue
-                payload = json.loads(line)
-                if not payload.get("ok", True):
-                    _raise_remote_error(target, payload.get("error") or {})
-                if "item" in payload:
-                    yield payload["item"]
-                elif "stream" in payload:
-                    for item in payload["stream"]:
-                        yield item
+            resp = self.request(
+                "POST",
+                endpoint,
+                json_data=req_body,
+                idempotent=False,
+                timeout=http_timeout,
+                stream=True,
+            )
+        except Exception as exc:
+            if on_close is not None:
+                on_close()
+            if (
+                isinstance(exc, RayClientError)
+                and timeout is not None
+                and "timed out" in str(exc).lower()
+            ):
+                raise RayJobTimeoutError(
+                    f"{kind_label} '{target}' timed out after {timeout}s.",
+                    submission_id=sub_id,
+                ) from exc
+            raise
+
+        if resp.status_code != 200:
+            try:
+                err_exc = self._http_error("POST", endpoint, resp)
+            finally:
+                resp.close()
+                if on_close is not None:
+                    on_close()
+            raise err_exc
+
+        content_type = resp.headers.get("Content-Type", "")
+        if "text/event-stream" in content_type.lower():
+            return self._iter_sse_stream_from_resp(
+                resp,
+                target=target,
+                submission_id=sub_id,
+                timeout=timeout,
+                on_close=on_close,
+            )
+
+        try:
+            try:
+                data = resp.json()
+            except ValueError as exc:
+                raise RayClientError(
+                    f"POST {endpoint} returned a non-JSON response from "
+                    f"{self._address}; is this the Ray Dashboard HTTP address? Body starts "
+                    f"with: {resp.text[:200]!r}"
+                ) from exc
+            except requests.exceptions.RequestException as exc:
+                if timeout is not None and "timed out" in str(exc).lower():
+                    raise RayJobTimeoutError(
+                        f"{kind_label} '{target}' timed out after {timeout}s.",
+                        submission_id=sub_id,
+                    ) from exc
+                raise RayClientError(f"POST {endpoint} failed: {exc}") from exc
+            if not data.get("ok", True):
+                self._raise_remote_error(
+                    target,
+                    data.get("error") or {},
+                    logs=str(data.get("logs") or ""),
+                )
+            return data.get("result")
         finally:
             resp.close()
+            if on_close is not None:
+                on_close()
 
     def _ensure_package_uploaded(self, package_uri: str, zip_bytes: bytes) -> bool:
         """Uploads `zip_bytes` unless `package_uri` is already cached on the cluster."""
@@ -717,76 +711,6 @@ class RayClient:
                     )
                 raise self._http_error("PUT", endpoint, put, hint)
             return True
-
-    def _ensure_workspace(
-        self, initial_runtime_env: Optional[Dict[str, Any]] = None
-    ) -> Tuple[Dict[str, Any], bool]:
-        ws = self._workspace
-        merged_env, working_dir, excludes = self._prepare_runtime_env(
-            initial_runtime_env
-        )
-        uploaded = False
-        if working_dir is not None:
-            zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
-            uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
-            merged_env["working_dir"] = pkg_uri
-        info = self._json(
-            "POST",
-            "/api/workspaces",
-            json_data={
-                "workspace": ws,
-                "ttl_seconds": self._ttl_seconds,
-                "runtime_env": merged_env or None,
-            },
-            idempotent=False,
-        )
-        self._workspace_registered = True
-        return info, uploaded
-
-    def workspace_info(self) -> Dict[str, Any]:
-        """Returns status and metadata for the current workspace."""
-        if not self._workspace_registered:
-            info, _ = self._ensure_workspace()
-            return info
-        return self._json("GET", f"/api/workspaces/{self._workspace}")
-
-    def list_workspaces(self) -> List[Dict[str, Any]]:
-        """Lists active workspaces on the cluster."""
-        res = self._json("GET", "/api/workspaces")
-        if isinstance(res, dict) and "workspaces" in res:
-            return res["workspaces"]
-        return res
-
-    def heartbeat(self) -> Dict[str, Any]:
-        """Refreshes the idle TTL lease for the current workspace."""
-        if not self._workspace_registered:
-            info, _ = self._ensure_workspace()
-            return info
-        return self._json(
-            "POST",
-            f"/api/workspaces/{self._workspace}/heartbeat",
-            json_data={"ttl_seconds": self._ttl_seconds},
-        )
-
-    def close_workspace(self, kill_detached: bool = False) -> bool:
-        """Closes the workspace and terminates all workspace-owned actors and refs."""
-        q = "?kill_detached=1" if kill_detached else ""
-        resp = self.request("DELETE", f"/api/workspaces/{self._workspace}{q}")
-        self._workspace_registered = False
-        if resp.status_code == 404:
-            return False
-        if resp.status_code != 200:
-            raise self._http_error(
-                "DELETE", f"/api/workspaces/{self._workspace}{q}", resp
-            )
-        data = resp.json()
-        return bool(data.get("ok", True) or data.get("closed", True))
-
-    def close(self) -> bool:
-        """Closes ephemeral workspaces automatically; leaves named workspaces active."""
-        if self._ephemeral_workspace and self._workspace_registered:
-            return self.close_workspace()
-        return False
 
     def _prepare_runtime_env(
         self, runtime_env: Optional[Dict[str, Any]]
@@ -839,24 +763,22 @@ class RayClient:
                     )
         return merged, working_dir, excludes
 
-    def _build_task_spec(
+    def _build_driver_actor_spec(
         self,
         fn: Union[Callable[..., Any], str],
         args: Tuple[Any, ...],
         kwargs: Optional[Dict[str, Any]],
         runtime_env: Optional[Dict[str, Any]],
-        num_cpus: Optional[Union[int, float]],
+        num_cpus: Union[int, float],
         num_gpus: Optional[Union[int, float]],
-        memory: Optional[int],
         resources: Optional[Dict[str, float]],
-        label_selector: Optional[Dict[str, str]],
         *,
         allow_generator: bool = False,
-    ) -> Tuple[Dict[str, Any], bool]:
+    ) -> Tuple[Dict[str, Any], List[Any], Dict[str, Any]]:
         if isinstance(fn, str):
-            module_path, fn_name = _parse_entrypoint_str(fn, "Task")
+            module_path, fn_name = _parse_entrypoint_str(fn, "Function")
             module_source = None
-            captured_globals = None
+            captured_globals: Optional[Dict[str, Any]] = None
             bound_args = list(args)
             bound_kwargs = dict(kwargs or {})
         else:
@@ -866,181 +788,328 @@ class RayClient:
                 module_source,
                 captured_globals,
             ) = extract_function_source_and_globals(fn, allow_generator=allow_generator)
-            bound = inspect.signature(fn).bind(*args, **(kwargs or {}))
-            bound.apply_defaults()
-            bound_args = list(bound.args)
-            bound_kwargs = dict(bound.kwargs)
+            inspect.signature(fn).bind(*args, **(kwargs or {}))
+            bound_args = list(args)
+            bound_kwargs = dict(kwargs or {})
 
-        to_json(bound_args, "Function positional arguments")
-        to_json(bound_kwargs, "Function keyword arguments")
-
-        ws_uploaded = False
-        if not self._workspace_registered:
-            _, ws_uploaded = self._ensure_workspace(runtime_env)
+        args_json = to_json(bound_args, "Function positional arguments")
+        kwargs_json = to_json(bound_kwargs, "Function keyword arguments")
+        globals_json = (
+            to_json(captured_globals, "Captured globals")
+            if captured_globals is not None
+            else "{}"
+        )
 
         merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
-        call_uploaded = False
         if working_dir is not None:
             zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
-            call_uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
+            self._ensure_package_uploaded(pkg_uri, zip_bytes)
             merged_env["working_dir"] = pkg_uri
 
+        payload_file: Optional[str] = None
+        if (
+            len(args_json) + len(kwargs_json) + len(globals_json)
+            > MAX_INLINE_PAYLOAD_BYTES
+        ):
+            p_bytes, p_uri, payload_file = build_payload_package(
+                {
+                    "args": bound_args,
+                    "kwargs": bound_kwargs,
+                    "captured_globals": captured_globals or {},
+                }
+            )
+            self._ensure_package_uploaded(p_uri, p_bytes)
+            merged_env.setdefault("py_modules", []).append(p_uri)
+            captured_globals = None
+
+        actor_name = f"driver_{fn_name}_{uuid.uuid4().hex[:8]}"
         spec: Dict[str, Any] = {
+            "name": actor_name,
+            "kind": "function",
             "fn_name": fn_name,
             "module": module_path,
             "module_source": module_source,
             "captured_globals": captured_globals,
-            "args": normalize_json_refs(bound_args),
-            "kwargs": normalize_json_refs(bound_kwargs),
+            "payload_file": payload_file,
             "runtime_env": merged_env or None,
             "num_cpus": num_cpus,
             "num_gpus": num_gpus,
-            "memory": memory,
             "resources": resources,
-            "label_selector": label_selector,
+            "max_concurrency": 10,
+            "ttl_seconds": 300.0,
+            "get_if_exists": False,
         }
         spec = {k: v for k, v in spec.items() if v is not None}
-        return spec, (ws_uploaded or call_uploaded)
+        if payload_file is not None:
+            return spec, [], {}
+        return spec, bound_args, bound_kwargs
 
-    def run(
+    def _deploy_actor_spec(
         self,
-        fn: Callable[..., Any],
-        *args: Any,
-        kwargs: Optional[Dict[str, Any]] = None,
-        wait: bool = True,
-        return_ref: bool = False,
+        spec: Dict[str, Any],
+        target_label: str,
+        *,
         timeout: Optional[float] = None,
-        runtime_env: Optional[Dict[str, Any]] = None,
-        num_cpus: Optional[Union[int, float]] = None,
-        num_gpus: Optional[Union[int, float]] = None,
-        memory: Optional[int] = None,
-        resources: Optional[Dict[str, float]] = None,
-        label_selector: Optional[Dict[str, str]] = None,
-    ) -> Any:
-        """Runs `fn(*args, **kwargs)` as a task inside the cluster workspace.
-
-        With `wait=True, return_ref=False` (default), blocks until completion and
-        returns the decoded JSON result. With `return_ref=True`, pins the result in
-        the workspace object store and returns a `RemoteRef`. With `wait=False`,
-        returns an in-flight `RemoteRef` immediately without blocking.
-        """
-        spec, uploaded = self._build_task_spec(
-            fn,
-            args,
-            kwargs,
-            runtime_env,
-            num_cpus,
-            num_gpus,
-            memory,
-            resources,
-            label_selector,
-        )
-        spec["wait"] = bool(wait)
-        spec["return_ref"] = bool(return_ref)
-        if timeout is not None:
-            spec["timeout"] = float(timeout)
-
-        endpoint = f"/api/workspaces/{self._workspace}/tasks"
-        http_timeout = (
-            max(float(timeout) + 5.0, self._timeout)
+    ) -> Dict[str, Any]:
+        http_timeout: Any = (
+            (self._timeout, max(float(timeout) + 5.0, self._timeout))
             if timeout is not None
-            else self._timeout
+            else (self._timeout, None)
         )
-        resp = self.request(
-            "POST",
-            endpoint,
-            json_data=spec,
-            idempotent=False,
-            timeout=http_timeout,
-        )
+        try:
+            resp = self.request(
+                "POST",
+                "/api/actors",
+                json_data=spec,
+                idempotent=False,
+                timeout=http_timeout,
+            )
+        except RayClientError as exc:
+            if timeout is not None and "timed out" in str(exc).lower():
+                raise RayJobTimeoutError(
+                    f"Actor '{target_label}' deployment timed out after {timeout}s.",
+                    submission_id=spec.get("name", target_label),
+                ) from exc
+            raise
         if resp.status_code not in (200, 400):
-            raise self._http_error("POST", endpoint, resp)
+            raise self._http_error("POST", "/api/actors", resp)
         data = resp.json()
         if not data.get("ok", True):
-            _raise_remote_error(
-                f"{self._workspace}:{spec['fn_name']}",
+            self._raise_remote_error(
+                target_label,
                 data.get("error") or {},
+                logs=str(data.get("logs") or ""),
             )
-        if not wait or return_ref:
-            ref_dict = data.get("ref") or data.get("result")
-            return RemoteRef(
-                ref_dict["$ray_ref"],
-                self._workspace,
-                self,
-                package_uploaded=uploaded,
-            )
-        return data.get("result")
+        return data
 
-    def stream(
+    def _safe_kill_actor(self, actor_name: str) -> None:
+        try:
+            self.kill_actor(actor_name)
+        except Exception:
+            pass
+
+    # 1. One-shot Execution (Functions & CLI Jobs)
+    def run(
         self,
-        fn: Callable[..., Any],
+        fn: Union[Callable[..., Any], str],
         *args: Any,
         kwargs: Optional[Dict[str, Any]] = None,
-        timeout: Optional[float] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
-        num_cpus: Optional[Union[int, float]] = None,
+        num_cpus: Union[int, float] = 1,
         num_gpus: Optional[Union[int, float]] = None,
-        memory: Optional[int] = None,
         resources: Optional[Dict[str, float]] = None,
-        label_selector: Optional[Dict[str, str]] = None,
-    ) -> Iterator[Any]:
-        """Runs generator function `fn(*args, **kwargs)` in the workspace and yields JSON items."""
-        spec, _ = self._build_task_spec(
+        timeout: Optional[float] = None,
+    ) -> Any:
+        """Packages `fn` and runs it in an ephemeral top-level Ray Actor.
+
+        Returns the JSON result for a regular/async function, or an SSE iterator of
+        yielded JSON items if `fn` is a generator or async generator function.
+        """
+        spec, bound_args, bound_kwargs = self._build_driver_actor_spec(
             fn,
             args,
             kwargs,
             runtime_env,
             num_cpus,
             num_gpus,
-            memory,
             resources,
-            label_selector,
             allow_generator=True,
         )
-        spec["stream"] = True
-        endpoint = f"/api/workspaces/{self._workspace}/tasks?stream=1"
-        yield from self._iter_ndjson_stream(
+        actor_name = spec["name"]
+        fn_name = spec["fn_name"]
+        try:
+            self._deploy_actor_spec(spec, fn_name, timeout=timeout)
+        except Exception:
+            self._safe_kill_actor(actor_name)
+            raise
+        call_body: Dict[str, Any] = {
+            "args": bound_args,
+            "kwargs": bound_kwargs,
+        }
+        if spec.get("payload_file"):
+            call_body["payload_file"] = spec["payload_file"]
+        endpoint = f"/api/actors/{actor_name}/methods/__call__"
+        return self._call_or_stream_actor_method(
             endpoint,
-            spec,
-            target=f"{self._workspace}:{spec['fn_name']}",
+            call_body,
+            target=fn_name,
+            submission_id=actor_name,
             timeout=timeout,
+            on_close=lambda: self._safe_kill_actor(actor_name),
         )
 
+    def submit_job(
+        self,
+        entrypoint: str,
+        *,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        submission_id: Optional[str] = None,
+        entrypoint_num_cpus: Optional[Union[int, float]] = None,
+        entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[int] = None,
+        entrypoint_resources: Optional[Dict[str, float]] = None,
+        entrypoint_label_selector: Optional[Dict[str, str]] = None,
+        wait: bool = False,
+        timeout: Optional[float] = None,
+    ) -> JobResult:
+        """Submits an entrypoint CLI script to `/api/jobs/` and returns a `JobResult`."""
+        if not isinstance(entrypoint, str) or not entrypoint.strip():
+            raise ValueError(
+                f"entrypoint must be a non-empty command string, got {entrypoint!r}."
+            )
+        if metadata is not None:
+            if not isinstance(metadata, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in metadata.items()
+            ):
+                raise TypeError(f"metadata must be a dict[str, str], got {metadata!r}.")
+
+        merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
+        uploaded = False
+        if working_dir is not None:
+            zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
+            uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
+            merged_env["working_dir"] = pkg_uri
+
+        sub_id = submission_id or f"raysubmit_{uuid.uuid4().hex[:16]}"
+        body: Dict[str, Any] = {
+            "entrypoint": entrypoint,
+            "submission_id": sub_id,
+            "runtime_env": merged_env or None,
+            "metadata": dict(metadata) if metadata else None,
+            "entrypoint_num_cpus": entrypoint_num_cpus,
+            "entrypoint_num_gpus": entrypoint_num_gpus,
+            "entrypoint_memory": entrypoint_memory,
+            "entrypoint_resources": entrypoint_resources,
+            "entrypoint_label_selector": entrypoint_label_selector,
+        }
+        body = {k: v for k, v in body.items() if v is not None}
+
+        actual_id = self._submit_job_with_recovery(sub_id, body)
+        job = JobResult(
+            submission_id=actual_id,
+            cluster=self,
+            package_uploaded=uploaded,
+        )
+        if wait:
+            st = job.wait(timeout=timeout)
+            if st != "SUCCEEDED":
+                info = job.info()
+                logs = job.logs()
+                msg = (
+                    info.get("message")
+                    or f"Job '{actual_id}' finished with status {st}"
+                )
+                raise RayJobExecutionError(
+                    submission_id=actual_id,
+                    status=st,
+                    message=str(msg),
+                    logs=logs,
+                    job=job,
+                )
+        return job
+
+    def _submit_job_with_recovery(
+        self, submission_id: str, body: Dict[str, Any]
+    ) -> str:
+        delay = 0.2
+        last_exc: Optional[BaseException] = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                resp = self.request(
+                    "POST",
+                    "/api/jobs/",
+                    json_data=body,
+                    idempotent=False,
+                )
+            except RayClientError as exc:
+                last_exc = exc
+                resp = None
+
+            if resp is not None:
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return str(
+                        data.get("submission_id") or data.get("job_id") or submission_id
+                    )
+                if resp.status_code == 400:
+                    raise self._http_error("POST", "/api/jobs/", resp)
+                if resp.status_code not in _RETRYABLE_HTTP_STATUS:
+                    raise self._http_error("POST", "/api/jobs/", resp)
+                last_exc = self._http_error("POST", "/api/jobs/", resp)
+
+            # Check if the job was already registered before retrying POST /api/jobs/.
+            check = self.request("GET", f"/api/jobs/{submission_id}")
+            if check.status_code == 200:
+                return submission_id
+            if attempt + 1 < _MAX_RETRIES:
+                time.sleep(delay)
+                delay = min(delay * 2, 3.0)
+        assert last_exc is not None
+        raise last_exc
+
+    def get_job(self, submission_id: str) -> JobResult:
+        """Returns a `JobResult` handle for an existing job `submission_id`."""
+        info = self._json("GET", f"/api/jobs/{submission_id}")
+        return JobResult(
+            submission_id=submission_id,
+            cluster=self,
+            initial_info=info if isinstance(info, dict) else None,
+        )
+
+    def list_jobs(self) -> List[Dict[str, Any]]:
+        """Lists jobs recorded on `/api/jobs/`."""
+        res = self._json("GET", "/api/jobs/")
+        if isinstance(res, dict) and "jobs" in res:
+            return res["jobs"]
+        return list(res)
+
+    # 2. Stateful Actors
     def actor(
         self,
-        cls: Any,
+        cls_or_path: Union[type, str],
         *args: Any,
         kwargs: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
-        lifetime: str = "workspace",
-        get_if_exists: bool = True,
         runtime_env: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[Union[int, float]] = None,
         num_gpus: Optional[Union[int, float]] = None,
-        memory: Optional[int] = None,
         resources: Optional[Dict[str, float]] = None,
-        label_selector: Optional[Dict[str, str]] = None,
         max_concurrency: Optional[int] = None,
-    ) -> ActorProxy:
-        """Creates or reattaches to a live actor in the current workspace over HTTP."""
-        if lifetime not in ("workspace", "detached"):
-            raise ValueError(
-                f"lifetime must be 'workspace' or 'detached', got {lifetime!r}."
-            )
-        ws = self._workspace
-        ws_uploaded = False
-        if not self._workspace_registered:
-            _, ws_uploaded = self._ensure_workspace(runtime_env)
+        ttl_seconds: Optional[float] = 1800.0,
+        get_if_exists: bool = True,
+        timeout: Optional[float] = None,
+    ) -> ActorHandle:
+        """Deploys or reattaches to a persistent top-level Ray Actor on `/api/actors`."""
+        default_opts = (
+            getattr(cls_or_path, "_default_options", None)
+            if not isinstance(cls_or_path, str)
+            else None
+        )
+        if isinstance(default_opts, dict):
+            if num_cpus is None and default_opts.get("num_cpus") is not None:
+                num_cpus = default_opts["num_cpus"]
+            if num_gpus is None and default_opts.get("num_gpus") is not None:
+                num_gpus = default_opts["num_gpus"]
+            if resources is None and default_opts.get("resources") is not None:
+                resources = dict(default_opts["resources"])
+            if (
+                max_concurrency is None
+                and default_opts.get("max_concurrency") is not None
+            ):
+                max_concurrency = int(default_opts["max_concurrency"])
+        resolved_cpus: Union[int, float] = 1 if num_cpus is None else num_cpus
+        resolved_concurrency: int = 10 if max_concurrency is None else max_concurrency
 
-        if isinstance(cls, str):
-            module_path, class_name = _parse_entrypoint_str(cls, "Actor")
+        if isinstance(cls_or_path, str):
+            module_path, class_name = _parse_entrypoint_str(cls_or_path, "Actor")
             module_source = None
-            captured_globals = None
+            captured_globals: Optional[Dict[str, Any]] = None
             bound_args = list(args)
             bound_kwargs = dict(kwargs or {})
         else:
             module_path = None
-            raw_cls = unwrap_actor_class(cls)
+            raw_cls = unwrap_actor_class(cls_or_path)
             init_fn = inspect.unwrap(getattr(raw_cls, "__init__", None))
             if inspect.isfunction(init_fn):
                 sig = inspect.signature(init_fn)
@@ -1049,10 +1118,9 @@ class RayClient:
                     for p in list(sig.parameters.values())[1:]
                     if p.name != "_ray_trace_ctx"
                 ]
-                bound = sig.replace(parameters=params).bind(*args, **(kwargs or {}))
-                bound.apply_defaults()
-                bound_args = list(bound.args)
-                bound_kwargs = dict(bound.kwargs)
+                sig.replace(parameters=params).bind(*args, **(kwargs or {}))
+                bound_args = list(args)
+                bound_kwargs = dict(kwargs or {})
             else:
                 bound_args = list(args)
                 bound_kwargs = dict(kwargs or {})
@@ -1060,176 +1128,160 @@ class RayClient:
                 class_name,
                 module_source,
                 captured_globals,
-            ) = extract_class_source_and_globals(cls)
+            ) = extract_class_source_and_globals(cls_or_path)
 
-        to_json(bound_args, f"Actor '{class_name}' positional arguments")
-        to_json(bound_kwargs, f"Actor '{class_name}' keyword arguments")
+        args_json = to_json(bound_args, f"Actor '{class_name}' positional arguments")
+        kwargs_json = to_json(bound_kwargs, f"Actor '{class_name}' keyword arguments")
+        globals_json = (
+            to_json(captured_globals, f"Actor '{class_name}' captured globals")
+            if captured_globals is not None
+            else "{}"
+        )
 
         merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
-        call_uploaded = False
+        uploaded = False
         if working_dir is not None:
             zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
-            call_uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
+            uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
             merged_env["working_dir"] = pkg_uri
 
-        spec = {
+        payload_file: Optional[str] = None
+        if (
+            len(args_json) + len(kwargs_json) + len(globals_json)
+            > MAX_INLINE_PAYLOAD_BYTES
+        ):
+            p_bytes, p_uri, payload_file = build_payload_package(
+                {
+                    "args": bound_args,
+                    "kwargs": bound_kwargs,
+                    "captured_globals": captured_globals or {},
+                }
+            )
+            self._ensure_package_uploaded(p_uri, p_bytes)
+            merged_env.setdefault("py_modules", []).append(p_uri)
+            bound_args = []
+            bound_kwargs = {}
+            captured_globals = None
+
+        actor_name = name or f"{class_name}_{uuid.uuid4().hex[:8]}"
+        spec: Dict[str, Any] = {
+            "name": actor_name,
+            "kind": "class",
             "class_name": class_name,
             "module": module_path,
             "module_source": module_source,
             "captured_globals": captured_globals,
-            "args": normalize_json_refs(bound_args),
-            "kwargs": normalize_json_refs(bound_kwargs),
-            "name": name or class_name,
-            "lifetime": lifetime,
-            "get_if_exists": get_if_exists,
+            "args": bound_args,
+            "kwargs": bound_kwargs,
+            "payload_file": payload_file,
             "runtime_env": merged_env or None,
-            "num_cpus": num_cpus,
+            "num_cpus": resolved_cpus,
             "num_gpus": num_gpus,
-            "memory": memory,
             "resources": resources,
-            "label_selector": label_selector,
-            "max_concurrency": max_concurrency,
+            "max_concurrency": resolved_concurrency,
+            "ttl_seconds": ttl_seconds,
+            "get_if_exists": get_if_exists,
         }
-        spec = {k: v for k, v in spec.items() if v is not None}
-        resp = self.request(
-            "POST",
-            f"/api/workspaces/{ws}/actors",
-            json_data=spec,
-            idempotent=False,
-        )
-        if resp.status_code not in (200, 400):
-            raise self._http_error("POST", f"/api/workspaces/{ws}/actors", resp)
-        data = resp.json()
-        if not data.get("ok", True):
-            _raise_remote_error(
-                f"{ws}:{spec['name']}",
-                data.get("error") or {},
-            )
-        return ActorProxy(
+        spec = {k: v for k, v in spec.items() if v is not None or k == "ttl_seconds"}
+        data = self._deploy_actor_spec(spec, actor_name, timeout=timeout)
+        return ActorHandle(
             name=data["name"],
-            workspace=ws,
-            client=self,
+            cluster=self,
             created=bool(data.get("created", True)),
-            package_uploaded=(ws_uploaded or call_uploaded),
+            package_uploaded=uploaded,
         )
 
-    def get_actor(self, name: str) -> ActorProxy:
-        """Returns an `ActorProxy` for an existing actor in the current workspace."""
-        ws = self._workspace
-        if not self._workspace_registered:
-            self._ensure_workspace()
-        self._json("GET", f"/api/workspaces/{ws}/actors/{name}")
-        return ActorProxy(name=name, workspace=ws, client=self, created=False)
+    def get_actor(self, name: str) -> ActorHandle:
+        """Returns an `ActorHandle` for an existing actor on the cluster."""
+        self._json("GET", f"/api/actors/{name}")
+        return ActorHandle(name=name, cluster=self, created=False)
 
     def list_actors(self) -> List[Dict[str, Any]]:
-        """Lists live actors registered in the current workspace."""
-        ws = self._workspace
-        if not self._workspace_registered:
-            self._ensure_workspace()
-        res = self._json("GET", f"/api/workspaces/{ws}/actors")
+        """Lists active client-managed actors on `/api/actors`."""
+        res = self._json("GET", "/api/actors")
         if isinstance(res, dict) and "actors" in res:
             return res["actors"]
-        return res
+        return list(res)
 
-    def kill_actor(self, name: str, no_restart: bool = True) -> bool:
-        """Terminates a named actor in the current workspace."""
-        return ActorProxy(name=name, workspace=self._workspace, client=self).kill(
-            no_restart=no_restart
+    def kill_actor(self, name: str) -> bool:
+        """Kills a named root actor and all child actors/objects it owns."""
+        return ActorHandle(name=name, cluster=self).kill()
+
+    # 3. Cluster Resource Management (planned KubeRay control-plane extension)
+    def scale_worker_group(self, group: str, replicas: int) -> Dict[str, Any]:
+        """Updates target replica count for a KubeRay worker group."""
+        return self._json(
+            "PATCH",
+            f"/api/cluster/worker_groups/{group}",
+            json_data={"replicas": int(replicas)},
+            idempotent=False,
         )
 
-    def get_ref(
-        self, ref: Union[RemoteRef, str], timeout: Optional[float] = None
-    ) -> Any:
-        """Resolves a `RemoteRef` or `ref_id` to its JSON value."""
-        ref_obj = (
-            ref
-            if isinstance(ref, RemoteRef)
-            else RemoteRef(str(ref), self._workspace, self)
+    def add_worker_group(
+        self,
+        group: str,
+        *,
+        replicas: int = 1,
+        num_cpus: Optional[Union[int, float]] = None,
+        num_gpus: Optional[Union[int, float]] = None,
+        resources: Optional[Dict[str, float]] = None,
+        **extra_options: Any,
+    ) -> Dict[str, Any]:
+        """Adds a new worker group to a KubeRay-managed cluster."""
+        payload: Dict[str, Any] = {
+            "group": group,
+            "replicas": int(replicas),
+            "num_cpus": num_cpus,
+            "num_gpus": num_gpus,
+            "resources": resources,
+            **extra_options,
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        return self._json(
+            "POST",
+            "/api/cluster/worker_groups",
+            json_data=payload,
+            idempotent=False,
         )
-        return ref_obj.get(timeout=timeout)
 
-    def ready_ref(self, ref: Union[RemoteRef, str], timeout: float = 0.0) -> bool:
-        """Returns True if `ref` has finished executing on the cluster."""
-        ref_obj = (
-            ref
-            if isinstance(ref, RemoteRef)
-            else RemoteRef(str(ref), self._workspace, self)
-        )
-        return ref_obj.ready(timeout=timeout)
 
-    def cancel_ref(self, ref: Union[RemoteRef, str], force: bool = False) -> bool:
-        """Cancels the task or actor method producing `ref`."""
-        ref_obj = (
-            ref
-            if isinstance(ref, RemoteRef)
-            else RemoteRef(str(ref), self._workspace, self)
-        )
-        return ref_obj.cancel(force=force)
-
-    def delete_ref(self, ref: Union[RemoteRef, str]) -> bool:
-        """Unpins `ref` from the current workspace."""
-        ref_obj = (
-            ref
-            if isinstance(ref, RemoteRef)
-            else RemoteRef(str(ref), self._workspace, self)
-        )
-        return ref_obj.delete()
+RayClient = RayCluster
 
 
 def run(
-    fn: Callable[..., Any],
+    fn: Union[Callable[..., Any], str],
     *args: Any,
     address: Optional[str] = None,
     headers: Optional[Dict[str, str]] = None,
     verify: Union[bool, str] = True,
     default_runtime_env: Optional[Dict[str, Any]] = None,
     request_timeout: float = 30.0,
-    workspace: Optional[str] = None,
-    ttl_seconds: Any = _UNSET,
     **options: Any,
 ) -> Any:
-    """Runs `fn(*args)` in a cluster workspace at `address` (see `RayClient.run`)."""
-    client = RayClient(
+    """Runs `fn(*args)` as a driver function on the cluster at `address`."""
+    cluster = RayCluster(
         address=address,
         headers=headers,
         verify=verify,
         default_runtime_env=default_runtime_env,
         timeout=request_timeout,
-        workspace=workspace,
-        ttl_seconds=ttl_seconds,
-    )
-    wait = options.get("wait", True)
-    return_ref = options.get("return_ref", False)
-    try:
-        return client.run(fn, *args, **options)
-    finally:
-        if wait and not return_ref:
-            client.close()
-
-
-def stream(
-    fn: Callable[..., Any],
-    *args: Any,
-    address: Optional[str] = None,
-    headers: Optional[Dict[str, str]] = None,
-    verify: Union[bool, str] = True,
-    default_runtime_env: Optional[Dict[str, Any]] = None,
-    request_timeout: float = 30.0,
-    workspace: Optional[str] = None,
-    ttl_seconds: Any = _UNSET,
-    **options: Any,
-) -> Iterator[Any]:
-    """Streams generator `fn(*args)` in a cluster workspace at `address` (see `RayClient.stream`)."""
-    client = RayClient(
-        address=address,
-        headers=headers,
-        verify=verify,
-        default_runtime_env=default_runtime_env,
-        timeout=request_timeout,
-        workspace=workspace,
-        ttl_seconds=ttl_seconds,
     )
     try:
-        yield from client.stream(fn, *args, **options)
-    finally:
-        client.close()
+        res = cluster.run(fn, *args, **options)
+    except Exception:
+        cluster.close()
+        raise
+    if isinstance(res, _SSEStreamIterator):
+        res._add_close_callback(cluster.close)
+        return res
+    if isinstance(res, Iterator):
+
+        def _gen() -> Iterator[Any]:
+            try:
+                yield from res
+            finally:
+                cluster.close()
+
+        return _gen()
+    cluster.close()
+    return res

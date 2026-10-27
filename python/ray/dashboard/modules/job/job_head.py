@@ -122,7 +122,7 @@ class JobAgentSubmissionClient:
         dashboard_agent_address: str,
     ):
         self._agent_address = dashboard_agent_address
-        self._session = aiohttp.ClientSession()
+        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None))
 
     def _get_headers(self):
         """Get auth headers if token authentication is enabled."""
@@ -216,14 +216,14 @@ class JobAgentSubmissionClient:
             if not ignore_error:
                 raise
 
-    async def forward_workspace_request(
+    async def forward_actor_request(
         self,
         method: str,
         subpath: str,
         json_body: Optional[Dict] = None,
         params: Optional[Dict[str, str]] = None,
     ) -> Tuple[int, str, str]:
-        url = f"{self._agent_address}/api/job_agent/workspaces{subpath}"
+        url = f"{self._agent_address}/api/job_agent/actors{subpath}"
         async with self._session.request(
             method,
             url,
@@ -239,14 +239,15 @@ class JobAgentSubmissionClient:
             )
             return resp.status, text, content_type
 
-    async def stream_workspace_request(
+    async def stream_actor_request(
         self,
         method: str,
         subpath: str,
         json_body: Optional[Dict] = None,
         params: Optional[Dict[str, str]] = None,
-    ) -> AsyncIterator[bytes]:
-        url = f"{self._agent_address}/api/job_agent/workspaces{subpath}"
+        req: Optional[Request] = None,
+    ) -> AsyncIterator[Tuple[int, str, bytes]]:
+        url = f"{self._agent_address}/api/job_agent/actors{subpath}"
         async with self._session.request(
             method,
             url,
@@ -254,9 +255,38 @@ class JobAgentSubmissionClient:
             params=params,
             headers=self._get_headers(),
         ) as resp:
-            async for chunk, _ in resp.content.iter_chunks():
-                if chunk:
-                    yield chunk
+            content_type = (
+                resp.headers.get("Content-Type", "application/json")
+                .split(";")[0]
+                .strip()
+            )
+            if resp.status != 200 or content_type != "text/event-stream":
+                yield resp.status, content_type, await resp.read()
+                return
+            ait = resp.content.iter_chunks().__aiter__()
+            next_chunk_task: Optional[asyncio.Task] = None
+            try:
+                while True:
+                    if req is not None and (
+                        req.transport is None or req.transport.is_closing()
+                    ):
+                        break
+                    if next_chunk_task is None:
+                        next_chunk_task = asyncio.ensure_future(ait.__anext__())
+                    done, _ = await asyncio.wait({next_chunk_task}, timeout=0.05)
+                    if not done:
+                        continue
+                    try:
+                        chunk, _ = next_chunk_task.result()
+                    except StopAsyncIteration:
+                        break
+                    finally:
+                        next_chunk_task = None
+                    if chunk:
+                        yield 200, "text/event-stream", chunk
+            finally:
+                if next_chunk_task is not None and not next_chunk_task.done():
+                    next_chunk_task.cancel()
 
 
 def _job_details_to_dict(job: JobDetails, redact: bool) -> Dict:
@@ -550,118 +580,109 @@ class JobHead(SubprocessModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
-    async def _proxy_workspace(self, req: Request, subpath: str) -> StreamResponse:
+    async def _proxy_actor_request(self, req: Request, subpath: str) -> StreamResponse:
         try:
             body = await req.json() if req.can_read_body else None
         except Exception:
             body = None
         params = dict(req.query) if req.query else None
-        stream = (req.query.get("stream", "0") in ("1", "true", "True")) or (
-            isinstance(body, dict) and bool(body.get("stream", False))
+        stream = (
+            (req.query.get("stream", "0") in ("1", "true", "True"))
+            or (isinstance(body, dict) and bool(body.get("stream", False)))
+            or (req.method == "POST" and "/methods/" in subpath)
         )
         try:
             agent = await self.get_target_agent()
             if stream:
-                sresp = StreamResponse(
-                    status=aiohttp.web.HTTPOk.status_code,
-                    headers={"Content-Type": "application/x-ndjson"},
-                )
-                await sresp.prepare(req)
-                async for chunk in agent.stream_workspace_request(
-                    req.method, subpath, json_body=body, params=params
+                sresp: Optional[StreamResponse] = None
+                try:
+                    async for (
+                        status,
+                        content_type,
+                        chunk,
+                    ) in agent.stream_actor_request(
+                        req.method, subpath, json_body=body, params=params, req=req
+                    ):
+                        if (
+                            status != 200 or content_type != "text/event-stream"
+                        ) and sresp is None:
+                            return Response(
+                                body=chunk,
+                                status=status,
+                                content_type=content_type,
+                            )
+                        if sresp is None:
+                            sresp = StreamResponse(
+                                status=aiohttp.web.HTTPOk.status_code,
+                                headers={
+                                    "Content-Type": "text/event-stream",
+                                    "Cache-Control": "no-cache",
+                                },
+                            )
+                            await sresp.prepare(req)
+                        await sresp.write(chunk)
+                        await sresp.drain()
+                    if sresp is None:
+                        sresp = StreamResponse(
+                            status=aiohttp.web.HTTPOk.status_code,
+                            headers={
+                                "Content-Type": "text/event-stream",
+                                "Cache-Control": "no-cache",
+                            },
+                        )
+                        await sresp.prepare(req)
+                    await sresp.write_eof()
+                except (
+                    ConnectionResetError,
+                    aiohttp.ClientConnectionError,
+                    asyncio.CancelledError,
+                    asyncio.TimeoutError,
+                    TimeoutError,
                 ):
-                    await sresp.write(chunk)
-                    await sresp.drain()
-                await sresp.write_eof()
+                    pass
                 return sresp
-            status, text, content_type = await agent.forward_workspace_request(
+            status, text, content_type = await agent.forward_actor_request(
                 req.method, subpath, json_body=body, params=params
             )
             return Response(text=text, status=status, content_type=content_type)
         except Exception:
-            logger.exception(f"Failed workspace request {req.method} {subpath}")
+            logger.exception(f"Failed actor request {req.method} {subpath}")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
 
-    @routes.get("/api/workspaces")
-    async def list_workspaces(self, req: Request) -> StreamResponse:
-        return await self._proxy_workspace(req, "")
+    @routes.post("/api/actors")
+    async def create_actor(self, req: Request) -> StreamResponse:
+        return await self._proxy_actor_request(req, "")
 
-    @routes.post("/api/workspaces")
-    async def create_workspace(self, req: Request) -> StreamResponse:
-        return await self._proxy_workspace(req, "")
+    @routes.get("/api/actors")
+    async def list_actors(self, req: Request) -> StreamResponse:
+        return await self._proxy_actor_request(req, "")
 
-    @routes.get("/api/workspaces/{workspace}")
-    async def get_workspace(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        return await self._proxy_workspace(req, f"/{ws}")
-
-    @routes.post("/api/workspaces/{workspace}/heartbeat")
-    async def heartbeat_workspace(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        return await self._proxy_workspace(req, f"/{ws}/heartbeat")
-
-    @routes.delete("/api/workspaces/{workspace}")
-    async def delete_workspace(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        return await self._proxy_workspace(req, f"/{ws}")
-
-    @routes.post("/api/workspaces/{workspace}/tasks", resp_type=ResponseType.STREAM)
-    async def run_workspace_task(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        return await self._proxy_workspace(req, f"/{ws}/tasks")
-
-    @routes.post("/api/workspaces/{workspace}/actors")
-    async def create_workspace_actor(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        return await self._proxy_workspace(req, f"/{ws}/actors")
-
-    @routes.get("/api/workspaces/{workspace}/actors")
-    async def list_workspace_actors(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        return await self._proxy_workspace(req, f"/{ws}/actors")
-
-    @routes.get("/api/workspaces/{workspace}/actors/{actor_name}")
-    async def get_workspace_actor(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
+    @routes.get("/api/actors/{actor_name}")
+    async def get_actor(self, req: Request) -> StreamResponse:
         name = req.match_info["actor_name"]
-        return await self._proxy_workspace(req, f"/{ws}/actors/{name}")
+        return await self._proxy_actor_request(req, f"/{name}")
 
-    @routes.delete("/api/workspaces/{workspace}/actors/{actor_name}")
-    async def delete_workspace_actor(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
+    @routes.get("/api/actors/{actor_name}/logs")
+    async def get_actor_logs(self, req: Request) -> StreamResponse:
         name = req.match_info["actor_name"]
-        return await self._proxy_workspace(req, f"/{ws}/actors/{name}")
+        return await self._proxy_actor_request(req, f"/{name}/logs")
+
+    @routes.delete("/api/actors/{actor_name}")
+    async def delete_actor(self, req: Request) -> StreamResponse:
+        name = req.match_info["actor_name"]
+        return await self._proxy_actor_request(req, f"/{name}")
 
     @routes.post(
-        "/api/workspaces/{workspace}/actors/{actor_name}/methods/{method}",
+        "/api/actors/{actor_name}/methods/{method}",
         resp_type=ResponseType.STREAM,
     )
-    async def call_workspace_actor_method(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
+    async def call_actor_method(self, req: Request) -> StreamResponse:
         name = req.match_info["actor_name"]
         method = req.match_info["method"]
-        return await self._proxy_workspace(req, f"/{ws}/actors/{name}/methods/{method}")
-
-    @routes.get("/api/workspaces/{workspace}/refs/{ref_id}")
-    async def get_workspace_ref(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        ref_id = req.match_info["ref_id"]
-        return await self._proxy_workspace(req, f"/{ws}/refs/{ref_id}")
-
-    @routes.post("/api/workspaces/{workspace}/refs/{ref_id}/cancel")
-    async def cancel_workspace_ref(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        ref_id = req.match_info["ref_id"]
-        return await self._proxy_workspace(req, f"/{ws}/refs/{ref_id}/cancel")
-
-    @routes.delete("/api/workspaces/{workspace}/refs/{ref_id}")
-    async def delete_workspace_ref(self, req: Request) -> StreamResponse:
-        ws = req.match_info["workspace"]
-        ref_id = req.match_info["ref_id"]
-        return await self._proxy_workspace(req, f"/{ws}/refs/{ref_id}")
+        return await self._proxy_actor_request(req, f"/{name}/methods/{method}")
 
     @routes.get("/api/jobs/{job_or_submission_id}")
     async def get_job_info(self, req: Request) -> Response:

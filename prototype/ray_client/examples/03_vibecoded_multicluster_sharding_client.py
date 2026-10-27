@@ -1,31 +1,36 @@
-"""Example 3: Multi-cluster task sharding from a single lightweight client.
+"""Example 3: Multi-cluster sharding from a single lightweight client.
 
-Demonstrates connecting to multiple Ray clusters from a single out-of-cluster
-process to shard a batch workload concurrently (`wait=False` -> `ref.get()`).
+Connects to multiple Ray clusters from one external Python process and fans out
+shards concurrently across clusters.
 """
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List, Optional, Sequence
 
-from ray_client import RayClient
+from ray_client import RayCluster
 
 
 class MultiClusterSharder:
-    """Submits shards concurrently across multiple Ray clusters (`wait=False`)."""
-
     def __init__(self, addresses: Sequence[Optional[str]]):
-        self.clients = [RayClient(address=addr) for addr in addresses]
+        self.clusters = [RayCluster(address=addr) for addr in addresses]
 
     def map_shards(self, task_fn: Callable, shards: List[list]) -> List[dict]:
-        refs = [
-            self.clients[idx % len(self.clients)].run(task_fn, shard, idx, wait=False)
-            for idx, shard in enumerate(shards)
-        ]
-        return [ref.get() for ref in refs]
+        with ThreadPoolExecutor(max_workers=max(1, len(shards))) as pool:
+            futures = [
+                pool.submit(
+                    self.clusters[idx % len(self.clusters)].run,
+                    task_fn,
+                    shard,
+                    idx,
+                )
+                for idx, shard in enumerate(shards)
+            ]
+            return [f.result() for f in futures]
 
     def close(self) -> None:
-        for client in self.clients:
-            client.close()
+        for cluster in self.clusters:
+            cluster.close()
 
 
 def shard_worker(numbers: list, shard_id: int) -> dict:

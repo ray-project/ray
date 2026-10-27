@@ -371,9 +371,37 @@ class SubprocessModuleHandle:
             )
             await proxy_resp.prepare(request)
 
-            async for chunk, _ in backend_resp.content.iter_chunks():
-                await proxy_resp.write(chunk)
-            await proxy_resp.write_eof()
+            ait = backend_resp.content.iter_chunks().__aiter__()
+            next_chunk_task: Optional[asyncio.Task] = None
+            try:
+                while True:
+                    if request.transport is None or request.transport.is_closing():
+                        break
+                    if next_chunk_task is None:
+                        next_chunk_task = asyncio.ensure_future(ait.__anext__())
+                    done, _ = await asyncio.wait({next_chunk_task}, timeout=0.05)
+                    if not done:
+                        continue
+                    try:
+                        chunk, _ = next_chunk_task.result()
+                    except StopAsyncIteration:
+                        break
+                    finally:
+                        next_chunk_task = None
+                    if chunk:
+                        await proxy_resp.write(chunk)
+                        await proxy_resp.drain()
+                if request.transport is not None and not request.transport.is_closing():
+                    await proxy_resp.write_eof()
+            except (
+                ConnectionResetError,
+                aiohttp.ClientConnectionError,
+                asyncio.CancelledError,
+            ):
+                pass
+            finally:
+                if next_chunk_task is not None and not next_chunk_task.done():
+                    next_chunk_task.cancel()
             return proxy_resp
 
     async def proxy_websocket(

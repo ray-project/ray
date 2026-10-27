@@ -1,80 +1,105 @@
-"""Exceptions for the REST-only Ray Client."""
+"""Exception hierarchy for RayCluster."""
 
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from ray_client.client import RemoteRef
+    from ray_client.client import JobResult
 
 
 class RayClientError(Exception):
-    """Base exception for Ray Client errors."""
+    """Base exception for RayCluster errors."""
 
     def __init__(
         self,
         message: str = "",
         *,
-        ref: Optional["RemoteRef"] = None,
-    ):
+        job: Optional["JobResult"] = None,
+        submission_id: Optional[str] = None,
+    ) -> None:
         super().__init__(message)
-        self.ref = ref
+        self.job = job
+        self.submission_id = submission_id or (
+            job.submission_id if job is not None else None
+        )
 
 
 class RayClientSerializationError(RayClientError, TypeError):
-    """Raised when inputs, captured variables, or outputs are not JSON-serializable."""
+    """Raised when callables, arguments, captured globals, or return values cannot be serialized."""
 
 
-class RayTimeoutError(RayClientError, TimeoutError):
-    """Raised when waiting for a remote task, actor method, or ref exceeds the timeout."""
-
-    def __init__(self, message: str, ref: Optional["RemoteRef"] = None):
-        super().__init__(message, ref=ref)
-
-    def __reduce__(self):
-        return (type(self), (self.args[0] if self.args else "", self.ref))
-
-
-class RayExecutionError(RayClientError):
-    """Raised when a remote task or actor method raises an exception on the cluster."""
+class RayJobTimeoutError(RayClientError, TimeoutError):
+    """Raised when waiting for a job, driver function, or actor call exceeds the timeout."""
 
     def __init__(
         self,
-        target: str,
+        message: str,
+        job: Optional["JobResult"] = None,
+        submission_id: Optional[str] = None,
+    ) -> None:
+        super().__init__(message, job=job, submission_id=submission_id)
+
+    def __reduce__(self):
+        return (
+            type(self),
+            (
+                self.args[0] if self.args else "",
+                self.job,
+                self.submission_id,
+            ),
+        )
+
+
+class RayJobExecutionError(RayClientError):
+    """Raised when a driver function, actor method, or blocking CLI job fails."""
+
+    def __init__(
+        self,
+        submission_id: str,
         status: str = "FAILED",
         message: str = "",
         exc_type: Optional[str] = None,
         exc_message: Optional[str] = None,
         remote_traceback: Optional[str] = None,
-    ):
-        self.target = target
+        logs: str = "",
+        job: Optional["JobResult"] = None,
+    ) -> None:
+        self.submission_id = submission_id
+        self.target = submission_id
         self.status = status
         self.message = message
         self.exc_type = exc_type
         self.exc_message = exc_message
         self.remote_traceback = remote_traceback
+        self.logs = logs
 
-        text = f"Ray remote execution '{target}' failed"
+        text = f"Ray execution '{submission_id}' failed with status {status}"
         if exc_type:
             text += f" ({exc_type}: {exc_message})"
         elif message:
             text += f": {message}"
         if remote_traceback:
             text += f"\n--- Remote Traceback ---\n{remote_traceback.rstrip()}"
-        super().__init__(text)
+        elif logs:
+            tail = "\n".join(logs.strip().splitlines()[-20:])
+            if tail:
+                text += f"\n--- Logs ---\n{tail}"
+        super().__init__(text, job=job, submission_id=submission_id)
 
     def __reduce__(self):
         return (
             type(self),
             (
-                self.target,
+                self.submission_id,
                 self.status,
                 self.message,
                 self.exc_type,
                 self.exc_message,
                 self.remote_traceback,
+                self.logs,
+                self.job,
             ),
         )
 
 
-# Backward-compatible aliases
-RayJobTimeoutError = RayTimeoutError
-RayJobExecutionError = RayExecutionError
+RayTimeoutError = RayJobTimeoutError
+RayExecutionError = RayJobExecutionError

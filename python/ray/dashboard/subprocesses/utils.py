@@ -72,4 +72,6 @@ def get_http_session_to_module(
     else:
         socket_path = get_socket_path(socket_dir, module_name)
         connector = aiohttp.UnixConnector(socket_path)
-    return aiohttp.ClientSession(connector=connector)
+    return aiohttp.ClientSession(
+        connector=connector, timeout=aiohttp.ClientTimeout(total=None)
+    )

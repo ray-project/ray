@@ -4,6 +4,7 @@ Run with:
     RAY_LIVE_CLUSTER_ADDRESS=http://127.0.0.1:8265 pytest prototype/ray_client/tests/
 """
 
+import math
 import os
 import sys
 import tempfile
@@ -13,7 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List
 
-from ray_client import RayClient, RayExecutionError, RemoteRef
+from ray_client import ActorHandle, JobResult, RayCluster, RayJobExecutionError
+
+import ray
 
 LIVE_ADDRESS = os.environ.get("RAY_LIVE_CLUSTER_ADDRESS")
 
@@ -27,20 +30,18 @@ GLOBAL_FACTOR = 10
 class TestLiveRayClusterIntegration(unittest.TestCase):
     def setUp(self):
         assert LIVE_ADDRESS is not None
-        self.client = RayClient(address=LIVE_ADDRESS)
+        self.cluster = RayCluster(address=LIVE_ADDRESS)
 
     def tearDown(self):
-        self.client.close()
+        self.cluster.close()
 
-    def test_tasks_actors_defaults_and_nested_classes(self):
+    def test_run_driver_function_tasks_actors_and_fate_sharing(self):
         def compute_batch(items: List[int], scale: int = GLOBAL_FACTOR) -> dict:
             import ray
 
             total_cpus = ray.cluster_resources().get("CPU", 0.0)
-            # Calling ray.init() inside a workspace task is a safe no-op.
             ray.init()
 
-            # Top-level `dataclass` and `sys` are automatically imported in the shipped module!
             @dataclass
             class Item:
                 x: int
@@ -49,7 +50,15 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             def mul(item: Item, factor: int) -> Item:
                 return Item(item.x * factor)
 
-            # `List` exists only on the client; the shipped module stubs hint-only globals.
+            @ray.remote
+            class ChildWorker:
+                def ping(self) -> str:
+                    return "alive"
+
+            # Spawn a named child actor owned by this driver actor
+            child = ChildWorker.options(name="ephemeral_child_worker").remote()
+            assert ray.get(child.ping.remote()) == "alive"
+
             @ray.remote
             def total(xs: List[int]) -> int:
                 return sum(xs)
@@ -60,49 +69,90 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 "values": out,
                 "sum": ray.get(total.remote(out)),
                 "cluster_py": list(sys.version_info[:2]),
-                "namespace": ray.get_runtime_context().namespace,
                 "total_cpus": total_cpus,
             }
 
-        out1 = self.client.run(compute_batch, [1, 2, 3])
+        def check_child_exists(name: str) -> bool:
+            import ray
+
+            try:
+                ray.get_actor(name)
+                return True
+            except ValueError:
+                return False
+
+        out1 = self.cluster.run(compute_batch, [1, 2, 3])
         self.assertEqual(out1["values"], [10, 20, 30])
         self.assertEqual(out1["sum"], 60)
         self.assertGreater(out1["total_cpus"], 0)
-        self.assertEqual(out1["namespace"], self.client.namespace)
-        self.assertEqual(
-            self.client.workspace_info()["namespace"], self.client.namespace
-        )
+        # Child actor created inside compute_batch is fate-shared and terminated on exit
+        self.assertFalse(self.cluster.run(check_child_exists, "ephemeral_child_worker"))
 
-        out2 = self.client.run(compute_batch, [4, 5], kwargs={"scale": 3})
+        out2 = self.cluster.run(compute_batch, [4, 5], kwargs={"scale": 3})
         self.assertEqual(out2["values"], [12, 15])
 
-    def test_async_task_pipelining_remote_ref_ready_and_cancel(self):
-        def produce_numbers(n: int, base: int = 10) -> list:
-            return [base * (i + 1) for i in range(n)]
+        # Verify top-level imports (math) and unpassed non-JSON defaults (cb=print)
+        # work on the cluster without re-importing inside the function
+        def use_top_level_import_and_default(x: int, cb=print) -> dict:
+            cb(f"computing isqrt({x})")
+            return {"isqrt": math.isqrt(x), "callable": callable(cb)}
 
-        def sum_numbers(xs: list, bonus: int = 0) -> dict:
-            return {"count": len(xs), "total": sum(xs) + bonus}
+        out3 = self.cluster.run(use_top_level_import_and_default, 81)
+        self.assertEqual(out3, {"isqrt": 9, "callable": True})
 
-        def slow_task(seconds: float) -> int:
-            time.sleep(seconds)
-            return 1
+        # Verify @ray.remote class works directly with cluster.actor(...)
+        @ray.remote(num_cpus=0.5)
+        class DecoratedWorker:
+            def __init__(self, base: int = 10):
+                self.base = base
 
-        # Submit non-blocking task (`wait=False`) -> pass in-flight RemoteRef directly
-        # into downstream task without pulling intermediate list to the client!
-        in_flight_ref = self.client.run(produce_numbers, 4, wait=False)
-        self.assertIsInstance(in_flight_ref, RemoteRef)
-        pipelined = self.client.run(sum_numbers, in_flight_ref, kwargs={"bonus": 5})
-        self.assertEqual(pipelined, {"count": 4, "total": 105})
-        self.assertTrue(in_flight_ref.ready())
-        self.assertEqual(in_flight_ref.get(), [10, 20, 30, 40])
-        self.assertTrue(in_flight_ref.delete())
+            def compute(self, x: int, extra: int = 5) -> int:
+                return self.base + x + extra
 
-        # Cancellation of an in-flight task via RemoteRef.cancel()
-        slow_ref = self.client.run(slow_task, 10.0, wait=False)
-        self.assertFalse(slow_ref.ready(timeout=0.05))
-        self.assertTrue(slow_ref.cancel(force=True))
+        worker = self.cluster.actor(DecoratedWorker, 20, name="decorated_live_worker")
+        try:
+            self.assertEqual(worker.compute(7), 32)
+        finally:
+            worker.kill()
 
-    def test_working_dir_ray_data_task_streaming_and_error_propagation(self):
+    def test_submit_job_cli_script_and_logs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "cli_job.py").write_text(
+                "import sys\n"
+                "import ray\n"
+                "ray.init()\n"
+                "@ray.remote\n"
+                "def work(x):\n"
+                "    return x * 3\n"
+                "n = int(sys.argv[1])\n"
+                "print(f'CLI_JOB_RESULT={ray.get(work.remote(n))}', flush=True)\n",
+                encoding="utf-8",
+            )
+            py_bin_dir = str(Path(sys.executable).parent)
+            job = self.cluster.submit_job(
+                "python cli_job.py 14",
+                runtime_env={
+                    "working_dir": root,
+                    "env_vars": {"PATH": f"{py_bin_dir}:{os.environ.get('PATH', '')}"},
+                },
+                wait=True,
+            )
+            self.assertIsInstance(job, JobResult)
+            self.assertEqual(job.status(), "SUCCEEDED")
+            self.assertTrue(job.done())
+            self.assertIn("CLI_JOB_RESULT=42", job.logs())
+
+            reattached = self.cluster.get_job(job.submission_id)
+            self.assertEqual(reattached.status(), "SUCCEEDED")
+            self.assertTrue(
+                any(
+                    j.get("submission_id") == job.submission_id
+                    for j in self.cluster.list_jobs()
+                )
+            )
+
+    def test_working_dir_ray_data_streaming_and_error_propagation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "work"
             shared = Path(tmpdir) / "shared"
@@ -139,11 +189,11 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 }
 
             assert LIVE_ADDRESS is not None
-            with RayClient(
+            with RayCluster(
                 address=LIVE_ADDRESS,
                 default_runtime_env={"working_dir": root},
-            ) as wd_client:
-                res = wd_client.run(use_helper_and_ray_data, "ray")
+            ) as wd_cluster:
+                res = wd_cluster.run(use_helper_and_ray_data, "ray")
                 self.assertEqual(
                     res,
                     {
@@ -153,16 +203,16 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                         "has_secret": False,
                     },
                 )
-                # Also verify module-path string entrypoints (`module:name`) on live cluster:
-                self.assertEqual(wd_client.run("my_helper:transform", "ray"), "[RAY]")
-                hc = wd_client.actor("my_helper:HelperCounter", 10, name="hc")
+                self.assertEqual(wd_cluster.run("my_helper:transform", "ray"), "[RAY]")
+                hc = wd_cluster.actor("my_helper:HelperCounter", 10, name="hc")
                 self.assertEqual(hc.inc(5), 15)
+                hc.kill()
 
         def stream_progress(steps: int) -> Iterator[dict]:
             for i in range(steps):
                 yield {"step": i, "pct": int((i + 1) * 100 / steps)}
 
-        events = list(self.client.stream(stream_progress, 4))
+        events = list(self.cluster.run(stream_progress, 4))
         self.assertEqual(
             events,
             [
@@ -174,12 +224,93 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         )
 
         def crash_task():
+            print("about to crash inside driver actor", flush=True)
             raise RuntimeError("expected cluster task failure")
 
-        with self.assertRaises(RayExecutionError) as ctx:
-            self.client.run(crash_task)
+        with self.assertRaises(RayJobExecutionError) as ctx:
+            self.cluster.run(crash_task)
         self.assertEqual(ctx.exception.exc_type, "RuntimeError")
         self.assertIn("expected cluster task failure", str(ctx.exception))
+        self.assertIn("about to crash inside driver actor", ctx.exception.logs)
+
+    def test_stateful_actor_steering_early_break_cancel_logs_and_idle_ttl(self):
+        class Trainer:
+            def __init__(self, lr: float = 1e-3):
+                self.lr = lr
+                self.steps_executed = 0
+
+            def update_lr(self, lr: float) -> dict:
+                self.lr = lr
+                print(f"updated lr to {self.lr}", flush=True)
+                return {"lr": self.lr}
+
+            def get_state(self) -> dict:
+                return {"lr": self.lr, "steps_executed": self.steps_executed}
+
+            def slow_call(self, duration: float) -> str:
+                time.sleep(duration)
+                return "done"
+
+            def train_steps(self, steps: int):
+                for step in range(steps):
+                    self.steps_executed += 1
+                    yield {
+                        "step": step,
+                        "loss": round(1.0 / (step + 1), 4),
+                        "lr": self.lr,
+                    }
+                    time.sleep(0.12)
+
+        trainer = self.cluster.actor(
+            Trainer,
+            kwargs={"lr": 1e-3},
+            name="live_trainer",
+            ttl_seconds=60.0,
+            get_if_exists=False,
+        )
+        self.assertIsInstance(trainer, ActorHandle)
+        try:
+            # 1. Concurrent mid-run steering + early-break SSE cancellation
+            seen = []
+            for metrics in trainer.train_steps(50):
+                seen.append(metrics)
+                if metrics["step"] == 0:
+                    trainer.update_lr(1e-4)
+                if metrics["step"] >= 2 and any(m["lr"] == 1e-4 for m in seen):
+                    break
+
+            self.assertGreaterEqual(len(seen), 3)
+            self.assertEqual(seen[0]["lr"], 1e-3)
+            self.assertTrue(any(m["lr"] == 1e-4 for m in seen[1:]))
+
+            # Verify generator was cancelled on the cluster rather than running all 50 steps
+            time.sleep(0.25)
+            state_after = trainer.get_state()
+            self.assertLess(state_after["steps_executed"], 15)
+            time.sleep(0.2)
+            self.assertEqual(
+                trainer.get_state()["steps_executed"], state_after["steps_executed"]
+            )
+            self.assertIn("updated lr to 0.0001", trainer.logs())
+        finally:
+            trainer.kill()
+
+        # 2. Verify ttl_seconds does not kill actor while a call is active (active_calls > 0)
+        busy_actor = self.cluster.actor(
+            Trainer,
+            name="busy_ttl_actor",
+            ttl_seconds=0.6,
+            get_if_exists=False,
+        )
+        try:
+            # Run a 1.0s call (> 0.6s TTL): must succeed without being reaped mid-call
+            self.assertEqual(busy_actor.slow_call(1.0), "done")
+            # Once idle for > 0.6s, actor is automatically reaped
+            time.sleep(0.9)
+            active_names = [a["name"] for a in self.cluster.list_actors()]
+            self.assertNotIn("busy_ttl_actor", active_names)
+        finally:
+            busy_actor.kill()
 
     def test_examples_run_end_to_end(self):
         examples_dir = Path(__file__).resolve().parents[1] / "examples"
@@ -221,88 +352,6 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             self.assertTrue(out4["ttl_cleaned"])
         finally:
             sys.path.pop(0)
-
-    def test_live_actor_remote_ref_non_json_intermediate_and_streaming(self):
-        class StatefulWorker:
-            def __init__(self, base: int = 10):
-                self.base = base
-
-            def set_base(self, new_base: int) -> int:
-                self.base = new_base
-                return self.base
-
-            def make_in_cluster_tuple(self, n: int) -> tuple:
-                # Tuples are rejected at the JSON boundary, but can stay in-cluster
-                # as a RemoteRef (`$ray_ref`) and be consumed by subsequent actor/task calls!
-                return tuple(self.base + i for i in range(n))
-
-            def sum_tuple(self, data: tuple, bonus: int = 0) -> dict:
-                return {"count": len(data), "total": sum(data) + bonus}
-
-            def make_json_list(self, n: int) -> list:
-                return [self.base * (i + 1) for i in range(n)]
-
-            def stream_chunks(self, count: int):
-                for i in range(count):
-                    yield {"chunk": i, "val": self.base + i}
-                    time.sleep(0.02)
-
-        def call_workspace_actor_from_task(actor_name: str, bonus: int) -> dict:
-            import ray
-
-            # `ray.get_actor(actor_name)` automatically resolves in the workspace namespace!
-            handle = ray.get_actor(actor_name)
-            vals = ray.get(handle.make_json_list.remote(2))
-            return {
-                "namespace": ray.get_runtime_context().namespace,
-                "sum": sum(vals) + bonus,
-            }
-
-        assert LIVE_ADDRESS is not None
-        ws_client = RayClient(
-            address=LIVE_ADDRESS, workspace="test_live_actor_ws", ttl_seconds=60.0
-        )
-        try:
-            worker = ws_client.actor(StatefulWorker, 100, name="worker_1")
-            self.assertEqual(worker.name, "worker_1")
-            self.assertEqual(worker.workspace, "test_live_actor_ws")
-
-            # Keep non-JSON tuple in-cluster via `.ref()` (`return_ref=True`) and pass to next call
-            tuple_ref = worker.make_in_cluster_tuple.ref(4)
-            self.assertTrue(tuple_ref.ref_id.startswith("ref_"))
-            summary = worker.sum_tuple(tuple_ref, bonus=5)
-            self.assertEqual(summary, {"count": 4, "total": 411})
-
-            # Non-blocking actor call via `.remote()` (`wait=False`)
-            async_ref = worker.make_json_list.remote(3)
-            self.assertEqual(async_ref.get(), [100, 200, 300])
-            self.assertTrue(async_ref.delete())
-
-            # Verify a workspace task (`client.run`) can look up `worker_1` via `ray.get_actor("worker_1")`
-            # without explicitly passing `namespace=...`!
-            cross_check = ws_client.run(call_workspace_actor_from_task, "worker_1", 7)
-            self.assertEqual(
-                cross_check,
-                {"namespace": "workspace:test_live_actor_ws", "sum": 307},
-            )
-
-            # Real-time streaming generator method with mid-stream state update
-            chunks = []
-            for chunk in worker.stream_chunks.stream(3):
-                chunks.append(chunk)
-                if chunk["chunk"] == 0:
-                    # Mutate actor state while generator is paused between yields!
-                    worker.set_base(200)
-            self.assertEqual(
-                chunks,
-                [
-                    {"chunk": 0, "val": 100},
-                    {"chunk": 1, "val": 201},
-                    {"chunk": 2, "val": 202},
-                ],
-            )
-        finally:
-            ws_client.close_workspace()
 
 
 if __name__ == "__main__":

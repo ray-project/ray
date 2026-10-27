@@ -1,4 +1,4 @@
-"""Offline unit and mock-REST-server tests for ray_client."""
+"""Offline unit and mock REST server tests for ray_client."""
 
 import copy
 import functools
@@ -20,23 +20,25 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from unittest.mock import patch
 
 from ray_client import (
-    ActorProxy,
+    ActorHandle,
+    JobResult,
     RayClient,
     RayClientError,
     RayClientSerializationError,
-    RayExecutionError,
-    RemoteRef,
+    RayCluster,
+    RayJobExecutionError,
+    RayJobTimeoutError,
     packaging,
     run,
-    stream,
 )
 from ray_client._ignore import _compile_ignore_rules, _is_ignored
 from ray_client.packaging import (
     IGNORE_GITIGNORE_ENV_VAR,
+    build_driver_package,
     build_working_dir_package,
     extract_class_source_and_globals,
     extract_function_source_and_globals,
@@ -53,16 +55,25 @@ class _MockClusterState:
     def __init__(self, tmp_root: str):
         self.tmp_root = Path(tmp_root)
         self.packages: Dict[str, bytes] = {}
-        self.workspaces: Dict[str, Dict[str, Any]] = {}
+        self.actors: Dict[str, Dict[str, Any]] = {}
+        self.jobs: Dict[str, Dict[str, Any]] = {}
         self.fail_next_requests = 0
+        self.drop_next_job_post_response = False
+        self.job_info_gets = 0
+        self.job_logs_gets = 0
         self.lock = threading.Lock()
 
     def check_ttls_locked(self) -> None:
         now = time.monotonic()
-        for ws_name, ws in list(self.workspaces.items()):
-            ttl = ws.get("ttl_seconds")
-            if ttl is not None and ttl > 0 and (now - ws["last_active"]) >= ttl:
-                self.workspaces.pop(ws_name, None)
+        for name, act in list(self.actors.items()):
+            ttl = act.get("ttl_seconds")
+            if (
+                ttl is not None
+                and ttl > 0
+                and act.get("active_calls", 0) == 0
+                and (now - act["last_active"]) >= ttl
+            ):
+                self.actors.pop(name, None)
 
 
 class _MockJobServerHandler(BaseHTTPRequestHandler):
@@ -79,16 +90,19 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_ndjson_stream(self, items: Any) -> None:
-        lines = []
+    def _send_sse_stream(self, items: Any, logs_buf: List[str]) -> None:
+        frames = [": ping\n\n"]
         try:
             for item in items:
-                lines.append(
-                    json.dumps({"ok": True, "item": item}, allow_nan=False) + "\n"
+                frames.append(
+                    "data: "
+                    + json.dumps({"ok": True, "item": item}, allow_nan=False)
+                    + "\n\n"
                 )
         except Exception as exc:
-            lines.append(
-                json.dumps(
+            frames.append(
+                "data: "
+                + json.dumps(
                     {
                         "ok": False,
                         "error": {
@@ -96,13 +110,15 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                             "exc_message": str(exc),
                             "traceback": traceback.format_exc(),
                         },
+                        "logs": "".join(logs_buf),
                     }
                 )
-                + "\n"
+                + "\n\n"
             )
-        payload = "".join(lines).encode("utf-8")
+        payload = "".join(frames).encode("utf-8")
         self.send_response(200)
-        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
@@ -113,20 +129,20 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
-    def _unpack_workspace_runtime_env_locked(
-        self, ws_name: str, ws: Dict[str, Any], runtime_env: Optional[Dict[str, Any]]
-    ) -> Optional[Path]:
+    def _unpack_actor_runtime_env_locked(
+        self, actor_name: str, runtime_env: Optional[Dict[str, Any]]
+    ) -> Tuple[Optional[Path], Dict[str, str]]:
         if not runtime_env:
-            return ws.get("work_dir")
-        ws_dir = self.state.tmp_root / ws_name
-        ws_dir.mkdir(parents=True, exist_ok=True)
+            return None, {}
+        act_dir = self.state.tmp_root / f"actor_{actor_name}"
+        act_dir.mkdir(parents=True, exist_ok=True)
         wd_uri = runtime_env.get("working_dir")
         if wd_uri and str(wd_uri).startswith("gcs://"):
             pkg_name = str(wd_uri).split("gcs://", 1)[1]
             if pkg_name not in self.state.packages:
                 raise KeyError(f"Package '{pkg_name}' not uploaded")
             with zipfile.ZipFile(io.BytesIO(self.state.packages[pkg_name])) as zf:
-                zf.extractall(ws_dir)
+                zf.extractall(act_dir)
         for mod_uri in runtime_env.get("py_modules") or ():
             if str(mod_uri).startswith("gcs://"):
                 pkg_name = str(mod_uri).split("gcs://", 1)[1]
@@ -134,205 +150,17 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     with zipfile.ZipFile(
                         io.BytesIO(self.state.packages[pkg_name])
                     ) as zf:
-                        zf.extractall(ws_dir)
-        env_vars = dict(runtime_env.get("env_vars") or {})
-        ws["env_vars"] = env_vars
-        ws["work_dir"] = ws_dir
-        return ws_dir
+                        zf.extractall(act_dir)
+        env_vars = {
+            str(k): str(v) for k, v in (runtime_env.get("env_vars") or {}).items()
+        }
+        return act_dir, env_vars
 
-    def do_GET(self) -> None:  # noqa: N802
-        parsed = urllib.parse.urlsplit(self.path)
-        path = parsed.path
-        query = dict(urllib.parse.parse_qsl(parsed.query))
-
-        with self.state.lock:
-            if self.state.fail_next_requests > 0:
-                self.state.fail_next_requests -= 1
-                self._send_json(503, {"error": "temporary gateway error"})
-                return
-
-        if path.startswith("/api/packages/gcs/"):
-            pkg_name = path.split("/api/packages/gcs/", 1)[1]
-            with self.state.lock:
-                exists = pkg_name in self.state.packages
-            self._send_json(200 if exists else 404, {"exists": exists})
-            return
-        if path == "/api/workspaces":
-            with self.state.lock:
-                self.state.check_ttls_locked()
-                items = [
-                    {
-                        "workspace": ws_name,
-                        "namespace": f"workspace:{ws_name}",
-                        "ttl_seconds": ws["ttl_seconds"],
-                        "actors": list(ws["actors"].keys()),
-                        "ref_count": len(ws["refs"]),
-                    }
-                    for ws_name, ws in self.state.workspaces.items()
-                ]
-            self._send_json(200, items)
-            return
-        if path.startswith("/api/workspaces/"):
-            parts = path[len("/api/workspaces/") :].split("/")
-            ws_name = parts[0]
-            with self.state.lock:
-                self.state.check_ttls_locked()
-                ws = self.state.workspaces.get(ws_name)
-                if ws is None:
-                    self._send_json(404, {"error": "workspace not found"})
-                    return
-                ws["last_active"] = time.monotonic()
-                if len(parts) == 1:
-                    self._send_json(
-                        200,
-                        {
-                            "workspace": ws_name,
-                            "namespace": f"workspace:{ws_name}",
-                            "ttl_seconds": ws["ttl_seconds"],
-                            "actors": [
-                                {"name": k, "lifetime": v["lifetime"]}
-                                for k, v in ws["actors"].items()
-                            ],
-                            "ref_count": len(ws["refs"]),
-                        },
-                    )
-                    return
-                if len(parts) == 2 and parts[1] == "actors":
-                    self._send_json(
-                        200,
-                        [
-                            {
-                                "name": k,
-                                "workspace": ws_name,
-                                "lifetime": v["lifetime"],
-                            }
-                            for k, v in ws["actors"].items()
-                        ],
-                    )
-                    return
-                if len(parts) == 3 and parts[1] == "actors":
-                    actor_name = parts[2]
-                    act = ws["actors"].get(actor_name)
-                    if act is None:
-                        self._send_json(404, {"error": "actor not found"})
-                        return
-                    self._send_json(
-                        200,
-                        {
-                            "name": actor_name,
-                            "workspace": ws_name,
-                            "lifetime": act["lifetime"],
-                        },
-                    )
-                    return
-                if len(parts) == 3 and parts[1] == "refs":
-                    ref_id = parts[2]
-                    if ref_id not in ws["refs"]:
-                        self._send_json(
-                            404,
-                            {
-                                "ok": False,
-                                "not_found": True,
-                                "error": {
-                                    "exc_type": "KeyError",
-                                    "exc_message": f"Ref '{ref_id}' not found",
-                                },
-                            },
-                        )
-                        return
-                    entry = ws["refs"][ref_id]
-                    if query.get("ready_only") in ("1", "true", "True"):
-                        self._send_json(
-                            200,
-                            {
-                                "ok": True,
-                                "ready": not entry.get("canceled", False),
-                            },
-                        )
-                        return
-                    if entry.get("canceled"):
-                        self._send_json(
-                            200,
-                            {
-                                "ok": False,
-                                "error": {
-                                    "exc_type": "TaskCancelledError",
-                                    "exc_message": f"Ref '{ref_id}' was cancelled",
-                                },
-                            },
-                        )
-                        return
-                    if entry.get("error"):
-                        self._send_json(200, {"ok": False, "error": entry["error"]})
-                        return
-                    self._send_json(200, {"ok": True, "result": entry["value"]})
-                    return
-        self._send_json(404, {"error": "unknown endpoint"})
-
-    def do_PUT(self) -> None:  # noqa: N802
-        if self.path.startswith("/api/packages/gcs/"):
-            pkg_name = self.path.split("/api/packages/gcs/", 1)[1]
-            length = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(length)
-            with self.state.lock:
-                self.state.packages[pkg_name] = body
-            self.send_response(200)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
-        self._send_json(404, {"error": "unknown endpoint"})
-
-    def do_DELETE(self) -> None:  # noqa: N802
-        parsed = urllib.parse.urlsplit(self.path)
-        path = parsed.path
-        if path.startswith("/api/workspaces/"):
-            parts = path[len("/api/workspaces/") :].split("/")
-            ws_name = parts[0]
-            with self.state.lock:
-                self.state.check_ttls_locked()
-                if len(parts) == 1:
-                    existed = self.state.workspaces.pop(ws_name, None) is not None
-                    self._send_json(200 if existed else 404, {"closed": existed})
-                    return
-                ws = self.state.workspaces.get(ws_name)
-                if ws is None:
-                    self._send_json(404, {"error": "workspace not found"})
-                    return
-                ws["last_active"] = time.monotonic()
-                if len(parts) == 3 and parts[1] == "actors":
-                    existed = ws["actors"].pop(parts[2], None) is not None
-                    self._send_json(200 if existed else 404, {"killed": existed})
-                    return
-                if len(parts) == 3 and parts[1] == "refs":
-                    existed = ws["refs"].pop(parts[2], None) is not None
-                    self._send_json(200 if existed else 404, {"deleted": existed})
-                    return
-        self._send_json(404, {"error": "unknown endpoint"})
-
-    @staticmethod
-    def _resolve_mock_refs(val: Any, refs: Dict[str, Any]) -> Any:
-        if isinstance(val, dict) and set(val.keys()) == {"$ray_ref"}:
-            ref_id = val["$ray_ref"]
-            if ref_id not in refs:
-                raise KeyError(f"RemoteRef '{ref_id}' not found")
-            entry = refs[ref_id]
-            if entry.get("error"):
-                raise RuntimeError(entry["error"]["exc_message"])
-            return entry["value"]
-        if isinstance(val, list):
-            return [_MockJobServerHandler._resolve_mock_refs(v, refs) for v in val]
-        if isinstance(val, dict):
-            return {
-                k: _MockJobServerHandler._resolve_mock_refs(v, refs)
-                for k, v in val.items()
-            }
-        return val
-
-    def _exec_in_workspace_env(
-        self, ws: Dict[str, Any], fn: Any, args: list, kwargs: dict
+    def _exec_in_actor_env(
+        self, act: Dict[str, Any], fn: Any, args: list, kwargs: dict
     ) -> Any:
-        work_dir: Optional[Path] = ws.get("work_dir")
-        env_vars: Dict[str, str] = ws.get("env_vars") or {}
+        work_dir: Optional[Path] = act.get("work_dir")
+        env_vars: Dict[str, str] = act.get("env_vars") or {}
         prev_cwd = os.getcwd()
         prev_path = list(sys.path)
         prev_env = {k: os.environ.get(k) for k in env_vars}
@@ -357,282 +185,371 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                 else:
                     os.environ[k] = old_v
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
 
-        if path == "/api/workspaces":
-            body = self._read_json()
-            ws_name = body["workspace"]
+        with self.state.lock:
+            if self.state.fail_next_requests > 0:
+                self.state.fail_next_requests -= 1
+                self._send_json(503, {"error": "temporary gateway error"})
+                return
+
+        if path.startswith("/api/packages/gcs/"):
+            pkg_name = path.split("/api/packages/gcs/", 1)[1]
             with self.state.lock:
-                self.state.check_ttls_locked()
-                ws = self.state.workspaces.get(ws_name)
-                created = ws is None
-                if ws is None:
-                    ws = self.state.workspaces[ws_name] = {
-                        "ttl_seconds": body.get("ttl_seconds", 1800.0),
-                        "last_active": time.monotonic(),
-                        "actors": {},
-                        "refs": {},
-                        "work_dir": None,
-                        "env_vars": {},
-                    }
-                else:
-                    ws["last_active"] = time.monotonic()
-                    if "ttl_seconds" in body and body["ttl_seconds"] is not None:
-                        ws["ttl_seconds"] = body["ttl_seconds"]
-                if body.get("runtime_env"):
-                    self._unpack_workspace_runtime_env_locked(
-                        ws_name, ws, body["runtime_env"]
-                    )
-                self._send_json(
-                    200,
-                    {
-                        "created": created,
-                        "workspace": ws_name,
-                        "namespace": f"workspace:{ws_name}",
-                        "ttl_seconds": ws["ttl_seconds"],
-                        "actors": list(ws["actors"].keys()),
-                        "ref_count": len(ws["refs"]),
-                    },
-                )
+                exists = pkg_name in self.state.packages
+            self._send_json(200 if exists else 404, {"exists": exists})
             return
 
-        if path.startswith("/api/workspaces/"):
-            parts = path[len("/api/workspaces/") :].split("/")
-            ws_name = parts[0]
-            body = self._read_json()
+        if path == "/api/jobs/":
+            with self.state.lock:
+                items = list(self.state.jobs.values())
+            self._send_json(200, items)
+            return
+
+        if path.startswith("/api/jobs/"):
+            parts = path[len("/api/jobs/") :].split("/")
+            job_id = parts[0]
+            with self.state.lock:
+                job = self.state.jobs.get(job_id)
+                if job is None:
+                    self._send_json(404, {"error": f"Job {job_id} does not exist"})
+                    return
+                if len(parts) == 1:
+                    self.state.job_info_gets += 1
+                    if job.get("transitions"):
+                        job["status"] = job["transitions"].pop(0)
+                    self._send_json(
+                        200,
+                        {
+                            "submission_id": job["submission_id"],
+                            "status": job["status"],
+                            "entrypoint": job["entrypoint"],
+                            "message": job.get("message", ""),
+                            "metadata": job.get("metadata") or {},
+                        },
+                    )
+                    return
+                if len(parts) == 2 and parts[1] == "logs":
+                    self.state.job_logs_gets += 1
+                    if job.get("log_chunks"):
+                        job["logs"] += job["log_chunks"].pop(0)
+                    self._send_json(200, {"logs": job.get("logs", "")})
+                    return
+
+        if path == "/api/actors":
             with self.state.lock:
                 self.state.check_ttls_locked()
-                ws = self.state.workspaces.get(ws_name)
-                if ws is None:
-                    ws = self.state.workspaces[ws_name] = {
-                        "ttl_seconds": 1800.0,
-                        "last_active": time.monotonic(),
-                        "actors": {},
-                        "refs": {},
-                        "work_dir": None,
-                        "env_vars": {},
+                items = [
+                    {
+                        "name": name,
+                        "class_name": act["class_name"],
+                        "status": "ALIVE",
+                        "active_calls": act.get("active_calls", 0),
+                        "ttl_seconds": act["ttl_seconds"],
                     }
-                ws["last_active"] = time.monotonic()
-                if body.get("runtime_env"):
-                    self._unpack_workspace_runtime_env_locked(
-                        ws_name, ws, body["runtime_env"]
+                    for name, act in self.state.actors.items()
+                ]
+            self._send_json(200, items)
+            return
+
+        if path.startswith("/api/actors/"):
+            parts = path[len("/api/actors/") :].split("/")
+            actor_name = parts[0]
+            with self.state.lock:
+                self.state.check_ttls_locked()
+                act = self.state.actors.get(actor_name)
+                if act is None:
+                    self._send_json(404, {"ok": False, "error": "actor not found"})
+                    return
+                act["last_active"] = time.monotonic()
+                if len(parts) == 1:
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "name": actor_name,
+                            "class_name": act["class_name"],
+                            "status": "ALIVE",
+                            "active_calls": act.get("active_calls", 0),
+                            "ttl_seconds": act["ttl_seconds"],
+                        },
+                    )
+                    return
+                if len(parts) == 2 and parts[1] == "logs":
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "name": actor_name,
+                            "logs": "".join(act["logs"]),
+                        },
+                    )
+                    return
+
+        self._send_json(404, {"error": "unknown endpoint"})
+
+    def do_PUT(self) -> None:  # noqa: N802
+        if self.path.startswith("/api/packages/gcs/"):
+            pkg_name = self.path.split("/api/packages/gcs/", 1)[1]
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length)
+            with self.state.lock:
+                self.state.packages[pkg_name] = body
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self._send_json(404, {"error": "unknown endpoint"})
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        if path.startswith("/api/jobs/"):
+            job_id = path[len("/api/jobs/") :]
+            with self.state.lock:
+                existed = self.state.jobs.pop(job_id, None) is not None
+            self._send_json(200 if existed else 404, {"deleted": existed})
+            return
+        if path.startswith("/api/actors/"):
+            actor_name = path[len("/api/actors/") :]
+            with self.state.lock:
+                self.state.check_ttls_locked()
+                existed = self.state.actors.pop(actor_name, None) is not None
+            self._send_json(200 if existed else 404, {"ok": existed, "killed": existed})
+            return
+        self._send_json(404, {"error": "unknown endpoint"})
+
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        query = dict(urllib.parse.parse_qsl(parsed.query))
+        body = self._read_json()
+
+        if path == "/api/jobs/":
+            sub_id = body.get("submission_id") or f"raysubmit_{uuid.uuid4().hex[:12]}"
+            with self.state.lock:
+                self.state.jobs[sub_id] = {
+                    "submission_id": sub_id,
+                    "entrypoint": body["entrypoint"],
+                    "status": "SUCCEEDED",
+                    "logs": f"ran: {body['entrypoint']}\n",
+                    "metadata": body.get("metadata") or {},
+                    "runtime_env": body.get("runtime_env") or {},
+                }
+                if self.state.drop_next_job_post_response:
+                    self.state.drop_next_job_post_response = False
+                    self._send_json(503, {"error": "simulated dropped response"})
+                    return
+            self._send_json(200, {"job_id": sub_id, "submission_id": sub_id})
+            return
+
+        if path.startswith("/api/jobs/") and path.endswith("/stop"):
+            job_id = path[len("/api/jobs/") : -len("/stop")]
+            with self.state.lock:
+                job = self.state.jobs.get(job_id)
+                if job is None:
+                    self._send_json(404, {"stopped": False})
+                    return
+                job["status"] = "STOPPED"
+            self._send_json(200, {"stopped": True})
+            return
+
+        if path == "/api/actors":
+            kind = body.get("kind") or ("function" if "fn_name" in body else "class")
+            target_name = (
+                body.get("fn_name")
+                if kind == "function"
+                else (body.get("class_name") or body.get("name"))
+            )
+            name = body.get("name") or f"{target_name}_{uuid.uuid4().hex[:8]}"
+            with self.state.lock:
+                self.state.check_ttls_locked()
+                if body.get("get_if_exists", True) and name in self.state.actors:
+                    act = self.state.actors[name]
+                    act["last_active"] = time.monotonic()
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "name": name,
+                            "class_name": act["class_name"],
+                            "created": False,
+                        },
+                    )
+                    return
+
+                try:
+                    work_dir, env_vars = self._unpack_actor_runtime_env_locked(
+                        name, body.get("runtime_env")
+                    )
+                    act_entry: Dict[str, Any] = {
+                        "name": name,
+                        "kind": kind,
+                        "class_name": target_name,
+                        "ttl_seconds": body.get("ttl_seconds", 1800.0),
+                        "last_active": time.monotonic(),
+                        "active_calls": 0,
+                        "work_dir": work_dir,
+                        "env_vars": env_vars,
+                        "logs": [],
+                    }
+                    payload_data: Dict[str, Any] = {}
+                    if body.get("payload_file") and work_dir is not None:
+                        pf = work_dir / body["payload_file"]
+                        if pf.is_file():
+                            payload_data = json.loads(pf.read_text(encoding="utf-8"))
+
+                    captured_globals = (
+                        payload_data.get("captured_globals")
+                        if "captured_globals" in payload_data
+                        else (body.get("captured_globals") or {})
+                    )
+                    init_args = (
+                        payload_data.get("args")
+                        if "args" in payload_data
+                        else (body.get("args") or [])
+                    )
+                    init_kwargs = (
+                        payload_data.get("kwargs")
+                        if "kwargs" in payload_data
+                        else (body.get("kwargs") or {})
                     )
 
-                if len(parts) == 2 and parts[1] == "heartbeat":
-                    self._send_json(200, {"workspace": ws_name, "ok": True})
-                    return
+                    if body.get("module_source") is not None:
+                        mod_name = f"_mock_actor_{name}_{uuid.uuid4().hex[:6]}"
+                        mod = types.ModuleType(mod_name)
+                        sys.modules[mod_name] = mod
+                        mod.__dict__.update(captured_globals)
+                        src = body["module_source"].replace("import ray", "pass")
+                        exec(compile(src, "<actor>", "exec"), mod.__dict__)
+                        target_obj = getattr(mod, target_name)
+                    else:
+                        import importlib
 
-                if len(parts) == 4 and parts[1] == "refs" and parts[3] == "cancel":
-                    ref_id = parts[2]
-                    if ref_id not in ws["refs"]:
-                        self._send_json(404, {"canceled": False})
-                        return
-                    ws["refs"][ref_id]["canceled"] = True
-                    self._send_json(200, {"canceled": True})
-                    return
+                        def _load_from_mod() -> Any:
+                            importlib.invalidate_caches()
+                            m = importlib.import_module(body["module"])
+                            return getattr(m, target_name)
 
-                if len(parts) == 2 and parts[1] == "tasks":
-                    try:
-                        args = self._resolve_mock_refs(
-                            body.get("args") or [], ws["refs"]
+                        target_obj = self._exec_in_actor_env(
+                            act_entry, _load_from_mod, [], {}
                         )
-                        kwargs = self._resolve_mock_refs(
-                            body.get("kwargs") or {}, ws["refs"]
+
+                    if kind == "function":
+                        act_entry["fn"] = target_obj
+                        act_entry["instance"] = None
+                    else:
+                        act_entry["fn"] = None
+                        act_entry["instance"] = self._exec_in_actor_env(
+                            act_entry, target_obj, init_args, init_kwargs
                         )
-                        if body.get("module_source") is not None:
-                            mod_name = f"_mock_task_{uuid.uuid4().hex[:8]}"
-                            mod = types.ModuleType(mod_name)
-                            sys.modules[mod_name] = mod
-                            mod.__dict__.update(body.get("captured_globals") or {})
-                            src = body["module_source"].replace("import ray", "pass")
-                            exec(compile(src, "<task>", "exec"), mod.__dict__)
-                            fn = getattr(mod, body["fn_name"])
-                            out = self._exec_in_workspace_env(ws, fn, args, kwargs)
-                        else:
-                            import importlib
-
-                            def _run_imported(*a: Any, **kw: Any) -> Any:
-                                importlib.invalidate_caches()
-                                m = importlib.import_module(body["module"])
-                                return getattr(m, body["fn_name"])(*a, **kw)
-
-                            out = self._exec_in_workspace_env(
-                                ws, _run_imported, args, kwargs
-                            )
-                        if body.get("stream"):
-                            self._send_ndjson_stream(out)
-                            return
-                        if not body.get("wait", True) or body.get("return_ref"):
-                            ref_id = f"ref_{uuid.uuid4().hex[:12]}"
-                            ws["refs"][ref_id] = {"value": out, "canceled": False}
-                            self._send_json(
-                                200, {"ok": True, "result": {"$ray_ref": ref_id}}
-                            )
-                            return
-                        self._send_json(200, {"ok": True, "result": out})
-                    except SystemExit as exc:
-                        code = exc.code
-                        if code in (None, 0):
-                            self._send_json(200, {"ok": True, "result": None})
-                        else:
-                            self._send_json(
-                                200,
-                                {
-                                    "ok": False,
-                                    "error": {
-                                        "exc_type": "SystemExit",
-                                        "exc_message": f"Task called sys.exit({code!r})",
-                                        "traceback": traceback.format_exc(),
-                                    },
-                                },
-                            )
-                    except Exception as exc:
-                        if not body.get("wait", True):
-                            ref_id = f"ref_{uuid.uuid4().hex[:12]}"
-                            ws["refs"][ref_id] = {
-                                "value": None,
-                                "canceled": False,
-                                "error": {
-                                    "exc_type": type(exc).__name__,
-                                    "exc_message": str(exc),
-                                    "traceback": traceback.format_exc(),
-                                },
-                            }
-                            self._send_json(
-                                200, {"ok": True, "result": {"$ray_ref": ref_id}}
-                            )
-                        else:
-                            self._send_json(
-                                200,
-                                {
-                                    "ok": False,
-                                    "error": {
-                                        "exc_type": type(exc).__name__,
-                                        "exc_message": str(exc),
-                                        "traceback": traceback.format_exc(),
-                                    },
-                                },
-                            )
-                    return
-
-                if len(parts) == 2 and parts[1] == "actors":
-                    name = body.get("name") or body["class_name"]
-                    if body.get("get_if_exists", True) and name in ws["actors"]:
-                        self._send_json(
-                            200,
-                            {
-                                "ok": True,
-                                "name": name,
-                                "workspace": ws_name,
-                                "created": False,
+                    self.state.actors[name] = act_entry
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "name": name,
+                            "class_name": target_name,
+                            "created": True,
+                        },
+                    )
+                except Exception as exc:
+                    self._send_json(
+                        400,
+                        {
+                            "ok": False,
+                            "error": {
+                                "exc_type": type(exc).__name__,
+                                "exc_message": str(exc),
+                                "traceback": traceback.format_exc(),
                             },
-                        )
-                        return
-                    try:
-                        args = self._resolve_mock_refs(
-                            body.get("args") or [], ws["refs"]
-                        )
-                        kwargs = self._resolve_mock_refs(
-                            body.get("kwargs") or {}, ws["refs"]
-                        )
-                        if body.get("module_source") is not None:
-                            mod = types.ModuleType(f"_mock_actor_{name}")
-                            mod.__dict__.update(body.get("captured_globals") or {})
-                            src = body["module_source"].replace("import ray", "pass")
-                            exec(compile(src, "<actor>", "exec"), mod.__dict__)
-                            cls = getattr(mod, body["class_name"])
-                            instance = self._exec_in_workspace_env(
-                                ws, cls, args, kwargs
-                            )
-                        else:
-                            import importlib
+                        },
+                    )
+                return
 
-                            def _instantiate_imported(*a: Any, **kw: Any) -> Any:
-                                importlib.invalidate_caches()
-                                m = importlib.import_module(body["module"])
-                                return getattr(m, body["class_name"])(*a, **kw)
-
-                            instance = self._exec_in_workspace_env(
-                                ws, _instantiate_imported, args, kwargs
-                            )
-                        ws["actors"][name] = {
-                            "instance": instance,
-                            "lifetime": body.get("lifetime", "workspace"),
-                        }
-                        self._send_json(
-                            200,
-                            {
-                                "ok": True,
-                                "name": name,
-                                "workspace": ws_name,
-                                "created": True,
-                            },
-                        )
-                    except Exception as exc:
-                        self._send_json(
-                            400,
-                            {
-                                "ok": False,
-                                "error": {
-                                    "exc_type": type(exc).__name__,
-                                    "exc_message": str(exc),
-                                    "traceback": traceback.format_exc(),
-                                },
-                            },
-                        )
-                    return
-
-                if len(parts) == 5 and parts[1] == "actors" and parts[3] == "methods":
-                    actor_name, method_name = parts[2], parts[4]
-                    act = ws["actors"].get(actor_name)
+        if path.startswith("/api/actors/"):
+            parts = path[len("/api/actors/") :].split("/")
+            if len(parts) == 3 and parts[1] == "methods":
+                actor_name, method_name = parts[0], parts[2]
+                is_stream = query.get("stream") in ("1", "true", "True") or bool(
+                    body.get("stream", False)
+                )
+                with self.state.lock:
+                    self.state.check_ttls_locked()
+                    act = self.state.actors.get(actor_name)
                     if act is None:
                         self._send_json(
                             404,
                             {
                                 "ok": False,
-                                "not_found": True,
                                 "error": {
-                                    "exc_type": "ValueError",
+                                    "exc_type": "KeyError",
                                     "exc_message": f"Actor '{actor_name}' not found",
                                 },
                             },
                         )
                         return
-                    try:
-                        args = self._resolve_mock_refs(
-                            body.get("args") or [], ws["refs"]
-                        )
-                        kwargs = self._resolve_mock_refs(
-                            body.get("kwargs") or {}, ws["refs"]
-                        )
-                        fn = getattr(act["instance"], method_name)
-                        out = self._exec_in_workspace_env(ws, fn, args, kwargs)
-                        if body.get("stream"):
-                            self._send_ndjson_stream(out)
-                            return
-                        if not body.get("wait", True) or body.get("return_ref"):
-                            ref_id = f"ref_{uuid.uuid4().hex[:12]}"
-                            ws["refs"][ref_id] = {"value": out, "canceled": False}
-                            self._send_json(
-                                200, {"ok": True, "result": {"$ray_ref": ref_id}}
-                            )
-                            return
-                        self._send_json(200, {"ok": True, "result": out})
-                    except Exception as exc:
+                    act["active_calls"] = act.get("active_calls", 0) + 1
+                    act["last_active"] = time.monotonic()
+
+                try:
+                    args = body.get("args") or []
+                    kwargs = body.get("kwargs") or {}
+                    if body.get("payload_file") and act.get("work_dir") is not None:
+                        pf = act["work_dir"] / body["payload_file"]
+                        if pf.is_file():
+                            loaded = json.loads(pf.read_text(encoding="utf-8"))
+                            args = loaded.get("args", args)
+                            kwargs = loaded.get("kwargs", kwargs)
+
+                    if act["kind"] == "function":
+                        target_callable = act["fn"]
+                    else:
+                        target_callable = getattr(act["instance"], method_name)
+
+                    out = self._exec_in_actor_env(act, target_callable, args, kwargs)
+                    if is_stream or inspect.isgenerator(out):
+                        self._send_sse_stream(out, act["logs"])
+                        return
+                    self._send_json(200, {"ok": True, "result": out})
+                except SystemExit as exc:
+                    code = exc.code
+                    if code in (None, 0):
+                        self._send_json(200, {"ok": True, "result": None})
+                    else:
                         self._send_json(
                             200,
                             {
                                 "ok": False,
                                 "error": {
-                                    "exc_type": type(exc).__name__,
-                                    "exc_message": str(exc),
-                                    "traceback": traceback.format_exc(),
+                                    "exc_type": "SystemExit",
+                                    "exc_message": f"Process called sys.exit({code!r})",
+                                    "traceback": f"SystemExit: {code}\n",
                                 },
+                                "logs": "".join(act["logs"]),
                             },
                         )
-                    return
+                except Exception as exc:
+                    self._send_json(
+                        200,
+                        {
+                            "ok": False,
+                            "error": {
+                                "exc_type": type(exc).__name__,
+                                "exc_message": str(exc),
+                                "traceback": traceback.format_exc(),
+                            },
+                            "logs": "".join(act["logs"]),
+                        },
+                    )
+                finally:
+                    with self.state.lock:
+                        act["active_calls"] = max(0, act.get("active_calls", 1) - 1)
+                        act["last_active"] = time.monotonic()
+                return
+
         self._send_json(404, {"error": "unknown endpoint"})
 
 
@@ -773,18 +690,18 @@ class TestPackagingAndExtraction(unittest.TestCase):
         assigned_later = 1
 
         with self.assertRaisesRegex(RayClientError, "is a local path"):
-            RayClient(address="http://127.0.0.1:1")._prepare_runtime_env(
+            RayCluster(address="http://127.0.0.1:1")._prepare_runtime_env(
                 {"py_modules": ["./local_pkg"]}
             )
 
-        merged, _, excludes = RayClient(
+        merged, _, excludes = RayCluster(
             address="http://127.0.0.1:1", default_runtime_env={"excludes": ("*.log",)}
         )._prepare_runtime_env({"excludes": ["*.bin"]})
         self.assertEqual(excludes, ["*.log", "*.bin"])
         self.assertNotIn("excludes", merged)
 
         with self.assertRaisesRegex(TypeError, "excludes.* must be a list"):
-            RayClient(address="http://127.0.0.1:1")._prepare_runtime_env(
+            RayCluster(address="http://127.0.0.1:1")._prepare_runtime_env(
                 {"excludes": "*.log"}
             )
 
@@ -863,7 +780,7 @@ col0
         exec(compile(source.replace("import ray", "pass"), "<src>", "exec"), namespace)
         self.assertEqual(namespace[fn_name](None), expected)
 
-    def test_deterministic_working_dir_zip_and_permissions(self):
+    def test_deterministic_working_dir_zip_and_build_driver_package(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "keep.py").write_text("X = 1\n", encoding="utf-8")
@@ -893,6 +810,16 @@ col0
                     (zf.getinfo("keep.py").external_attr >> 16) & 0o777, 0o644
                 )
                 self.assertEqual(zf.getinfo("run.sh").create_system, 3)
+
+            drv_bytes, drv_uri, target_name, _, captured = build_driver_package(
+                top_level_fn, working_dir=root, excludes=["*.log", "data/big.bin"]
+            )
+            self.assertTrue(drv_uri.startswith("gcs://_ray_pkg_"))
+            self.assertEqual(target_name, "top_level_fn")
+            self.assertEqual(captured, {"GLOBAL_SCALE": 42})
+            with zipfile.ZipFile(io.BytesIO(drv_bytes)) as zf:
+                self.assertIn("_ray_client_user_fn.py", zf.namelist())
+                self.assertIn("keep.py", zf.namelist())
 
     def test_generator_allowance_shadowed_defaults_and_conditional_globals(self):
         def gen_fn():
@@ -1077,6 +1004,7 @@ col0
                 self.assertEqual(set(zf.namelist()), {"small.py"})
 
     def test_auth_headers_and_address_resolution(self):
+        self.assertIs(RayClient, RayCluster)
         env_overrides = {
             "RAY_AUTH_TOKEN": "env_secret_token",
             "RAY_ADDRESS": "10.0.0.5:8265",
@@ -1088,18 +1016,16 @@ col0
             os.environ.pop("RAY_API_SERVER_ADDRESS", None)
             os.environ.pop("RAY_AUTH_MODE", None)
             os.environ.pop("RAY_JOB_CONFIG_JSON_ENV_VAR", None)
-            c_default = RayClient()
+            c_default = RayCluster()
             self.assertEqual(c_default.address, "http://10.0.0.5:8265")
-            self.assertTrue(c_default.workspace.startswith("ws_"))
-            self.assertEqual(c_default.namespace, f"workspace:{c_default.workspace}")
             self.assertEqual(
                 c_default._headers["Authorization"], "Bearer env_secret_token"
             )
 
-            c_auto = RayClient(address="auto")
+            c_auto = RayCluster(address="auto")
             self.assertEqual(c_auto.address, "http://10.0.0.5:8265")
 
-            c_custom = RayClient(
+            c_custom = RayCluster(
                 address="HTTPS://127.0.0.1:8265/",
                 headers={"authorization": "Bearer custom_lower"},
             )
@@ -1128,25 +1054,16 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         self.server.server_close()
         self._tmp.cleanup()
 
-    def test_stateless_tasks_async_refs_and_task_streaming(self):
-        with RayClient(address=self.address) as client:
+    def test_run_driver_function_and_auto_stream(self):
+        with RayCluster(address=self.address) as cluster:
 
             def step(x: int) -> dict:
                 return {"doubled": x * 2}
 
-            self.assertEqual(client.run(step, 5), {"doubled": 10})
-            self.assertEqual(client.run(step, 21), {"doubled": 42})
-
-            # Non-blocking task (`wait=False`) returns RemoteRef
-            ref = client.run(step, 9, wait=False)
-            self.assertIsInstance(ref, RemoteRef)
-            self.assertTrue(ref.ready())
-            self.assertEqual(ref.get(), {"doubled": 18})
-            self.assertTrue(ref.delete())
-
-            # Return ref (`return_ref=True`) pins result in workspace
-            pinned = client.run(step, 7, return_ref=True)
-            self.assertEqual(pinned.get(), {"doubled": 14})
+            self.assertEqual(cluster.run(step, 5), {"doubled": 10})
+            self.assertEqual(cluster.run(step, 21), {"doubled": 42})
+            # Ephemeral driver actors are deleted in `finally`
+            self.assertEqual(cluster.list_actors(), [])
 
             async def async_step(msg: str) -> str:
                 return msg.upper()
@@ -1158,11 +1075,91 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     yield {"i": i, "sq": i * i}
 
             self.assertEqual(
-                list(stream(stream_numbers, 3, address=self.address)),
+                list(run(stream_numbers, 3, address=self.address)),
                 [{"i": 0, "sq": 0}, {"i": 1, "sq": 1}, {"i": 2, "sq": 4}],
             )
+            self.assertEqual(cluster.list_actors(), [])
 
-    def test_working_dir_upload_caching_and_gc_reupload(self):
+            # Early break on stream still deletes ephemeral driver actor
+            gen = cluster.run(stream_numbers, 10)
+            self.assertEqual(next(gen), {"i": 0, "sq": 0})
+            gen.close()
+            self.assertEqual(cluster.list_actors(), [])
+
+            # Closing or exiting a context manager on an un-advanced stream iterator
+            # still deletes the ephemeral driver actor and closes the HTTP response
+            unstarted = cluster.run(stream_numbers, 10)
+            unstarted.close()
+            self.assertEqual(cluster.list_actors(), [])
+
+            with run(stream_numbers, 10, address=self.address) as ctx_stream:
+                self.assertEqual(next(ctx_stream), {"i": 0, "sq": 0})
+            self.assertEqual(cluster.list_actors(), [])
+
+    def test_submit_job_lifecycle_caching_and_recovery(self):
+        with RayCluster(address=self.address) as cluster:
+            # 1. Blocking CLI job (`wait=True`)
+            job = cluster.submit_job(
+                "python train.py --epochs 5",
+                metadata={"team": "ml"},
+                wait=True,
+            )
+            self.assertIsInstance(job, JobResult)
+            self.assertEqual(job.status(), "SUCCEEDED")
+            self.assertTrue(job.done())
+            self.assertIn("ran: python train.py --epochs 5", job.logs())
+
+            # Terminal info and logs are cached
+            info_gets_before = self.state.job_info_gets
+            logs_gets_before = self.state.job_logs_gets
+            _ = job.status()
+            _ = job.logs()
+            self.assertEqual(self.state.job_info_gets, info_gets_before)
+            self.assertEqual(self.state.job_logs_gets, logs_gets_before)
+
+            # 2. Detached CLI job (`wait=False`) with partial log line buffering
+            with self.state.lock:
+                self.state.jobs["job_streaming_logs"] = {
+                    "submission_id": "job_streaming_logs",
+                    "entrypoint": "python eval.py",
+                    "status": "PENDING",
+                    "transitions": ["RUNNING", "RUNNING", "SUCCEEDED"],
+                    "logs": "",
+                    "log_chunks": ["step 1: ", "loss=0.5\nstep 2: loss=0.2\ntrailing"],
+                }
+            reattached = cluster.get_job("job_streaming_logs")
+            lines: List[str] = []
+            final_st = reattached.wait(on_log_line=lines.append)
+            self.assertEqual(final_st, "SUCCEEDED")
+            self.assertEqual(
+                lines, ["step 1: loss=0.5", "step 2: loss=0.2", "trailing"]
+            )
+
+            # 3. Stop and delete a running job
+            with self.state.lock:
+                self.state.jobs["job_to_stop"] = {
+                    "submission_id": "job_to_stop",
+                    "entrypoint": "python long.py",
+                    "status": "RUNNING",
+                    "logs": "",
+                }
+            running_job = cluster.get_job("job_to_stop")
+            with self.assertRaises(RayJobTimeoutError) as t_ctx:
+                running_job.wait(timeout=0.15)
+            self.assertIs(t_ctx.exception.job, running_job)
+            self.assertTrue(running_job.stop())
+            self.assertEqual(running_job.status(), "STOPPED")
+            self.assertTrue(running_job.delete())
+
+            # 4. Dropped POST /api/jobs/ response recovers via GET /api/jobs/{submission_id}
+            self.state.drop_next_job_post_response = True
+            recovered = cluster.submit_job(
+                "python idempotent.py", submission_id="sub_recover_1"
+            )
+            self.assertEqual(recovered.submission_id, "sub_recover_1")
+            self.assertGreaterEqual(len(cluster.list_jobs()), 1)
+
+    def test_working_dir_upload_caching_and_large_payload(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "helper_mod.py").write_text(
                 "VAL = 123\n"
@@ -1190,48 +1187,58 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 assert not os.path.exists("big.bin")
                 return helper_mod.VAL
 
-            with RayClient(
+            with RayCluster(
                 address=self.address, default_runtime_env=user_runtime_env
-            ) as client:
-                self.assertEqual(client.run(read_helper), 123)
-                # Also verify module-path string entrypoints for tasks and actors:
-                self.assertEqual(client.run("helper_mod:get_val", 2), 246)
-                h_actor = client.actor("helper_mod:HelperActor", 10, name="h_act")
+            ) as cluster:
+                self.assertEqual(cluster.run(read_helper), 123)
+                self.assertEqual(cluster.run("helper_mod:get_val", 2), 246)
+                h_actor = cluster.actor("helper_mod:HelperActor", 10, name="h_act")
                 self.assertEqual(h_actor.compute(5), 138)
+                # working_dir was already uploaded by cluster.run(read_helper), so h_actor hits the cache:
+                self.assertFalse(h_actor.package_uploaded)
+                h_actor.kill()
                 self.assertEqual(user_runtime_env, snapshot)
                 self.assertEqual(len(self.state.packages), 1)
 
-                # Simulate cluster GCS package expiration: new workspace re-uploads cleanly
+                # Large (>32 KiB) argument payload is shipped via py_modules archive
+                big_text = "x" * (40 * 1024)
+
+                def echo_len(s: str) -> int:
+                    return len(s)
+
+                self.assertEqual(cluster.run(echo_len, big_text), 40 * 1024)
+
+                # Simulate cluster GCS package expiration: next call re-uploads cleanly
                 with self.state.lock:
                     self.state.packages.clear()
 
-            with RayClient(
+            with RayCluster(
                 address=self.address, default_runtime_env=user_runtime_env
-            ) as client2:
-                self.assertEqual(client2.run(read_helper), 123)
+            ) as cluster2:
+                self.assertEqual(cluster2.run(read_helper), 123)
                 self.assertEqual(len(self.state.packages), 1)
 
     def test_thread_safe_concurrent_submissions(self):
-        with RayClient(address=self.address) as client:
+        with RayCluster(address=self.address) as cluster:
 
             def square(n: int) -> int:
                 return n * n
 
             with ThreadPoolExecutor(max_workers=4) as pool:
                 futures = [
-                    pool.submit(lambda v=i: client.run(square, v)) for i in range(8)
+                    pool.submit(lambda v=i: cluster.run(square, v)) for i in range(8)
                 ]
                 results = [f.result() for f in futures]
             self.assertEqual(results, [i * i for i in range(8)])
 
     def test_remote_exception_and_sys_exit_propagate_cleanly(self):
-        with RayClient(address=self.address) as client:
+        with RayCluster(address=self.address) as cluster:
 
             def failing_task():
                 raise ValueError("invalid shard configuration")
 
-            with self.assertRaises(RayExecutionError) as ctx:
-                client.run(failing_task)
+            with self.assertRaises(RayJobExecutionError) as ctx:
+                cluster.run(failing_task)
             self.assertEqual(ctx.exception.exc_type, "ValueError")
             self.assertIn("invalid shard configuration", str(ctx.exception))
             restored = pickle.loads(pickle.dumps(ctx.exception))
@@ -1242,8 +1249,8 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
                 _sys.exit(2)
 
-            with self.assertRaises(RayExecutionError) as exit_ctx:
-                client.run(exiting_task)
+            with self.assertRaises(RayJobExecutionError) as exit_ctx:
+                cluster.run(exiting_task)
             self.assertEqual(exit_ctx.exception.exc_type, "SystemExit")
 
             def clean_exit_task():
@@ -1251,32 +1258,32 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
                 _sys.exit(0)
 
-            self.assertIsNone(client.run(clean_exit_task))
+            self.assertIsNone(cluster.run(clean_exit_task))
 
     def test_retries_transient_503_rejects_ray_scheme_and_non_json_bodies(self):
         with self.assertRaises(RayClientError):
-            RayClient(address="ray://127.0.0.1:10001")
+            RayCluster(address="ray://127.0.0.1:10001")
 
         self.state.fail_next_requests = 2
-        with RayClient(address=self.address) as client:
-            self.assertEqual(client.list_workspaces(), [])
+        with RayCluster(address=self.address) as cluster:
+            self.assertEqual(cluster.list_actors(), [])
 
             def ok_fn() -> int:
                 return 7
 
-            self.assertEqual(client.run(ok_fn), 7)
+            self.assertEqual(cluster.run(ok_fn), 7)
 
         html_server = ThreadingHTTPServer(("127.0.0.1", 0), _HtmlLoginPageHandler)
         threading.Thread(target=html_server.serve_forever, daemon=True).start()
         try:
             html_address = f"http://127.0.0.1:{html_server.server_address[1]}"
             with self.assertRaisesRegex(RayClientError, "non-JSON response"):
-                RayClient(address=html_address).list_workspaces()
+                RayCluster(address=html_address).list_actors()
         finally:
             html_server.shutdown()
             html_server.server_close()
 
-    def test_live_actors_remote_refs_and_workspace_ttl(self):
+    def test_stateful_actors_streaming_logs_and_idle_ttl(self):
         offset = 5
 
         class Accumulator:
@@ -1300,57 +1307,325 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         self.assertIn("class Accumulator", mod_src)
         self.assertEqual(captured, {"GLOBAL_SCALE": 42, "offset": 5})
 
-        c1 = RayClient(address=self.address, workspace="ws_a", ttl_seconds=60.0)
-        c2 = RayClient(address=self.address, workspace="ws_b", ttl_seconds=60.0)
-        self.assertEqual(c1.workspace, "ws_a")
-        self.assertEqual(c1.namespace, "workspace:ws_a")
-
-        a1 = c1.actor(Accumulator, 10, name="acc")
-        a2 = c2.actor(Accumulator, 100, name="acc")
-        self.assertIsInstance(a1, ActorProxy)
+        cluster = RayCluster(address=self.address)
+        a1 = cluster.actor(Accumulator, 10, name="acc_a", ttl_seconds=60.0)
+        a2 = cluster.actor(Accumulator, 100, name="acc_b", ttl_seconds=60.0)
+        self.assertIsInstance(a1, ActorHandle)
         self.assertTrue(a1.created)
 
-        # Reattaching to existing actor in ws_a
-        a1_re = c1.get_actor("acc")
+        # Reattaching to existing actor
+        a1_re = cluster.get_actor("acc_a")
         self.assertFalse(a1_re.created)
-        self.assertEqual(len(c1.list_actors()), 1)
+        self.assertEqual(len(cluster.list_actors()), 2)
 
-        # In-cluster $ray_ref chaining between cell 1 and cell 2
-        batch_ref = a1.make_batch.ref(3)
-        self.assertIsInstance(batch_ref, RemoteRef)
-        self.assertEqual(batch_ref.get(), [15, 16, 17])
-
-        summary_a = a1_re.summarize(batch_ref, tag="a")
+        batch_a = a1.make_batch(3)
+        self.assertEqual(batch_a, [15, 16, 17])
+        summary_a = a1_re.summarize(batch_a, tag="a")
         self.assertEqual(summary_a, {"tag": "a", "sum": 48, "scale": 42})
 
-        # Pass actor-created $ray_ref into a stateless workspace task (`c1.run`)
-        def count_items(items: list) -> int:
-            return len(items)
-
-        self.assertEqual(c1.run(count_items, batch_ref), 3)
-        self.assertTrue(batch_ref.delete())
-
-        # Tenant B is isolated from Tenant A
-        batch_ref_b = a2.make_batch.remote(2)
-        summary_b = a2.summarize(batch_ref_b, tag="b")
+        batch_b = a2.make_batch(2)
+        summary_b = a2.summarize(batch_b, tag="b")
         self.assertEqual(summary_b, {"tag": "b", "sum": 211, "scale": 42})
 
-        # Stream method on actor
-        chunks = list(a1.stream_items.stream(2))
+        # Generator method on actor automatically streams over SSE
+        chunks = list(a1.stream_items(2))
         self.assertEqual(chunks, [{"idx": 0, "val": 15}, {"idx": 1, "val": 16}])
+        self.assertEqual(a1.logs(), "")
 
         self.assertTrue(a1.kill())
-        self.assertTrue(c1.close_workspace())
-        self.assertTrue(c2.close_workspace())
+        self.assertTrue(a2.kill())
 
-        # Disconnect TTL cleanup test
-        c_ttl = RayClient(address=self.address, workspace="ws_ttl", ttl_seconds=0.15)
-        c_ttl.actor(Accumulator, 1, name="short_lived")
-        self.assertEqual(c_ttl.workspace_info()["workspace"], "ws_ttl")
-        time.sleep(0.25)
-        with RayClient(address=self.address) as probe:
-            active = [w["workspace"] for w in probe.list_workspaces()]
-        self.assertNotIn("ws_ttl", active)
+        # Idle TTL cleanup test (only reaps when active_calls == 0)
+        short_actor = cluster.actor(
+            Accumulator, 1, name="short_lived", ttl_seconds=0.15
+        )
+        self.assertEqual(short_actor.info()["name"], "short_lived")
+        with self.state.lock:
+            self.state.actors["short_lived"]["active_calls"] = 1
+        time.sleep(0.22)
+        # Paused while active_calls > 0
+        self.assertIn("short_lived", [a["name"] for a in cluster.list_actors()])
+        with self.state.lock:
+            self.state.actors["short_lived"]["active_calls"] = 0
+            self.state.actors["short_lived"]["last_active"] = time.monotonic() - 1.0
+        self.assertNotIn("short_lived", [a["name"] for a in cluster.list_actors()])
+        cluster.close()
+
+    def test_annotations_notebook_classes_defaults_and_actor_options(self):
+        import datetime
+        import linecache
+        import typing
+        from os import path as osp
+
+        from ray.dashboard.modules.job.actor_manager import (
+            _ClientRootActor,
+            _load_user_target,
+            _LogTeeStream,
+            _validate_ttl_seconds,
+        )
+
+        # 1. P6: Dotted annotations (datetime.date), callable annotations, get_type_hints, and os.path
+        class _LocalPkg:
+            class Sub:
+                def __class_getitem__(cls, item: Any) -> Any:
+                    return cls
+
+        def _local_validator(**kw: Any) -> Any:
+            return kw
+
+        def annotated_fn(
+            d: datetime.date,
+            items: List[int],
+            meta: Optional[Dict[str, int]] = None,
+            custom: _LocalPkg.Sub[int] | None = None,
+            validated: typing.Annotated[int, _local_validator(gt=0)] = 1,
+        ) -> str:
+            hints = typing.get_type_hints(annotated_fn)
+            assert hints["d"] is datetime.date
+            return osp.join("a", "b")
+
+        fn_name, mod_src, captured = packaging.extract_function(annotated_fn)
+        self.assertEqual(captured, {})
+        self.assertIn("from os import path as osp", mod_src)
+        self.assertIn("import datetime", mod_src)
+        loaded_fn = _load_user_target("test_act", fn_name, mod_src, None, captured)
+        self.assertEqual(loaded_fn(datetime.date(2026, 1, 1), [1, 2]), "a/b")
+
+        # 2. P7 & D9: Simulated IPython notebook cell class extraction (no __main__.__file__)
+        cell_filename = "<ipython-input-99-notebookcell>"
+        cell_source = (
+            "# line 1\n"
+            "# line 2\n"
+            "class NotebookTrainer:\n"
+            "    def __init__(self, base: int = 5):\n"
+            "        self.base = base + GLOBAL_SCALE\n"
+            "    def step(self, x: int) -> int:\n"
+            "        return inspect.currentframe().f_lineno\n"
+        )
+        linecache.cache[cell_filename] = (
+            len(cell_source),
+            None,
+            cell_source.splitlines(keepends=True),
+            cell_filename,
+        )
+        main_mod = sys.modules["__main__"]
+        had_main_file = hasattr(main_mod, "__file__")
+        old_main_file = getattr(main_mod, "__file__", None)
+        try:
+            if had_main_file:
+                delattr(main_mod, "__file__")
+            cell_ns: Dict[str, Any] = {
+                "__name__": "__main__",
+                "GLOBAL_SCALE": GLOBAL_SCALE,
+                "inspect": inspect,
+            }
+            exec(compile(cell_source, cell_filename, "exec"), cell_ns)
+            nb_cls = cell_ns["NotebookTrainer"]
+            cls_name, cls_src, cls_captured = packaging.extract_class(nb_cls)
+            self.assertEqual(cls_name, "NotebookTrainer")
+            self.assertEqual(cls_captured, {"GLOBAL_SCALE": 42})
+            loaded_cls = _load_user_target(
+                "test_nb", cls_name, cls_src, None, cls_captured
+            )
+            inst = loaded_cls()
+            self.assertEqual(inst.base, 47)
+            # Line number of `return inspect.currentframe().f_lineno` in cell_source is line 7
+            self.assertEqual(inst.step(1), 7)
+        finally:
+            linecache.cache.pop(cell_filename, None)
+            if had_main_file:
+                main_mod.__file__ = old_main_file
+
+        # 3. P8: Non-JSON and dynamic call default arguments are NOT forced through client JSON
+        def fn_with_non_json_defaults(
+            x: int,
+            shape: Tuple[int, int] = (224, 224),
+            cb: Any = print,
+            nan_v: float = float("nan"),
+            ts: float = time.time(),
+        ) -> dict:
+            return {
+                "x": x,
+                "shape": list(shape),
+                "is_print": cb is print,
+                "is_nan": nan_v != nan_v,
+                "has_ts": ts > 0,
+            }
+
+        def nested_dynamic_default_maker():
+            def fn_dyn(x: int, ts: float = time.time()) -> bool:
+                return x > 0 and ts > 0
+
+            return fn_dyn
+
+        dyn_fn = nested_dynamic_default_maker()
+        # Extracting source must NOT fail on dynamic call defaults like `time.time()`
+        _, dyn_src, _ = extract_function_source_and_globals(dyn_fn)
+        self.assertIn("import time", dyn_src)
+
+        with RayCluster(address=self.address) as cluster:
+            res = cluster.run(fn_with_non_json_defaults, 7)
+            self.assertEqual(
+                res,
+                {
+                    "x": 7,
+                    "shape": [224, 224],
+                    "is_print": True,
+                    "is_nan": True,
+                    "has_ts": True,
+                },
+            )
+
+            # 4. P14: Class body referencing enclosing function scope fails locally
+            def make_bad_class():
+                enclosing_secret = 99
+
+                class BadActor:
+                    val = enclosing_secret
+
+                    def get(self) -> int:
+                        return self.val
+
+                return BadActor
+
+            with self.assertRaisesRegex(
+                RayClientSerializationError, "enclosing function or class scope"
+            ):
+                extract_class_source_and_globals(make_bad_class())
+
+            # Class descriptors (@property, @classmethod, @staticmethod) capture closures properly
+            closure_bonus = 11
+
+            class DescriptorActor:
+                def __init__(self, v: int, tup: Tuple[int, int] = (1, 2)):
+                    self._v = v + sum(tup)
+
+                @property
+                def prop_val(self) -> int:
+                    return self._v + closure_bonus
+
+                @staticmethod
+                def static_val() -> int:
+                    return closure_bonus * 2
+
+                def read_all(self) -> dict:
+                    return {"prop": self.prop_val, "static": self.static_val()}
+
+            d_act = cluster.actor(DescriptorActor, 10, name="desc_act")
+            self.assertEqual(d_act.read_all(), {"prop": 24, "static": 22})
+            d_act.kill()
+
+            # 5. P9 & P15: @ray.remote options inheritance and ttl_seconds=None preserved
+            import ray
+
+            @ray.remote(num_cpus=2, num_gpus=1, max_concurrency=4)
+            class DecoratedActor:
+                def ping(self) -> str:
+                    return "pong"
+
+            dec_handle = cluster.actor(DecoratedActor, name="dec_act", ttl_seconds=None)
+            self.assertEqual(dec_handle.ping(), "pong")
+            self.assertIsNone(dec_handle.info()["ttl_seconds"])
+            dec_handle.kill()
+
+            # 6. P11 & P19: Eager argument validation, _ActorMethodProxy.call(timeout=...) on generator, cyclic JSON
+            def gen_with_defaults(x: int):
+                yield {"x": x}
+
+            with self.assertRaises(RayClientSerializationError):
+                # Must fail eagerly on cluster.run() call without calling next()
+                cluster.run(gen_with_defaults, (1, 2))
+
+            cyc_list: List[Any] = []
+            cyc_list.append(cyc_list)
+            with self.assertRaisesRegex(
+                RayClientSerializationError, "circular reference"
+            ):
+                cluster.run(fn_with_non_json_defaults, cyc_list)
+
+            class Streamer:
+                def gen(self, count: int, step: int = 1):
+                    for i in range(count):
+                        yield {"v": i * step}
+
+            st_act = cluster.actor(Streamer, name="st_act")
+            # `timeout=` on proxy `.call()` must not leak into remote `kwargs`
+            items = list(st_act.gen.call(3, step=2, timeout=5.0))
+            self.assertEqual(items, [{"v": 0}, {"v": 2}, {"v": 4}])
+            st_act.kill()
+
+            # 7. P16: User-raised TimeoutError raises RayJobExecutionError (not RayJobTimeoutError)
+            def raises_user_timeout():
+                raise TimeoutError("downstream socket timed out")
+
+            with self.assertRaises(RayJobExecutionError) as ut_ctx:
+                cluster.run(raises_user_timeout)
+            self.assertEqual(ut_ctx.exception.exc_type, "TimeoutError")
+            self.assertIn("downstream socket timed out", str(ut_ctx.exception))
+
+            # 8. KubeRay resource management methods route to /api/cluster/worker_groups
+            with self.assertRaises(RayClientError):
+                cluster.scale_worker_group("gpu-group", replicas=2)
+            with self.assertRaises(RayClientError):
+                cluster.add_worker_group(
+                    "tpu-workers", replicas=2, resources={"TPU": 4}
+                )
+
+        # 9. P10, P12, P16: Direct unit tests for _LogTeeStream, _validate_ttl_seconds, _ClientRootActor
+        for bad_ttl in (-1.0, float("nan"), float("inf"), True):
+            with self.assertRaises(ValueError):
+                _validate_ttl_seconds(bad_ttl)
+        self.assertIsNone(_validate_ttl_seconds(None))
+        self.assertEqual(_validate_ttl_seconds(0), 0.0)
+
+        from collections import deque
+
+        buf: deque = deque()
+        tee = _LogTeeStream(sys.__stdout__, buf, threading.Lock())
+        self.assertTrue(tee.writable())
+        self.assertIsInstance(tee.encoding, str)
+        tee.write("0123456789abcdef")
+        self.assertEqual("".join(buf), "0123456789abcdef")
+
+        # Verify _ClientRootActor catches SystemExit in async methods and generators without crashing,
+        # and does not evaluate @property getters when scanning for generator methods during __init__
+        async_src = (
+            "class AsyncExitActor:\n"
+            "    @property\n"
+            "    def boom_prop(self):\n"
+            "        raise RuntimeError('property getter should not run during __init__')\n"
+            "    async def exit_zero(self):\n"
+            "        raise SystemExit(0)\n"
+            "    async def exit_nonzero(self):\n"
+            "        raise SystemExit(3)\n"
+            "    def gen_exit(self):\n"
+            "        yield {'step': 1}\n"
+            "        raise SystemExit(4)\n"
+        )
+        root_act = _ClientRootActor(
+            {
+                "name": "test_root_exit",
+                "kind": "class",
+                "class_name": "AsyncExitActor",
+                "module_source": async_src,
+                "ttl_seconds": None,
+            }
+        )
+        try:
+            self.assertIn("gen_exit", root_act._generator_methods)
+            self.assertNotIn("boom_prop", root_act._generator_methods)
+            res_zero = root_act.invoke("exit_zero", [], {})
+            self.assertEqual(res_zero, {"ok": True, "result": None})
+            res_nonzero = root_act.invoke("exit_nonzero", [], {})
+            self.assertFalse(res_nonzero["ok"])
+            self.assertEqual(res_nonzero["error"]["exc_type"], "SystemExit")
+
+            gen_frames = list(root_act.invoke_stream("gen_exit", [], {}, "s1"))
+            self.assertEqual(gen_frames[0], {"ok": True, "item": {"step": 1}})
+            self.assertFalse(gen_frames[1]["ok"])
+            self.assertEqual(gen_frames[1]["error"]["exc_type"], "SystemExit")
+        finally:
+            root_act.shutdown()
 
 
 if __name__ == "__main__":
