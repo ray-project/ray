@@ -812,6 +812,18 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
         assert owners[mountpoint] == (0, 0)
 
 
+def test_erofs_superblock_fingerprint(tmp_path):
+    image = tmp_path / "rootfs.erofs"
+    image.write_bytes(b"\0" * 1024 + b"A" * 128 + b"B" * 100)
+    first = image_utils.erofs_superblock_fingerprint(str(image))
+    # Bytes outside the superblock don't count.
+    image.write_bytes(b"\1" * 1024 + b"A" * 128 + b"C" * 100)
+    assert image_utils.erofs_superblock_fingerprint(str(image)) == first
+    image.write_bytes(b"\0" * 1024 + b"A" * 127 + b"X")
+    assert image_utils.erofs_superblock_fingerprint(str(image)) != first
+    assert image_utils.erofs_superblock_fingerprint(str(tmp_path / "none")) is None
+
+
 def test_resolve_in_root(tmp_path):
     """Paths resolve with the tree as ``/``: an absolute link target restarts
     at the root, ``..`` never climbs above it, missing components pass

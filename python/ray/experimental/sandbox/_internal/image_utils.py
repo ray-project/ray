@@ -634,6 +634,35 @@ def mkfs_erofs_path() -> Optional[str]:
     return path
 
 
+# EROFS keeps its superblock at this offset, in this many bytes.
+_EROFS_SUPERBLOCK_OFFSET = 1024
+_EROFS_SUPERBLOCK_SIZE = 128
+
+
+def erofs_superblock_fingerprint(image_path: str) -> Optional[str]:
+    """SHA-256 of an EROFS image's superblock, or None if it can't be read.
+
+    gVisor refuses to restore a checkpoint over an EROFS root filesystem
+    whose superblock differs in any field from the one it was saved with
+    (it panics with "superblock mismatch detected on restore"), so two
+    builds of an image are interchangeable for restore exactly when their
+    fingerprints match.
+
+    Args:
+        image_path: Path of the EROFS image.
+
+    Returns:
+        The hex digest, or None if the image can't be read.
+    """
+    try:
+        with open(image_path, "rb") as f:
+            f.seek(_EROFS_SUPERBLOCK_OFFSET)
+            superblock = f.read(_EROFS_SUPERBLOCK_SIZE)
+    except OSError:
+        return None
+    return hashlib.sha256(superblock).hexdigest()
+
+
 def require_mkfs_erofs() -> str:
     """``mkfs_erofs_path()``, or a ``SandboxCreationError`` naming what to install."""
     path = mkfs_erofs_path()
