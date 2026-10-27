@@ -393,8 +393,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const NodeID &node_id);
 
-  /// Retry RemovePlacementGroupBundles after a delay, unless a newer scheduling
-  /// attempt for the placement group has since committed the bundles on this node.
+  /// Retry RemovePlacementGroupBundles after a delay. Waits while a newer scheduling
+  /// attempt for the placement group is in flight, then skips bundles it committed
+  /// on this node.
+  ///
+  /// \param placement_group_id The placement group whose bundles are being removed.
+  /// \param bundle_specs Bundles whose removal failed with a retryable status.
+  /// \param node_id The node that the bundles are being removed from.
   void RetryRemovePlacementGroupBundlesLater(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
