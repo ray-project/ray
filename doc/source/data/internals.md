@@ -316,11 +316,11 @@ Each batch is prepared, processed, and finalized before the user thread receives
 :widths: 15 45 40
 
 * - Step
-  - Pipeline stages it covers (in order)
+  - Pipeline stages, in order
   - Where it runs
 * - prepare
   - production wait, data transfer, batching
-  - Guarded by a lock, so only one worker thread runs it at a time.
+  - Worker threads, one at a time, because a lock guards this step.
 * - process
   - format, collate
   - Worker threads, in parallel.
