@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import hashlib
 import logging
 import math
@@ -48,6 +49,8 @@ LIFECYCLE_HOOKS = frozenset(
 )
 
 
+# KVAwareRouter maps every candidate replica on every request, so cache the hash.
+@functools.lru_cache(maxsize=1 << 16)
 def get_worker_id(replica_unique_id: str) -> int:
     """Deterministically derive a Dynamo worker id from a replica's unique id."""
     return int.from_bytes(
@@ -245,8 +248,9 @@ class KVTokenTracker:
 
     async def _forward_session_bindings(self) -> None:
         # One consumer per service; the forwarder fans out to peer ingress replicas.
-        async for binding in self._svc.session_binding_updates():
-            self._replica_forwarder.report("session_affinity", binding)
+        async for bindings in self._svc.session_binding_updates():
+            for binding in bindings:
+                self._replica_forwarder.report("session_affinity", binding)
 
     async def on_replica_updates(
         self, source_writer_id: int, updates: List[Dict[str, Any]]
@@ -268,40 +272,51 @@ class KVTokenTracker:
                 batches.append(self._replica_updates.get_nowait())
             try:
                 await self._evict_stale_requests()
+                bookings = []
                 for update in [update for batch in batches for update in batch]:
-                    # A failed booking must not drop the session affinity
-                    # bindings batched with it.
-                    try:
-                        await self._apply_update(update)
-                    except Exception:
-                        logger.exception(
-                            "Failed to apply selection service peer update."
-                        )
+                    if update["kind"] == "session_affinity":
+                        self._apply_session_binding(update["event"])
+                    else:
+                        bookings.append(update["event"])
+                # Book the round's reservations together: awaiting one at a time
+                # costs an event-loop round trip per booking, so under load this
+                # replica falls behind its peers and skips bookings whose requests
+                # completed in the meantime.
+                await asyncio.gather(*map(self._apply_reservation, bookings))
             except Exception:
                 logger.exception("Failed to apply selection service peer updates.")
             finally:
                 for _ in batches:
                     self._replica_updates.task_done()
 
-    async def _apply_update(self, update: Dict[str, Any]) -> None:
-        if update["kind"] == "session_affinity":
-            await self._svc.apply_session_binding(update["event"])
-            return
-        booking = update["event"]
-        request_id = booking["selection_id"]
-        if request_id in self._requests or request_id in self._completed_request_ids:
-            return
-        await self._svc.create_reservation(booking)
-        # Completion can arrive while Dynamo is admitting the mirrored load.
-        if request_id in self._completed_request_ids:
-            await self._svc.free_reservation(request_id)
-            return
-        self._track_request_state(
-            request_id,
-            booking["worker_id"],
-            booking["isl_tokens"],
-            booking["expected_output_tokens"],
-        )
+    def _apply_session_binding(self, binding: Dict[str, Any]) -> None:
+        try:
+            self._svc.apply_session_binding(binding)
+        except Exception:
+            logger.exception("Failed to apply a peer session affinity binding.")
+
+    async def _apply_reservation(self, booking: Dict[str, Any]) -> None:
+        # A failed booking must not fail the rest of the round.
+        try:
+            request_id = booking["selection_id"]
+            if (
+                request_id in self._requests
+                or request_id in self._completed_request_ids
+            ):
+                return
+            await self._svc.create_reservation(booking)
+            # Completion can arrive while Dynamo is admitting the mirrored load.
+            if request_id in self._completed_request_ids:
+                await self._svc.free_reservation(request_id)
+                return
+            self._track_request_state(
+                request_id,
+                booking["worker_id"],
+                booking["isl_tokens"],
+                booking["expected_output_tokens"],
+            )
+        except Exception:
+            logger.exception("Failed to apply a peer load reservation.")
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""

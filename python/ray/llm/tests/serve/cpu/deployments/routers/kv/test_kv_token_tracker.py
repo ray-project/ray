@@ -448,7 +448,7 @@ async def test_binding_survives_failed_booking():
         await peer.select_worker(
             "next-turn", _turn(2), [_WORKER_ID], 32, session_id=_SESSION
         )
-        assert await anext(peer_bindings) == updates["session_affinity"]["event"]
+        assert await anext(peer_bindings) == [updates["session_affinity"]["event"]]
     finally:
         for tracker in (routing, peer):
             tracker.stop_replica_broadcast()
@@ -522,6 +522,43 @@ async def test_session_pinning_disabled():
         )
         assert second["worker_id"] == _other(worker_ids, bound)
     finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+@pytest.mark.asyncio
+async def test_session_bindings_forwarded_without_drops():
+    """Every session binding reaches the peer broadcast under selection bursts,
+    which overflow Dynamo's 4,096-slot queue if read one binding at a time."""
+    pytest.importorskip("dynamo.llm")
+    tracker = _NoLongPollTracker()
+    worker_ids = await _register_workers(tracker, ["engine-replica-0"])
+    handle = _TrackerBroadcastHandle()
+    tracker.start_replica_broadcast(handle)
+    bursts, per_burst = 8, 1000
+    expected = bursts * per_burst
+    try:
+        for burst in range(bursts):
+            await asyncio.gather(
+                *(
+                    tracker.select_worker(
+                        f"req-{burst}-{i}",
+                        _turn(1),
+                        worker_ids,
+                        32,
+                        session_id=f"session-{burst}-{i}",
+                    )
+                    for i in range(per_burst)
+                )
+            )
+
+        def all_forwarded():
+            forwarded = sum(u["kind"] == "session_affinity" for u in handle.updates)
+            assert forwarded == expected, f"{forwarded}/{expected} bindings forwarded"
+            return True
+
+        await async_wait_for_condition(all_forwarded, timeout=10)
+    finally:
+        tracker.stop_replica_broadcast()
         await _delete_workers(tracker, worker_ids)
 
 
