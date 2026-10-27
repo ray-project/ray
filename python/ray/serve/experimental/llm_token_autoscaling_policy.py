@@ -72,15 +72,13 @@ def _time_weighted_mean(
 class LLMTokenAutoscalingPolicy:
     """Scale an aggregated LLM deployment from router-owned work snapshots.
 
-    Scale-up recommendations are aggregated over a short lookback so bursty
-    token load remains visible long enough for ``upscale_delay_s`` to elapse.
-    Router replicas report the same global snapshot, so recommendations are
-    maximized across reporters rather than summed.
+    Both directions follow the time-weighted mean of required capacity over
+    ``upscale_lookback_s``. Router replicas report the same global snapshot, so
+    per-reporter means are maximized rather than summed. Asymmetry comes from
+    Serve's ``upscale_delay_s`` and ``downscale_delay_s``.
 
-    Scale-down is deliberately asymmetric. At most one replica is proposed for
-    removal, and only when the latest snapshot would leave both prefill and
-    decode utilization below ``scale_down_sensitivity`` on the survivors.
-    Serve's existing ``downscale_delay_s`` is then applied to that proposal.
+    ``upscale_aggregation`` and ``scale_down_sensitivity`` are validated but
+    unused while the asymmetric rule below is commented out.
     """
 
     def __init__(
@@ -118,10 +116,11 @@ class LLMTokenAutoscalingPolicy:
             max(0, decode) / self._target_decode_requests_per_replica,
         )
 
-    def _aggregate_upscale_capacity(
+    def _aggregate_capacity(
         self,
         snapshots_by_source: Dict[str, List[_Snapshot]],
         now: float,
+        aggregation: _UpscaleAggregation,
     ) -> float:
         window_start = now - self._upscale_lookback_s
         capacity_by_source = []
@@ -135,7 +134,7 @@ class LLMTokenAutoscalingPolicy:
             ]
             if not samples:
                 continue
-            if self._upscale_aggregation == "max":
+            if aggregation == "max":
                 capacity_by_source.append(max(value for _, value in samples))
             else:
                 # Metrics are gauges. Carry the last observation before the
@@ -174,86 +173,112 @@ class LLMTokenAutoscalingPolicy:
             # No complete observation in the scale-up window is also fail-closed.
             return ctx.target_num_replicas, {}
 
-        aggregated_capacity = self._aggregate_upscale_capacity(snapshots_by_source, now)
-        upscale_required_replicas = math.ceil(aggregated_capacity)
+        # Symmetric rule: scale up and down to the lookback mean.
+        required_replicas = math.ceil(
+            self._aggregate_capacity(snapshots_by_source, now, "mean")
+        )
         if ctx.total_queued_requests > 0:
-            upscale_required_replicas = max(1, upscale_required_replicas)
+            required_replicas = max(1, required_replicas)
 
         latest_snapshots = [snapshots[-1] for snapshots in snapshots_by_source.values()]
-        outstanding_prefill_tokens = max(
-            max(0, prefill) for _, prefill, _ in latest_snapshots
-        )
-        active_decode_requests = max(
-            max(0, decode) for _, _, decode in latest_snapshots
-        )
-        prefill_required_replicas = math.ceil(
-            outstanding_prefill_tokens / self._target_prefill_tokens_per_replica
-        )
-        decode_required_replicas = math.ceil(
-            active_decode_requests / self._target_decode_requests_per_replica
-        )
         state: Dict[str, Any] = {
-            OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: outstanding_prefill_tokens,
-            ACTIVE_DECODE_REQUESTS: active_decode_requests,
-            "prefill_required_replicas": prefill_required_replicas,
-            "decode_required_replicas": decode_required_replicas,
-            "upscale_required_replicas": upscale_required_replicas,
-            "upscale_aggregation": self._upscale_aggregation,
-            "upscale_lookback_s": self._upscale_lookback_s,
-            "scale_down_sensitivity": self._scale_down_sensitivity,
+            OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: max(
+                max(0, prefill) for _, prefill, _ in latest_snapshots
+            ),
+            ACTIVE_DECODE_REQUESTS: max(
+                max(0, decode) for _, _, decode in latest_snapshots
+            ),
+            "required_replicas": required_replicas,
+            "lookback_s": self._upscale_lookback_s,
         }
+        return required_replicas, state
 
-        target = ctx.target_num_replicas
-        if upscale_required_replicas > target:
-            return upscale_required_replicas, state
-        if upscale_required_replicas == target:
-            return target, state
-
-        # Scaling from one to zero is safe only with an entirely idle latest
-        # snapshot. Serve applies downscale_to_zero_delay_s after this proposal.
-        if target == 1:
-            idle = ctx.total_queued_requests <= 0 and all(
-                prefill <= 0 and decode <= 0 for _, prefill, decode in latest_snapshots
-            )
-            state["scale_down_blocked"] = not idle
-            return (0 if idle else 1), state
-        if target <= 0:
-            return target, state
-
-        candidate = target - 1
-        projected_prefill_utilization = max(
-            max(0, prefill) / (candidate * self._target_prefill_tokens_per_replica)
-            for _, prefill, _ in latest_snapshots
-        )
-        projected_decode_utilization = max(
-            max(0, decode) / (candidate * self._target_decode_requests_per_replica)
-            for _, _, decode in latest_snapshots
-        )
-        prefill_below_sensitivity = (
-            projected_prefill_utilization < self._scale_down_sensitivity
-            and not math.isclose(
-                projected_prefill_utilization,
-                self._scale_down_sensitivity,
-                rel_tol=1e-12,
-                abs_tol=1e-12,
-            )
-        )
-        decode_below_sensitivity = (
-            projected_decode_utilization < self._scale_down_sensitivity
-            and not math.isclose(
-                projected_decode_utilization,
-                self._scale_down_sensitivity,
-                rel_tol=1e-12,
-                abs_tol=1e-12,
-            )
-        )
-        scale_down_safe = prefill_below_sensitivity and decode_below_sensitivity
-        state.update(
-            {
-                "scale_down_candidate_replicas": candidate,
-                "projected_prefill_utilization": projected_prefill_utilization,
-                "projected_decode_utilization": projected_decode_utilization,
-                "scale_down_blocked": not scale_down_safe,
-            }
-        )
-        return (candidate if scale_down_safe else target), state
+        # Asymmetric rule (disabled): aggregate scale-up with
+        # upscale_aggregation, and scale down at most one replica only when the
+        # latest snapshot leaves survivors below scale_down_sensitivity.
+        #
+        # aggregated_capacity = self._aggregate_capacity(
+        #     snapshots_by_source, now, self._upscale_aggregation
+        # )
+        # upscale_required_replicas = math.ceil(aggregated_capacity)
+        # if ctx.total_queued_requests > 0:
+        #     upscale_required_replicas = max(1, upscale_required_replicas)
+        #
+        # latest_snapshots = [snapshots[-1] for snapshots in snapshots_by_source.values()]
+        # outstanding_prefill_tokens = max(
+        #     max(0, prefill) for _, prefill, _ in latest_snapshots
+        # )
+        # active_decode_requests = max(
+        #     max(0, decode) for _, _, decode in latest_snapshots
+        # )
+        # prefill_required_replicas = math.ceil(
+        #     outstanding_prefill_tokens / self._target_prefill_tokens_per_replica
+        # )
+        # decode_required_replicas = math.ceil(
+        #     active_decode_requests / self._target_decode_requests_per_replica
+        # )
+        # state: Dict[str, Any] = {
+        #     OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: outstanding_prefill_tokens,
+        #     ACTIVE_DECODE_REQUESTS: active_decode_requests,
+        #     "prefill_required_replicas": prefill_required_replicas,
+        #     "decode_required_replicas": decode_required_replicas,
+        #     "upscale_required_replicas": upscale_required_replicas,
+        #     "upscale_aggregation": self._upscale_aggregation,
+        #     "upscale_lookback_s": self._upscale_lookback_s,
+        #     "scale_down_sensitivity": self._scale_down_sensitivity,
+        # }
+        #
+        # target = ctx.target_num_replicas
+        # if upscale_required_replicas > target:
+        #     return upscale_required_replicas, state
+        # if upscale_required_replicas == target:
+        #     return target, state
+        #
+        # # Scaling from one to zero is safe only with an entirely idle latest
+        # # snapshot. Serve applies downscale_to_zero_delay_s after this proposal.
+        # if target == 1:
+        #     idle = ctx.total_queued_requests <= 0 and all(
+        #         prefill <= 0 and decode <= 0 for _, prefill, decode in latest_snapshots
+        #     )
+        #     state["scale_down_blocked"] = not idle
+        #     return (0 if idle else 1), state
+        # if target <= 0:
+        #     return target, state
+        #
+        # candidate = target - 1
+        # projected_prefill_utilization = max(
+        #     max(0, prefill) / (candidate * self._target_prefill_tokens_per_replica)
+        #     for _, prefill, _ in latest_snapshots
+        # )
+        # projected_decode_utilization = max(
+        #     max(0, decode) / (candidate * self._target_decode_requests_per_replica)
+        #     for _, _, decode in latest_snapshots
+        # )
+        # prefill_below_sensitivity = (
+        #     projected_prefill_utilization < self._scale_down_sensitivity
+        #     and not math.isclose(
+        #         projected_prefill_utilization,
+        #         self._scale_down_sensitivity,
+        #         rel_tol=1e-12,
+        #         abs_tol=1e-12,
+        #     )
+        # )
+        # decode_below_sensitivity = (
+        #     projected_decode_utilization < self._scale_down_sensitivity
+        #     and not math.isclose(
+        #         projected_decode_utilization,
+        #         self._scale_down_sensitivity,
+        #         rel_tol=1e-12,
+        #         abs_tol=1e-12,
+        #     )
+        # )
+        # scale_down_safe = prefill_below_sensitivity and decode_below_sensitivity
+        # state.update(
+        #     {
+        #         "scale_down_candidate_replicas": candidate,
+        #         "projected_prefill_utilization": projected_prefill_utilization,
+        #         "projected_decode_utilization": projected_decode_utilization,
+        #         "scale_down_blocked": not scale_down_safe,
+        #     }
+        # )
+        # return (candidate if scale_down_safe else target), state

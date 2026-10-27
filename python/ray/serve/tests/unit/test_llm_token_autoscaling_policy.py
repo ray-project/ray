@@ -59,9 +59,7 @@ def test_scales_from_max_global_snapshot_across_reporters():
     assert replicas == 3
     assert state[OUTSTANDING_EFFECTIVE_PREFILL_TOKENS] == 250
     assert state[ACTIVE_DECODE_REQUESTS] == 9
-    assert state["prefill_required_replicas"] == 3
-    assert state["decode_required_replicas"] == 3
-    assert state["upscale_required_replicas"] == 3
+    assert state["required_replicas"] == 3
 
 
 def test_scales_to_zero_when_idle():
@@ -131,6 +129,7 @@ def test_holds_target_for_mismatched_snapshot_timestamps():
     assert state == {}
 
 
+@pytest.mark.skip(reason="Asymmetric rule is disabled.")
 def test_max_aggregation_retains_then_expires_peak():
     policy = LLMTokenAutoscalingPolicy(
         100,
@@ -153,7 +152,7 @@ def test_max_aggregation_retains_then_expires_peak():
         )
     )
     assert replicas == 7
-    assert state["upscale_required_replicas"] == 7
+    assert state["required_replicas"] == 7
 
     replicas, state = policy(
         _context(
@@ -165,7 +164,7 @@ def test_max_aggregation_retains_then_expires_peak():
         )
     )
     assert replicas == 1
-    assert state["upscale_required_replicas"] == 1
+    assert state["required_replicas"] == 1
 
 
 def test_mean_aggregation_is_time_weighted():
@@ -185,7 +184,7 @@ def test_mean_aggregation_is_time_weighted():
     )
 
     assert replicas == 4
-    assert state["upscale_required_replicas"] == 4
+    assert state["required_replicas"] == 4
 
 
 def test_mean_aggregation_rounds_after_aggregating():
@@ -205,7 +204,7 @@ def test_mean_aggregation_rounds_after_aggregating():
     )
 
     assert replicas == 1
-    assert state["upscale_required_replicas"] == 1
+    assert state["required_replicas"] == 1
 
 
 def test_mean_aggregation_carries_gauge_across_window_boundary():
@@ -226,7 +225,7 @@ def test_mean_aggregation_carries_gauge_across_window_boundary():
     )
 
     assert replicas == 1
-    assert state["upscale_required_replicas"] == 1
+    assert state["required_replicas"] == 1
 
 
 def test_aggregation_takes_max_across_reporters_without_summing():
@@ -259,6 +258,7 @@ def test_holds_target_when_no_complete_snapshot_is_in_upscale_window():
     assert state == {}
 
 
+@pytest.mark.skip(reason="Asymmetric rule is disabled.")
 def test_scale_down_removes_at_most_one_replica_when_survivors_are_below_target():
     policy = LLMTokenAutoscalingPolicy(100, 4, scale_down_sensitivity=0.8)
 
@@ -276,6 +276,7 @@ def test_scale_down_removes_at_most_one_replica_when_survivors_are_below_target(
     assert state["scale_down_blocked"] is False
 
 
+@pytest.mark.skip(reason="Asymmetric rule is disabled.")
 @pytest.mark.parametrize(
     "prefill, decode",
     [
@@ -298,6 +299,7 @@ def test_scale_down_requires_strictly_less_than_sensitivity(prefill, decode):
     assert state["scale_down_blocked"] is True
 
 
+@pytest.mark.skip(reason="Asymmetric rule is disabled.")
 def test_every_reporter_must_be_safe_to_scale_down():
     policy = LLMTokenAutoscalingPolicy(100, 4, scale_down_sensitivity=0.8)
 
@@ -313,6 +315,7 @@ def test_every_reporter_must_be_safe_to_scale_down():
     assert state["scale_down_blocked"] is True
 
 
+@pytest.mark.skip(reason="Asymmetric rule is disabled.")
 def test_scales_down_only_one_replica_when_idle():
     policy = LLMTokenAutoscalingPolicy(100, 4)
 
@@ -325,6 +328,37 @@ def test_scales_down_only_one_replica_when_idle():
     )
 
     assert replicas == 6
+
+
+def test_scales_down_to_lookback_mean():
+    policy = LLMTokenAutoscalingPolicy(100, 4, upscale_lookback_s=30)
+
+    replicas, state = policy(
+        _context(
+            prefill_by_replica={"a": [(70, 300), (85, 100)]},
+            decode_by_replica={"a": [(70, 0), (85, 0)]},
+            target_num_replicas=7,
+        )
+    )
+
+    # Mean capacity is (3 * 15 + 1 * 15) / 30 = 2; no one-replica step limit.
+    assert replicas == 2
+    assert state["required_replicas"] == 2
+
+
+def test_proposes_zero_when_lookback_window_is_idle():
+    policy = LLMTokenAutoscalingPolicy(100, 4)
+
+    replicas, _ = policy(
+        _context(
+            prefill_by_replica={"a": (99, 0)},
+            decode_by_replica={"a": (99, 0)},
+            target_num_replicas=7,
+        )
+    )
+
+    # Serve's delay logic floors this at 1 unless the current target is 1.
+    assert replicas == 0
 
 
 @pytest.mark.parametrize("prefill_target, decode_target", [(0, 1), (1, 0)])
