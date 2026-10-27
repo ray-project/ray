@@ -446,7 +446,7 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
         if not isinstance(val, str):
             raise TypeError(
                 "runtime_env['env_vars'] must be of type "
-                f"Dict[str, str], but the value {val} is of type {type(val)}"
+                f"Dict[str, str], but the value of {key} is of type {type(val)}"
             )
 
     return env_vars
