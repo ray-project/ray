@@ -779,9 +779,20 @@ def _seed_tmp(rootfs_dir: str) -> None:
     """
     try:
         tmp_dir, _ = _resolve_in_root(rootfs_dir, "tmp")
+        parent_mtime = None
+        if os.path.isdir(tmp_dir) and not os.path.islink(tmp_dir):
+            try:
+                parent_mtime = os.stat(tmp_dir).st_mtime_ns
+            except OSError:
+                pass
         os.makedirs(tmp_dir, exist_ok=True)
         os.chmod(tmp_dir, 0o1777)
         _create_nofollow(os.path.join(tmp_dir, ".ray-sandbox-keep"))
+        if parent_mtime is not None:
+            try:
+                os.utime(tmp_dir, ns=(parent_mtime, parent_mtime))
+            except OSError:
+                pass
     except OSError:
         pass
 
