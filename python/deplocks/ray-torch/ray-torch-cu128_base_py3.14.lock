@@ -3058,6 +3058,7 @@ packaging==26.3 \
     #   tensorboardx
     #   torchmetrics
     #   transformers
+    #   virtualenv
 pandas==2.3.3 \
     --hash=sha256:0242fe9a49aa8b4d78a4fa03acb397a58833ef6199e9aa40a95f027bb3a1b6e7 \
     --hash=sha256:1611aedd912e1ff81ff41c745822980c49ce4a7907537be8692c8dbc31924593 \
@@ -3231,7 +3232,6 @@ platformdirs==4.9.6 \
     --hash=sha256:e61adb1d5e5cb3441b4b7710bea7e4c12250ca49439228cc1021c00dcfac0917
     # via
     #   jupyter-core
-    #   python-discovery
     #   textual
     #   virtualenv
 pluggy==1.6.0 \

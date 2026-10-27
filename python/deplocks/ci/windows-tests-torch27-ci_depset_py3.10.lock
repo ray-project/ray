@@ -3392,6 +3392,7 @@ packaging==26.3 \
     #   tensordict
     #   tensorflow
     #   torchmetrics
+    #   virtualenv
     #   wheel
 pandas==2.3.3 \
     --hash=sha256:0242fe9a49aa8b4d78a4fa03acb397a58833ef6199e9aa40a95f027bb3a1b6e7 \
@@ -3578,7 +3579,6 @@ platformdirs==4.9.6 \
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   jupyter-core
-    #   python-discovery
     #   virtualenv
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
