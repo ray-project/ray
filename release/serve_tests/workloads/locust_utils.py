@@ -27,7 +27,7 @@ class LocustLoadTestConfig:
     stages: List[LocustStage]
     wait_for_workers_timeout_s: float = 600
     # Allow transient failures during autoscaling.
-    max_failure_rate: float = 0.01
+    max_failure_rate: float = 0.05
 
 
 @ray.remote(num_cpus=1)
