@@ -729,10 +729,7 @@ def get_or_create_head_node(
 ) -> None:
     """Create the cluster head node, which in turn creates the workers."""
     global_event_system.execute_callback(CreateClusterEvent.cluster_booting_started)
-    if (
-        token_auth_enabled_locally()
-        and AUTH_TOKEN_REMOTE_PATH not in config["file_mounts"]
-    ):
+    if _ships_local_auth_token(config):
         # Before the provider: the fake Docker provider mounts the token into
         # its nodes when it's built.
         load_or_create_cluster_token()
@@ -1105,6 +1102,15 @@ def _should_create_new_head(
     return new_head_required
 
 
+def _ships_local_auth_token(config: Dict[str, Any]) -> bool:
+    """Whether `ray up` ships this machine's token, rather than none or the
+    one the cluster YAML mounts at ~/.ray/auth_token."""
+    return (
+        token_auth_enabled_locally()
+        and AUTH_TOKEN_REMOTE_PATH not in config["file_mounts"]
+    )
+
+
 def _add_auth_token_file_mount(
     config: Dict[str, Any], keep_cluster_auth_token: bool
 ) -> Tuple[Optional[IO[str]], Optional[str]]:
@@ -1121,10 +1127,7 @@ def _add_auth_token_file_mount(
         digest, or None when this process isn't in token auth mode or the YAML
         mounts the token.
     """
-    if (
-        not token_auth_enabled_locally()
-        or AUTH_TOKEN_REMOTE_PATH in config["file_mounts"]
-    ):
+    if not _ships_local_auth_token(config):
         return None, None
     token = load_or_create_cluster_token()
     token_sha256 = hashlib.sha256(token.encode()).hexdigest()
@@ -1140,9 +1143,16 @@ def _add_auth_token_file_mount(
     if not os.environ.get("RAY_AUTH_TOKEN"):
         # Mount the token file itself: Ray writes no copy of a token it can read
         # from a file. rsync would copy a symlink as a dangling link.
-        config["file_mounts"][AUTH_TOKEN_REMOTE_PATH] = os.path.realpath(
-            token_path or _get_default_token_path()
-        )
+        source_path = os.path.realpath(token_path or _get_default_token_path())
+        # rsync keeps the file's mode, so the head's copy is as readable as this.
+        if os.stat(source_path).st_mode & 0o077:
+            cli_logger.warning(
+                "The auth token file {} can be read by other users, and the "
+                "cluster's copy keeps its mode. Run `chmod 600 {}`.",
+                source_path,
+                source_path,
+            )
+        config["file_mounts"][AUTH_TOKEN_REMOTE_PATH] = source_path
         return None, token_sha256
 
     is_windows = sys.platform == "win32"

@@ -56,7 +56,9 @@ def clean_auth_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[
         monkeypatch.delenv(var, raising=False)
     set_local_auth_mode(monkeypatch, "token")
     yield tmp_path
-    set_local_auth_mode(monkeypatch, None)
+    # Restore the caller's RAY_AUTH_MODE before refreshing the cached config.
+    monkeypatch.undo()
+    reset_auth_token_state()
 
 
 def set_local_auth_mode(monkeypatch: pytest.MonkeyPatch, mode: Optional[str]) -> None:
@@ -442,7 +444,7 @@ def test_fake_docker_provider_removes_partial_token_file(clean_auth_env, monkeyp
     volume_dir.mkdir()
 
     with patch(
-        "ray.autoscaler._private.fake_multi_node.node_provider.os.fdopen",
+        "ray.autoscaler._private.fake_multi_node.node_provider.os.write",
         side_effect=OSError("disk full"),
     ):
         with pytest.raises(OSError):
@@ -528,6 +530,23 @@ def test_fake_docker_runner_uploads_token_when_no_volume_holds_it(
     ), patch.object(runner, "_docker_expand_user", side_effect=lambda p: p):
         runner.run_rsync_up("/local/auth_token", REMOTE_TOKEN_PATH)
     run_shell.assert_called_once_with("docker cp /local/auth_token mock:~/.ray")
+
+
+@pytest.mark.parametrize("mode, warns", [(0o644, True), (0o600, False)])
+def test_warns_when_token_file_is_readable_by_others(
+    clean_auth_env, monkeypatch, mode, warns
+):
+    # rsync keeps the file's mode, so the head's copy is as readable as this one.
+    token_path = clean_auth_env / "token"
+    token_path.write_text("path-token")
+    token_path.chmod(mode)
+    monkeypatch.setenv("RAY_AUTH_TOKEN_PATH", str(token_path))
+
+    with patch.object(commands.cli_logger, "warning") as warning:
+        ray_up()
+
+    warned = any(str(token_path) in str(call) for call in warning.call_args_list)
+    assert warned == warns
 
 
 if __name__ == "__main__":

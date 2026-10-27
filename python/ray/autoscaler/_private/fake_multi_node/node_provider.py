@@ -252,8 +252,10 @@ def _write_cluster_auth_token(path: str) -> None:
     token = load_local_token()
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        with os.fdopen(fd, "w") as f:
-            f.write(token)
+        try:
+            os.write(fd, token.encode())
+        finally:
+            os.close(fd)
         if hasattr(os, "getuid") and os.getuid() == 0:
             # Nodes run as the image's `ray` user (uid 1000) and the mount is
             # read-only, so a root-owned 0600 token would be unreadable to them.
@@ -524,6 +526,11 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         self._docker_compose_config = None
 
         self._auth_token_path = None
+        # shortcut: in token mode this mounts the local token even when the
+        # cluster YAML mounts its own ~/.ray/auth_token, which the provider
+        # can't see, and it needs a local token to exist: `ray up` creates one
+        # first, but `ray exec --start`/`ray attach --start` don't. Pass the
+        # YAML's file_mounts in, and create the token there, if a test needs it.
         if token_auth_enabled_locally():
             self._auth_token_path = os.path.join(self._volume_dir, "auth_token")
             # Written once per volume dir: later constructions, such as for
