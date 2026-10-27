@@ -4,7 +4,6 @@ import contextlib
 import importlib
 import inspect
 import io
-import json
 import logging
 import math
 import os
@@ -18,7 +17,9 @@ from typing import Any, Deque, Dict, List, Optional, Set
 
 import ray
 import ray._private.worker
+from ray._common.utils import run_background_task
 from ray.actor import ActorClass
+from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.exceptions import RayActorError, RayTaskError
 from ray.runtime_context import RuntimeContext
 
@@ -125,7 +126,17 @@ def _format_exception_dict(exc: BaseException) -> Dict[str, Any]:
 
 
 class _LogTeeStream(io.TextIOBase):
-    """Forwards writes to the underlying stream while appending to an in-memory log buffer."""
+    """Forwards writes to the underlying stream while appending to an in-memory log buffer.
+
+    Installed as `sys.stdout` and `sys.stderr` of the root actor process, so
+    `GET /api/actors/{name}/logs` returns what the root's Python code printed, capped
+    at `MAX_LOG_CHARS`. Writes that bypass `sys.stdout` (for example, a subprocess or
+    C extension writing to fd 1) and the output of child tasks and actors only reach
+    the per-worker log files. The GCS log channel can't attribute child output to a
+    root either: it keys log batches by job ID, and the dashboard agent's
+    `_ray_internal_dashboard` driver creates every root, so the children of all
+    concurrent roots share one job ID.
+    """
 
     def __init__(
         self,
@@ -178,18 +189,6 @@ class _LogTeeStream(io.TextIOBase):
 
     def __getattr__(self, attr: str) -> Any:
         return getattr(self._stream, attr)
-
-
-def _load_payload_file(filename: str) -> Dict[str, Any]:
-    candidates = [os.path.join(os.getcwd(), filename)]
-    for entry in sys.path:
-        if entry:
-            candidates.append(os.path.join(entry, filename))
-    for path in candidates:
-        if os.path.isfile(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-    raise FileNotFoundError(f"Payload file '{filename}' not found on sys.path.")
 
 
 def _load_user_target(
@@ -266,6 +265,7 @@ class _ClientRootActor:
         self._ttl_seconds: Optional[float] = _validate_ttl_seconds(
             spec.get("ttl_seconds", 1800.0)
         )
+        self._ephemeral: bool = bool(spec.get("ephemeral", self._kind == "function"))
         self._created_at: float = time.time()
         self._last_active: float = time.time()
         self._last_active_mono: float = time.monotonic()
@@ -286,32 +286,12 @@ class _ClientRootActor:
 
         self._install_ray_hooks()
 
-        payload_data: Dict[str, Any] = {}
-        if spec.get("payload_file"):
-            payload_data = _load_payload_file(spec["payload_file"])
-
-        captured_globals = (
-            payload_data.get("captured_globals")
-            if "captured_globals" in payload_data
-            else (spec.get("captured_globals") or {})
-        )
-        init_args = (
-            payload_data.get("args")
-            if "args" in payload_data
-            else (spec.get("args") or [])
-        )
-        init_kwargs = (
-            payload_data.get("kwargs")
-            if "kwargs" in payload_data
-            else (spec.get("kwargs") or {})
-        )
-
         target = _load_user_target(
             self._name,
             self._target_name,
             spec.get("module_source"),
             spec.get("module"),
-            captured_globals,
+            spec.get("captured_globals") or {},
         )
         self._generator_methods: Set[str] = set()
         if self._kind == "function":
@@ -329,7 +309,9 @@ class _ClientRootActor:
                 raw_cls = getattr(mod_cls, "__ray_actor_class__", target)
             cls_to_instantiate = raw_cls if inspect.isclass(raw_cls) else target
             self._fn = None
-            self._instance = cls_to_instantiate(*init_args, **init_kwargs)
+            self._instance = cls_to_instantiate(
+                *(spec.get("args") or []), **(spec.get("kwargs") or {})
+            )
             for attr_name in dir(self._instance):
                 if (
                     attr_name != "__call__"
@@ -359,20 +341,34 @@ class _ClientRootActor:
 
     def _install_ray_hooks(self) -> None:
         ns = self._namespace
+        # Fate-shared actors created in this process default to a namespace of their
+        # own, so concurrent roots that create identically named children don't
+        # collide. Detached actors outlive the root, so they default to `ns`, where
+        # other roots can find them by name. Lookups without a namespace fall back
+        # to `ns`, which also holds the top-level client actors. The hooks are
+        # process-local: nested tasks and actors run in other workers and use the
+        # dashboard agent job's namespace.
+        child_ns = f"{ns}_{self._name}"
         pg_list = self._placement_groups
         state_lock = self._state_lock
-        os.environ["RAY_NAMESPACE"] = ns
+        os.environ["RAY_NAMESPACE"] = child_ns
 
         _orig_get_actor = ray.get_actor
         _orig_actor_remote = ActorClass._remote
         _orig_pg = ray.util.placement_group
 
         def _client_get_actor(name: str, namespace: Optional[str] = None):
-            return _orig_get_actor(name, namespace=namespace or ns)
+            if namespace is not None:
+                return _orig_get_actor(name, namespace=namespace)
+            try:
+                return _orig_get_actor(name, namespace=child_ns)
+            except ValueError:
+                return _orig_get_actor(name, namespace=ns)
 
         def _client_actor_remote(actor_cls, args=None, kwargs=None, **actor_options):
             if actor_options.get("namespace") is None:
-                actor_options["namespace"] = ns
+                detached = actor_options.get("lifetime") == "detached"
+                actor_options["namespace"] = ns if detached else child_ns
             return _orig_actor_remote(
                 actor_cls, args=args, kwargs=kwargs, **actor_options
             )
@@ -390,7 +386,7 @@ class _ClientRootActor:
         ray._private.worker.get_actor = _client_get_actor
         ActorClass._remote = _client_actor_remote
         ray.util.placement_group = _client_placement_group
-        RuntimeContext.namespace = property(lambda _self: ns)
+        RuntimeContext.namespace = property(lambda _self: child_ns)
 
     def _self_reap_loop(self) -> None:
         while not self._shutting_down:
@@ -482,6 +478,7 @@ class _ClientRootActor:
             "kind": self._kind,
             "namespace": self._namespace,
             "status": "ALIVE",
+            "ephemeral": self._ephemeral,
             "active_calls": active_calls,
             "ttl_seconds": ttl,
             "remaining_ttl_seconds": remaining_ttl,
@@ -516,15 +513,9 @@ class _ClientRootActor:
         method_name: str,
         args: List[Any],
         kwargs: Dict[str, Any],
-        payload_file: Optional[str] = None,
     ) -> Dict[str, Any]:
         self._begin_call()
         try:
-            if payload_file:
-                loaded = _load_payload_file(payload_file)
-                args = loaded.get("args", args)
-                kwargs = loaded.get("kwargs", kwargs)
-
             target = self._resolve_callable(method_name)
             try:
                 if inspect.iscoroutinefunction(target):
@@ -575,16 +566,10 @@ class _ClientRootActor:
         args: List[Any],
         kwargs: Dict[str, Any],
         stream_id: str,
-        payload_file: Optional[str] = None,
     ):
         self._begin_call()
         gen = None
         try:
-            if payload_file:
-                loaded = _load_payload_file(payload_file)
-                args = loaded.get("args", args)
-                kwargs = loaded.get("kwargs", kwargs)
-
             target = self._resolve_callable(method_name)
             gen = target(*args, **kwargs)
             label = (
@@ -741,6 +726,14 @@ class ActorManager:
             meta["last_active"] = time.time()
             meta["last_active_mono"] = time.monotonic()
 
+    async def _reap_ephemeral(self, name: str) -> None:
+        # Run the kill as its own task so that a client disconnect, which cancels
+        # the request awaiting it, can't interrupt the cleanup halfway.
+        with contextlib.suppress(Exception):
+            await asyncio.shield(
+                run_background_task(self.kill_actor(name, no_restart=True))
+            )
+
     async def _lookup_actor(self, name: str) -> Optional[Dict[str, Any]]:
         self._ensure_reaper()
         async with self._lock:
@@ -766,6 +759,7 @@ class ActorManager:
                 "class_name": info.get("class_name", name),
                 "kind": info.get("kind", "class"),
                 "namespace": info.get("namespace", CLIENT_ACTOR_NAMESPACE),
+                "ephemeral": bool(info.get("ephemeral", False)),
                 "ttl_seconds": ttl,
                 "created_at": info.get("created_at", time.time()),
                 "last_active": info.get("last_active", time.time()),
@@ -778,12 +772,6 @@ class ActorManager:
             return meta
         except Exception:
             return None
-
-    async def is_generator_method(self, name: str, method_name: str) -> bool:
-        meta = await self._lookup_actor(name)
-        if meta is None:
-            return False
-        return method_name in meta.get("generator_methods", set())
 
     async def create_actor(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         self._ensure_reaper()
@@ -809,7 +797,11 @@ class ActorManager:
             return {"ok": False, "error": _format_exception_dict(exc)}
 
         name = spec.get("name") or f"{target_name}_{uuid.uuid4().hex[:8]}"
-        spec = dict(spec, name=name, kind=kind, ttl_seconds=ttl_seconds)
+        # Driver functions are single-use: the call that runs them also kills them.
+        ephemeral = bool(spec.get("ephemeral", kind == "function"))
+        spec = dict(
+            spec, name=name, kind=kind, ttl_seconds=ttl_seconds, ephemeral=ephemeral
+        )
         namespace = spec.get("namespace") or CLIENT_ACTOR_NAMESPACE
         get_if_exists = bool(spec.get("get_if_exists", True))
 
@@ -864,7 +856,9 @@ class ActorManager:
 
             handle = None
             try:
-                num_cpus = spec["num_cpus"] if spec.get("num_cpus") is not None else 1
+                num_cpus = spec.get("num_cpus")
+                if num_cpus is None:
+                    num_cpus = 0 if kind == "function" else 1
                 max_concurrency = (
                     spec["max_concurrency"]
                     if spec.get("max_concurrency") is not None
@@ -879,14 +873,22 @@ class ActorManager:
                 }
                 if spec.get("runtime_env"):
                     options["runtime_env"] = spec["runtime_env"]
-                for opt_key in (
-                    "num_gpus",
-                    "memory",
-                    "resources",
-                    "label_selector",
-                ):
+                placement_keys = ("num_gpus", "memory", "resources", "label_selector")
+                for opt_key in placement_keys:
                     if spec.get(opt_key) is not None:
                         options[opt_key] = spec[opt_key]
+                if (
+                    num_cpus == 0
+                    and not any(spec.get(k) for k in placement_keys)
+                    and os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR)
+                    != "1"
+                ):
+                    # Like a Ray Jobs driver, a root that requests no resources runs
+                    # on the head node, where this agent runs. It then starts even on
+                    # a `num-cpus=0` head and never takes a CPU from worker nodes.
+                    options["label_selector"] = {
+                        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                    }
 
                 handle = _RemoteClientRootActor.options(**options).remote(spec)
                 info = await handle.get_info.remote()
@@ -899,6 +901,7 @@ class ActorManager:
                         "class_name": target_name,
                         "kind": kind,
                         "namespace": namespace,
+                        "ephemeral": ephemeral,
                         "ttl_seconds": ttl_seconds,
                         "created_at": now,
                         "last_active": now,
@@ -1005,23 +1008,24 @@ class ActorManager:
         method_name: str,
         payload: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
+        """Calls `method_name` on actor `name` and returns the result payload.
+
+        Returns None if the actor doesn't exist. Every other failure is returned as
+        an `{"ok": False, "error": ...}` payload, so only cancellation propagates.
+        """
         meta = await self._lookup_actor(name)
         if meta is None:
             return None
         args = payload.get("args") or []
         kwargs = payload.get("kwargs") or {}
         timeout = payload.get("timeout")
-        payload_file = payload.get("payload_file")
+        ephemeral = bool(meta.get("ephemeral") or payload.get("ephemeral"))
 
         async with self._track_call(meta):
-            obj_ref = meta["handle"].invoke.remote(
-                method_name, args, kwargs, payload_file=payload_file
-            )
             try:
+                obj_ref = meta["handle"].invoke.remote(method_name, args, kwargs)
                 if timeout is not None:
-                    return await asyncio.wait_for(
-                        asyncio.shield(obj_ref), timeout=float(timeout)
-                    )
+                    return await asyncio.wait_for(obj_ref, timeout=float(timeout))
                 return await obj_ref
             except asyncio.TimeoutError:
                 with contextlib.suppress(Exception):
@@ -1036,8 +1040,16 @@ class ActorManager:
                         "timed_out": True,
                     },
                 }
+            except asyncio.CancelledError:
+                # The caller went away, e.g. the HTTP client disconnected.
+                with contextlib.suppress(Exception):
+                    ray.cancel(obj_ref, recursive=False)
+                raise
             except Exception as exc:
                 return {"ok": False, "error": _format_exception_dict(exc)}
+            finally:
+                if ephemeral:
+                    await self._reap_ephemeral(name)
 
     async def stream_actor_method(
         self,
@@ -1061,14 +1073,14 @@ class ActorManager:
         kwargs = payload.get("kwargs") or {}
         timeout = payload.get("timeout")
         deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
-        payload_file = payload.get("payload_file")
+        ephemeral = bool(meta.get("ephemeral") or payload.get("ephemeral"))
         stream_id = f"stream_{uuid.uuid4().hex[:12]}"
         handle = meta["handle"]
 
         async with self._track_call(meta):
             gen = handle.invoke_stream.options(
                 _generator_backpressure_num_objects=16
-            ).remote(method_name, args, kwargs, stream_id, payload_file=payload_file)
+            ).remote(method_name, args, kwargs, stream_id)
             ait = gen.__aiter__()
             next_task: Optional[asyncio.Task] = None
             completed_normally = False
@@ -1126,6 +1138,8 @@ class ActorManager:
                         handle.cancel_stream.remote(stream_id)
                     with contextlib.suppress(Exception):
                         ray.cancel(gen, recursive=False)
+                if ephemeral:
+                    await self._reap_ephemeral(name)
 
     async def kill_actor(
         self, name: str, no_restart: bool = True

@@ -22,8 +22,6 @@ from ray_client.exceptions import (
     RayJobTimeoutError,
 )
 from ray_client.packaging import (
-    MAX_INLINE_PAYLOAD_BYTES,
-    build_payload_package,
     build_working_dir_package,
     extract_class_source_and_globals,
     extract_function_source_and_globals,
@@ -544,6 +542,14 @@ class RayCluster:
     ) -> Iterator[Any]:
         sub_id = submission_id or target
         deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
+        close_called = False
+
+        def _run_on_close() -> None:
+            nonlocal close_called
+            if not close_called:
+                close_called = True
+                if on_close is not None:
+                    on_close()
 
         def _gen() -> Iterator[Any]:
             try:
@@ -593,10 +599,9 @@ class RayCluster:
                     raise RayClientError(f"Stream '{target}' failed: {exc}") from exc
             finally:
                 resp.close()
-                if on_close is not None:
-                    on_close()
+                _run_on_close()
 
-        return _SSEStreamIterator(_gen(), resp, on_close=on_close)
+        return _SSEStreamIterator(_gen(), resp, on_close=_run_on_close)
 
     def _call_or_stream_actor_method(
         self,
@@ -661,14 +666,30 @@ class RayCluster:
                 on_close=on_close,
             )
 
+        raw_text: Optional[str] = None
         try:
             try:
-                data = resp.json()
+                if timeout is not None:
+                    grace_deadline = time.monotonic() + float(timeout) + 5.0
+                    chunks: List[bytes] = []
+                    for chunk in resp.iter_content(chunk_size=65536):
+                        if chunk:
+                            chunks.append(chunk)
+                        if time.monotonic() >= grace_deadline:
+                            raise RayJobTimeoutError(
+                                f"{kind_label} '{target}' timed out after {timeout}s.",
+                                submission_id=sub_id,
+                            )
+                    raw_text = b"".join(chunks).decode("utf-8", errors="replace")
+                    data = json.loads(raw_text)
+                else:
+                    data = resp.json()
             except ValueError as exc:
+                preview = raw_text[:200] if raw_text is not None else resp.text[:200]
                 raise RayClientError(
                     f"POST {endpoint} returned a non-JSON response from "
                     f"{self._address}; is this the Ray Dashboard HTTP address? Body starts "
-                    f"with: {resp.text[:200]!r}"
+                    f"with: {preview!r}"
                 ) from exc
             except requests.exceptions.RequestException as exc:
                 if timeout is not None and "timed out" in str(exc).lower():
@@ -766,12 +787,12 @@ class RayCluster:
     def _build_driver_actor_spec(
         self,
         fn: Union[Callable[..., Any], str],
-        args: Tuple[Any, ...],
-        kwargs: Optional[Dict[str, Any]],
-        runtime_env: Optional[Dict[str, Any]],
-        num_cpus: Union[int, float],
-        num_gpus: Optional[Union[int, float]],
-        resources: Optional[Dict[str, float]],
+        args: Tuple[Any, ...] = (),
+        kwargs: Optional[Dict[str, Any]] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        num_cpus: Union[int, float] = 0,
+        num_gpus: Optional[Union[int, float]] = None,
+        resources: Optional[Dict[str, float]] = None,
         *,
         allow_generator: bool = False,
     ) -> Tuple[Dict[str, Any], List[Any], Dict[str, Any]]:
@@ -792,13 +813,10 @@ class RayCluster:
             bound_args = list(args)
             bound_kwargs = dict(kwargs or {})
 
-        args_json = to_json(bound_args, "Function positional arguments")
-        kwargs_json = to_json(bound_kwargs, "Function keyword arguments")
-        globals_json = (
+        to_json(bound_args, "Function positional arguments")
+        to_json(bound_kwargs, "Function keyword arguments")
+        if captured_globals is not None:
             to_json(captured_globals, "Captured globals")
-            if captured_globals is not None
-            else "{}"
-        )
 
         merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
         if working_dir is not None:
@@ -806,31 +824,15 @@ class RayCluster:
             self._ensure_package_uploaded(pkg_uri, zip_bytes)
             merged_env["working_dir"] = pkg_uri
 
-        payload_file: Optional[str] = None
-        if (
-            len(args_json) + len(kwargs_json) + len(globals_json)
-            > MAX_INLINE_PAYLOAD_BYTES
-        ):
-            p_bytes, p_uri, payload_file = build_payload_package(
-                {
-                    "args": bound_args,
-                    "kwargs": bound_kwargs,
-                    "captured_globals": captured_globals or {},
-                }
-            )
-            self._ensure_package_uploaded(p_uri, p_bytes)
-            merged_env.setdefault("py_modules", []).append(p_uri)
-            captured_globals = None
-
         actor_name = f"driver_{fn_name}_{uuid.uuid4().hex[:8]}"
         spec: Dict[str, Any] = {
             "name": actor_name,
             "kind": "function",
+            "ephemeral": True,
             "fn_name": fn_name,
             "module": module_path,
             "module_source": module_source,
             "captured_globals": captured_globals,
-            "payload_file": payload_file,
             "runtime_env": merged_env or None,
             "num_cpus": num_cpus,
             "num_gpus": num_gpus,
@@ -840,8 +842,6 @@ class RayCluster:
             "get_if_exists": False,
         }
         spec = {k: v for k, v in spec.items() if v is not None}
-        if payload_file is not None:
-            return spec, [], {}
         return spec, bound_args, bound_kwargs
 
     def _deploy_actor_spec(
@@ -895,7 +895,7 @@ class RayCluster:
         *args: Any,
         kwargs: Optional[Dict[str, Any]] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
-        num_cpus: Union[int, float] = 1,
+        num_cpus: Union[int, float] = 0,
         num_gpus: Optional[Union[int, float]] = None,
         resources: Optional[Dict[str, float]] = None,
         timeout: Optional[float] = None,
@@ -926,8 +926,6 @@ class RayCluster:
             "args": bound_args,
             "kwargs": bound_kwargs,
         }
-        if spec.get("payload_file"):
-            call_body["payload_file"] = spec["payload_file"]
         endpoint = f"/api/actors/{actor_name}/methods/__call__"
         return self._call_or_stream_actor_method(
             endpoint,
@@ -1130,13 +1128,10 @@ class RayCluster:
                 captured_globals,
             ) = extract_class_source_and_globals(cls_or_path)
 
-        args_json = to_json(bound_args, f"Actor '{class_name}' positional arguments")
-        kwargs_json = to_json(bound_kwargs, f"Actor '{class_name}' keyword arguments")
-        globals_json = (
+        to_json(bound_args, f"Actor '{class_name}' positional arguments")
+        to_json(bound_kwargs, f"Actor '{class_name}' keyword arguments")
+        if captured_globals is not None:
             to_json(captured_globals, f"Actor '{class_name}' captured globals")
-            if captured_globals is not None
-            else "{}"
-        )
 
         merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
         uploaded = False
@@ -1144,24 +1139,6 @@ class RayCluster:
             zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
             uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
             merged_env["working_dir"] = pkg_uri
-
-        payload_file: Optional[str] = None
-        if (
-            len(args_json) + len(kwargs_json) + len(globals_json)
-            > MAX_INLINE_PAYLOAD_BYTES
-        ):
-            p_bytes, p_uri, payload_file = build_payload_package(
-                {
-                    "args": bound_args,
-                    "kwargs": bound_kwargs,
-                    "captured_globals": captured_globals or {},
-                }
-            )
-            self._ensure_package_uploaded(p_uri, p_bytes)
-            merged_env.setdefault("py_modules", []).append(p_uri)
-            bound_args = []
-            bound_kwargs = {}
-            captured_globals = None
 
         actor_name = name or f"{class_name}_{uuid.uuid4().hex[:8]}"
         spec: Dict[str, Any] = {
@@ -1173,7 +1150,6 @@ class RayCluster:
             "captured_globals": captured_globals,
             "args": bound_args,
             "kwargs": bound_kwargs,
-            "payload_file": payload_file,
             "runtime_env": merged_env or None,
             "num_cpus": resolved_cpus,
             "num_gpus": num_gpus,

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List
@@ -75,11 +76,10 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         def check_child_exists(name: str) -> bool:
             import ray
 
-            try:
-                ray.get_actor(name)
-                return True
-            except ValueError:
-                return False
+            return any(
+                a["name"] == name
+                for a in ray.util.list_named_actors(all_namespaces=True)
+            )
 
         out1 = self.cluster.run(compute_batch, [1, 2, 3])
         self.assertEqual(out1["values"], [10, 20, 30])
@@ -109,9 +109,90 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             def compute(self, x: int, extra: int = 5) -> int:
                 return self.base + x + extra
 
-        worker = self.cluster.actor(DecoratedWorker, 20, name="decorated_live_worker")
+        worker = self.cluster.actor(DecoratedWorker, 20, name="shared_top_actor")
         try:
             self.assertEqual(worker.compute(7), 32)
+            # Verify /api/component_activities reports driver is_active == "ACTIVE"
+            # while a client actor is alive on /api/actors
+            activities = self.cluster._json("GET", "/api/component_activities")
+            self.assertEqual(activities["driver"]["is_active"], "ACTIVE")
+
+            # Verify two concurrent cluster.run() calls can both create a named child
+            # actor with the same name ("same_child_name"), look it up via
+            # ray.get_actor("same_child_name") without colliding, AND look up the
+            # persistent top-level actor via ray.get_actor("shared_top_actor").
+            def concurrent_child_and_shared_lookup(tag: str) -> dict:
+                import ray
+
+                @ray.remote(num_cpus=0)
+                class Child:
+                    def __init__(self, label: str):
+                        self.label = label
+
+                    def get_label(self) -> str:
+                        return self.label
+
+                _ = Child.options(name="same_child_name").remote(tag)
+                time.sleep(0.25)
+                found_child = ray.get_actor("same_child_name")
+                found_shared = ray.get_actor("shared_top_actor")
+                shared_res = ray.get(found_shared.invoke.remote("compute", [7], {}))
+                return {
+                    "child_label": ray.get(found_child.get_label.remote()),
+                    "shared_compute": shared_res["result"],
+                    "ns": ray.get_runtime_context().namespace,
+                }
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                fut_a = pool.submit(
+                    self.cluster.run, concurrent_child_and_shared_lookup, "alpha"
+                )
+                fut_b = pool.submit(
+                    self.cluster.run, concurrent_child_and_shared_lookup, "beta"
+                )
+                res_a, res_b = fut_a.result(), fut_b.result()
+
+            self.assertEqual(res_a["child_label"], "alpha")
+            self.assertEqual(res_b["child_label"], "beta")
+            self.assertEqual(res_a["shared_compute"], 32)
+            self.assertEqual(res_b["shared_compute"], 32)
+            self.assertNotEqual(res_a["ns"], res_b["ns"])
+            self.assertFalse(self.cluster.run(check_child_exists, "same_child_name"))
+
+            # Verify a detached child actor created in run() A is placed in "ray_client"
+            # and found by run() B via ray.get_actor(name) without specifying namespace.
+            def create_detached_child(name: str, val: int) -> str:
+                import ray
+
+                @ray.remote(num_cpus=0)
+                class DetachedSvc:
+                    def __init__(self, v: int):
+                        self.v = v
+
+                    def read(self) -> int:
+                        return self.v
+
+                svc = DetachedSvc.options(name=name, lifetime="detached").remote(val)
+                assert ray.get(svc.read.remote()) == val
+                return name
+
+            def read_and_kill_detached_child(name: str) -> int:
+                import ray
+
+                svc = ray.get_actor(name)
+                try:
+                    return ray.get(svc.read.remote())
+                finally:
+                    ray.kill(svc, no_restart=True)
+
+            self.assertEqual(
+                self.cluster.run(create_detached_child, "shared_detached_svc", 77),
+                "shared_detached_svc",
+            )
+            self.assertEqual(
+                self.cluster.run(read_and_kill_detached_child, "shared_detached_svc"),
+                77,
+            )
         finally:
             worker.kill()
 

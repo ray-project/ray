@@ -43,6 +43,7 @@ class ActorHandle:
         return self._cluster._json("GET", f"/api/actors/{self._name}")
 
     def logs(self) -> str:
+        """Returns captured stdout/stderr logs from the root actor process."""
         resp = self._cluster._json("GET", f"/api/actors/{self._name}/logs")
         if isinstance(resp, dict):
             return str(resp.get("logs", ""))

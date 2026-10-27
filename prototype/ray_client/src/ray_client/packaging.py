@@ -52,10 +52,8 @@ from ray_client.exceptions import RayClientError, RayClientSerializationError
 # ray_constants.DASHBOARD_CLIENT_MAX_SIZE) caps request bodies at 100 MiB, so a
 # larger package can never be uploaded through the Dashboard API.
 MAX_PACKAGE_BYTES = 100 * 1024 * 1024
-MAX_INLINE_PAYLOAD_BYTES = 32 * 1024
 RAY_PKG_PREFIX = "_ray_pkg_"
 USER_FN_FILENAME = "_ray_client_user_fn.py"
-PAYLOAD_FILENAME = "_ray_client_payload.json"
 # gitignore-syntax patterns applied to every working_dir, like Ray's
 # RAY_RUNTIME_ENV_DEFAULT_EXCLUDES plus the usual Python caches.
 DEFAULT_EXCLUDES = (
@@ -994,19 +992,6 @@ def build_working_dir_package(
                 _WORKING_DIR_CACHE.pop(next(iter(_WORKING_DIR_CACHE)))
             _WORKING_DIR_CACHE[cache_key] = (zip_bytes, gcs_uri)
     return zip_bytes, gcs_uri
-
-
-def build_payload_package(payload: Dict[str, Any]) -> Tuple[bytes, str, str]:
-    """Packages a large JSON payload (>32 KiB) into a content-addressed zip for `py_modules`."""
-    raw = to_json(payload, "Request payload", sort_keys=True).encode("utf-8")
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, mode="w") as zf:
-        _write_deterministic_entry(zf, PAYLOAD_FILENAME, raw)
-    zip_bytes = buf.getvalue()
-    if len(zip_bytes) >= MAX_PACKAGE_BYTES:
-        raise _package_too_large(len(zip_bytes), [(len(zip_bytes), PAYLOAD_FILENAME)])
-    gcs_uri = f"gcs://{RAY_PKG_PREFIX}{hashlib.sha1(zip_bytes).hexdigest()}.zip"
-    return zip_bytes, gcs_uri, PAYLOAD_FILENAME
 
 
 def build_driver_package(

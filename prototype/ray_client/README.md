@@ -5,8 +5,8 @@
 | Method | What you pass | How it runs | Use-case |
 | :--- | :--- | :--- | :--- |
 | `cluster.submit_job("python job.py")` | Shell command | Submits entrypoint script to `/api/jobs/` as a Ray Job, returning a `JobResult` handle (`status()`, `logs()`, `wait()`, `stop()`) | Existing CLI scripts, replaces `JobSubmissionClient` |
-| `cluster.run(fn, ...)` | Python function | Packages function source and runs it in an ephemeral top-level Ray Actor on `/api/actors`, returning JSON (or streaming yielded JSON items over SSE for generators) | Self-contained functions or generators that run once to completion |
-| `cluster.actor(Cls, ...)` | Python class | Instantiates class as a persistent top-level Ray Actor on `/api/actors` across calls | Interactive notebooks or agents needing persistent state, SSE generator streaming, and concurrent mid-run steering |
+| `cluster.run(fn, ...)` | Python function | Packages function source and runs it in an ephemeral top-level Ray Actor (`num_cpus=0` by default) on `/api/actors`, returning JSON (or streaming yielded JSON items over SSE for generators) | Self-contained functions or generators that run once to completion |
+| `cluster.actor(Cls, ...)` | Python class | Instantiates class as a persistent top-level Ray Actor (`num_cpus=1` by default) on `/api/actors` across calls | Interactive notebooks or agents needing persistent state, SSE generator streaming, and concurrent mid-run steering |
 
 ## Prerequisites
 
@@ -68,6 +68,13 @@ for metrics in trainer.train_steps(100):
         break
 trainer.kill()
 ```
+
+## Cluster execution
+
+- **Head-node driver scheduling (`num_cpus=0`)**: `cluster.run(fn, ...)` defaults to `num_cpus=0`. Any root actor with `num_cpus=0` and no GPU, memory, custom resource, or label-selector options is scheduled on the head node (unless `RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES=1`, matching `submit_job`), so driver functions start immediately on `num-cpus=0` head nodes and never steal CPUs from worker placement groups. When a call completes or the client disconnects mid-call, the server kills ephemeral `run()` actors outright; on persistent `actor()` sessions (`num_cpus=1` by default), a client disconnect cancels the call if it has not started yet and stops a generator at its next `yield` (a synchronous method already executing runs to completion).
+- **Child namespace isolation**: Non-detached child actors created in the root actor process default to a per-actor Ray namespace (`ray_client_<name>`), while `lifetime="detached"` child actors default to `"ray_client"` and `ray.get_actor(name)` checks `ray_client_<name>` before falling back to `"ray_client"`. Isolation and fallback apply to actors created and looked up in the root actor process; nested tasks or child actors must pass `namespace=` explicitly (for example, forwarding `ray.get_runtime_context().namespace` from the root).
+- **Root actor log scope**: `GET /api/actors/{name}/logs` (`actor.logs()`) captures `stdout` and `stderr` of the root actor process, whereas `submit_job` (`job.logs()`) aggregates logs across all job workers.
+- **Cluster activity reporting**: Active `/api/actors` sessions report cluster activity to `/api/component_activities` so auto-terminating clusters do not shut down while `run()` or `actor()` workloads are active.
 
 ## Running tests
 

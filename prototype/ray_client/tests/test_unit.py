@@ -57,6 +57,7 @@ class _MockClusterState:
         self.packages: Dict[str, bytes] = {}
         self.actors: Dict[str, Dict[str, Any]] = {}
         self.jobs: Dict[str, Dict[str, Any]] = {}
+        self.last_created_actor_spec: Optional[Dict[str, Any]] = None
         self.fail_next_requests = 0
         self.drop_next_job_post_response = False
         self.job_info_gets = 0
@@ -82,8 +83,8 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         return
 
-    def _send_json(self, code: int, obj: Any) -> None:
-        data = json.dumps(obj).encode("utf-8")
+    def _send_json(self, code: int, obj: Any, *, keepalive_prefix: bytes = b"") -> None:
+        data = keepalive_prefix + json.dumps(obj).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
@@ -365,6 +366,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             )
             name = body.get("name") or f"{target_name}_{uuid.uuid4().hex[:8]}"
             with self.state.lock:
+                self.state.last_created_actor_spec = dict(body)
                 self.state.check_ttls_locked()
                 if body.get("get_if_exists", True) and name in self.state.actors:
                     act = self.state.actors[name]
@@ -384,9 +386,11 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     work_dir, env_vars = self._unpack_actor_runtime_env_locked(
                         name, body.get("runtime_env")
                     )
+                    ephemeral = bool(body.get("ephemeral", kind == "function"))
                     act_entry: Dict[str, Any] = {
                         "name": name,
                         "kind": kind,
+                        "ephemeral": ephemeral,
                         "class_name": target_name,
                         "ttl_seconds": body.get("ttl_seconds", 1800.0),
                         "last_active": time.monotonic(),
@@ -395,27 +399,9 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         "env_vars": env_vars,
                         "logs": [],
                     }
-                    payload_data: Dict[str, Any] = {}
-                    if body.get("payload_file") and work_dir is not None:
-                        pf = work_dir / body["payload_file"]
-                        if pf.is_file():
-                            payload_data = json.loads(pf.read_text(encoding="utf-8"))
-
-                    captured_globals = (
-                        payload_data.get("captured_globals")
-                        if "captured_globals" in payload_data
-                        else (body.get("captured_globals") or {})
-                    )
-                    init_args = (
-                        payload_data.get("args")
-                        if "args" in payload_data
-                        else (body.get("args") or [])
-                    )
-                    init_kwargs = (
-                        payload_data.get("kwargs")
-                        if "kwargs" in payload_data
-                        else (body.get("kwargs") or {})
-                    )
+                    captured_globals = body.get("captured_globals") or {}
+                    init_args = body.get("args") or []
+                    init_kwargs = body.get("kwargs") or {}
 
                     if body.get("module_source") is not None:
                         mod_name = f"_mock_actor_{name}_{uuid.uuid4().hex[:6]}"
@@ -497,12 +483,6 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                 try:
                     args = body.get("args") or []
                     kwargs = body.get("kwargs") or {}
-                    if body.get("payload_file") and act.get("work_dir") is not None:
-                        pf = act["work_dir"] / body["payload_file"]
-                        if pf.is_file():
-                            loaded = json.loads(pf.read_text(encoding="utf-8"))
-                            args = loaded.get("args", args)
-                            kwargs = loaded.get("kwargs", kwargs)
 
                     if act["kind"] == "function":
                         target_callable = act["fn"]
@@ -513,11 +493,19 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     if is_stream or inspect.isgenerator(out):
                         self._send_sse_stream(out, act["logs"])
                         return
-                    self._send_json(200, {"ok": True, "result": out})
+                    self._send_json(
+                        200,
+                        {"ok": True, "result": out},
+                        keepalive_prefix=b"   ",
+                    )
                 except SystemExit as exc:
                     code = exc.code
                     if code in (None, 0):
-                        self._send_json(200, {"ok": True, "result": None})
+                        self._send_json(
+                            200,
+                            {"ok": True, "result": None},
+                            keepalive_prefix=b"   ",
+                        )
                     else:
                         self._send_json(
                             200,
@@ -530,6 +518,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                                 },
                                 "logs": "".join(act["logs"]),
                             },
+                            keepalive_prefix=b"   ",
                         )
                 except Exception as exc:
                     self._send_json(
@@ -543,11 +532,14 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                             },
                             "logs": "".join(act["logs"]),
                         },
+                        keepalive_prefix=b"   ",
                     )
                 finally:
                     with self.state.lock:
                         act["active_calls"] = max(0, act.get("active_calls", 1) - 1)
                         act["last_active"] = time.monotonic()
+                        if act.get("ephemeral") or body.get("ephemeral"):
+                            self.state.actors.pop(actor_name, None)
                 return
 
         self._send_json(404, {"error": "unknown endpoint"})
@@ -1061,7 +1053,13 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 return {"doubled": x * 2}
 
             self.assertEqual(cluster.run(step, 5), {"doubled": 10})
-            self.assertEqual(cluster.run(step, 21), {"doubled": 42})
+            self.assertIsNotNone(self.state.last_created_actor_spec)
+            self.assertEqual(self.state.last_created_actor_spec["num_cpus"], 0)
+            self.assertIs(self.state.last_created_actor_spec["ephemeral"], True)
+            self.assertEqual(
+                cluster.run(step, 21, timeout=5.0),
+                {"doubled": 42},
+            )
             # Ephemeral driver actors are deleted in `finally`
             self.assertEqual(cluster.list_actors(), [])
 
@@ -1200,13 +1198,15 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 self.assertEqual(user_runtime_env, snapshot)
                 self.assertEqual(len(self.state.packages), 1)
 
-                # Large (>32 KiB) argument payload is shipped via py_modules archive
+                # Large (>32 KiB) argument payload is sent inline in the HTTP JSON body
+                # without uploading an extra package to self.state.packages
                 big_text = "x" * (40 * 1024)
 
                 def echo_len(s: str) -> int:
                     return len(s)
 
                 self.assertEqual(cluster.run(echo_len, big_text), 40 * 1024)
+                self.assertEqual(len(self.state.packages), 1)
 
                 # Simulate cluster GCS package expiration: next call re-uploads cleanly
                 with self.state.lock:
@@ -1309,6 +1309,9 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
         cluster = RayCluster(address=self.address)
         a1 = cluster.actor(Accumulator, 10, name="acc_a", ttl_seconds=60.0)
+        self.assertIsNotNone(self.state.last_created_actor_spec)
+        self.assertEqual(self.state.last_created_actor_spec["num_cpus"], 1)
+        self.assertIsNone(self.state.last_created_actor_spec.get("ephemeral"))
         a2 = cluster.actor(Accumulator, 100, name="acc_b", ttl_seconds=60.0)
         self.assertIsInstance(a1, ActorHandle)
         self.assertTrue(a1.created)
@@ -1588,7 +1591,40 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         self.assertEqual("".join(buf), "0123456789abcdef")
 
         # Verify _ClientRootActor catches SystemExit in async methods and generators without crashing,
-        # and does not evaluate @property getters when scanning for generator methods during __init__
+        # does not evaluate @property getters when scanning for generator methods during __init__,
+        # and _install_ray_hooks isolates child actors in f"ray_client_{name}" while falling back
+        # to "ray_client" on ray.get_actor(name).
+        import ray._private.worker
+        from ray.actor import ActorClass
+        from ray.runtime_context import RuntimeContext
+
+        orig_stdout, orig_stderr = sys.stdout, sys.stderr
+        orig_ray_ns_env = os.environ.get("RAY_NAMESPACE")
+        orig_ray_init = ray.init
+        orig_ray_shutdown = ray.shutdown
+        orig_get_actor = ray.get_actor
+        orig_worker_get_actor = ray._private.worker.get_actor
+        orig_actor_remote = ActorClass._remote
+        orig_pg = ray.util.placement_group
+        orig_rt_ns = RuntimeContext.__dict__.get("namespace")
+
+        recorded_remote_opts: List[Dict[str, Any]] = []
+        recorded_get_actor_calls: List[Tuple[str, Optional[str]]] = []
+
+        def fake_actor_remote(actor_cls, args=None, kwargs=None, **actor_options):
+            recorded_remote_opts.append(dict(actor_options))
+            return {"actor_cls": actor_cls, "options": dict(actor_options)}
+
+        def fake_get_actor(name: str, namespace: Optional[str] = None):
+            recorded_get_actor_calls.append((name, namespace))
+            if name == "child_only" and namespace == "ray_client_test_root_exit":
+                return "handle_child_only"
+            if name == "shared_top" and namespace == "ray_client":
+                return "handle_shared_top"
+            if name == "explicit_actor" and namespace == "custom_ns":
+                return "handle_explicit"
+            raise ValueError(f"Actor {name!r} not found in namespace {namespace!r}")
+
         async_src = (
             "class AsyncExitActor:\n"
             "    @property\n"
@@ -1602,16 +1638,64 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             "        yield {'step': 1}\n"
             "        raise SystemExit(4)\n"
         )
-        root_act = _ClientRootActor(
-            {
-                "name": "test_root_exit",
-                "kind": "class",
-                "class_name": "AsyncExitActor",
-                "module_source": async_src,
-                "ttl_seconds": None,
-            }
-        )
+        root_act = None
         try:
+            ray.get_actor = fake_get_actor
+            ActorClass._remote = fake_actor_remote
+            root_act = _ClientRootActor(
+                {
+                    "name": "test_root_exit",
+                    "kind": "class",
+                    "class_name": "AsyncExitActor",
+                    "module_source": async_src,
+                    "ttl_seconds": None,
+                }
+            )
+            self.assertEqual(
+                os.environ.get("RAY_NAMESPACE"), "ray_client_test_root_exit"
+            )
+            self.assertEqual(
+                RuntimeContext.namespace.fget(None), "ray_client_test_root_exit"
+            )
+
+            # Child actor creation defaults to f"ray_client_{name}", detached defaults to
+            # "ray_client", and explicit namespace is preserved
+            ActorClass._remote("ChildCls", args=[], kwargs={})
+            ActorClass._remote("ChildCls", args=[], kwargs={}, lifetime="detached")
+            ActorClass._remote("ChildCls", args=[], kwargs={}, namespace="custom_ns")
+            self.assertEqual(
+                recorded_remote_opts[0]["namespace"], "ray_client_test_root_exit"
+            )
+            self.assertEqual(recorded_remote_opts[1]["namespace"], "ray_client")
+            self.assertEqual(recorded_remote_opts[2]["namespace"], "custom_ns")
+
+            # ray.get_actor checks f"ray_client_{name}" first, then falls back to "ray_client"
+            self.assertEqual(ray.get_actor("child_only"), "handle_child_only")
+            self.assertEqual(
+                recorded_get_actor_calls,
+                [("child_only", "ray_client_test_root_exit")],
+            )
+            recorded_get_actor_calls.clear()
+
+            self.assertEqual(ray.get_actor("shared_top"), "handle_shared_top")
+            self.assertEqual(
+                recorded_get_actor_calls,
+                [
+                    ("shared_top", "ray_client_test_root_exit"),
+                    ("shared_top", "ray_client"),
+                ],
+            )
+            recorded_get_actor_calls.clear()
+
+            self.assertEqual(
+                ray.get_actor("explicit_actor", namespace="custom_ns"),
+                "handle_explicit",
+            )
+            self.assertEqual(
+                recorded_get_actor_calls,
+                [("explicit_actor", "custom_ns")],
+            )
+
             self.assertIn("gen_exit", root_act._generator_methods)
             self.assertNotIn("boom_prop", root_act._generator_methods)
             res_zero = root_act.invoke("exit_zero", [], {})
@@ -1625,7 +1709,21 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertFalse(gen_frames[1]["ok"])
             self.assertEqual(gen_frames[1]["error"]["exc_type"], "SystemExit")
         finally:
-            root_act.shutdown()
+            if root_act is not None:
+                root_act.shutdown()
+            sys.stdout, sys.stderr = orig_stdout, orig_stderr
+            if orig_ray_ns_env is None:
+                os.environ.pop("RAY_NAMESPACE", None)
+            else:
+                os.environ["RAY_NAMESPACE"] = orig_ray_ns_env
+            ray.init = orig_ray_init
+            ray.shutdown = orig_ray_shutdown
+            ray.get_actor = orig_get_actor
+            ray._private.worker.get_actor = orig_worker_get_actor
+            ActorClass._remote = orig_actor_remote
+            ray.util.placement_group = orig_pg
+            if orig_rt_ns is not None:
+                RuntimeContext.namespace = orig_rt_ns
 
 
 if __name__ == "__main__":
