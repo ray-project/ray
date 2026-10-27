@@ -423,6 +423,7 @@ def test_detect_docker_cpus():
                 cpu_period_file_name="give_up",
                 cpuset_file_name="lose_hope",
                 cpu_max_file_name=cpu_max_file.name,
+                cpuset_effective_file_name_v2="no_cpuset",
             )
             == 2.0
         )
@@ -437,9 +438,115 @@ def test_detect_docker_cpus():
                 cpu_period_file_name="give_up",
                 cpuset_file_name="lose_hope",
                 cpu_max_file_name=cpu_max_file.name,
+                cpuset_effective_file_name_v2="no_cpuset",
             )
             is None
         )
+
+
+def _write_cgroup_file(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    return str(path)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
+def test_detect_docker_cpus_nested_cgroup(tmp_path):
+    """The quota the kernel enforces is the smallest one on the process's
+    cgroup and its parents, divided by the period of the same level."""
+    # cgroups v2: quota on the leaf, root unlimited, non-default period.
+    root = tmp_path / "v2"
+    _write_cgroup_file(root / "cgroup.controllers", "cpu cpuset memory\n")
+    _write_cgroup_file(root / "cpu.max", "max 100000\n")
+    _write_cgroup_file(root / "job" / "cpu.max", "150000 50000\n")
+    proc = _write_cgroup_file(tmp_path / "proc_v2", "0::/job\n")
+    assert (
+        ray._private.utils._get_docker_cpus(
+            cpu_quota_file_name="nope",
+            cpu_period_file_name="give_up",
+            cpuset_file_name="lose_hope",
+            cpu_max_file_name=str(root / "cpu.max"),
+            cpuset_effective_file_name_v2="no_cpuset",
+            proc_self_cgroup_filename=proc,
+        )
+        == 3.0
+    )
+
+    # cgroups v2: quota on the root is tighter than the leaf's.
+    _write_cgroup_file(root / "cpu.max", "50000 100000\n")
+    assert (
+        ray._private.utils._get_docker_cpus(
+            cpu_quota_file_name="nope",
+            cpu_period_file_name="give_up",
+            cpuset_file_name="lose_hope",
+            cpu_max_file_name=str(root / "cpu.max"),
+            cpuset_effective_file_name_v2="no_cpuset",
+            proc_self_cgroup_filename=proc,
+        )
+        == 0.5
+    )
+
+    # cgroups v2: bare host, the root has no cpu.max, the scope has one.
+    bare = tmp_path / "bare"
+    _write_cgroup_file(bare / "cgroup.controllers", "cpu cpuset memory\n")
+    _write_cgroup_file(
+        bare / "user.slice" / "run-1.scope" / "cpu.max", "200000 100000\n"
+    )
+    proc_bare = _write_cgroup_file(
+        tmp_path / "proc_bare", "0::/user.slice/run-1.scope\n"
+    )
+    assert (
+        ray._private.utils._get_docker_cpus(
+            cpu_quota_file_name="nope",
+            cpu_period_file_name="give_up",
+            cpuset_file_name="lose_hope",
+            cpu_max_file_name=str(bare / "cpu.max"),
+            cpuset_effective_file_name_v2="no_cpuset",
+            proc_self_cgroup_filename=proc_bare,
+        )
+        == 2.0
+    )
+
+    # cgroups v2: cpuset.cpus.effective on the leaf caps a looser quota.
+    _write_cgroup_file(root / "cpu.max", "max 100000\n")
+    _write_cgroup_file(root / "job" / "cpu.max", "800000 100000\n")
+    _write_cgroup_file(root / "cpuset.cpus.effective", "0-63\n")
+    _write_cgroup_file(root / "job" / "cpuset.cpus.effective", "0-3\n")
+    assert (
+        ray._private.utils._get_docker_cpus(
+            cpu_quota_file_name="nope",
+            cpu_period_file_name="give_up",
+            cpuset_file_name="lose_hope",
+            cpu_max_file_name=str(root / "cpu.max"),
+            cpuset_effective_file_name_v2=str(root / "cpuset.cpus.effective"),
+            proc_self_cgroup_filename=proc,
+        )
+        == 4
+    )
+
+    # cgroups v1: quota on the leaf, root unlimited, cpuset on the leaf.
+    cpu_root = tmp_path / "v1" / "cpu"
+    _write_cgroup_file(cpu_root / "cpu.cfs_quota_us", "-1\n")
+    _write_cgroup_file(cpu_root / "cpu.cfs_period_us", "100000\n")
+    _write_cgroup_file(cpu_root / "job" / "cpu.cfs_quota_us", "300000\n")
+    _write_cgroup_file(cpu_root / "job" / "cpu.cfs_period_us", "100000\n")
+    cpuset_root = tmp_path / "v1" / "cpuset"
+    _write_cgroup_file(cpuset_root / "cpuset.cpus", "0-63\n")
+    _write_cgroup_file(cpuset_root / "job" / "cpuset.cpus", "0-1\n")
+    proc_v1 = _write_cgroup_file(
+        tmp_path / "proc_v1", "12:cpu,cpuacct:/job\n11:cpuset:/job\n"
+    )
+    assert (
+        ray._private.utils._get_docker_cpus(
+            cpu_quota_file_name=str(cpu_root / "cpu.cfs_quota_us"),
+            cpu_period_file_name=str(cpu_root / "cpu.cfs_period_us"),
+            cpuset_file_name=str(cpuset_root / "cpuset.cpus"),
+            cpu_max_file_name="nope",
+            cpuset_effective_file_name_v2="no_cpuset",
+            proc_self_cgroup_filename=proc_v1,
+        )
+        == 2
+    )
 
 
 @pytest.mark.skipif(

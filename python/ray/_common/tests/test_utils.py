@@ -17,6 +17,7 @@ from ray._common.utils import (
     _BACKGROUND_TASKS,
     env_bool,
     get_cgroup_aware_swap_memory,
+    get_cgroup_dirs,
     get_or_create_event_loop,
     get_system_memory,
     load_class,
@@ -286,6 +287,159 @@ class TestGetSystemMemory:
             memory_limit_filename_v2="__also_does_not_exist__",
         )
         assert memory == psutil_memory, "Should use psutil when no cgroup files exist"
+
+
+def _write(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    return str(path)
+
+
+class TestGetCgroupDirs:
+    """Tests for get_cgroup_dirs, which resolves the process's own cgroup."""
+
+    def test_v2_nested_returns_leaf_to_root(self, tmp_path):
+        root = tmp_path / "cgroup"
+        (root / "a" / "b").mkdir(parents=True)
+        proc = _write(tmp_path / "proc_self_cgroup", "0::/a/b\n")
+        assert get_cgroup_dirs(str(root), None, proc) == [
+            str(root / "a" / "b"),
+            str(root / "a"),
+            str(root),
+        ]
+
+    def test_v2_root_cgroup_returns_only_root(self, tmp_path):
+        root = tmp_path / "cgroup"
+        root.mkdir()
+        proc = _write(tmp_path / "proc_self_cgroup", "0::/\n")
+        assert get_cgroup_dirs(str(root), None, proc) == [str(root)]
+
+    def test_v2_path_not_visible_falls_back_to_root(self, tmp_path):
+        """A container with the host cgroup namespace sees a path that does
+        not exist inside its own mount. Today's root-only behavior is kept."""
+        root = tmp_path / "cgroup"
+        root.mkdir()
+        proc = _write(tmp_path / "proc_self_cgroup", "0::/docker/0123abcd\n")
+        assert get_cgroup_dirs(str(root), None, proc) == [str(root)]
+
+    def test_v2_path_outside_namespace_falls_back_to_root(self, tmp_path):
+        root = tmp_path / "cgroup"
+        (root / "x").mkdir(parents=True)
+        proc = _write(tmp_path / "proc_self_cgroup", "0::/../x\n")
+        assert get_cgroup_dirs(str(root), None, proc) == [str(root)]
+
+    def test_v1_picks_the_hierarchy_of_the_controller(self, tmp_path):
+        mem_root = tmp_path / "memory"
+        (mem_root / "job").mkdir(parents=True)
+        cpu_root = tmp_path / "cpu"
+        (cpu_root / "other").mkdir(parents=True)
+        proc = _write(
+            tmp_path / "proc_self_cgroup",
+            "12:cpu,cpuacct:/other\n11:memory:/job\n1:name=systemd:/init.scope\n",
+        )
+        assert get_cgroup_dirs(str(mem_root), "memory", proc) == [
+            str(mem_root / "job"),
+            str(mem_root),
+        ]
+        assert get_cgroup_dirs(str(cpu_root), "cpu", proc) == [
+            str(cpu_root / "other"),
+            str(cpu_root),
+        ]
+
+    def test_v1_line_is_ignored_when_resolving_v2(self, tmp_path):
+        root = tmp_path / "cgroup"
+        (root / "job").mkdir(parents=True)
+        proc = _write(tmp_path / "proc_self_cgroup", "11:memory:/job\n")
+        assert get_cgroup_dirs(str(root), None, proc) == [str(root)]
+
+    def test_missing_proc_file_returns_root(self, tmp_path):
+        root = tmp_path / "cgroup"
+        root.mkdir()
+        assert get_cgroup_dirs(str(root), None, str(tmp_path / "missing")) == [
+            str(root)
+        ]
+
+
+@pytest.mark.skipif(not PSUTIL_AVAILABLE, reason="psutil not available")
+class TestGetSystemMemoryNestedCgroup:
+    """get_system_memory must return the limit the kernel enforces, which is
+    the smallest one on the process's cgroup and its parents."""
+
+    def test_v2_limit_on_leaf_wins_over_unlimited_root(self, tmp_path):
+        root = tmp_path / "cgroup"
+        _write(root / "cgroup.controllers", "cpu memory\n")
+        _write(root / "memory.max", "max\n")
+        _write(root / "job" / "memory.max", "268435456\n")
+        proc = _write(tmp_path / "proc_self_cgroup", "0::/job\n")
+        assert (
+            get_system_memory(
+                memory_limit_filename="__does_not_exist__",
+                memory_limit_filename_v2=str(root / "memory.max"),
+                proc_self_cgroup_filename=proc,
+            )
+            == 268435456
+        )
+
+    def test_v2_smallest_limit_in_hierarchy_wins(self, tmp_path):
+        root = tmp_path / "cgroup"
+        _write(root / "cgroup.controllers", "cpu memory\n")
+        _write(root / "memory.max", "1073741824\n")
+        _write(root / "job" / "memory.max", "268435456\n")
+        _write(root / "job" / "step" / "memory.max", "max\n")
+        proc = _write(tmp_path / "proc_self_cgroup", "0::/job/step\n")
+        assert (
+            get_system_memory(
+                memory_limit_filename="__does_not_exist__",
+                memory_limit_filename_v2=str(root / "memory.max"),
+                proc_self_cgroup_filename=proc,
+            )
+            == 268435456
+        )
+
+    def test_v2_bare_host_root_has_no_memory_max(self, tmp_path):
+        """On a bare-metal host the root has no memory.max at all. A limit on
+        the process's cgroup, e.g. a systemd scope, must still be found."""
+        root = tmp_path / "cgroup"
+        _write(root / "cgroup.controllers", "cpu memory\n")
+        _write(root / "user.slice" / "run-1.scope" / "memory.max", "1073741824\n")
+        proc = _write(tmp_path / "proc_self_cgroup", "0::/user.slice/run-1.scope\n")
+        assert (
+            get_system_memory(
+                memory_limit_filename="__does_not_exist__",
+                memory_limit_filename_v2=str(root / "memory.max"),
+                proc_self_cgroup_filename=proc,
+            )
+            == 1073741824
+        )
+
+    def test_v2_no_limit_anywhere_falls_back_to_psutil(self, tmp_path):
+        root = tmp_path / "cgroup"
+        _write(root / "cgroup.controllers", "cpu memory\n")
+        _write(root / "memory.max", "max\n")
+        _write(root / "job" / "memory.max", "max\n")
+        proc = _write(tmp_path / "proc_self_cgroup", "0::/job\n")
+        assert (
+            get_system_memory(
+                memory_limit_filename="__does_not_exist__",
+                memory_limit_filename_v2=str(root / "memory.max"),
+                proc_self_cgroup_filename=proc,
+            )
+            == psutil.virtual_memory().total
+        )
+
+    def test_v1_limit_on_leaf_wins_over_unlimited_root(self, tmp_path):
+        root = tmp_path / "memory"
+        _write(root / "memory.limit_in_bytes", "9223372036854771712\n")
+        _write(root / "job" / "memory.limit_in_bytes", "268435456\n")
+        proc = _write(tmp_path / "proc_self_cgroup", "11:memory:/job\n")
+        assert (
+            get_system_memory(
+                memory_limit_filename=str(root / "memory.limit_in_bytes"),
+                memory_limit_filename_v2="__does_not_exist__",
+                proc_self_cgroup_filename=proc,
+            )
+            == 268435456
+        )
 
 
 @pytest.mark.skipif(not PSUTIL_AVAILABLE, reason="psutil not available")

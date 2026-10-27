@@ -13,7 +13,7 @@ import time
 from abc import ABC, abstractmethod
 from inspect import signature
 from types import ModuleType
-from typing import Any, Coroutine, Dict, Optional, Tuple
+from typing import Any, Coroutine, Dict, List, Optional, Tuple
 
 import ray
 from ray._raylet import GcsClient, NodeID
@@ -372,21 +372,134 @@ def load_class(path):
     return getattr(module, class_str)
 
 
+PROC_SELF_CGROUP_FILENAME = "/proc/self/cgroup"
+
+
+def get_cgroup_dirs(
+    root: str,
+    controller: Optional[str] = None,
+    proc_self_cgroup_filename: str = PROC_SELF_CGROUP_FILENAME,
+) -> List[str]:
+    """Return the cgroup directories whose limits apply to this process.
+
+    The process's own cgroup is resolved from ``/proc/self/cgroup`` and the
+    directories are returned from that cgroup up to ``root``, so a caller
+    that takes the smallest limit across them gets the limit the kernel
+    enforces. The kernel applies the tightest limit along the hierarchy, not
+    the one on the root. For cgroup v2 the ``0::<path>`` entry is used; for
+    cgroup v1 the entry whose controller list contains ``controller``.
+
+    ``root`` is always the last element, so callers that today read only the
+    root keep that behavior when the process's cgroup is not visible under
+    ``root``. That is the normal case in a container started with the host
+    cgroup namespace, where ``/proc/self/cgroup`` names a path that does not
+    exist inside the container's cgroup mount.
+
+    Args:
+        root: The cgroup mount, e.g. ``/sys/fs/cgroup`` for cgroup v2 or
+            ``/sys/fs/cgroup/memory`` for the cgroup v1 memory controller.
+        controller: The cgroup v1 controller to resolve, e.g. ``memory`` or
+            ``cpu``. ``None`` resolves the cgroup v2 unified hierarchy.
+        proc_self_cgroup_filename: The ``/proc/self/cgroup`` file to read.
+            Tests point this at a fixture.
+
+    Returns:
+        Existing directories from the process's cgroup up to and including
+        ``root``, nearest first.
+    """
+    relative_path = None
+    try:
+        with open(proc_self_cgroup_filename, "r") as f:
+            for line in f:
+                parts = line.strip().split(":", 2)
+                if len(parts) != 3:
+                    continue
+                hierarchy_id, controllers, path = parts
+                if controller is None:
+                    is_match = hierarchy_id == "0" and controllers == ""
+                else:
+                    is_match = controller in controllers.split(",")
+                if is_match:
+                    relative_path = path
+                    break
+    except OSError:
+        relative_path = None
+
+    dirs = []
+    if relative_path:
+        components = [c for c in relative_path.split("/") if c]
+        # A cgroup outside the current cgroup namespace shows up as "/../x".
+        # It cannot be resolved from here, so only the root is used.
+        if ".." not in components:
+            for depth in range(len(components), 0, -1):
+                candidate = os.path.join(root, *components[:depth])
+                if os.path.isdir(candidate):
+                    dirs.append(candidate)
+    dirs.append(root)
+    return dirs
+
+
+def is_cgroup_v2_root(root: str) -> bool:
+    """Return whether ``root`` is a cgroup v2 mount.
+
+    Every cgroup v2 directory has a ``cgroup.controllers`` file; a cgroup v1
+    mount has none. On a bare-metal host the root has no ``memory.max`` or
+    ``cpu.max`` file at all, so the presence of those files cannot be used to
+    detect cgroup v2.
+
+    Args:
+        root: The directory to check, e.g. ``/sys/fs/cgroup``.
+
+    Returns:
+        True when ``root`` is a cgroup v2 directory.
+    """
+    return bool(root) and os.path.exists(os.path.join(root, "cgroup.controllers"))
+
+
+def _read_cgroup_limit(filename: str) -> Optional[int]:
+    """Read a single-value cgroup limit file.
+
+    Args:
+        filename: The cgroup file to read, e.g. ``memory.max``.
+
+    Returns:
+        The limit in bytes, or ``None`` when the file is missing, unreadable,
+        or holds ``max``, which is how cgroup v2 writes "no limit".
+    """
+    try:
+        with open(filename, "r") as f:
+            value = f.read().strip()
+    except OSError:
+        return None
+    if not value.isnumeric():
+        return None
+    return int(value)
+
+
 def get_system_memory(
     # For cgroups v1:
     memory_limit_filename: str = "/sys/fs/cgroup/memory/memory.limit_in_bytes",
     # For cgroups v2:
     memory_limit_filename_v2: str = "/sys/fs/cgroup/memory.max",
-):
+    proc_self_cgroup_filename: str = PROC_SELF_CGROUP_FILENAME,
+) -> int:
     """Return the total amount of system memory in bytes.
+
+    Inside a cgroup this is the smallest memory limit on the process's own
+    cgroup and its parents, capped at the physical memory of the host. That
+    is the limit the kernel enforces when it kills for OOM, so it is what Ray
+    should size its memory resource and memory monitor from.
 
     Args:
         memory_limit_filename: The path to the file that contains the memory
             limit for the Docker container. Defaults to
-            /sys/fs/cgroup/memory/memory.limit_in_bytes.
+            /sys/fs/cgroup/memory/memory.limit_in_bytes. Its directory is the
+            cgroup v1 memory controller mount.
         memory_limit_filename_v2: The path to the file that contains the memory
             limit for the Docker container in cgroups v2. Defaults to
-            /sys/fs/cgroup/memory.max.
+            /sys/fs/cgroup/memory.max. Its directory is the cgroup v2 mount.
+        proc_self_cgroup_filename: The ``/proc/self/cgroup`` file used to
+            resolve the process's own cgroup. Tests point this at a fixture.
 
     Returns:
         The total amount of system memory in bytes.
@@ -396,17 +509,22 @@ def get_system_memory(
     # often much larger than the actual amount of memory.
     docker_limit = None
     if os.path.exists(memory_limit_filename):
-        with open(memory_limit_filename, "r") as f:
-            docker_limit = int(f.read().strip())
-    elif os.path.exists(memory_limit_filename_v2):
-        with open(memory_limit_filename_v2, "r") as f:
-            # Don't forget to strip() the newline:
-            max_file = f.read().strip()
-            if max_file.isnumeric():
-                docker_limit = int(max_file)
-            else:
-                # max_file is "max", i.e. is unset.
-                docker_limit = None
+        root, limit_name = os.path.split(memory_limit_filename)
+        for cgroup_dir in get_cgroup_dirs(root, "memory", proc_self_cgroup_filename):
+            limit = _read_cgroup_limit(os.path.join(cgroup_dir, limit_name))
+            if limit is not None and (docker_limit is None or limit < docker_limit):
+                docker_limit = limit
+    elif os.path.exists(memory_limit_filename_v2) or is_cgroup_v2_root(
+        os.path.dirname(memory_limit_filename_v2)
+    ):
+        # The root of a cgroup v2 host has no memory.max file. The limit, if
+        # any, is on the process's own cgroup, e.g. a systemd scope or a
+        # Slurm job step.
+        root, limit_name = os.path.split(memory_limit_filename_v2)
+        for cgroup_dir in get_cgroup_dirs(root, None, proc_self_cgroup_filename):
+            limit = _read_cgroup_limit(os.path.join(cgroup_dir, limit_name))
+            if limit is not None and (docker_limit is None or limit < docker_limit):
+                docker_limit = limit
 
     # Use psutil if it is available.
     psutil_memory_in_bytes = psutil.virtual_memory().total
