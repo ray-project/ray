@@ -743,9 +743,20 @@ def _seed_tmp(rootfs_dir: str) -> None:
     """
     try:
         tmp_dir, _ = _resolve_in_root(rootfs_dir, "tmp")
+        parent_mtime = None
+        if os.path.isdir(tmp_dir) and not os.path.islink(tmp_dir):
+            try:
+                parent_mtime = os.stat(tmp_dir).st_mtime_ns
+            except OSError:
+                pass
         os.makedirs(tmp_dir, exist_ok=True)
         os.chmod(tmp_dir, 0o1777)
         _create_nofollow(os.path.join(tmp_dir, ".ray-sandbox-keep"))
+        if parent_mtime is not None:
+            try:
+                os.utime(tmp_dir, ns=(parent_mtime, parent_mtime))
+            except OSError:
+                pass
     except OSError:
         pass
 
@@ -764,10 +775,18 @@ def _seed_mountpoints(rootfs_dir: str) -> None:
     image whose ``etc`` or ``dev`` is a symlink to a host directory gets its
     seeds where the sandbox will look for them, never on the host. A last
     component that already exists, as a symlink included, is left alone.
+    Parent directory timestamps are preserved so that seeding mount points
+    does not perturb the image's extracted directory mtimes.
     """
     for rel in _MOUNTPOINT_DIRS + _MOUNTPOINT_FILES:
         try:
             parent, _ = _resolve_in_root(rootfs_dir, os.path.dirname(rel))
+            parent_mtime = None
+            if os.path.isdir(parent) and not os.path.islink(parent):
+                try:
+                    parent_mtime = os.stat(parent).st_mtime_ns
+                except OSError:
+                    pass
             path = os.path.join(parent, os.path.basename(rel))
             if os.path.lexists(path):
                 continue
@@ -776,6 +795,11 @@ def _seed_mountpoints(rootfs_dir: str) -> None:
             else:
                 os.makedirs(parent, exist_ok=True)
                 _create_nofollow(path)
+            if parent_mtime is not None:
+                try:
+                    os.utime(parent, ns=(parent_mtime, parent_mtime))
+                except OSError:
+                    pass
         except OSError:
             pass
 
