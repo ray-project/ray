@@ -1979,6 +1979,9 @@ def read_parquet(
                 )
         select_columns_after_read: Optional[List[str]] = None
         if columns is not None:
+            # ``list()`` below would split a bare string into characters.
+            if isinstance(columns, str):
+                raise TypeError("`columns` must be a list of strings.")
             # V1 ``columns=[...]`` implicitly retained the synthetic
             # ``"path"`` / ``"row_hash"`` columns when ``include_paths``
             # / ``include_row_hash`` were set (see
@@ -2970,6 +2973,10 @@ def read_orc(
         setting of :class:`~ray.data.context.DataContext`.
         By default, it samples file schemas and may omit columns absent from the
         sample. Use ``merge_schema=True`` to infer from all eligible files.
+        If you encounter a DataSourceV2 limitation, use the V1 reader by
+        setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
+        or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray. This shared setting also affects ``read_parquet()``.
 
     Examples:
         Read an ORC file in remote storage or local storage.
