@@ -307,7 +307,7 @@ While the sections above describe how Ray Data produces blocks, this section des
 :align: center
 ```
 
-The diagram above shows the pipelining mechanism for `iter_batches`. Data iteration runs in the same process as your code and spawns several threads: the outer iteration thread, from which the user thread yields complete batches, and a pool of worker threads that parallelize batch processing, such as running your `collate_fn`. The threads process batches in a streaming fashion while the user thread consumes completed batches. The diagram shows two worker threads, but the number varies and is computed as `min(4, prefetch_batches)`.
+The diagram above shows the pipelining mechanism for `iter_batches`. Data iteration runs in the same process as your code. It spawns an outer iteration thread, which hands complete batches to the user thread, and a pool of worker threads that parallelize batch processing, such as running your `collate_fn`. These threads process batches in a streaming fashion while the user thread consumes completed batches. The diagram shows two worker threads, but the number varies. Ray Data sets it to `min(4, prefetch_batches)`.
 
 Each batch is prepared, processed, and finalized before the user thread receives it. The following table describes each step.
 
