@@ -362,27 +362,24 @@ def _is_binary(type_: "pyarrow.DataType") -> bool:
     )
 
 
-# Cached view-type checkers, resolved on first use; empty tuple on pyarrow < 16,
-# which doesn't have view types.
+# Cached view-type checkers, resolved on first use. Empty tuple on pyarrow < 19:
+# view types exist since 16, but pa.Array.from_buffers only accepts their variadic
+# data buffers from 19 on, so older versions keep using the IPC fallback.
 _view_type_checkers: Optional[Tuple[Callable[["pyarrow.DataType"], bool], ...]] = None
 
 
 def _is_view(type_: "pyarrow.DataType") -> bool:
     """Whether the provided Array type is a variable-sized binary view type
-    (string view, binary view). These types were added in Arrow 16.0.0."""
+    (string view, binary view) that this module can serialize (pyarrow >= 19)."""
     global _view_type_checkers
 
     if _view_type_checkers is None:
         import pyarrow as pa
 
-        _view_type_checkers = tuple(
-            checker
-            for checker in (
-                getattr(pa.types, "is_string_view", None),
-                getattr(pa.types, "is_binary_view", None),
-            )
-            if checker is not None
-        )
+        if int(pa.__version__.split(".")[0]) < 19:
+            _view_type_checkers = ()
+        else:
+            _view_type_checkers = (pa.types.is_string_view, pa.types.is_binary_view)
     return any(checker(type_) for checker in _view_type_checkers)
 
 
