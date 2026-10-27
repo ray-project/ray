@@ -18,6 +18,7 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
 )
 from ray.data._internal.util import GiB
 from ray.tests.conftest import wait_for_condition
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 CLUSTER_NODES_WITH_HEAD = [
     # Head node should be included if it has non-zero CPUs or GPUs.
@@ -449,6 +450,37 @@ def test_coordinator_actor_runs_on_the_head_node(cluster):
     # Losing the node that created it doesn't affect it.
     cluster.remove_node(worker)
 
+    assert ray.get(coordinator.get_reserved_resources.remote("r"), timeout=60) == {}
+
+
+def test_coordinator_actor_escapes_the_callers_placement_group(cluster):
+    """A caller inside a placement group that captures child tasks (Tune
+    trials, Train V1 workers) still creates the coordinator on the head node,
+    outside the group, whose bundles don't hold the head node resource."""
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    pg = ray.util.placement_group([{"CPU": 2}])
+    ray.get(pg.ready())
+
+    @ray.remote(num_cpus=1)
+    def create_coordinator():
+        coordinator = get_or_create_autoscaling_coordinator()
+        return ray.get(coordinator.get_reserved_resources.remote("r"))
+
+    strategy = PlacementGroupSchedulingStrategy(
+        pg, placement_group_capture_child_tasks=True
+    )
+    assert (
+        ray.get(create_coordinator.options(scheduling_strategy=strategy).remote()) == {}
+    )
+
+    coordinator = get_or_create_autoscaling_coordinator()
+    actor_info = ray._private.state.actors(coordinator._actor_id.hex())
+    assert actor_info["Address"]["NodeID"] == cluster.head_node.node_id
+
+    # Removing the group doesn't take the coordinator with it.
+    ray.util.remove_placement_group(pg)
     assert ray.get(coordinator.get_reserved_resources.remote("r"), timeout=60) == {}
 
 

@@ -809,6 +809,11 @@ def get_or_create_autoscaling_coordinator():
     # actor could never restart. Soft node affinity doesn't help here, because
     # Ray places an actor that requests no resources on a random node unless
     # its affinity is hard.
+    #
+    # The explicit "DEFAULT" strategy stops the actor from joining the caller's
+    # placement group, which happens when the caller runs in one that captures
+    # child tasks (Tune trials, Train V1 workers). The bundles don't hold the
+    # head node resource, and a detached actor shouldn't die with the group.
     actor_cls = ray.remote(
         num_cpus=0,
         resources={HEAD_NODE_RESOURCE_LABEL: 0.001},
@@ -819,6 +824,7 @@ def get_or_create_autoscaling_coordinator():
         namespace="AutoscalingCoordinator",
         get_if_exists=True,
         lifetime="detached",
+        scheduling_strategy="DEFAULT",
     )
     # NOTE: Need the following lock, because Ray Core doesn't allow creating the same
     # actor from multiple threads simultaneously.
