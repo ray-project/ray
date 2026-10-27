@@ -46,7 +46,7 @@ compile_pip_dependencies() {
 
   (
     cd "${WORKSPACE_DIR}"
-    # uv 0.13.4 bundles webpki roots without the compromised eMudhra CAs.
+    # Match the uv that raydepsets pins (uv_x86_64-linux in WORKSPACE).
     pip install "uv==0.13.4"
 
     # uv writes whatever index it used into the lockfile. Keep CI's temporary

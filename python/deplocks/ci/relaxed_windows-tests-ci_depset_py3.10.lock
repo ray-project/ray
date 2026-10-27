@@ -2449,7 +2449,7 @@ microsoft-security-utilities-secret-masker==1.0.0b4 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   azure-cli-core
-ml-dtypes==0.5.4; (python_full_version < "3.14" and sys_platform != "darwin") or (python_full_version < "3.12" and sys_platform == "darwin") \
+ml-dtypes==0.5.4; python_full_version < "3.12" or (python_full_version >= "3.12" and python_full_version < "3.14" and sys_platform != "darwin") \
     --hash=sha256:0d2ffd05a2575b1519dc928c0b93c06339eb67173ff53acb00724502cda231cf \
     --hash=sha256:11942cbf2cf92157db91e5022633c0d9474d4dfd813a909383bd23ce828a4b7d \
     --hash=sha256:14a4fd3228af936461db66faccef6e4f41c1d82fcc30e9f8d58a08916b1d811f \
@@ -3252,7 +3252,7 @@ opentelemetry-util-http==0.60b0 \
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   opentelemetry-instrumentation-asgi
 #   opentelemetry-instrumentation-fastapi
-opt-einsum==3.4.0; (python_full_version < "3.14" and sys_platform != "darwin") or (python_full_version < "3.12" and sys_platform == "darwin") \
+opt-einsum==3.4.0; python_full_version < "3.12" or (python_full_version >= "3.12" and python_full_version < "3.14" and sys_platform != "darwin") \
     --hash=sha256:69bb92469f86a1565195ece4ac0323943e83477171b91d24c35afe028a90d7cd \
     --hash=sha256:96ca72f1b886d148241348783498194c577fa30a8faac108586b14f1ba4473ac
 # via

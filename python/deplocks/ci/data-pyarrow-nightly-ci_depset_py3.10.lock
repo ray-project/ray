@@ -5095,7 +5095,7 @@ uvicorn==0.53.0 \
     --hash=sha256:a9356f0cb89b3b8621529c5d5eebd69bfe154f4c3f68b4cf2de47e45fa855c2e \
     --hash=sha256:e8dca71ec86dce5f04e333f0d56cdedf942446e6643b9cea1af0d6d3a02cb03e
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
-uvloop==0.22.1 ; (python_full_version < '3.12' and platform_python_implementation == 'PyPy' and sys_platform != 'win32') or (python_full_version < '3.12' and sys_platform == 'cygwin') or (platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') \
+uvloop==0.22.1 ; (python_full_version < '3.12' and sys_platform == 'cygwin') or (python_full_version < '3.12' and sys_platform != 'cygwin' and sys_platform != 'win32') or (platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') \
     --hash=sha256:017bd46f9e7b78e81606329d07141d3da446f8798c6baeec124260e22c262772 \
     --hash=sha256:0530a5fbad9c9e4ee3f2b33b148c6a64d47bbad8000ea63704fa8260f4cf728e \
     --hash=sha256:05e4b5f86e621cf3927631789999e697e58f0d2d32675b67d9ca9eb0bca55743 \

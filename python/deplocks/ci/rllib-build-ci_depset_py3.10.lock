@@ -3004,7 +3004,7 @@ opentelemetry-semantic-conventions==0.60b0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-sdk
-opt-einsum==3.4.0 ; (python_full_version < '3.14' and sys_platform != 'darwin') or (python_full_version < '3.12' and sys_platform == 'darwin') \
+opt-einsum==3.4.0 ; python_full_version < '3.12' or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'darwin') \
     --hash=sha256:69bb92469f86a1565195ece4ac0323943e83477171b91d24c35afe028a90d7cd \
     --hash=sha256:96ca72f1b886d148241348783498194c577fa30a8faac108586b14f1ba4473ac
     # via
