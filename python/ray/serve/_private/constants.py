@@ -863,10 +863,9 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
-# When metrics need the token (token auth on, RAY_AUTH_SKIP_METRICS unset),
-# HAProxy serves its exporter and stats page only on this 0600 unix socket, and
-# HAProxyManager serves them on the metrics port behind the token check that
-# Ray's other metrics endpoints use.
+# When metrics authentication is required, HAProxy serves the exporter and
+# stats page on this owner-only Unix socket. HAProxyManager exposes them on the
+# metrics port with Ray token authentication.
 RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH = os.environ.get(
     "RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH", "/tmp/haproxy-serve/exporter.sock"
 )

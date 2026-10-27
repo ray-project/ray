@@ -838,6 +838,56 @@ def test_haproxy_metrics_and_stats_open_without_token(serve_with_auth):
     assert _get_haproxy_endpoint(8404, "/stats").status_code == 200
 
 
+def test_haproxy_metrics_token_auth_with_colocated_reuse_port_proxies(monkeypatch):
+    """With SERVE_SOCKET_REUSE_PORT_ENABLED=1, co-located EveryNode proxies
+    share the metrics port. In token mode each HAProxyManager's metrics server
+    must share it too, or the second manager fails to bind."""
+    # Set before the nodes start so every Ray process inherits it.
+    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
+    token = generate_new_authentication_token()
+    with authentication_env_guard():
+        set_auth_mode("token")
+        set_env_auth_token(token)
+        reset_auth_token_state()
+        cluster = Cluster()
+        try:
+            head_node = cluster.add_node(num_cpus=0)
+            cluster.add_node(num_cpus=1)
+            cluster.wait_for_nodes()
+            ray.init(address=head_node.address)
+            serve.start(http_options={"location": "EveryNode"})
+
+            @serve.deployment
+            def hello(_):
+                return "hello"
+
+            serve.run(hello.bind())
+            client = _get_global_client()
+
+            def both_proxies_healthy() -> bool:
+                details = ServeInstanceDetails(
+                    **ray.get(client._controller.get_serve_instance_details.remote())
+                )
+                return len(details.proxies) == 2 and all(
+                    proxy.status == ProxyStatus.HEALTHY
+                    for proxy in details.proxies.values()
+                )
+
+            wait_for_condition(both_proxies_healthy, timeout=60)
+            wait_for_condition(
+                _haproxy_exporter_up,
+                timeout=30,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert _get_haproxy_endpoint(9101, "/metrics").status_code == 401
+        finally:
+            if ray.is_initialized():
+                serve.shutdown()
+                ray.shutdown()
+            cluster.shutdown()
+            reset_auth_token_state()
+
+
 def test_haproxy_safe_name():
     """Test that the safe name is generated correctly."""
     assert HAProxyManager.get_safe_name("HTTP-test_foo.bar") == "HTTP-test_foo.bar"

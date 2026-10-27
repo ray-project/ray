@@ -1922,12 +1922,15 @@ def _call_wsgi(app, path: str, method: str = "GET") -> Tuple[str, bytes]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("enable_hap_optimization", [True, False])
 async def test_metrics_auth_required_moves_exporter_to_unix_socket(
-    haproxy_api_cleanup,
+    haproxy_api_cleanup, enable_hap_optimization
 ):
     """With metrics_auth_required, HAProxy binds neither the metrics nor the
     stats port. The exporter and stats page answer only on a 0600 unix socket,
-    which make_exporter_proxy_app forwards to."""
+    which make_exporter_proxy_app forwards to, and keep answering after a
+    reload hands the socket to a new HAProxy process: with -x when
+    enable_hap_optimization is on, with a plain -sf when it is off."""
     with tempfile.TemporaryDirectory() as temp_dir:
         metrics_port = find_free_port()
         stats_port = find_free_port()
@@ -1937,6 +1940,9 @@ async def test_metrics_auth_required_moves_exporter_to_unix_socket(
             metrics_port=metrics_port,
             stats_port=stats_port,
             socket_path=os.path.join(temp_dir, "admin.sock"),
+            enable_hap_optimization=enable_hap_optimization,
+            server_state_base=temp_dir,
+            server_state_file=os.path.join(temp_dir, "server-state"),
             metrics_auth_required=True,
             exporter_socket_path=exporter_socket_path,
             has_received_routes=True,
@@ -1959,14 +1965,23 @@ async def test_metrics_auth_required_moves_exporter_to_unix_socket(
                 requests.get(f"http://127.0.0.1:{port}/", timeout=2)
 
         app = haproxy.make_exporter_proxy_app(config)
-        status, body = _call_wsgi(app, "/metrics")
-        assert status.startswith("200")
-        assert b"haproxy_process_" in body
-        status, body = _call_wsgi(app, "/stats;csv")
-        assert status.startswith("200")
-        assert body.startswith(b"# pxname")
+
+        def assert_both_pages_answer():
+            status, body = _call_wsgi(app, "/metrics")
+            assert status.startswith("200")
+            assert b"haproxy_process_" in body
+            status, body = _call_wsgi(app, "/stats;csv")
+            assert status.startswith("200")
+            assert body.startswith(b"# pxname")
+
+        assert_both_pages_answer()
         assert _call_wsgi(app, "/other")[0].startswith("404")
         assert _call_wsgi(app, "/metrics", method="POST")[0].startswith("404")
+
+        old_pid = api._proc.pid
+        await api.reload()
+        assert api._proc.pid != old_pid
+        assert_both_pages_answer()
 
         await api.stop()
         assert _call_wsgi(app, "/metrics")[0].startswith("503")

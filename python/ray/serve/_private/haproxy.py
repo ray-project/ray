@@ -21,6 +21,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import ray
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
+from ray._private.authentication import authentication_utils as auth_utils
+from ray._private.authentication.http_token_authentication import (
+    start_metrics_wsgi_server,
+)
 from ray.serve._private.common import (
     NodeId,
     ReplicaID,
@@ -737,9 +741,6 @@ class HAProxyConfig:
     stats_uri: str = "/stats"
     metrics_port: int = RAY_SERVE_HAPROXY_METRICS_PORT
     metrics_uri: str = "/metrics"
-    # True when token auth is on and RAY_AUTH_SKIP_METRICS is unset: the
-    # exporter and stats page move to exporter_socket_path, and HAProxyManager
-    # serves them on metrics_port behind the token check.
     metrics_auth_required: bool = False
     exporter_socket_path: str = RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH
     # All timeout values are in seconds
@@ -1837,8 +1838,6 @@ class HAProxyApi(ProxyApi):
 def haproxy_metrics_auth_required() -> bool:
     """Whether HAProxy's exporter and stats page need the token: token auth is
     on and RAY_AUTH_SKIP_METRICS is unset, the rule Ray's metrics endpoints use."""
-    from ray._private.authentication import authentication_utils as auth_utils
-
     return (
         auth_utils.is_token_auth_enabled() and not auth_utils.is_metrics_auth_skipped()
     )
@@ -2024,18 +2023,14 @@ class HAProxyManager(ProxyActorInterface):
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
 
-        # With token auth on, HAProxy's exporter and stats page listen only on
-        # a 0600 unix socket; serve them on the metrics port behind the token
-        # check Ray's other metrics endpoints use.
         self._exporter_server = None
         if metrics_auth_required:
-            from ray._private.authentication.http_token_authentication import (
-                start_metrics_wsgi_server,
-            )
-
             self._exporter_server = start_metrics_wsgi_server(
                 self._haproxy.cfg.metrics_port,
                 make_exporter_proxy_app(self._haproxy.cfg),
+                # Co-located managers share the port when HAProxy uses
+                # SO_REUSEPORT for its own listeners.
+                reuse_port=self._haproxy.cfg.enable_so_reuseport,
             )
 
         self._metrics_collector = None
