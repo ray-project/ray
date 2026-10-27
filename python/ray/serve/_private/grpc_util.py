@@ -173,11 +173,10 @@ def enable_server_reflection(server: gRPCGenericServer) -> None:
     try:
         from grpc_reflection.v1alpha import reflection
     except ModuleNotFoundError as e:
-        e.msg += (
-            ". gRPC server reflection needs grpcio-reflection. You can run "
+        raise ModuleNotFoundError(
+            f"{e.msg}. gRPC server reflection needs grpcio-reflection. You can run "
             '`pip install "ray[serve]"` to install all Ray Serve dependencies.'
-        )
-        raise e
+        ) from e
 
     service_names = get_service_names(server.generic_rpc_handlers)
     # Advertise only user-defined services, not Serve's built-in API service.
