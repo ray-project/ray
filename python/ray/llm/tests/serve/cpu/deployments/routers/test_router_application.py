@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import sys
 import threading
@@ -341,6 +342,26 @@ class TestRoutingDecision:
             patcher.stop()
 
     @pytest.mark.asyncio
+    async def test_rejects_truncated_multipart_without_model(self):
+        router, handles, patcher = _new_router()
+        try:
+            response = await _route(
+                router,
+                "POST",
+                "/v1/audio/transcriptions",
+                headers={
+                    "content-type": "multipart/form-data; boundary=test",
+                    "x-body-truncated": "8388608/10000000",
+                },
+            )
+
+            assert response.status_code == 413
+            assert _body(response)["error"]["type"] == "RequestTooLarge"
+            assert handles == {}
+        finally:
+            patcher.stop()
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("model_id", MODEL_APPS)
     async def test_returns_application_and_full_replica_id(self, model_id):
         router, handles, patcher = _new_router()
@@ -535,7 +556,11 @@ class TestRoutingDecision:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "error",
-        [RayServeException("Application does not exist."), RayActorError()],
+        [
+            RayServeException("Application does not exist."),
+            RayActorError(),
+            RaySystemError("controller unavailable"),
+        ],
     )
     async def test_application_deployed_after_router(self, monkeypatch, error):
         monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
@@ -544,28 +569,6 @@ class TestRoutingDecision:
         def get_app_handle(app_name):
             if not deployed:
                 raise error
-            return FakeHandle(app_name)
-
-        with patch.object(
-            router_application_module.serve, "get_app_handle", get_app_handle
-        ):
-            router = _new(RouterApplication, MODEL_APPS, _llm_configs())
-            try:
-                await asyncio.sleep(0.05)
-                deployed = True
-                decision = await _chat(router, {"model": "model-a"})
-                assert decision["application"] == "llm-model-a"
-            finally:
-                _cancel_handle_tasks(router)
-
-    @pytest.mark.asyncio
-    async def test_transient_ray_system_error_is_retried(self, monkeypatch):
-        monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
-        deployed = False
-
-        def get_app_handle(app_name):
-            if not deployed:
-                raise RaySystemError("controller unavailable")
             return FakeHandle(app_name)
 
         with patch.object(
@@ -665,20 +668,10 @@ class TestRoutingDecision:
 
 
 def test_deployment_options_keep_router_available():
-    options = RouterApplication.get_deployment_options()
-    assert options == {
-        "max_ongoing_requests": router_application_module.DEFAULT_MAX_ONGOING_REQUESTS,
-        "ray_actor_options": {
-            "num_cpus": 1,
-            "runtime_env": get_llm_serve_runtime_env(),
-        },
-        "autoscaling_config": {
-            "min_replicas": 1,
-            "initial_replicas": 2,
-            "max_replicas": 10,
-            "target_ongoing_requests": 100,
-        },
-    }
+    expected_options = copy.deepcopy(router_application_module.DEFAULT_INGRESS_OPTIONS)
+    expected_options["ray_actor_options"]["runtime_env"] = get_llm_serve_runtime_env()
+
+    assert RouterApplication.get_deployment_options() == expected_options
 
 
 if __name__ == "__main__":

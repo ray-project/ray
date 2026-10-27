@@ -1,5 +1,6 @@
 """End-to-end tests for `build_openai_router_app` over HAProxy."""
 
+import json
 import sys
 from typing import Dict, Optional
 from unittest.mock import patch
@@ -154,6 +155,21 @@ class TestRouterApplication:
             assert response.json()["object"] == "chat.completion"
             assert "replica_id" not in response.json()
             assert "application" not in response.json()
+
+    def test_streams_each_model_from_its_application(self, applications):
+        for model in MODELS:
+            response = _chat(model, stream=True)
+            assert response.headers["content-type"].startswith("text/event-stream")
+            events = [
+                line.removeprefix("data: ")
+                for line in response.text.splitlines()
+                if line.startswith("data: ")
+            ]
+            assert events[-1] == "[DONE]"
+            assert all(
+                chunk["object"] == "chat.completion.chunk"
+                for chunk in map(json.loads, events[:-1])
+            )
 
     def test_round_robin(self, applications):
         replicas = [_replica(_chat(ROUND_ROBIN_MODEL)) for _ in range(6)]

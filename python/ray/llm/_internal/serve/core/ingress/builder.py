@@ -20,6 +20,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
@@ -363,6 +364,9 @@ class OpenAIRouterArgs(BaseModelExtended):
 
     @model_validator(mode="after")
     def _validate_model_configs(self):
+        if any(config.lora_config is not None for config in self.llm_configs):
+            raise ValueError("build_openai_router_app does not support LoRA configs.")
+
         config_model_ids = [config.model_id for config in self.llm_configs]
         if len(set(config_model_ids)) != len(config_model_ids):
             raise ValueError("Duplicate models found. Make sure model ids are unique.")
@@ -388,10 +392,6 @@ def build_openai_router_app(
             "build_openai_router_app requires direct streaming. Set "
             "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 on the Ray cluster."
         )
-
-    from ray.llm._internal.serve.core.ingress.router_application import (
-        RouterApplication,
-    )
 
     args = OpenAIRouterArgs.model_validate(router_args)
     return serve.deployment(

@@ -1,9 +1,9 @@
 """OpenAI router application for multi-application direct streaming.
 
-Each model is served by an independently deployed Serve application. The
-router receives HAProxy's internal POST decision requests, answers with the
-replica that should receive inference requests, and directly serves lightweight
-global control-plane responses.
+Each model is served by an independently deployed Serve application. The router
+answers CORS preflight requests and GET or HEAD requests to ``/v1/models`` and
+``/v1/models/{model}`` directly. It delegates all other routes to a model
+application by returning its application name and selected replica to HAProxy.
 """
 
 import asyncio
@@ -298,11 +298,10 @@ class RouterApplication:
         if model_id is None and len(self._model_applications) == 1:
             model_id = next(iter(self._model_applications))
         if model_id is None:
-            return _error(
-                status.HTTP_400_BAD_REQUEST,
+            return self._invalid_routing_body(
+                request,
                 "Model parameter is required when multiple models are configured. "
                 f"Available models: {list(self._model_applications)}",
-                "BadRequestError",
             )
         if not isinstance(model_id, str):
             return _error(

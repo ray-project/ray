@@ -102,6 +102,21 @@ def test_requires_matching_llm_configs():
         )
 
 
+def test_rejects_lora_configs():
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="model-a"),
+        lora_config={},
+    )
+
+    with pytest.raises(ValueError, match="does not support LoRA"):
+        build_openai_router_app(
+            {
+                "model_applications": {"model-a": "app-a"},
+                "llm_configs": [llm_config],
+            }
+        )
+
+
 def test_builder_accepts_declarative_yaml_args():
     builder = import_attr(
         "ray.llm._internal.serve.core.ingress.builder:build_openai_router_app"
