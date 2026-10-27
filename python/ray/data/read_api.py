@@ -2973,6 +2973,10 @@ def read_orc(
         setting of :class:`~ray.data.context.DataContext`.
         By default, it samples file schemas and may omit columns absent from the
         sample. Use ``merge_schema=True`` to infer from all eligible files.
+        If you encounter a DataSourceV2 limitation, use the V1 reader by
+        setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
+        or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray. This shared setting also affects ``read_parquet()``.
 
     Examples:
         Read an ORC file in remote storage or local storage.
