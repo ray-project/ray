@@ -64,8 +64,9 @@ def copy_fs_tree(
         _copy_ownership(src, dst)
     except (PermissionError, shutil.Error) as err:
         if os.geteuid() != 0 and shutil.which("sudo"):
+            # -n: fail rather than wait for a password nobody can type.
             os.makedirs(dst, exist_ok=True)
-            cmd = ["sudo", "cp", "-a", os.path.join(src, "."), dst]
+            cmd = ["sudo", "-n", "cp", "-a", os.path.join(src, "."), dst]
             res = subprocess.run(cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 raise OSError(
@@ -74,7 +75,7 @@ def copy_fs_tree(
             if ignore_patterns:
                 for pat in ignore_patterns:
                     subprocess.run(
-                        ["sudo", "find", dst, "-name", pat, "-delete"],
+                        ["sudo", "-n", "find", dst, "-name", pat, "-delete"],
                         capture_output=True,
                     )
         else:
@@ -435,26 +436,26 @@ class StagedCheckpoint:
             gid = os.getgid()
             # Not fs/: the guest's files keep their owners.
             subprocess.run(
-                ["sudo", "chown", f"{uid}:{gid}", *paths_to_harden],
+                ["sudo", "-n", "chown", f"{uid}:{gid}", *paths_to_harden],
                 capture_output=True,
             )
             subprocess.run(
-                ["sudo", "chown", "-R", f"{uid}:{gid}", self.state_dir],
+                ["sudo", "-n", "chown", "-R", f"{uid}:{gid}", self.state_dir],
                 capture_output=True,
             )
             for path in paths_to_harden:
                 if os.path.isdir(path):
                     subprocess.run(
-                        ["sudo", "chmod", dir_mode, path],
+                        ["sudo", "-n", "chmod", dir_mode, path],
                         capture_output=True,
                     )
                 elif os.path.isfile(path):
                     subprocess.run(
-                        ["sudo", "chmod", file_mode, path],
+                        ["sudo", "-n", "chmod", file_mode, path],
                         capture_output=True,
                     )
             subprocess.run(
-                ["sudo", "chmod", "-R", state_mode, self.state_dir],
+                ["sudo", "-n", "chmod", "-R", state_mode, self.state_dir],
                 capture_output=True,
             )
         else:

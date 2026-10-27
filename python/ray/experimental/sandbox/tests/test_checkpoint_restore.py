@@ -567,6 +567,8 @@ class TestCheckpointRestore(unittest.TestCase):
             assert len(chmod_calls) >= 1
             for cmd in chmod_calls:
                 assert "sudo" in cmd
+                # Non-interactive: a worker can't answer a password prompt.
+                assert cmd[:2] == ["sudo", "-n"]
                 assert "chmod" in cmd
                 assert "go+rX" not in " ".join(cmd)
             # Ownership changes skip fs/, so guest files keep their owners.
