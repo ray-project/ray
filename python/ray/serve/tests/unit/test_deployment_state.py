@@ -3773,6 +3773,87 @@ class TestDeploymentActors:
         assert ds._deployment_actor_retry_counter == 0
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
+    @pytest.mark.parametrize("num_replicas", [0, 1])
+    def test_deployment_actor_recreate_terminal_failure_surfaces(
+        self, mock_deployment_state_manager, num_replicas
+    ):
+        """Exhausting recreate retries after a health failure is reported.
+
+        Once retries are exhausted the controller stops recreating the actor,
+        so the status must be UNHEALTHY/DEPLOYMENT_ACTOR_FAILED with the
+        startup error, whether or not replicas are running. A redeploy then
+        recovers the deployment to HEALTHY.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=num_replicas,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=2,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        for r in ds._replicas.get():
+            r._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        _get_deployment_actor_wrapper(ds, "1").set_health_ok(False)
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+        )
+
+        # Every recreated actor fails to start until retries are exhausted.
+        for _ in range(ds._deployment_actor_failed_to_start_threshold):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("ctor boom")
+            dsm.update()
+        assert ds.deployment_actor_terminally_failed()
+
+        for _ in range(3):
+            dsm.update()
+            assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+            assert (
+                ds.curr_status_info.status_trigger
+                == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+            )
+            assert "failed to start deployment actors 2 times" in (
+                ds.curr_status_info.message
+            )
+            assert "ctor boom" in ds.curr_status_info.message
+        assert ds._replicas.count() == num_replicas
+
+        # Redeploy clears the terminal failure; drive to HEALTHY.
+        info2, v2 = deployment_info(
+            version="2",
+            num_replicas=num_replicas,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=2,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        assert not ds.deployment_actor_terminally_failed()
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "2").set_ready()
+        for _ in range(10):
+            dsm.update()
+            if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
+                break
+            for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+                r._actor.set_ready()
+            for r in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                r._actor.set_done_stopping()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._replicas.count() == num_replicas
+        assert all(r.version == v2 for r in ds._replicas.get())
+
     def test_deployment_actor_reset_health_state_after_running_on_ready(
         self, mock_deployment_state_manager
     ):
