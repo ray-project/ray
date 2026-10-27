@@ -1810,7 +1810,9 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
     submissible_tasks_.erase(it);
   }
 
-  return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
+  // LineageReleasedCallback expects the number of bytes released (>= 0). The
+  // footprint only decreases here, so return the negated delta.
+  return total_lineage_footprint_bytes_prev - total_lineage_footprint_bytes_;
 }
 
 void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) {
