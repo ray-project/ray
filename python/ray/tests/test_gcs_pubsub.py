@@ -99,12 +99,13 @@ async def test_aio_poll_and_close_complete_simultaneously():
     # Closing before polling makes both tasks complete immediately.
     subscriber._close.set()
 
+    initial_tasks = asyncio.all_tasks()
     await subscriber._poll()
 
     assert len(subscriber._queue) == 0
-    # No stray tasks are left behind.
+    # No stray tasks created by _poll() are left behind.
     await asyncio.sleep(0)
-    assert all(t.done() for t in asyncio.all_tasks() if t is not asyncio.current_task())
+    assert all(t.done() for t in asyncio.all_tasks() - initial_tasks)
 
 
 @pytest.mark.asyncio
