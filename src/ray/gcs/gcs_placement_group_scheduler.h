@@ -393,6 +393,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const NodeID &node_id);
 
+  /// Retry RemovePlacementGroupBundles after a delay, unless a newer scheduling
+  /// attempt for the placement group has since committed the bundles on this node.
+  void RetryRemovePlacementGroupBundlesLater(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+      const NodeID &node_id);
+
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
       const rpc::Address &raylet_address);
