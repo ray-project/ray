@@ -36,6 +36,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    SERVE_AUTOSCALING_POLICY_METRICS_KEY,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -380,6 +381,16 @@ class DeploymentAutoscalingState:
             tag_keys=("deployment", "application"),
         )
 
+        self.autoscaling_policy_metric_gauge = metrics.Gauge(
+            "serve_autoscaling_policy_metric",
+            description=(
+                "Numeric values an autoscaling policy publishes under the "
+                f"'{SERVE_AUTOSCALING_POLICY_METRICS_KEY}' policy state key, "
+                "tagged by metric name."
+            ),
+            tag_keys=("deployment", "application", "metric"),
+        )
+
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
 
@@ -663,6 +674,7 @@ class DeploymentAutoscalingState:
         total_num_requests: float,
         policy_execution_time_ms: float,
         policy_scope: str,
+        policy_metrics: Optional[Dict[str, Any]] = None,
     ):
         tags = {
             "deployment": self._deployment_id.name,
@@ -678,6 +690,16 @@ class DeploymentAutoscalingState:
         self.autoscaling_target_ongoing_requests_gauge.set(
             self._config.get_target_ongoing_requests(), tags=tags
         )
+        for name, value in (policy_metrics or {}).items():
+            # Skip malformed entries so a policy bug can't break the control loop.
+            if (
+                isinstance(name, str)
+                and isinstance(value, (int, float))
+                and math.isfinite(value)
+            ):
+                self.autoscaling_policy_metric_gauge.set(
+                    float(value), tags={**tags, "metric": name}
+                )
 
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
@@ -707,6 +729,7 @@ class DeploymentAutoscalingState:
             autoscaling_context.total_num_requests,
             policy_execution_time_ms,
             "deployment",
+            (self._policy_state or {}).get(SERVE_AUTOSCALING_POLICY_METRICS_KEY),
         )
 
         if _skip_bound_check:
@@ -1263,6 +1286,9 @@ class ApplicationAutoscalingState:
                     autoscaling_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
                     "application",
+                    (self._policy_state or {})
+                    .get(deployment_id, {})
+                    .get(SERVE_AUTOSCALING_POLICY_METRICS_KEY),
                 )
                 results[deployment_id] = (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
