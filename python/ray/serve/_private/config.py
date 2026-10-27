@@ -268,16 +268,6 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
-    prefer_local_node_routing: bool = Field(
-        default=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
-        update_type=DeploymentOptionUpdateType.LightWeight,
-    )
-
-    prefer_local_az_routing: bool = Field(
-        default=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-        update_type=DeploymentOptionUpdateType.LightWeight,
-    )
-
     rolling_update_percentage: float = Field(
         default=DEFAULT_ROLLING_UPDATE_PERCENTAGE,
         gt=0.0,
@@ -289,6 +279,16 @@ class DeploymentConfig(BaseModel):
         default=0,
         ge=0,
         le=100,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
+    prefer_local_node_routing: bool = Field(
+        default=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
+    prefer_local_az_routing: bool = Field(
+        default=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
         update_type=DeploymentOptionUpdateType.LightWeight,
     )
 

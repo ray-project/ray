@@ -565,6 +565,8 @@ class _DeploymentOptions(TypedDict, total=False):
     deployment_actors: Default[Optional[List[Union[Dict, DeploymentActorConfig]]]]
     rolling_update_percentage: Default[float]
     max_surge_percent: Default[int]
+    prefer_local_node_routing: Default[bool]
+    prefer_local_az_routing: Default[bool]
 
 
 @overload

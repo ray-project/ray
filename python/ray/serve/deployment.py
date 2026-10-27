@@ -256,12 +256,12 @@ class Deployment:
         gang_scheduling_config: Default[
             Union[Dict, GangSchedulingConfig, None]
         ] = DEFAULT.VALUE,
-        prefer_local_node_routing: Default[bool] = DEFAULT.VALUE,
-        prefer_local_az_routing: Default[bool] = DEFAULT.VALUE,
         deployment_actors: Default[
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
         max_surge_percent: Default[int] = DEFAULT.VALUE,
+        prefer_local_node_routing: Default[bool] = DEFAULT.VALUE,
+        prefer_local_az_routing: Default[bool] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -313,17 +313,6 @@ class Deployment:
                 constructor before the deployment is marked failed.
             gang_scheduling_config: Options for scheduling replicas together in
                 groups called gangs.
-            prefer_local_node_routing: Prefer routing requests to replicas on
-                the same node as the caller. Applies to both proxy-to-replica and
-                replica-to-replica routing. The default differs by caller: proxy
-                handles default to ``RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING``
-                (on by default), while inter-deployment handles default to off.
-                An explicit value overrides both defaults.
-            prefer_local_az_routing: Prefer routing requests to replicas in the
-                same availability zone as the caller. Applies to both
-                proxy-to-replica and replica-to-replica routing. If not set,
-                defaults to the value of ``RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING``
-                (on by default). Explicit deployment config overrides the env var.
             deployment_actors: Actors shared by all replicas of this deployment.
             max_surge_percent: Extra replicas allowed during a rolling restart,
                 as a percentage of the target count. Must be in ``[0, 100]``.
@@ -335,6 +324,17 @@ class Deployment:
                 Lightweight configuration changes to replicas on the new code
                 wait until restarts finish. Setting this to ``0`` stops old
                 replicas before starting replacements.
+            prefer_local_node_routing: Prefer routing requests to replicas on
+                the same node as the caller. Applies to both proxy-to-replica and
+                replica-to-replica routing. The default differs by caller: proxy
+                handles default to ``RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING``
+                (on by default), while inter-deployment handles default to off.
+                An explicit value overrides both defaults.
+            prefer_local_az_routing: Prefer routing requests to replicas in the
+                same availability zone as the caller. Applies to both
+                proxy-to-replica and replica-to-replica routing. If not set,
+                defaults to the value of ``RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING``
+                (on by default). Explicit deployment config overrides the env var.
 
         Returns:
             A copy of this deployment with the given options applied.
