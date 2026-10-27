@@ -838,6 +838,16 @@ def _free_bytes(path: str) -> Optional[int]:
         return None
 
 
+def _short_of_free_space(images_dir: str) -> int:
+    """The free-space floor if the cache's filesystem is below it, else 0.
+
+    At most two statvfs calls, cheap enough for every cache hit.
+    """
+    min_free = image_cache_min_free_bytes(images_dir)
+    free = _free_bytes(images_dir) if min_free > 0 else None
+    return min_free if free is not None and free < min_free else 0
+
+
 def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
     """Record ``instance_id`` as a live user of the cached image.
 
@@ -1022,16 +1032,6 @@ def pull_and_extract_container_image(
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
-    max_cache = image_cache_max_bytes(images_dir)
-    min_free = image_cache_min_free_bytes(images_dir)
-    if max_cache > 0 or min_free > 0:
-        evict_least_recently_used_images(
-            images_dir,
-            max_cache if max_cache > 0 else None,
-            keep=safe_name,
-            min_free_bytes=min_free,
-        )
-
     expected_marker = expected_extract_marker()
 
     def _finish() -> str:
@@ -1039,23 +1039,71 @@ def pull_and_extract_container_image(
             _mark_image_in_use(target_dir, instance_id)
         return target_dir
 
-    with open(lock_path, "w", encoding="utf-8") as f_lock:
+    marker_path = os.path.join(target_dir, ".extracted")
+
+    def _cached() -> bool:
+        if not (os.path.isdir(target_dir) and os.path.exists(marker_path)):
+            return False
+        try:
+            with open(marker_path, "r", encoding="utf-8") as f_mark:
+                if f_mark.read() != expected_marker:
+                    return False  # A cache of another format re-pulls once.
+        except OSError:
+            return False
+        return not os.path.isfile(image) or (
+            os.path.getmtime(marker_path) >= os.path.getmtime(image)
+        )
+
+    # Fast path: a current cache entry is used under a shared lock, so the
+    # sandboxes starting on a node at once don't queue on one another. Pulls
+    # and eviction take the lock exclusively, so neither runs while a user
+    # registers here.
+    with open(lock_path, "a", encoding="utf-8") as f_lock:
+        try:
+            fcntl.flock(f_lock, fcntl.LOCK_SH)
+            # A stale tree of an earlier cache format (see
+            # _drop_stale_rootfs_tree) needs the exclusive lock to go, and so
+            # does a disk below the free-space floor, which running sandboxes'
+            # overlays and logs can fill without any pull.
+            if (
+                _cached()
+                and not os.path.isdir(os.path.join(target_dir, "rootfs"))
+                and not _short_of_free_space(images_dir)
+            ):
+                return _finish()
+        finally:
+            try:
+                fcntl.flock(f_lock, fcntl.LOCK_UN)
+            except Exception:
+                pass
+
+    with open(lock_path, "a", encoding="utf-8") as f_lock:
         try:
             fcntl.flock(f_lock, fcntl.LOCK_EX)
-            marker_path = os.path.join(target_dir, ".extracted")
-            if os.path.isdir(target_dir) and os.path.exists(marker_path):
-                try:
-                    with open(marker_path, "r", encoding="utf-8") as f_mark:
-                        marker_current = f_mark.read() == expected_marker
-                except OSError:
-                    marker_current = False
-                # A cache of another format re-pulls once.
-                if marker_current and (
-                    not os.path.isfile(image)
-                    or os.path.getmtime(marker_path) >= os.path.getmtime(image)
-                ):
-                    _drop_stale_rootfs_tree(target_dir)
-                    return _finish()
+            if _cached():
+                _drop_stale_rootfs_tree(target_dir)
+                min_free = _short_of_free_space(images_dir)
+                if min_free:
+                    # Only the floor: a hit doesn't grow the cache, so the size
+                    # cap waits for the next pull.
+                    evict_least_recently_used_images(
+                        images_dir, None, keep=safe_name, min_free_bytes=min_free
+                    )
+                return _finish()
+
+            # A pull makes room first. A cache hit (every sandbox start after
+            # the first) skips this scan, which sizes every cached image,
+            # unless the disk is below the floor. Under this image's lock,
+            # which the scan never takes (keep).
+            max_cache = image_cache_max_bytes(images_dir)
+            min_free = image_cache_min_free_bytes(images_dir)
+            if max_cache > 0 or min_free > 0:
+                evict_least_recently_used_images(
+                    images_dir,
+                    max_cache if max_cache > 0 else None,
+                    keep=safe_name,
+                    min_free_bytes=min_free,
+                )
 
             # Checked before any download: without it the pull cannot finish.
             require_mkfs_erofs()

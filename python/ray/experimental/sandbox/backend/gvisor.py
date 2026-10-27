@@ -584,7 +584,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         try:
             # The instance id pins the image in the cache while this sandbox
-            # lives (its EROFS image is the sandbox's root filesystem).
+            # lives (its EROFS image is the sandbox's root filesystem). Pinned
+            # only once the owner file names the image, so whenever this
+            # process dies, a reclaim can release the pin.
             self._image_manager.pull_image(
                 config.image,
                 timeout_seconds=config.timeout_seconds,
@@ -614,6 +616,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
+            if isinstance(err, SandboxCreationError):
+                # It says what failed, as a pull's error (say, an unknown
+                # image) does, so the caller gets it as raised.
+                raise
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
