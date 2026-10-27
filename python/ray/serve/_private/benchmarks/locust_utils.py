@@ -97,8 +97,7 @@ class LocustClient:
             ):
                 if exception and response.status_code != 0:
                     request_id = context["request_id"]
-                    # Set before reading .text: locust 2.18 raises on a
-                    # response with no charset instead of guessing one.
+                    # Locust 2.18 needs an encoding to decode charset-less responses.
                     response.encoding = "utf-8"
                     err = FailedRequest(
                         request_id=request_id,
@@ -221,8 +220,7 @@ def run_locust_worker(
     )
     runner.greenlet.join()
 
-    # Failures are gated by the master's aggregate failure rate; a single
-    # transient error here must not take the whole run down.
+    # run_locust_load_test checks the failure rate across all workers.
     if client.errors:
         logger.warning(f"{len(client.errors)} requests failed on this worker.")
 
