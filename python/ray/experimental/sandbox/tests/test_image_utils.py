@@ -977,6 +977,8 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     # the sandbox's overlay.
     for mountpoint in ("proc", "sys", "dev", "run", "etc/hosts", "etc/resolv.conf"):
         assert mountpoint not in owners
+    assert tree["tmp"].mtime == 0
+    assert tree["tmp/.ray-sandbox-keep"].mtime == 0
     # The image's file times survive into the EROFS image: tools such as apt
     # rely on them.
     assert tree["opt/data/f.txt"].mtime == _MEMBER_MTIME
