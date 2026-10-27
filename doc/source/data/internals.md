@@ -299,20 +299,21 @@ If multiple operators are viable, the executor chooses the operator with the sma
 
 ## How does Ray Data iterate over data?
 
-While the sections above describe how Ray Data produces blocks, this section describes how Ray Data's iteration APIs ({meth}`~ray.data.DataIterator.iter_batches`, {meth}`~ray.data.DataIterator.iter_torch_batches`, {meth}`~ray.data.DataIterator.iter_rows`, and {meth}`~ray.data.DataIterator.to_tf`) consume and iterate over them. Each of these APIs leverages the pipelining mechanism described below to prepare, process, and finalize batches to be consumed by user code. Understanding this mechanism can be useful in identifying data ingest bottlenecks in workloads such as model training.
+While the sections above describe how Ray Data produces blocks, this section describes how Ray Data's iteration APIs consume them, including {meth}`~ray.data.DataIterator.iter_batches`, {meth}`~ray.data.DataIterator.iter_torch_batches`, {meth}`~ray.data.DataIterator.iter_rows`, and {meth}`~ray.data.DataIterator.to_tf`. Each of these APIs uses the pipelining mechanism described below to prepare, process, and finalize batches for your code to consume. Understanding this mechanism helps you identify data ingest bottlenecks in workloads such as model training.
 
 :::{note}
 If you use Ray Train, see {ref}`Debug data loading bottlenecks <train-debugging-data-loading-bottlenecks>` for more detail on debugging slow data loading.
 :::
 
 ```{image} ./batch-iteration-threads.svg
+:alt: Timeline of a user thread, an outer iteration thread, and two worker threads overlapping as three batches are prepared, processed, and finalized.
 :width: 900
 :align: center
 ```
 
-The diagram above illustrates an example of the pipelining mechanism for `iter_batches`. Data iteration is co-located in the same process as the user code and spawns several key threads: the outer iteration thread, from which the user thread yields complete batches, and a pool of worker threads that parallelize batch processing, such as running the user's `collate_fn`. In this way, the threads process batches in a streaming fashion while the user thread consumes completed batches. Note that the diagram shows two worker threads, but the number varies and is computed as `min(4, prefetch_batches)`.
+The diagram above shows the pipelining mechanism for `iter_batches`. Data iteration runs in the same process as your code and spawns several threads: the outer iteration thread, from which the user thread yields complete batches, and a pool of worker threads that parallelize batch processing, such as running your `collate_fn`. The threads process batches in a streaming fashion while the user thread consumes completed batches. The diagram shows two worker threads, but the number varies and is computed as `min(4, prefetch_batches)`.
 
-As can be seen in the diagram, each batch is prepared, processed, and finalized before being yielded to the user thread. The table below describes what happens in each of these steps.
+Each batch is prepared, processed, and finalized before the user thread receives it. The following table describes each step.
 
 ```{list-table}
 :header-rows: 1
@@ -332,7 +333,7 @@ As can be seen in the diagram, each batch is prepared, processed, and finalized 
   - The outer iteration thread, one batch at a time.
 ```
 
-The table below describes each stage.
+Each step covers one or more pipeline stages. The following table describes what each stage does.
 
 ```{list-table}
 :header-rows: 1
@@ -354,7 +355,7 @@ The table below describes each stage.
   - Running your `finalize_fn`. For GPU training, this is the host-to-device transfer.
 ```
 
-For workloads such as model training in which data loading latency is critical, familiarity with the above stages and the parameters that control them is useful for reducing the amount of time the user thread spends waiting for the next batch.
+When data loading latency matters, as in model training, knowing these stages and the parameters that control them helps you reduce the time the user thread waits for the next batch.
 
 ## How does Ray Data schedule tasks?
 
