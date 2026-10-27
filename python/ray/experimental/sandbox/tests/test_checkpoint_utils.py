@@ -263,13 +263,6 @@ class TestCheckpointUtils(unittest.TestCase):
         target_mode = os.stat(target_dir).st_mode & 0o777
         assert target_mode == 0o700
 
-        # Verify remote=True also keeps outer target_dir strictly restricted to owner (0700)
-        target_dir_remote = os.path.join(self.temp_dir, "perm_remote_test")
-        with StagedCheckpoint(target_dir_remote) as stage_remote:
-            stage_remote.harden_permissions(rootless=True, remote=True)
-        target_remote_mode = os.stat(target_dir_remote).st_mode & 0o777
-        assert target_remote_mode == 0o700
-
     def test_checkpoint_path_str_subclass_and_pickle(self):
         import pickle
 
@@ -277,14 +270,12 @@ class TestCheckpointUtils(unittest.TestCase):
         cp = CheckpointPath(
             raw_path,
             node_id="node_abc_123",
-            remote=True,
             cpu=2.5,
             memory="4Gi",
         )
         assert isinstance(cp, str)
         assert cp == raw_path
         assert cp.node_id == "node_abc_123"
-        assert cp.remote is True
         assert cp.cpu == 2.5
         assert cp.memory == "4Gi"
         assert os.path.join(cp, "manifest.json") == f"{raw_path}/manifest.json"
@@ -295,35 +286,21 @@ class TestCheckpointUtils(unittest.TestCase):
         assert isinstance(restored, CheckpointPath)
         assert restored == raw_path
         assert restored.node_id == "node_abc_123"
-        assert restored.remote is True
         assert restored.cpu == 2.5
         assert restored.memory == "4Gi"
 
-    def test_create_manifest_with_remote_and_node_id(self):
+    def test_create_manifest_records_node_id(self):
         config = SandboxConfig(image="busybox:latest", cpu=1.0, memory="512Mi")
-        manifest_local = create_manifest(
+        manifest = create_manifest(
             sandbox_id="sb-local",
             config=config,
             cwd="/",
             workdir="/workspace",
             leave_running=True,
-            remote=False,
             node_id="node_1",
         )
-        assert manifest_local["remote"] is False
-        assert manifest_local["node_id"] == "node_1"
-
-        manifest_remote = create_manifest(
-            sandbox_id="sb-remote",
-            config=config,
-            cwd="/",
-            workdir="/workspace",
-            leave_running=True,
-            remote=True,
-            node_id="node_2",
-        )
-        assert manifest_remote["remote"] is True
-        assert manifest_remote["node_id"] == "node_2"
+        assert manifest["node_id"] == "node_1"
+        assert "remote" not in manifest
 
 
 if __name__ == "__main__":

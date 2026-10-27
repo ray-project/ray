@@ -373,13 +373,11 @@ res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
 
 :::{note}
 * **Rootless mode:** gVisor's checkpoint and restore mechanism requires `rootless=False` and `SYS_PTRACE` capabilities inside worker containers to dump process memory maps and namespaces.
-* **Node-local vs. remote/shared storage:**
-  * **Node-local storage (default, ``remote=False``):** When saving to local disk or NVMe SSD (such as ``/tmp/ray``), the checkpoint only resides on that worker VM. ``sandbox.restore()`` automatically pins the restored actor to the same worker node via Ray's ``NodeAffinitySchedulingStrategy``.
-  * **Remote / shared mount (``remote=True``):** When saving to a shared filesystem accessible across all nodes (such as NFS, GCP Filestore, or Cloud Storage FUSE), pass ``remote=True`` to ``base_sb.checkpoint.remote(checkpoint_path, remote=True)``. This allows Ray to schedule restored sandboxes across any VM node in the cluster, enabling horizontal scale-out branching.
+* **Node-local storage:** A checkpoint only resides on the worker node that took it, such as under `/tmp/ray` or on a local NVMe SSD. `sandbox.restore()` pins the restored actor to that node with Ray's `NodeAffinitySchedulingStrategy`, and reserves the checkpointed sandbox's CPU and memory unless you override them.
 * **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, and `cidr_allowlist` overrides. The saved state depends on `image`, `network`, `readonly`, `capabilities`, `disk`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them. A sandbox created with an `_oci_spec_transform_fn` must be restored with the same function, because the checkpoint can't save it.
 * **Egress allowlist:** a checkpoint saves the allowlist in force when it's taken, including changes from `set_egress_allowlist()`.
 * **Checkpoint path:** `checkpoint()` replaces an earlier checkpoint at the same path, but refuses a non-empty directory that doesn't hold one.
-* **Image builds:** gVisor restores only onto a byte-identical build of the sandbox's image. With erofs-utils 1.8 or later, every node builds the same image identically. With an older `mkfs.erofs`, or if the image's tag moved, restoring on another node or after the image was evicted from the cache fails with an error that says so.
+* **Image builds:** gVisor restores only onto the same build of the sandbox's image. If the image was evicted from the cache and rebuilt, or its tag moved, since the checkpoint, restore fails with an error that says so.
 * **Compression:** `checkpoint(compression="flate-best-speed")` writes a smaller checkpoint. gVisor loads guest memory in the background only from uncompressed checkpoints, so a sandbox restored from a compressed one starts after all of its memory is loaded.
 :::
 

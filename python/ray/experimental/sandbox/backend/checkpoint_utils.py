@@ -102,13 +102,12 @@ class CheckpointPath(str):
 
     Subclasses ``str`` for 100% backward compatibility with filesystem path
     operations (``os.path``, ``open``, equality with ``str``), while carrying
-    ``node_id``, ``remote``, ``cpu``, and ``memory`` so ``sandbox.restore()``
-    can schedule the restored actor onto the right node with the right resources
-    even when the driver is on a different node than a node-local checkpoint.
+    ``node_id``, ``cpu``, and ``memory`` so ``sandbox.restore()`` can schedule
+    the restored actor onto the node that holds the checkpoint with the right
+    resources, even when the driver is on a different node.
     """
 
     node_id: Optional[str]
-    remote: bool
     cpu: Optional[float]
     memory: Optional[Any]
 
@@ -117,13 +116,11 @@ class CheckpointPath(str):
         path: str,
         *,
         node_id: Optional[str] = None,
-        remote: bool = False,
         cpu: Optional[float] = None,
         memory: Optional[Any] = None,
     ):
         obj = super().__new__(cls, path)
         obj.node_id = node_id
-        obj.remote = bool(remote)
         obj.cpu = cpu
         obj.memory = memory
         return obj
@@ -134,7 +131,6 @@ class CheckpointPath(str):
             (str(self),),
             {
                 "node_id": self.node_id,
-                "remote": self.remote,
                 "cpu": self.cpu,
                 "memory": self.memory,
             },
@@ -147,7 +143,6 @@ def create_manifest(
     cwd: str,
     workdir: Optional[str],
     leave_running: bool,
-    remote: bool = False,
     node_id: Optional[str] = None,
     compression: str = "none",
     cidr_allowlist: Optional[List[str]] = None,
@@ -161,7 +156,6 @@ def create_manifest(
         cwd: The sandbox's working directory.
         workdir: The host directory mounted at the workdir, if any.
         leave_running: Whether the source kept running.
-        remote: Whether the checkpoint is on storage that every node shares.
         node_id: The node the checkpoint was taken on; the current one if
             None.
         compression: The memory image's compression.
@@ -181,7 +175,6 @@ def create_manifest(
         "created_at": time.time(),
         "sandbox_id": sandbox_id,
         "node_id": node_id or get_current_node_id(),
-        "remote": bool(remote),
         # How the memory image is compressed: restore can load memory in
         # the background only from an uncompressed one.
         "compression": compression,
@@ -419,7 +412,7 @@ class StagedCheckpoint:
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
 
-    def harden_permissions(self, rootless: bool = False, remote: bool = False) -> None:
+    def harden_permissions(self, rootless: bool = False) -> None:
         """Ensure bundle outer directory and memory dumps are properly restricted,
         while preserving guest file mode permissions inside fs/ intact.
         Permissions are restricted to owner only (0700/0600) to protect memory dumps

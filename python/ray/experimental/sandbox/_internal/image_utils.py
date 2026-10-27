@@ -39,7 +39,7 @@ ROOTFS_IMAGE = "rootfs.erofs"
 # Cache format recorded in each image's ``.extracted`` marker. A mismatch (an
 # extracted-directory cache left by an earlier Ray, say) re-pulls the image
 # once; sandboxes already running on the old cache keep it until they exit.
-_EXTRACT_FORMAT = 4
+_EXTRACT_FORMAT = 3
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
 # How many of an image's layers download at once, as in Docker.
@@ -623,32 +623,15 @@ def mkfs_erofs_path() -> Optional[str]:
     path = shutil.which("mkfs.erofs")
     if path is None:
         return None
-    if "--tar" not in _mkfs_erofs_help(path):
-        return None
-    return path
-
-
-@lru_cache(maxsize=4)
-def _mkfs_erofs_help(path: str) -> str:
-    """What ``mkfs.erofs --help`` prints, or "" if it can't run."""
     try:
         res = subprocess.run(
             [path, "--help"], capture_output=True, text=True, timeout=30
         )
     except (OSError, subprocess.TimeoutExpired):
-        return ""
-    return res.stdout + res.stderr
-
-
-def mkfs_erofs_pins_build_time() -> bool:
-    """Whether ``mkfs.erofs`` has ``--mkfs-time`` (erofs-utils 1.8+).
-
-    With it, ``-T0 --mkfs-time`` fixes only the superblock's build time and
-    leaves each file's mtime alone; without it, ``-T`` would also reset
-    every file's mtime.
-    """
-    path = mkfs_erofs_path()
-    return path is not None and "--mkfs-time" in _mkfs_erofs_help(path)
+        return None
+    if "--tar" not in res.stdout + res.stderr:
+        return None
+    return path
 
 
 # EROFS keeps its superblock at this offset, in this many bytes.
@@ -794,17 +777,6 @@ def build_erofs_image(
                 "--tar=f",
                 f"-b{mmap.PAGESIZE}",
                 "-E^inline_data",
-                # Restoring a checkpoint on another node, or after the image
-                # was evicted and rebuilt, maps a different build of the
-                # image, and gVisor rejects one whose superblock differs at
-                # all. Extended inodes (which carry each file's own mtime)
-                # keep the layout independent of when mkfs runs, and a fixed
-                # UUID and build time keep the superblock the same; files
-                # keep their mtimes. A restore checks the superblock either
-                # way (see erofs_superblock_fingerprint).
-                "-Eforce-inode-extended",
-                "-U00000000-0000-0000-0000-000000000000",
-                *(["-T0", "--mkfs-time"] if mkfs_erofs_pins_build_time() else []),
                 out_path,
                 flat_tar,
             ],
