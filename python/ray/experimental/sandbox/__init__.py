@@ -204,9 +204,20 @@ def restore(
             manifest_remote = bool(manifest.get("remote"))
         if target_node_id is None:
             target_node_id = manifest.get("node_id")
-    elif remote is not True and not isinstance(checkpoint_path, CheckpointPath):
-        # Trigger standard manifest validation error if path is not on caller filesystem and remote is not True
-        load_checkpoint_manifest(str(checkpoint_path))
+    elif not isinstance(checkpoint_path, CheckpointPath):
+        if remote is not True:
+            # Raises the usual "missing manifest" error.
+            load_checkpoint_manifest(str(checkpoint_path))
+        elif cpu is None or memory is None:
+            # Without the manifest, the actor would get Ray's default
+            # reservation while the restored sandbox keeps its recorded
+            # cgroup limits, oversubscribing the node.
+            raise SandboxError(
+                f"Can't read the checkpoint at '{checkpoint_path}' from this "
+                "process to find the CPU and memory to reserve for the restored "
+                "sandbox. Pass the CheckpointPath that checkpoint() returned, or "
+                "cpu and memory explicitly."
+            )
 
     is_remote = remote if remote is not None else manifest_remote
 

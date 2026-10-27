@@ -1368,6 +1368,22 @@ class TestCheckpointRestore(unittest.TestCase):
                 self.backend.restore_sandbox(ckpt_dir)
             assert mock_popen.call_count == 1
 
+    def test_top_level_remote_restore_of_an_unreadable_path_needs_resources(self):
+        # A plain path this process can't read: neither the manifest's nor a
+        # CheckpointPath's resources are available.
+        unreadable = os.path.join(self.temp_dir, "elsewhere", "ckpt")
+        with patch.object(sandbox_api.Sandbox, "options") as mock_options:
+            with pytest.raises(SandboxError, match="cpu and memory explicitly"):
+                sandbox_api.restore(unreadable, remote=True)
+            assert not mock_options.called
+
+            mock_options.return_value = MagicMock()
+            sandbox_api.restore(unreadable, remote=True, cpu=2.0, memory="1Gi")
+            call_kwargs = mock_options.call_args[1]
+            assert call_kwargs["num_cpus"] == 2.0
+            assert call_kwargs["memory"] == 1024**3
+            assert "scheduling_strategy" not in call_kwargs
+
 
 if __name__ == "__main__":
     import sys
