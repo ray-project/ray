@@ -114,8 +114,7 @@ def test_pydantic_nested_deferred_models_work_where_unpickled(tmp_path):
         """
 import sys
 from pydantic import BaseModel, ConfigDict
-from ray import cloudpickle
-from ray.serve._private.utils import ensure_serialization_context
+from ray import cloudpickle, serve  # Importing serve registers the reducer.
 
 
 class Item(BaseModel):
@@ -131,7 +130,6 @@ class Order(BaseModel):
 for model in (Item, Order):
     if "__pydantic_core_schema__" in vars(model):
         delattr(model, "__pydantic_core_schema__")
-ensure_serialization_context()
 open(sys.argv[1], "wb").write(cloudpickle.dumps(Order))
 """,
     )
@@ -144,7 +142,6 @@ open(sys.argv[1], "wb").write(cloudpickle.dumps(Order))
 def test_pydantic_deferred_model_reloaded_after_first_use():
     """Loading in the pickling process puts the captured placeholder back on a model
     that has since been built."""
-    ensure_serialization_context()
 
     class Msg(BaseModel):
         model_config = ConfigDict(defer_build=True)
