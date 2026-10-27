@@ -424,7 +424,7 @@ def test_docker_mode_mounts_token_and_restarts_container(clean_auth_env, monkeyp
     )
 
 
-def test_fake_docker_runner_skips_only_token_upload():
+def test_fake_docker_runner_skips_only_token_upload(clean_auth_env):
     runner = FakeDockerCommandRunner({"container_name": "mock"})
     with patch.object(runner, "_run_shell") as run_shell, patch.object(
         runner, "run"
@@ -491,6 +491,43 @@ def test_fake_docker_provider_never_creates_a_token(clean_auth_env, monkeypatch)
 
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
     assert not (volume_dir / "auth_token").exists()
+
+
+def test_creates_token_before_building_provider(clean_auth_env, monkeypatch):
+    # The fake Docker provider mounts the token into its nodes when built.
+    default_token_path = clean_auth_env / "home" / ".ray" / "auth_token"
+    token_existed_at_build = []
+
+    def build_provider(provider_config, cluster_name):
+        token_existed_at_build.append(default_token_path.exists())
+        return MockProvider()
+
+    monkeypatch.setattr(commands, "_get_node_provider", build_provider)
+    commands.get_or_create_head_node(
+        copy.deepcopy(CLUSTER_CONFIG),
+        printable_config_file="cluster.yaml",
+        no_restart=False,
+        restart_only=False,
+        yes=True,
+        override_cluster_name=None,
+        _runner=MockProcessRunner(),
+    )
+
+    assert token_existed_at_build == [True]
+
+
+def test_fake_docker_runner_uploads_token_when_no_volume_holds_it(
+    clean_auth_env, monkeypatch
+):
+    # Outside token mode the provider mounts no token volume, so a token the
+    # cluster YAML mounts itself must still be copied in.
+    set_local_auth_mode(monkeypatch, "disabled")
+    runner = FakeDockerCommandRunner({"container_name": "mock"})
+    with patch.object(runner, "_run_shell") as run_shell, patch.object(
+        runner, "run"
+    ), patch.object(runner, "_docker_expand_user", side_effect=lambda p: p):
+        runner.run_rsync_up("/local/auth_token", REMOTE_TOKEN_PATH)
+    run_shell.assert_called_once_with("docker cp /local/auth_token mock:~/.ray")
 
 
 if __name__ == "__main__":

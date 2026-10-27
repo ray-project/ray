@@ -52,6 +52,7 @@ def docker_cluster(
         monkeypatch.delenv("RAY_AUTH_MODE", raising=False)
 
     cluster = start_docker_cluster(auth_mode)
+    cluster.auth_mode = auth_mode
     try:
         cluster.start()
         yield cluster
@@ -89,7 +90,7 @@ def test_worker_joins_docker_cluster(docker_cluster: DockerCluster):
     token_mounted = os.path.exists(
         os.path.join(docker_cluster.cluster_dir, "auth_token")
     )
-    assert token_mounted == (os.environ.get("RAY_AUTH_MODE") == "token")
+    assert token_mounted == (docker_cluster.auth_mode == "token")
 
 
 if __name__ == "__main__":
