@@ -3,12 +3,14 @@ import os
 import threading
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
 
@@ -44,6 +46,39 @@ class SandboxRuntime:
         """
         return self._image_manager.pull_image(image, timeout_seconds=timeout_seconds)
 
+    def check_resources(
+        self,
+        cpu: float = 0.0,
+        memory: Union[str, int, float] = 0,
+    ) -> None:
+        """Reject unsupported resource limits before downloading an image.
+
+        Args:
+            cpu: CPU limit to enforce. Zero means no limit.
+            memory: Memory limit to enforce, such as "512Mi". Zero means no limit.
+        """
+        try:
+            config = SandboxConfig(image="resource-preflight", cpu=cpu, memory=memory)
+            memory_bytes = parse_memory_bytes(config.memory) or 0
+            if config.cpu > 0 or memory_bytes > 0:
+                SandboxCgroupManager().check(config.cpu, memory_bytes)
+        except Exception as err:
+            raise SandboxCreationError(
+                f"Cannot enforce sandbox resources: {err}"
+            ) from err
+
+    def get_termination_reason(self, instance_id: str) -> Optional[str]:
+        """Report an unexpected runtime exit, including a cgroup OOM kill.
+
+        Args:
+            instance_id: Sandbox instance ID.
+
+        Returns:
+            Why the sandbox stopped unexpectedly, or None if it's running or
+            this runtime no longer tracks it.
+        """
+        return self._backend.get_termination_reason(instance_id)
+
     def create(
         self,
         image: str,
@@ -56,10 +91,12 @@ class SandboxRuntime:
         rootless: bool = True,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
+        disk: Union[str, int, float] = 0,
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
@@ -83,6 +120,14 @@ class SandboxRuntime:
                 "public" is the recommended internet-access mode.
             dns: Optional nameserver IPs for the generated /etc/resolv.conf
                 (public resolvers by default for "public").
+            cidr_allowlist: Optional egress allowlist for network="public":
+                only the listed destinations are reachable (plus DNS to
+                the ``dns`` resolvers). None means the public internet,
+                with internal addresses left out as a best effort, and a
+                denylist keeps instance metadata and the Kubernetes API
+                service closed whatever the list says; see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+                Change it later with :meth:`set_egress_allowlist`.
             capabilities: Linux capabilities, written exactly (None keeps
                 the runtime default; ``[]`` means none). Use
                 ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
@@ -95,6 +140,10 @@ class SandboxRuntime:
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
             _ignore_cgroups: PRIVATE — testing only. If True, passes --ignore-cgroups to runsc.
+            disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past
+                it fail with ENOSPC. Zero means no cap. Requires
+                ``readonly=False`` or a ``workdir``; see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
             **kwargs: Additional parameters.
 
         Returns:
@@ -111,13 +160,14 @@ class SandboxRuntime:
             rootless=rootless,
             network=network,
             dns=dns,
+            cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
             readonly=readonly,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,
+            disk=disk,
             **kwargs,
         )
-        self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)
         instance_id = self._backend.create_sandbox(cfg)
         if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
             timer = threading.Timer(cfg.ttl_seconds, self._expire, args=(instance_id,))
@@ -278,6 +328,20 @@ class SandboxRuntime:
             SandboxStatus of the sandbox instance.
         """
         return self._backend.get_status(instance_id)
+
+    def set_egress_allowlist(self, instance_id: str, cidrs: List[str]) -> None:
+        """Replace the egress allowlist of a network="public" sandbox.
+
+        The new list takes effect for the next packet of every flow; flows
+        it no longer permits stall rather than being reset. No list opens
+        the denylist; ``ALLOW_ALL_CIDRS`` opens everything else, private
+        networks and any Ray node on them included.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
+        """
+        self._backend.set_egress_allowlist(instance_id, cidrs)
 
     def delete(self, instance_id: str) -> None:
         """Clean up and terminate the sandbox instance.

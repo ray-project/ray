@@ -1,7 +1,7 @@
 import itertools
 import random
 import sys
-from typing import Dict, List
+from typing import Dict, List, get_type_hints
 
 import pytest
 
@@ -182,6 +182,27 @@ class TestDeploymentOptions:
             @serve.deployment(version="abcd")
             def f():
                 pass
+
+    def test_options_max_surge_percent(self):
+        @serve.deployment
+        def f():
+            pass
+
+        assert f._deployment_config.max_surge_percent == 0
+        g = f.options(max_surge_percent=25)
+        assert g._deployment_config.max_surge_percent == 25
+        assert "max_surge_percent" in g._deployment_config.user_configured_option_names
+        assert f._deployment_config.max_surge_percent == 0
+        with pytest.raises(ValueError):
+            f.options(max_surge_percent=101)
+
+    def test_typed_options_match_deployment_signature(self):
+        """_DeploymentOptions must list every keyword option deployment() takes."""
+        from ray.serve.api import _DeploymentOptions, deployment
+
+        expected = get_type_hints(deployment)
+        del expected["_func_or_class"], expected["return"]
+        assert get_type_hints(_DeploymentOptions) == expected
 
     def test_deployment_options_version_removed(self):
         @serve.deployment

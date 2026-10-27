@@ -138,6 +138,51 @@ def test_e2e_filter_then_limit_with_nulls(nullable_parquet, limit):
     assert all(r["id"] is not None and r["id"] > 2 for r in rows)
 
 
+# ---------------------------------------------------------------------------
+# Row-group shuffle (FileShuffleConfig.small_chunks_shuffle)
+# ---------------------------------------------------------------------------
+
+_ROWS_PER_RG = 100
+
+
+def _row_group_shuffle_ids(path):
+    # Calls the OSS ``read_parquet``: in RayTurbo ``ray.data.read_parquet`` is
+    # the Anyscale implementation, which doesn't go through ``FooterFileIndexer``.
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+    from ray.data.read_api import read_parquet
+
+    shuffle = FileShuffleConfig(
+        seed=7, reseed_after_execution=False, small_chunks_shuffle=True
+    )
+    return [r["id"] for r in read_parquet(path, shuffle=shuffle).take_all()]
+
+
+def test_e2e_row_group_shuffle_mixes_files(footer_parquet, monkeypatch):
+    from ray.data.context import DataContext
+
+    # One run per row group, and every run oversized for a bin so each becomes
+    # its own read task. With ``preserve_order`` the output then follows the
+    # shuffled run order exactly.
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "small_shuffle_chunk_size", 1)
+    monkeypatch.setattr(ctx.execution_options, "preserve_order", True)
+
+    ids = _row_group_shuffle_ids(footer_parquet)
+
+    assert sorted(ids) == list(range(_N_PER_FILE * _N_FILES))
+    assert ids == _row_group_shuffle_ids(footer_parquet)
+    runs = [ids[i : i + _ROWS_PER_RG] for i in range(0, len(ids), _ROWS_PER_RG)]
+    # Row groups move as intact units...
+    assert all(
+        run[0] % _ROWS_PER_RG == 0 and run == list(range(run[0], run[0] + len(run)))
+        for run in runs
+    )
+    # ...but runs of one file no longer arrive back to back.
+    files = [run[0] // _N_PER_FILE for run in runs]
+    assert sum(a != b for a, b in zip(files, files[1:])) > _N_FILES - 1
+
+
 if __name__ == "__main__":
     import sys
 

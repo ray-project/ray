@@ -327,6 +327,8 @@ The Logs view lists the Ray logs in your Cluster. It is organized by node and lo
 
 To understand the logging structure of Ray, see {ref}`logging directory and file structure <logging-directory-structure>`.
 
+On TPU nodes, the Logs view also lists the `libtpu` device logs in a `tpu_logs` directory. See {ref}`kuberay-tpu-logs`.
+
 
 The Logs view provides search functionality to help you find specific log messages.
 

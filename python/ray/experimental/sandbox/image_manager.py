@@ -11,8 +11,8 @@ from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
     _release_image_use,
+    image_cache_name,
     pull_and_extract_container_image,
-    sanitize_image_name,
 )
 from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import SandboxCreationError
@@ -149,6 +149,7 @@ class BaseImageManager(ABC):
         base_spec: Optional[Dict[str, Any]] = None,
         root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        disk: Optional[Union[str, int, float]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
 
@@ -177,6 +178,9 @@ class BaseImageManager(ABC):
                 this directory only anchors the overlay's backing file.
                 Defaults to a directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
+            disk: Size cap of the writable rootfs overlay; None or zero
+                means no cap. A capped overlay also holds the workdir, so
+                ``workdir_path`` is then not mounted.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -198,6 +202,7 @@ class BaseImageManager(ABC):
         network: str = "none",
         dns: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        disk: Optional[Union[str, int, float]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
@@ -216,6 +221,8 @@ class BaseImageManager(ABC):
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
             _oci_spec_transform_fn: Optional OCI spec transform function.
+            disk: Size cap of the writable rootfs overlay (see
+                create_oci_spec).
 
         Returns:
             Path to the written config.json file.
@@ -278,7 +285,7 @@ class ImageManager(BaseImageManager):
         Returns:
             Absolute directory path for the image cache directory.
         """
-        safe_name = sanitize_image_name(image)
+        safe_name = image_cache_name(image)
         return os.path.join(self._images_dir, safe_name)
 
     def get_rootfs_image(self, image: str) -> str:
@@ -374,6 +381,7 @@ class ImageManager(BaseImageManager):
         base_spec: Optional[Dict[str, Any]] = None,
         root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        disk: Optional[Union[str, int, float]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
 
@@ -402,6 +410,9 @@ class ImageManager(BaseImageManager):
                 this directory only anchors the overlay's backing file.
                 Defaults to a directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
+            disk: Size cap of the writable rootfs overlay; None or zero
+                means no cap. A capped overlay also holds the workdir, so
+                ``workdir_path`` is then not mounted.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -442,6 +453,15 @@ class ImageManager(BaseImageManager):
             readonly = False
         if not readonly:
             annotations["dev.gvisor.spec.rootfs.overlay"] = "self"
+            disk_bytes = parse_memory_bytes(disk) or 0
+            if disk_bytes > 0:
+                # gVisor sizes the overlay's upper layer from this annotation,
+                # so writes past it fail with ENOSPC. The --overlay2 flag's
+                # size doesn't apply to a rootfs that annotations configure.
+                annotations["dev.gvisor.spec.rootfs.options"] = f"size={disk_bytes}"
+                # A bind-mounted host workdir would take writes past the cap,
+                # so the workdir stays in the overlay (runsc creates it).
+                workdir_path = None
         spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
 
@@ -594,6 +614,7 @@ class ImageManager(BaseImageManager):
         network: str = "none",
         dns: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        disk: Optional[Union[str, int, float]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
@@ -612,6 +633,8 @@ class ImageManager(BaseImageManager):
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
             _oci_spec_transform_fn: Optional OCI spec transform function.
+            disk: Size cap of the writable rootfs overlay (see
+                create_oci_spec).
 
         Returns:
             Path to the written config.json file.
@@ -664,6 +687,7 @@ class ImageManager(BaseImageManager):
             hosts_source=hosts_source,
             root_path=rootfs_dir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
+            disk=disk,
         )
 
         config_json_str = json.dumps(spec, indent=2)
