@@ -1,8 +1,8 @@
 """Tests for `ray.serve._private.default_impl`.
 
 These exercise the node-id/availability-zone lookup that runs when a handle
-creates its router. Under Ray Client that lookup can't reach the cluster's GCS
-server, so it must be skipped rather than blocking until timeout.
+creates its router. Under Ray Client the cluster's GCS server may be unreachable,
+so the lookup must be skipped to avoid GcsClient constructor connection timeouts.
 See https://github.com/ray-project/ray/issues/54601.
 """
 
@@ -27,14 +27,14 @@ def runtime_context(monkeypatch):
 def test_get_node_id_and_az_skips_gcs_lookup_under_ray_client(
     monkeypatch, runtime_context
 ):
-    """Under Ray Client the GCS-backed AZ lookup must not run.
+    """Under Ray Client, neither GcsClient nor the AZ cache should be created.
 
-    The client process is outside the cluster, so contacting the head node's
-    GCS server would block for RAY_GCS_RPC_TIMEOUT_S on every new handle before
-    falling back to `None` anyway.
+    If GCS is unreachable from the client, the GcsClient constructor blocks on
+    connection timeouts before the AZ lookup can fall back to `None`.
     """
     monkeypatch.setattr(default_impl, "inside_ray_client_context", lambda: True)
-    monkeypatch.setattr(default_impl, "GcsClient", MagicMock())
+    gcs_client = MagicMock()
+    monkeypatch.setattr(default_impl, "GcsClient", gcs_client)
 
     create_cache = MagicMock(
         side_effect=AssertionError("GCS must not be contacted under Ray Client")
@@ -43,6 +43,7 @@ def test_get_node_id_and_az_skips_gcs_lookup_under_ray_client(
 
     node_id, az = default_impl._get_node_id_and_az()
 
+    gcs_client.assert_not_called()
     create_cache.assert_not_called()
     assert node_id == "node-id-under-test"
     assert az is None
