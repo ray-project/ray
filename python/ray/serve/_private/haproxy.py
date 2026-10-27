@@ -83,6 +83,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
+    SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
@@ -132,14 +135,17 @@ def _haproxy_fmt_literal(value: Any) -> str:
     return '"' + s + '"'
 
 
-def _load_lua_template() -> string.Template:
-    path = Path(__file__).parent / "ingress_request_router.lua.tmpl"
-    try:
-        return string.Template(path.read_text())
-    except FileNotFoundError as e:
-        raise FileNotFoundError(
-            f"{path.name} is missing. Ray Serve installation is incomplete."
-        ) from e
+def _load_lua_template(*file_names: str) -> string.Template:
+    contents = []
+    for file_name in file_names:
+        path = Path(__file__).parent / file_name
+        try:
+            contents.append(path.read_text())
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"{path.name} is missing. Ray Serve installation is incomplete."
+            ) from e
+    return string.Template("\n".join(contents))
 
 
 def _routers_and_targets_by_backend(
@@ -208,6 +214,76 @@ def _format_replica_targets_lua(
             f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
         )
     return "{\n" + ",\n".join(backends_lua) + "\n}"
+
+
+def _lua_str(value: str) -> str:
+    # Escape all but printable ASCII as \ddd; json.dumps' \uXXXX is invalid Lua.
+    escaped = "".join(
+        chr(b) if 0x20 <= b < 0x7F and b not in b'"\\' else f"\\{b:03d}"
+        for b in value.encode()
+    )
+    return f'"{escaped}"'
+
+
+def _format_router_application_pools_lua(
+    backends: "List[BackendConfig]",
+    local_host: "Optional[str]" = None,
+) -> Optional[str]:
+    """Render router application metadata and decision endpoints as Lua."""
+    entries = []
+    for backend in backends:
+        if not backend.is_router_application:
+            continue
+        servers = sorted(backend.servers, key=lambda s: (s.host, s.port))
+        colocated = [s for s in servers if s.host == local_host]
+        remote = [s for s in servers if s.host != local_host]
+        if not colocated and not remote and backend.fallback_server is not None:
+            colocated = [backend.fallback_server]
+
+        def format_pool(pool: List[ServerConfig]) -> str:
+            return ", ".join(
+                f"{{ host = {_lua_str(s.host)}, port = {s.port}, "
+                f"host_header = {_lua_str(f'{s.host}:{s.port}')} }}"
+                for s in pool
+            )
+
+        local_pool_lua = format_pool(colocated)
+        remote_pool_lua = format_pool(remote)
+        entries.append(
+            f"    [{_lua_str(backend.name)}] = {{ app = {_lua_str(backend.app_name)}, "
+            f"p = {_lua_str(backend.path_prefix or '/')}, "
+            f"local_pool = {{ {local_pool_lua} }}, "
+            f"remote_pool = {{ {remote_pool_lua} }} }}"
+        )
+    if not entries:
+        return None
+    return "{\n" + ",\n".join(entries) + "\n}"
+
+
+def _format_router_target_apps_lua(backends: "List[BackendConfig]") -> str:
+    """Render valid application and replica destinations as Lua."""
+    entries = []
+    for backend in backends:
+        if (
+            not backend.app_name
+            or backend.is_router_application
+            or not any(s.replica_id is not None for s in backend.servers)
+        ):
+            continue
+        replicas = ",\n".join(
+            f"            [{_lua_str(s.replica_id)}] = {_lua_str(s.name)}"
+            for s in backend.servers
+            if s.replica_id is not None
+        )
+        entries.append(
+            f"    [{_lua_str(backend.app_name)}] = {{\n"
+            f"        b = {_lua_str(backend.name)},\n"
+            f"        p = {_lua_str(backend.path_prefix or '/')},\n"
+            f"        d = {_lua_str(backend.ingress_deployment_name)},\n"
+            f"        r = {{\n{replicas}\n        }}\n"
+            "    }"
+        )
+    return "{\n" + ",\n".join(entries) + "\n}"
 
 
 def _write_if_changed(path: str, content: str) -> bool:
@@ -534,6 +610,9 @@ class BackendConfig:
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
 
+    # When set, the application serves as an application level router.
+    is_router_application: bool = False
+
     # The app name for this backend.
     app_name: str = field(default_factory=str)
 
@@ -633,7 +712,7 @@ class BackendConfig:
         return result
 
     def __str__(self) -> str:
-        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, ingress_request_router_servers={self.ingress_request_router_servers}, fallback_server={self.fallback_server}, protocol={self.protocol.value})"
+        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, ingress_request_router_servers={self.ingress_request_router_servers}, fallback_server={self.fallback_server}, is_router_application={self.is_router_application}, protocol={self.protocol.value})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -1272,9 +1351,12 @@ class HAProxyApi(ProxyApi):
             metrics_post = ""
             metrics_set_truncated = ""
 
-        content = _load_lua_template().substitute(
+        content = _load_lua_template(
+            "request_router_common.lua.tmpl", "ingress_request_router.lua.tmpl"
+        ).substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
+            SESSION_HEADER=SERVE_SESSION_ID.lower(),
             REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
@@ -1288,6 +1370,34 @@ class HAProxyApi(ProxyApi):
         )
         if _write_if_changed(lua_path, content):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
+        return lua_path
+
+    def _write_router_application_lua(
+        self, backends: List[BackendConfig]
+    ) -> Optional[str]:
+        """Write the router-application Lua; None if there are no routers."""
+        routers_lua = _format_router_application_pools_lua(
+            backends, local_host=get_localhost_ip()
+        )
+        if routers_lua is None:
+            return None
+
+        content = _load_lua_template(
+            "request_router_common.lua.tmpl", "router_application.lua.tmpl"
+        ).substitute(
+            TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            DIRECT_RESPONSE_HEADER=SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
+            ORIGINAL_METHOD_HEADER=SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
+            REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
+            SESSION_HEADER=SERVE_SESSION_ID.lower(),
+            ROUTERS=routers_lua,
+            APPS=_format_router_target_apps_lua(backends),
+        )
+        lua_path = os.path.join(
+            os.path.dirname(self.config_file_path), "router_application.lua"
+        )
+        if _write_if_changed(lua_path, content):
+            logger.debug(f"Wrote router application Lua script to {lua_path}")
         return lua_path
 
     def _generate_config_file_internal(self) -> None:
@@ -1323,6 +1433,9 @@ class HAProxyApi(ProxyApi):
                 http_backends
             )
             has_ingress_request_router = ingress_request_router_lua_path is not None
+            router_application_lua_path = self._write_router_application_lua(
+                http_backends
+            )
 
             # Enrich HTTP backends with precomputed health check configuration strings
             http_backends_with_health_config = [
@@ -1412,6 +1525,8 @@ class HAProxyApi(ProxyApi):
                         SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-"),
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
+                    "has_router_applications": router_application_lua_path is not None,
+                    "router_application_lua_path": router_application_lua_path,
                     "metrics_enabled": self.cfg.metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
                     "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,
@@ -2130,6 +2245,7 @@ class HAProxyManager(ProxyActorInterface):
             ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
             protocol=target_group.protocol,
+            is_router_application=target_group.is_router_application,
         )
 
     async def _reload_haproxy(self) -> None:

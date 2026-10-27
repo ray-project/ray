@@ -327,3 +327,10 @@ To shut down your cluster, run the following command:
 ```shell
 $ ray down -y config.yaml
 ```
+
+## Next steps
+
+Ray doesn't provide native storage for logs or metrics, so you need to collect them yourself to keep them after the cluster shuts down. See the following pages:
+
+- {ref}`vm-logging` to collect logs from the cluster's nodes.
+- {ref}`collect-metrics` to scrape metrics with Prometheus and view them in Grafana.

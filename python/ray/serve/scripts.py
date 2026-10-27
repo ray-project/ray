@@ -21,6 +21,7 @@ from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.exceptions import AuthenticationError
 from ray.serve._private import api as _private_api
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.constants import (
@@ -805,6 +806,9 @@ def controller_health(address: str, output_json: bool):
                 address=address,
                 namespace=SERVE_NAMESPACE,
             )
+        except AuthenticationError:
+            # A ConnectionError subclass; keep its fix text instead of "not running".
+            raise
         except ConnectionError:
             cli_logger.error(
                 f"Could not connect to Ray cluster at address '{address}'. "

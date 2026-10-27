@@ -7,13 +7,13 @@ from vllm.entrypoints.anthropic.protocol import (
     AnthropicMessagesRequest,
 )
 from vllm.entrypoints.anthropic.serving import AnthropicServingMessages
-from vllm.entrypoints.chat_utils import load_chat_template
 from vllm.entrypoints.launchers.cli_args import FrontendArgs
 from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 from vllm.entrypoints.serve.engine.protocol import ErrorResponse
 from vllm.exceptions import VLLMClientError, VLLMValidationError
 from vllm.renderers import renderer_from_config
+from vllm.renderers.chat_utils import load_chat_template
 from vllm.renderers.inputs.preprocess import extract_prompt_components
 from vllm.renderers.online_renderer import OnlineRenderer
 
