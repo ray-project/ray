@@ -648,11 +648,13 @@ def get_cgroup_mem_stats(
         if controller is None and not is_cgroup_v2_root(root):
             continue
         # The cgroup with the smallest limit is the one the kernel enforces,
-        # so its usage is the one to compare against that limit.
+        # so its usage is the one to compare against that limit. A limit at or
+        # above the host memory does not bind; cgroup v1 writes a huge
+        # sentinel there for "no limit".
         binding, binding_limit = None, None
         for cgroup_dir in get_cgroup_dirs(root, controller, proc_self_cgroup_filename):
             value = read_cgroup_file(os.path.join(cgroup_dir, limit))
-            if value is None or not value.isnumeric():
+            if value is None or not value.isnumeric() or int(value) >= host_total:
                 continue
             if binding_limit is None or int(value) < binding_limit:
                 binding, binding_limit = cgroup_dir, int(value)
@@ -666,7 +668,7 @@ def get_cgroup_mem_stats(
         used = get_cgroup_used_memory(stat_file, usage_file, inactive_key, active_key)
         if used is None:
             return None
-        total = host_total if binding_limit is None else min(binding_limit, host_total)
+        total = host_total if binding_limit is None else binding_limit
         return used, total
     return None
 

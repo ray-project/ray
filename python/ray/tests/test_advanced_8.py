@@ -555,6 +555,32 @@ _STAT_V2_EMPTY = "inactive_file 0\nactive_file 0"
             "0::/user.slice/run-1.scope",
             None,
         ),
+        # v1: the unlimited sentinel on every level keeps the root accounting.
+        (
+            {
+                "memory/memory.limit_in_bytes": "9223372036854771712",
+                "memory/memory.usage_in_bytes": "838860800",
+                "memory/memory.stat": "total_inactive_file 0\ntotal_active_file 0",
+                "memory/job/memory.limit_in_bytes": "9223372036854771712",
+                "memory/job/memory.usage_in_bytes": "104857600",
+                "memory/job/memory.stat": "total_inactive_file 0\ntotal_active_file 0",
+            },
+            "11:memory:/job",
+            (838860800, None),
+        ),
+        # v2: a limit above the host memory does not bind.
+        (
+            {
+                "memory.max": "max",
+                "memory.current": "838860800",
+                "memory.stat": _STAT_V2_EMPTY,
+                "job/memory.max": str(2**62),
+                "job/memory.current": "104857600",
+                "job/memory.stat": _STAT_V2_EMPTY,
+            },
+            "0::/job",
+            (838860800, None),
+        ),
         # v1: usage comes from the leaf that holds the limit.
         (
             {
