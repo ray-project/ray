@@ -617,11 +617,10 @@ def get_cgroup_mem_stats(
         ``(used_bytes, total_bytes)``, or ``None`` when no cgroup accounting
         applies to the process.
     """
-    system_total = get_system_memory(
-        memory_limit_filename=os.path.join(cgroup_v1_root, "memory.limit_in_bytes"),
-        memory_limit_filename_v2=os.path.join(cgroup_v2_root, "memory.max"),
-        proc_self_cgroup_filename=proc_self_cgroup_filename,
-    )
+    # The smallest limit along the hierarchy, capped at the host memory, is
+    # exactly what get_system_memory() returns; computing it here saves a
+    # second walk of the hierarchy on every poll.
+    host_total = psutil.virtual_memory().total
     hierarchies = (
         # root, controller, usage, stat, limit, inactive key, active key
         (
@@ -667,9 +666,7 @@ def get_cgroup_mem_stats(
         used = get_cgroup_used_memory(stat_file, usage_file, inactive_key, active_key)
         if used is None:
             return None
-        total = (
-            system_total if binding_limit is None else min(binding_limit, system_total)
-        )
+        total = host_total if binding_limit is None else min(binding_limit, host_total)
         return used, total
     return None
 
