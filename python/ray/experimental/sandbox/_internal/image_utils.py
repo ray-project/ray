@@ -572,6 +572,14 @@ def extract_tar_layer(
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
                     os.symlink(member.linkname, target_path)
+                    try:
+                        os.utime(
+                            target_path,
+                            (member.mtime, member.mtime),
+                            follow_symlinks=False,
+                        )
+                    except OSError:
+                        pass
                 except OSError:
                     pass
             elif member.islnk():
