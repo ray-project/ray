@@ -47,8 +47,18 @@ go_library(
 # base package unit tests
 go_test(
     name = "base_test",
-    srcs = ["options_test.go"],
+    srcs = [
+        "options_test.go",
+        "runtime_manager_test.go",  # Shutdown-hook signal routing (worker vs driver)
+    ],
     embed = [":base"],
     importpath = "github.com/ray-project/ray/go/internal/runtime/base",
-    deps = ["//go/pkg/options"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/options",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+    ],
 )

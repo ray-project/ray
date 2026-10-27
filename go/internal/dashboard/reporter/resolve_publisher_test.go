@@ -4,8 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-logr/logr"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/pkg/gcs"
+	"github.com/ray-project/ray/go/pkg/log"
 )
 
 // publishingClient is a gcs.Client that also implements
@@ -115,5 +117,44 @@ func TestResolvePublisherDefaultsToNoopWithoutAnyClient(t *testing.T) {
 	}
 	if _, ok := got.(noopPublisher); !ok {
 		t.Errorf("resolvePublisher returned %T, want noopPublisher", got)
+	}
+}
+
+// logCaptureSink is a minimal logr.LogSink recording the most recent message so
+// tests can assert on emitted log lines (mirrors the capture sink used by the
+// head package tests).
+type logCaptureSink struct {
+	msg string
+}
+
+func (c *logCaptureSink) Init(logr.RuntimeInfo)                       {}
+func (c *logCaptureSink) Enabled(int) bool                            { return true }
+func (c *logCaptureSink) Info(_ int, msg string, _ ...interface{})    { c.msg = msg }
+func (c *logCaptureSink) Error(_ error, msg string, _ ...interface{}) { c.msg = msg }
+func (c *logCaptureSink) WithValues(...interface{}) logr.LogSink      { return c }
+func (c *logCaptureSink) WithName(string) logr.LogSink                { return c }
+func (c *logCaptureSink) V(int) logr.LogSink                          { return c }
+
+// TestResolvePublisherNoopFallbackLogsWarning verifies the no-op fallback is
+// announced with a log line, so a missing GCS publisher configuration is
+// discoverable instead of node resource usage publications being dropped
+// silently.
+func TestResolvePublisherNoopFallbackLogsWarning(t *testing.T) {
+	gcs.ClearClient()
+	defer gcs.ClearClient()
+
+	sink := &logCaptureSink{}
+	log.SetLogger(logr.New(sink))
+	defer log.SetLogger(logr.New(&log.NullLogSink{}))
+
+	got := resolvePublisher(agent.Config{})
+	if got == nil {
+		t.Fatal("resolvePublisher returned nil")
+	}
+	if _, ok := got.(noopPublisher); !ok {
+		t.Fatalf("resolvePublisher returned %T, want noopPublisher", got)
+	}
+	if sink.msg != "no GCS publisher configured; node resource usage publications are dropped" {
+		t.Errorf("fallback log message = %q, want the publisher-dropped warning", sink.msg)
 	}
 }

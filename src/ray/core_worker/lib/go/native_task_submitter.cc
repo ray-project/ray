@@ -355,6 +355,7 @@ extern "C" int CNativeTaskSubmitter_GetActor(const char *name,
 
 extern "C" int CNativeTaskSubmitter_KillActor(const char *actor_id_data,
                                               int actor_id_size,
+                                              bool force,
                                               bool no_restart,
                                               char **error_out) {
   return CgoErrorHandler::Execute("CNativeTaskSubmitter_KillActor", [&]() -> int {
@@ -383,12 +384,15 @@ extern "C" int CNativeTaskSubmitter_KillActor(const char *actor_id_data,
     }
 
     RAY_LOG(DEBUG) << "KillActor called: actor_id=" << actor_id.Hex()
-                   << ", no_restart=" << no_restart;
+                   << ", force=" << force << ", no_restart=" << no_restart;
 
-    // Kill via the CoreWorker. force_kill is always true to match the Java
-    // runtime semantics (kill == crash, pending tasks fail).
+    // Kill via the CoreWorker. With no_restart=false, force=false takes the
+    // graceful kill chain (raylet KillLocalActor RPC -> HandleKillActor,
+    // INTENDED_SYSTEM_EXIT) and force=true is the hard kill; no_restart=true
+    // routes through the GCS actor-destroy path, which is a hard kill
+    // regardless of force.
     auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
-    ray::Status status = ops.KillActor(actor_id, /*force_kill=*/true, no_restart);
+    ray::Status status = ops.KillActor(actor_id, force, no_restart);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "KillActor failed: actor_id=" << actor_id.Hex()
                      << ", status=" << status.ToString();

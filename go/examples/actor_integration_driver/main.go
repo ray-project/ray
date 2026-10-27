@@ -448,7 +448,7 @@ func testActorKill() error {
 	}
 
 	// Kill the actor from the driver side with noRestart=true.
-	if err := api.KillActor(handle, true); err != nil {
+	if err := api.KillActor(handle, true, true); err != nil {
 		return fmt.Errorf("KillActor failed: %w", err)
 	}
 

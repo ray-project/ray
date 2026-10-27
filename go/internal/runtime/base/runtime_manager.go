@@ -49,6 +49,33 @@ var shutdownOnce sync.Once
 // shutdownConfigLocked tracks whether shutdown hook has been registered (used to prevent config changes after registration).
 var shutdownConfigLocked atomic.Bool
 
+// workerModeInitialized tracks whether the runtime was initialized in worker
+// mode (options.WorkerTypeWorker). The shutdown hook reads it to route SIGTERM
+// to the graceful-exit bridge instead of the Go-side Shutdown path. Set by
+// Initialize from the converted options; driver and local modes leave it false.
+var workerModeInitialized atomic.Bool
+
+// gracefulExitRequester holds the bridge that asks the C++ core worker to exit
+// gracefully. The native boundary installs the real bridge (which calls the
+// ray_go_worker_set_graceful_exit_requested cgo bridge) at package init; tests
+// install a fake. Nil means the bridge is unavailable (no cgo layer linked),
+// and the shutdown hook falls back to the plain Shutdown path. An atomic
+// pointer is used so the hook reads it without locks on the signal goroutine.
+var gracefulExitRequester atomic.Pointer[func()]
+
+// SetGracefulExitRequester installs the SIGTERM graceful-exit bridge.
+//
+// base cannot import the cgo layer (cgo imports base), so the bridge is
+// injected from the native boundary, mirroring the SetRuntimeFactory seam.
+// Pass nil to uninstall (also used by tests).
+func SetGracefulExitRequester(requestGracefulExit func()) {
+	if requestGracefulExit == nil {
+		gracefulExitRequester.Store(nil)
+		return
+	}
+	gracefulExitRequester.Store(&requestGracefulExit)
+}
+
 // runtimeManager manages the global runtime singleton and handle registry.
 //
 // This struct encapsulates:
@@ -172,6 +199,10 @@ func Initialize(opts options.InitializeOptions) (RuntimeHandle, error) {
 		return nil, err
 	}
 
+	// Record the runtime mode for the shutdown hook: in worker mode, SIGTERM
+	// is routed to the graceful-exit bridge instead of the Go-side Shutdown.
+	workerModeInitialized.Store(baseOpts.WorkerType == options.WorkerTypeWorker)
+
 	// Create Runtime instance using base package (actually created by factory registered in native package).
 	rt, err := CreateRuntime(baseOpts)
 	if err != nil {
@@ -234,7 +265,7 @@ func Initialize(opts options.InitializeOptions) (RuntimeHandle, error) {
 //
 // Design notes:
 // 1. Uses sync.Once to ensure single registration and single shutdown
-// 2. Runs shutdown in a separate goroutine to avoid blocking signal handling
+// 2. Runs shutdown in a separate goroutine with repeated-signal draining (see runShutdownSignalLoop)
 // 3. Logs shutdown progress for debugging
 // 4. This is a global singleton shutdown mechanism, different from worker.Worker.Shutdown():
 //   - worker.Worker: Per-instance shutdown, called explicitly by user code
@@ -254,37 +285,107 @@ func registerShutdownHookOnce() {
 		signal.Notify(sigChan, manager.shutdownConfig.signals...)
 
 		// Start goroutine to handle shutdown signals
-		go func() {
-			sig := <-sigChan
-			logger := log.Log
-			logger.Info("Received shutdown signal", "signal", sig)
-
-			logger.Info("Starting graceful shutdown")
-
-			// Get current handle and shutdown
-			// Note: GetHandle() uses RLock, Shutdown() uses Lock.
-			// This is safe because:
-			// 1. Initialize() holds Lock only briefly for state update (not during I/O)
-			// 2. Signal handler runs in separate goroutine, won't block Initialize()
-			// 3. If Initialize() is holding Lock, Shutdown() will wait and retry
-			// 4. No circular wait condition exists → no deadlock possible
-			handle := GetHandle()
-			if handle != nil {
-				if err := Shutdown(handle); err != nil {
-					logger.Error(err, "Error during shutdown")
-				}
-			}
-
-			logger.Info("Graceful shutdown completed")
-
-			// Stop listening for signals
-			signal.Stop(sigChan)
-			close(sigChan)
-		}()
+		go runShutdownSignalLoop(sigChan)
 
 		shutdownConfigLocked.Store(true)
 		log.Log.Info("Shutdown hook registered successfully")
 	})
+}
+
+// runShutdownSignalLoop is the body of the shutdown-hook signal goroutine. It
+// handles the first shutdown signal, and keeps draining the channel while the
+// process is still exiting so a repeated signal can never fall through to the
+// OS default disposition.
+//
+// Two exit shapes exist:
+//
+//   - Synchronous (SIGINT in any mode; SIGTERM in driver or local mode, or
+//     worker mode without the graceful-exit bridge): handleShutdownSignal runs
+//     the full Go-side shutdown inline, after which signal delivery is stopped
+//     and the process exit proceeds.
+//   - Deferred (worker-mode SIGTERM with the graceful-exit bridge): the exit
+//     is only requested; the C++ core worker observes the flag at its next
+//     periodic check_signals poll and exits by itself. Until that poll fires,
+//     the process is alive and still delivering signals, so the loop keeps
+//     receiving from the channel. A second signal in that window (raylet
+//     re-kill, repeated ray stop, Kubernetes termination retry) escalates to
+//     the forced shutdown path instead of the OS default handler, whose hard
+//     kill is exactly the death type the graceful mechanism exists to avoid.
+//     Any signal kind escalates: the process is already exiting, so a caller
+//     repeating itself only means "stop waiting".
+func runShutdownSignalLoop(sigChan chan os.Signal) {
+	sig := <-sigChan
+	log.Log.Info("Received shutdown signal", "signal", sig)
+
+	if handleShutdownSignal(sig) {
+		repeated := <-sigChan
+		log.Log.Info("Repeated shutdown signal during graceful worker exit; forcing shutdown", "signal", repeated)
+		runForcedShutdown()
+	}
+
+	// Stop listening for signals
+	signal.Stop(sigChan)
+	close(sigChan)
+}
+
+// handleShutdownSignal routes one received shutdown signal to its exit path.
+// It reports whether the signal initiated a deferred graceful worker exit
+// (worker-mode SIGTERM with the graceful-exit bridge installed): in that case
+// the process stays alive until the core worker's poll exits it, and the
+// signal goroutine must keep draining the channel (see runShutdownSignalLoop).
+// Every other path completes the shutdown synchronously and reports false.
+//
+// Worker mode + SIGTERM is special: instead of tearing the runtime down from
+// Go, the handler invokes the injected graceful-exit bridge, which flags the
+// C++ core worker. The core worker's periodic check_signals poll observes the
+// flag and exits with INTENDED_USER_EXIT (object flush, task wrap-up, correct
+// raylet accounting); calling Go-side Shutdown here instead would race the
+// core worker's own teardown and surface as a SYSTEM_ERROR worker death.
+//
+// Every other combination keeps the pre-existing full shutdown behavior:
+// SIGINT in any mode (driver Ctrl-C semantics are unchanged), and SIGTERM in
+// driver or local mode. Worker-mode SIGTERM also falls back to this path when
+// no bridge is installed.
+//
+// Deadlock avoidance (inherited from the original inline goroutine body):
+//   - GetHandle() uses RLock, Shutdown() uses Lock.
+//   - Initialize() holds Lock only briefly for state update (not during I/O),
+//     so a concurrent Shutdown() will wait and retry without circular waits.
+//   - This function runs on the signal goroutine, never blocking Initialize().
+func handleShutdownSignal(sig os.Signal) bool {
+	logger := log.Log
+
+	if sig == syscall.SIGTERM && workerModeInitialized.Load() {
+		if request := gracefulExitRequester.Load(); request != nil {
+			logger.Info("Worker received SIGTERM; requesting graceful core worker exit", "signal", sig)
+			(*request)()
+			return true
+		}
+		logger.Info("Graceful exit bridge unavailable; falling back to runtime shutdown", "signal", sig)
+	}
+
+	runForcedShutdown()
+	return false
+}
+
+// runForcedShutdown tears the runtime down from Go. It is the pre-existing
+// forced exit path, used both as the primary exit shape for signals that must
+// not defer (driver modes, SIGINT) and as the escalation for a repeated signal
+// arriving while a graceful worker exit is still pending.
+func runForcedShutdown() {
+	logger := log.Log
+
+	logger.Info("Starting graceful shutdown")
+
+	// Get current handle and shutdown
+	handle := GetHandle()
+	if handle != nil {
+		if err := Shutdown(handle); err != nil {
+			logger.Error(err, "Error during shutdown")
+		}
+	}
+
+	logger.Info("Graceful shutdown completed")
 }
 
 // SetShutdownHookEnabled enables or disables the shutdown hook.

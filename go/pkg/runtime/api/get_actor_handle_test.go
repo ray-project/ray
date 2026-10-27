@@ -76,7 +76,7 @@ func (m *getActorHandleMockSubmitter) GetActorHandle(actorID ids.ActorID) (submi
 	return m.handle, m.err
 }
 
-func (m *getActorHandleMockSubmitter) KillActor(actorID ids.ActorID, noRestart bool) error {
+func (m *getActorHandleMockSubmitter) KillActor(actorID ids.ActorID, force, noRestart bool) error {
 	return nil
 }
 

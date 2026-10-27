@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
@@ -198,6 +199,49 @@ func TestReporterServiceMemoryProfiling(t *testing.T) {
 			t.Error("MemoryProfiling(nil) returned no error")
 		}
 	})
+}
+
+// TestReporterServiceMemoryProfilingCancelDetaches verifies that a cancelled
+// MemoryProfiling request still detaches the memray profiler from the target
+// pid before returning. The profiler is already attached when cancellation is
+// observed; skipping the detach would leave sampling overhead on the target
+// process until it exits.
+func TestReporterServiceMemoryProfilingCancelDetaches(t *testing.T) {
+	orig := runCommandDetail
+	origSleep := memoryProfileSleep
+	defer func() {
+		runCommandDetail = orig
+		memoryProfileSleep = origSleep
+	}()
+	// A non-zero sleep keeps the sampling timer pending so the pre-cancelled
+	// request context deterministically wins the select inside MemoryProfiling
+	// (with the collapsed zero sleep used above both select cases would be
+	// ready and Go could pick the timer branch instead).
+	memoryProfileSleep = 50 * time.Millisecond
+
+	cap := &cmdCapture{}
+	runCommandDetail = memoryProfilingExecutor(cap)
+	s := newTestReporterService(t, t.TempDir())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rep, err := s.MemoryProfiling(ctx, &proto.MemoryProfilingRequest{Pid: 5, Format: strp("flamegraph"), Duration: u32p(1)})
+	if err != nil {
+		t.Fatalf("MemoryProfiling: %v", err)
+	}
+	if rep.GetSuccess() {
+		t.Error("MemoryProfiling(cancelled) success = true, want false")
+	}
+	if !strings.Contains(rep.GetOutput(), "interrupted") {
+		t.Errorf("MemoryProfiling output = %q, want cancellation message", rep.GetOutput())
+	}
+	// The attach must be followed by a detach on the cancellation path too.
+	if got := cap.callCount(); got != 2 {
+		t.Fatalf("command count = %d, want 2 (attach + detach), commands: %v", got, cap.names)
+	}
+	if args := cap.lastArgs(); len(args) == 0 || args[0] != "detach" {
+		t.Errorf("last command args = %v, want detach args", args)
+	}
 }
 
 func TestReporterServiceHealthCheck(t *testing.T) {

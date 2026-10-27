@@ -374,7 +374,7 @@ func testRuntimeEnvSubmit() error {
 	if handle == nil || handle.ID().IsNil() {
 		return fmt.Errorf("expected a non-nil actor handle")
 	}
-	defer func() { _ = api.KillActor(handle, true) }()
+	defer func() { _ = api.KillActor(handle, true, true) }()
 	fmt.Printf("  created RuntimeEnvProbe actor (ID=%s) with runtime env\n", handle.ID().Hex())
 
 	typed := api.NewActorHandleImpl[string](handle.ID())

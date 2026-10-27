@@ -61,8 +61,11 @@ go_test(
     embed = [":reporter"],
     deps = [
         "//go/internal/dashboard/agent",
+        "//go/pkg/gcs",
         "//go/pkg/ids",
+        "//go/pkg/log",
         "//go/proto",
+        "@com_github_go_logr_logr//:logr",
         "@com_github_prometheus_client_golang//prometheus",
         "@org_golang_google_grpc//:go_default_library",
     ],

@@ -115,6 +115,9 @@ func Test_stateCgoClient_UnsupportedMethods(t *testing.T) {
 	if _, err := s.UpdateWorkerNumPausedThreads(ids.NilWorkerID(), 0); !errors.Is(err, gcs.ErrNotImplemented) {
 		t.Errorf("UpdateWorkerNumPausedThreads() expected ErrNotImplemented, got %v", err)
 	}
+	if _, err := s.GetPlacementGroupByName("pg", ""); !errors.Is(err, gcs.ErrNotImplemented) {
+		t.Errorf("GetPlacementGroupByName() expected ErrNotImplemented, got %v", err)
+	}
 }
 
 // Test_stateCgoClient_DelegatesToClient verifies methods delegated to the underlying gcs.Client
@@ -231,6 +234,86 @@ func Test_stateCgoClient_GetAllResources_nonCgoClient(t *testing.T) {
 	}
 	if _, err := s.GetAllTotalResources(); !errors.Is(err, gcs.ErrNotImplemented) {
 		t.Errorf("GetAllTotalResources() expected ErrNotImplemented, got %v", err)
+	}
+}
+
+// Test_stateCgoClient_QueryMethods_defunctCgoClient is table-driven over the nine
+// query-only state accessor methods, each invoked on a real *cgoClient that has no
+// live C++ client behind it: a zero value (nil C pointer) or an explicitly closed
+// one. Every method must surface a plain error from the withPtr guard, must not
+// panic, and must not report ErrNotImplemented — that sentinel is reserved for the
+// non-cgoClient mock path (see Test_stateCgoClient_UnsupportedMethods), while a
+// *cgoClient always reaches the CGO boundary. Constructing a connected *cgoClient
+// is impossible without a live GCS (ray_gcs_client_create fails when Connect
+// fails), so real-data assertions stay in the opt-in integration target.
+func Test_stateCgoClient_QueryMethods_defunctCgoClient(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(s *stateCgoClient) error
+	}{
+		{"GetAllJobInfo", func(s *stateCgoClient) error {
+			_, err := s.GetAllJobInfo(false, false)
+			return err
+		}},
+		{"GetDrainingNodes", func(s *stateCgoClient) error {
+			_, err := s.GetDrainingNodes()
+			return err
+		}},
+		{"GetAllAvailableResources", func(s *stateCgoClient) error {
+			_, err := s.GetAllAvailableResources()
+			return err
+		}},
+		{"GetAllTotalResources", func(s *stateCgoClient) error {
+			_, err := s.GetAllTotalResources()
+			return err
+		}},
+		{"GetAllResourceUsage", func(s *stateCgoClient) error {
+			_, err := s.GetAllResourceUsage()
+			return err
+		}},
+		{"GetAllTaskEvents", func(s *stateCgoClient) error {
+			_, err := s.GetAllTaskEvents()
+			return err
+		}},
+		{"GetPlacementGroupByName", func(s *stateCgoClient) error {
+			_, err := s.GetPlacementGroupByName("pg", "")
+			return err
+		}},
+		{"GetSystemConfig", func(s *stateCgoClient) error {
+			_, err := s.GetSystemConfig()
+			return err
+		}},
+		{"GetWorkerDebuggerPort", func(s *stateCgoClient) error {
+			_, err := s.GetWorkerDebuggerPort(ids.NewWorkerID())
+			return err
+		}},
+	}
+	states := []struct {
+		name  string
+		makeS func() *stateCgoClient
+	}{
+		// A zero-value cgoClient has a nil C pointer: withPtr rejects the call
+		// before any C code runs.
+		{"nilPtr", func() *stateCgoClient { return newStateCgoClient(&cgoClient{}) }},
+		// An explicitly closed cgoClient takes the same withPtr rejection path.
+		{"closed", func() *stateCgoClient {
+			cc := &cgoClient{}
+			cc.closed.Store(true)
+			return newStateCgoClient(cc)
+		}},
+	}
+	for _, state := range states {
+		for _, tc := range cases {
+			t.Run(state.name+"/"+tc.name, func(t *testing.T) {
+				err := tc.call(state.makeS())
+				if err == nil {
+					t.Errorf("%s on a %s cgoClient expected an error, got nil", tc.name, state.name)
+				}
+				if errors.Is(err, gcs.ErrNotImplemented) {
+					t.Errorf("%s on a %s cgoClient must not return ErrNotImplemented, got %v", tc.name, state.name, err)
+				}
+			})
+		}
 	}
 }
 

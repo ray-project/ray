@@ -246,22 +246,41 @@ func ExitActor() error {
 // It is an optional capability: submitter.TaskSubmitter stays minimal, and a
 // submitter that can kill an actor satisfies this interface structurally.
 type actorKiller interface {
-	KillActor(actorID ids.ActorID, noRestart bool) error
+	KillActor(actorID ids.ActorID, force, noRestart bool) error
 }
 
 // KillActor kills an actor from the driver side.
 //
-// It is the Go counterpart of Java's ActorHandle.kill()/kill(noRestart): the
-// actor is treated as crashed (pending tasks fail), and when noRestart is true
-// the actor is not restarted.
+// It is the Go counterpart of Java's ActorHandle.kill()/kill(noRestart). The
+// actual behavior follows this matrix (cluster mode):
+//
+//   - force=false, noRestart=false: graceful kill chain — the request reaches
+//     the raylet, which issues a KillLocalActor RPC to the target core
+//     worker; the worker exits through its HandleKillActor path and the exit
+//     is recorded as INTENDED_SYSTEM_EXIT (a clean exit, not a crash).
+//   - force=true, noRestart=false: hard kill — the worker dies fast and
+//     pending tasks fail.
+//   - noRestart=true: the kill is routed through the GCS actor-destroy path,
+//     whose force_kill is true by default, so the force parameter has no
+//     effect in this combination and the behavior is a destructive hard kill
+//     regardless.
+//
+// Independent of KillActor: when a Go worker receives SIGTERM from the raylet
+// for worker-lifecycle reasons (idle kill, placement-group teardown, ray
+// stop, pod graceful termination), the runtime manager routes the signal to
+// the graceful-exit bridge; the core worker's periodic check_signals poll
+// observes the flag and exits with INTENDED_USER_EXIT (see
+// ray_go_worker_set_graceful_exit_requested). That mechanism is not part of
+// the KillActor chain.
 //
 // Parameters:
 //   - handle: The handle to the actor to kill.
+//   - force: Whether to force kill (effective only when noRestart is false).
 //   - noRestart: Whether the actor should not be restarted.
 //
 // Returns:
 //   - error: Any error encountered during the kill.
-func KillActor(handle ActorHandle, noRestart bool) error {
+func KillActor(handle ActorHandle, force, noRestart bool) error {
 	if handle == nil {
 		return errors.NewRayInvalidArgumentException("actor handle cannot be nil")
 	}
@@ -291,7 +310,7 @@ func KillActor(handle ActorHandle, noRestart bool) error {
 		return errors.NewRuntimeError("kill_actor", "kill_actor_not_supported")
 	}
 
-	if err := killer.KillActor(actorID, noRestart); err != nil {
+	if err := killer.KillActor(actorID, force, noRestart); err != nil {
 		return fmt.Errorf("failed to kill actor %s: %w", actorID.Hex(), err)
 	}
 	return nil

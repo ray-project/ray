@@ -565,7 +565,7 @@ func testActorCreationOptions() error {
 	// Kill on every exit path: the detached actor survives job teardown by
 	// design, and this test's error returns must not leak its worker (a
 	// leaked worker pins 1 CPU cluster-wide).
-	defer func() { _ = api.KillActor(handle, true) }()
+	defer func() { _ = api.KillActor(handle, true, true) }()
 
 	// The actor must be created and callable with all three options in effect.
 	typed := api.NewActorHandleImpl[int](handle.ID())
@@ -621,7 +621,7 @@ func testActorCreationOptions() error {
 //     a later method call succeeds again on the restarted instance.
 //
 // Both are instance methods on the handle, replacing the package-level
-// KillActor(handle, noRestart) used by testActorKill.
+// KillActor(handle, force, noRestart) used by testActorKill.
 func testActorHandleKill() error {
 	// Part 1: KillWithNoRestart() — actor dies and never comes back.
 	handle, err := api.Actor[*userfuncs.Counter]((*userfuncs.Counter)(nil)).Create(1)
@@ -708,9 +708,9 @@ func testActorHandleKill() error {
 	return nil
 }
 
-// testActorKill verifies the driver-side KillActor API (follow-up 9.1): after
-// KillActor with noRestart=true, the actor worker dies and later method calls
-// fail instead of executing.
+// testActorKill verifies the driver-side KillActor API: after KillActor with
+// noRestart=true, the actor worker dies and later method calls fail instead
+// of executing.
 func testActorKill() error {
 	handle, err := api.Actor[*userfuncs.Counter]((*userfuncs.Counter)(nil)).Create(42)
 	if err != nil {
@@ -729,7 +729,7 @@ func testActorKill() error {
 	}
 
 	// Kill the actor from the driver side with noRestart=true.
-	if err := api.KillActor(handle, true); err != nil {
+	if err := api.KillActor(handle, true, true); err != nil {
 		return fmt.Errorf("KillActor failed: %w", err)
 	}
 
@@ -753,6 +753,68 @@ func testActorKill() error {
 		time.Sleep(200 * time.Millisecond)
 	}
 	fmt.Println("  Counter killed via KillActor(noRestart=true), later calls fail ✓")
+	return nil
+}
+
+// testActorForceKill verifies the force dimension of the driver-side
+// KillActor API: force=false routes through the raylet's
+// graceful KillLocalActor path (the worker's C++ HandleKillActor exits the
+// actor and the exit is recorded as INTENDED_SYSTEM_EXIT), while force=true
+// keeps the hard-kill path. Both arms assert the actor becomes unavailable;
+// the exit-type difference is asserted from the raylet logs by the
+// real-machine probe, not here.
+func testActorForceKill() error {
+	waitDead := func(typed *api.ActorHandleImpl[int], what string) error {
+		deadline := time.Now().Add(e2eTimeout(5 * time.Second))
+		for {
+			ref, err := typed.Task((*userfuncs.Counter).Value).Remote()
+			if err == nil {
+				_, err = getWithTimeout(ref, time.Until(deadline))
+			}
+			if err != nil && !errors.Is(err, errGetTimeout) {
+				return nil // submission or execution failed: worker is dead
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("expected %s actor to be unavailable after kill", what)
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	// Arm 1: graceful (force=false, noRestart=false).
+	hGrace, err := api.Actor[*userfuncs.Counter]((*userfuncs.Counter)(nil)).Create(7)
+	if err != nil {
+		return fmt.Errorf("create graceful-kill actor failed: %w", err)
+	}
+	defer func() { _ = releaseActor(hGrace.ID()) }()
+	tGrace := api.NewActorHandleImpl[int](hGrace.ID())
+	if ref, err := tGrace.Task((*userfuncs.Counter).Value).Remote(); err != nil {
+		return fmt.Errorf("Value before graceful kill failed: %w", err)
+	} else if v, err := api.Get(ref); err != nil || v != 7 {
+		return fmt.Errorf("Value before graceful kill = %v (err %v), want 7", v, err)
+	}
+	if err := api.KillActor(hGrace, false, false); err != nil {
+		return fmt.Errorf("KillActor(force=false) failed: %w", err)
+	}
+	if err := waitDead(tGrace, "graceful"); err != nil {
+		return err
+	}
+	fmt.Println("  Counter killed via KillActor(force=false): graceful path, actor dead ✓")
+
+	// Arm 2: hard kill (force=true, noRestart=false) as the contrast arm.
+	hHard, err := api.Actor[*userfuncs.Counter]((*userfuncs.Counter)(nil)).Create(9)
+	if err != nil {
+		return fmt.Errorf("create hard-kill actor failed: %w", err)
+	}
+	defer func() { _ = releaseActor(hHard.ID()) }()
+	tHard := api.NewActorHandleImpl[int](hHard.ID())
+	if err := api.KillActor(hHard, true, false); err != nil {
+		return fmt.Errorf("KillActor(force=true) failed: %w", err)
+	}
+	if err := waitDead(tHard, "hard"); err != nil {
+		return err
+	}
+	fmt.Println("  Counter killed via KillActor(force=true): hard path, actor dead ✓")
 	return nil
 }
 
@@ -835,6 +897,12 @@ func main() {
 		log.Fatalf("TestActorKill FAILED: %v", err)
 	}
 	fmt.Println("=== TestActorKill PASSED ===\n")
+
+	fmt.Println("=== TestActorForceKill ===")
+	if err := testActorForceKill(); err != nil {
+		log.Fatalf("TestActorForceKill FAILED: %v", err)
+	}
+	fmt.Println("=== TestActorForceKill PASSED ===\n")
 
 	fmt.Println("All actor integration checks passed.")
 }

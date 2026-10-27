@@ -1048,4 +1048,11 @@ func init() {
 	if runtimeFactoryRegistered.CompareAndSwap(false, true) {
 		base.SetRuntimeFactory(&NativeRuntimeFactory{})
 	}
+
+	// Install the SIGTERM graceful-exit bridge for the shutdown hook: worker
+	// mode routes SIGTERM to this bridge so the core worker exits through
+	// INTENDED_USER_EXIT instead of being torn down from Go.
+	base.SetGracefulExitRequester(func() {
+		cgoboundary.RequestGracefulExit()
+	})
 }

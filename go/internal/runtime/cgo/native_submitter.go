@@ -317,10 +317,13 @@ func (s *NativeTaskSubmitter) GetActorHandle(actorID ids.ActorID) (submitter.Act
 }
 
 // KillActor kills an actor from the driver side.
-// This implementation calls CGO to invoke the C++ CoreWorker::KillActor with
-// force_kill fixed to true (matching the Java runtime semantics: kill equals a
-// crash, pending tasks fail).
-func (s *NativeTaskSubmitter) KillActor(actorID ids.ActorID, noRestart bool) error {
+// This implementation calls CGO to invoke the C++ CoreWorker::KillActor.
+// See the semantics matrix on api.KillActor: with noRestart=false, force=false
+// takes the graceful kill chain (raylet KillLocalActor RPC, worker exit
+// recorded as INTENDED_SYSTEM_EXIT) and force=true is the hard kill;
+// noRestart=true routes through the GCS actor-destroy path (hard kill
+// regardless of force).
+func (s *NativeTaskSubmitter) KillActor(actorID ids.ActorID, force, noRestart bool) error {
 	if actorID.IsNil() {
 		return fmt.Errorf("kill actor: actor ID is nil")
 	}
@@ -331,6 +334,7 @@ func (s *NativeTaskSubmitter) KillActor(actorID ids.ActorID, noRestart bool) err
 	success := C.CNativeTaskSubmitter_KillActor(
 		byteSlicePtr(actorIDBinary),
 		C.int(len(actorIDBinary)),
+		C.bool(force),
 		C.bool(noRestart),
 		&cError,
 	)
@@ -352,7 +356,7 @@ func (s *NativeTaskSubmitter) KillActor(actorID ids.ActorID, noRestart bool) err
 // actorKiller capability probed by api.KillActor. Without it, a signature drift
 // would silently turn the public API back into a kill_actor_not_supported error.
 var _ interface {
-	KillActor(ids.ActorID, bool) error
+	KillActor(ids.ActorID, bool, bool) error
 } = (*NativeTaskSubmitter)(nil)
 
 // convertTaskOptionsToC converts Go TaskOptions to C.CTaskOptions.

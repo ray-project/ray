@@ -228,7 +228,7 @@ func testActorContext() error {
 	if handle == nil || handle.ID().IsNil() {
 		return fmt.Errorf("expected a non-nil actor handle")
 	}
-	defer func() { _ = api.KillActor(handle, true) }()
+	defer func() { _ = api.KillActor(handle, true, true) }()
 
 	typed := api.NewActorHandleImpl[map[string]string](handle.ID())
 	ref, err := typed.Task((*userfuncs.RuntimeContextProbe).Probe).Remote()
@@ -312,7 +312,7 @@ func testActorInfoListing() error {
 	if err != nil {
 		return fmt.Errorf("create Counter actor failed: %w", err)
 	}
-	defer func() { _ = api.KillActor(counter, true) }()
+	defer func() { _ = api.KillActor(counter, true, true) }()
 	counterID := counter.ID()
 
 	ctx, err := api.GetRuntimeContext()

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
+	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -122,6 +123,14 @@ func (s *ReporterService) MemoryProfiling(ctx context.Context, req *proto.Memory
 	select {
 	case <-ctx.Done():
 		timer.Stop()
+		// The profiler is still attached to the target pid; leaving it attached
+		// would keep sampling overhead on that process until it exits, so
+		// detach best-effort before reporting the cancellation. The detach
+		// command runs under its own bounded timeout (independent of the
+		// cancelled request context); a failed detach is only logged.
+		if detachSuccess, detachOutput := s.profileManager.MemoryProfileDetach(pid, false); !detachSuccess {
+			log.Log.Error(nil, "failed to detach memray profiler after request cancellation", "pid", pid, "output", detachOutput)
+		}
 		return &proto.MemoryProfilingReply{Success: false, Output: "memory profiling interrupted by request cancellation"}, nil
 	case <-timer.C:
 	}

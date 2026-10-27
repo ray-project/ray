@@ -267,16 +267,18 @@ type ActorHandle interface {
 
 // killHandle kills the actor through KillActor, allowing restart per its
 // max_restarts setting. Shared by every ActorHandle implementation's Kill
-// method.
+// method. force=true keeps the historical hard-kill semantics of the handle
+// convenience wrappers.
 func killHandle(handle ActorHandle) error {
-	return KillActor(handle, false)
+	return KillActor(handle, true, false)
 }
 
 // killHandleNoRestart kills the actor through KillActor with noRestart=true,
 // so it never comes back. Shared by every ActorHandle implementation's
-// KillWithNoRestart method.
+// KillWithNoRestart method. force=true keeps the historical hard-kill
+// semantics of the handle convenience wrappers.
 func killHandleNoRestart(handle ActorHandle) error {
-	return KillActor(handle, true)
+	return KillActor(handle, true, true)
 }
 
 // ============================================================================

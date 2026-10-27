@@ -39,7 +39,46 @@ std::atomic<bool> g_runtime_initialized{false};
 std::atomic<bool> g_ray_log_initialized{false};
 std::atomic<int> g_worker_mode{0};
 
+// Set when the worker should exit gracefully (SIGTERM in worker mode). The
+// flag is polled by the core worker's periodic check_signals callback, which
+// runs on a core worker thread: the poll must stay C++-only and never call
+// back into Go (cgo reverse calls would risk a deadlock there). Go flips the
+// flag through the extern "C" setter below (Go-to-C calls are safe).
+std::atomic<bool> g_graceful_exit_requested{false};
+
+// Check_signals status codes shared by the production check_signals callback
+// and the ray_go_worker_check_signals_status test bridge. Additional codes
+// (2+) are reserved for future non-OK conditions.
+constexpr int kCheckSignalsStatusOk = 0;
+constexpr int kCheckSignalsStatusIntentionalSystemExit = 1;
+
+// CheckSignalsStatus maps the graceful-exit flag to a check_signals status:
+// 0 = OK (keep running), 1 = IntentionalSystemExit (graceful exit requested).
+int CheckSignalsStatus() {
+  if (g_graceful_exit_requested.load(std::memory_order_relaxed)) {
+    return kCheckSignalsStatusIntentionalSystemExit;
+  }
+  return kCheckSignalsStatusOk;
+}
+
 }  // namespace
+
+extern "C" {
+
+// ray_go_worker_check_signals_status returns the current check_signals status
+// (see CheckSignalsStatus). The production check_signals callback and the cgo
+// tests share this function so tests pin the exact state the callback reads.
+int ray_go_worker_check_signals_status() { return CheckSignalsStatus(); }
+
+// ray_go_worker_set_graceful_exit_requested flags the worker for a graceful
+// exit. Go calls this on SIGTERM in worker mode; the core worker's periodic
+// check_signals poll then tears the worker down with INTENDED_USER_EXIT, so
+// the raylet accounts the worker as intentionally gone instead of crashed.
+void ray_go_worker_set_graceful_exit_requested() {
+  g_graceful_exit_requested.store(true, std::memory_order_relaxed);
+}
+
+}  // extern "C"
 
 // ============================================================================
 // RuntimeOperations Class Implementation
@@ -314,9 +353,22 @@ void RuntimeOperations::InitializeCoreWorker(const RuntimeInitializeOptions &opt
   // with INTENDED_USER_EXIT after an intentional actor exit (api.ExitActor),
   // which is what makes the raylet mark the actor dead and release its
   // resources. With a null check_signals the poll never runs, so an
-  // intentionally exited actor stays ALIVE and keeps holding its CPUs. The Go
-  // runtime installs no signal handler here, so the check itself is a no-op.
-  core_options.check_signals = []() -> ray::Status { return ray::Status::OK(); };
+  // intentionally exited actor stays ALIVE and keeps holding its CPUs.
+  //
+  // The poll also honors the graceful-exit flag. It is set by
+  // ray_go_worker_set_graceful_exit_requested when the Go runtime manager
+  // receives a worker-lifecycle SIGTERM from the raylet (idle kill,
+  // placement-group teardown, ray stop, pod graceful termination):
+  // returning IntentionalSystemExit makes the core worker exit through the
+  // INTENDED_USER_EXIT path (object flush, task wrap-up, correct raylet
+  // accounting) instead of leaving the raylet to report a dead worker. This
+  // path is independent of the KillActor chain (raylet KillLocalActor RPC).
+  core_options.check_signals = []() -> ray::Status {
+    if (CheckSignalsStatus() == kCheckSignalsStatusIntentionalSystemExit) {
+      return ray::Status::IntentionalSystemExit("SIGTERM received: graceful worker exit");
+    }
+    return ray::Status::OK();
+  };
 
   ray::core::CoreWorkerProcess::Initialize(core_options);
   core_worker_ = &ray::core::CoreWorkerProcess::GetCoreWorker();

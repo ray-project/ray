@@ -820,7 +820,7 @@ func demonstrateKillActor() error {
 	if err != nil {
 		return fmt.Errorf("create kill actor failed: %w", err)
 	}
-	defer func() { _ = api.KillActor(handle, true) }()
+	defer func() { _ = api.KillActor(handle, true, true) }()
 	typed := api.NewActorHandleImpl[int](handle.ID())
 
 	// Confirm the actor is alive and callable before killing.
@@ -834,7 +834,7 @@ func demonstrateKillActor() error {
 	fmt.Println("  Counter.Value() before kill = 100 ✓")
 
 	// Kill the actor from the driver side with noRestart=true.
-	if err := api.KillActor(handle, true); err != nil {
+	if err := api.KillActor(handle, true, true); err != nil {
 		return fmt.Errorf("KillActor failed: %w", err)
 	}
 
@@ -1046,7 +1046,7 @@ func demonstrateGetActorHandle() error {
 	if err != nil {
 		return fmt.Errorf("failed to create Counter actor: %w", err)
 	}
-	defer func() { _ = api.KillActor(created, true) }()
+	defer func() { _ = api.KillActor(created, true, true) }()
 	actorID := created.ID()
 	fmt.Printf("  Created Counter actor: %s\n", actorID.Hex())
 

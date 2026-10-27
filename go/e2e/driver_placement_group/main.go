@@ -408,7 +408,7 @@ func testPGBinding(ctx context.Context) error {
 	if probe == nil || probe.ID().IsNil() {
 		return fmt.Errorf("PG-bound actor returned a nil handle")
 	}
-	defer func() { _ = api.KillActor(probe, true) }()
+	defer func() { _ = api.KillActor(probe, true, true) }()
 	typed := api.NewActorHandleImpl[map[string]string](probe.ID())
 	ref, err := typed.Task((*userfuncs.RuntimeContextProbe).Probe).Remote()
 	if err != nil {

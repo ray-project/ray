@@ -38,8 +38,9 @@ type ReporterModule struct {
 }
 
 // noopPublisher is a fallback publisher used when no GCS client is configured.
-// It drops publications silently so the module's publisher stays non-nil while
-// remaining a harmless no-op at runtime.
+// It drops publications so the module's publisher stays non-nil while
+// remaining a harmless no-op at runtime; the fallback itself is announced by
+// resolvePublisher so the missing configuration is discoverable.
 type noopPublisher struct{}
 
 func (noopPublisher) PublishNodeResourceUsage(context.Context, string, string) error {
@@ -66,6 +67,10 @@ func resolvePublisher(cfg agent.Config) gcs.NodeResourceUsagePublisher {
 			return p
 		}
 	}
+	// Surface the degraded resolution: without a publisher every node resource
+	// usage publication is dropped, and RAY_REPORTER:<node_id> keys never
+	// appear in GCS, so the misconfiguration must not stay silent.
+	log.Log.Error(nil, "no GCS publisher configured; node resource usage publications are dropped")
 	return noopPublisher{}
 }
 

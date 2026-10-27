@@ -42,10 +42,12 @@ var (
 	_ ActorHandle = (*PythonActorHandle)(nil)
 )
 
-// killRecordingSubmitter is a TaskSubmitter that records the actorID and
-// noRestart passed to KillActor so tests can observe the api-layer forwarding.
+// killRecordingSubmitter is a TaskSubmitter that records the actorID, force,
+// and noRestart passed to KillActor so tests can observe the api-layer
+// forwarding.
 type killRecordingSubmitter struct {
 	killedActorID ids.ActorID
+	force         bool
 	noRestart     bool
 	killed        bool
 }
@@ -85,9 +87,10 @@ func (m *killRecordingSubmitter) GetActorHandle(actorID ids.ActorID) (submitter.
 	return nil, nil
 }
 
-func (m *killRecordingSubmitter) KillActor(actorID ids.ActorID, noRestart bool) error {
+func (m *killRecordingSubmitter) KillActor(actorID ids.ActorID, force, noRestart bool) error {
 	m.killed = true
 	m.killedActorID = actorID
+	m.force = force
 	m.noRestart = noRestart
 	return nil
 }
@@ -226,6 +229,63 @@ func TestPythonActorHandleKillWithNoRestart(t *testing.T) {
 	}
 	if !ts.noRestart {
 		t.Fatal("KillWithNoRestart() should pass noRestart=true, got false")
+	}
+}
+
+// TestKillActorConvenienceWrappersDefaultToForce pins that the historical
+// force=true kill semantics survive the force parameter being added to
+// KillActor: the shared handle convenience wrappers (Kill / KillWithNoRestart)
+// forward force=true, while an explicit force=false call reaches the submitter
+// verbatim. This is api-layer parameter forwarding only — the cluster-side
+// force semantics live in the matrix documented on KillActor, not in this
+// test.
+func TestKillActorConvenienceWrappersDefaultToForce(t *testing.T) {
+	actorID := ids.OfActorID(ids.NilJobID(), ids.NilTaskID(), 5)
+
+	// handle.Kill() must keep the historical semantics: force=true (a hard
+	// kill, matching the pre-force C++ bridge behavior), noRestart=false.
+	ts := newKillTestRuntime()
+	defer clearHandle()
+	handle := NewActorHandleImpl[int](actorID)
+
+	if err := handle.Kill(); err != nil {
+		t.Fatalf("Kill() returned error: %v", err)
+	}
+	if !ts.force {
+		t.Fatal("Kill() should pass force=true by default, got false")
+	}
+	if ts.noRestart {
+		t.Fatal("Kill() should pass noRestart=false, got true")
+	}
+
+	// handle.KillWithNoRestart() must keep force=true as well.
+	ts = newKillTestRuntime()
+	defer clearHandle()
+	handle = NewActorHandleImpl[int](actorID)
+
+	if err := handle.KillWithNoRestart(); err != nil {
+		t.Fatalf("KillWithNoRestart() returned error: %v", err)
+	}
+	if !ts.force {
+		t.Fatal("KillWithNoRestart() should pass force=true by default, got false")
+	}
+	if !ts.noRestart {
+		t.Fatal("KillWithNoRestart() should pass noRestart=true, got false")
+	}
+
+	// An explicit force=false call (the graceful kill parameter shape) must
+	// reach the submitter verbatim.
+	ts = newKillTestRuntime()
+	defer clearHandle()
+
+	if err := KillActor(handle, false, true); err != nil {
+		t.Fatalf("KillActor(force=false) returned error: %v", err)
+	}
+	if ts.force {
+		t.Fatal("KillActor(force=false) forwarded force=true to the submitter")
+	}
+	if !ts.noRestart {
+		t.Fatal("KillActor(force=false) should forward noRestart=true, got false")
 	}
 }
 

@@ -21,6 +21,11 @@ package cgo
 #include <stdbool.h>
 #include "src/ray/core_worker/lib/go/native_runtime.h"
 #include "src/ray/core_worker/lib/go/native_object_store.h"
+
+// Declared directly (instead of including the C++ header) to keep the cgo
+// preamble C-only; the symbol resolves at link time against the native_runtime
+// library closure. Defined in src/ray/core_worker/lib/go/runtime_ops.cc.
+void ray_go_worker_set_graceful_exit_requested(void);
 */
 import "C"
 
@@ -207,6 +212,18 @@ func (h *Handle) Shutdown() {
 		C.CNativeRuntime_Shutdown()
 		h.ptr = nil
 	}
+}
+
+// RequestGracefulExit flags the C++ core worker for a graceful exit: the core
+// worker's periodic check_signals poll observes the flag and exits through the
+// INTENDED_USER_EXIT path (object flush, task wrap-up, correct raylet
+// accounting). The runtime manager calls this on SIGTERM in worker mode
+// instead of tearing the runtime down from Go.
+//
+// Go-to-C only: the flag is a C++-side atomic read on a core worker thread,
+// so nothing here ever calls back into Go.
+func RequestGracefulExit() {
+	C.ray_go_worker_set_graceful_exit_requested()
 }
 
 // RunTaskExecutionLoop runs the task execution loop.

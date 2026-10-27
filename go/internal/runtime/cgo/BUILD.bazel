@@ -68,6 +68,7 @@ go_test(
         "actor_handle_registry_test.go",
         "converters_test.go",
         "coreworker_test.go",
+        "graceful_exit_test.go",
         "metric_backend_test.go",
         "native_allocator_test.go",
         "native_context_test.go",

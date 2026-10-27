@@ -364,7 +364,7 @@ func testActor() error {
 	if err != nil {
 		return fmt.Errorf("create Calculator actor failed: %w", err)
 	}
-	defer func() { _ = api.KillActor(handle, true) }()
+	defer func() { _ = api.KillActor(handle, true, true) }()
 	if handle.ID().IsNil() {
 		return fmt.Errorf("Calculator actor handle ID is nil")
 	}
@@ -446,7 +446,7 @@ func testActorConcurrencyGroup() error {
 	if err != nil {
 		return fmt.Errorf("create Calculator actor with concurrency group failed: %w", err)
 	}
-	defer func() { _ = api.KillActor(handle, true) }()
+	defer func() { _ = api.KillActor(handle, true, true) }()
 	fmt.Printf("P2 created Calculator actor with group cg_sleep (MaxCalls=1)\n")
 
 	// 2. Route two sleeping calls into the group by name and submit them

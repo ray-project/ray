@@ -379,7 +379,7 @@ func testActorInfo(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create Counter actor failed: %w", err)
 	}
-	defer func() { _ = api.KillActor(handle, true) }()
+	defer func() { _ = api.KillActor(handle, true, true) }()
 	actorID := handle.ID()
 	fmt.Printf("  created Counter actor %s ✓\n", actorID.Hex())
 
