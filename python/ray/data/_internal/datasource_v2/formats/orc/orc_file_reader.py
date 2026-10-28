@@ -184,10 +184,14 @@ class OrcFileReader(FileReader):
                 # Compare the same typed values that will appear in the output.
                 # A missing directory key stays a data predicate, so root-file
                 # values and logical nulls cannot be pruned by a path guess.
+                partition_columns = set(
+                    get_column_references(split.partition_predicate)
+                )
                 partition_table = pa.table(
                     {
                         name: self._broadcast_partition_value(name, value, 1)
                         for name, value in partitions.items()
+                        if name in partition_columns
                     }
                 )
                 partition_matches = (
