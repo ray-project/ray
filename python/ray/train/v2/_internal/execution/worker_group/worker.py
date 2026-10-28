@@ -245,6 +245,7 @@ class RayTrainWorker:
 
         with train_context.health_lock:
             probe_results = dict(train_context.probe_results)
+            health_report = train_context.health_report
 
         return WorkerStatus(
             running=running,
@@ -253,6 +254,7 @@ class RayTrainWorker:
             return_value=return_value,
             preemption_info=train_context.preemption_context.preemption_info,
             probe_results=probe_results,
+            health_report=health_report,
         )
 
     def _sample_probe(self, scheduled_probe: ScheduledProbe) -> None:

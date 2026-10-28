@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+import ray.train.health as health
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state import state as ray_state
 from ray.exceptions import RayActorError, RayTaskError
@@ -985,6 +986,31 @@ def test_poll_status_includes_worker_probe_results():
         # A probe that raises is reported, not fatal to the worker.
         assert isinstance(status.probe_results["FailingProbe"].error, RuntimeError)
         assert isinstance(status.probe_results["NoResultProbe"].error, TypeError)
+    wg.shutdown()
+
+
+def test_poll_status_includes_health_report():
+    def train_fn():
+        rank = get_train_context().get_world_rank()
+        health.report({"rank": float(rank)}, step=rank)
+        time.sleep(60)
+
+    wg = _default_inactive_worker_group(
+        worker_group_context=_default_worker_group_context(
+            train_fn_ref=DummyObjectRefWrapper(train_fn)
+        )
+    )
+    wg._start()
+
+    def every_rank_reported():
+        statuses = wg.poll_status(timeout=5).worker_statuses.values()
+        return all(status.health_report is not None for status in statuses)
+
+    wait_for_condition(every_rank_reported)
+
+    for rank, status in wg.poll_status(timeout=5).worker_statuses.items():
+        assert status.health_report.metrics == {"rank": float(rank)}
+        assert status.health_report.step == rank
     wg.shutdown()
 
 
