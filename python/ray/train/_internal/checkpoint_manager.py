@@ -29,20 +29,28 @@ def _insert_into_sorted_list(
         checkpoint_to_report_index: A dictionary mapping checkpoints to report indices.
             Used to break ties when scores are equal.
     """
+    if not list:
+        list.append(item)
+        return
+
     checkpoint_to_report_index = checkpoint_to_report_index or {}
-    # TODO: optimize this with sortedlist, batching, etc
-    i = 0
-    while i < len(list):
-        # When scores are equal, later checkpoints are later in the list.
-        list_item_key, item_key = key(list[i]), key(item)
-        if list_item_key > item_key or (
-            list_item_key == item_key
-            and checkpoint_to_report_index.get(list[i].checkpoint, 0)
-            > checkpoint_to_report_index.get(item.checkpoint, 0)
+    item_key = key(item)
+    item_index = checkpoint_to_report_index.get(item.checkpoint, 0)
+
+    # Binary search for the first element ordered after ``item``. When scores are
+    # equal, later checkpoints are later in the list.
+    lo, hi = 0, len(list)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        mid_key = key(list[mid])
+        if mid_key > item_key or (
+            mid_key == item_key
+            and checkpoint_to_report_index.get(list[mid].checkpoint, 0) > item_index
         ):
-            break
-        i += 1
-    list.insert(i, item)
+            hi = mid
+        else:
+            lo = mid + 1
+    list.insert(lo, item)
 
 
 class _CheckpointManager:
