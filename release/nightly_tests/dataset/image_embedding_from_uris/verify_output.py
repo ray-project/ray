@@ -250,9 +250,18 @@ def sample_embeddings(path: str, n_files: int) -> int:
     sample = ds.dataset(
         files, format="parquet", filesystem=dataset.filesystem
     ).to_table(columns=["embedding"])
-    embeddings = np.stack(
-        [np.asarray(v) for v in sample.column("embedding").to_pylist()]
+    column = sample.column("embedding").combine_chunks()
+    # `flatten` drops null entries, which would misalign the reshape below.
+    report.check(
+        column.null_count == 0,
+        "embeddings are non-null",
+        f"{column.null_count:,} null embeddings",
     )
+    if report.failures:
+        return 1
+    # Flatten into one NumPy buffer instead of materializing a Python float per value.
+    embeddings = column.flatten().to_numpy(zero_copy_only=False)
+    embeddings = embeddings.reshape(len(column), -1)
     report.check(
         embeddings.ndim == 2 and embeddings.shape[1] == 1000,
         "embedding shape",
