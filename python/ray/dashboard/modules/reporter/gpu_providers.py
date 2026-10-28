@@ -5,13 +5,16 @@ This module provides an object-oriented interface for different GPU providers
 """
 
 import abc
+import dataclasses
 import enum
 import logging
+import math
 import os
 import re
 import subprocess
 import time
-from typing import Dict, List, Optional, Set, Tuple, TypedDict, Union
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Set, Tuple, TypedDict, Union
 
 try:
     from typing import NotRequired
@@ -19,6 +22,7 @@ except ImportError:
     from typing_extensions import NotRequired
 
 from ray._common.utils import env_bool
+from ray.dashboard.modules.reporter.gpu_accounting import WindowAccountant
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -32,6 +36,8 @@ RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES = "RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES
 # unrelated names such as XPPU are not classified as unsafe.
 _UNSAFE_PROCESS_UTIL_NAME_PATTERNS = (re.compile(r"(?<!\w)PPU", re.IGNORECASE),)
 _PROCESS_UTIL_DETECTION_LOG_INTERVAL_S = 60.0
+# A cursor further ahead than this means the wall clock stepped back.
+_PROCESS_UTIL_CURSOR_FUTURE_TOLERANCE_US = 1_000_000
 
 # Types
 Percentage = int
@@ -67,6 +73,11 @@ class GpuUtilizationInfo(TypedDict):
     # Optional: power in milliwatts, temperature in Celsius (e.g. from NVIDIA/AMD)
     power_mw: NotRequired[Optional[int]]
     temperature_c: NotRequired[Optional[int]]
+    # Optional (GPM, Hopper and newer): SM-active share of the poll window, and seconds.
+    sm_active_percent: NotRequired[Optional[float]]
+    sm_active_seconds: NotRequired[Optional[float]]
+    # Optional (GPM): graphics/compute engine active share (DCGM GR_ENGINE_ACTIVE).
+    graphics_engine_active_percent: NotRequired[Optional[float]]
 
 
 # tpu utilization for google tpu
@@ -82,11 +93,33 @@ class TpuUtilizationInfo(TypedDict):
     memory_total: Bytes
 
 
+# NVML errors for an API the device or driver doesn't have; not counted as failures.
+_UNSUPPORTED_ERRORS = frozenset(
+    {"NVMLError_NotSupported", "NVMLError_FunctionNotFound"}
+)
+
+
 class GpuProvider(abc.ABC):
     """Abstract base class for GPU providers."""
 
     def __init__(self):
         self._initialized = False
+        # (api, reason) -> failed reads since the last drain
+        self._collection_errors: Dict[Tuple[str, str], int] = defaultdict(int)
+
+    def _count_collection_error(self, api: str, error: Union[Exception, str]) -> None:
+        """Count a failed read by source (`api`) and error class or reason."""
+        reason = error if isinstance(error, str) else type(error).__name__
+        if reason in _UNSUPPORTED_ERRORS:
+            # The device or driver doesn't have this API; it never will.
+            return
+        self._collection_errors[(api, reason)] += 1
+
+    def drain_collection_errors(self) -> Dict[Tuple[str, str], int]:
+        """Return and reset the failed reads counted since the last call."""
+        errors = dict(self._collection_errors)
+        self._collection_errors.clear()
+        return errors
 
     @abc.abstractmethod
     def get_provider_name(self) -> GpuProviderType:
@@ -121,12 +154,41 @@ class GpuProvider(abc.ABC):
         return b
 
 
+# GPM metrics read each poll, by pynvml constant name.
+_GPM_METRICS = ("NVML_GPM_METRIC_SM_UTIL", "NVML_GPM_METRIC_GRAPHICS_UTIL")
+# NVML wants > 100 ms between GPM samples; a closer read is skipped.
+_GPM_MIN_SPACING_S = 0.2
+# Skip GPM for _GPM_BACKOFF_POLLS polls after this many failures in a row.
+_GPM_FAILURES_BEFORE_BACKOFF = 3
+_GPM_BACKOFF_POLLS = 10
+
+
+@dataclasses.dataclass
+class _GpmState:
+    """Per-device GPM state, kept across polls.
+
+    NVML doesn't document whether nvmlShutdown frees GPM samples, so NVML stays
+    initialized while a device has samples, and the samples are freed before any
+    shutdown.
+    """
+
+    supported: Optional[bool] = None
+    samples: List = dataclasses.field(default_factory=list)
+    # Index of the buffer holding the previous poll's sample.
+    previous: Optional[int] = None
+    accountant: WindowAccountant = dataclasses.field(default_factory=WindowAccountant)
+    consecutive_failures: int = 0
+    backoff_polls: int = 0
+
+
 class NvidiaGpuProvider(GpuProvider):
     """NVIDIA GPU provider using pynvml."""
 
-    def __init__(self):
+    def __init__(self, enable_gpm: bool = True):
         super().__init__()
         self._pynvml = None
+        self._enable_gpm = enable_gpm
+        self._gpm_state: Dict[str, _GpmState] = {}
         # Maintain per-GPU sampling timestamps when using process utilization API
         self._gpu_process_last_sample_ts: Dict[int, int] = {}
         self._force_skip_process_util_api = env_bool(RAY_SKIP_PROCESS_UTIL_API, False)
@@ -148,6 +210,139 @@ class NvidiaGpuProvider(GpuProvider):
 
     def get_provider_name(self) -> GpuProviderType:
         return GpuProviderType.NVIDIA
+
+    def _is_nvml_error(self, error: Exception, class_name: str) -> bool:
+        """Return whether `error` is an instance of pynvml's `class_name` error."""
+        error_class = getattr(self._pynvml, class_name, None)
+        return isinstance(error_class, type) and isinstance(error, error_class)
+
+    def _keep_nvml_open(self) -> bool:
+        """Whether NVML stays initialized between polls to keep GPM samples valid."""
+        return any(state.samples for state in self._gpm_state.values())
+
+    def _free_gpm_samples(self) -> None:
+        """Free all GPM samples; devices are checked and allocated again after init."""
+        for state in self._gpm_state.values():
+            if not state.samples:
+                # Unsupported devices keep their result; nothing to free.
+                continue
+            for sample in state.samples:
+                try:
+                    self._pynvml.nvmlGpmSampleFree(sample)
+                except Exception as e:
+                    logger.debug(f"Error freeing GPM sample: {e}")
+            state.samples = []
+            state.supported = None
+            state.previous = None
+            state.accountant.credit(None)
+
+    def _gpm_supported(self, gpu_handle: Any, uuid: str, state: _GpmState) -> bool:
+        """Check GPM support once per device and allocate its sample buffers."""
+        if state.supported is None:
+            try:
+                support = self._pynvml.nvmlGpmQueryDeviceSupport(gpu_handle)
+                if support.isSupportedDevice:
+                    state.samples = [
+                        self._pynvml.nvmlGpmSampleAlloc(),
+                        self._pynvml.nvmlGpmSampleAlloc(),
+                    ]
+                state.supported = bool(support.isSupportedDevice)
+            except Exception as e:
+                if not (
+                    isinstance(e, AttributeError)
+                    or self._is_nvml_error(e, "NVMLError_NotSupported")
+                    or self._is_nvml_error(e, "NVMLError_FunctionNotFound")
+                ):
+                    # Transient; check again next poll.
+                    self._count_collection_error("gpm", e)
+                    return False
+                # Pre-Hopper GPUs or drivers without GPM.
+                state.supported = False
+            if state.supported is False:
+                logger.info(
+                    "GPU %s does not support GPM; SM activity metrics are not "
+                    "reported for it",
+                    uuid,
+                )
+        return bool(state.supported)
+
+    def _read_gpm(self, gpu_handle: Any, uuid: str) -> Dict[str, Optional[float]]:
+        """Return GPM metrics for the window since the previous poll."""
+        out = {
+            "sm_active_percent": None,
+            "sm_active_seconds": None,
+            "graphics_engine_active_percent": None,
+        }
+        if not self._enable_gpm:
+            return out
+        state = self._gpm_state.setdefault(uuid, _GpmState())
+        if not self._gpm_supported(gpu_handle, uuid, state):
+            return out
+        if state.backoff_polls > 0:
+            state.backoff_polls -= 1
+            return out
+        window_s = state.accountant.window_seconds()
+        if window_s is not None and window_s < _GPM_MIN_SPACING_S:
+            return out
+
+        current = 0 if state.previous is None else 1 - state.previous
+        try:
+            self._pynvml.nvmlGpmSampleGet(gpu_handle, state.samples[current])
+        except Exception as e:
+            self._count_collection_error("gpm", e)
+            state.accountant.fail()
+            state.consecutive_failures += 1
+            if state.consecutive_failures >= _GPM_FAILURES_BEFORE_BACKOFF:
+                state.consecutive_failures = 0
+                state.backoff_polls = _GPM_BACKOFF_POLLS
+                if log_once(f"gpm_backoff_{uuid}"):
+                    logger.warning(
+                        "Reading GPM on GPU %s keeps failing; retrying in %d polls: %s",
+                        uuid,
+                        _GPM_BACKOFF_POLLS,
+                        e,
+                    )
+            return out
+        state.consecutive_failures = 0
+
+        previous, state.previous = state.previous, current
+        if previous is None:
+            state.accountant.credit(None)
+            return out
+        try:
+            request = self._pynvml.c_nvmlGpmMetricsGet_t()
+            request.version = self._pynvml.NVML_GPM_METRICS_GET_VERSION
+            request.numMetrics = len(_GPM_METRICS)
+            request.sample1 = state.samples[previous]
+            request.sample2 = state.samples[current]
+            for i, name in enumerate(_GPM_METRICS):
+                request.metrics[i].metricId = getattr(self._pynvml, name)
+            self._pynvml.nvmlGpmMetricsGet(request)
+            values = {}
+            for i, name in enumerate(_GPM_METRICS):
+                ret = int(request.metrics[i].nvmlReturn)
+                value = float(request.metrics[i].value)
+                if ret != 0 or math.isnan(value) or not 0.0 <= value <= 100.0:
+                    self._count_collection_error(
+                        "gpm", "out_of_range" if ret == 0 else f"nvml_return_{ret}"
+                    )
+                    continue
+                values[name] = value
+        except Exception as e:
+            self._count_collection_error("gpm", e)
+            state.accountant.credit(None)
+            return out
+        out["graphics_engine_active_percent"] = values.get(
+            "NVML_GPM_METRIC_GRAPHICS_UTIL"
+        )
+        sm = values.get("NVML_GPM_METRIC_SM_UTIL")
+        if sm is None:
+            # No valid SM value; restart the window.
+            state.accountant.credit(None)
+            return out
+        out["sm_active_percent"] = sm
+        out["sm_active_seconds"] = state.accountant.credit(sm)
+        return out
 
     def is_available(self) -> bool:
         """Check if NVIDIA GPUs are available."""
@@ -174,12 +369,14 @@ class NvidiaGpuProvider(GpuProvider):
             self._initialized = True
             return True
         except Exception as e:
+            self._count_collection_error("init", e)
             logger.debug(f"Failed to initialize NVIDIA GPU provider: {e}")
             return False
 
     def _shutdown(self):
         """Shutdown the NVIDIA GPU provider."""
         if self._initialized and self._pynvml:
+            self._free_gpm_samples()
             try:
                 self._pynvml.nvmlShutdown()
             except Exception as e:
@@ -299,9 +496,13 @@ class NvidiaGpuProvider(GpuProvider):
                     gpu_utilizations.append(gpu_info)
 
         except Exception as e:
+            self._count_collection_error("gpu_usage", e)
             logger.warning(f"Error getting NVIDIA GPU utilization: {e}")
-        finally:
+            # Start NVML over on the next poll.
             self._shutdown()
+        else:
+            if not self._keep_nvml_open():
+                self._shutdown()
 
         return gpu_utilizations
 
@@ -330,6 +531,7 @@ class NvidiaGpuProvider(GpuProvider):
                     continue
 
         except (self._pynvml.NVMLError, AttributeError) as e:
+            self._count_collection_error("mig_devices", e)
             logger.debug(f"Error getting MIG devices: {e}")
 
         return mig_devices
@@ -341,14 +543,15 @@ class NvidiaGpuProvider(GpuProvider):
         try:
             memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(mig_handle)
 
-            # Get MIG device utilization
-            utilization = -1
+            # Get MIG device utilization (NVML doesn't support it on MIG devices)
+            utilization = None
             try:
                 utilization_info = self._pynvml.nvmlDeviceGetUtilizationRates(
                     mig_handle
                 )
                 utilization = int(utilization_info.gpu)
             except self._pynvml.NVMLError as e:
+                self._count_collection_error("utilization", e)
                 logger.debug(f"Failed to retrieve MIG device utilization: {e}")
 
             # Get running processes on MIG device
@@ -406,22 +609,25 @@ class NvidiaGpuProvider(GpuProvider):
             )
 
         except Exception as e:
+            self._count_collection_error("device_info", e)
             logger.debug(f"Error getting MIG device info: {e}")
             return None
 
     def _get_gpu_info(self, gpu_handle, gpu_index: int) -> Optional[GpuUtilizationInfo]:
         """Get utilization info for a regular (non-MIG) GPU."""
         try:
+            uuid = self._decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle))
             memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
 
-            # Get GPU utilization
-            utilization = -1
+            # Get GPU utilization; None if the device doesn't report it
+            utilization = None
             try:
                 utilization_info = self._pynvml.nvmlDeviceGetUtilizationRates(
                     gpu_handle
                 )
                 utilization = int(utilization_info.gpu)
             except self._pynvml.NVMLError as e:
+                self._count_collection_error("utilization", e)
                 if log_once("gpu_utilization"):
                     logger.info(
                         f"Failed to retrieve GPU utilization via `nvmlDeviceGetUtilizationRates`: {e}"
@@ -448,6 +654,7 @@ class NvidiaGpuProvider(GpuProvider):
                         gpu_utilization=None,
                     )
             except self._pynvml.NVMLError as e:
+                self._count_collection_error("process_memory", e)
                 if log_once("gpu_per_process_memory"):
                     logger.info(
                         "Failed to retrieve per-process GPU memory via `nvmlDeviceGetComputeRunningProcesses` "
@@ -463,12 +670,28 @@ class NvidiaGpuProvider(GpuProvider):
                 # Use a newer API (driver 550+) to get per-process SM utilization,
                 # but the user may not always have access to the newest API.
                 try:
-                    current_ts_ms = int(time.time() * 1000)
-                    last_ts_ms = self._gpu_process_last_sample_ts.get(gpu_index, 0)
+                    # NVML expects lastSeenTimeStamp in microseconds.
+                    now_us = int(time.time() * 1_000_000)
+                    last_seen_us = self._gpu_process_last_sample_ts.get(gpu_index, 0)
+                    if last_seen_us > now_us + _PROCESS_UTIL_CURSOR_FUTURE_TOLERANCE_US:
+                        # The clock stepped back; restart the window.
+                        last_seen_us = now_us
+                        self._gpu_process_last_sample_ts[gpu_index] = now_us
                     nv_processes = self._pynvml.nvmlDeviceGetProcessesUtilizationInfo(
-                        gpu_handle, last_ts_ms
+                        gpu_handle, last_seen_us
                     )
-                    self._gpu_process_last_sample_ts[gpu_index] = current_ts_ms
+                    # Continue from the newest sample; ignore timestamps in the future.
+                    sample_ts = [
+                        int(nv_process.timeStamp)
+                        for nv_process in nv_processes
+                        if isinstance(getattr(nv_process, "timeStamp", None), int)
+                        and 0
+                        < nv_process.timeStamp
+                        <= now_us + _PROCESS_UTIL_CURSOR_FUTURE_TOLERANCE_US
+                    ]
+                    self._gpu_process_last_sample_ts[gpu_index] = (
+                        max(sample_ts) if sample_ts else now_us
+                    )
 
                     for nv_process in nv_processes:
                         pid = int(nv_process.pid)
@@ -485,12 +708,17 @@ class NvidiaGpuProvider(GpuProvider):
                                 nv_process.smUtil
                             )
                 except self._pynvml.NVMLError as e:
-                    if log_once("gpu_process_sm_utilization"):
-                        logger.info(
-                            "Failed to retrieve GPU process SM utilization using "
-                            "`nvmlDeviceGetProcessesUtilizationInfo`, "
-                            f"error: {e}"
-                        )
+                    if self._is_nvml_error(e, "NVMLError_NotFound"):
+                        # No samples since the cursor: the GPU was idle.
+                        self._gpu_process_last_sample_ts[gpu_index] = now_us
+                    else:
+                        self._count_collection_error("process_utilization", e)
+                        if log_once("gpu_process_sm_utilization"):
+                            logger.info(
+                                "Failed to retrieve GPU process SM utilization using "
+                                "`nvmlDeviceGetProcessesUtilizationInfo`, "
+                                f"error: {e}"
+                            )
 
             # Optional: power (milliwatts) and temperature (Celsius)
             power_mw = None
@@ -498,6 +726,7 @@ class NvidiaGpuProvider(GpuProvider):
             try:
                 power_mw = self._pynvml.nvmlDeviceGetPowerUsage(gpu_handle)
             except (self._pynvml.NVMLError, AttributeError) as e:
+                self._count_collection_error("power", e)
                 if log_once("gpu_power"):
                     logger.info(f"Failed to retrieve GPU power: {e}")
             try:
@@ -506,22 +735,29 @@ class NvidiaGpuProvider(GpuProvider):
                     gpu_handle, self._pynvml.NVML_TEMPERATURE_GPU
                 )
             except (self._pynvml.NVMLError, AttributeError) as e:
+                self._count_collection_error("temperature", e)
                 if log_once("gpu_temperature"):
                     logger.info(f"Failed to retrieve GPU temperature: {e}")
+
+            gpm = self._read_gpm(gpu_handle, uuid)
 
             return GpuUtilizationInfo(
                 index=gpu_index,
                 name=self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
-                uuid=self._decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
+                uuid=uuid,
                 utilization_gpu=utilization,
                 memory_used=int(memory_info.used) // MB,
                 memory_total=int(memory_info.total) // MB,
                 processes_pids=processes_pids,
                 power_mw=power_mw,
                 temperature_c=temperature_c,
+                sm_active_percent=gpm["sm_active_percent"],
+                sm_active_seconds=gpm["sm_active_seconds"],
+                graphics_engine_active_percent=gpm["graphics_engine_active_percent"],
             )
 
         except Exception as e:
+            self._count_collection_error("device_info", e)
             logger.debug(f"Error getting GPU info: {e}")
             return None
 
@@ -561,6 +797,7 @@ class AmdGpuProvider(GpuProvider):
             self._initialized = True
             return True
         except Exception as e:
+            self._count_collection_error("init", e)
             logger.debug(f"Failed to initialize AMD GPU provider: {e}")
             return False
 
@@ -589,7 +826,8 @@ class AmdGpuProvider(GpuProvider):
             for i in range(num_gpus):
                 utilization = self._pyamdsmi.smi_get_device_utilization(i)
                 if utilization == -1:
-                    utilization = -1
+                    self._count_collection_error("utilization", "query_failed")
+                    utilization = None
 
                 # Get running processes
                 processes_pids = {}
@@ -610,6 +848,7 @@ class AmdGpuProvider(GpuProvider):
                     if power_watts >= 0:
                         power_mw = int(power_watts * 1000)
                 except Exception as e:
+                    self._count_collection_error("power", e)
                     logger.debug(f"Failed to retrieve AMD GPU power: {e}")
 
                 info = GpuUtilizationInfo(
@@ -627,6 +866,7 @@ class AmdGpuProvider(GpuProvider):
                 gpu_utilizations.append(info)
 
         except Exception as e:
+            self._count_collection_error("gpu_usage", e)
             logger.warning(f"Error getting AMD GPU utilization: {e}")
         finally:
             self._shutdown()
@@ -637,14 +877,24 @@ class AmdGpuProvider(GpuProvider):
 class GpuMetricProvider:
     """Provider class for GPU metrics collection."""
 
-    def __init__(self):
+    def __init__(
+        self, enable_metric_report: bool = True, enable_gpm_metrics: bool = True
+    ):
         self._provider: Optional[GpuProvider] = None
-        self._enable_metric_report = True
-        self._providers = [NvidiaGpuProvider(), AmdGpuProvider()]
+        self._enable_metric_report = enable_metric_report
+        self._providers = (
+            [NvidiaGpuProvider(enable_gpm=enable_gpm_metrics), AmdGpuProvider()]
+            if enable_metric_report
+            else []
+        )
         self._initialized = False
 
     def initialize(self) -> bool:
         """Initialize the GPU metric provider by detecting available GPU providers."""
+        if not self._enable_metric_report:
+            self._initialized = True
+            return False
+
         if self._initialized:
             return True
 
@@ -720,6 +970,12 @@ class GpuMetricProvider:
     def get_provider_name(self) -> Optional[str]:
         """Get the name of the current GPU provider."""
         return self._provider.get_provider_name().value if self._provider else None
+
+    def drain_collection_errors(self) -> Dict[Tuple[str, str], int]:
+        """Return and reset the active provider's failed reads (empty if none)."""
+        if self._provider is None:
+            return {}
+        return self._provider.drain_collection_errors()
 
     def is_metric_report_enabled(self) -> bool:
         """Check if GPU metric reporting is enabled."""

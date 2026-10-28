@@ -5,6 +5,7 @@ import logging
 import os
 import socket
 import sys
+import time
 import traceback
 from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
@@ -31,7 +32,7 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private import utils
-from ray._private.metrics_agent import Gauge, MetricsAgent, Record
+from ray._private.metrics_agent import Counter, Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_ENABLE_OPEN_TELEMETRY,
@@ -132,7 +133,46 @@ def jsonify_asdict(o) -> str:
 
 
 # A list of gauges to record and export metrics.
-METRICS_GAUGES = {
+METRICS = {
+    # GPU collection health
+    # GPU activity through GPM (Hopper and newer)
+    "node_gpu_sm_active_percent": Gauge(
+        "node_gpu_sm_active_percent",
+        "Share of the GPU's SMs that had work, averaged over the time since the "
+        "previous poll (0-100). NVML GPM SM_UTIL; Hopper and newer only.",
+        "percentage",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_sm_active_seconds_total": Counter(
+        "node_gpu_sm_active_seconds_total",
+        "Cumulative SM-active seconds of the GPU (SM-active share times time); "
+        "rate() of this is the SM-active share at any scrape interval.",
+        "seconds",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_graphics_engine_active_percent": Gauge(
+        "node_gpu_graphics_engine_active_percent",
+        "Share of time the GPU's graphics/compute engine was active over the time "
+        "since the previous poll (0-100). NVML GPM GRAPHICS_UTIL, the same quantity "
+        "as DCGM_FI_PROF_GR_ENGINE_ACTIVE; Hopper and newer only. Counts engine "
+        "cycles, so it reads high for bursty work on GPUs that gate the engine "
+        "clock while idle.",
+        "percentage",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_poll_duration_seconds": Gauge(
+        "node_gpu_poll_duration_seconds",
+        "Time the dashboard agent spent reading GPU metrics in its last poll",
+        "seconds",
+        NODE_TAG_KEYS,
+    ),
+    "node_gpu_collection_errors_total": Counter(
+        "node_gpu_collection_errors_total",
+        "Number of failed reads of a GPU metric source on a ray node, by the "
+        "source (Api) and the error class (Reason)",
+        "",
+        NODE_TAG_KEYS + ["Api", "Reason"],
+    ),
     # CPU metrics
     "node_cpu_utilization": Gauge(
         "node_cpu_utilization",
@@ -610,7 +650,10 @@ class ReporterAgent(
         )
 
         # Create GPU metric provider instance
-        self._gpu_metric_provider = GpuMetricProvider()
+        self._gpu_metric_provider = GpuMetricProvider(
+            enable_metric_report=dashboard_agent.enable_gpu_metrics,
+            enable_gpm_metrics=dashboard_agent.enable_gpu_gpm_metrics,
+        )
 
         if raylet_client:
             self._raylet_client = raylet_client
@@ -1309,7 +1352,9 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
+        gpu_poll_start = time.monotonic()
         gpus = self._get_gpu_usage()
+        gpu_poll_duration_s = time.monotonic() - gpu_poll_start
         raylet = self._get_raylet()
         stats = {
             "now": now,
@@ -1332,6 +1377,10 @@ class ReporterAgent(
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,
+            # Also reported when every read failed; absent on nodes without GPUs.
+            "gpu_poll_duration_s": gpu_poll_duration_s
+            if self._gpu_metric_provider.get_provider_name() is not None
+            else None,
             "tpus": self._get_tpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
@@ -1357,49 +1406,49 @@ class ReporterAgent(
         records = []
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_cpu_percentage"],
+                gauge=METRICS["component_cpu_percentage"],
                 value=0.0,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_shared_bytes"],
+                gauge=METRICS["component_shared_bytes"],
                 value=0.0,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_rss_mb"],
+                gauge=METRICS["component_rss_mb"],
                 value=0.0,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_rss_bytes"],
+                gauge=METRICS["component_rss_bytes"],
                 value=0.0,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_uss_mb"],
+                gauge=METRICS["component_uss_mb"],
                 value=0.0,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_uss_bytes"],
+                gauge=METRICS["component_uss_bytes"],
                 value=0.0,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_num_fds"],
+                gauge=METRICS["component_num_fds"],
                 value=0,
                 tags=tags,
             )
@@ -1462,28 +1511,28 @@ class ReporterAgent(
         records = []
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_cpu_percentage"],
+                gauge=METRICS["component_cpu_percentage"],
                 value=total_cpu_percentage,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_shared_bytes"],
+                gauge=METRICS["component_shared_bytes"],
                 value=total_shm_bytes,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_rss_mb"],
+                gauge=METRICS["component_rss_mb"],
                 value=total_rss_bytes / 1.0e6,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_rss_bytes"],
+                gauge=METRICS["component_rss_bytes"],
                 value=total_rss_bytes,
                 tags=tags,
             )
@@ -1491,21 +1540,21 @@ class ReporterAgent(
         if total_uss_bytes > 0.0:
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_uss_mb"],
+                    gauge=METRICS["component_uss_mb"],
                     value=total_uss_bytes / 1.0e6,
                     tags=tags,
                 )
             )
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_uss_bytes"],
+                    gauge=METRICS["component_uss_bytes"],
                     value=total_uss_bytes,
                     tags=tags,
                 )
             )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_num_fds"],
+                gauge=METRICS["component_num_fds"],
                 value=total_num_fds,
                 tags=tags,
             )
@@ -1515,7 +1564,7 @@ class ReporterAgent(
         if total_gpu_memory > 0.0:
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_gpu_memory_mb"],
+                    gauge=METRICS["component_gpu_memory_mb"],
                     value=total_gpu_memory,
                     tags=tags,
                 )
@@ -1524,7 +1573,7 @@ class ReporterAgent(
         if total_gpu_percentage > 0.0:
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_gpu_percentage"],
+                    gauge=METRICS["component_gpu_percentage"],
                     value=total_gpu_percentage,
                     tags=tags,
                 )
@@ -1547,14 +1596,14 @@ class ReporterAgent(
         records = []
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_gpu_memory_mb"],
+                gauge=METRICS["component_gpu_memory_mb"],
                 value=0.0,
                 tags=tags,
             )
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_gpu_percentage"],
+                gauge=METRICS["component_gpu_percentage"],
                 value=0.0,
                 tags=tags,
             )
@@ -1638,7 +1687,7 @@ class ReporterAgent(
             for node_type, active_node_count in active_nodes.items():
                 records_reported.append(
                     Record(
-                        gauge=METRICS_GAUGES["cluster_active_nodes"],
+                        gauge=METRICS["cluster_active_nodes"],
                         value=active_node_count,
                         tags={"node_type": node_type},
                     )
@@ -1650,7 +1699,7 @@ class ReporterAgent(
                 for node_type, idle_node_count in idle_nodes.items():
                     records_reported.append(
                         Record(
-                            gauge=METRICS_GAUGES["cluster_idle_nodes"],
+                            gauge=METRICS["cluster_idle_nodes"],
                             value=idle_node_count,
                             tags={"node_type": node_type},
                         )
@@ -1667,7 +1716,7 @@ class ReporterAgent(
             for node_type, failed_node_count in failed_nodes_dict.items():
                 records_reported.append(
                     Record(
-                        gauge=METRICS_GAUGES["cluster_failed_nodes"],
+                        gauge=METRICS["cluster_failed_nodes"],
                         value=failed_node_count,
                         tags={"node_type": node_type},
                     )
@@ -1684,7 +1733,7 @@ class ReporterAgent(
             for node_type, pending_node_count in pending_nodes_dict.items():
                 records_reported.append(
                     Record(
-                        gauge=METRICS_GAUGES["cluster_pending_nodes"],
+                        gauge=METRICS["cluster_pending_nodes"],
                         value=pending_node_count,
                         tags={"node_type": node_type},
                     )
@@ -1693,34 +1742,34 @@ class ReporterAgent(
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
         cpu_record = Record(
-            gauge=METRICS_GAUGES["node_cpu_utilization"],
+            gauge=METRICS["node_cpu_utilization"],
             value=cpu_usage,
             tags=node_tags,
         )
 
         cpu_count, _ = stats["cpus"]
         cpu_count_record = Record(
-            gauge=METRICS_GAUGES["node_cpu_count"], value=cpu_count, tags=node_tags
+            gauge=METRICS["node_cpu_count"], value=cpu_count, tags=node_tags
         )
 
         # -- Mem per node --
         mem_total, mem_available, _, mem_used = stats["mem"]
         mem_used_record = Record(
-            gauge=METRICS_GAUGES["node_mem_used"], value=mem_used, tags=node_tags
+            gauge=METRICS["node_mem_used"], value=mem_used, tags=node_tags
         )
         mem_available_record = Record(
-            gauge=METRICS_GAUGES["node_mem_available"],
+            gauge=METRICS["node_mem_available"],
             value=mem_available,
             tags=node_tags,
         )
         mem_total_record = Record(
-            gauge=METRICS_GAUGES["node_mem_total"], value=mem_total, tags=node_tags
+            gauge=METRICS["node_mem_total"], value=mem_total, tags=node_tags
         )
 
         shm_used = stats["shm"]
         if shm_used:
             node_mem_shared = Record(
-                gauge=METRICS_GAUGES["node_mem_shared_bytes"],
+                gauge=METRICS["node_mem_shared_bytes"],
                 value=shm_used,
                 tags=node_tags,
             )
@@ -1730,12 +1779,12 @@ class ReporterAgent(
         records_reported.extend(
             [
                 Record(
-                    gauge=METRICS_GAUGES["node_mem_used_host"],
+                    gauge=METRICS["node_mem_used_host"],
                     value=host_mem_used,
                     tags=node_tags,
                 ),
                 Record(
-                    gauge=METRICS_GAUGES["node_mem_total_host"],
+                    gauge=METRICS["node_mem_total_host"],
                     value=host_mem_total,
                     tags=node_tags,
                 ),
@@ -1751,17 +1800,17 @@ class ReporterAgent(
             records_reported.extend(
                 [
                     Record(
-                        gauge=METRICS_GAUGES["node_swap_used"],
+                        gauge=METRICS["node_swap_used"],
                         value=swap_used,
                         tags=node_tags,
                     ),
                     Record(
-                        gauge=METRICS_GAUGES["node_swap_total"],
+                        gauge=METRICS["node_swap_total"],
                         value=swap_total,
                         tags=node_tags,
                     ),
                     Record(
-                        gauge=METRICS_GAUGES["node_swap_utilization"],
+                        gauge=METRICS["node_swap_utilization"],
                         value=swap_percent,
                         tags=node_tags,
                     ),
@@ -1774,12 +1823,12 @@ class ReporterAgent(
             records_reported.extend(
                 [
                     Record(
-                        gauge=METRICS_GAUGES["node_cgroup_mem_used"],
+                        gauge=METRICS["node_cgroup_mem_used"],
                         value=cgroup_used,
                         tags=node_tags,
                     ),
                     Record(
-                        gauge=METRICS_GAUGES["node_cgroup_mem_total"],
+                        gauge=METRICS["node_cgroup_mem_total"],
                         value=cgroup_total,
                         tags=node_tags,
                     ),
@@ -1801,12 +1850,10 @@ class ReporterAgent(
 
         if gpus_available:
             for gpu in gpus:
-                gpus_utilization, gram_used, gram_total = 0, 0, 0
-                # Consume GPU may not report its utilization.
-                if gpu["utilization_gpu"] is not None:
-                    gpus_utilization += gpu["utilization_gpu"]
-                gram_used += gpu["memory_used"]
-                gram_total += gpu["memory_total"]
+                # No utilization record if the device doesn't report it.
+                gpus_utilization = gpu["utilization_gpu"]
+                gram_used = gpu["memory_used"]
+                gram_total = gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
                 gpu_uuid = gpu.get("uuid")
@@ -1824,36 +1871,38 @@ class ReporterAgent(
 
                     # There's only 1 GPU per each index, so we record 1 here.
                     gpus_available_record = Record(
-                        gauge=METRICS_GAUGES["node_gpus_available"],
+                        gauge=METRICS["node_gpus_available"],
                         value=1,
                         tags=gpu_tags,
                     )
-                    gpus_utilization_record = Record(
-                        gauge=METRICS_GAUGES["node_gpus_utilization"],
-                        value=gpus_utilization,
-                        tags=gpu_tags,
-                    )
                     gram_used_record = Record(
-                        gauge=METRICS_GAUGES["node_gram_used"],
+                        gauge=METRICS["node_gram_used"],
                         value=gram_used,
                         tags=gpu_tags,
                     )
                     gram_available_record = Record(
-                        gauge=METRICS_GAUGES["node_gram_available"],
+                        gauge=METRICS["node_gram_available"],
                         value=gram_available,
                         tags=gpu_tags,
                     )
                     gpu_records_to_add = [
                         gpus_available_record,
-                        gpus_utilization_record,
                         gram_used_record,
                         gram_available_record,
                     ]
+                    if gpus_utilization is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS["node_gpus_utilization"],
+                                value=gpus_utilization,
+                                tags=gpu_tags,
+                            )
+                        )
                     # Optional GPU power and temperature (e.g. NVIDIA, AMD)
                     if gpu_power_mw is not None:
                         gpu_records_to_add.append(
                             Record(
-                                gauge=METRICS_GAUGES["node_gpu_power_milliwatts"],
+                                gauge=METRICS["node_gpu_power_milliwatts"],
                                 value=gpu_power_mw,
                                 tags=gpu_tags,
                             )
@@ -1861,12 +1910,60 @@ class ReporterAgent(
                     if gpu_temperature_c is not None:
                         gpu_records_to_add.append(
                             Record(
-                                gauge=METRICS_GAUGES["node_gpu_temperature_celsius"],
+                                gauge=METRICS["node_gpu_temperature_celsius"],
                                 value=gpu_temperature_c,
                                 tags=gpu_tags,
                             )
                         )
+                    # GPM metrics; absent when not measured.
+                    if gpu.get("sm_active_percent") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS["node_gpu_sm_active_percent"],
+                                value=gpu["sm_active_percent"],
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu.get("graphics_engine_active_percent") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS[
+                                    "node_gpu_graphics_engine_active_percent"
+                                ],
+                                value=gpu["graphics_engine_active_percent"],
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu.get("sm_active_seconds") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS["node_gpu_sm_active_seconds_total"],
+                                value=gpu["sm_active_seconds"],
+                                tags=gpu_tags,
+                            )
+                        )
                     records_reported.extend(gpu_records_to_add)
+        if stats.get("gpu_poll_duration_s") is not None:
+            records_reported.append(
+                Record(
+                    gauge=METRICS["node_gpu_poll_duration_seconds"],
+                    value=stats["gpu_poll_duration_s"],
+                    tags=node_tags,
+                )
+            )
+
+        # -- GPU collection health --
+        for (
+            api,
+            reason,
+        ), count in self._gpu_metric_provider.drain_collection_errors().items():
+            records_reported.append(
+                Record(
+                    gauge=METRICS["node_gpu_collection_errors_total"],
+                    value=count,
+                    tags={**node_tags, "Api": api, "Reason": reason},
+                )
+            )
 
         # -- TPU per node --
         tpus = stats["tpus"]
@@ -1890,27 +1987,27 @@ class ReporterAgent(
                 "TpuTopology": tpu_topology,
             }
             tensorcore_utilization_record = Record(
-                gauge=METRICS_GAUGES["tpu_tensorcore_utilization"],
+                gauge=METRICS["tpu_tensorcore_utilization"],
                 value=tensorcore_utilization,
                 tags=tpu_tags,
             )
             hbm_utilization_record = Record(
-                gauge=METRICS_GAUGES["tpu_memory_bandwidth_utilization"],
+                gauge=METRICS["tpu_memory_bandwidth_utilization"],
                 value=hbm_utilization,
                 tags=tpu_tags,
             )
             duty_cycle_record = Record(
-                gauge=METRICS_GAUGES["tpu_duty_cycle"],
+                gauge=METRICS["tpu_duty_cycle"],
                 value=duty_cycle,
                 tags=tpu_tags,
             )
             memory_used_record = Record(
-                gauge=METRICS_GAUGES["tpu_memory_used"],
+                gauge=METRICS["tpu_memory_used"],
                 value=memory_used,
                 tags=tpu_tags,
             )
             memory_total_record = Record(
-                gauge=METRICS_GAUGES["tpu_memory_total"],
+                gauge=METRICS["tpu_memory_total"],
                 value=memory_total,
                 tags=tpu_tags,
             )
@@ -1927,43 +2024,43 @@ class ReporterAgent(
         # -- Disk per node --
         disk_io_stats = stats["disk_io"]
         disk_read_record = Record(
-            gauge=METRICS_GAUGES["node_disk_io_read"],
+            gauge=METRICS["node_disk_io_read"],
             value=disk_io_stats[0],
             tags=node_tags,
         )
         disk_write_record = Record(
-            gauge=METRICS_GAUGES["node_disk_io_write"],
+            gauge=METRICS["node_disk_io_write"],
             value=disk_io_stats[1],
             tags=node_tags,
         )
         disk_read_count_record = Record(
-            gauge=METRICS_GAUGES["node_disk_io_read_count"],
+            gauge=METRICS["node_disk_io_read_count"],
             value=disk_io_stats[2],
             tags=node_tags,
         )
         disk_write_count_record = Record(
-            gauge=METRICS_GAUGES["node_disk_io_write_count"],
+            gauge=METRICS["node_disk_io_write_count"],
             value=disk_io_stats[3],
             tags=node_tags,
         )
         disk_io_speed_stats = stats["disk_io_speed"]
         disk_read_speed_record = Record(
-            gauge=METRICS_GAUGES["node_disk_io_read_speed"],
+            gauge=METRICS["node_disk_io_read_speed"],
             value=disk_io_speed_stats[0],
             tags=node_tags,
         )
         disk_write_speed_record = Record(
-            gauge=METRICS_GAUGES["node_disk_io_write_speed"],
+            gauge=METRICS["node_disk_io_write_speed"],
             value=disk_io_speed_stats[1],
             tags=node_tags,
         )
         disk_read_iops_record = Record(
-            gauge=METRICS_GAUGES["node_disk_read_iops"],
+            gauge=METRICS["node_disk_read_iops"],
             value=disk_io_speed_stats[2],
             tags=node_tags,
         )
         disk_write_iops_record = Record(
-            gauge=METRICS_GAUGES["node_disk_write_iops"],
+            gauge=METRICS["node_disk_write_iops"],
             value=disk_io_speed_stats[3],
             tags=node_tags,
         )
@@ -1971,13 +2068,13 @@ class ReporterAgent(
         free = stats["disk"]["/"].free
         disk_utilization = float(used / (used + free)) * 100
         disk_usage_record = Record(
-            gauge=METRICS_GAUGES["node_disk_usage"], value=used, tags=node_tags
+            gauge=METRICS["node_disk_usage"], value=used, tags=node_tags
         )
         disk_free_record = Record(
-            gauge=METRICS_GAUGES["node_disk_free"], value=free, tags=node_tags
+            gauge=METRICS["node_disk_free"], value=free, tags=node_tags
         )
         disk_utilization_percentage_record = Record(
-            gauge=METRICS_GAUGES["node_disk_utilization_percentage"],
+            gauge=METRICS["node_disk_utilization_percentage"],
             value=disk_utilization,
             tags=node_tags,
         )
@@ -1985,12 +2082,12 @@ class ReporterAgent(
         # -- Network speed (send/receive) stats per node --
         network_stats = stats["network"]
         network_sent_record = Record(
-            gauge=METRICS_GAUGES["node_network_sent"],
+            gauge=METRICS["node_network_sent"],
             value=network_stats[0],
             tags=node_tags,
         )
         network_received_record = Record(
-            gauge=METRICS_GAUGES["node_network_received"],
+            gauge=METRICS["node_network_received"],
             value=network_stats[1],
             tags=node_tags,
         )
@@ -1998,12 +2095,12 @@ class ReporterAgent(
         # -- Network speed (send/receive) per node --
         network_speed_stats = stats["network_speed"]
         network_send_speed_record = Record(
-            gauge=METRICS_GAUGES["node_network_send_speed"],
+            gauge=METRICS["node_network_send_speed"],
             value=network_speed_stats[0],
             tags=node_tags,
         )
         network_receive_speed_record = Record(
-            gauge=METRICS_GAUGES["node_network_receive_speed"],
+            gauge=METRICS["node_network_receive_speed"],
             value=network_speed_stats[1],
             tags=node_tags,
         )

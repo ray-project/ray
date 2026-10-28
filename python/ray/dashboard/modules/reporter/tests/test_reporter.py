@@ -36,7 +36,7 @@ from ray._private.test_utils import (
 )
 from ray.core.generated.metrics_pb2 import Metric
 from ray.dashboard.modules.reporter.reporter_agent import (
-    METRICS_GAUGES,
+    METRICS,
     ReporterAgent,
     TpuUtilizationInfo,
 )
@@ -736,6 +736,169 @@ def test_report_stats_gpu(tmp_path):
     stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None
     assert isinstance(stats_payload, str)
+
+
+def test_report_stats_gpu_without_utilization(tmp_path):
+    """A device that reports no utilization gets no utilization record."""
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 7,
+            "memory_used": 1,
+            "memory_total": 22731,
+            "processes": [],
+        },
+        {
+            "index": 1000,
+            "uuid": "MIG-9f1c0b2e-0000-0000-0000-000000000001",
+            "name": "NVIDIA A100-SXM4-40GB MIG 1g.5gb",
+            "utilization_gpu": None,
+            "memory_used": 2,
+            "memory_total": 4864,
+            "processes": [],
+        },
+    ]
+    records = agent._to_records(stats, {})
+
+    utilization_by_index = {
+        r.tags["GpuIndex"]: r.value
+        for r in records
+        if r.gauge.name == "node_gpus_utilization"
+    }
+    assert utilization_by_index == {"0": 7}
+    # Every other per-device metric is still reported for the MIG slice.
+    assert {r.gauge.name for r in records if r.tags.get("GpuIndex") == "1000"} == {
+        "node_gpus_available",
+        "node_gram_used",
+        "node_gram_available",
+    }
+
+
+def test_report_gpu_collection_errors(tmp_path):
+    """Failed GPU reads drained from the provider become counter records."""
+    from ray._private.metrics_agent import Counter
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+    agent._is_head_node = True
+    agent._gpu_metric_provider = MagicMock()
+    agent._gpu_metric_provider.drain_collection_errors.return_value = {
+        ("utilization", "NVMLError_NotSupported"): 2,
+        ("power", "NVMLError_Unknown"): 1,
+    }
+
+    assert isinstance(METRICS["node_gpu_collection_errors_total"], Counter)
+    records = agent._to_records(copy.deepcopy(STATS_TEMPLATE), {})
+    error_records = {
+        (r.tags["Api"], r.tags["Reason"]): r.value
+        for r in records
+        if r.gauge.name == "node_gpu_collection_errors_total"
+    }
+    assert error_records == {
+        ("utilization", "NVMLError_NotSupported"): 2,
+        ("power", "NVMLError_Unknown"): 1,
+    }
+    error_record = next(
+        r for r in records if r.gauge.name == "node_gpu_collection_errors_total"
+    )
+    # The node tags are carried alongside Api and Reason.
+    assert {"ip", "RayNodeType", "IsHeadNode"} <= set(error_record.tags)
+
+    # Nothing drained: no record, so the series only exists once a read failed.
+    agent._gpu_metric_provider.drain_collection_errors.return_value = {}
+    records = agent._to_records(copy.deepcopy(STATS_TEMPLATE), {})
+    assert not [
+        r for r in records if r.gauge.name == "node_gpu_collection_errors_total"
+    ]
+
+
+def test_report_stats_gpu_gpm(tmp_path):
+    """GPM metrics are recorded when measured and absent otherwise."""
+    from ray._private.metrics_agent import Counter
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+    agent._is_head_node = True
+    assert isinstance(METRICS["node_gpu_sm_active_seconds_total"], Counter)
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    base = {
+        "name": "NVIDIA H100",
+        "utilization_gpu": 100,
+        "memory_used": 1,
+        "memory_total": 80000,
+        "processes": [],
+    }
+    stats["gpus"] = [
+        {
+            **base,
+            "index": 0,
+            "uuid": "GPU-0",
+            "sm_active_percent": 24.8,
+            "sm_active_seconds": 1.24,
+            "graphics_engine_active_percent": 99.9,
+        },
+        {
+            **base,
+            "index": 1,
+            "uuid": "GPU-1",
+            "sm_active_percent": None,
+            "sm_active_seconds": None,
+            "graphics_engine_active_percent": None,
+        },
+    ]
+    stats["gpu_poll_duration_s"] = 0.012
+    records = agent._to_records(stats, {})
+
+    gpm = {
+        (r.gauge.name, r.tags["GpuIndex"]): r.value
+        for r in records
+        if r.gauge.name
+        in (
+            "node_gpu_sm_active_percent",
+            "node_gpu_sm_active_seconds_total",
+            "node_gpu_graphics_engine_active_percent",
+        )
+    }
+    assert gpm == {
+        ("node_gpu_sm_active_percent", "0"): 24.8,
+        ("node_gpu_sm_active_seconds_total", "0"): 1.24,
+        ("node_gpu_graphics_engine_active_percent", "0"): 99.9,
+    }
+    durations = [
+        r.value for r in records if r.gauge.name == "node_gpu_poll_duration_seconds"
+    ]
+    assert durations == [0.012]
+
+    # Every read failed: the poll duration is still reported.
+    stats["gpus"] = []
+    records = agent._to_records(stats, {})
+    durations = [
+        r.value for r in records if r.gauge.name == "node_gpu_poll_duration_seconds"
+    ]
+    assert durations == [0.012]
+
+    # No GPU provider on the node: no poll-duration record.
+    stats["gpu_poll_duration_s"] = None
+    records = agent._to_records(stats, {})
+    assert not [r for r in records if r.gauge.name == "node_gpu_poll_duration_seconds"]
 
 
 def test_report_stats_gpu_power_and_temperature(tmp_path):
@@ -1667,7 +1830,7 @@ _AUTOSCALER_TEST_IP_FAILED = "10.0.0.4"
 
 
 def _find_metric_value(records, metric_key: str, node_type: str):
-    g = METRICS_GAUGES[metric_key]
+    g = METRICS[metric_key]
     for r in records:
         if r.gauge is g and r.tags == {"node_type": node_type}:
             return r.value
