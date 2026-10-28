@@ -232,6 +232,13 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         set of reconstruction blocks for that plan. Plans whose input sets complete at the same time share one release,
         so the child runs once for all of them. A plan that is still missing blocks keeps them withheld, and is released
         when its last parent completes.
+
+        Args:
+            lineage_task_id: The lineage task ID of the completing task.
+            reconstruction_plan_ids: The set of reconstruction plans served by the completing task.
+                This includes the plans on the reconstruction stamp on the task's input bundle and any plans batched into it while the task was queued.
+            task_index: The index of the completing task. Released bundles are added to
+                the output queue under this key, so they are ordered with that task's outputs.
         """
         lineage_tracker = self._lineage_tracker
         assert lineage_tracker is not None
