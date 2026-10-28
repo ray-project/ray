@@ -254,12 +254,10 @@ def test_top_n_partial_batch_unblocks_waiting_upstream(
                 ds = ds.map_batches(fail_downstream, batch_format="pyarrow")
             if failure is None:
                 result = ds.take_all()
+                assert result == [{"id": 1}]
             else:
                 with pytest.raises(RayTaskError, match=f"{failure} failed"):
                     ds.take_all()
-
-        if failure is None:
-            assert result == [{"id": 1}]
 
         assert submissions[0] == (False, 1)
 
