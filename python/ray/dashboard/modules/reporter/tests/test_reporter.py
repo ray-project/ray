@@ -822,7 +822,7 @@ def test_report_stats_ascend_npu_metrics(tmp_path):
             "utilization_aicore": 97,
             "memory_used": 4270 * 1024 * 1024,
             "memory_total": 65536 * 1024 * 1024,
-            "health_status": 0,
+            "health_status": 2,
             "power_mw": 940700,
             "temperature_c": 71,
             "processes_pids": {
@@ -853,7 +853,7 @@ def test_report_stats_ascend_npu_metrics(tmp_path):
     assert npu_records["node_npu_hbm_available"].value == (65536 - 4270) * 1024 * 1024
     assert npu_records["node_npu_power_milliwatts"].value == 940700
     assert npu_records["node_npu_temperature_celsius"].value == 71
-    assert npu_records["node_npu_health"].value == 1
+    assert npu_records["node_npu_health"].value == 2
     assert npu_records["node_npus_available"].tags == {
         "ip": stats["ip"],
         "NpuIndex": "0",

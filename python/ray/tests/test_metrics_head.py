@@ -266,7 +266,7 @@ def test_cluster_npu_hbm_utilization_uses_reported_capacity():
         if panel.title == "Cluster Utilization"
     )
     hbm_target = next(
-        target for target in cluster_utilization.targets if target.legend == "HBM"
+        target for target in cluster_utilization.targets if target.legend == "NPU HBM"
     )
 
     assert hbm_target.expr == (
@@ -275,6 +275,19 @@ def test_cluster_npu_hbm_utilization_uses_reported_capacity():
         '{global_filters}}}) + sum(ray_node_npu_hbm_used{{instance=~"$Instance",'
         "{global_filters}}})) * 100"
     )
+
+
+def test_npu_health_panel_preserves_dcmi_severity():
+    health_panel = next(
+        panel
+        for row in DEFAULT_GRAFANA_ROWS
+        for panel in row.panels
+        if panel.title == "Node NPU Health"
+    )
+
+    assert "0 is OK" in health_panel.description
+    assert "3 is critical" in health_panel.description
+    assert health_panel.targets[0].expr.startswith("max(ray_node_npu_health")
 
 
 def test_logical_npu_usage_panel():

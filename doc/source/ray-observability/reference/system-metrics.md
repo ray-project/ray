@@ -84,7 +84,7 @@ Ray requires `dcmi_init` to initialize DCMI, `dcmi_get_card_list` to enumerate c
   - Fallback behavior
 * - Logical and physical IDs
   - `dcmi_get_device_logic_id`, `dcmi_get_device_phyid_from_logicid`
-  - Ray uses an enumeration index if the logical ID is unavailable and omits the physical ID if it can't be queried.
+  - Ray assigns a unique negative synthetic index if the logical ID is unavailable and omits the physical ID if it can't be queried.
 * - Device name
   - `dcmi_get_device_chip_info_v2`, then `dcmi_get_device_chip_info`
   - Ray reports `Ascend NPU` if neither chip-info query succeeds.
@@ -106,7 +106,7 @@ Ray requires `dcmi_init` to initialize DCMI, `dcmi_get_card_list` to enumerate c
 
 DCMI reports HBM capacity and usage in MiB, which Ray converts to bytes for node-level metrics. Ray converts DCMI power values from tenths of a watt to milliwatts. The `ray_component_npu_memory_mb` metric uses MiB (`1 MiB = 1,048,576 bytes`) despite the `_mb` suffix. Device power is emitted only for device `0` on each card because DCMI reports board-level power and otherwise the value could be counted more than once.
 
-The Dashboard API uses the same base units: `utilizationAicore` is a percentage, `memoryUsed` and `memoryTotal` are bytes, `powerMw` is milliwatts, and `temperatureC` is degrees Celsius. `healthStatus` is the raw DCMI status, where `0` means healthy. The Prometheus health metric converts this to `1` for healthy and `0` for unhealthy.
+The Dashboard API uses the same base units: `utilizationAicore` is a percentage, `memoryUsed` and `memoryTotal` are bytes, `powerMw` is milliwatts, and `temperatureC` is degrees Celsius. `healthStatus` and the Prometheus health metric preserve the raw DCMI health level: `0` is OK, `1` is minor, `2` is major, `3` is critical, and `0xFFFFFFFF` (`4294967295`) means that health information is missing.
 
 ### NPU metric labels
 
@@ -130,7 +130,7 @@ All node-level NPU metrics have the following Ray labels. Prometheus normally ad
 * - `NpuDeviceName`
   - Chip name returned by DCMI, or `Ascend NPU` when unavailable.
 * - `NpuIndex`
-  - DCMI logical device ID used by `ASCEND_RT_VISIBLE_DEVICES`. Ray uses its enumeration index as a fallback when the logical ID query fails.
+  - DCMI logical device ID used by `ASCEND_RT_VISIBLE_DEVICES`. Ray assigns a unique negative synthetic index when the logical ID query fails.
 * - `NpuPhysicalId`
   - Optional DCMI physical device ID corresponding to `NpuIndex`.
 * - `NpuCardId`
@@ -233,7 +233,7 @@ All node-level NPU metrics have the following Ray labels. Prometheus normally ad
   - The current Ascend NPU temperature per device, in degrees Celsius.
 * - `ray_node_npu_health`
   - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
-  - The Ascend NPU health state per device: `1` is healthy and `0` is unhealthy.
+  - The raw Ascend NPU DCMI health level per device: `0` is OK, `1` is minor, `2` is major, `3` is critical, and `4294967295` means that health information is missing.
 * - `ray_node_disk_usage`
   - `instance`
   - The amount of disk space used per node, in bytes.

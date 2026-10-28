@@ -98,7 +98,7 @@ OVERVIEW_AND_HEALTH_PANELS = [
             # Ascend NPU HBM
             Target(
                 expr='sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_npu_hbm_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}})) * 100',
-                legend="HBM",
+                legend="NPU HBM",
             ),
             # Object Store
             Target(
@@ -763,11 +763,11 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     Panel(
         id=71,
         title="Node NPU Health",
-        description="Ascend NPU health for each device. A value of 1 is healthy and 0 is unhealthy.",
+        description="Ascend NPU DCMI health level for each device: 0 is OK, 1 is minor, 2 is major, 3 is critical, and 4294967295 means that health information is missing.",
         unit="short",
         targets=[
             Target(
-                expr='min(ray_node_npu_health{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, NpuIndex, NpuDeviceName)',
+                expr='max(ray_node_npu_health{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, NpuIndex, NpuDeviceName)',
                 legend="Health: {{instance}} ({{RayNodeType}}), npu.{{NpuIndex}}, {{NpuDeviceName}}",
             ),
         ],

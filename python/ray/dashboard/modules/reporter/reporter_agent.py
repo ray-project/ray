@@ -295,7 +295,8 @@ METRICS_GAUGES = {
     ),
     "node_npu_health": Gauge(
         "node_npu_health",
-        "Ascend NPU health (1 is healthy, 0 is unhealthy)",
+        "Ascend NPU DCMI health level (0 OK, 1 minor, 2 major, 3 critical, "
+        "4294967295 missing)",
         "state",
         NPU_TAG_KEYS,
     ),
@@ -2057,7 +2058,7 @@ class ReporterAgent(
                 npu_records_to_add.append(
                     Record(
                         gauge=METRICS_GAUGES["node_npu_health"],
-                        value=1 if health_status == 0 else 0,
+                        value=health_status,
                         tags=npu_tags,
                     )
                 )
