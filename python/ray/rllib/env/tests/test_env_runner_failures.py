@@ -6,6 +6,7 @@ import gymnasium as gym
 import numpy as np
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -201,6 +202,17 @@ def on_algorithm_init(algorithm, **kwargs):
     )
 
 
+def _wait_for_restore(algo, group, *, healthy, restarts):
+    def restored():
+        algo.restore_env_runners(group)
+        return (
+            group.num_healthy_remote_workers() == healthy
+            and group.num_remote_worker_restarts() >= restarts
+        )
+
+    wait_for_condition(restored, timeout=60, raise_exceptions=True)
+
+
 class TestEnvRunnerFailures(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -340,9 +352,8 @@ class TestEnvRunnerFailures(unittest.TestCase):
         # This should also work several times.
         for _ in range(2):
             algo.train()
-            time.sleep(15.0)
-            algo.restore_env_runners(algo.env_runner_group)
-            algo.restore_env_runners(algo.eval_env_runner_group)
+            _wait_for_restore(algo, algo.env_runner_group, healthy=1, restarts=0)
+            _wait_for_restore(algo, algo.eval_env_runner_group, healthy=1, restarts=1)
 
             self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 1)
             self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 1)
@@ -579,8 +590,7 @@ class TestEnvRunnerFailures(unittest.TestCase):
             self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 0)
 
             algo.train()
-            time.sleep(15.0)
-            algo.restore_env_runners(algo.env_runner_group)
+            _wait_for_restore(algo, algo.env_runner_group, healthy=2, restarts=2)
 
             # After training, still 2 healthy EnvRunners.
             self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
@@ -663,9 +673,8 @@ class TestEnvRunnerFailures(unittest.TestCase):
         self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 0)
 
         algo.train()
-        time.sleep(15.0)
-        algo.restore_env_runners(algo.env_runner_group)
-        algo.restore_env_runners(algo.eval_env_runner_group)
+        _wait_for_restore(algo, algo.env_runner_group, healthy=2, restarts=2)
+        _wait_for_restore(algo, algo.eval_env_runner_group, healthy=1, restarts=1)
 
         # Everything healthy again. And all EnvRunners have been restarted.
         self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
@@ -748,8 +757,7 @@ class TestEnvRunnerFailures(unittest.TestCase):
         self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 0)
 
         algo.train()
-        time.sleep(15.0)
-        algo.restore_env_runners(algo.eval_env_runner_group)
+        _wait_for_restore(algo, algo.eval_env_runner_group, healthy=2, restarts=2)
 
         # Everything still healthy. And all EnvRunners are restarted.
         self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 2)
