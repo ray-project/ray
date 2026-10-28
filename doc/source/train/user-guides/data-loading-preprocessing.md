@@ -575,6 +575,8 @@ This example persists the fitted preprocessor with the `Trainer(metadata={...})`
 
 When you diagnose bottlenecks that slow training throughput, first find out whether training ever stalls to wait for the next data batch. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer that question. The **Data Ingestion** row shows whether data loading is stalling training, then narrows down which stage is responsible and whether rank stragglers are the cause.
 
+These stages come from Ray Data's iteration pipeline. See {ref}`How does Ray Data iterate over data? <batch_iteration>` for how that pipeline works and what each stage does.
+
 To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster, as described in {ref}`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**. Open it from Grafana's dashboard list and find the **Data Ingestion** section.
 
 To identify data loading bottlenecks with these panels, follow these steps.
