@@ -8,9 +8,9 @@ import pytest
 from ray.autoscaler._private.command_runner import (
     _OUTPUT_END_MARKER,
     _OUTPUT_START_MARKER,
-    _strip_output_markers,
     DockerCommandRunner,
     SSHCommandRunner,
+    _strip_output_markers,
     _with_environment_variables,
 )
 from ray.autoscaler.command_runner import CommandRunnerInterface
