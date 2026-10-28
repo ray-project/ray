@@ -7,9 +7,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state import state as ray_state
 from ray.exceptions import RayActorError, RayTaskError
 from ray.runtime_env import RuntimeEnv
+from ray.train.health._internal.probe_utils import ScheduledProbe
+from ray.train.health.probe import ProbeResult, WorkerProbe
 from ray.train.v2._internal.callbacks import backend_setup
 from ray.train.v2._internal.callbacks.backend_setup import BackendSetupCallback
 from ray.train.v2._internal.constants import (
@@ -916,6 +919,139 @@ def test_replica_group_callback():
     assert hooks.start_rg is not hooks.shutdown_rg
     assert hooks.init_context_workers == new_rg.get_workers()
 
+    wg.shutdown()
+
+
+class RankProbe(WorkerProbe):
+    def poll(self) -> ProbeResult:
+        return ProbeResult(
+            metrics={"rank": float(get_train_context().get_world_rank())}
+        )
+
+
+class FailingProbe(WorkerProbe):
+    def poll(self) -> ProbeResult:
+        raise RuntimeError("probe failed")
+
+
+class NoResultProbe(WorkerProbe):
+    def poll(self) -> ProbeResult:
+        return None
+
+
+class BlockingProbe(WorkerProbe):
+    def __init__(self, signal):
+        self._signal = signal
+
+    def poll(self) -> ProbeResult:
+        ray.get(self._signal.wait.remote())
+        return ProbeResult()
+
+
+def _wait_for_probe_results(worker_group, timeout_s=30):
+    deadline = time.monotonic() + timeout_s
+    while (results := worker_group.poll_probe_results()) is None:
+        assert time.monotonic() < deadline, "The on-demand probes never finished."
+        time.sleep(0.1)
+    return results
+
+
+class WorkerProbesCallback(WorkerGroupCallback):
+    def __init__(self, probes):
+        self._probes = probes
+
+    def before_init_train_context(self, workers):
+        return {"worker_probes": [self._probes] * len(workers)}
+
+
+def test_poll_status_includes_worker_probe_results():
+    probes = [
+        ScheduledProbe(RankProbe(), poll_interval_s=0.1),
+        ScheduledProbe(FailingProbe(), poll_interval_s=0.1),
+        ScheduledProbe(NoResultProbe(), poll_interval_s=0.1),
+    ]
+    wg = _default_inactive_worker_group(callbacks=[WorkerProbesCallback(probes)])
+    wg._start()
+
+    def every_probe_sampled():
+        statuses = wg.poll_status(timeout=5).worker_statuses.values()
+        return all(len(status.probe_results) == 3 for status in statuses)
+
+    wait_for_condition(every_probe_sampled)
+
+    for rank, status in wg.poll_status(timeout=5).worker_statuses.items():
+        assert status.probe_results["RankProbe"].metrics == {"rank": float(rank)}
+        assert status.probe_results["RankProbe"].timestamp_s is not None
+        # A probe that raises is reported, not fatal to the worker.
+        assert isinstance(status.probe_results["FailingProbe"].error, RuntimeError)
+        assert isinstance(status.probe_results["NoResultProbe"].error, TypeError)
+    wg.shutdown()
+
+
+def test_poll_probes_async_collects_each_rank():
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    with pytest.raises(ValueError, match="ranks \\[4\\]"):
+        wg.poll_probes_async([RankProbe()], timeout_s=30, ranks=[4])
+
+    wg.poll_probes_async([RankProbe()], timeout_s=30, ranks=[1, 3])
+    with pytest.raises(RuntimeError, match="still running"):
+        wg.poll_probes_async([RankProbe()], timeout_s=30)
+    results = _wait_for_probe_results(wg)["RankProbe"]
+    assert {rank: r.metrics for rank, r in results.items()} == {
+        1: {"rank": 1.0},
+        3: {"rank": 3.0},
+    }
+
+    wg.poll_probes_async([RankProbe()], timeout_s=30)
+    assert sorted(_wait_for_probe_results(wg)["RankProbe"]) == [0, 1, 2, 3]
+    wg.shutdown()
+
+
+def test_poll_probe_results_times_out_unfinished_ranks():
+    signal = SignalActor.remote()
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    wg.poll_probes_async([BlockingProbe(signal)], timeout_s=1, ranks=[0])
+
+    assert wg.poll_probe_results() is None
+    # The on-demand probe runs apart from poll_status, which still answers.
+    ray.get(wg.get_workers()[0].actor.poll_status.remote(), timeout=5)
+    (result,) = _wait_for_probe_results(wg)["BlockingProbe"].values()
+    assert isinstance(result.error, TimeoutError)
+    assert "rank 0" in str(result.error)
+
+    ray.get(signal.send.remote())
+    wg.shutdown()
+
+
+def test_poll_probe_results_asks_once_more_after_the_timeout():
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # The probe finishes in time, but the first poll comes after the timeout.
+    wg.poll_probes_async([RankProbe()], timeout_s=0.1, ranks=[0])
+    time.sleep(1)
+    assert wg.poll_probe_results() is None
+    time.sleep(1)
+    assert wg.poll_probe_results()["RankProbe"][0].metrics == {"rank": 0.0}
+    wg.shutdown()
+
+
+def test_poll_probe_results_reports_replaced_ranks():
+    signal = SignalActor.remote()
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    wg.poll_probes_async([BlockingProbe(signal)], timeout_s=30, ranks=[0])
+    wg.replace_replica_group(0)
+    (result,) = _wait_for_probe_results(wg)["BlockingProbe"].values()
+    # The old actor died, or the new one never started the probes.
+    assert isinstance(result.error, (RayActorError, RayTaskError))
+
+    ray.get(signal.send.remote())
     wg.shutdown()
 
 
