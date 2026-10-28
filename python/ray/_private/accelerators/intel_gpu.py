@@ -17,7 +17,7 @@ ONEAPI_DEVICE_TYPE = "gpu"
 
 # Arc Pro names end in "Graphics" (e.g. "Intel(R) Arc(TM) Pro B50 Graphics"), so
 # the model number is not one of the last two words.
-_ARC_PRO_NAME_PATTERN = re.compile(r"Arc\(TM\)\s+Pro\s+(B\d+)")
+_ARC_PRO_NAME_PATTERN = re.compile(r"Arc(?:\(TM\))?\s+Pro\s+(B\d+)", re.IGNORECASE)
 
 
 class IntelGPUAcceleratorManager(AcceleratorManager):
@@ -95,7 +95,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
             dev = dpctl.SyclDevice(dev_info)
             arc_pro = _ARC_PRO_NAME_PATTERN.search(dev.name)
             if arc_pro:
-                accelerator_type = f"Intel-GPU-Arc-Pro-{arc_pro.group(1)}"
+                accelerator_type = f"Intel-GPU-Arc-Pro-{arc_pro.group(1).upper()}"
             else:
                 accelerator_type = "Intel-GPU-" + "-".join(dev.name.split(" ")[-2:])
         except Exception:

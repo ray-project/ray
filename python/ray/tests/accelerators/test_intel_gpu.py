@@ -100,6 +100,8 @@ def test_get_current_node_accelerator_type():
         ("Intel(R) Arc(TM) Pro B50 Graphics", INTEL_ARC_PRO_B50),
         ("Intel(R) Arc(TM) Pro B60 Graphics", INTEL_ARC_PRO_B60),
         ("Intel(R) Arc(TM) Pro B70 Graphics", INTEL_ARC_PRO_B70),
+        ("Intel(R) Arc Pro B60 Graphics", INTEL_ARC_PRO_B60),
+        ("Intel(R) ARC(tm) PRO b50 Graphics", INTEL_ARC_PRO_B50),
         ("Intel(R) Data Center GPU Max 1550", INTEL_MAX_1550),
         ("Intel(R) Data Center GPU Max 1100", INTEL_MAX_1100),
     ],
