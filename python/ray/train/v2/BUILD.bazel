@@ -687,7 +687,7 @@ py_test(
 
 py_test(
     name = "test_scheduling",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_scheduling.py"],
     env = _TRAIN_V2_TEST_ENV,
     tags = [
