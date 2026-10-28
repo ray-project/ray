@@ -95,7 +95,7 @@ ARG GVISOR_VERSION=20260921.0
 ARG SLIRP4NETNS_VERSION=1.3.5
 ARG EROFS_UTILS_VERSION=1.9.4
 
-FROM rayproject/ray:2.58.0-py312 AS build
+FROM rayproject/ray:nightly-py312 AS build
 ARG GVISOR_VERSION
 ARG SLIRP4NETNS_VERSION
 ARG EROFS_UTILS_VERSION
@@ -124,7 +124,7 @@ RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_
     && make -j"$(nproc)" \
     && make install
 
-FROM rayproject/ray:2.58.0-py312
+FROM rayproject/ray:nightly-py312
 COPY --from=build /out/bin/ /usr/local/bin/
 
 # Install nftables for outbound traffic filtering in network="public" sandboxes.
@@ -139,7 +139,7 @@ Create an Artifact Registry repository in your Google Cloud project and build th
 
 ```bash
 export REPO_NAME=ray-sandbox
-export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/ray-sandbox:2.58.0-py312"
+export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/ray-sandbox:nightly-py312"
 
 gcloud artifacts repositories create "$REPO_NAME" \
     --repository-format=docker \
@@ -257,6 +257,14 @@ spec:
                   requests:
                     cpu: "4"
                     memory: "8Gi"
+                volumeMounts:
+                  - name: dev-net-tun
+                    mountPath: /dev/net/tun
+            volumes:
+              - name: dev-net-tun
+                hostPath:
+                  path: /dev/net/tun
+                  type: CharDevice
 ```
 
 Key parts of this configuration include the following:
@@ -265,7 +273,7 @@ Key parts of this configuration include the following:
 * **`import_path` and `args`**: Deploys `ray.experimental.sandbox.http.grpc_app:build_app` at `/` as the sole application on the Serve instance. Setting `advertise_url` to `http://127.0.0.1:9000` tells the facade to return that local URL as the command-router endpoint when you connect through `kubectl port-forward`.
 * **Container ports `serve` and `serve-grpc`**: KubeRay uses the `serve` port `8000` to check the health of Ray Serve's proxy and exposes any port named `serve` or prefixed with `serve-` on the `rayservice-modal-sandbox-serve-svc` Kubernetes Service.
 * **`num-cpus: "0"` on the head Pod**: Prevents Ray from scheduling `SandboxHost` actors onto the head Pod, keeping untrusted sandboxes on worker Pods.
-* **`securityContext` on worker Pods**: Sets `seccompProfile` and `appArmorProfile` to `Unconfined` so rootless `runsc` and `slirp4netns` can create user and network namespaces inside the worker container.
+* **`securityContext` and `/dev/net/tun` on worker Pods**: Sets `seccompProfile` and `appArmorProfile` to `Unconfined` so rootless `runsc` and `slirp4netns` can create user and network namespaces inside the worker container, and mounts `/dev/net/tun` from the node so `slirp4netns` can attach network interfaces for `network="public"` sandboxes.
 
 Apply the manifest:
 
@@ -375,10 +383,10 @@ The output shows the gVisor kernel version inside the sandbox:
 ```text
 Exit code: 0
 Stdout:
-Python: 3.12.14
+Python: 3.12.16
 Platform: Linux-4.19.0-gvisor-x86_64-with-glibc2.41
 Read from /workspace/result.txt:
-Python: 3.12.14
+Python: 3.12.16
 Platform: Linux-4.19.0-gvisor-x86_64-with-glibc2.41
 ```
 
