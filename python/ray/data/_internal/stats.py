@@ -302,10 +302,17 @@ class _OutputBlockStatsCollector:
                 for acc, seconds in zip(self._stage_time_accs, es.stage_time_s):
                     acc.add(seconds)
             self._tasks_per_node[es.node_id].add(es.task_idx)
-            if es.start_time_s is not None:
-                self._earliest_start_time = min(self._earliest_start_time, es.start_time_s)
-            if es.end_time_s is not None:
-                self._latest_end_time = max(self._latest_end_time, es.end_time_s)
+            # Multi-node wall time (#66694): start_time_s/end_time_s are
+            # node-local and must not be compared across nodes; derive the
+            # window from start_unix_time_s + wall_time_s, as
+            # from_block_metadata does for plain lists.
+            if es.start_unix_time_s is not None and es.wall_time_s is not None:
+                self._earliest_start_time = min(
+                    self._earliest_start_time, es.start_unix_time_s
+                )
+                self._latest_end_time = max(
+                    self._latest_end_time, es.start_unix_time_s + es.wall_time_s
+                )
             if block_stats.num_rows is not None:
                 self._rows_per_task[es.task_idx] += block_stats.num_rows
 
@@ -1967,6 +1974,7 @@ class OperatorStatsSummary:
         """
         if isinstance(block_stats, _OutputBlockStatsCollector):
             return block_stats.build_summary(operator_name, is_sub_operator)
+
         # Single pass over block_stats to collect all metrics.
         wall_time_acc: _StatsAccumulator = _StatsAccumulator()
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
@@ -2038,10 +2046,72 @@ class OperatorStatsSummary:
         elif num_exec:
             exec_summary_str = f"{num_exec} blocks produced in {rounded_total}s\n"
         else:
-            # Single pass over block_stats to collect all metrics.
-            collector = _OutputBlockStatsCollector()
-            collector.extend(block_stats)
-        return collector.build_summary(operator_name, is_sub_operator)
+            exec_summary_str = "\n"
+
+        # Task-level row stats.
+        task_rows_stats = None
+        if rows_per_task:
+            task_rows_acc = _StatsAccumulator()
+            for count in rows_per_task.values():
+                task_rows_acc.add(count)
+            task_rows_stats = task_rows_acc.get()
+            exec_summary_str = (
+                f"{task_rows_acc.count} tasks executed, {exec_summary_str}"
+            )
+
+        # Execution stats.
+        wall_time_stats = wall_time_acc.get()
+        cpu_stats = cpu_time_acc.get()
+        block_transform_stats = block_transform_time_acc.get()
+        # A chain that measured only its total leaves the phase accumulators
+        # empty. Report that as None rather than a zero-valued summary, so a
+        # consumer can tell "not measured" from "measured as zero" -- the phases
+        # are absent for row-based transforms unless
+        # `DataContext.accurate_map_phase_timing` is set.
+        phases_measured = input_prep_time_acc.count > 0
+        input_prep_stats = input_prep_time_acc.get() if phases_measured else None
+        function_body_stats = function_body_time_acc.get() if phases_measured else None
+        output_build_stats = output_build_time_acc.get() if phases_measured else None
+        # Empty unless `DataContext.per_stage_map_timing` was set for a chain
+        # with more than one stage. `None`, not `[]`, for the same reason the
+        # phases are `None`: absent means not measured.
+        stage_stats = [acc.get() for acc in stage_time_accs] or None
+
+        # Output stats.
+        output_num_rows_stats = output_rows_acc.get()
+        output_size_bytes_stats = output_sizes_acc.get()
+
+        # Node distribution stats.
+        node_counts_stats = None
+        if tasks_per_node:
+            node_counts_acc = _StatsAccumulator()
+            for tasks in tasks_per_node.values():
+                node_counts_acc.add(len(tasks))
+            node_counts_stats = node_counts_acc.get()
+
+        # Assign a value in to_summary and initialize it as None.
+        total_input_num_rows = None
+
+        return OperatorStatsSummary(
+            operator_name=operator_name,
+            is_sub_operator=is_sub_operator,
+            time_total_s=time_total_s,
+            earliest_start_time=earliest_start_time,
+            latest_end_time=latest_end_time,
+            block_execution_summary_str=exec_summary_str,
+            wall_time=wall_time_stats,
+            cpu_time=cpu_stats,
+            block_transform_time=block_transform_stats,
+            input_prep_time=input_prep_stats,
+            function_body_time=function_body_stats,
+            output_build_time=output_build_stats,
+            stage_time=stage_stats,
+            total_input_num_rows=total_input_num_rows,
+            output_num_rows=output_num_rows_stats,
+            output_size_bytes=output_size_bytes_stats,
+            node_count=node_counts_stats,
+            task_rows=task_rows_stats,
+        )
 
     def __str__(self) -> str:
         """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
