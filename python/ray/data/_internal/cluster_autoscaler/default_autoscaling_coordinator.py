@@ -21,6 +21,7 @@ from .base_autoscaling_coordinator import (
     ResourceRequestStrategy,
     ResourceType,
 )
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import env_bool
 from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -28,15 +29,78 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
-HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
+HEAD_NODE_RESOURCE_LABEL = HEAD_NODE_RESOURCE_NAME
 _RESOURCE_LOG_KEYS = ("CPU", "GPU", "memory", "object_store_memory")
 _RESOURCE_LOG_MEMORY_KEYS = {"memory", "object_store_memory"}
+
+
 # Label key the cluster autoscaler uses to bucket nodes by subcluster.
 # Hardcoded so all components agree without per-Dataset configuration.
 SUBCLUSTER_LABEL_KEY: LabelKey = "ray-subcluster"
 # Sentinel for "no subcluster" — used as both a node-label fallback and
 # the bucket key for unlabeled nodes in ``_cluster_node_resources``.
 DEFAULT_SUBCLUSTER: Optional[LabelValue] = None
+
+
+def cluster_node_resources_by_subcluster(
+    get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
+) -> Dict[Optional[LabelValue], NodeResources]:
+    """Return the cluster's worker nodes, bucketed by their subcluster label.
+
+    Shared by the coordinator (which reserves against these nodes) and by the
+    cluster autoscaler (which measures each shape against the worker groups that
+    can host it), so both agree on which nodes count:
+
+    * Dead nodes are excluded.
+    * A head node without CPUs and GPUs is excluded, since its object store is not
+      usable.
+    * Nodes are sorted scarcest resource first, mirroring Ray Core's bundle
+      ordering, with the node id breaking ties so the order is stable across ticks.
+
+    Args:
+        get_cluster_nodes: Source of the node list, exposed as a seam for testing.
+
+    Returns:
+        Node resources keyed by subcluster, then by node id.
+    """
+
+    def _is_node_eligible(node):
+        # Exclude dead nodes.
+        if not node["Alive"]:
+            return False
+        resources = node["Resources"]
+        # Exclude the head node if it doesn't have CPUs and GPUs,
+        # because the object store is not usable.
+        if HEAD_NODE_RESOURCE_LABEL in resources and (
+            resources.get("CPU", 0) == 0 and resources.get("GPU", 0) == 0
+        ):
+            return False
+        return True
+
+    nodes = list(filter(_is_node_eligible, get_cluster_nodes()))
+
+    def _sort_key(node):
+        # Mirrors Ray Core's bundle ordering in scarcest resource first, most of it first.
+        # Core also ranks custom resources (between GPU and object store
+        # memory); we skip them, since it's opaque to us. NodeID breaks ties so
+        # the order is stable across ticks.
+        resources = node.get("Resources", {})
+        return (
+            -resources.get("GPU", 0),
+            -resources.get("object_store_memory", 0),
+            -resources.get("memory", 0),
+            -resources.get("CPU", 0),
+            node.get("NodeID", ""),
+        )
+
+    cluster_node_resources: Dict[Optional[LabelValue], NodeResources] = {}
+    for node in sorted(nodes, key=_sort_key):
+        # Safeguard against case where the value of Labels is None.
+        labels = node.get("Labels") or {}
+        subcluster = labels.get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
+        per_node_resource = cluster_node_resources.setdefault(subcluster, {})
+        per_node_resource[node.get("NodeID", "")] = node["Resources"]
+    return cluster_node_resources
 
 
 RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
@@ -581,45 +645,9 @@ class _AutoscalingCoordinatorActor:
 
     def _update_cluster_node_resources(self) -> bool:
         """Update cluster resources bucketed by subcluster. Return True if changed."""
-
-        def _is_node_eligible(node):
-            # Exclude dead nodes.
-            if not node["Alive"]:
-                return False
-            resources = node["Resources"]
-            # Exclude the head node if it doesn't have CPUs and GPUs,
-            # because the object store is not usable.
-            if HEAD_NODE_RESOURCE_LABEL in resources and (
-                resources.get("CPU", 0) == 0 and resources.get("GPU", 0) == 0
-            ):
-                return False
-            return True
-
-        nodes = list(filter(_is_node_eligible, self._get_cluster_nodes()))
-
-        def _sort_key(node):
-            # Mirrors Ray Core's bundle ordering in scarcest resource first, most of it first.
-            # Core also ranks custom resources (between GPU and object store
-            # memory); we skip them, since it's opaque to us. NodeID breaks ties so
-            # the order is stable across ticks.
-            resources = node.get("Resources", {})
-            return (
-                -resources.get("GPU", 0),
-                -resources.get("object_store_memory", 0),
-                -resources.get("memory", 0),
-                -resources.get("CPU", 0),
-                node.get("NodeID", ""),
-            )
-
-        nodes = sorted(nodes, key=_sort_key)
-        cluster_node_resources: Dict[Optional[LabelValue], NodeResources] = {}
-        for node in nodes:
-            # Safeguard against case where the value of Labels is None.
-            labels = node.get("Labels") or {}
-            subcluster = labels.get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
-            node_id = node.get("NodeID", "")
-            per_node_resource = cluster_node_resources.setdefault(subcluster, {})
-            per_node_resource[node_id] = node["Resources"]
+        cluster_node_resources = cluster_node_resources_by_subcluster(
+            self._get_cluster_nodes
+        )
         if cluster_node_resources == self._cluster_node_resources:
             return False
         logger.debug("Cluster resources updated: %s.", cluster_node_resources)

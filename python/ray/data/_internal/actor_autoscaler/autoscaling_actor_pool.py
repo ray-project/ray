@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ray import ObjectRef
 from ray.actor import ActorHandle
@@ -243,6 +243,15 @@ class AutoscalingActorPool(ABC):
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
         return self._config.per_actor_resource_usage
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        """Return exact resource requests for actors in this pool.
+
+        Default is an empty list -- a pool that does not track exact requests
+        reports nothing and its operators fall back to the logical bundle.
+        Pools that know the shape of each actor override this.
+        """
+        return []
 
     def max_actor_concurrency(self) -> int:
         """Returns max number of tasks single actor could run concurrently."""
