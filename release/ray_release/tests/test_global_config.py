@@ -13,7 +13,6 @@ _TEST_CONFIG = """
 byod:
   ray_cr_repo: ray
 release_byod:
-  ray_ml_cr_repo: ray-ml
   ray_llm_cr_repo: ray-llm
   byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   byod_ecr_region: us-west-2
@@ -40,7 +39,6 @@ ci_pipeline:
 release_image_step:
   ray_cpu: anyscalecpubuild
   ray_cuda: anyscalecudabuild
-  ray_ml: anyscalemlbuild
   ray_llm: anyscalellmbuild
   ray_torch_cuda: anyscaletorchcudabuild
 """
@@ -64,7 +62,6 @@ def test_init_global_config() -> None:
         assert config["state_machine_disabled"] is True
         assert config["release_image_step_ray_cpu"] == "anyscalecpubuild"
         assert config["release_image_step_ray_cuda"] == "anyscalecudabuild"
-        assert config["release_image_step_ray_ml"] == "anyscalemlbuild"
         assert config["release_image_step_ray_llm"] == "anyscalellmbuild"
         assert config["release_image_step_ray_torch_cuda"] == "anyscaletorchcudabuild"
         assert config["byod_ecr"] == "029272617770.dkr.ecr.us-west-2.amazonaws.com"

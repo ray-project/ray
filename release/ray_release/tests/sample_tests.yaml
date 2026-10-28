@@ -18,10 +18,11 @@
   group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
       post_build_script: byod_hello_world.sh
     cluster_compute: hello_world_compute_config.yaml
   run:

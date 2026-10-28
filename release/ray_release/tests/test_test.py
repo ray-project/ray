@@ -20,7 +20,6 @@ from ray_release.configs.global_config import (
 )
 from ray_release.github_client import GitHubClient
 from ray_release.test import (
-    DATAPLANE_ECR_ML_REPO,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_TORCH_REPO,
     LINUX_TEST_PREFIX,
@@ -112,30 +111,17 @@ def test_get_anyscale_byod_image():
     )
     assert _stub_test(
         {
-            "python": "3.8",
+            "python": "3.11",
             "cluster": {
                 "byod": {
-                    "type": "gpu",
-                }
-            },
-        }
-    ).get_anyscale_byod_image() == (
-        f"{get_global_config()['byod_ecr']}/"
-        f"{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu"
-    )
-    assert _stub_test(
-        {
-            "python": "3.8",
-            "cluster": {
-                "byod": {
-                    "type": "gpu",
+                    "type": "torch-cu128",
                     "post_build_script": "foo.sh",
                 }
             },
         }
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
-        f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
+        f"/{DATAPLANE_ECR_TORCH_REPO}:a1b2c3d4-py311-cu128-"
         "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
     )
     assert _stub_test(
@@ -164,29 +150,29 @@ def test_get_anyscale_byod_image_ray_version():
     )
     assert _stub_test(
         {
-            "python": "3.8",
+            "python": "3.12",
             "cluster": {
                 "ray_version": "2.50.0",
                 "byod": {
-                    "type": "gpu",
+                    "type": "gpu-cu130",
                 },
             },
         }
-    ).get_anyscale_byod_image() == (f"{ANYSCALE_RAY_IMAGE_PREFIX}:2.50.0-py38-cu121")
+    ).get_anyscale_byod_image() == (f"{ANYSCALE_RAY_IMAGE_PREFIX}:2.50.0-py312-cu130")
     assert _stub_test(
         {
-            "python": "3.8",
+            "python": "3.11",
             "cluster": {
                 "ray_version": "2.50.0",
                 "byod": {
-                    "type": "gpu",
+                    "type": "torch-cu128",
                     "post_build_script": "foo.sh",
                 },
             },
         }
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
-        f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
+        f"/{DATAPLANE_ECR_TORCH_REPO}:a1b2c3d4-py311-cu128-"
         "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
         "-2.50.0"
     )

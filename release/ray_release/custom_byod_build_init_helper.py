@@ -207,12 +207,6 @@ def get_prerequisite_step(
             py_index = i
             break
 
-    if image_name == "ray-ml":
-        bare_key = config["release_image_step_ray_ml"]
-        if py_index is None:
-            return bare_key
-        return f"{bare_key}--python{tag_parts[py_index][2:]}"
-
     if image_name == "ray-llm":
         bare_key = config["release_image_step_ray_llm"]
     else:
