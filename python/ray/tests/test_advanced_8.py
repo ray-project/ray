@@ -594,11 +594,31 @@ _STAT_V2_EMPTY = "inactive_file 0\nactive_file 0"
             "11:memory:/job",
             (104857600 - 20971520, 268435456),
         ),
+        # v2: the parent has the larger limit but less headroom, because its
+        # other children use memory. Pod 512 MiB with 448 MiB used (20 MiB of
+        # it file cache) leaves 84 MiB; the empty 256 MiB child leaves 256
+        # MiB. Total is the child's limit and used is what leaves 84 MiB.
+        (
+            {
+                "memory.max": "max",
+                "memory.current": "838860800",
+                "memory.stat": _STAT_V2_EMPTY,
+                "pod/memory.max": "536870912",
+                "pod/memory.current": "469762048",
+                "pod/memory.stat": _STAT_V2,
+                "pod/ctr/memory.max": "268435456",
+                "pod/ctr/memory.current": "0",
+                "pod/ctr/memory.stat": _STAT_V2_EMPTY,
+            },
+            "0::/pod/ctr",
+            (268435456 - (536870912 - (469762048 - 20971520)), 268435456),
+        ),
     ],
 )
 def test_get_cgroup_mem_stats_nested_cgroup(tmp_path, files, proc_cgroup, expected):
-    """Usage and limit must come from the same cgroup, the one the kernel
-    enforces, so that total minus used never goes negative."""
+    """Total is the smallest limit the kernel enforces and total minus used is
+    the smallest headroom over every limited level, so it never goes
+    negative."""
     root = _make_cgroup_tree(tmp_path / "cgroup", files)
     (tmp_path / "proc_self_cgroup").write_text(proc_cgroup + "\n")
     stats = ray._private.utils.get_cgroup_mem_stats(
@@ -613,6 +633,62 @@ def test_get_cgroup_mem_stats_nested_cgroup(tmp_path, files, proc_cgroup, expect
         host = psutil.virtual_memory().total
         assert stats == (used, host if total is None else total)
         assert stats[1] - stats[0] >= 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
+def test_cgroup_readers_v1_host_cgroup_namespace(tmp_path):
+    """Docker with the host cgroup namespace on a cgroup v1 host mounts the
+    container's own cgroup at /sys/fs/cgroup/<controller>, so
+    /proc/self/cgroup names /docker/<id>/pod/app while only pod/app exists
+    under the mount. Both readers must strip the mount root and find the
+    limits on pod."""
+    root = _make_cgroup_tree(
+        tmp_path / "cgroup",
+        {
+            "memory/memory.limit_in_bytes": "9223372036854771712",
+            "memory/memory.usage_in_bytes": "838860800",
+            "memory/memory.stat": "total_inactive_file 0\ntotal_active_file 0",
+            "memory/pod/memory.limit_in_bytes": "536870912",
+            "memory/pod/memory.usage_in_bytes": "104857600",
+            "memory/pod/memory.stat": "total_inactive_file 0\ntotal_active_file 0",
+            "memory/pod/app/memory.limit_in_bytes": "9223372036854771712",
+            "memory/pod/app/memory.usage_in_bytes": "52428800",
+            "memory/pod/app/memory.stat": "total_inactive_file 0\ntotal_active_file 0",
+            "cpu,cpuacct/cpu.cfs_quota_us": "-1",
+            "cpu,cpuacct/cpu.cfs_period_us": "100000",
+            "cpu,cpuacct/pod/cpu.cfs_quota_us": "150000",
+            "cpu,cpuacct/pod/cpu.cfs_period_us": "100000",
+            "cpu,cpuacct/pod/app/cpu.cfs_quota_us": "-1",
+            "cpu,cpuacct/pod/app/cpu.cfs_period_us": "100000",
+        },
+    )
+    (root / "cpu").symlink_to(root / "cpu,cpuacct")
+    (tmp_path / "proc_self_cgroup").write_text(
+        "12:cpu,cpuacct:/docker/abc/pod/app\n11:memory:/docker/abc/pod/app\n"
+    )
+    (tmp_path / "mountinfo").write_text(
+        f"35 25 0:31 /docker/abc {root / 'memory'} rw - cgroup cgroup rw,memory\n"
+        f"36 25 0:32 /docker/abc {root / 'cpu,cpuacct'} rw - cgroup cgroup "
+        "rw,cpu,cpuacct\n"
+    )
+    kwargs = dict(
+        proc_self_cgroup_filename=str(tmp_path / "proc_self_cgroup"),
+        proc_self_mountinfo_filename=str(tmp_path / "mountinfo"),
+    )
+    assert ray._private.utils.get_cgroup_mem_stats(
+        cgroup_v1_root=str(root / "memory"), cgroup_v2_root=str(root / "none"), **kwargs
+    ) == (104857600, 536870912)
+    assert (
+        ray._private.utils._get_docker_cpus(
+            cpu_quota_file_name=str(root / "cpu/cpu.cfs_quota_us"),
+            cpu_period_file_name=str(root / "cpu/cpu.cfs_period_us"),
+            cpuset_file_name="nope",
+            cpu_max_file_name="nope",
+            cpuset_effective_file_name_v2="nope",
+            **kwargs,
+        )
+        == 1.5
+    )
 
 
 @pytest.mark.skipif(

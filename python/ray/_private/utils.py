@@ -31,6 +31,7 @@ import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME,
     PROC_SELF_CGROUP_FILENAME,
+    PROC_SELF_MOUNTINFO_FILENAME,
     get_cgroup_dirs,
     get_ray_address_file,
     get_system_memory,
@@ -432,6 +433,7 @@ def _get_docker_cpus(
     cpu_max_file_name="/sys/fs/cgroup/cpu.max",
     cpuset_effective_file_name_v2="/sys/fs/cgroup/cpuset.cpus.effective",
     proc_self_cgroup_filename=PROC_SELF_CGROUP_FILENAME,
+    proc_self_mountinfo_filename=PROC_SELF_MOUNTINFO_FILENAME,
 ) -> Optional[float]:
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
@@ -451,7 +453,9 @@ def _get_docker_cpus(
         if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
             root, quota_name = os.path.split(cpu_quota_file_name)
             period_name = os.path.basename(cpu_period_file_name)
-            dirs = get_cgroup_dirs(root, "cpu", proc_self_cgroup_filename)
+            dirs = get_cgroup_dirs(
+                root, "cpu", proc_self_cgroup_filename, proc_self_mountinfo_filename
+            )
             quotas = [_cfs_quota(d, quota_name, period_name) for d in dirs]
         # cgroups v2. The root of a bare host has no cpu.max; the quota, if
         # any, is on the process's own cgroup.
@@ -459,7 +463,9 @@ def _get_docker_cpus(
             os.path.dirname(cpu_max_file_name)
         ):
             root, max_name = os.path.split(cpu_max_file_name)
-            dirs = get_cgroup_dirs(root, None, proc_self_cgroup_filename)
+            dirs = get_cgroup_dirs(
+                root, None, proc_self_cgroup_filename, proc_self_mountinfo_filename
+            )
             quotas = [_cpu_max_quota(d, max_name) for d in dirs]
         else:
             quotas = []
@@ -475,11 +481,15 @@ def _get_docker_cpus(
     try:
         if os.path.exists(cpuset_file_name):
             root, cpuset_name = os.path.split(cpuset_file_name)
-            dirs = get_cgroup_dirs(root, "cpuset", proc_self_cgroup_filename)
+            dirs = get_cgroup_dirs(
+                root, "cpuset", proc_self_cgroup_filename, proc_self_mountinfo_filename
+            )
             cpuset_num = _nearest_cpuset(dirs, cpuset_name)
         elif os.path.exists(cpuset_effective_file_name_v2):
             root, cpuset_name = os.path.split(cpuset_effective_file_name_v2)
-            dirs = get_cgroup_dirs(root, None, proc_self_cgroup_filename)
+            dirs = get_cgroup_dirs(
+                root, None, proc_self_cgroup_filename, proc_self_mountinfo_filename
+            )
             cpuset_num = _nearest_cpuset(dirs, cpuset_name)
     except Exception:
         logger.exception("Unexpected error calculating docker cpuset ids.")
@@ -595,23 +605,39 @@ def get_cgroup_used_memory(
     return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
+def _cgroup_level_used(
+    cgroup_dir: str, stat: str, usage: str, inactive_key: str, active_key: str
+) -> Optional[int]:
+    """Return the used memory of one cgroup without its file cache, or None."""
+    stat_file = os.path.join(cgroup_dir, stat)
+    usage_file = os.path.join(cgroup_dir, usage)
+    if not (os.path.exists(stat_file) and os.path.exists(usage_file)):
+        return None
+    return get_cgroup_used_memory(stat_file, usage_file, inactive_key, active_key)
+
+
 def get_cgroup_mem_stats(
     cgroup_v1_root: str = "/sys/fs/cgroup/memory",
     cgroup_v2_root: str = "/sys/fs/cgroup",
     proc_self_cgroup_filename: str = PROC_SELF_CGROUP_FILENAME,
+    proc_self_mountinfo_filename: str = PROC_SELF_MOUNTINFO_FILENAME,
 ) -> Optional[Tuple[int, int]]:
     """Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
 
-    Supports both cgroups v1 and v2. Usage is read from the cgroup that holds
-    the smallest limit between the process's cgroup and the root, so it
-    matches the limit ``get_system_memory()`` returns. Total is capped at the
-    host physical memory.
+    Supports both cgroups v1 and v2. Total is the smallest limit between the
+    process's cgroup and the root, which is what ``get_system_memory()``
+    returns, capped at the host physical memory. Used is chosen so that
+    ``total - used`` is the smallest headroom over every limited level: a
+    parent with a larger limit can still have less room left, because its
+    limit also counts the memory of its other children.
 
     Args:
         cgroup_v1_root: The cgroup v1 memory controller mount.
         cgroup_v2_root: The cgroup v2 mount.
         proc_self_cgroup_filename: The ``/proc/self/cgroup`` file used to
             resolve the process's own cgroup.
+        proc_self_mountinfo_filename: The ``/proc/self/mountinfo`` file used
+            to find the mount that exposes that cgroup.
 
     Returns:
         ``(used_bytes, total_bytes)``, or ``None`` when no cgroup accounting
@@ -647,29 +673,35 @@ def get_cgroup_mem_stats(
             continue
         if controller is None and not is_cgroup_v2_root(root):
             continue
-        # The cgroup with the smallest limit is the one the kernel enforces,
-        # so its usage is the one to compare against that limit. A limit at or
-        # above the host memory does not bind; cgroup v1 writes a huge
-        # sentinel there for "no limit".
-        binding, binding_limit = None, None
-        for cgroup_dir in get_cgroup_dirs(root, controller, proc_self_cgroup_filename):
+        dirs = get_cgroup_dirs(
+            root, controller, proc_self_cgroup_filename, proc_self_mountinfo_filename
+        )
+        # Every level with a limit below the host memory binds. A limit at or
+        # above the host memory does not; cgroup v1 writes a huge sentinel
+        # there for "no limit" and cgroup v2 writes "max".
+        smallest_limit, min_headroom = None, None
+        for cgroup_dir in dirs:
             value = read_cgroup_file(os.path.join(cgroup_dir, limit))
             if value is None or not value.isnumeric() or int(value) >= host_total:
                 continue
-            if binding_limit is None or int(value) < binding_limit:
-                binding, binding_limit = cgroup_dir, int(value)
-        if binding is None:
+            level_limit = int(value)
+            if smallest_limit is None or level_limit < smallest_limit:
+                smallest_limit = level_limit
+            level_used = _cgroup_level_used(
+                cgroup_dir, stat, usage, inactive_key, active_key
+            )
+            if level_used is None:
+                continue
+            headroom = level_limit - level_used
+            if min_headroom is None or headroom < min_headroom:
+                min_headroom = headroom
+        if smallest_limit is None:
             # No limit on any level: keep the root accounting, as before.
-            binding = root
-        stat_file = os.path.join(binding, stat)
-        usage_file = os.path.join(binding, usage)
-        if not (os.path.exists(stat_file) and os.path.exists(usage_file)):
+            used = _cgroup_level_used(root, stat, usage, inactive_key, active_key)
+            return None if used is None else (used, host_total)
+        if min_headroom is None:
             return None
-        used = get_cgroup_used_memory(stat_file, usage_file, inactive_key, active_key)
-        if used is None:
-            return None
-        total = host_total if binding_limit is None else binding_limit
-        return used, total
+        return smallest_limit - min_headroom, smallest_limit
     return None
 
 

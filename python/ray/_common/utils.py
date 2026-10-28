@@ -373,33 +373,28 @@ def load_class(path):
 
 
 PROC_SELF_CGROUP_FILENAME = "/proc/self/cgroup"
+PROC_SELF_MOUNTINFO_FILENAME = "/proc/self/mountinfo"
 
 
-def get_cgroup_dirs(
-    root: str,
-    controller: Optional[str] = None,
-    proc_self_cgroup_filename: str = PROC_SELF_CGROUP_FILENAME,
-) -> List[str]:
-    """Return the cgroup directories whose limits apply to this process.
+def _path_parts(path: str) -> List[str]:
+    """Split a cgroup path into its non-empty components."""
+    return [part for part in path.split("/") if part]
 
-    The kernel enforces the smallest limit from the process's own cgroup up
-    to the root, so callers take the minimum over the returned directories.
-    Only existing directories are returned and ``root`` is always last, so a
-    path that is not visible under ``root`` (a container with the host cgroup
-    namespace) yields the root alone, which is the previous behavior.
+
+def _cgroup_membership(
+    controller: Optional[str], proc_self_cgroup_filename: str
+) -> str:
+    """Return this process's cgroup path from ``/proc/self/cgroup``.
 
     Args:
-        root: The cgroup mount, e.g. ``/sys/fs/cgroup`` for cgroup v2 or
-            ``/sys/fs/cgroup/memory`` for the cgroup v1 memory controller.
-        controller: The cgroup v1 controller to resolve, e.g. ``memory``.
-            ``None`` resolves the cgroup v2 unified hierarchy.
+        controller: The cgroup v1 controller whose hierarchy to look up, or
+            ``None`` for the cgroup v2 unified hierarchy (the ``0::`` line).
         proc_self_cgroup_filename: The ``/proc/self/cgroup`` file to read.
 
     Returns:
-        Existing directories from the process's cgroup up to ``root``,
-        nearest first.
+        The path relative to the hierarchy root, e.g. ``/docker/abc/job``,
+        or ``""`` when the file or the hierarchy is missing.
     """
-    relative_path = None
     try:
         with open(proc_self_cgroup_filename, "r") as f:
             for line in f:
@@ -412,21 +407,135 @@ def get_cgroup_dirs(
                 else:
                     is_match = controller in controllers.split(",")
                 if is_match:
-                    relative_path = path
-                    break
+                    return path
     except OSError:
-        relative_path = None
+        pass
+    return ""
+
+
+def _cgroup_mount(
+    controller: Optional[str],
+    membership: str,
+    root: str,
+    proc_self_mountinfo_filename: str,
+) -> Tuple[str, str]:
+    """Return (mount point, mount root) of the cgroup hierarchy.
+
+    ``/proc/self/cgroup`` is relative to the hierarchy root, but a mount can
+    expose only a subtree of it: with the host cgroup namespace Docker mounts
+    ``/docker/<id>`` at ``/sys/fs/cgroup``, and a bind mount of a subtree does
+    the same. The mount root tells how much of the membership path to strip.
+    cgroup v1 can co-mount controllers (``cpu,memory``) and several mounts can
+    match, e.g. a bind mount of the container's subtree next to the full
+    hierarchy. The mount whose root contains the membership wins; among
+    those, the one with the shortest root, because it exposes the most
+    ancestors and an ancestor limit still applies.
+
+    ``/proc/self/mountinfo`` is only consulted when ``root`` is one of its
+    mount points for this hierarchy (compared by real path, since cgroup v1
+    links ``cpu`` to ``cpu,cpuacct``). Otherwise ``root`` is taken as the
+    whole hierarchy, as before, which also keeps a caller that points at a
+    fake tree from reading the live one.
+
+    Args:
+        controller: The cgroup v1 controller, or ``None`` for cgroup v2.
+        membership: The process's cgroup path from ``/proc/self/cgroup``.
+        root: The cgroup mount the caller reads from.
+        proc_self_mountinfo_filename: The ``/proc/self/mountinfo`` file.
+
+    Returns:
+        The mount point and the mount root, e.g.
+        ``("/sys/fs/cgroup", "/docker/abc")``.
+    """
+    candidates = []
+    try:
+        with open(proc_self_mountinfo_filename, "r") as f:
+            for line in f:
+                # <id> <parent> <maj:min> <root> <mount point> <options>
+                # [optional fields] - <fs type> <source> <super options>
+                before, separator, after = line.partition(" - ")
+                mount_fields, fs_fields = before.split(), after.split()
+                if not separator or len(mount_fields) < 5 or len(fs_fields) < 3:
+                    continue
+                fs_type, super_options = fs_fields[0], fs_fields[2].split(",")
+                if controller is None:
+                    is_match = fs_type == "cgroup2"
+                else:
+                    is_match = fs_type == "cgroup" and controller in super_options
+                if is_match:
+                    # mountinfo escapes a space in a path as \040.
+                    mount_point = mount_fields[4].replace("\\040", " ")
+                    mount_root = mount_fields[3].replace("\\040", " ")
+                    candidates.append((mount_point, mount_root))
+    except OSError:
+        pass
+    real_root = os.path.realpath(root)
+    if not any(os.path.realpath(point) == real_root for point, _ in candidates):
+        return root, "/"
+    member_parts = _path_parts(membership)
+    containing = [
+        (mount_point, mount_root)
+        for mount_point, mount_root in candidates
+        if member_parts[: len(_path_parts(mount_root))] == _path_parts(mount_root)
+    ]
+    if containing:
+        return min(containing, key=lambda mount: len(_path_parts(mount[1])))
+    return root, "/"
+
+
+def get_cgroup_dirs(
+    root: str,
+    controller: Optional[str] = None,
+    proc_self_cgroup_filename: str = PROC_SELF_CGROUP_FILENAME,
+    proc_self_mountinfo_filename: str = PROC_SELF_MOUNTINFO_FILENAME,
+) -> List[str]:
+    """Return the cgroup directories whose limits apply to this process.
+
+    The kernel enforces the smallest limit from the process's own cgroup up
+    to the root, so callers take the minimum over the returned directories.
+    The process's cgroup comes from ``/proc/self/cgroup``; the mount that
+    exposes it, and how much of that path the mount hides, comes from
+    ``/proc/self/mountinfo``. Only existing directories are returned and
+    ``root`` is always last, so a path that cannot be resolved yields the
+    root alone, which is the previous behavior.
+
+    Args:
+        root: The cgroup mount, e.g. ``/sys/fs/cgroup`` for cgroup v2 or
+            ``/sys/fs/cgroup/memory`` for the cgroup v1 memory controller.
+            Used as the mount point when ``/proc/self/mountinfo`` has no
+            matching mount.
+        controller: The cgroup v1 controller to resolve, e.g. ``memory``.
+            ``None`` resolves the cgroup v2 unified hierarchy.
+        proc_self_cgroup_filename: The ``/proc/self/cgroup`` file to read.
+        proc_self_mountinfo_filename: The ``/proc/self/mountinfo`` file to
+            read.
+
+    Returns:
+        Existing directories from the process's cgroup up to ``root``,
+        nearest first.
+    """
+    membership = _cgroup_membership(controller, proc_self_cgroup_filename)
+    mount_point, mount_root = _cgroup_mount(
+        controller, membership, root, proc_self_mountinfo_filename
+    )
+    components = _path_parts(membership)
+    root_components = _path_parts(mount_root)
+    if ".." in components:
+        # A cgroup outside the current cgroup namespace shows up as "/../x".
+        # It cannot be resolved from here, so only the mount is used.
+        components = []
+    elif components[: len(root_components)] == root_components:
+        # The mount starts at mount_root, so the path below it is what is
+        # visible under the mount point.
+        components = components[len(root_components) :]
 
     dirs = []
-    if relative_path:
-        components = [c for c in relative_path.split("/") if c]
-        # A cgroup outside the current cgroup namespace shows up as "/../x".
-        # It cannot be resolved from here, so only the root is used.
-        if ".." not in components:
-            for depth in range(len(components), 0, -1):
-                candidate = os.path.join(root, *components[:depth])
-                if os.path.isdir(candidate):
-                    dirs.append(candidate)
+    for depth in range(len(components), 0, -1):
+        candidate = os.path.join(mount_point, *components[:depth])
+        if os.path.isdir(candidate):
+            dirs.append(candidate)
+    if os.path.realpath(mount_point) != os.path.realpath(root):
+        dirs.append(mount_point)
     dirs.append(root)
     return dirs
 
@@ -486,6 +595,7 @@ def get_system_memory(
     # For cgroups v2:
     memory_limit_filename_v2: str = "/sys/fs/cgroup/memory.max",
     proc_self_cgroup_filename: str = PROC_SELF_CGROUP_FILENAME,
+    proc_self_mountinfo_filename: str = PROC_SELF_MOUNTINFO_FILENAME,
 ) -> int:
     """Return the total amount of system memory in bytes.
 
@@ -500,6 +610,8 @@ def get_system_memory(
             directory is the cgroup v2 mount.
         proc_self_cgroup_filename: The ``/proc/self/cgroup`` file used to
             resolve the process's own cgroup.
+        proc_self_mountinfo_filename: The ``/proc/self/mountinfo`` file used
+            to find the mount that exposes that cgroup.
 
     Returns:
         The total amount of system memory in bytes.
@@ -511,12 +623,16 @@ def get_system_memory(
     root_v1, name_v1 = os.path.split(memory_limit_filename)
     root_v2, name_v2 = os.path.split(memory_limit_filename_v2)
     if os.path.exists(memory_limit_filename):
-        dirs = get_cgroup_dirs(root_v1, "memory", proc_self_cgroup_filename)
+        dirs = get_cgroup_dirs(
+            root_v1, "memory", proc_self_cgroup_filename, proc_self_mountinfo_filename
+        )
         docker_limit = _min_cgroup_limit(dirs, name_v1)
     elif os.path.exists(memory_limit_filename_v2) or is_cgroup_v2_root(root_v2):
         # The root of a cgroup v2 host has no memory.max; the limit, if any,
         # is on the process's own cgroup (systemd scope, Slurm step).
-        dirs = get_cgroup_dirs(root_v2, None, proc_self_cgroup_filename)
+        dirs = get_cgroup_dirs(
+            root_v2, None, proc_self_cgroup_filename, proc_self_mountinfo_filename
+        )
         docker_limit = _min_cgroup_limit(dirs, name_v2)
 
     # Use psutil if it is available.
