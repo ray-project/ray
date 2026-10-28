@@ -1574,6 +1574,82 @@ class TestDataOpTask:
                 ray.wait([streaming_gen], fetch_local=False)
                 data_op_task.on_data_ready(None, InlineMetadataFetcher())
 
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "terminal",
+            "unread_output",
+            "pending_output",
+        ],
+    )
+    def test_output_backpressure_accounting(
+        self,
+        ray_start_regular_shared,
+        monkeypatch,
+        scenario,
+    ):
+        block_nbytes = [] if scenario == "terminal" else [1024]
+        streaming_gen = create_stub_streaming_gen(block_nbytes=block_nbytes)
+
+        task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+        )
+        fetcher = InlineMetadataFetcher()
+
+        if scenario == "terminal":
+            # Wait for the producer to finish, then explicitly observe EOF from the
+            # consumer side so the generator is marked exhausted.
+            ray.get(streaming_gen.completed(), timeout=20)
+
+            with pytest.raises(StopIteration):
+                streaming_gen._next_sync(timeout_s=1)
+
+            assert streaming_gen._stream_exhausted()
+        elif scenario == "unread_output":
+            # Output is available but has not been read yet.
+            ray.wait([streaming_gen], fetch_local=False)
+        elif scenario == "pending_output":
+            # Exhaust the generator, then pull the block + metadata refs while
+            # pretending the metadata object is not available yet.
+            ray.get(streaming_gen.completed(), timeout=20)
+
+            with monkeypatch.context() as m:
+                m.setattr(
+                    fetcher,
+                    "in_data_ready_get_object_size",
+                    lambda task: None,
+                )
+                assert task.on_data_ready(None, fetcher) == 0
+
+            assert streaming_gen._stream_exhausted()
+            assert not task.pending_block_ref.is_nil()
+            assert not task.pending_meta_ref.is_nil()
+
+        clock = [100.0]
+        monkeypatch.setattr(
+            "ray.data._internal.execution.interfaces.physical_operator.time.perf_counter",
+            lambda: clock[0],
+        )
+
+        # A zero read budget should count as output backpressure only when
+        # there is still unread or pending output.
+        assert task.on_data_ready(0, fetcher) == 0
+        clock[0] += 10
+
+        if scenario == "terminal":
+            # Give the task budget to observe EOF and finish.
+            assert task.on_data_ready(1, fetcher) == 0
+            assert task.has_finished
+        else:
+            # Resume consuming the unread/pending output.
+            assert task.on_data_ready(None, fetcher) > 0
+
+        expected_backpressure_s = 0 if scenario == "terminal" else 10
+        assert task._total_output_backpressure_s == expected_backpressure_s
+
     def test_operator_name_parameter(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
         task = DataOpTask(

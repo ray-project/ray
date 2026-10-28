@@ -712,6 +712,22 @@ py_test_module_list(
     ],
 )
 
+py_test(
+    name = "test_autoscaler_fake_docker_auth_token",
+    size = "large",
+    srcs = ["test_autoscaler_fake_docker_auth_token.py"],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "ha_integration",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test_module_list(
     size = "medium",
     files = [
@@ -785,6 +801,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler.py",
+        "test_autoscaler_auth_token.py",
         "test_symmetric_run.py",
     ],
     tags = [
