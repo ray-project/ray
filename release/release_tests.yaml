@@ -162,7 +162,7 @@
     - __suffix__: aws
 
 - name: hello_world_custom_byod_depset_only
-  python: "3.10"
+  python: "3.11"
   team: reef
   group: hello_world
   frequency: nightly
@@ -171,7 +171,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: cpu
+      type: torch-cu128
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
 
@@ -1194,7 +1194,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1204,7 +1204,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: cpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1225,7 +1225,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1235,7 +1235,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: cpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1256,7 +1256,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1265,7 +1265,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: cpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -2385,7 +2385,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
@@ -2398,7 +2398,8 @@
   team: ml
   cluster:
     byod:
-      type: cpu
+      type: torch-cu128
+      python_depset: torch_cu128_xgboost_lightgbm_py3.11.lock
     anyscale_sdk_2026: true
     cluster_compute: compute_aws_{{size}}.yaml
 
@@ -4208,7 +4209,7 @@
 # Observability tests
 #####################
 - name: agent_stress_test
-  python: "3.10"
+  python: "3.11"
   group: core-observability-test
   working_dir: dashboard
 
@@ -4217,7 +4218,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: cpu
+      type: torch-cu128
       runtime_env:
         RAY_INTERNAL_MEM_PROFILE_COMPONENTS: "dashboard_agent"
       post_build_script: byod_agent_stress_test.sh
