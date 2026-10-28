@@ -82,7 +82,7 @@ steps:
     parallelism: 1
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_object_spilling_2 core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_object_spilling_2_debug_mode core
         --build-name windowsbuild
         --operating-system windows
         --except-tags no_windows
