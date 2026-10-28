@@ -274,7 +274,7 @@ class _QueryRecordingConnection:
 
 
 def test_multi_key_null_shard_predicates():
-    """Multi-key sharding must build OR (null) / AND (non-null) predicates.
+    """Multi-key sharding must build a NOT(non-null) / AND(non-null) predicate.
 
     Whether an end-to-end ``read_sql`` builds these predicates depends on the
     backend supporting the MOD/ABS/CONCAT sharding probe (SQLite only supports
@@ -290,9 +290,12 @@ def test_multi_key_null_shard_predicates():
         shard_keys=["customer_id", "region"],
     )
 
-    # Task 0 absorbs every row where *any* shard key is NULL, OR-ed together.
+    # Task 0 absorbs every row the other tasks reject, via the exact boolean
+    # complement of the non-NULL guard (not an "any key IS NULL" test). This
+    # keeps rows whose row-valued key has mixed NULL fields -- FALSE for both
+    # IS NULL and IS NOT NULL in PostgreSQL -- from being dropped.
     datasource._create_parallel_read_fn(task_id=0, parallelism=4)()
-    assert "(customer_id IS NULL OR region IS NULL)" in executed[-1]
+    assert "NOT (customer_id IS NOT NULL AND region IS NOT NULL)" in executed[-1]
 
     # Every other task only takes rows where *all* shard keys are non-NULL,
     # AND-ed together.

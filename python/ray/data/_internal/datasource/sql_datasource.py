@@ -203,13 +203,20 @@ class SQLDatasource(Datasource):
         )
 
         if self.shard_key_list:
-            null_conditions = [f"{key} IS NULL" for key in self.shard_key_list]
             non_null_conditions = [f"{key} IS NOT NULL" for key in self.shard_key_list]
-            null_predicate = "(" + " OR ".join(null_conditions) + ")"
             non_null_predicate = "(" + " AND ".join(non_null_conditions) + ")"
 
             if task_id == 0:
-                predicate = f"({null_predicate} OR {hash_predicate})"
+                # Task 0 must catch every row the other tasks reject, so use the
+                # exact boolean complement of the non-NULL guard rather than an
+                # "any key IS NULL" test. In PostgreSQL a row-valued shard key
+                # with mixed NULL fields (e.g. (1, NULL)) is FALSE for BOTH
+                # "IS NULL" and "IS NOT NULL", so an OR-of-IS-NULL guard would
+                # drop such a row from every shard unless its hash bucket is 0.
+                # IS [NOT] NULL never yields UNKNOWN, so NOT(...) is the strict
+                # complement and routes those rows here (no silent data loss).
+                # For scalar keys this is identical to "any key IS NULL".
+                predicate = f"(NOT {non_null_predicate} OR {hash_predicate})"
             else:
                 predicate = f"({non_null_predicate} AND {hash_predicate})"
         else:
