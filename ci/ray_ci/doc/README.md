@@ -35,7 +35,9 @@ build artifact. It never fails the build.
 ## Label-driven test selection
 
 These scripts back two PR labels. Both labels need write access to apply. See
-`doc/source/ray-contribute/ci.md` for the contributor-facing behavior.
+`doc/source/ray-contribute/ci.md` for the contributor-facing behavior. Which
+steps each label keeps or skips is set in `.buildkite/docs.labels.yaml`, which
+rayci applies to PR builds before it marks step dependencies.
 
 - **`docs-example-test`.** The `doc: docs example tests (opt-in)` step in
   `.buildkite/others.rayci.yml` runs `run_doc_example_tests.sh`. It selects

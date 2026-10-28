@@ -78,7 +78,7 @@ An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/so
 
 ### What a prose-only change runs
 
-Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. A prose change under `doc/source/` does build the images that the `docs-example-test` step needs, from cache, even when the label isn't applied. Prose can still carry doctests. The scheduled post-merge builds cover them, and the `docs-example-test` label runs them for any page with a runnable example, because each such page has its own test target. API reference pages under a library's `api/` directory are the exception. They trigger the API consistency checks instead, so the label doesn't run their doctests, and the scheduled post-merge builds cover them.
+Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Prose can still carry doctests. The scheduled post-merge builds cover them, and the `docs-example-test` label runs them for any page with a runnable example, because each such page has its own test target. API reference pages under a library's `api/` directory are the exception. They trigger the API consistency checks instead, so the label doesn't run their doctests, and the scheduled post-merge builds cover them.
 
 A prose-only change also skips most of the lint group. The following lint steps still run:
 
@@ -124,7 +124,7 @@ The opt-in step runs only on premerge builds, which the `go` label starts. Micro
 
 ### Docstring-only changes
 
-A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. The `docstring-only` label is for a PR that changes nothing but docstrings and comments. It runs the `>>>` examples in the docstrings of only the modules the PR changed, and for Ray Data, it skips the library's test suites. Like the `go` label, it requires write access.
+A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. The `docstring-only` label is for a PR that changes nothing but docstrings and comments. It skips the test suites of every library the change selects, and instead runs the `>>>` examples in the docstrings of only the modules the PR changed. Like the `go` label, it requires write access.
 
 With the label, a PR runs the following:
 
@@ -132,7 +132,7 @@ With the label, a PR runs the following:
 * The two API surface checks and lint.
 * `lint: validate docstring-only scope`, the guard the label can't turn off.
 
-The `docstringbuild` image leaves out heavy libraries such as torch and TensorFlow. The step reports a docstring that fails only because one of those libraries is missing as skipped, names the library, and repeats the skipped examples at the end of its log. Those examples run in their library's doctest target instead: on the same premerge build for libraries whose suites the label doesn't skip, and in the scheduled post-merge builds for Ray Data. See [What doesn't run on your PR](#what-doesnt-run-on-your-pr) for which post-merge builds those are.
+The `docstringbuild` image leaves out heavy libraries such as torch and TensorFlow. The step reports a docstring that fails only because one of those libraries is missing as skipped, names the library, and repeats the skipped examples at the end of its log. The label also skips each library's doctest target with the rest of its suites, so those examples run only in the scheduled post-merge builds. See [What doesn't run on your PR](#what-doesnt-run-on-your-pr) for which post-merge builds those are.
 
 The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
@@ -141,13 +141,17 @@ python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/m
 python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
 ```
 
-The label skips only Ray Data's test suites. Other libraries' test steps still run in full under the label, and so does `ml: data integration tests`. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
+Every other test step is skipped under the label, in every library, including `ml: data integration tests`. The rule that does this lives in `.buildkite/docs.labels.yaml`, and the pipeline upload log names it, next to the selected tags. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
+
+The label doesn't build the docs. Add an `@rtd-build` line to a commit message as well, as described in [The Read the Docs render gate](#the-read-the-docs-render-gate), so Read the Docs confirms that the API reference pages your docstrings render into still build.
 
 ### Why some steps show as broken
 
-A Buildkite job marked `broken` never ran. A label-gated step is `broken` on any build that selects it without its label, so a `broken` label-gated step isn't a failure in your change.
+A Buildkite job marked `broken` never ran, so a `broken` label-gated step isn't a failure in your change.
 
-On a PR without the `docstring-only` label, `lint: validate docstring-only scope` shows as `broken`, and so does `doc: docstring examples` when the build includes it. On a PR without the `docs-example-test` label, `doc: docs example tests (opt-in)` shows as `broken`. The reverse holds under the `docstring-only` label: every Ray Data test step, including `data: docs example tests`, shows as `broken`, because the label skips them. Scheduled post-merge builds carry no PR labels, so all three label-gated steps show as `broken` there too.
+On a PR, the rules in `.buildkite/docs.labels.yaml` remove the steps a label skips before the pipeline uploads, so those steps don't appear in the build at all. Without the `docstring-only` label, `doc: docstring examples` doesn't appear, and without the `docs-example-test` label, `doc: docs example tests (opt-in)` doesn't either. Under the `docstring-only` label, the library test steps it skips don't appear. The one label-gated step the rules leave in place is `lint: validate docstring-only scope`, which shows as `broken` on a PR without the `docstring-only` label.
+
+Scheduled post-merge builds carry no PR labels and don't apply the label rules, so all three label-gated steps show as `broken` there when the build selects them.
 
 ### What doesn't run on your PR
 
