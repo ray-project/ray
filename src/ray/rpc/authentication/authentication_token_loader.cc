@@ -29,7 +29,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
-#include "ray/util/env.h"
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
@@ -405,22 +404,6 @@ std::string AuthenticationTokenLoader::TrimWhitespace(const std::string &str) {
 
   trimmed_str.erase(trimmed_str.find_last_not_of(whitespace) + 1);
   return trimmed_str;
-}
-
-void MaybeEnableTokenAuthIfTokenAvailable() {
-  if (std::getenv("RAY_AUTH_MODE") != nullptr) {
-    return;
-  }
-  auto result =
-      AuthenticationTokenLoader::instance().TryLoadToken(/*ignore_auth_mode=*/true);
-  if (result.hasError() || !result.token.has_value() || result.token->empty()) {
-    return;
-  }
-  SetEnv("RAY_AUTH_MODE", "token");
-  RayConfig::instance().initialize("");
-  RAY_LOG(WARNING) << "Token authentication is enabled for this Ray cluster. Set "
-                      "RAY_AUTH_MODE=disabled to opt out. For more information, see "
-                      "https://docs.ray.io/en/latest/ray-security/token-auth.html";
 }
 
 std::string CreateTokenIfMissingForOwnCluster() {

@@ -52,7 +52,6 @@ def docker_cluster(
         monkeypatch.delenv("RAY_AUTH_MODE", raising=False)
 
     cluster = start_docker_cluster(auth_mode)
-    cluster.auth_mode = auth_mode
     try:
         cluster.start()
         yield cluster
@@ -77,8 +76,8 @@ def count_alive_nodes_from_head(cluster: DockerCluster) -> int:
     return int(result.stdout.strip().splitlines()[-1])
 
 
-# None leaves RAY_AUTH_MODE unset, which means auth off until AUTH_MODE
-# defaults to token: `ray up` must then ship no token.
+# None leaves RAY_AUTH_MODE unset, which means token mode. `ray up` ships the
+# token, and the worker joins with auth on.
 @pytest.mark.parametrize("docker_cluster", ["token", None], indirect=True)
 @pytest.mark.timeout(800)
 def test_worker_joins_docker_cluster(docker_cluster: DockerCluster):
@@ -87,10 +86,7 @@ def test_worker_joins_docker_cluster(docker_cluster: DockerCluster):
         timeout=600,
         retry_interval_ms=5000,
     )
-    token_mounted = os.path.exists(
-        os.path.join(docker_cluster.cluster_dir, "auth_token")
-    )
-    assert token_mounted == (docker_cluster.auth_mode == "token")
+    assert os.path.exists(os.path.join(docker_cluster.cluster_dir, "auth_token"))
 
 
 if __name__ == "__main__":

@@ -103,13 +103,6 @@ class AuthenticationTokenLoader {
   std::optional<std::chrono::system_clock::time_point> cached_token_expiration_time_;
 };
 
-/// For a driver that starts its own head with `ray start --head`. That command
-/// enables token auth when RAY_AUTH_MODE is unset and a token exists, so the driver
-/// must make the same decision or it connects without a token. Sets RAY_AUTH_MODE=token
-/// in this process's environment, which the `ray start` subprocess inherits and which
-/// survives later RayConfig re-initialization.
-void MaybeEnableTokenAuthIfTokenAvailable();
-
 /// For a driver that starts its own cluster with `ray start --head`, which never
 /// creates a token: when token auth is enabled, create a missing token first.
 /// \return An error message, or an empty string on success.

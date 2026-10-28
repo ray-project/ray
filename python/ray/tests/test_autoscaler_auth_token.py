@@ -136,7 +136,13 @@ def ray_up(
     )
 
 
-def test_generates_default_token_and_ships_it_to_head_and_workers(clean_auth_env):
+# None leaves RAY_AUTH_MODE unset, which means token mode.
+@pytest.mark.parametrize("auth_mode", ["token", None])
+def test_generates_default_token_and_ships_it_to_head_and_workers(
+    clean_auth_env, monkeypatch, auth_mode
+):
+    set_local_auth_mode(monkeypatch, auth_mode)
+
     result = ray_up()
 
     default_token_path = clean_auth_env / "home" / ".ray" / "auth_token"
@@ -173,8 +179,7 @@ def test_ships_token_from_token_path(clean_auth_env, monkeypatch):
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
 
 
-# None (RAY_AUTH_MODE unset) means disabled until AUTH_MODE defaults to token.
-@pytest.mark.parametrize("auth_mode", ["disabled", "DISABLED", "none", None])
+@pytest.mark.parametrize("auth_mode", ["disabled", "DISABLED", "none"])
 def test_disabled_auth_mode_ships_no_token(clean_auth_env, monkeypatch, auth_mode):
     set_local_auth_mode(monkeypatch, auth_mode)
 

@@ -14,6 +14,7 @@ import pytest
 import ray
 from ray._common.network_utils import build_address, parse_address
 from ray._private import ray_constants
+from ray._private.authentication_test_utils import reset_auth_token_state
 from ray._private.test_utils import persistent_gcs_test_enabled
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
@@ -92,7 +93,7 @@ def test_ray_init_existing_instance(call_ray_start, address):
     os.environ.get("CI") and sys.platform == "win32",
     reason="Flaky when run on windows CI",
 )
-def test_ray_init_existing_instance_via_blocked_ray_start():
+def test_ray_init_existing_instance_via_blocked_ray_start(ray_start_head_auth_token):
     """Run a blocked ray start command and check that ray.init() connects to it."""
     blocked_start_cmd = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--num-cpus", "1999"],
@@ -174,6 +175,10 @@ def test_ray_init_credentials_with_client(monkeypatch):
 
 
 def test_ray_init_credential(monkeypatch):
+    # A client in token mode needs a token before it opens a channel.
+    monkeypatch.setenv("RAY_AUTH_TOKEN", "a" * 64)
+    reset_auth_token_state()
+
     def mock_secure_channel(conn_str, credentials, options=None, compression=None):
         raise (Stop(credentials))
 
