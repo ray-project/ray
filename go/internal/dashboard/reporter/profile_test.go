@@ -115,7 +115,7 @@ func TestProfileTraceDumpRejectsInvalidPID(t *testing.T) {
 	defer func() { runCommandDetail = orig }()
 
 	m := newTestManager(t, "/tmp/profiles")
-	success, output := m.TraceDump(0, false)
+	success, output := m.TraceDump(0, false, false)
 
 	if success {
 		t.Errorf("TraceDump(0) success = true, want false")
@@ -135,7 +135,7 @@ func TestProfileTraceDumpCommandConstruction(t *testing.T) {
 	defer func() { runCommandDetail = orig }()
 
 	m := newTestManager(t, "/tmp/profiles")
-	success, _ := m.TraceDump(123, false)
+	success, _ := m.TraceDump(123, false, false)
 
 	if !success {
 		t.Fatalf("TraceDump(123) success = false, want true")
@@ -170,7 +170,7 @@ func TestProfileTraceDumpNativeAddsFlag(t *testing.T) {
 
 	osName = "linux"
 	m := newTestManager(t, "/tmp/profiles")
-	m.TraceDump(7, true)
+	m.TraceDump(7, true, false)
 
 	args := cap.lastArgs()
 	found := false
@@ -197,7 +197,7 @@ func TestProfileTraceDumpNativeOmittedOnNonLinux(t *testing.T) {
 
 	osName = "darwin"
 	m := newTestManager(t, "/tmp/profiles")
-	m.TraceDump(7, true)
+	m.TraceDump(7, true, false)
 
 	args := cap.lastArgs()
 	for _, a := range args {
@@ -214,7 +214,7 @@ func TestProfileTraceDumpResultMapping(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		runCommandDetail = capturingExecutor(&cmdCapture{}, CommandResult{Stdout: "trace-data", ExitCode: 0})
 		m := newTestManager(t, "/tmp/profiles")
-		success, output := m.TraceDump(1, false)
+		success, output := m.TraceDump(1, false, false)
 		if !success {
 			t.Errorf("success = false, want true")
 		}
@@ -226,7 +226,7 @@ func TestProfileTraceDumpResultMapping(t *testing.T) {
 	t.Run("failure", func(t *testing.T) {
 		runCommandDetail = capturingExecutor(&cmdCapture{}, CommandResult{Stdout: "out", Stderr: "permission denied", ExitCode: 1})
 		m := newTestManager(t, "/tmp/profiles")
-		success, output := m.TraceDump(1, false)
+		success, output := m.TraceDump(1, false, false)
 		if success {
 			t.Errorf("success = true, want false on non-zero exit")
 		}
@@ -247,7 +247,7 @@ func TestProfileCPUProfileCommandConstruction(t *testing.T) {
 	if err := os.WriteFile(dir+"/flamegraph_9_cpu_profiling.svg", []byte("<svg/>"), 0644); err != nil {
 		t.Fatalf("WriteFile error: %v", err)
 	}
-	success, _ := m.CPUProfile(9, "flamegraph", 5, false)
+	success, _ := m.CPUProfile(9, "flamegraph", 5, false, false)
 
 	if !success {
 		t.Fatalf("CPUProfile success = false, want true")
@@ -282,7 +282,7 @@ func TestProfileCPUProfileInvalidFormat(t *testing.T) {
 	defer func() { runCommandDetail = orig }()
 
 	m := newTestManager(t, "/tmp/profiles")
-	success, output := m.CPUProfile(9, "bogus", 5, false)
+	success, output := m.CPUProfile(9, "bogus", 5, false, false)
 
 	if success {
 		t.Errorf("CPUProfile(bogus) success = true, want false")
@@ -302,7 +302,7 @@ func TestProfileCPUProfileInvalidPID(t *testing.T) {
 	defer func() { runCommandDetail = orig }()
 
 	m := newTestManager(t, "/tmp/profiles")
-	success, _ := m.CPUProfile(-3, "flamegraph", 5, false)
+	success, _ := m.CPUProfile(-3, "flamegraph", 5, false, false)
 
 	if success {
 		t.Errorf("CPUProfile(-3) success = true, want false")
@@ -472,6 +472,52 @@ func TestProfileMemoryResult(t *testing.T) {
 	})
 }
 
+func TestProfileTraceDumpForwardsSubprocesses(t *testing.T) {
+	var cap cmdCapture
+	orig := runCommandDetail
+	runCommandDetail = capturingExecutor(&cap, okResult())
+	defer func() { runCommandDetail = orig }()
+
+	m := &ProfileManager{}
+	m.TraceDump(1234, false, true)
+
+	joined := strings.Join(cap.lastArgs(), " ")
+	if !strings.Contains(joined, "--subprocesses") {
+		t.Fatalf("py-spy dump args %v missing --subprocesses", cap.lastArgs())
+	}
+}
+
+func TestProfileCPUProfileForwardsSubprocesses(t *testing.T) {
+	var cap cmdCapture
+	orig := runCommandDetail
+	runCommandDetail = capturingExecutor(&cap, okResult())
+	defer func() { runCommandDetail = orig }()
+
+	m := &ProfileManager{}
+	m.CPUProfile(1234, "raw", 2, false, true)
+
+	joined := strings.Join(cap.lastArgs(), " ")
+	if !strings.Contains(joined, "--subprocesses") {
+		t.Fatalf("py-spy record args %v missing --subprocesses", cap.lastArgs())
+	}
+}
+
+func TestProfileCPUProfileOmitsSubprocessesWhenFalse(t *testing.T) {
+	var cap cmdCapture
+	orig := runCommandDetail
+	runCommandDetail = capturingExecutor(&cap, okResult())
+	defer func() { runCommandDetail = orig }()
+
+	m := &ProfileManager{}
+	m.CPUProfile(1234, "raw", 2, false, false)
+
+	for _, arg := range cap.lastArgs() {
+		if arg == "--subprocesses" {
+			t.Fatalf("py-spy record args %v unexpectedly contain --subprocesses", cap.lastArgs())
+		}
+	}
+}
+
 func TestProfileNewManagerCreatesDirectories(t *testing.T) {
 	dir := t.TempDir()
 	profileDir := dir + "/profiles"
@@ -508,7 +554,7 @@ func TestProfileCPUProfileReturnsFileContent(t *testing.T) {
 	runCommandDetail = capturingExecutor(&cmdCapture{}, okResult())
 	defer func() { runCommandDetail = orig }()
 
-	success, output := m.CPUProfile(9, "flamegraph", 5, false)
+	success, output := m.CPUProfile(9, "flamegraph", 5, false, false)
 	if !success {
 		t.Fatalf("CPUProfile success = false, want true")
 	}
@@ -545,7 +591,7 @@ func TestProfileCPUProfileRejectsInvalidDuration(t *testing.T) {
 
 	m := newTestManager(t, "/tmp/profiles")
 	for _, duration := range []int{0, -1, 301, 9999} {
-		success, output := m.CPUProfile(9, "flamegraph", duration, false)
+		success, output := m.CPUProfile(9, "flamegraph", duration, false, false)
 		if success {
 			t.Errorf("CPUProfile(duration=%d) success = true, want false", duration)
 		}

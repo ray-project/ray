@@ -1497,6 +1497,137 @@ def test_node_head_uses_fully_qualified_services_call():
     assert not re.search(r"(^|[^.\w])services\.check_raygo_available", src)
 
 
+def test_start_api_server_uses_go_dashboard_when_enabled(monkeypatch, tmp_path):
+    """With the Go dashboard switch on, start_api_server launches raygo dashboard."""
+    launched = {}
+
+    def fake_start_ray_process(command, *args, **kwargs):
+        launched["command"] = command
+        return object()
+
+    class FakeGcsClient:
+        def internal_kv_get(self, key, namespace):
+            raise RuntimeError("no GCS in this unit test")
+
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_DASHBOARD_HEAD", True)
+    monkeypatch.setattr(
+        ray._private.services, "start_ray_process", fake_start_ray_process
+    )
+    # start_api_server polls the dashboard URL from the internal KV right
+    # after launching the process. A real GcsClient would block on the GCS
+    # dial for the whole retry window and then terminate the test process,
+    # so fake it; the raised lookup error lands in the swallowed
+    # raise_on_failure=False error path.
+    monkeypatch.setattr(ray._private.services, "GcsClient", FakeGcsClient)
+    monkeypatch.setattr(ray.experimental.internal_kv, "global_gcs_client", None)
+    monkeypatch.setattr(ray.experimental.internal_kv, "_initialized", False)
+
+    ray._private.services.start_api_server(
+        include_dashboard=False,
+        raise_on_failure=False,
+        host="127.0.0.1",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex="0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+        node_ip_address="127.0.0.1",
+        temp_dir=str(tmp_path),
+        logdir=str(tmp_path),
+        session_dir=str(tmp_path),
+    )
+
+    command = launched["command"]
+    assert command[0].endswith("raygo")
+    assert command[1] == "dashboard"
+    assert any(flag.startswith("--gcs-address=") for flag in command)
+
+
+def test_build_go_dashboard_agent_command_flags():
+    """The extracted Go dashboard agent builder emits the launch flags."""
+    command = ray._private.services._build_go_dashboard_agent_command(
+        node_id="0" * 32,
+        node_ip_address="127.0.0.1",
+        metrics_agent_port=12345,
+        dashboard_agent_listen_port=54321,
+        plasma_store_name="/tmp/plasma",
+        raylet_name="/tmp/raylet",
+        temp_dir="/tmp/ray/tmp",
+        session_dir="/tmp/ray/session",
+        session_name="session_2026-10-27",
+        log_dir="/tmp/ray/logs",
+        max_bytes=512 * 1024 * 1024,
+        backup_count=5,
+        gcs_address="127.0.0.1:6379",
+        cluster_id="0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+        is_head_node=True,
+    )
+    assert command[0].endswith("raygo")
+    assert command[1] == "dashboard-agent"
+    for flag in (
+        "--node-id-hex=",
+        "--grpc-port=12345",
+        "--listen-port=54321",
+        "--gcs-address=127.0.0.1:6379",
+        "--cluster-id-hex=",
+        "--is-head=true",
+    ):
+        assert any(f.startswith(flag) or f == flag for f in command), (flag, command)
+
+
+def test_setup_worker_prefix_switches_with_the_go_flag(monkeypatch):
+    """setup_worker_prefix must follow RAY_ENABLE_GO_SETUP_WORKER in both directions."""
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_SETUP_WORKER", True)
+    assert ray._private.services.setup_worker_prefix("/tmp/setup_worker.py") == [
+        ray._private.services.RAYGO_EXECUTABLE,
+        ray_constants.RAYGO_AVAILABLE_COMMAND_SETUP_WORKER,
+    ]
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_SETUP_WORKER", False)
+    assert ray._private.services.setup_worker_prefix("/tmp/setup_worker.py") == [
+        sys.executable,
+        "/tmp/setup_worker.py",
+    ]
+
+
+def test_build_go_runtime_env_agent_command_subcommand():
+    """The Go runtime env agent command targets the raygo runtime-env-agent."""
+    command = ray._private.services.build_go_runtime_env_agent_command(
+        "127.0.0.1",
+        "12345",
+        "127.0.0.1:6379",
+        "0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+        "/tmp/resource_dir",
+        512 * 1024 * 1024,
+        5,
+        "/tmp/ray/logs",
+        "/tmp/ray/tmp",
+        "/tmp/ray/session",
+        "0" * 32,
+    )
+    assert command[0].endswith("raygo")
+    assert command[1] == ray_constants.RAYGO_AVAILABLE_COMMAND_RUNTIME_ENV_AGENT
+
+
+def test_start_monitor_uses_go_command_when_enabled(monkeypatch, tmp_path):
+    """With the Go autoscaler switch on, start_monitor launches raygo monitor."""
+    launched = {}
+
+    def fake_start_ray_process(command, *args, **kwargs):
+        launched["command"] = command
+        return object()
+
+    monkeypatch.setattr(ray_constants, "ENABLE_GO_AUTOSCALER_MONITOR", True)
+    monkeypatch.setattr(
+        ray._private.services, "start_ray_process", fake_start_ray_process
+    )
+
+    ray._private.services.start_monitor(
+        gcs_address="127.0.0.1:6379", logs_dir=str(tmp_path)
+    )
+
+    command = launched["command"]
+    assert command[0].endswith("raygo")
+    assert command[1] == ray_constants.RAYGO_AVAILABLE_COMMAND_MONITOR
+    assert any(flag.startswith("--logs-dir=") for flag in command)
+
+
 if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

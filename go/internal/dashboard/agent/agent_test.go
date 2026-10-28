@@ -16,12 +16,14 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -399,5 +401,120 @@ func TestUnaryRecoveryInterceptorKeepsServerAlive(t *testing.T) {
 	}
 	if err := conn.Invoke(ctx, "/test.RecoveryService/Healthy", &proto.ListLogsRequest{}, &proto.ListLogsReply{}); err != nil {
 		t.Fatalf("healthy call after a recovered panic = %v, want nil", err)
+	}
+}
+
+// failingKVClient is a gcs.Client whose Put always fails, forcing the GCS
+// registration step of Run to return an error. It embeds the gcs.Client
+// interface so it satisfies the full interface while only overriding Put.
+type failingKVClient struct {
+	gcs.Client
+}
+
+func (f *failingKVClient) Put(context.Context, string, string, []byte, bool) (bool, error) {
+	return false, errors.New("gcs put failed")
+}
+
+// failingModule is a Module whose Start always fails, forcing Run to abort
+// after the servers are already bound and their ports persisted.
+type failingModule struct{}
+
+func (failingModule) Start(context.Context) error       { return errors.New("boom") }
+func (failingModule) RegisterHTTP(*http.ServeMux) error { return nil }
+func (failingModule) RegisterGRPC(*grpc.Server) error   { return nil }
+
+// testConfig builds a Run config with a throwaway session directory and
+// dynamically allocated ports, mirroring TestRunPersistsDashboardAgentPorts.
+func testConfig(t *testing.T) Config {
+	t.Helper()
+	return Config{
+		NodeIP:     "127.0.0.1",
+		NodeID:     ids.NewNodeID(),
+		SessionDir: t.TempDir(),
+		GCS:        &fakeKVClient{},
+	}
+}
+
+// readPersistedPorts reads the port-discovery files persistAgentPorts wrote
+// under SessionDir and returns the ports corresponding to a bound listener.
+// The metrics export file is written as -1 (the Go agent does not export
+// metrics), so it is skipped.
+func readPersistedPorts(t *testing.T, cfg Config) []int {
+	t.Helper()
+	return []int{
+		readPersistedPort(t, cfg.SessionDir, cfg.NodeID, metricsAgentPortName),
+		readPersistedPort(t, cfg.SessionDir, cfg.NodeID, dashboardAgentListenPortName),
+	}
+}
+
+// TestRunReleasesServersWhenModuleStartFails verifies that a module failing to
+// start releases both the HTTP and gRPC listeners instead of returning with
+// them still bound.
+func TestRunReleasesServersWhenModuleStartFails(t *testing.T) {
+	cfg := testConfig(t)
+	err := Run(context.Background(), cfg, []Module{failingModule{}})
+	if err == nil || !strings.Contains(err.Error(), "start module") {
+		t.Fatalf("Run err = %v, want a start module failure", err)
+	}
+	for _, port := range readPersistedPorts(t, cfg) {
+		conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		if dialErr == nil {
+			conn.Close()
+			t.Fatalf("port %d still accepting connections after Run failed", port)
+		}
+	}
+}
+
+// TestRunReleasesHTTPServerWhenGRPCServerFails verifies that failing to create
+// the gRPC server releases the already-bound HTTP listener instead of leaking
+// it. The gRPC failure happens before persistAgentPorts runs, so no port files
+// exist; the HTTP port is pre-picked instead and probed after Run returns.
+func TestRunReleasesHTTPServerWhenGRPCServerFails(t *testing.T) {
+	// Occupy a gRPC port so newGRPCServer fails to bind it.
+	grpcLis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("occupy gRPC port: %v", err)
+	}
+	defer grpcLis.Close()
+	grpcPort := grpcLis.Addr().(*net.TCPAddr).Port
+
+	// Pick a currently-free port for the HTTP listener.
+	httpProbe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("probe HTTP port: %v", err)
+	}
+	httpPort := httpProbe.Addr().(*net.TCPAddr).Port
+	httpProbe.Close()
+
+	cfg := testConfig(t)
+	cfg.GRPCPort = grpcPort
+	cfg.ListenPort = httpPort
+	err = Run(context.Background(), cfg, nil)
+	if err == nil || !strings.Contains(err.Error(), "create gRPC server") {
+		t.Fatalf("Run err = %v, want a create gRPC server failure", err)
+	}
+	conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", httpPort), time.Second)
+	if dialErr == nil {
+		conn.Close()
+		t.Fatalf("HTTP port %d still accepting connections after Run failed", httpPort)
+	}
+}
+
+// TestRunReleasesServersWhenGCSRegistrationFails verifies that failing to
+// register the agent address in GCS releases both the HTTP and gRPC listeners
+// instead of returning with them still bound.
+func TestRunReleasesServersWhenGCSRegistrationFails(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.GCS = &failingKVClient{}
+	err := Run(context.Background(), cfg, nil)
+	if err == nil || !strings.Contains(err.Error(), "register agent to GCS") {
+		t.Fatalf("Run err = %v, want a register agent to GCS failure", err)
+	}
+	for _, port := range readPersistedPorts(t, cfg) {
+		conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		if dialErr == nil {
+			conn.Close()
+			t.Fatalf("port %d still accepting connections after Run failed", port)
+		}
 	}
 }

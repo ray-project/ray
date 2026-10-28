@@ -344,6 +344,26 @@ func cpuProfilingExecutor(cap *cmdCapture, content string) commandExecutor {
 	}
 }
 
+func TestEffectiveMemoryProfileDurationClampsNonPositive(t *testing.T) {
+	cases := []struct {
+		name string
+		in   int64
+		want int64
+	}{
+		{"zero falls back to the default", 0, memoryProfileDefaultDurationSeconds},
+		{"negative falls back to the default", -5, memoryProfileDefaultDurationSeconds},
+		{"positive passes through", 7, 7},
+		{"above the maximum is capped", memoryProfileMaxDurationSeconds + 1000, memoryProfileMaxDurationSeconds},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := effectiveMemoryProfileDuration(tc.in); got != tc.want {
+				t.Fatalf("effectiveMemoryProfileDuration(%d) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 // memoryProfilingExecutor simulates the memray attach/detach/report flow,
 // creating the artifact files the ProfileManager reads back after each command.
 // The attach command carries "-o <dir>/memray/<name>.bin" and the report command

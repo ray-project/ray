@@ -1,0 +1,106 @@
+name: go-runtime
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Hosted-runner gate for the Go runtime. See go/CI.md for the boundary: what
+# this workflow deliberately does not cover (the cgo and generated-proto
+# packages, the cross-language tests and the real-cluster lanes) and the one
+# bazel command contributors run locally instead.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "go/**"
+      - "python/ray/_private/services.py"
+      - "python/ray/_private/ray_constants.py"
+      - ".github/workflows/go-runtime.yml"
+  push:
+    branches: [master]
+
+jobs:
+  fast-hooks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit
+        run: pip install pre-commit==3.5.0
+      # The fast subset of .pre-commit-config.yaml, run by id. Two hooks from
+      # the config are left out because they fail on files already in the tree
+      # (not touched by this workflow): end-of-file-fixer rewrites
+      # go/proto/BUILD.bazel and go/pkg/version/{version.go,BUILD.bazel}, and
+      # black reformats tools/sync/cpp_classify.py and
+      # go/examples/test_go_call_python.py. Re-enable them once those files
+      # are cleaned up. The config's heavier hooks (mypy, cpplint, shellcheck,
+      # clang-format and friends) are also not part of this gate; the local
+      # pre-commit run stays the full check.
+      - name: Run the fast hooks
+        run: |
+          for hook in trailing-whitespace check-added-large-files \
+                      check-ast check-json check-toml ruff prettier buildifier; do
+            pre-commit run "$hook" --all-files
+          done
+
+  pure-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: go/go.sum
+      - name: Build, vet and test the non-cgo, non-proto packages
+        working-directory: go
+        run: |
+          pure=$(scripts/list_pure_go_packages.sh)
+          echo "Pure-go packages:"; echo "$pure"
+          test -n "$pure"
+          go build $(printf '%s\n' $pure)
+          go vet  $(printf '%s\n' $pure)
+          go test $(printf '%s\n' $pure)
+
+  fleet-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # Trimmed to what a bare runner satisfies. The script's --dry-run still
+      # dies in its preflight when the ray CLI is missing, and its Go-artifact
+      # checks need a packaged runtime, so the full plan walk is not runnable
+      # here. Both checks it does satisfy run instead: the shell syntax check,
+      # and its driver-table validation (check_driver_names runs before the
+      # preflight, so rejecting an unknown --driver exercises the table and the
+      # argument validation without ray installed).
+      - name: Validate the e2e fleet configuration
+        run: |
+          bash -n go/e2e/run_fleet.sh
+          if out=$(go/e2e/run_fleet.sh --driver no-such-driver --dry-run 2>&1); then
+            echo "expected an unknown --driver to be rejected, got:"; echo "$out"; exit 1
+          fi
+          printf '%s\n' "$out" | grep -q "no driver named 'no-such-driver'"
+
+  python-switch-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true   # advisory: needs a compiled ray install; see go/CI.md
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install upstream ray, overlay this tree's switch layer, run the launch tests
+        run: |
+          pip install --pre ray pytest
+          site=$(python -c 'import ray, os; print(os.path.dirname(ray.__file__))')
+          cp python/ray/_private/services.py      "$site/_private/services.py"
+          cp python/ray/_private/ray_constants.py "$site/_private/ray_constants.py"
+          pytest python/ray/tests/test_logging.py -k "go or raygo"

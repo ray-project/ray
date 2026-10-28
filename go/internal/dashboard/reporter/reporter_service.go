@@ -11,6 +11,21 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// effectiveMemoryProfileDuration clamps a client-supplied profile duration.
+// The proto field is uint32 and client-controlled, so zero and negative values
+// fall back to the default (a negative value would drive the wait timer with
+// a negative interval and fire immediately), and anything above the maximum
+// is capped.
+func effectiveMemoryProfileDuration(seconds int64) int64 {
+	if seconds <= 0 {
+		return memoryProfileDefaultDurationSeconds
+	}
+	if seconds > memoryProfileMaxDurationSeconds {
+		return memoryProfileMaxDurationSeconds
+	}
+	return seconds
+}
+
 // memoryProfileSleep is the base sleep applied after attaching the memray
 // profiler so sampling can run before detaching. It is a package-level variable
 // so tests can collapse it to zero.
@@ -70,7 +85,7 @@ func (s *ReporterService) GetTraceback(_ context.Context, req *proto.GetTracebac
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request must not be nil")
 	}
-	success, output := s.profileManager.TraceDump(int(req.GetPid()), req.GetNative())
+	success, output := s.profileManager.TraceDump(int(req.GetPid()), req.GetNative(), req.GetSubprocesses())
 	return &proto.GetTracebackReply{Success: success, Output: output}, nil
 }
 
@@ -79,7 +94,7 @@ func (s *ReporterService) CpuProfiling(_ context.Context, req *proto.CpuProfilin
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request must not be nil")
 	}
-	success, output := s.profileManager.CPUProfile(int(req.GetPid()), req.GetFormat(), int(req.GetDuration()), req.GetNative())
+	success, output := s.profileManager.CPUProfile(int(req.GetPid()), req.GetFormat(), int(req.GetDuration()), req.GetNative(), req.GetSubprocesses())
 	return &proto.CpuProfilingReply{Success: success, Output: output}, nil
 }
 
@@ -102,13 +117,7 @@ func (s *ReporterService) MemoryProfiling(ctx context.Context, req *proto.Memory
 		return nil, status.Error(codes.InvalidArgument, "request must not be nil")
 	}
 	pid := int(req.GetPid())
-	duration := req.GetDuration()
-	if duration == 0 {
-		duration = memoryProfileDefaultDurationSeconds
-	}
-	if duration > memoryProfileMaxDurationSeconds {
-		duration = memoryProfileMaxDurationSeconds
-	}
+	duration := effectiveMemoryProfileDuration(int64(req.GetDuration()))
 
 	attachSuccess, profilerFilename, attachOutput := s.profileManager.MemoryProfileAttach(
 		pid, req.GetNative(), req.GetTracePythonAllocators(), false)

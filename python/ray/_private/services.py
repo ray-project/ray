@@ -2006,44 +2006,27 @@ def start_raylet(
 
     if ray_constants.ENABLE_GO_DASHBOARD_AGENT:
         # Launch the Go dashboard agent (raygo dashboard-agent) instead of the
-        # Python one. is_head is passed explicitly because raylet starts the
-        # agent before registering its own node in GCS; deriving it from the
-        # node table here would deadlock the startup. The Python-only --head /
-        # --minimal / logging appends below are skipped.
-        dashboard_agent_command = [
-            RAYGO_EXECUTABLE,
-            "dashboard-agent",
-            f"--node-id-hex={node_id}",
-            f"--node-ip-address={node_ip_address}",
-            f"--grpc-port={metrics_agent_port}",
-            f"--listen-port={dashboard_agent_listen_port}",
-            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-            f"--object-store-name={plasma_store_name}",
-            f"--raylet-name={raylet_name}",
-            f"--temp-dir={temp_dir}",
-            f"--session-dir={session_dir}",
-            f"--session-name={session_name}",
-            f"--log-dir={log_dir}",
-            f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}",
-            f"--gcs-address={gcs_address}",
-            f"--cluster-id-hex={cluster_id}",
-            f"--is-head={'true' if is_head_node else 'false'}",
-        ]
-        if dashboard_agent_stdout_filepath:
-            dashboard_agent_command.append(
-                f"--stdout-filepath={dashboard_agent_stdout_filepath}"
-            )
-        else:
-            # The Go command always declares its stdout/stderr targets, even
-            # when not redirected to files.
-            dashboard_agent_command.append("--stdout-filepath=")
-        if dashboard_agent_stderr_filepath:
-            dashboard_agent_command.append(
-                f"--stderr-filepath={dashboard_agent_stderr_filepath}"
-            )
-        else:
-            dashboard_agent_command.append("--stderr-filepath=")
+        # Python one. The Python-only --head / --minimal / logging appends in
+        # the Python branch below are not part of the Go command.
+        dashboard_agent_command = _build_go_dashboard_agent_command(
+            node_id,
+            node_ip_address,
+            metrics_agent_port,
+            dashboard_agent_listen_port,
+            plasma_store_name,
+            raylet_name,
+            temp_dir,
+            session_dir,
+            session_name,
+            log_dir,
+            max_bytes,
+            backup_count,
+            gcs_address,
+            cluster_id,
+            is_head_node,
+            dashboard_agent_stdout_filepath,
+            dashboard_agent_stderr_filepath,
+        )
     else:
         dashboard_agent_command = [
             *_build_python_executable_command_memory_profileable(
@@ -2491,6 +2474,94 @@ def build_go_runtime_env_agent_command(
         command.append(f"--stdout-filepath={runtime_env_agent_stdout_filepath}")
     if runtime_env_agent_stderr_filepath:
         command.append(f"--stderr-filepath={runtime_env_agent_stderr_filepath}")
+    return command
+
+
+def _build_go_dashboard_agent_command(
+    node_id: str,
+    node_ip_address: str,
+    metrics_agent_port: Optional[int],
+    dashboard_agent_listen_port: Optional[int],
+    plasma_store_name: str,
+    raylet_name: str,
+    temp_dir: str,
+    session_dir: str,
+    session_name: str,
+    log_dir: str,
+    max_bytes: int,
+    backup_count: int,
+    gcs_address: str,
+    cluster_id: str,
+    is_head_node: bool,
+    dashboard_agent_stdout_filepath: Optional[str] = None,
+    dashboard_agent_stderr_filepath: Optional[str] = None,
+) -> List[str]:
+    """Build the raygo dashboard-agent command launched by start_raylet.
+
+    Extracted verbatim from start_raylet so the command construction is
+    unit-testable; the flags and their order are unchanged.
+
+    Args:
+        node_id: The hex ID of this node.
+        node_ip_address: The IP address of this node.
+        metrics_agent_port: The port of the metrics agent, passed as the
+            agent's gRPC port.
+        dashboard_agent_listen_port: The port at which the dashboard agent
+            listens to for HTTP.
+        plasma_store_name: The name of the plasma store socket.
+        raylet_name: The name of the raylet socket.
+        temp_dir: The path of the temporary directory Ray will use.
+        session_dir: The path of this session.
+        session_name: The current Ray session name.
+        log_dir: The path of the dir where log files are created.
+        max_bytes: Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count: Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
+        gcs_address: The address of the GCS server.
+        cluster_id: The cluster ID of this Ray cluster.
+        is_head_node: Whether this node is the head node. Passed explicitly
+            because raylet starts the agent before registering its own node
+            in GCS; deriving it from the node table here would deadlock the
+            startup.
+        dashboard_agent_stdout_filepath: The file path to dump dashboard
+            agent stdout. If None, the flag is passed empty.
+        dashboard_agent_stderr_filepath: The file path to dump dashboard
+            agent stderr. If None, the flag is passed empty.
+
+    Returns:
+        The command for starting the Go dashboard agent.
+    """
+    command = [
+        RAYGO_EXECUTABLE,
+        "dashboard-agent",
+        f"--node-id-hex={node_id}",
+        f"--node-ip-address={node_ip_address}",
+        f"--grpc-port={metrics_agent_port}",
+        f"--listen-port={dashboard_agent_listen_port}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--object-store-name={plasma_store_name}",
+        f"--raylet-name={raylet_name}",
+        f"--temp-dir={temp_dir}",
+        f"--session-dir={session_dir}",
+        f"--session-name={session_name}",
+        f"--log-dir={log_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
+        f"--is-head={'true' if is_head_node else 'false'}",
+    ]
+    if dashboard_agent_stdout_filepath:
+        command.append(f"--stdout-filepath={dashboard_agent_stdout_filepath}")
+    else:
+        # The Go command always declares its stdout/stderr targets, even
+        # when not redirected to files.
+        command.append("--stdout-filepath=")
+    if dashboard_agent_stderr_filepath:
+        command.append(f"--stderr-filepath={dashboard_agent_stderr_filepath}")
+    else:
+        command.append("--stderr-filepath=")
     return command
 
 

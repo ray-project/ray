@@ -89,6 +89,10 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 	}
 	grpcSrv, err := newGRPCServer(cfg, mods)
 	if err != nil {
+		// The HTTP listener may already be bound when the gRPC bind fails;
+		// release it before returning (shutdownServers no-ops the absent gRPC
+		// side).
+		shutdownServers(httpSrv, nil)
 		return fmt.Errorf("create gRPC server: %w", err)
 	}
 
@@ -109,6 +113,7 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 	// errors surface before any traffic is accepted.
 	for _, m := range mods {
 		if err := m.Start(ctx); err != nil {
+			shutdownServers(httpSrv, grpcSrv)
 			return fmt.Errorf("start module: %w", err)
 		}
 	}
@@ -118,6 +123,7 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 		// configured ports are 0, and a 0 in GCS makes head-side lookups
 		// through ports_by_node resolve to port 0.
 		if err := registerAgentToGCS(ctx, cfg, grpcPort, listenPort); err != nil {
+			shutdownServers(httpSrv, grpcSrv)
 			return fmt.Errorf("register agent to GCS: %w", err)
 		}
 	}
@@ -142,15 +148,24 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 	}
 }
 
-// shutdownServers gracefully shuts down both servers, best-effort. httpSrv is
-// nil when the HTTP server degraded at startup and there is nothing to stop.
+// shutdownServers gracefully shuts down both servers, best-effort, and always
+// closes the underlying listeners so an error path that aborts before Serve is
+// reached still releases the bound ports. Either server may be nil (the HTTP
+// server degrades at startup, and the gRPC server is absent when its creation
+// fails); a nil server is a no-op.
 func shutdownServers(httpSrv *httpServer, grpcSrv *grpcServer) {
 	if httpSrv != nil {
 		if err := httpSrv.shutdown(context.Background()); err != nil {
 			log.Log.Error(err, "failed to shut down HTTP server")
 		}
+		// Shutdown only closes listeners registered by Serve; when Run aborts
+		// before serving starts, close the raw listener directly.
+		httpSrv.listener.Close()
 	}
-	grpcSrv.stop()
+	if grpcSrv != nil {
+		grpcSrv.stop()
+		grpcSrv.listener.Close()
+	}
 }
 
 // registerAgentToGCS publishes this agent's HTTP and gRPC addresses in GCS

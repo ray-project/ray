@@ -147,10 +147,11 @@ func formatFailedCommand(cmd string, res CommandResult) string {
 }
 
 // TraceDump captures a stack trace for pid via `py-spy dump -p <pid>`,
-// appending --native on linux when native is requested. It returns
-// (success, output) where output is the trace on success or an error message
-// on failure.
-func (m *ProfileManager) TraceDump(pid int, native bool) (bool, string) {
+// appending --native on linux when native is requested and
+// --subprocesses when requested, matching the Python profile manager. It
+// returns (success, output) where output is the trace on success or an error
+// message on failure.
+func (m *ProfileManager) TraceDump(pid int, native, subprocesses bool) (bool, string) {
 	if err := validatePID(pid); err != nil {
 		return false, err.Error()
 	}
@@ -158,6 +159,9 @@ func (m *ProfileManager) TraceDump(pid int, native bool) (bool, string) {
 	args := []string{"dump", "-p", strconv.Itoa(pid)}
 	if osName == "linux" && native {
 		args = append(args, "--native")
+	}
+	if subprocesses {
+		args = append(args, "--subprocesses")
 	}
 	res := runCommandDetail("py-spy", args...)
 	if res.ExitCode != 0 {
@@ -168,8 +172,10 @@ func (m *ProfileManager) TraceDump(pid int, native bool) (bool, string) {
 
 // CPUProfile samples the process for duration seconds via `py-spy record`
 // writing the result in the requested format. Valid formats are flamegraph,
-// raw and speedscope, matching the Python CpuProfilingManager.
-func (m *ProfileManager) CPUProfile(pid int, format string, duration int, native bool) (bool, string) {
+// raw and speedscope, matching the Python CpuProfilingManager. When
+// subprocesses is requested, --subprocesses is appended so child processes are
+// sampled too, matching the Python profile manager.
+func (m *ProfileManager) CPUProfile(pid int, format string, duration int, native, subprocesses bool) (bool, string) {
 	if err := validatePID(pid); err != nil {
 		return false, err.Error()
 	}
@@ -202,6 +208,9 @@ func (m *ProfileManager) CPUProfile(pid int, format string, duration int, native
 	}
 	if osName == "linux" && native {
 		args = append(args, "--native")
+	}
+	if subprocesses {
+		args = append(args, "--subprocesses")
 	}
 	res := runCommandDetail("py-spy", args...)
 	if res.ExitCode != 0 {
