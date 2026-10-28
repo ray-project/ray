@@ -21,9 +21,7 @@ You learn how to do the following:
 
 Here's the final code for reference:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
 
@@ -137,9 +135,7 @@ with result.checkpoint.as_directory() as checkpoint_dir:
 :::{tab-item} PyTorch Lightning
 <!-- This snippet isn't tested because it doesn't use any Ray code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import torch
 from torchvision.models import resnet18
 from torchvision.datasets import FashionMNIST
@@ -217,6 +213,8 @@ Ray Train sets up your distributed process group on each worker. You only need t
 ```
 
 The following sections discuss each change.
+
+The `datamodule` in this example is a standard Lightning `LightningDataModule`, which works with Ray Train unchanged. To compare it with Ray Data for loading and preprocessing, see {ref}`train-datasets-pytorch`.
 
 ### Configure the distributed strategy
 
@@ -393,9 +391,7 @@ Ray 2.7 introduced the unified {class}`~ray.train.torch.TorchTrainer` API, which
 :::{tab-item} Deprecated `LightningTrainer`
 <!-- This snippet isn't tested because it raises a hard deprecation warning. -->
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 
 config_builder = LightningConfigBuilder()
@@ -441,9 +437,7 @@ model = lightning_checkpoint.get_model(MyLightningModule)
 :::{tab-item} `TorchTrainer`
 <!-- This snippet isn't tested because it runs with 4 GPUs, and CI is only run with 1. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 
 import lightning.pytorch as pl

@@ -1,0 +1,202 @@
+-- Shared HTTP transport and parsing for HAProxy request routers.
+
+local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
+local REQUEST_ID_HEADER = "x-request-id"
+local REQUEST_PATH_HEADER = "${REQUEST_PATH_HEADER}"
+local SESSION_HEADER = "${SESSION_HEADER}"
+
+local function first_header(hdrs, name)
+    local entry = hdrs and hdrs[name]
+    if entry then
+        return entry[0]
+    end
+    return nil
+end
+
+local function session_id_from(hdrs)
+    if SESSION_HEADER == "" or not hdrs then
+        return nil
+    end
+    local entry = hdrs[SESSION_HEADER]
+    if not entry then
+        local alt = SESSION_HEADER:gsub("-", "_")
+        if alt == SESSION_HEADER then
+            alt = SESSION_HEADER:gsub("_", "-")
+        end
+        entry = hdrs[alt]
+    end
+    if entry then
+        return entry[0]
+    end
+    return nil
+end
+
+local function header_line(name, value)
+    if value and value ~= "" then
+        return name .. ": " .. value .. "\r\n"
+    end
+    return ""
+end
+
+local function call_router(server, request)
+    local sock = core.tcp()
+    sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
+    if not sock:connect(server.host, server.port) then
+        return nil, "router_unreachable"
+    end
+    local req = "POST " .. (request.path or "/internal/route") .. " HTTP/1.0\r\n"
+        .. "Host: " .. server.host_header .. "\r\n"
+        .. "Connection: close\r\n"
+        .. "Content-Length: " .. #request.body .. "\r\n"
+        .. request.headers
+        .. "\r\n"
+        .. request.body
+    if not sock:send(req) then
+        sock:close()
+        return nil, "router_unreachable"
+    end
+    local response = sock:receive("*a")
+    sock:close()
+    if not response or response == "" then
+        return nil, "router_timeout"
+    end
+    return response
+end
+
+local function parse_response(response)
+    local status = tonumber(response:match("^HTTP/[%d%.]+ (%d%d%d)"))
+    local head_end, body_start = response:find("\r\n\r\n", 1, true)
+    if not status or not head_end then
+        return nil
+    end
+    return status, response:sub(1, head_end - 1), response:sub(body_start + 1)
+end
+
+local function response_header(head, name)
+    local escaped = name:gsub("%-", "%%-")
+    return head:match("\r\n" .. escaped .. ":%s*([^\r\n]*)")
+        or head:lower():match("\r\n" .. escaped:lower() .. ":%s*([^\r\n]*)")
+end
+
+local JSON_ESCAPES = {
+    ['"'] = '"',
+    ["\\"] = "\\",
+    ["/"] = "/",
+    b = string.char(8),
+    f = string.char(12),
+    n = "\n",
+    r = "\r",
+    t = "\t",
+}
+
+local function json_string_at(json_body, start)
+    if json_body:sub(start, start) ~= '"' then
+        return nil
+    end
+    local parts = {}
+    local i = start + 1
+    while i <= #json_body do
+        local byte = json_body:byte(i)
+        if byte == 34 then
+            return table.concat(parts), i + 1
+        elseif byte == 92 then
+            local escape = json_body:sub(i + 1, i + 1)
+            local decoded = JSON_ESCAPES[escape]
+            if decoded then
+                parts[#parts + 1] = decoded
+                i = i + 2
+            elseif escape == "u" then
+                local hex = json_body:sub(i + 2, i + 5)
+                if not hex:match("^%x%x%x%x$$") then
+                    return nil
+                end
+                local codepoint = tonumber(hex, 16)
+                i = i + 6
+                if codepoint >= 0xD800 and codepoint <= 0xDBFF then
+                    if json_body:sub(i, i + 1) ~= "\\u" then
+                        return nil
+                    end
+                    local low_hex = json_body:sub(i + 2, i + 5)
+                    if not low_hex:match("^%x%x%x%x$$") then
+                        return nil
+                    end
+                    local low = tonumber(low_hex, 16)
+                    if low < 0xDC00 or low > 0xDFFF then
+                        return nil
+                    end
+                    codepoint = 0x10000 + (codepoint - 0xD800) * 0x400 + low - 0xDC00
+                    i = i + 6
+                elseif codepoint >= 0xDC00 and codepoint <= 0xDFFF then
+                    return nil
+                end
+                parts[#parts + 1] = utf8.char(codepoint)
+            else
+                return nil
+            end
+        elseif byte < 32 then
+            return nil
+        else
+            parts[#parts + 1] = string.char(byte)
+            i = i + 1
+        end
+    end
+    return nil
+end
+
+local function skip_json_whitespace(json_body, start)
+    local i = start
+    while i <= #json_body and json_body:sub(i, i):match("%s") do
+        i = i + 1
+    end
+    return i
+end
+
+local function json_string_field(json_body, name)
+    local i = skip_json_whitespace(json_body, 1)
+    if json_body:sub(i, i) ~= "{" then
+        return nil
+    end
+    local closing = {["{"] = "}", ["["] = "]"}
+    local stack = {"}"}
+    i = i + 1
+    while i <= #json_body do
+        local char = json_body:sub(i, i)
+        if char == '"' then
+            local value, next_i = json_string_at(json_body, i)
+            if not next_i then
+                return nil
+            end
+            if #stack == 1 and stack[1] == "}" then
+                local colon = skip_json_whitespace(json_body, next_i)
+                if value == name and json_body:sub(colon, colon) == ":" then
+                    local start = skip_json_whitespace(json_body, colon + 1)
+                    return json_string_at(json_body, start)
+                end
+            end
+            i = next_i
+        elseif char == "{" or char == "[" then
+            stack[#stack + 1] = closing[char]
+            i = i + 1
+        elseif char == "}" or char == "]" then
+            if char ~= stack[#stack] then
+                return nil
+            end
+            stack[#stack] = nil
+            if #stack == 0 then
+                return nil
+            end
+            i = i + 1
+        else
+            i = i + 1
+        end
+    end
+    return nil
+end
+
+local function truncated_full_length(txn, body)
+    local cl = tonumber(txn.sf:hdr("content-length"))
+    if cl and #body < cl then
+        return cl
+    end
+    return nil
+end
