@@ -86,9 +86,9 @@ doc/source/ray-contribute/doc_code/*.md
 # when it runs, and a page with no target selects nothing. A page rename, a
 # move, or a page gaining a runnable example needs no edit to this file.
 #
-# The cost: rayci marks a step's dependencies before Buildkite evaluates the
-# step's `if:` label guard, so every match also builds the opt-in step's images,
-# from cache, even when the step itself is skipped.
+# Without the label, the docs-example-test rule in .buildkite/docs.labels.yaml
+# skips the opt-in step before rayci marks its dependencies, so a match builds
+# none of its images.
 #
 # The API reference rules above still claim their pages first. The prose skip
 # rule below still skips prose everywhere else in the repository.
