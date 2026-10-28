@@ -8,7 +8,11 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
@@ -369,6 +373,39 @@ class TestMultiplexWrapper:
         assert multiplexer._get_loading_and_loaded_model_ids() == ["2"]
         # "1" left the cache, so it must be pushed again.
         assert multiplexer._push_multiplexed_replica_info
+
+    async def test_shutdown_stops_pushing_model_ids(
+        self, start_serve_with_context, monkeypatch
+    ):
+        """Unloading models in shutdown doesn't push after the replica is gone."""
+        pushed = []
+
+        class FakeClient:
+            def record_request_routing_info(self, info):
+                pushed.append(info.multiplexed_model_ids)
+
+        monkeypatch.setattr(
+            "ray.serve.multiplex._get_global_client", lambda: FakeClient()
+        )
+        monkeypatch.setattr(
+            "ray.serve.multiplex.PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S", 0.01
+        )
+
+        async def model_load_func(model_id: str):
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=2
+        )
+        await multiplexer.load_model("1")
+        await multiplexer.load_model("2")
+        await async_wait_for_condition(lambda: ["1", "2"] in map(sorted, pushed))
+
+        pushed.clear()
+        await multiplexer.shutdown()
+        await asyncio.sleep(0.1)
+        assert not multiplexer.models
+        assert pushed == []
 
 
 class TestBasicAPI:

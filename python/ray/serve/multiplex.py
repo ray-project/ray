@@ -156,6 +156,9 @@ class _ModelMultiplexWrapper:
 
     async def shutdown(self):
         """Unload all the models when the model multiplexer is deleted."""
+        # Stop pushing first, so unloading doesn't push model IDs for a
+        # replica the controller has already removed.
+        await self.metrics_pusher.graceful_shutdown()
         while len(self.models) > 0:
             try:
                 await self.unload_model_lru()
