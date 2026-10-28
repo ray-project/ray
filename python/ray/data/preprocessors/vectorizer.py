@@ -400,13 +400,11 @@ class CountVectorizer(SerializablePreprocessorBase):
             sorted_tokens = [token for (token, count) in token_counts.most_common()]
             tokenized = _tokenize_ignoring_nulls(df[col], self._tokenization_fn)
 
-            def count_row(
-                tokens: List[str], vocab: List[str] = sorted_tokens
-            ) -> List[int]:
-                if not vocab:
+            def count_row(tokens: List[str]) -> List[int]:
+                if not sorted_tokens:
                     return []
                 counts = Counter(tokens)
-                return [counts[token] for token in vocab]
+                return [counts[token] for token in sorted_tokens]
 
             # Build each row's integer count vector directly so a missing row
             # in the batch does not upcast non-null rows to float64 via
