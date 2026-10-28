@@ -528,17 +528,9 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         self._auth_token_path = None
         # shortcut: in token mode this mounts the local token even when the
         # cluster YAML mounts its own ~/.ray/auth_token, which the provider
-        # can't see, and it needs a local token to exist: `ray up` creates one
-        # first, but `ray exec --start`/`ray attach --start` don't. Pass the
-        # YAML's file_mounts in, and create the token there, if a test needs it.
+        # can't see. Pass the YAML's file_mounts in if a test needs it.
         if token_auth_enabled_locally():
             self._auth_token_path = os.path.join(self._volume_dir, "auth_token")
-            # Written once per volume dir: later constructions, such as for
-            # `ray down`, reuse it, and nodes have the file bind-mounted.
-            if not self.in_docker_container and not os.path.exists(
-                self._auth_token_path
-            ):
-                _write_cluster_auth_token(self._auth_token_path)
 
         self._node_state_path = os.path.join(self._volume_dir, "nodes.json")
         self._docker_status_path = os.path.join(self._volume_dir, "status.json")
@@ -751,6 +743,15 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
                 next_id = FAKE_HEAD_NODE_ID
             else:
                 next_id = self._next_hex_node_id()
+
+            # Written on the first launch, by then `ray up` has created the
+            # local token. Later launches reuse it: nodes bind-mount the file.
+            if (
+                self._auth_token_path
+                and not self.in_docker_container
+                and not os.path.exists(self._auth_token_path)
+            ):
+                _write_cluster_auth_token(self._auth_token_path)
 
             self._nodes[next_id] = {
                 "tags": tags,

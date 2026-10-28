@@ -729,10 +729,6 @@ def get_or_create_head_node(
 ) -> None:
     """Create the cluster head node, which in turn creates the workers."""
     global_event_system.execute_callback(CreateClusterEvent.cluster_booting_started)
-    if _ships_local_auth_token(config):
-        # Before the provider: the fake Docker provider mounts the token into
-        # its nodes when it's built.
-        load_or_create_cluster_token()
     provider = _provider or _get_node_provider(
         config["provider"], config["cluster_name"]
     )

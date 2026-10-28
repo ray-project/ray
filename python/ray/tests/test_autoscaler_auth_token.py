@@ -330,7 +330,7 @@ def test_ray_up_and_fake_provider_agree_on_unexpanded_token_path(
     with pytest.raises(AuthenticationError):
         ray_up()
     with pytest.raises(AuthenticationError):
-        make_fake_docker_provider(volume_dir)
+        fake_docker_node_volumes(volume_dir)
     assert not (volume_dir / "auth_token").exists()
 
 
@@ -448,7 +448,7 @@ def test_fake_docker_provider_removes_partial_token_file(clean_auth_env, monkeyp
         side_effect=OSError("disk full"),
     ):
         with pytest.raises(OSError):
-            make_fake_docker_provider(volume_dir)
+            fake_docker_node_volumes(volume_dir)
 
     assert not (volume_dir / "auth_token").exists()
 
@@ -458,11 +458,11 @@ def test_fake_docker_provider_writes_token_only_once(clean_auth_env, monkeypatch
     monkeypatch.setenv("RAY_AUTH_TOKEN", "env-token")
     volume_dir = clean_auth_env / "fake_docker"
     volume_dir.mkdir()
-    make_fake_docker_provider(volume_dir)
+    fake_docker_node_volumes(volume_dir)
     monkeypatch.delenv("RAY_AUTH_TOKEN")
 
-    # A later `ray down` or `ray exec` rebuilds the provider without a token.
-    make_fake_docker_provider(volume_dir)
+    # The head's autoscaler launches later workers without a local token.
+    fake_docker_node_volumes(volume_dir)
 
     assert (volume_dir / "auth_token").read_text() == "env-token"
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
@@ -483,39 +483,32 @@ def test_ships_symlinked_token_file_contents(clean_auth_env, monkeypatch):
 
 
 def test_fake_docker_provider_never_creates_a_token(clean_auth_env, monkeypatch):
-    # `ray down` also builds the provider; only `ray up` may create a token.
+    # Only `ray up` may create a token; `ray down` builds the provider without one.
     monkeypatch.setenv("RAY_FAKE_CLUSTER", "1")
     volume_dir = clean_auth_env / "fake_docker"
     volume_dir.mkdir()
 
+    make_fake_docker_provider(volume_dir)
     with pytest.raises(AuthenticationError):
-        make_fake_docker_provider(volume_dir)
+        fake_docker_node_volumes(volume_dir)
 
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
     assert not (volume_dir / "auth_token").exists()
 
 
-def test_creates_token_before_building_provider(clean_auth_env, monkeypatch):
-    # The fake Docker provider mounts the token into its nodes when built.
+def test_creates_token_before_launching_head(clean_auth_env):
+    # The fake Docker provider copies the local token when it launches a node.
     default_token_path = clean_auth_env / "home" / ".ray" / "auth_token"
-    token_existed_at_build = []
+    token_existed_at_launch = []
 
-    def build_provider(provider_config, cluster_name):
-        token_existed_at_build.append(default_token_path.exists())
-        return MockProvider()
+    class RecordingProvider(MockProvider):
+        def create_node(self, node_config, tags, count):
+            token_existed_at_launch.append(default_token_path.exists())
+            return super().create_node(node_config, tags, count)
 
-    monkeypatch.setattr(commands, "_get_node_provider", build_provider)
-    commands.get_or_create_head_node(
-        copy.deepcopy(CLUSTER_CONFIG),
-        printable_config_file="cluster.yaml",
-        no_restart=False,
-        restart_only=False,
-        yes=True,
-        override_cluster_name=None,
-        _runner=MockProcessRunner(),
-    )
+    ray_up(provider=RecordingProvider())
 
-    assert token_existed_at_build == [True]
+    assert token_existed_at_launch == [True]
 
 
 def test_fake_docker_runner_uploads_token_when_no_volume_holds_it(
