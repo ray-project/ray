@@ -41,7 +41,7 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
-from ray.exceptions import ObjectLostError
+from ray.exceptions import GetTimeoutError, ObjectLostError
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -53,10 +53,13 @@ logger = logging.getLogger(__name__)
 # Timeout for waiting for metadata object to become available (in seconds)
 METADATA_WAIT_TIMEOUT_S = 0.1
 
-# Timeout (s) for a blocking metadata/end-of-stream ``ray.get``. The timeout
+# Timeout (s) for a blocking metadata ``ray.get``. The timeout
 # includes shipping the object to this node, so a 0 timeout could cancel an
 # in-flight download; a small non-zero value avoids that.
 METADATA_GET_TIMEOUT_S = 1.0
+
+# Minimum interval between end-of-stream checks of an unavailable terminal object.
+TERMINAL_CHECK_INTERVAL_S = 0.1
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -142,7 +145,8 @@ class DeferredEmit:
 
 class TaskGeneratorState(Enum):
     """Lifecycle of a ``DataOpTask``'s streaming generator, as seen by the
-    data driver. Advances strictly ACTIVE -> DRAINED -> FINISHED."""
+    data driver. Advances strictly ACTIVE -> DRAINED -> FINISHED. Only
+    FINISHED means the task is complete."""
 
     ACTIVE = auto()
     DRAINED = auto()
@@ -243,6 +247,7 @@ class DataOpTask(OpTask):
         # only once this reaches 0 (all of the task's bundles emitted).
         self._pending_emit_count: int = 0
 
+        self._next_terminal_check_s: float = 0.0
         self._start_output_backpressure_s: Optional[float] = None
         self._total_output_backpressure_s: float = 0
 
@@ -296,6 +301,9 @@ class DataOpTask(OpTask):
         """
         bytes_read = 0
 
+        if self.has_finished:
+            return 0
+
         self._track_task_output_backpressure(max_bytes_to_read)
 
         if self._state is not TaskGeneratorState.ACTIVE or self.has_pending_emits():
@@ -305,6 +313,8 @@ class DataOpTask(OpTask):
             return 0
 
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
+            if self._can_finalize_stream():
+                break
             if self._pending_block_ref.is_nil():
                 assert self._pending_meta_ref.is_nil(), (
                     "This method expects streaming generators to yield blocks then "
@@ -312,24 +322,11 @@ class DataOpTask(OpTask):
                     "block, it means there's an error in the implementation."
                 )
 
-                # Poll for the next block non-blockingly (timeout_s=0) while the
-                # task is still producing. Once the stream is exhausted, the same
-                # `_next_sync` call must `ray.get` the generator's return object
-                # to surface StopIteration / task errors. A 0 timeout there
-                # issues and then immediately cancels the pull of a
-                # plasma-resident return object on every poll, so it would never
-                # arrive and the task would never be observed as finished. In
-                # that end-of-stream case only, use a bounded blocking timeout so
-                # the return object can be pulled; on timeout (e.g. lost to a
-                # dead node) we still fall through and retry on a later call.
-                next_timeout_s = (
-                    METADATA_GET_TIMEOUT_S
-                    if self._streaming_gen._stream_exhausted()
-                    else 0
-                )
+                # Always non-blocking: at end-of-stream the terminal object is
+                # fetched by ``_try_finalize_stream`` below.
                 try:
                     self._pending_block_ref = self._streaming_gen._next_sync(
-                        timeout_s=next_timeout_s
+                        timeout_s=0
                     )
                 except StopIteration:
                     self._state = TaskGeneratorState.DRAINED
@@ -394,6 +391,9 @@ class DataOpTask(OpTask):
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
+        if self._state is TaskGeneratorState.ACTIVE and self._can_finalize_stream():
+            self._try_finalize_stream()
+
         # Once drained, let the fetcher decide how completion is signalled:
         # inline fires the done-callback now (re-raising a task failure);
         # threaded postpones it until the deferred pairs emit (a no-op here).
@@ -401,6 +401,51 @@ class DataOpTask(OpTask):
             metadata_fetcher.in_data_ready_done(self)
 
         return bytes_read
+
+    def _can_finalize_stream(self) -> bool:
+        """Whether all output is consumed and only the end-of-stream check
+        remains.
+
+        Consumed is not delivered: pairs deferred during this call may not be
+        submitted to the fetcher yet, so terminal confirmation only marks the
+        task DRAINED. Only FINISHED, set once those pairs emit, means the task
+        is complete.
+        """
+        return (
+            self._pending_block_ref.is_nil()
+            and self._pending_meta_ref.is_nil()
+            and not self.has_pending_emits()
+            and self._streaming_gen._stream_exhausted()
+        )
+
+    def _try_finalize_stream(self) -> None:
+        """Non-blocking end-of-stream check, rate-limited per task.
+
+        ``ray.wait(fetch_local=True)`` starts a pull that outlives its zero
+        timeout, whereas a zero-timeout ``ray.get`` alone cancels the pull of a
+        remote object on every call.
+        """
+        now = time.monotonic()
+        if now < self._next_terminal_check_s:
+            return
+        self._next_terminal_check_s = now + TERMINAL_CHECK_INTERVAL_S
+        ref = self._streaming_gen.completed()
+        ready, _ = ray.wait([ref], timeout=0, fetch_local=True)
+        if not ready:
+            return
+        try:
+            ray.get(ref, timeout=0)
+        except GetTimeoutError:
+            return
+        except Exception as ex:
+            # Same error-ref convention as the ``_next_sync`` path.
+            self._pending_block_ref = ref
+            self._block_ready_callback(ref)
+            if isinstance(ex, ObjectLostError) and self.is_lineage_tracked:
+                # Stay ACTIVE so the executor can abort and reconstruct it.
+                raise
+            self._task_error = ex
+        self._state = TaskGeneratorState.DRAINED
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
         if max_bytes_to_read == 0:
@@ -413,8 +458,11 @@ class DataOpTask(OpTask):
         elif (
             max_bytes_to_read is None or max_bytes_to_read > 0
         ) and self._start_output_backpressure_s is not None:
-            # Increment cumulative duration of task being in output
-            # backpressure
+            self._finish_task_output_backpressure()
+
+    def _finish_task_output_backpressure(self) -> None:
+        """Close the open output-backpressure interval, if any."""
+        if self._start_output_backpressure_s is not None:
             self._total_output_backpressure_s += (
                 time.perf_counter() - self._start_output_backpressure_s
             )
@@ -509,6 +557,7 @@ class DataOpTask(OpTask):
         """Transition DRAINED -> FINISHED and fire ``task_done_callback``.
         A failed task reports the error with no stats; a successful one
         reports the final block's stats."""
+        self._finish_task_output_backpressure()
         if self._task_error is not None:
             self._task_done_callback(
                 self._task_error,
@@ -544,6 +593,7 @@ class DataOpTask(OpTask):
             # earlier abort); firing it twice would double-release the task's
             # resource reservations.
             return
+        self._finish_task_output_backpressure()
         self._task_done_callback(
             exception,
             None,  # TaskExecStats
