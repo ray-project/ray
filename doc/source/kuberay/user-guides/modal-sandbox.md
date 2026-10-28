@@ -6,11 +6,11 @@ myst:
 
 (kuberay-modal-sandbox)=
 
-# Deploy the Modal-compatible sandbox service on Kubernetes
+# Deploy Modal-compatible Ray Sandbox service using KubeRay
 
-This guide shows how to deploy the Modal-compatible Ray Sandbox gRPC API on Google Kubernetes Engine (GKE) using KubeRay and Ray Serve, and how to create and manage isolated sandboxes with the Modal Python SDK. KubeRay runs each Ray node as a Kubernetes Pod, so each Ray cluster consists of a head Pod and worker Pods.
+This guide shows how to deploy the Modal-compatible Ray Sandbox gRPC API on Google Kubernetes Engine (GKE) using KubeRay and Ray Serve, and how to create and manage isolated sandboxes with the Modal Python SDK.
 
-Ray Sandboxes run untrusted code inside lightweight [gVisor](https://gvisor.dev/docs/) `runsc` containers directly on worker Pods. The `ray.experimental.sandbox.http.grpc_app` gRPC facade runs behind Ray Serve's gRPC proxy and implements the `ModalClient` control-plane and `TaskCommandRouter` command-router services that the Modal client SDK uses for its Sandbox API. You can point an unmodified Modal Python client at a KubeRay RayService to create sandboxes, execute commands, and read or write files on your own Kubernetes cluster.
+Ray Sandboxes run untrusted code inside lightweight [gVisor](https://gvisor.dev/docs/) `runsc` containers directly on worker Pods. The `ray.experimental.sandbox.http.grpc_app` gRPC facade runs behind Ray Serve's gRPC proxy and implements the `ModalClient` control-plane and `TaskCommandRouter` command-router services that the Modal client SDK uses for its Sandbox API. You can point an unmodified Modal Python client at a KubeRay RayService to create sandboxes, execute commands, and read or write files on your own Ray cluster.
 
 :::{warning}
 Ray Sandboxes, provided in the `ray.experimental.sandbox` package, is an {ref}`alpha <api-stability-alpha>` library. The API can change or disappear in any release before it graduates to stable.
