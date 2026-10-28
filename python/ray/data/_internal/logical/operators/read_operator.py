@@ -19,6 +19,9 @@ from ray.data._internal.logical.interfaces import (
     SourceOperator,
 )
 from ray.data._internal.logical.operators.map_operator import AbstractMap, Filter
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data.block import (
     Block,
     BlockMetadata,
@@ -277,6 +280,10 @@ class ReadFiles(
     # here). Applied in ``plan_read_files_op.do_read`` after each
     # table is read.
     block_udf: Optional[Callable[[Block], Block]] = None
+    # Columns that a known post-read transform may modify. ``None`` means
+    # that the transform's effects are unknown, so predicate pushdown must
+    # stay disabled. Currently populated only for tensor-column decoding.
+    block_udf_modified_columns: Optional[Set[str]] = field(default=None, kw_only=True)
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
@@ -372,6 +379,10 @@ class ReadFiles(
         return replace(self, scanner=new_scanner)
 
     def supports_predicate_pushdown(self) -> bool:
+        if self.block_udf is not None and self.block_udf_modified_columns is None:
+            # An arbitrary post-read transform can change any field's values.
+            return False
+
         # Either mixin is enough: a scanner that only prunes partitions still
         # takes the partition-column conjuncts, and ``apply_predicate`` keeps
         # the rest in a ``Filter``.
@@ -394,6 +405,21 @@ class ReadFiles(
         return combine_predicates(predicate, partition_predicate)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
+        if self.block_udf is not None:
+            if self.block_udf_modified_columns is None:
+                # The transform's effects are unknown; keep every predicate
+                # above it, including callers that skip the capability check.
+                return self
+
+            if (
+                set(get_column_references(predicate_expr))
+                & self.block_udf_modified_columns
+            ):
+                # Predicates on transformed fields must observe post-UDF values.
+                # Keep mixed predicates intact too; splitting them could change
+                # the result when the expression contains OR or other nesting.
+                return self
+
         pushes_filters = isinstance(self.scanner, SupportsFilterPushdown)
         partition_cols: Set[str] = (
             self.scanner.partition_columns
