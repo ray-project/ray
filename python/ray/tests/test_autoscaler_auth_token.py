@@ -18,6 +18,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import (
     FakeMultiNodeDockerProvider,
 )
 from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
     NODE_KIND_WORKER,
     TAG_RAY_NODE_KIND,
     TAG_RAY_USER_NODE_TYPE,
@@ -219,16 +220,17 @@ def make_fake_docker_provider(volume_dir: Path) -> FakeMultiNodeDockerProvider:
 
 
 def fake_docker_node_volumes(volume_dir: Path) -> Dict[str, List[str]]:
-    """Builds the docker compose specs of a fake docker head and one worker,
-    and returns each node's volumes."""
+    """Launches a fake docker head, as `ray up` does, and one worker, and
+    returns each node's volumes."""
     provider = make_fake_docker_provider(volume_dir)
-    provider.create_node_with_resources_and_labels(
-        {},
-        {TAG_RAY_NODE_KIND: NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE: "worker"},
-        1,
-        {"CPU": 1},
-        {},
-    )
+    for kind in [NODE_KIND_HEAD, NODE_KIND_WORKER]:
+        provider.create_node_with_resources_and_labels(
+            {},
+            {TAG_RAY_NODE_KIND: kind, TAG_RAY_USER_NODE_TYPE: kind},
+            1,
+            {"CPU": 1},
+            {},
+        )
     with open(volume_dir / "docker-compose.yaml") as f:
         services = yaml.safe_load(f)["services"]
     return {node_id: spec["volumes"] for node_id, spec in services.items()}
@@ -494,6 +496,23 @@ def test_fake_docker_provider_never_creates_a_token(clean_auth_env, monkeypatch)
 
     assert not (clean_auth_env / "home" / ".ray" / "auth_token").exists()
     assert not (volume_dir / "auth_token").exists()
+
+
+def test_fake_docker_provider_mounts_no_token_before_writing_it(
+    clean_auth_env, monkeypatch
+):
+    # The docker monitor starts the head from the compose file the provider
+    # writes when built; a bind mount of a missing file would become a directory.
+    monkeypatch.setenv("RAY_FAKE_CLUSTER", "1")
+    volume_dir = clean_auth_env / "fake_docker"
+    volume_dir.mkdir()
+    make_fake_docker_provider(volume_dir)
+
+    with open(volume_dir / "docker-compose.yaml") as f:
+        [head_spec] = yaml.safe_load(f)["services"].values()
+    assert not any(
+        v.endswith(":/home/ray/.ray/auth_token:ro") for v in head_spec["volumes"]
+    )
 
 
 def test_creates_token_before_launching_head(clean_auth_env):

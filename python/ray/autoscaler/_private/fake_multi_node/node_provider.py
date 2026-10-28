@@ -570,6 +570,17 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
         resource_str = json.dumps(resources, indent=None)
 
+        # The docker monitor may start a node before the token is written, and
+        # Docker would create a missing bind mount source as a directory. Inside
+        # the head the host file always exists: `ray up` wrote it first.
+        auth_token_path = self._auth_token_path
+        if (
+            auth_token_path
+            and not self.in_docker_container
+            and not os.path.exists(auth_token_path)
+        ):
+            auth_token_path = None
+
         return create_node_spec(
             head=head,
             docker_image=self._docker_image,
@@ -593,7 +604,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             bootstrap_config_path=self._boostrap_config_path,
             public_key_path=self._public_key_path,
             private_key_path=self._private_key_path,
-            auth_token_path=self._auth_token_path,
+            auth_token_path=auth_token_path,
         )
 
     def _load_node_state(self) -> bool:
