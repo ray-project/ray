@@ -1,5 +1,6 @@
 import argparse
 import io
+import os
 import uuid
 from typing import Any, Dict
 
@@ -24,10 +25,19 @@ import random
 import time
 from ray.data.expressions import download
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
+from ray._private.test_utils import RayletKiller
+from ray.job_config import JobConfig
+
+# Chaos kills one worker raylet a minute, after a minute's delay so a backlog of
+# produced blocks exists to lose. Sized for the 20-node fake-GPU cluster.
+CHAOS_KILL_INTERVAL_S = 60
+CHAOS_KILL_DELAY_S = 60
+CHAOS_MAX_KILLS = 2
 
 
-WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
+WRITE_PATH = os.environ.get("RAY_DATA_WRITE_PATH") or (
+    f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
+)
 BUCKET = "ray-benchmark-data-internal-us-west-2"
 
 # Assumptions: homogenously shaped images, homogenous images
@@ -70,8 +80,35 @@ def parse_args() -> argparse.Namespace:
         "--chaos",
         action="store_true",
         help=(
-            "Whether to enable chaos. If set, this script terminates one worker node "
-            "every minute with a grace period."
+            "Whether to enable chaos. If set, this script kills worker raylets, so "
+            "the objects on those nodes are lost."
+        ),
+    )
+    parser.add_argument(
+        "--lineage-reconstruction",
+        action="store_true",
+        help=(
+            "Start the driver with "
+            "JobConfig(_disable_job_level_lineage_reconstruction=True), so Ray Data "
+            "lineage reconstruction rebuilds lost objects instead of Ray Core. With "
+            "--chaos, fail the run if lineage reconstruction never ran."
+        ),
+    )
+    parser.add_argument(
+        "--fake-gpu",
+        action="store_true",
+        help=(
+            "Embed with FakeEmbedPatches, which runs on CPU nodes that advertise a "
+            "logical GPU and sleeps for the measured T4 inference time."
+        ),
+    )
+    parser.add_argument(
+        "--verify-output",
+        action="store_true",
+        help=(
+            "After the write, check the sink against the analytically-known key set "
+            "(see verify_output.py) and fail the run if it does not match. Off by "
+            "default so the stock benchmark path is unchanged."
         ),
     )
     return parser.parse_args()
@@ -80,7 +117,7 @@ def parse_args() -> argparse.Namespace:
 def create_metadata(scale_factor: int):
     # TODO(mowen): Handle repeats of the dataset if scale_factor > 1
     # simulate various text metadata fields alongside image metadata
-    return pd.DataFrame(
+    metadata = pd.DataFrame(
         [
             {
                 "metadata_0": "".join(random.choices(string.ascii_letters, k=16)),
@@ -101,6 +138,12 @@ def create_metadata(scale_factor: int):
             for i in range(NUM_CONTAINERS)
         ]
     )
+    # Dense positional id over the frame above, so `(row_serial, patch_x, patch_y)`
+    # is a primary key over the sink. Read from the source ordering rather than
+    # stamped per attempt, so a re-executed task reproduces the same values --
+    # a per-attempt counter would make output verification vacuous.
+    metadata["row_serial"] = np.arange(len(metadata), dtype=np.int64)
+    return metadata
 
 
 def combine_channels(row: Dict[str, Any]) -> Dict[str, np.ndarray]:
@@ -200,6 +243,15 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
+    reconstruction_state = None
+    if args.chaos and args.lineage_reconstruction:
+        assert ray.data.DataContext.get_current().enable_ray_data_reconstruction, (
+            "--lineage-reconstruction is set, but Ray Data lineage reconstruction is "
+            "off. Check that the driver started with "
+            "JobConfig(_disable_job_level_lineage_reconstruction=True)."
+        )
+        reconstruction_state = install_lineage_reconstruction_counter()
+
     print("Creating metadata")
     metadata = create_metadata(scale_factor=args.scale_factor)
 
@@ -222,11 +274,14 @@ def main(args: argparse.Namespace):
             .flat_map(patch_image)
             .map_batches(ProcessPatches(transform), batch_size="auto")
             .map_batches(
-                EmbedPatches,
+                FakeEmbedPatches if args.fake_gpu else EmbedPatches,
                 num_gpus=1,
                 batch_size=BATCH_SIZE,
                 concurrency=tuple(args.inference_concurrency),
-                fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
+                fn_constructor_kwargs={
+                    "model": model_ref,
+                    "device": "cpu" if args.fake_gpu else "cuda",
+                },
             )
         )
         ds.write_parquet(WRITE_PATH)
@@ -238,7 +293,62 @@ def main(args: argparse.Namespace):
     metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
     benchmark.result["main"].update(metrics)
 
+    # Recorded before `write_result` so the count actually reaches result.json.
+    if reconstruction_state is not None:
+        benchmark.result["main"]["lineage_reconstructions"] = reconstruction_state[
+            "reconstructions"
+        ]
+
     benchmark.write_result()
+
+    if reconstruction_state is not None:
+        # The run completing proves the dataset survived chaos; this asserts it
+        # survived *because of* lineage reconstruction. Without it a run where chaos
+        # never lost a needed object passes silently and verifies nothing about
+        # reconstruction.
+        # Asserted after `write_result` so the count is still reported on failure.
+        assert reconstruction_state["reconstructions"] > 0, (
+            "Chaos was enabled but Ray Data lineage reconstruction never ran, so "
+            "this run did not exercise lineage reconstruction."
+        )
+
+    if args.verify_output:
+        # Verified with pyarrow rather than Ray Data: checking Ray Data's output with
+        # Ray Data would let a bug cancel itself out.
+        from verify_output import verify
+
+        print(f"Verifying sink {WRITE_PATH}")
+        if verify(WRITE_PATH, expect_rows_missing_ok=False) != 0:
+            raise RuntimeError(
+                f"Output verification failed for {WRITE_PATH}; see the checks above."
+            )
+
+
+def install_lineage_reconstruction_counter() -> Dict[str, int]:
+    """Count Ray Data lineage reconstructions for this run.
+
+    Wraps ``LineageTracker.register_task_failed``, which the executor calls once
+    per detected loss, so the run can assert lineage reconstruction actually ran
+    rather than passing because chaos never lost a needed object. The streaming
+    executor runs in the driver process, so patching the class here observes its
+    tracker.
+
+    Counts only calls that return seed ids. An empty list means reconstruction of
+    that lineage was already under way and nothing was resubmitted.
+    """
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
+
+    state = {"reconstructions": 0}
+    original = LineageTracker.register_task_failed
+
+    def counting_register_task_failed(self, *args, **kwargs):
+        seed_task_ids, plan_id = original(self, *args, **kwargs)
+        if seed_task_ids:
+            state["reconstructions"] += 1
+        return seed_task_ids, plan_id
+
+    LineageTracker.register_task_failed = counting_register_task_failed
+    return state
 
 
 def start_chaos():
@@ -248,9 +358,18 @@ def start_chaos():
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         node_id=head_node_id, soft=False
     )
-    resource_killer = EC2InstanceTerminatorWithGracePeriod.options(
+    # `RayletKiller`, not a terminator with a grace period. Killing the raylet
+    # takes the node's object store down with it, so the objects it held are lost
+    # at once. A graceful terminator drains the node first, so nothing is lost
+    # and lineage reconstruction never runs.
+    resource_killer = RayletKiller.options(
         scheduling_strategy=scheduling_strategy
-    ).remote(head_node_id, max_to_kill=None)
+    ).remote(
+        head_node_id,
+        kill_interval_s=CHAOS_KILL_INTERVAL_S,
+        kill_delay_s=CHAOS_KILL_DELAY_S,
+        max_to_kill=CHAOS_MAX_KILLS,
+    )
 
     ray.get(resource_killer.ready.remote())
 
@@ -259,5 +378,12 @@ def start_chaos():
 
 if __name__ == "__main__":
     args = parse_args()
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
+    init_kwargs = {}
+    if args.lineage_reconstruction:
+        # Ray Data lineage reconstruction is gated on this job config. It also
+        # turns Ray Core lineage reconstruction off for the job.
+        init_kwargs["job_config"] = JobConfig(
+            _disable_job_level_lineage_reconstruction=True
+        )
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()}, **init_kwargs)
     main(args)
