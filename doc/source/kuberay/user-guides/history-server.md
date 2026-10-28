@@ -534,6 +534,8 @@ The History Server caches a session after the first load, so the view doesn't up
 http://localhost:8265/enter_cluster/default/rayjob/rayjob-historyserver-gcs/<SESSION_ID>?reload=true
 ```
 
+After the RayCluster is deleted, the History Server reloads the session automatically in the background, typically within a minute, so the dashboard shows the final data without a manual reload.
+
 Keep the following limitations in mind:
 
 * The collector uploads logs every `RAY_COLLECTOR_LOG_UPLOAD_INTERVAL`, so the latest log lines can take up to that long to appear.
