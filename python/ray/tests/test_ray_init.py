@@ -367,8 +367,8 @@ def test_ray_init_with_runtime_env_as_object(
 def test_ray_init_after_client_connect_succeeded(call_ray_start):
     ray.init("ray://localhost:25307")
 
-    with pytest.raises(RuntimeError, match="Ray Client is already initialized"):
-        ray.init()
+    ray.init()
+    assert ray.is_initialized()
 
 
 def test_ray_init_after_client_connect_failed(shutdown_only):

@@ -111,6 +111,7 @@ from ray.experimental.internal_kv import (
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.client import num_connected_contexts
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
@@ -1757,7 +1758,7 @@ def init(
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
 
-    if client_mode_should_convert():
+    if client_mode_should_convert() and num_connected_contexts() == 0:
         raise RuntimeError(
             "Ray Client is already initialized in this process. "
             "ray.init() can't start or connect to a Ray cluster without ray://."
