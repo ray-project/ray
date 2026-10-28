@@ -403,18 +403,19 @@ class DataOpTask(OpTask):
         return bytes_read
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
-        if max_bytes_to_read == 0:
-            # Whenever provided `max_bytes_to_read == 0` we treat as task
-            # being in output backpressure, therefore correspondingly starting
-            # the timer (if necessary)
+        has_unread_output = (
+            not self._pending_block_ref.is_nil()
+            or not self._pending_meta_ref.is_nil()
+            or not self._streaming_gen._stream_exhausted()
+        )
+
+        if max_bytes_to_read == 0 and has_unread_output:
+            # A zero read budget counts as output backpressure only while the
+            # task still has output to consume.
             if self._start_output_backpressure_s is None:
                 self._start_output_backpressure_s = time.perf_counter()
 
-        elif (
-            max_bytes_to_read is None or max_bytes_to_read > 0
-        ) and self._start_output_backpressure_s is not None:
-            # Increment cumulative duration of task being in output
-            # backpressure
+        elif self._start_output_backpressure_s is not None:
             self._total_output_backpressure_s += (
                 time.perf_counter() - self._start_output_backpressure_s
             )
