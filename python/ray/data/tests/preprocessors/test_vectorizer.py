@@ -228,6 +228,32 @@ def test_count_vectorizer_serialization():
     assert "text" in result.columns
 
 
+def test_vectorizer_preserves_int_counts_with_missing_rows_and_empty_vocab():
+    """Ensure missing rows do not upcast integer counts to floats and empty vocab rows do not share lists."""
+    df = pd.DataFrame({"text": ["a b a", None, "b c"]})
+
+    hv = HashingVectorizer(columns=["text"], num_features=4)
+    hv_out = hv._transform_pandas(df.copy())
+    assert hv_out["text"].iloc[1] is None
+    assert all(isinstance(x, int) for x in hv_out["text"].iloc[0])
+    assert all(isinstance(x, int) for x in hv_out["text"].iloc[2])
+
+    cv = CountVectorizer(columns=["text"])
+    cv.stats_ = {"token_counts(text)": Counter({"a": 2, "b": 2, "c": 1})}
+    cv_out = cv._transform_pandas(df.copy())
+    assert cv_out["text"].iloc[0] == [2, 1, 0]
+    assert cv_out["text"].iloc[1] is None
+    assert cv_out["text"].iloc[2] == [0, 1, 1]
+    assert all(isinstance(x, int) for x in cv_out["text"].iloc[0])
+    assert all(isinstance(x, int) for x in cv_out["text"].iloc[2])
+
+    cv_empty = CountVectorizer(columns=["text"])
+    cv_empty.stats_ = {"token_counts(text)": Counter()}
+    cv_empty_out = cv_empty._transform_pandas(pd.DataFrame({"text": ["a", "b"]}))
+    assert cv_empty_out["text"].tolist() == [[], []]
+    assert cv_empty_out["text"].iloc[0] is not cv_empty_out["text"].iloc[1]
+
+
 if __name__ == "__main__":
     import sys
 
