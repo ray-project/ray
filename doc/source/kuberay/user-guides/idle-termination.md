@@ -31,7 +31,7 @@ The KubeRay operator validates the RayCluster against these requirements and rej
 
 ## RBAC and security
 
-Idle termination doesn't need extra RBAC setup. The KubeRay operator creates a Role for the Ray autoscaler of each RayCluster that grants `get`, `patch`, and `delete` on `rayclusters`. The Role uses `resourceNames` to limit these permissions to the autoscaler's own RayCluster, so the autoscaler can't suspend or delete any other RayCluster.
+Idle termination doesn't need extra role-based access control (RBAC) setup. The KubeRay operator creates a Role for the Ray autoscaler of each RayCluster that grants `get`, `patch`, and `delete` on `rayclusters`. The Role uses `resourceNames` to limit these permissions to the autoscaler's own RayCluster, so the autoscaler can't suspend or delete any other RayCluster.
 
 ## Supported custom resources
 
@@ -39,7 +39,7 @@ Idle termination only works with the RayCluster custom resource. The KubeRay ope
 
 ## How does the Ray autoscaler detect an idle Ray cluster?
 
-The Ray autoscaler queries the GCS job table and checks that no driver has connected to the Ray cluster for `timeoutSeconds`. A driver is a process that connects to the Ray cluster with `ray.init()`. The autoscaler ignores the following when it looks for drivers:
+The Ray autoscaler queries the Global Control Service (GCS) job table and checks that no driver has connected to the Ray cluster for `timeoutSeconds`. A driver is a process that connects to the Ray cluster with `ray.init()`. The autoscaler ignores the following when it looks for drivers:
 
 - Detached actors. A Ray cluster that runs only detached actors is still idle. See {ref}`actor-lifetimes`.
 - Ray-internal jobs, such as the dashboard.
@@ -69,7 +69,7 @@ spec:
 - `timeoutSeconds`: The number of seconds the Ray cluster must have no driver connected before the autoscaler applies the policy. The value must be non-negative.
 - `policy`: The action the autoscaler takes once the Ray cluster has been idle for `timeoutSeconds`. Set it to `Suspend` or `Delete`. The default is `Suspend`.
 
-See the [full sample YAML](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler-v2-terminate-idle-cluster.yaml) in the KubeRay repository.
+See the [full sample YAML](https://github.com/kuberay-project/kuberay/blob/v1.8.0/ray-operator/config/samples/ray-cluster.autoscaler-v2-terminate-idle-cluster.yaml) in the KubeRay repository.
 
 ## What each policy does
 
@@ -84,7 +84,7 @@ This example walks through the `Suspend` policy end to end, shows how a connecte
 
 ### Step 1: Create a RayCluster with idle termination enabled
 
-Apply the [sample YAML](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler-v2-terminate-idle-cluster.yaml). It suspends the RayCluster after no driver has connected for 30 seconds:
+Apply the [sample YAML](https://github.com/kuberay-project/kuberay/blob/v1.8.0/ray-operator/config/samples/ray-cluster.autoscaler-v2-terminate-idle-cluster.yaml). It suspends the RayCluster after no driver has connected for 30 seconds:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.8.0/ray-operator/config/samples/ray-cluster.autoscaler-v2-terminate-idle-cluster.yaml
