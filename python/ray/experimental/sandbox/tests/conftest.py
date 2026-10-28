@@ -33,8 +33,8 @@ def pytest_runtest_setup(item):
 def fake_mkfs_erofs(tmp_path, monkeypatch):
     """A stand-in ``mkfs.erofs`` first on PATH, for tests that need no gVisor.
 
-    It advertises ``--tar`` and copies the flattened tar it is handed to the
-    image path, so a cached ``rootfs.erofs`` is a tar the test can open and
+    It advertises ``--tar`` and copies the tar it reads on stdin to the image
+    path, so a cached ``rootfs.erofs`` is a tar the test can open and
     inspect, with the owners the real build would store. Its argv lands in
     ``mkfs.args`` next to the script. Yields the directory holding both.
     """
@@ -47,8 +47,8 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
         "#!/bin/sh\n"
         'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
         'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
-        "# args: --tar=f -b<page size> -E^inline_data OUT TAR\n"
-        'cp "$5" "$4"\n'
+        "# args: --tar=f -b<page size> -E^inline_data OUT; the tar is on stdin\n"
+        'cat > "$4"\n'
     )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
