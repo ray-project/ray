@@ -106,7 +106,7 @@ Ray requires `dcmi_init` to initialize DCMI, `dcmi_get_card_list` to enumerate c
 
 DCMI reports HBM capacity and usage in MiB, which Ray converts to bytes for node-level metrics. Ray converts DCMI power values from tenths of a watt to milliwatts. The `ray_component_npu_memory_mb` metric uses MiB (`1 MiB = 1,048,576 bytes`) despite the `_mb` suffix. Device power is emitted only for device `0` on each card because DCMI reports board-level power and otherwise the value could be counted more than once.
 
-The Dashboard API uses the same base units: `utilizationAicore` is a percentage, `memoryUsed` and `memoryTotal` are bytes, `powerMw` is milliwatts, and `temperatureC` is degrees Celsius. `healthStatus` and the Prometheus health metric preserve the raw DCMI health level: `0` is OK, `1` is minor, `2` is major, `3` is critical, and `0xFFFFFFFF` (`4294967295`) means that health information is missing.
+The Dashboard API uses the same base units: `utilizationAicore` is a percentage, `memoryUsed` and `memoryTotal` are bytes, `powerMw` is milliwatts, and `temperatureC` is degrees Celsius. `healthStatus` and the Prometheus health metric use normalized health levels: `0` is OK, `1` is minor, `2` is major, `3` is critical, and `4` means that health information is missing. Ray maps the DCMI missing value `0xFFFFFFFF` to `4`.
 
 ### NPU metric labels
 
@@ -233,7 +233,7 @@ All node-level NPU metrics have the following Ray labels. Prometheus normally ad
   - The current Ascend NPU temperature per device, in degrees Celsius.
 * - `ray_node_npu_health`
   - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
-  - The raw Ascend NPU DCMI health level per device: `0` is OK, `1` is minor, `2` is major, `3` is critical, and `4294967295` means that health information is missing.
+  - The normalized Ascend NPU health level per device: `0` is OK, `1` is minor, `2` is major, `3` is critical, and `4` means that health information is missing.
 * - `ray_node_disk_usage`
   - `instance`
   - The amount of disk space used per node, in bytes.

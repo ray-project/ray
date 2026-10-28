@@ -52,4 +52,29 @@ describe("NodeAcceleratorEntry", () => {
     expect(screen.getByText("Temperature: 71°C")).toBeInTheDocument();
     expect(screen.getByText("Power Draw: 940.7 W")).toBeInTheDocument();
   });
+
+  it("renders the normalized missing NPU health status", async () => {
+    const user = userEvent.setup();
+    const accelerator: UnifiedAcceleratorStat = {
+      name: "Ascend910",
+      index: 0,
+      type: "NPU",
+      utilization: 0,
+      memoryUsed: 0,
+      memoryTotal: 65536,
+      rawNpu: {
+        index: 0,
+        cardId: 2,
+        deviceId: 0,
+        name: "Ascend910",
+        utilizationAicore: 0,
+        healthStatus: 4,
+      },
+    };
+
+    render(<NodeAcceleratorEntry slot={0} accelerator={accelerator} />);
+    await user.hover(screen.getByText("0.0%"));
+
+    expect(await screen.findByText("Health: Missing")).toBeInTheDocument();
+  });
 });

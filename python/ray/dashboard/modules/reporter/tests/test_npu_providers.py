@@ -8,8 +8,10 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ray.dashboard.modules.reporter.npu_providers import (
+    DCMI_HEALTH_MISSING,
     DCMI_LIBRARY_PATH_ENV,
     MB,
+    NPU_HEALTH_MISSING,
     NpuMetricProvider,
     _DcmiLibrary,
 )
@@ -162,6 +164,29 @@ def test_device_name_falls_back_to_legacy_dcmi_api():
     dcmi._call = Mock(side_effect=populate_chip_info)
 
     assert dcmi.get_device_name(2, 0) == "910B2C"
+
+
+@pytest.mark.parametrize(
+    ("dcmi_status", "expected_status"),
+    [
+        (0, 0),
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (DCMI_HEALTH_MISSING, NPU_HEALTH_MISSING),
+    ],
+)
+def test_get_health_normalizes_missing_status(dcmi_status, expected_status):
+    dcmi = object.__new__(_DcmiLibrary)
+
+    def populate_health(function_name, card_id, device_id, health_pointer):
+        assert function_name == "dcmi_get_device_health"
+        assert (card_id, device_id) == (2, 0)
+        health_pointer._obj.value = dcmi_status
+
+    dcmi._call = Mock(side_effect=populate_health)
+
+    assert dcmi.get_health(2, 0) == expected_status
 
 
 def test_get_processes_returns_memory_bytes_by_pid():

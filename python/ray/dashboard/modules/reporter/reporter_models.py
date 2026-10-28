@@ -57,7 +57,7 @@ if PYDANTIC_INSTALLED:
         utilizationAicore: Optional[int] = None  # percentage
         memoryUsed: Optional[int] = None  # bytes
         memoryTotal: Optional[int] = None  # bytes
-        healthStatus: Optional[int] = None  # raw DCMI status; zero is healthy
+        healthStatus: Optional[int] = None  # 0-3 DCMI severity, 4 means missing
         powerMw: Optional[int] = None
         temperatureC: Optional[int] = None
         processesPids: Optional[List[ProcessNpuInfo]] = None

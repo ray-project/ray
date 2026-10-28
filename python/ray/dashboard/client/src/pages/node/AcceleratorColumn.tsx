@@ -50,6 +50,14 @@ const TpuTooltip = ({ tpu }: { tpu: TPUStats }) => {
   );
 };
 
+const NPU_HEALTH_LABELS: Record<number, string> = {
+  0: "Healthy",
+  1: "Minor",
+  2: "Major",
+  3: "Critical",
+  4: "Missing",
+};
+
 const NpuTooltip = ({ npu }: { npu: NPUStats }) => {
   return (
     <Box>
@@ -63,9 +71,8 @@ const NpuTooltip = ({ npu }: { npu: NPUStats }) => {
       {npu.healthStatus !== undefined && npu.healthStatus !== null && (
         <Typography variant="body2">
           Health:{" "}
-          {npu.healthStatus === 0
-            ? "Healthy"
-            : `Unhealthy (${npu.healthStatus})`}
+          {NPU_HEALTH_LABELS[npu.healthStatus] ??
+            `Unknown (${npu.healthStatus})`}
         </Typography>
       )}
       {npu.temperatureC !== undefined && npu.temperatureC !== null && (

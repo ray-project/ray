@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 MB = 1024 * 1024
 DCMI_LIBRARY_PATH_ENV = "RAY_NPU_DCMI_LIBRARY_PATH"
 DCMI_UTILIZATION_RATE_AICORE = 2
+# DCMI uses UINT32_MAX when health data is unavailable. Ray normalizes that
+# sentinel to the next value after DCMI's defined 0-3 severity range.
+DCMI_HEALTH_MISSING = 0xFFFFFFFF
+NPU_HEALTH_MISSING = 4
 _MAX_CARDS = 64
 _MAX_PROCESSES = 128
 
@@ -33,7 +37,7 @@ class NpuUtilizationInfo(TypedDict):
     utilization_aicore: Optional[int]
     memory_used: Optional[int]
     memory_total: Optional[int]
-    health_status: Optional[int]
+    health_status: Optional[int]  # 0-3 DCMI severity, 4 means missing
     power_mw: Optional[int]
     temperature_c: Optional[int]
     processes_pids: Optional[Dict[int, ProcessNpuInfo]]
@@ -319,6 +323,8 @@ class _DcmiLibrary:
             device_id,
             ctypes.byref(health),
         )
+        if health.value == DCMI_HEALTH_MISSING:
+            return NPU_HEALTH_MISSING
         return health.value
 
     def get_processes(self, card_id: int, device_id: int) -> Dict[int, ProcessNpuInfo]:

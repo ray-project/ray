@@ -295,8 +295,7 @@ METRICS_GAUGES = {
     ),
     "node_npu_health": Gauge(
         "node_npu_health",
-        "Ascend NPU DCMI health level (0 OK, 1 minor, 2 major, 3 critical, "
-        "4294967295 missing)",
+        "Ascend NPU health: 0 OK, 1 minor, 2 major, 3 critical, 4 missing",
         "state",
         NPU_TAG_KEYS,
     ),

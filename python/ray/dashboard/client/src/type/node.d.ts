@@ -90,7 +90,7 @@ export type NPUStats = {
   utilizationAicore?: number;
   memoryUsed?: number; // in bytes
   memoryTotal?: number; // in bytes
-  healthStatus?: number; // zero is healthy
+  healthStatus?: number; // 0-3 DCMI severity, 4 means missing
   powerMw?: number;
   temperatureC?: number;
   processesPids?: ProcessNPUUsage[];

@@ -287,6 +287,7 @@ def test_npu_health_panel_preserves_dcmi_severity():
 
     assert "0 is OK" in health_panel.description
     assert "3 is critical" in health_panel.description
+    assert "4 means that health information is missing" in health_panel.description
     assert health_panel.targets[0].expr.startswith("max(ray_node_npu_health")
 
 

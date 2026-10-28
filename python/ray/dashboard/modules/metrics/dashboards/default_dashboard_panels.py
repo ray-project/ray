@@ -763,7 +763,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     Panel(
         id=71,
         title="Node NPU Health",
-        description="Ascend NPU DCMI health level for each device: 0 is OK, 1 is minor, 2 is major, 3 is critical, and 4294967295 means that health information is missing.",
+        description="Ascend NPU health level for each device: 0 is OK, 1 is minor, 2 is major, 3 is critical, and 4 means that health information is missing.",
         unit="short",
         targets=[
             Target(
