@@ -1,4 +1,5 @@
 import pickle
+import subprocess
 import sys
 from typing import Callable
 from unittest.mock import Mock
@@ -6,6 +7,7 @@ from unittest.mock import Mock
 import grpc
 import pytest
 from google.protobuf.any_pb2 import Any as AnyProto
+from grpc.aio._server import Server
 from grpc_reflection.v1alpha import reflection
 
 from ray import cloudpickle
@@ -111,6 +113,85 @@ def test_grpc_server():
     )
 
 
+def test_grpc_server_tolerates_missing_registered_method_api(monkeypatch):
+    monkeypatch.setattr(Server, "add_registered_method_handlers", None, raising=False)
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    grpc_server.add_registered_method_handlers("test.UserService", {})
+
+
+@pytest.mark.skipif(
+    not hasattr(Server, "add_registered_method_handlers"),
+    reason="grpcio version does not support registered method handlers",
+)
+def test_grpc_server_overrides_registered_method_handlers(monkeypatch):
+    registered = {}
+
+    def capture_registered_handlers(server, service_name, method_handlers):
+        registered["service_name"] = service_name
+        registered["method_handlers"] = method_handlers
+
+    monkeypatch.setattr(
+        Server, "add_registered_method_handlers", capture_registered_handlers
+    )
+    service_name = "test.UserService"
+    method_name = "Predict"
+    service_method = f"/{service_name}/{method_name}"
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    dummy_servicer = Mock()
+    original_handlers = {
+        method_name: grpc.unary_unary_rpc_method_handler(
+            dummy_servicer.Predict,
+            request_deserializer=AnyProto.FromString,
+            response_serializer=AnyProto.SerializeToString,
+        )
+    }
+
+    grpc_server.add_registered_method_handlers(service_name, original_handlers)
+
+    assert registered["service_name"] == service_name
+    handler = registered["method_handlers"][method_name]
+    assert handler.response_serializer is None
+    assert handler.unary_unary() == f"unary_unary call from {service_method}".encode()
+    assert handler.unary_stream() == f"unary_stream call from {service_method}".encode()
+    assert handler.stream_unary() == f"stream_unary call from {service_method}".encode()
+    assert (
+        handler.stream_stream() == f"stream_stream call from {service_method}".encode()
+    )
+
+
+@pytest.mark.skipif(
+    not hasattr(Server, "add_registered_method_handlers"),
+    reason="grpcio version does not support registered method handlers",
+)
+def test_grpc_server_registered_passthrough_handlers_are_unchanged(monkeypatch):
+    registered = {}
+
+    def capture_registered_handlers(server, service_name, method_handlers):
+        registered["service_name"] = service_name
+        registered["method_handlers"] = method_handlers
+
+    monkeypatch.setattr(
+        Server, "add_registered_method_handlers", capture_registered_handlers
+    )
+    service_name = "test.PassthroughService"
+    method_name = "Echo"
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    grpc_server.add_passthrough_service(service_name)
+    dummy_servicer = Mock()
+    original_handlers = {
+        method_name: grpc.unary_unary_rpc_method_handler(
+            dummy_servicer.Echo,
+            request_deserializer=AnyProto.FromString,
+            response_serializer=AnyProto.SerializeToString,
+        )
+    }
+
+    grpc_server.add_registered_method_handlers(service_name, original_handlers)
+
+    assert registered["service_name"] == service_name
+    assert registered["method_handlers"] is original_handlers
+
+
 def test_grpc_server_passthrough_service():
     """Handlers for a passthrough service are registered unmodified, while
     handlers for other services are still overridden."""
@@ -189,6 +270,30 @@ def test_enable_server_reflection():
     ]
     assert user_method.response_serializer is None
     assert user_method.unary_unary != dummy_servicer.Predict
+
+
+def test_serve_imports_without_grpc_reflection():
+    """Reflection is opt-in, so importing Serve doesn't need grpcio-reflection."""
+    script = (
+        "import sys\n"
+        # A None entry makes every import of the package fail.
+        "sys.modules['grpc_reflection'] = None\n"
+        "import ray.serve\n"
+        "import ray.serve._private.grpc_util\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_enable_server_reflection_without_grpc_reflection(monkeypatch):
+    """Turning reflection on without grpcio-reflection says how to install it."""
+    monkeypatch.setitem(sys.modules, "grpc_reflection.v1alpha", None)
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+
+    with pytest.raises(ModuleNotFoundError, match="grpcio-reflection"):
+        enable_server_reflection(grpc_server)
 
 
 def test_ray_serve_grpc_context_serializable():

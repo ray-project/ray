@@ -87,7 +87,7 @@ On the first run, this command (or any script that starts Ray) logs a line like:
 Generated new authentication token and saved to ~/.ray/auth_token
 ```
 
-Connecting to an existing cluster with `ray.init(address=...)` doesn't generate a token. As with any client, you must have the cluster's token configured when the cluster has token authentication enabled, as described in {ref}`What token does Ray use? <what-token-does-ray-use>`.
+Connecting to an existing cluster with `ray.init(address=...)` doesn't generate a token. As with any client, you must have the cluster's token configured when the cluster has token authentication enabled, as described in {ref}`What token does Ray use? <what-token-does-ray-use>`. A `ray.init()` call that finds a running local cluster on its own, with no `address` or with `address="auto"`, behaves differently: if `RAY_AUTH_MODE` isn't set and a token is available from any of the token sources, it enables token authentication and uses that token. A script can then connect to a cluster that `ray start --head` started with the same token, without setting `RAY_AUTH_MODE=token`.
 
 ### Local development with ray start
 
@@ -99,6 +99,12 @@ If no token is available from any source, behavior depends on `RAY_AUTH_MODE`:
 - If you set `RAY_AUTH_MODE=token`, `ray start` raises an error with instructions to generate a token.
 
 `ray start --head` logs a warning whenever it starts a cluster without token authentication, whether because no token is available or because you set `RAY_AUTH_MODE=disabled`.
+
+Worker nodes don't enable token authentication automatically. When you add a worker node with `ray start --address`, Ray ignores any available token unless you set `RAY_AUTH_MODE=token`, so the worker can't join a head node that has token authentication enabled. The join fails even if the worker runs on the same machine as the head node and `~/.ray/auth_token` exists. It also fails if you set `RAY_AUTH_TOKEN` without `RAY_AUTH_MODE`. To add the worker node, set `RAY_AUTH_MODE=token`:
+
+```bash
+RAY_AUTH_MODE=token ray start --address=<head-node-ip>:6379
+```
 
 If you set `RAY_AUTH_MODE=token` before a token exists, `ray start --head` raises an error instead of starting:
 

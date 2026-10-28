@@ -782,6 +782,22 @@ class Expr(ABC):
         """
         return _create_pyarrow_compute_udf(pc.abs_checked)(self)
 
+    # NULL Handling
+    def is_nan(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_nan, return_dtype=DataType.bool())(
+            self
+        )
+
+    def is_finite(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_finite, return_dtype=DataType.bool())(
+            self
+        )
+
+    def is_inf(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_inf, return_dtype=DataType.bool())(
+            self
+        )
+
     def cast(self, target_type: DataType, *, safe: bool = True) -> "UDFExpr":
         """Cast the expression to a specified type.
 
@@ -1683,13 +1699,11 @@ def _create_pyarrow_wrapper(
         # Convert inputs to PyArrow and track pandas flags
         args_results = [to_arrow(arg) for arg in args]
         kwargs_results = {k: to_arrow(v) for k, v in kwargs.items()}
-
         converted_args = [v[0] for v in args_results]
         converted_kwargs = {k: v[0] for k, v in kwargs_results.items()}
         input_was_pandas = any(v[1] for v in args_results) or any(
             v[1] for v in kwargs_results.values()
         )
-
         # Call function with converted inputs
         result = fn(*converted_args, **converted_kwargs)
 
@@ -2377,6 +2391,28 @@ def download(
     This creates an expression that will download bytes from URIs stored in
     a specified column. When evaluated, it will fetch the content from each URI
     and return the downloaded bytes.
+
+    A missing object (404), an access-denied object (403) or an invalid URI
+    yields ``None`` for that row, and each block logs one warning counting
+    such rows. Transient failures (5xx, throttling, timeouts, dropped
+    connections) are retried with backoff inside the storage client and then
+    re-fetched up to ``RAY_DATA_DOWNLOAD_MAX_ATTEMPTS`` times per task
+    (default 2); if they still fail, the task raises ``DownloadError`` instead
+    of yielding ``None``, so no row is silently lost. With the default
+    settings a URI that never recovers holds its task for about four minutes
+    before the error is raised: each attempt spends up to
+    ``RAY_DATA_OBSTORE_RETRY_TIMEOUT_S`` (120 seconds) in client retries,
+    plus the ``RAY_DATA_DOWNLOAD_RETRY_BACKOFF_MS`` pause between attempts,
+    and ``DataContext.max_map_retries`` multiplies that again. Bad
+    credentials raise too rather than producing a column of nulls: a 403
+    whose S3 error code says so (for example ``InvalidAccessKeyId`` or
+    ``SignatureDoesNotMatch``) on the obstore backend, and on either backend
+    a block in which every URI is denied, which is the only signal available
+    to the PyArrow backend because its HEAD requests carry no error code.
+    Tune the client retry budget with the ``RAY_DATA_OBSTORE_RETRY_*``
+    environment variables, retry the task with
+    ``DataContext.retried_map_errors`` and ``max_map_retries``, or tolerate
+    the failure with ``DataContext.max_errored_blocks``.
 
     Args:
         uri_column_name: The name of the column containing URIs to download from

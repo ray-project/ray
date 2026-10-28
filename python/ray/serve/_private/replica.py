@@ -1180,8 +1180,8 @@ class Replica:
         self._rank: Optional[ReplicaRank] = None
 
         # gRPC server for inter-deployment communication. Created via the shared
-        # helper so Ray's authentication interceptor is attached when token auth
-        # is enabled; without it this server would accept unauthenticated calls.
+        # helper so Ray's authentication interceptor is attached; without it this
+        # server would accept unauthenticated calls when token auth is enabled.
         self._server = create_grpc_server_with_interceptors(
             asynchronous=True,
             options=[
@@ -3135,12 +3135,15 @@ class Replica:
             self._user_callable_initialized
         ), "Replica server should only be started *after* the replica is initialized."
 
+        # uvicorn includes the global root_path in both "root_path" and "path".
+        # Route relative to it, and mount the app at root_path + route_prefix.
+        root_path = scope.get("root_path", "")
         if self._route_prefix and self._route_prefix != "/":
-            scope["root_path"] = self._route_prefix
+            scope["root_path"] = root_path + self._route_prefix
 
         start_time = time.time()
         method = scope.get("method", "WS").upper()
-        route = scope.get("path", "")
+        route = scope.get("path", "")[len(root_path) :]
 
         # Handle health check or routes request.
         if route in ["/-/healthz", "/-/routes"]:

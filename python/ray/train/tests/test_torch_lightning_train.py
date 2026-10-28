@@ -190,6 +190,65 @@ def test_custom_checkpoint_callback(ray_start_6_cpus_2_gpus):
         assert os.path.exists(os.path.join(checkpoint_dir, "ckpt.pt"))
 
 
+def test_report_callback_checkpoint_frequency(ray_start_6_cpus_2_gpus):
+    """`checkpoint_frequency` should skip reporting (metrics and checkpoint) on
+    non-matching epochs."""
+
+    num_workers = 2
+    num_epochs = 6
+    batch_size = 8
+    dataset_size = 256
+    checkpoint_frequency = 3
+
+    def train_loop():
+        model = LinearModule(input_dim=32, output_dim=4, strategy="ddp")
+
+        trainer = pl.Trainer(
+            max_epochs=num_epochs,
+            devices="auto",
+            accelerator="cpu",
+            strategy=RayDDPStrategy(),
+            plugins=[RayLightningEnvironment()],
+            callbacks=[
+                RayTrainReportCallback(checkpoint_frequency=checkpoint_frequency)
+            ],
+        )
+        datamodule = DummyDataModule(batch_size, dataset_size)
+        trainer.fit(model, datamodule=datamodule)
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_loop,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=False),
+    )
+    result = trainer.fit()
+
+    # The last report comes from the last checkpointed epoch.
+    assert result.metrics["epoch"] == num_epochs - 1
+
+    # Only epochs where (epoch + 1) % checkpoint_frequency == 0 should have
+    # reported: epochs 2 and 5 out of 0..5.
+    expected_checkpoints = num_epochs // checkpoint_frequency
+    assert len(result.best_checkpoints) == expected_checkpoints
+    checkpointed_epochs = sorted(
+        metrics["epoch"] for _, metrics in result.best_checkpoints
+    )
+    assert checkpointed_epochs == [
+        epoch for epoch in range(num_epochs) if (epoch + 1) % checkpoint_frequency == 0
+    ]
+
+
+def test_report_callback_invalid_checkpoint_frequency():
+    """`checkpoint_frequency` must be a positive integer."""
+    with pytest.raises(ValueError):
+        RayTrainReportCallback(checkpoint_frequency=0)
+    with pytest.raises(TypeError):
+        RayTrainReportCallback(checkpoint_frequency=1.5)
+    with pytest.raises(TypeError):
+        RayTrainReportCallback(checkpoint_frequency="2")
+    with pytest.raises(TypeError):
+        RayTrainReportCallback(checkpoint_frequency=True)
+
+
 @pytest.mark.parametrize("stage", [1, 2, 3])
 def test_deepspeed_zero_stages(ray_start_6_cpus_4_gpus, tmpdir, stage):
     num_epochs = 5

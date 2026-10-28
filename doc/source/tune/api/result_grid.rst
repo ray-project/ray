@@ -19,7 +19,6 @@ ResultGrid (tune.ResultGrid)
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~tune.ResultGrid.get_best_result
     ~tune.ResultGrid.get_dataframe

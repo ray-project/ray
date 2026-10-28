@@ -16,7 +16,6 @@
     "platforms": [
       "cpu",
       "tpu",
-      "cu11.7.1-cudnn8",
       "cu11.8.0-cudnn8",
       "cu12.1.1-cudnn8",
       "cu12.3.2-cudnn9",

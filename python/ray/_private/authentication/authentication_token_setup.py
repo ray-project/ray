@@ -1,8 +1,6 @@
-"""Authentication token setup for Ray.
-
-This module provides functions to generate and save authentication tokens
-for Ray's token-based authentication system. Token loading and caching is
-handled by the C++ AuthenticationTokenLoader.
+"""Token authentication setup for Ray: enable token mode and make sure a token
+exists. Token loading, caching and creation live in the C++
+AuthenticationTokenLoader.
 """
 
 import logging
@@ -11,10 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ray._private.authentication.authentication_constants import (
-    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
-)
-from ray._private.authentication.authentication_token_generator import (
-    generate_new_authentication_token,
+    TOKEN_AUTH_ERROR_MESSAGE,
 )
 from ray._raylet import (
     AuthenticationMode,
@@ -27,29 +22,6 @@ from ray.exceptions import AuthenticationError
 AUTH_MODE_ENV_VAR = "RAY_AUTH_MODE"
 
 logger = logging.getLogger(__name__)
-
-
-def generate_and_save_token() -> None:
-    """Generate a new random token and save it in the default token path.
-
-    Returns:
-        The newly generated authentication token.
-    """
-    # Generate a UUID-based token
-    token = generate_new_authentication_token()
-
-    token_path = _get_default_token_path()
-    try:
-        # Create directory if it doesn't exist
-        token_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Write token to file with explicit flush and fsync
-        with open(token_path, "w") as f:
-            f.write(token)
-
-        logger.info(f"Generated new authentication token and saved to {token_path}")
-    except Exception:
-        raise
 
 
 def _get_default_token_path() -> Path:
@@ -89,15 +61,16 @@ def _warn_token_auth_enabled() -> None:
     )
 
 
-def maybe_enable_token_auth_if_token_available() -> bool:
-    """Enable token auth for ``ray start --head`` if a token already exists."""
+def maybe_enable_token_auth_if_token_available(warn_if_disabled: bool = True) -> bool:
+    """Enable token auth if RAY_AUTH_MODE is unset and a token already exists."""
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
         # Mode set explicitly; respect it without warning.
         return auth_mode_env.lower() == "token"
 
     if not AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True):
-        _warn_token_auth_disabled()
+        if warn_if_disabled:
+            _warn_token_auth_disabled()
         return False
 
     _enable_token_auth()
@@ -120,20 +93,23 @@ def enable_token_auth_by_default() -> bool:
 def ensure_token_if_auth_enabled(
     system_config: Optional[Dict[str, Any]] = None, create_token_if_missing: bool = True
 ) -> None:
-    """Check authentication settings and set up token resources if authentication is enabled.
+    """Make sure a token is available when token authentication is enabled.
 
-    Ray calls this early during ray.init() to do the following for token-based authentication:
-    1. Check whether you enabled token-based authentication.
-    2. Make sure a token is available if authentication is enabled.
-    3. Generate and save a default token for new local clusters if one doesn't already exist.
+    Only callers that start a throwaway cluster on this machine pass
+    ``create_token_if_missing=True``: a bare ``ray.init()``, and
+    ``ray.cluster_utils.Cluster()`` and ``ray.cluster_utils.AutoscalingCluster``
+    unless passed ``enable_token_auth=False``.
+    A token made anywhere else can't match the one the rest of the cluster uses.
 
     Args:
         system_config: Ray raises an error if you set AUTH_MODE in system_config instead of the environment.
         create_token_if_missing: Generate a new token if one doesn't already exist.
 
     Raises:
-        RuntimeError: Ray raises this error if authentication is enabled but no token is found when connecting
-            to an existing cluster.
+        RuntimeError: AUTH_MODE is set in system_config instead of the
+            ``RAY_AUTH_MODE`` environment variable.
+        AuthenticationError: Token authentication is enabled, no token exists, and
+            ``create_token_if_missing`` is False.
     """
 
     # Check if you enabled token authentication.
@@ -150,14 +126,7 @@ def ensure_token_if_auth_enabled(
 
     token_loader = AuthenticationTokenLoader.instance()
 
-    if not token_loader.has_token(ignore_auth_mode=True):
-        if create_token_if_missing:
-            # Generate a new token.
-            generate_and_save_token()
-
-            # Reload the cache so subsequent calls to token_loader read the new token.
-            token_loader.reset_cache()
-        else:
-            raise AuthenticationError(
-                TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
-            )
+    if create_token_if_missing:
+        token_loader.create_token_if_missing()
+    elif not token_loader.has_token(ignore_auth_mode=True):
+        raise AuthenticationError(TOKEN_AUTH_ERROR_MESSAGE)

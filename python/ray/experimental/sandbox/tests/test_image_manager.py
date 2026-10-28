@@ -73,6 +73,30 @@ def test_image_manager_pull_and_paths(tmp_path):
         assert tar.extractfile("./test.txt").read() == b"hello from image manager"
 
 
+def test_release_finds_the_pin_after_its_archive_is_deleted(tmp_path, monkeypatch):
+    """A relative archive path names the same cache entry once the archive is
+    gone, so the sandbox's release still drops its pin."""
+    from ray.experimental.sandbox._internal.image_utils import (
+        evict_least_recently_used_images,
+    )
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.chdir(tmp_path)
+    with tarfile.open("app.tar.gz", "w:gz") as tar:
+        info = tarfile.TarInfo("hello.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+    images_dir = str(tmp_path / "images")
+    manager = ImageManager(images_dir=images_dir)
+
+    image_dir = manager.pull_image("app.tar.gz", instance_id="sb-1")
+    os.remove("app.tar.gz")
+    manager.release_image("app.tar.gz", "sb-1")
+
+    evict_least_recently_used_images(images_dir, max_bytes=0)
+    assert not os.path.exists(image_dir)
+
+
 def test_image_manager_config_parsing(tmp_path):
     images_dir = str(tmp_path / "images")
     mgr = ImageManager(images_dir=images_dir)
@@ -295,6 +319,52 @@ def test_custom_image_manager_subclass(tmp_path):
     assert backend.image_manager is custom_mgr
     assert custom_mgr.pull_image("another-image") == custom_root
     assert ("another-image", 120.0) in custom_mgr.pull_calls
+
+
+@pytest.mark.parametrize(
+    "readonly, disk, options",
+    [
+        (False, "64Mi", "size=67108864"),
+        (False, 1 << 30, "size=1073741824"),
+        # Floats and fractional sizes come out as whole bytes.
+        (False, float(1 << 30), "size=1073741824"),
+        (False, "1.5Gi", "size=1610612736"),
+        (False, 0, None),
+        (False, None, None),
+        # A read-only rootfs gets no overlay, so there's nothing to cap.
+        (True, "64Mi", None),
+    ],
+)
+def test_create_oci_spec_caps_the_writable_overlay(tmp_path, readonly, disk, options):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        readonly=readonly,
+        disk=disk,
+        base_spec=_sample_base_spec(),
+    )
+    assert spec["annotations"].get("dev.gvisor.spec.rootfs.options") == options
+
+
+def test_create_oci_spec_keeps_a_capped_workdir_in_the_overlay(tmp_path):
+    """readonly + workdir runs on a private writable overlay. With a cap the
+    workdir isn't bind-mounted, since a host directory would escape it."""
+    mgr = _StubImageManager(tmp_path)
+    workdir_path = str(tmp_path / "scratch")
+    os.makedirs(workdir_path)
+
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/workspace",
+        workdir_path=workdir_path,
+        readonly=True,
+        disk="64Mi",
+    )
+    assert spec["root"]["readonly"] is False
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.options"] == "size=67108864"
+    assert not any(m["destination"] == "/workspace" for m in spec["mounts"])
+    assert spec["process"]["cwd"] == "/workspace"
 
 
 class _StubImageManager(ImageManager):
@@ -653,6 +723,42 @@ def test_image_cache_eviction(tmp_path):
     assert not newer.exists()  # third eviction reaches the cap
     assert newest.exists()
     assert partial.exists()  # mid-pull (no marker): protected
+
+
+def test_image_cache_eviction_keeps_a_free_space_floor(tmp_path, monkeypatch):
+    """Under no size cap, eviction still frees the disk down to the floor,
+    oldest first, and never takes an image in use."""
+    import time
+
+    from ray.experimental.sandbox._internal import image_utils
+
+    images = []
+    for i, age in enumerate((5000, 4000, 3000, 2000, 1000)):
+        d = tmp_path / f"img{i}"
+        d.mkdir()
+        (d / "blob").write_bytes(b"x" * 1000)
+        marker = d / ".extracted"
+        marker.write_text("ok")
+        os.utime(marker, (time.time() - age, time.time() - age))
+        images.append(d)
+    image_utils._mark_image_in_use(str(images[1]), "sb-live")
+    # 500 bytes free, plus whatever eviction gives back.
+    monkeypatch.setattr(
+        image_utils,
+        "_free_bytes",
+        lambda path: 500 + 1000 * sum(not d.exists() for d in images),
+    )
+
+    image_utils.evict_least_recently_used_images(
+        str(tmp_path), max_bytes=None, min_free_bytes=2400
+    )
+    assert [d.exists() for d in images] == [False, True, False, True, True]
+
+    # Nothing evictable is left short of the floor; the in-use image stays.
+    image_utils.evict_least_recently_used_images(
+        str(tmp_path), max_bytes=None, min_free_bytes=10**9
+    )
+    assert [d.exists() for d in images] == [False, True, False, False, False]
 
 
 def test_create_oci_spec_requires_cached_image(tmp_path):

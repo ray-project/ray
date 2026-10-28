@@ -3,10 +3,22 @@ load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 ray_cc_library(
     name = "store_client_test_lib",
     hdrs = ["store_client_test_base.h"],
+    visibility = ["//src/ray/gcs/tests:__pkg__"],
     deps = [
         "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client",
         "//src/ray/observability:fake_metric",
+    ],
+)
+
+ray_cc_test(
+    name = "table_name_label_test",
+    size = "small",
+    srcs = ["table_name_label_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/store_client:table_name_label",
+        "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
 
@@ -171,9 +183,13 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
+        "//src/ray/asio:io_service_pool",
+        "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
+        "//src/ray/gcs/store_client:table_name_label",
         "//src/ray/observability:fake_metric",
+        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:clock",
     ],
 )
@@ -216,8 +232,22 @@ ray_cc_test(
     name = "redis_context_test",
     size = "small",
     srcs = ["redis_context_test.cc"],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
+    # Export the test interposer so calls from dynamic Ray libraries resolve to it.
+    linkopts = select({
+        "@platforms//os:linux": ["-Wl,--export-dynamic-symbol=setsockopt"],
+        "//conditions:default": [],
+    }),
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client:redis_store_client",
     ],
 )
