@@ -313,6 +313,11 @@ def main(args: argparse.Namespace):
         )
         ds.write_parquet(WRITE_PATH)
         ds_holder["ds"] = ds
+        if resource_killer is not None:
+            # Stopped inside `benchmark_fn` because `run_fn` queries every raylet
+            # for spill stats once this returns. That query fails on a node that
+            # was just killed but isn't marked dead yet.
+            stop_chaos(resource_killer)
 
     # Started here rather than at the top of `main`. The model download and
     # `ray.put` above take a while, and kills that land before the pipeline runs
@@ -326,8 +331,6 @@ def main(args: argparse.Namespace):
     benchmark.result["main"].update(metrics)
 
     if resource_killer is not None:
-        # Stopped before verification, so the read of the sink isn't disturbed.
-        ray.get(resource_killer.stop_run.remote())
         nodes_killed = ray.get(resource_killer.num_killed.remote())
         print(f"Chaos killed {nodes_killed} worker raylets")
         benchmark.result["main"]["nodes_killed"] = nodes_killed
@@ -430,6 +433,31 @@ class FlooredRayletKiller(NodeKillerBase):
 
     def num_killed(self) -> int:
         return len(self.killed)
+
+
+def stop_chaos(resource_killer, timeout_s: float = 300) -> None:
+    """Stop killing raylets, then wait until the GCS marks every killed node dead.
+
+    The GCS takes a while to notice a killed raylet. Until it does, calls that fan
+    out to every alive raylet fail on that node.
+    """
+    ray.get(resource_killer.stop_run.remote())
+    # Waits for the kill loop to exit, so a kill in flight during `stop_run` is
+    # included.
+    killed = {
+        node_id for node_id, _, _ in ray.get(resource_killer.get_killed_nodes.remote())
+    }
+    deadline = time.monotonic() + timeout_s
+    while True:
+        still_alive = {n["NodeID"] for n in ray.nodes() if n["Alive"]} & killed
+        if not still_alive:
+            return
+        if time.monotonic() > deadline:
+            raise TimeoutError(
+                f"{len(still_alive)} killed nodes still read as alive after "
+                f"{timeout_s}s: {sorted(still_alive)}"
+            )
+        time.sleep(5)
 
 
 def start_chaos(args: argparse.Namespace):
