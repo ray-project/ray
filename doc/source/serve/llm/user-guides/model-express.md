@@ -17,6 +17,14 @@ ModelExpress support is alpha and may change.
 
 ## How it works
 
+```{figure} ../images/model_express.svg
+---
+width: 100%
+name: model-express-architecture
+---
+A new replica finds a serving replica through the MX server and copies its weights and compile caches GPU to GPU.
+```
+
 - **MX server:** a Serve app (named `mx` by default) that runs one replica on the head node. It's a registry of serving replicas; no weights pass through it.
 - **First replica:** loads from storage as usual. Once its engine is up, it registers with the MX server as a source and publishes its compile caches.
 - **Later replicas:** look up a source in the MX server, then pull weights and caches from it directly. If no source is available, they load from storage.
