@@ -297,6 +297,7 @@ class NormalTaskSubmitter {
     SchedulingKey scheduling_key;
     LeaseID lease_id;
     bool is_busy = false;
+    bool has_executed_task = false;
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
