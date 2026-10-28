@@ -187,6 +187,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
    serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
    serve.exceptions.ReplicaUnavailableError
+   serve.exceptions.RequestRoutingTimeoutError
 ```
 
 

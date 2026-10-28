@@ -66,6 +66,7 @@ from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     RayServeException,
+    RequestRoutingTimeoutError,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -916,7 +917,10 @@ def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
 def get_http_response_status(
     exc: BaseException, request_timeout_s: Optional[float], request_id: str
 ) -> ResponseStatus:
-    if isinstance(exc, TimeoutError):
+    if isinstance(exc, RequestRoutingTimeoutError):
+        # Checked before `TimeoutError`: `request_timeout_s` isn't what expired.
+        return ResponseStatus(code=408, is_error=True, message=exc.message)
+    elif isinstance(exc, TimeoutError):
         timeout_str = (
             f"after {request_timeout_s}s" if request_timeout_s is not None else ""
         )

@@ -53,7 +53,11 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     is_running_in_asyncio_loop,
 )
-from ray.serve.exceptions import RayServeException, RequestCancelledError
+from ray.serve.exceptions import (
+    RayServeException,
+    RequestCancelledError,
+    RequestRoutingTimeoutError,
+)
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -389,6 +393,9 @@ class _DeploymentResponseBase(Generic[R]):
                 )
                 self._replica_result = sync_future.result(timeout=_timeout_s)
 
+            except RequestRoutingTimeoutError:
+                # A `TimeoutError` on Python 3.11+; don't rewrite it below.
+                raise
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
             except concurrent.futures.CancelledError:

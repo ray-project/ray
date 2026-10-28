@@ -278,8 +278,10 @@ class RequestRouterConfig(BaseModel):
         default=None,
         description=(
             "Maximum duration in seconds that a request waits to be assigned a "
-            "replica before it fails with a TimeoutError. This bounds routing "
-            "only, not the time the replica takes to handle the request. "
+            "replica before it fails with a RequestRoutingTimeoutError, a "
+            "subclass of TimeoutError. Retries after a replica rejects the "
+            "request count toward the same timeout. This bounds routing only, "
+            "not the time the replica takes to handle the request. "
             "Defaults to None, meaning a request waits indefinitely."
         ),
     )

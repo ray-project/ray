@@ -22,6 +22,9 @@ class RequestRoutingContext:
     tried_same_node: bool = False
     tried_same_az: bool = False
     should_backoff: bool = False
+    # Event loop time by which the request must be assigned a replica. Set on the
+    # first routing attempt and kept across retries.
+    routing_deadline: Optional[float] = None
 
 
 @PublicAPI(stability="alpha")

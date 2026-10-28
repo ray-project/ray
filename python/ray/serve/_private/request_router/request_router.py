@@ -495,7 +495,6 @@ class RequestRouter(ABC):
         initial_backoff_s: float = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
         backoff_multiplier: float = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
         max_backoff_s: float = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
-        request_routing_timeout_s: Optional[float] = None,
         *args,
         **kwargs,
     ):
@@ -510,8 +509,6 @@ class RequestRouter(ABC):
         self.initial_backoff_s = initial_backoff_s
         self.backoff_multiplier = backoff_multiplier
         self.max_backoff_s = max_backoff_s
-
-        self.request_routing_timeout_s = request_routing_timeout_s
 
         # Current replicas available to be routed.
         # Updated via `update_replicas`.
@@ -845,6 +842,23 @@ class RequestRouter(ABC):
         # because finding the item in the list would be O(n). Instead, we use lazy
         # cleanup in _get_pending_request_matching_multiplexed_model_id() which
         # removes done entries during lookup, amortizing the cleanup cost.
+
+    def _remove_pending_request_from_queues(self, pending_request: PendingRequest):
+        """Remove a pending request that timed out from both pending queues.
+
+        The lazy cleanup only pops a done prefix, so it can't reach a request
+        queued behind a pending one, and no routing task runs while the deployment
+        has no replicas. Match by identity; dataclass `==` would compare the
+        request args.
+        """
+        for queue in (
+            self._pending_requests_to_fulfill,
+            self._pending_requests_to_route,
+        ):
+            for i, queued in enumerate(queue):
+                if queued is pending_request:
+                    del queue[i]
+                    break
 
     def _insert_pending_request_sorted(
         self, queue: Deque[PendingRequest], pending_request: PendingRequest
@@ -1408,39 +1422,13 @@ class RequestRouter(ABC):
 
             self._add_pending_request_to_indices(pending_request)
             self._maybe_start_routing_tasks()
-            if self.request_routing_timeout_s is None:
-                replica = await pending_request.future
-            else:
-                replica = await asyncio.wait_for(
-                    pending_request.future, self.request_routing_timeout_s
-                )
+            replica = await pending_request.future
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
             self._cancel_routing_task_for_pending_request(pending_request)
             self._remove_pending_request_from_indices(pending_request)
 
             raise e from None
-        except asyncio.TimeoutError:
-            pending_request.future.cancel()
-            self._cancel_routing_task_for_pending_request(pending_request)
-            self._remove_pending_request_from_indices(pending_request)
-            # Remove the expired request itself: the lazy cleanup only pops a done
-            # prefix, so it can't reach a request queued behind a pending one, and
-            # no routing task runs while the deployment has no replicas. Match by
-            # identity; dataclass `==` would compare the request args.
-            for queue in (
-                self._pending_requests_to_fulfill,
-                self._pending_requests_to_route,
-            ):
-                for i, queued in enumerate(queue):
-                    if queued is pending_request:
-                        del queue[i]
-                        break
-
-            raise TimeoutError(
-                f"Failed to route request to a replica of {self._deployment_id} "
-                f"within {self.request_routing_timeout_s}s."
-            ) from None
 
         return replica
 

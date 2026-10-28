@@ -113,7 +113,9 @@ class Model:
     ...
 ```
 
-A request that isn't assigned to a replica within the timeout fails with a `TimeoutError`. The timeout doesn't cover the time the replica takes to process the request. Unlike `request_timeout_s`, it also applies to `DeploymentHandle` calls.
+A request that isn't assigned to a replica within the timeout fails with a `RequestRoutingTimeoutError`, a subclass of `TimeoutError`. The HTTP proxy returns status 408 and the gRPC proxy returns `DEADLINE_EXCEEDED`. The deadline starts at the request's first routing attempt, after its arguments resolve. Retries after a replica rejects the request don't restart it. Time spent waiting for a replica to accept the request or reserve a slot counts toward the deadline, but the timeout doesn't interrupt that wait. The timeout doesn't cover the time the replica takes to process the request. Unlike `request_timeout_s`, it also applies to `DeploymentHandle` calls.
+
+With [HAProxy load balancing](serve-haproxy), requests to the ingress deployment wait in HAProxy's queue, not in a Serve request router, so `request_routing_timeout_s` doesn't bound that wait. It still applies to `DeploymentHandle` calls between deployments.
 
 ### Set timeouts while probing replicas for queue length
 
