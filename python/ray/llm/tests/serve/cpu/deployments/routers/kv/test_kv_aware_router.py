@@ -295,6 +295,20 @@ async def test_choose_replicas_routes_to_selected_worker():
     assert select.lora_name is None
 
 
+def test_worker_mapping_reused_until_candidates_change():
+    router = _build_kv_aware_router(get_worker_id("r1"))
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+    worker_id_to_replica, _ = router._workers_for(replicas)
+    assert router._workers_for(replicas)[0] is worker_id_to_replica
+
+    # The request router passes a new list when the replica set changes.
+    updated = [_StubReplica("r3")]
+    assert router._workers_for(updated) == (
+        {get_worker_id("r3"): updated[0]},
+        [get_worker_id("r3")],
+    )
+
+
 @pytest.mark.asyncio
 async def test_cold_adapter_backs_off_then_routes():
     """A LoRA request that momentarily has no multiplex candidates is still routed

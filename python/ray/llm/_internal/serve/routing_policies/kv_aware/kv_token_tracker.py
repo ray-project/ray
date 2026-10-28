@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import hashlib
 import logging
 import math
@@ -46,6 +47,8 @@ LIFECYCLE_HOOKS = frozenset(
 )
 
 
+# Called for every candidate replica on every routed request.
+@functools.lru_cache(maxsize=1 << 16)
 def get_worker_id(replica_unique_id: str) -> int:
     """Deterministically derive a Dynamo worker id from a replica's unique id."""
     return int.from_bytes(
