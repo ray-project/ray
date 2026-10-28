@@ -995,6 +995,11 @@ def _rename_for_deletion(image_dir: str) -> str:
     return renamed
 
 
+# The lower directory overlayfs's EXTRACTED mode unpacks an image into, next
+# to its ROOTFS_IMAGE (see overlayfs._extract_image_rootfs).
+_EXTRACTED_ROOTFS = f"{ROOTFS_IMAGE}.rootfs"
+
+
 def _remove_stale_deletions(images_dir: str) -> None:
     """Finish deleting image directories whose deletion was interrupted (see
     ``_rename_for_deletion``)."""
@@ -1213,7 +1218,13 @@ def pull_and_extract_container_image(
                     _drop_stale_rootfs_tree(target_dir)
                     return _finish()
 
-            if _has_users(target_dir):
+            # A refresh replaces the entry. Sandboxes on its image keep the
+            # file they have open, but not the extracted lower directory an
+            # overlayfs sandbox mounts (see overlayfs's EXTRACTED mode): that
+            # would go.
+            if _has_users(target_dir) and os.path.isdir(
+                os.path.join(target_dir, _EXTRACTED_ROOTFS)
+            ):
                 raise SandboxCreationError(
                     f"Cannot refresh cached image {image!r} while sandboxes are "
                     "using it. Stop those sandboxes before retrying."
@@ -1340,6 +1351,62 @@ def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
         download.result().close()
 
 
+def _verify_digest(expected: str, actual_sha256: str, image: str, what: str) -> None:
+    """Refuse content that does not match the digest the manifest named for it.
+
+    A registry names each blob by the sha256 of its bytes, so a mismatch
+    means a mirror, a proxy or a truncated transfer handed back something
+    other than what was asked for; caching it would run that in every sandbox
+    built from this image. Only ``sha256:`` is checked: an algorithm this code
+    does not implement is passed over rather than treated as a mismatch.
+
+    Args:
+        expected: The descriptor's digest, ``algorithm:hex``.
+        actual_sha256: Hex sha256 of the content received.
+        image: The image reference, for the message.
+        what: Which piece of the image this is, for the message.
+
+    Raises:
+        SandboxCreationError: The content does not match.
+    """
+    if not expected.startswith("sha256:"):
+        return
+    if expected != f"sha256:{actual_sha256}":
+        raise SandboxCreationError(
+            f"Digest mismatch on the {what} for image '{image}': the registry "
+            f"named {expected} but returned sha256:{actual_sha256}."
+        )
+
+
+def invalidate_cached_image(image: str, images_dir: str = DEFAULT_IMAGES_DIR) -> None:
+    """Make the next pull of ``image`` rebuild it from the registry.
+
+    Only the entry's ``.extracted`` marker goes, under the image's lock. The
+    next :func:`pull_and_extract_container_image` then rebuilds the image and
+    swaps it in, carrying over the in-use records of sandboxes still running
+    on the old one -- which keep their mounted ``rootfs.erofs`` regardless,
+    since an open file outlives its unlink. Eviction skips an entry with no
+    marker, so nothing removes the old image under a running sandbox.
+
+    Args:
+        image: Container image name or tar path.
+        images_dir: Root directory of the image cache.
+    """
+    safe_name = sanitize_image_name(image)
+    target_dir = os.path.join(images_dir, safe_name)
+    if not os.path.isdir(target_dir):
+        return
+    lock_path = os.path.join(images_dir, f"{safe_name}.lock")
+    with open(lock_path, "w", encoding="utf-8") as f_lock:
+        fcntl.flock(f_lock, fcntl.LOCK_EX)
+        try:
+            os.remove(os.path.join(target_dir, ".extracted"))
+        except FileNotFoundError:
+            pass
+        finally:
+            fcntl.flock(f_lock, fcntl.LOCK_UN)
+
+
 def _extract_image_layers(
     image: str,
     rootfs_dir: str,
@@ -1406,7 +1473,12 @@ def _extract_image_layers(
         manifest_url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
         req = _registry_request(manifest_url, headers, auth_header)
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            manifest_data = json.loads(resp.read().decode("utf-8"))
+            manifest_bytes = resp.read()
+        # A tag names no digest to check against; a digest reference does.
+        _verify_digest(
+            reference, hashlib.sha256(manifest_bytes).hexdigest(), image, "manifest"
+        )
+        manifest_data = json.loads(manifest_bytes.decode("utf-8"))
 
         # Resolve multi-architecture manifest list / OCI index
         if "manifests" in manifest_data:
@@ -1429,7 +1501,14 @@ def _extract_image_layers(
                 auth_header,
             )
             with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
-                manifest_data = json.loads(resp.read().decode("utf-8"))
+                manifest_bytes = resp.read()
+            _verify_digest(
+                chosen_digest,
+                hashlib.sha256(manifest_bytes).hexdigest(),
+                image,
+                "platform manifest",
+            )
+            manifest_data = json.loads(manifest_bytes.decode("utf-8"))
 
         # extract image config so we can reference metadata bout the image later.
         config_desc = manifest_data.get("config")
@@ -1439,18 +1518,29 @@ def _extract_image_layers(
                 f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
             )
             config_req = _registry_request(config_url, headers, auth_header)
+            config_bytes = None
             try:
                 with urllib.request.urlopen(
                     config_req, timeout=timeout_seconds
                 ) as resp:
                     config_bytes = resp.read()
-                    with open(
-                        os.path.join(image_dir, ".image_config.json"),
-                        "wb",
-                    ) as f_cfg:
-                        f_cfg.write(config_bytes)
             except Exception as e:
                 logger.warning(f"Failed to fetch image config blob: {e}")
+            if config_bytes is not None:
+                # Outside the try above: a config that fails to arrive is
+                # tolerated, but one that arrives altered is not -- it carries
+                # the Env, Cmd and Entrypoint every sandbox would run with.
+                _verify_digest(
+                    config_digest,
+                    hashlib.sha256(config_bytes).hexdigest(),
+                    image,
+                    "config blob",
+                )
+                with open(
+                    os.path.join(image_dir, ".image_config.json"),
+                    "wb",
+                ) as f_cfg:
+                    f_cfg.write(config_bytes)
 
         layers = manifest_data.get("layers", [])
         if not layers:
