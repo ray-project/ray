@@ -13,7 +13,7 @@ Load a new replica's weights and compile caches from a replica that is already s
 ModelExpress support is alpha and may change.
 :::
 
-[ModelExpress](https://github.com/ai-dynamo/modelexpress) (MX) moves model weights GPU to GPU over [NIXL](https://github.com/ai-dynamo/nixl). With `load_format="modelexpress"`, a scaled-out replica copies the weights of a running replica and installs its torch.compile, Triton, FlashInfer, and DeepGEMM caches, so it skips both the download and most of the warm-up.
+[ModelExpress](https://github.com/ai-dynamo/modelexpress) (MX) moves model weights GPU to GPU over [NIXL](https://github.com/ai-dynamo/nixl). With `load_format="modelexpress"`, a scaled-out replica copies the weights of a running replica and installs its `torch.compile`, Triton, FlashInfer, and DeepGEMM caches, so it skips both the download and most of the warm-up.
 
 ## How it works
 
@@ -102,13 +102,13 @@ Qwen3-235B-A22B-Instruct-2507-FP8, TP=8 with expert parallelism, one replica per
 | | First replica (from Hugging Face) | Second replica (from the first) |
 |---|---|---|
 | Weights | 336 s | 32 s (1.1 s transfer at ~218 Gbps per GPU) |
-| torch.compile | 83 s | 1 s |
+| `torch.compile` | 83 s | 1 s |
 | Replica start to ready | ~15.5 min | ~4 min |
 
 ## Limitations
 
 - The first replica still loads from storage and compiles. Keep `min_replicas` at 1 or more to keep a source available.
-- After a source replica dies, the MX server keeps it registered for about 90 seconds. A replica that picks it in that window falls back to another source or to storage.
+- After a source replica dies, the MX server keeps it registered for about 90 seconds. A replica that tries it in that window fails to connect, then falls back to another source or to storage.
 - Streaming weights from object storage on a cold start (`MX_MODEL_URI`) needs `runai-model-streamer`, which the `ray-llm` image doesn't include.
 
 ## See also
