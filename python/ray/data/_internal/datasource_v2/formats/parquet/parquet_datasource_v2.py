@@ -41,7 +41,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.util import _is_local_scheme
+from ray.data._internal.util import RetryingPyFileSystem, _is_local_scheme
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -99,7 +99,14 @@ class ParquetDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths: List[str] = resolved_paths
-        self._filesystem = resolved_filesystem
+        # Retry ``DataContext.retried_io_errors`` on every filesystem call --
+        # listing, schema inference and reads -- as V1's ``ParquetDatasource``
+        # does. Without this, the driver-side listing and footer reads fail on
+        # the first transient error.
+        self._filesystem = RetryingPyFileSystem.wrap(
+            resolved_filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
+        )
         self._partitioning = partitioning
         self._file_extensions = (
             list(file_extensions) if file_extensions is not None else None

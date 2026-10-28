@@ -11,7 +11,6 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.file_reader import (
-    _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
@@ -57,6 +56,7 @@ class OrcScanner(ArrowFileScanner):
     """
 
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
+    target_block_size: Optional[int] = None
     reuse_file_metadata: bool = False
 
     @override
@@ -142,14 +142,9 @@ class OrcScanner(ArrowFileScanner):
 
     def create_reader(self) -> OrcFileReader:
         """Create a reader with this scanner's projection and filters."""
-        batch_size = (
-            self.batch_size
-            if self.batch_size is not None
-            else _ARROW_DEFAULT_BATCH_SIZE
-        )
         return OrcFileReader(
             format=FileFormat.ORC,
-            batch_size=batch_size,
+            batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
             predicate=self.predicate,
             limit=self.limit,
@@ -158,5 +153,6 @@ class OrcScanner(ArrowFileScanner):
             ignore_prefixes=self.ignore_prefixes,
             synthesized_columns=self.synthesized_columns,
             schema=self.schema,
+            target_block_size=self.target_block_size,
             reuse_file_metadata=self.reuse_file_metadata,
         )
