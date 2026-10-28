@@ -1436,7 +1436,12 @@ def create_ray_logs_for_failed_test(rep):
 
     # Archive failed tests after the "setup" or "call" phase of the test. We want logs in
     # both failure modes.
-    if rep.when not in ("setup", "call") or not rep.failed:
+    if rep.when not in ("setup", "call"):
+        return
+    # [diag] Also archive passing test_release_resource runs.
+    if not rep.failed and not (
+        rep.when == "call" and "test_release_resource" in rep.nodeid
+    ):
         return
 
     # Get dir to write zipped logs to
