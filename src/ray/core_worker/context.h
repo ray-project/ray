@@ -168,6 +168,10 @@ class WorkerContext {
 
   bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /**
+   * @brief Get exception substring patterns that trigger restarts for the current actor.
+   * @return The configured patterns, or an empty vector if no actor patterns are set.
+   */
   std::vector<std::string> CurrentActorRestartOnExceptionPatterns() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 

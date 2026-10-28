@@ -762,7 +762,7 @@ def _match_restart_exception(exc: BaseException, patterns):
         for original, folded in folded_patterns:
             if folded in text:
                 return original
-        cur = cur.__cause__ or cur.__context__
+        cur = cur.__cause__ if cur.__cause__ is not None else cur.__context__
     return None
 
 
