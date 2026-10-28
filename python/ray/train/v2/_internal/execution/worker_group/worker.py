@@ -3,15 +3,28 @@ import os
 import queue
 import socket
 import sys
-from dataclasses import dataclass
+import threading
+import time
+from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    TypeVar,
+    Union,
+)
 
 import ray
 import ray._private.ray_constants as ray_constants
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
 from ray.train import Checkpoint
+from ray.train.health._internal.probe_utils import ScheduledProbe
+from ray.train.health.probe import ProbeResult, WorkerProbe
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_WORKER_LOGGING,
     ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
@@ -230,13 +243,31 @@ class RayTrainWorker:
             else None
         )
 
+        with train_context.health_lock:
+            probe_results = dict(train_context.probe_results)
+
         return WorkerStatus(
             running=running,
             error=error,
             training_report=training_report,
             return_value=return_value,
             preemption_info=train_context.preemption_context.preemption_info,
+            probe_results=probe_results,
         )
+
+    def _sample_probe(self, scheduled_probe: ScheduledProbe) -> None:
+        """Poll the probe every ``poll_interval_s`` until the worker exits.
+
+        Args:
+            scheduled_probe: The probe and its interval.
+        """
+        probe = scheduled_probe.probe
+        train_context = get_train_context()
+        while True:
+            result = poll_probe(probe)
+            with train_context.health_lock:
+                train_context.probe_results[probe.probe_name()] = result
+            time.sleep(scheduled_probe.poll_interval_s)
 
     def clear_result_queue(self) -> bool:
         """Drain the result queue, discarding any pending training reports.
@@ -279,6 +310,7 @@ class RayTrainWorker:
         checkpoint: Optional[Checkpoint] = None,
         has_validation_fn: Optional[bool] = None,
         current_report_index: int = 0,
+        worker_probes: Sequence[ScheduledProbe] = (),
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
         context_callbacks_to_propagate = [
@@ -315,5 +347,67 @@ class RayTrainWorker:
         # user facing train fn utils
         set_train_fn_utils(DistributedTrainFnUtils())
 
+        for scheduled_probe in worker_probes:
+            name = scheduled_probe.probe.probe_name()
+            threading.Thread(
+                target=self._sample_probe,
+                args=(scheduled_probe,),
+                name=f"WorkerProbe-{name}-{scheduled_probe.poll_interval_s:g}s",
+                daemon=True,
+            ).start()
+
         for callback in self._callbacks:
             callback.after_init_train_context()
+
+
+def poll_probe(probe: WorkerProbe) -> ProbeResult:
+    """Poll a probe. A result without a ``timestamp_s`` is stamped with the time
+    the probe returned, and a poll that raises or does not return a
+    ``ProbeResult`` returns a result with the ``error``."""
+    try:
+        result = probe.poll()
+        if not isinstance(result, ProbeResult):
+            raise TypeError(
+                f"{probe.probe_name()}.poll() returned {type(result).__name__}, "
+                "not a ProbeResult."
+            )
+    except Exception as e:
+        return ProbeResult(timestamp_s=time.time(), error=e)
+    if result.timestamp_s is None:
+        result = replace(result, timestamp_s=time.time())
+    return result
+
+
+def start_on_demand_probes(probes: List[WorkerProbe]) -> None:
+    """Start polling probes once on this worker, in a thread of their own. Get
+    their results with ``get_on_demand_probe_results()``.
+
+    Args:
+        probes: The probes to poll.
+
+    Raises:
+        RuntimeError: If the previous on-demand probes still run.
+    """
+    train_context = get_train_context()
+    previous = train_context.on_demand_probe_runner
+    if previous is not None and previous.is_running():
+        raise RuntimeError("The previous on-demand probes are still running.")
+
+    def poll_on_demand_probes() -> Dict[str, ProbeResult]:
+        return {probe.probe_name(): poll_probe(probe) for probe in probes}
+
+    runner = ThreadRunner()
+    runner.run(poll_on_demand_probes)
+    train_context.on_demand_probe_runner = runner
+
+
+def get_on_demand_probe_results() -> Optional[Dict[str, ProbeResult]]:
+    """Get the results of the probes that ``start_on_demand_probes()`` polls.
+
+    Returns:
+        ``{probe name: ProbeResult}``, or ``None`` while they run.
+    """
+    runner = get_train_context().on_demand_probe_runner
+    if runner is None or runner.is_running():
+        return None
+    return runner.get_return_value()

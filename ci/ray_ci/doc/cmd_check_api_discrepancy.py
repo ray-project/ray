@@ -191,6 +191,25 @@ TEAM_API_CONFIGS = {
             "ray.train.context.TrainContext",
             "ray.train.context.get_context",
         },
+        "tracked_doc_debt": {
+            # The alpha ray.train.health surface, reached through Ray Train's
+            # internals; pending Ray Train API docs.
+            "ray.train.health.check.HealthCheck",
+            "ray.train.health.check.HealthConfig",
+            "ray.train.health.check.PeriodicHealthCheck",
+            "ray.train.health.decision.Diagnose",
+            "ray.train.health.decision.Evict",
+            "ray.train.health.decision.HealthDecision",
+            "ray.train.health.decision.Noop",
+            "ray.train.health.decision.Reattempt",
+            "ray.train.health.evaluator.Evaluator",
+            "ray.train.health.probe.ControllerProbe",
+            "ray.train.health.probe.NodeProbe",
+            "ray.train.health.probe.Probe",
+            "ray.train.health.probe.ProbeResult",
+            "ray.train.health.probe.WorkerProbe",
+            "ray.train.health.state.HealthState",
+        },
     },
     "tune": {
         "head_modules": {"ray.tune"},
@@ -279,7 +298,6 @@ UNWALKED_ANNOTATED_ALLOWLIST: Dict[str, str] = {
     "ray.serve.task_consumer": "annotated-not-walked; pending Ray Serve",
     "ray.serve.task_processor": "annotated-not-walked; pending Ray Serve",
     "ray.serve.taskiq_task_processor": "annotated-not-walked; pending Ray Serve",
-    "ray.train.health": "annotated-not-walked; pending Ray Train API docs",
     "ray.train.horovod": "annotated-not-walked; pending Ray Train",
     # unverifiable-import: not importable under the docbuild backend mock (missing
     # optional dependency), so the surface can't be checked here. Resolve by making
