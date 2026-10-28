@@ -326,6 +326,9 @@ class TestPDOrchestratorMixin:
             async def render_chat_async(self, *args, **kwargs):
                 raise AssertionError("vLLM should skip chat rendering and tokenization")
 
+            def validate_token_ids(self, token_ids, *, parameter=None):
+                pass
+
         class ChatParams:
             def with_defaults(self, *args, **kwargs):
                 return self
@@ -338,6 +341,7 @@ class TestPDOrchestratorMixin:
             online_renderer.OnlineRenderer
         )
         renderer.renderer = Renderer()
+        renderer.trust_request_mm_kwargs = False
         renderer.model_config = SimpleNamespace(
             multimodal_config=None, enable_prompt_embeds=False
         )
@@ -427,6 +431,7 @@ class TestPDOrchestratorMixin:
             online_renderer.OnlineRenderer
         )
         renderer.renderer = Renderer()
+        renderer.trust_request_mm_kwargs = False
         renderer.model_config = SimpleNamespace(is_encoder_decoder=False)
 
         engine_inputs = asyncio.run(

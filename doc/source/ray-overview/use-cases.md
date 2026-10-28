@@ -11,7 +11,7 @@ myst:
 ```{toctree}
 :hidden:
 
-../ray-air/getting-started
+ml-infrastructure
 ```
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
@@ -78,8 +78,8 @@ Learn more about model serving with the following resources.
 
 - [[Talk] Productionizing ML at Scale with Ray Serve](https://www.youtube.com/watch?v=UtH-CMpmxvI)
 - [[Blog] Simplify your MLOps with Ray & Ray Serve](https://www.anyscale.com/blog/simplify-your-mlops-with-ray-and-ray-serve)
-- {doc}`[Guide] Getting Started with Ray Serve </serve/getting_started>`
-- {doc}`[Guide] Model Composition in Serve </serve/model_composition>`
+- {doc}`[Guide] Getting Started with Ray Serve </serve/getting-started>`
+- {doc}`[Guide] Model Composition in Serve </serve/model-composition>`
 - {doc}`[Gallery] Serve Examples Gallery </serve/examples>`
 - [[Gallery] More Serve Use Cases on the Blog](https://www.anyscale.com/blog?tag=ray_serve)
 
@@ -97,7 +97,7 @@ Distributed tuning with distributed training per trial.
 
 Learn more about the Tune library with the following talks and user guides.
 
-- {doc}`[Guide] Getting Started with Ray Tune </tune/getting-started>`
+- {doc}`[Guide] Get started with Ray Tune </tune/getting-started>`
 - [[Blog] How to distribute hyperparameter tuning with Ray Tune](https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune)
 - [[Talk] Simple Distributed Hyperparameter Optimization](https://www.youtube.com/watch?v=KgYZtlbFYXE)
 - [[Blog] Hyperparameter Search with 🤗 Transformers](https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune)
@@ -120,8 +120,8 @@ Learn more about the Train library with the following talks and user guides.
 
 - [[Talk] Ray Train, PyTorch, TorchX, and distributed deep learning](https://www.youtube.com/watch?v=e-A93QftCfc)
 - [[Blog] Elastic Distributed Training with XGBoost on Ray](https://www.uber.com/blog/elastic-xgboost-ray/)
-- {doc}`[Guide] Getting Started with Ray Train </train/train>`
-- {doc}`[Example] Fine-tune a 🤗 Transformers model </train/examples/transformers/huggingface_text_classification>`
+- {doc}`[Guide] Getting Started with Ray Train </train/index>`
+- {doc}`[Example] Fine-tune a 🤗 Transformers model </train/examples/transformers/huggingface-text-classification>`
 - {doc}`[Gallery] Ray Train Examples Gallery </train/examples>`
 - [[Gallery] More Train Use Cases on the Blog](https://www.anyscale.com/blog?tag=ray_train)
 
@@ -161,8 +161,8 @@ Read more about building ML platforms with Ray in {ref}`this section <ray-for-ml
 
 The following highlights examples utilizing Ray AI libraries to implement end-to-end ML workflows.
 
-- {doc}`[Example] Text classification with Ray </train/examples/transformers/huggingface_text_classification>`
-- {doc}`[Example] Object detection with Ray </train/examples/pytorch/torch_detection>`
+- {doc}`[Example] Text classification with Ray </train/examples/transformers/huggingface-text-classification>`
+- {doc}`[Example] Object detection with Ray </_collections/ray-overview/examples/object-detection/README>`
 - {doc}`[Example] Machine learning on tabular data </_collections/ray-overview/examples/e2e-xgboost/README>`
 
 ## Large Scale Workload Orchestration

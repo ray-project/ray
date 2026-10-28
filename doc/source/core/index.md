@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Ray's distributed computing primitives — tasks, actors, and objects — with examples for turning Python functions and classes into distributed apps."
+    description: "An introduction to tasks, actors, and objects, the distributed computing primitives of Ray, with examples that turn Python functions and classes into distributed apps."
 ---
 
 (core-walkthrough)=
@@ -18,17 +18,17 @@ Examples <examples/index>
 Internals <internals/index>
 ```
 
-Ray Core is a powerful distributed computing framework that provides a small set of essential primitives (tasks, actors, and objects) for building and scaling distributed applications. This walk-through introduces you to these core concepts with simple examples that demonstrate how to transform your Python functions and classes into distributed Ray tasks and actors, and how to work effectively with Ray objects.
+Ray Core is a distributed computing framework for building and scaling distributed applications. It provides three essential primitives: tasks, actors, and objects. This walkthrough introduces each one with examples that show how to turn your Python functions and classes into Ray tasks and actors, and how to work with Ray objects.
 
 :::{note}
-Ray has introduced an experimental API to transfer objects using GLOO / NCCL / NIXL / (bring your own) as an alternative to the default shared memory + gRPC based object store. See {ref}`Ray Direct Transport <direct-transport>` for more details.
+Ray offers an experimental API that transfers objects over Gloo, NCCL, NIXL, or your own transport, as an alternative to the default object store, which uses shared memory and gRPC. For details, see {ref}`Ray Direct Transport <direct-transport>`.
 :::
 
-## Getting Started
+## Getting started
 
-To get started, install Ray using `pip install -U ray`. For additional installation options, see {ref}`Installing Ray <installation>`.
+To get started, install Ray with `pip install -U ray`. For other installation options, see {ref}`Installing Ray <installation>`.
 
-The first step is to import and initialize Ray:
+Start by importing and initializing Ray:
 
 ```{literalinclude} doc_code/getting_started.py
 :language: python
@@ -37,18 +37,18 @@ The first step is to import and initialize Ray:
 ```
 
 :::{note}
-Unless you explicitly call `ray.init()`, the first use of a Ray remote API call will implicitly call `ray.init()` with no arguments.
+If you don't call `ray.init()` explicitly, the first Ray remote API call implicitly calls `ray.init()` with no arguments.
 :::
 
-## Running a Task
+## Running a task
 
-Tasks are the simplest way to parallelize your Python functions across a Ray cluster. To create a task:
+Tasks are the simplest way to parallelize your Python functions across a Ray cluster. To create and run a task, do the following:
 
-1. Decorate your function with `@ray.remote` to indicate it should run remotely
-2. Call the function with `.remote()` instead of a normal function call
-3. Use `ray.get()` to retrieve the result from the returned future (Ray *object reference*)
+1. Decorate your function with `@ray.remote` to mark it to run remotely.
+1. Call the function with `.remote()` instead of a normal function call.
+1. Use `ray.get()` to retrieve the result from the returned future, which Ray calls an *object ref*.
 
-Here's a simple example:
+The following example creates and runs a task:
 
 ```{literalinclude} doc_code/getting_started.py
 :language: python
@@ -56,15 +56,15 @@ Here's a simple example:
 :end-before: __running_task_end__
 ```
 
-## Calling an Actor
+## Calling an actor
 
-While tasks are stateless, Ray actors allow you to create stateful workers that maintain their internal state between method calls. When you instantiate a Ray actor:
+Tasks are stateless. Ray actors are stateful workers that maintain their internal state between method calls. When you instantiate an actor, the following happens:
 
-1. Ray starts a dedicated worker process somewhere in your cluster
-2. The actor's methods run on that specific worker and can access and modify its state
-3. The actor executes method calls serially in the order it receives them, preserving consistency
+- Ray starts a dedicated worker process somewhere in your cluster.
+- The actor's methods run on that specific worker and can access and modify its state.
+- The actor executes method calls serially in the order it receives them, which preserves consistency.
 
-Here's a simple Counter example:
+The following example defines and calls a `Counter` actor:
 
 ```{literalinclude} doc_code/getting_started.py
 :language: python
@@ -72,17 +72,17 @@ Here's a simple Counter example:
 :end-before: __calling_actor_end__
 ```
 
-The preceding example demonstrates basic actor usage. For a more comprehensive example that combines both tasks and actors, see the {ref}`Monte Carlo Pi estimation example <monte-carlo-pi>`.
+The preceding example shows basic actor usage. For a fuller example that combines tasks and actors, see the {ref}`Monte Carlo Pi estimation example <monte-carlo-pi>`.
 
-## Passing Objects
+## Passing objects
 
-Ray's distributed object store efficiently manages data across your cluster. There are three main ways to work with objects in Ray:
+Ray's distributed object store manages data across your cluster. You work with objects in Ray in three main ways:
 
-1. **Implicit creation**: When tasks and actors return values, they are automatically stored in Ray's {ref}`distributed object store <objects-in-ray>`, returning *object references* that can be later retrieved.
-2. **Explicit creation**: Use `ray.put()` to directly place objects in the store.
-3. **Passing references**: You can pass object references to other tasks and actors, avoiding unnecessary data copying and enabling lazy execution.
+- **Implicit creation**: When tasks and actors return values, Ray automatically stores them in its {ref}`distributed object store <objects-in-ray>` and returns object refs that you can retrieve later.
+- **Explicit creation**: Use `ray.put()` to place objects in the store directly.
+- **Passing references**: Pass object refs to other tasks and actors, which avoids unnecessary data copying and supports lazy execution.
 
-Here's an example showing these techniques:
+The following example shows each technique:
 
 ```{literalinclude} doc_code/getting_started.py
 :language: python
@@ -90,13 +90,13 @@ Here's an example showing these techniques:
 :end-before: __passing_object_end__
 ```
 
-## Next Steps
+## Next steps
 
 :::{tip}
-To monitor your application's performance and resource usage, check out the {ref}`Ray dashboard <observability-getting-started>`.
+To monitor your application's performance and resource usage, see the {ref}`Ray dashboard <observability-getting-started>`.
 :::
 
-You can combine Ray's simple primitives in powerful ways to express virtually any distributed computation pattern. To dive deeper into Ray's {ref}`key concepts <core-key-concepts>`, explore these user guides:
+You can combine Ray's primitives to express virtually any distributed computation pattern. To learn more about Ray's {ref}`key concepts <core-key-concepts>`, see the following user guides:
 
 ::::{grid} 1 2 3 3
 :gutter: 1
@@ -108,7 +108,7 @@ You can combine Ray's simple primitives in powerful ways to express virtually an
 
 ```{button-ref} ray-remote-functions
 
-Using remote functions (Tasks)
+Using remote functions as tasks
 ```
 :::
 
@@ -118,7 +118,7 @@ Using remote functions (Tasks)
 
 ```{button-ref} ray-remote-classes
 
-Using remote classes (Actors)
+Using remote classes as actors
 ```
 :::
 
@@ -128,7 +128,7 @@ Using remote classes (Actors)
 
 ```{button-ref} objects-in-ray
 
-Working with Ray Objects
+Working with Ray objects
 ```
 :::
 ::::

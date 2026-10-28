@@ -6,160 +6,156 @@ myst:
 
 (token-authentication)=
 
-# Token Authentication
+# Token authentication
 
-Ray v2.52.0 introduced support for token authentication, enabling Ray to enforce the use of a single, statically generated token in the authorization header for all requests to the Ray Dashboard, GCS server, and other control-plane services.
+As of Ray 2.52.0, Ray supports token authentication. With token authentication enabled, Ray requires a single, statically generated token in the authorization header of every request to the Ray dashboard, the GCS server, and other control-plane services.
 
-This document covers the design and architecture of token authentication in Ray, including configuration, token loading, propagation, and verification across C++, Python, and the Ray dashboard.
+This page describes the design and architecture of token authentication in Ray, including configuration, token loading, propagation, and verification across C++, Python, and the Ray dashboard.
 
-## Authentication Modes
+## Authentication modes
 
-Ray's authentication behavior is controlled by the **RAY_AUTH_MODE** environment variable. As of now, Ray supports two modes:
+The `RAY_AUTH_MODE` environment variable controls Ray's authentication behavior. Ray supports two modes:
 
-- `token` - Static bearer token authentication. Default for local clusters starting in Ray 2.59, and for all clusters starting in Ray 2.61.
-- `disabled` - No authentication. Default for remote and multi-node clusters until Ray 2.61, and the explicit opt-out after that.
+- `token`: Static bearer token authentication. The default for local clusters starting in Ray 2.59, and for all clusters starting in Ray 2.61.
+- `disabled`: No authentication. The default for remote and multi-node clusters until Ray 2.61, and the explicit opt-out after that.
 
-**RAY_AUTH_MODE** must be set via the environment and should be configured consistently on every node in the Ray cluster. When `RAY_AUTH_MODE=token`, token authentication is enabled and all supported RPC and HTTP entry points enforce token based authentication.
+Set `RAY_AUTH_MODE` through the environment, and set it consistently on every node in the Ray cluster. When you set `RAY_AUTH_MODE=token`, Ray turns on token authentication, and all supported RPC and HTTP entry points enforce token-based authentication.
 
-## Token Sources and Precedence
+## Token sources and precedence
 
-Once token auth is enabled, Ray looks for the token in the following order (highest to lowest precedence):
+When token authentication is enabled, Ray looks for the token in the following order, from highest to lowest precedence:
 
-1. **RAY_AUTH_TOKEN** (environment variable): If set and non-empty, this value is used directly as the token string.
+1. `RAY_AUTH_TOKEN` environment variable: If this variable is set and non-empty, Ray uses its value directly as the token string.
 
-2. **RAY_AUTH_TOKEN_PATH** (environment variable pointing to file): If set, Ray reads the token from that file. If the file cannot be read or is empty, Ray treats this as a fatal misconfiguration and aborts rather than silently falling back.
+1. `RAY_AUTH_TOKEN_PATH` environment variable: This variable points to a file. If it's set, Ray reads the token from that file. If Ray can't read the file or the file is empty, Ray treats this as a fatal misconfiguration and aborts rather than silently falling back.
 
-3. **Default token file path**: If neither of the above are set, Ray falls back to a default path:
+1. Default token file: If neither of the preceding variables is set, Ray falls back to a default path:
 
    - `~/.ray/auth_token` on POSIX systems
    - `%USERPROFILE%\.ray\auth_token` on Windows
 
-For local clusters started with `ray.init()` and auth enabled, Ray automatically generates a new token and persists it at the default path if no token exists.
+When you start a local cluster with `ray.init()` and authentication enabled, Ray automatically generates a token and persists it at the default path if no token exists.
 
 :::{note}
-Whitespace is stripped when reading the token from files to avoid issues from trailing newlines.
+Ray strips whitespace when it reads the token from a file, which avoids issues from trailing newlines.
 :::
 
-## Token Propagation and Verification
+## Token propagation and verification
 
-### Common Expectations
+The following sections describe the token format that servers expect, and how C++, Python, and HTTP clients and servers attach and verify the token.
 
-Across both C++ and Python, gRPC servers expect the token to be present in the authorization metadata key as:
+### Common expectations
+
+In both C++ and Python, gRPC servers expect the token in the authorization metadata key, in the following form:
 
 ```text
 Authorization: Bearer <token_value>
 ```
 
-HTTP servers similarly expect one of:
+HTTP servers expect one of the following forms:
 
-1. `Authorization: Bearer <token>` - Used by Ray CLI and other internal HTTP clients.
-2. Cookie `ray-authentication-token=<token>` - Used by the browser-based dashboard.
-3. `X-Ray-Authorization: Bearer <token>` - Used by KubeRay and environments where the standard `Authorization` header may be stripped by a proxy.
+- `Authorization: Bearer <token>`: The Ray CLI and other internal HTTP clients use this form.
+- Cookie `ray-authentication-token=<token>`: The browser-based dashboard uses this form.
+- `X-Ray-Authorization: Bearer <token>`: KubeRay uses this form, as do environments where a proxy might strip the standard `Authorization` header.
 
-### C++ Clients and Servers
+### C++ clients and servers
 
-On the C++ side, token attachment to outgoing RPCs is automated using gRPC's interceptor API. The client interceptor is defined in [token_auth_client_interceptor.h](https://github.com/ray-project/ray/blob/master/src/ray/rpc/authentication/token_auth_client_interceptor.h).
+On the C++ side, Ray uses gRPC's interceptor API to attach the token to outgoing RPCs automatically. Ray defines the client interceptor in [token_auth_client_interceptor.h](https://github.com/ray-project/ray/blob/master/src/ray/rpc/authentication/token_auth_client_interceptor.h).
 
-All production C++ gRPC channels must be created through the `BuildChannel()` helper, which wires in the interceptor when token auth is enabled. Ray developers must not create channels directly with `grpc::CreateCustomChannel`; doing so would bypass token attachment. `BuildChannel()` is the central enforcement point that ensures all C++ clients automatically add the correct `Authorization: Bearer <token>` metadata.
+Create all production C++ gRPC channels through the `BuildChannel()` helper, which wires in the interceptor when token authentication is enabled. Don't create channels directly with `grpc::CreateCustomChannel`, because that bypasses token attachment. `BuildChannel()` is the central enforcement point that ensures all C++ clients automatically add the correct `Authorization: Bearer <token>` metadata.
 
-Server-side token validation compares the token presented by the client with the token the cluster was started with. This check is performed in [server_call.h](https://github.com/ray-project/ray/blob/master/src/ray/rpc/server_call.h) inside the generic request handling path. Because all gRPC services inherit from the same base call implementation, the validation applies uniformly to all C++ gRPC servers when token auth is enabled.
+Server-side token validation compares the token that the client presents with the token that the cluster started with. This check runs in [server_call.h](https://github.com/ray-project/ray/blob/master/src/ray/rpc/server_call.h), inside the generic request-handling path. Because all gRPC services inherit from the same base call implementation, the validation applies uniformly to all C++ gRPC servers when token authentication is enabled.
 
-### Python Clients and Servers
+### Python clients and servers
 
 Most Python components use Cython bindings over the C++ clients, so they automatically inherit the same token behavior without additional Python-level code.
 
-For components that construct gRPC clients or servers directly in Python, explicit interceptors (both sync and async) add and validate authentication metadata:
+For components that construct gRPC clients or servers directly in Python, explicit synchronous and asynchronous interceptors add and validate authentication metadata. The interceptors live in the following modules:
 
 - [Client interceptors](https://github.com/ray-project/ray/blob/master/python/ray/_private/authentication/grpc_authentication_client_interceptor.py)
 - [Server interceptors](https://github.com/ray-project/ray/blob/master/python/ray/_private/authentication/grpc_authentication_server_interceptor.py)
 
-All Python gRPC clients and servers should be created using helper utilities from [grpc_utils.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/grpc_utils.py). These helpers automatically attach the correct client/server interceptors when token auth is enabled. The convention is to always go through the shared utilities so that auth is consistently enforced, never constructing raw gRPC channels or servers directly.
+Create all Python gRPC clients and servers with the helper utilities in [grpc_utils.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/grpc_utils.py). These helpers automatically attach the correct client or server interceptors when token authentication is enabled. Always go through the shared utilities so that Ray enforces authentication consistently, and never construct raw gRPC channels or servers directly.
 
-### HTTP Clients and Servers
+### HTTP clients and servers
 
-For HTTP services, token authentication is implemented using aiohttp middleware in [http_token_authentication.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/authentication/http_token_authentication.py).
+For HTTP services, aiohttp middleware in [http_token_authentication.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/authentication/http_token_authentication.py) implements token authentication.
 
-The middleware must be explicitly added to each server's middleware list (e.g., `dashboard_head` service and `runtime_env_agent` service). Once configured, it:
+You must add the middleware explicitly to each server's middleware list, as in the `dashboard_head` and `runtime_env_agent` services. After you add it, the middleware does the following:
 
-- Extracts the token from `Authorization` header, `X-Ray-Authorization` header, or `ray-authentication-token` cookie.
-- Validates the token and returns:
+- Extracts the token from the `Authorization` header, the `X-Ray-Authorization` header, or the `ray-authentication-token` cookie.
+- Validates the token and returns the following status codes:
 
-  - **401 Unauthorized** for missing token.
-  - **403 Forbidden** for invalid token.
+  - `401 Unauthorized` for a missing token
+  - `403 Forbidden` for an invalid token
 
-Client-side, HTTP callers can use the `get_auth_headers_if_auth_enabled()` helper to attach headers. This helper computes `Authorization: Bearer <token>` if token auth is enabled and merges it with any user-supplied headers.
-
-:::{note}
-For HTTP, middleware and header injection are not automatically wired up for new services; they must be added manually.
-:::
+On the client side, HTTP callers can attach headers with the `get_auth_headers_if_auth_enabled()` helper. If token authentication is enabled, this helper computes `Authorization: Bearer <token>` and merges it with any headers the caller supplies.
 
 ## Ray dashboard flow
 
-When a Ray cluster is started with `RAY_AUTH_MODE=token`, accessing the dashboard triggers an authentication flow in the UI:
+When you start a Ray cluster with `RAY_AUTH_MODE=token`, opening the dashboard triggers the following authentication flow in the UI:
 
-1. The user sees a dialog prompting them to enter the authentication token.
-2. Once the user submits the token, the frontend sends a `POST` request to the dashboard head's `/api/authenticate` endpoint with `Authorization: Bearer <token>` header.
-3. The dashboard head validates the token.
-4. If validation succeeds, the server responds with **200 OK** and instructs the browser to set a cookie:
+1. The dashboard shows a dialog that prompts you to enter the authentication token.
+1. After you submit the token, the frontend sends a `POST` request with the `Authorization: Bearer <token>` header to the dashboard head's `/api/authenticate` endpoint.
+1. The dashboard head validates the token.
+1. If validation succeeds, the server responds with `200 OK` and instructs the browser to set a cookie with the following properties:
 
    - Name: `ray-authentication-token`
    - Value: `<token>`
-   - Attributes: `HttpOnly`, `SameSite=Strict` (and `Secure` when running over HTTPS)
-   - max_age: 30 days (cookie is cleared after 30 days)
+   - Attributes: `HttpOnly` and `SameSite=Strict`, plus `Secure` over HTTPS
+   - `max_age`: 30 days
 
-From this point on, subsequent dashboard UI API calls automatically include the cookie and satisfy the middleware's authentication checks.
+From then on, dashboard UI API calls automatically include the cookie and pass the middleware's authentication checks.
 
-If a backend request returns **401 Unauthorized** (no token) or **403 Forbidden** (invalid token or mode change), the dashboard UI interprets this as an authentication failure. It clears any stale state and re-opens the authentication dialog, prompting the user to re-enter a valid token.
+If a backend request returns `401 Unauthorized` for a missing token, or `403 Forbidden` for an invalid token or a mode change, the dashboard UI treats it as an authentication failure. The UI clears any stale state and reopens the authentication dialog, which prompts you to enter a valid token again.
 
 This approach keeps the token out of JavaScript-accessible storage and relies on standard browser cookie mechanics to secure subsequent requests.
 
 ## Ray CLI
 
-Ray CLI commands that talk to an authenticated cluster automatically load the token from the same three mechanisms (in the same precedence order):
+Ray CLI commands that talk to an authenticated cluster automatically load the token from `RAY_AUTH_TOKEN`, `RAY_AUTH_TOKEN_PATH`, or the default token file. They check these three sources in the precedence order described earlier on this page.
 
-- **RAY_AUTH_TOKEN**, **RAY_AUTH_TOKEN_PATH**, or the default token file.
+After loading the token, CLI commands pass it to their internal RPC calls. Depending on the underlying implementation, they do one of the following:
 
-Once loaded, CLI commands pass the token along to their internal RPC calls. Depending on the underlying implementation, they either:
-
-- Use C++ clients (and thus C++ interceptors via `BuildChannel()`), or
-- Use Python gRPC clients/servers and the Python interceptors via `grpc_utils.py`, or
+- Use C++ clients, and therefore the C++ interceptors through `BuildChannel()`.
+- Use Python gRPC clients or servers, and the Python interceptors through `grpc_utils.py`.
 - Use HTTP helpers that call `get_auth_headers_if_auth_enabled()`.
 
-From the user's perspective, as long as the token is configured via one of the supported mechanisms, the CLI works against token-secured clusters.
+As long as you configure the token through one of the supported sources, the CLI works against token-secured clusters.
 
-### ray get-auth-token Command
+### ray get-auth-token command
 
-To retrieve and share the token used by a local Ray cluster (for example, to paste into the dashboard UI), Ray provides the `ray get-auth-token` command.
+Run the `ray get-auth-token` command to retrieve and share the token that a local Ray cluster uses. For example, you might paste the token into the dashboard UI.
 
-By default, `ray get-auth-token` attempts to load an existing token from:
+By default, `ray get-auth-token` attempts to load an existing token from `RAY_AUTH_TOKEN`, `RAY_AUTH_TOKEN_PATH`, or the default token file.
 
-- **RAY_AUTH_TOKEN**, **RAY_AUTH_TOKEN_PATH**, or the default token file.
+If the command finds a token, it prints the token to `stdout` in a form suitable for scripting and export. If no token exists, the command fails with an error explaining that no token is configured.
 
-If a token is found, it is printed to `stdout` (suitable for scripting and export). If no token exists, the command fails with an error explaining that no token is configured.
+Pass the `--generate` flag to generate a token and store it in the default token file if no token is configured. The flag doesn't overwrite an existing token. It only creates one when none is present.
 
-Users can pass the `--generate` flag to generate a new token and store it in the default token file path if no token is currently configured. This does not overwrite an existing token; it only creates one when none is present.
+## Adding token authentication to new services
 
-## Adding Token Authentication to New Services
+When you add a gRPC or HTTP service to Ray, follow the guidelines in this section so that the service supports token authentication.
 
-When adding new gRPC or HTTP services to Ray, follow these guidelines to ensure proper token authentication support:
+### gRPC services
 
-### gRPC Services
+For C++ services, follow these guidelines:
 
-**C++ Services:**
+- Always create gRPC channels through `BuildChannel()`. Never use `grpc::CreateCustomChannel` directly.
+- Server-side validation is automatic if your service inherits from the standard base call implementation.
 
-1. Always create gRPC channels through `BuildChannel()` - never use `grpc::CreateCustomChannel` directly.
-2. Server-side validation is automatic if your service inherits from the standard base call implementation.
+For Python services, follow these guidelines:
 
-**Python Services:**
+- Use helper utilities from `grpc_utils.py` to create clients and servers.
+- The helpers attach the interceptors automatically when token authentication is enabled.
 
-1. Use helper utilities from `grpc_utils.py` to create clients and servers.
-2. The interceptors are automatically attached when token auth is enabled.
+### HTTP services
 
-### HTTP Services
+For HTTP services, do the following:
 
-1. Add the authentication middleware from `http_token_authentication.py` to your server's middleware list.
-2. Use `get_auth_headers_if_auth_enabled()` for client-side header attachment.
+- Add the authentication middleware from `http_token_authentication.py` to your server's middleware list.
+- Use `get_auth_headers_if_auth_enabled()` for client-side header attachment.
 
 :::{note}
-HTTP middleware and header injection are not automatically wired up - they must be added manually to each new HTTP service.
+Ray doesn't wire up HTTP middleware and header injection automatically. Add them manually to each new HTTP service.
 :::

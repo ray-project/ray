@@ -84,6 +84,7 @@ cc_library(
         "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs_rpc_client:global_state_accessor_lib",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:network_util",
         "//src/ray/util:process",
@@ -434,9 +435,10 @@ cc_test(
     ],
     data = [
         "metric_example.so",
-        ":auth_token_file",
     ],
-    env = RAY_TOKEN_AUTH_TEST_ENV,
+    # No token is set, so the driver creates one under HOME, which the example
+    # points at TEST_TMPDIR, before it runs `ray start --head`.
+    env = {"RAY_AUTH_MODE": "token"},
     linkstatic = True,
     tags = ["team:core"],
     deps = [

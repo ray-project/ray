@@ -235,9 +235,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 wrapped configuration.
             validate_env: Optional callable to validate the generated
                 environment (only on worker=0).
+            config: The AlgorithmConfig to use for this worker. If None, a
+                default AlgorithmConfig is created.
             worker_index: For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
+            num_workers: The total number of remote workers in the
+                EnvRunnerGroup this worker belongs to. If None, use
+                `config.num_env_runners`.
             recreated_worker: Whether this worker is a recreated one. Workers are
                 recreated by an Algorithm (via EnvRunnerGroup) in case
                 `restart_failed_env_runners=True` and one of the original workers (or
@@ -247,6 +252,12 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             spaces: An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
+            default_policy_class: The Policy class to use for policies for
+                which the config does not define a class explicitly.
+            dataset_shards: An optional list of ray.data.Dataset shards used
+                for offline (dataset) input. This worker reads from the shard
+                at index `worker_index`.
+            **kwargs: Forward compatibility placeholder (unused).
         """
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
@@ -611,10 +622,13 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
 
     @override(EnvRunner)
-    def sample(self, **kwargs) -> SampleBatchType:
+    def sample(self, **kwargs: Any) -> SampleBatchType:
         """Returns a batch of experience sampled from this worker.
 
         This method must be implemented by subclasses.
+
+        Args:
+            **kwargs: Forward compatibility placeholder (unused).
 
         Returns:
             A columnar batch of experiences (e.g., tensors) or a MultiAgentBatch.
@@ -866,6 +880,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Args:
             samples: The SampleBatch or MultiAgentBatch to compute gradients
                 for using this worker's trainable policies.
+            single_agent: Whether to treat `samples` as single-agent data and
+                only compute gradients for the default policy. If None, infer
+                this from whether `samples` is a MultiAgentBatch.
 
         Returns:
             In the single-agent case, a tuple consisting of ModelGradients and
@@ -1065,7 +1082,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         action_space: Optional[Space] = None,
         config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
-        policy_mapping_fn=None,
+        policy_mapping_fn: Optional[Callable[[AgentID, Any], PolicyID]] = None,
         policies_to_train: Optional[
             Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
@@ -1275,9 +1292,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Args:
             func: The function to call with the policy as first arg.
             policy_id: The PolicyID of the policy to call the function with.
-
-        Keyword Args:
-            kwargs: Additional kwargs to be passed to the call.
+            **kwargs: Additional kwargs to be passed to the call.
 
         Returns:
             The return value of the function call.
@@ -1292,9 +1307,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         Args:
             func: The function to call with each (policy, policy ID) tuple.
-
-        Keyword Args:
-            kwargs: Additional kwargs to be passed to the call.
+            **kwargs: Additional kwargs to be passed to the call.
 
         Returns:
              The list of return values of all calls to
@@ -1315,9 +1328,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             func: The function to call with each (policy, policy ID) tuple,
                 for only those policies that `self.is_policy_to_train`
                 returns True.
-
-        Keyword Args:
-            kwargs: Additional kwargs to be passed to the call.
+            **kwargs: Additional kwargs to be passed to the call.
 
         Returns:
             The list of return values of all calls to

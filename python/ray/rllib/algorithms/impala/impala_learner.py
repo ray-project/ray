@@ -161,9 +161,11 @@ class IMPALALearner(Learner):
             torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
         )
 
-        # Define the out-queue for the metrics from the `_LearnerThread`.
+        # Define the out-queue for the metrics from the `_LearnerThread`. It holds at
+        # most one result: the `_LearnerThread` only reduces metrics once `update()`
+        # has collected the previous result (see `_LearnerThread.step()`).
         # TODO (simon): Add types for items.
-        self._learner_thread_out_queue: "Queue[Dict[str, Any]]" = Queue()
+        self._learner_thread_out_queue: "Queue[Dict[str, Any]]" = Queue(maxsize=1)
 
         # Create and start `_GPULoaderThread`(s).
         if self.config.num_gpus_per_learner > 0:
@@ -197,21 +199,35 @@ class IMPALALearner(Learner):
         return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
-        """
+        """Enqueues the given training data for the asynchronous learner thread.
+
+        Unlike the synchronous `Learner.update()`, this method does not block until
+        the gradient update has been performed. It only resolves the incoming data,
+        pushes the resulting batch into the GPU-loader- or learner queue, and
+        (every `BATCHES_PER_AGGREGATION` calls) collects whatever results the learner
+        thread has produced so far.
 
         Args:
-            batch:
-            timesteps:
+            training_data: The `TrainingData` object (batch(es), episode(s), or object
+                references thereof) to perform the update with. Any contained object
+                references are resolved before the data is enqueued.
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`. It is enqueued alongside the batch
+                and used by the learner thread's update call.
             return_state: Whether to include one of the Learner worker's state from
                 after the update step in the returned results dict (under the
                 `_rl_module_state_after_update` key). Note that after an update, all
                 Learner workers' states should be identical, so we use the first
                 Learner's state here. Useful for avoiding an extra `get_weights()` call,
                 e.g. for synchronizing EnvRunner weights.
-            **kwargs:
+            **kwargs: Additional update kwargs, stored and passed on to the
+                `Learner.update()` call performed inside the learner thread.
 
         Returns:
-
+            A `ResultDict` with the metrics of those updates that the learner thread
+            has already finished, or an empty dict if no results are available yet.
+            If `return_state` is True and a Learner state is available, the returned
+            dict also contains the `_rl_module_state_after_update` key.
         """
         # Set the update kwargs passed in the main thread for use in the learner thread.
         self._update_kwargs = kwargs
@@ -569,9 +585,6 @@ class _LearnerThread(threading.Thread):
 
             # If we need to aggregate, reduce metrics and queue them.
             if do_agg:
-                # If in multi-learner setup, safeguard state retrieval within barriers.
-                if torch.distributed.is_initialized():
-                    torch.distributed.barrier()
                 # Only the first rank retrieves the state.
                 if self.learner._rank == 0:
                     with self.learner._model_io_lock, torch.inference_mode():
@@ -611,13 +624,16 @@ class _LearnerThread(threading.Thread):
                     window=1,
                 )
 
-                # Reduce metrics and pass them into the queue for the main process.
-                self._out_queue.put(self.learner.metrics.reduce())
+                # Reduce metrics and pass them into the queue for the main process,
+                # but only once it has collected the previous result. This thread can
+                # run more updates than there are `update()` calls (APPO's circular
+                # buffer trains on each batch K times). Until then, the metrics keep
+                # accumulating and the next reduce covers them.
+                if self._out_queue.empty():
+                    self._out_queue.put(self.learner.metrics.reduce())
                 # Notify all listeners that aggregation is done and results can be
                 # retrieved.
                 self.learner._agg_event.set()
-                if torch.distributed.is_initialized():
-                    torch.distributed.barrier()
 
         # Keep running (see `run` method).
         return True

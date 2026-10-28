@@ -6,9 +6,9 @@ myst:
 
 (core-patterns)=
 
-# Design Patterns & Anti-patterns
+# Design patterns and anti-patterns
 
-This section is a collection of common design patterns and anti-patterns for writing Ray applications.
+This section collects common design patterns and anti-patterns for writing Ray applications.
 
 ```{toctree}
 :maxdepth: 1
