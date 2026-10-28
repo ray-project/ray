@@ -1,7 +1,7 @@
 import abc
 import logging
 from dataclasses import replace
-from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Set, Tuple
+from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple
 
 from typing_extensions import override
 
@@ -37,8 +37,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         # For lineage reconstruction:
         # Mapping of reconstruction plan ID -> blocks withheld (expressed as a mapping of parent block output to actual RefBundle) until every parent of a reconstruction
         # child has produced the required blocks, and the reconstruction child task(s) can be scheduled with
-        # the complete set(s) of input blocks. For each reconstruction plan ID, whichever parent task finishes last hands
-        # over the input set for that plan as one bundle carrying the child's `ReconstructionStamp`.
+        # the complete set(s) of input blocks. For each reconstruction plan ID, whichever parent task produces its last
+        # withheld output last hands over the input set for that plan as one bundle carrying the child's `ReconstructionStamp`.
         # See `_release_reconstruction_blocks_to_child` for more details.
         self._reconstruction_outputs: Dict[
             ReconstructionPlanId, Dict[ParentBlockOutput, RefBundle]
@@ -197,6 +197,41 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         batched_plan_ids.update(reconstruction_plan_ids)
         return True
 
+    def _last_withheld_output_index(
+        self,
+        lineage_task_id: LineageTaskId,
+        reconstruction_plan_ids: Iterable[ReconstructionPlanId],
+    ) -> Optional[int]:
+        """The highest output index block that is withheld by a task for its children across all
+        of the reconstruction plans it serves.
+
+        Withheld outputs are the ones the lineage tracker reports as ``OBJECT_REUSED``.
+        Called when the task is submitted. Nothing is released yet then, so every child
+        the task withholds outputs for is still pending.
+
+        Args:
+            lineage_task_id: The lineage task ID of the task.
+            reconstruction_plan_ids: The reconstruction plans the task serves.
+
+        Returns:
+            The highest withheld output index, or ``None`` if the task withholds no
+            outputs for the plans.
+        """
+        lineage_tracker = self._lineage_tracker
+        assert lineage_tracker is not None
+        return max(
+            (
+                slot.output_index
+                for reconstruction_plan_id in reconstruction_plan_ids
+                for slots in lineage_tracker.get_pending_children(
+                    lineage_task_id, reconstruction_plan_id
+                ).values()
+                for slot in slots
+                if slot.parent_lineage_task_id == lineage_task_id
+            ),
+            default=None,
+        )
+
     def _consumer_of(self, child_task_id: LineageTaskId) -> "LineageReconstructionMixin":
         """The downstream operator that owns ``child_task_id``."""
         for op in self.output_dependencies:
@@ -215,7 +250,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         task_index: int,
     ) -> None:
         """Release the reconstruction blocks that are now ready to be consumed by a child reconstruction task,
-        for the reconstruction plans the completing task served. Called from the completing parent's task completed callback.
+        for the reconstruction plans the parent task serves. Called when the parent produces its last withheld output,
+        and again from the parent's task completed callback as a fallback.
 
         We 'release' blocks when the required block inputs for a downstream child task are now ready to be consumed.
         We do this in the following steps for each pending child:
@@ -228,16 +264,16 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         reconstruction task (from the stamp attribute on the bundle), the child task knows the correct task ID to register
         with and which reconstruction plans it serves.
 
-        For a downstream reconstruction child task, the parent task that completes last for a plan holds the full input
-        set of reconstruction blocks for that plan. Plans whose input sets complete at the same time share one release,
-        so the child runs once for all of them. A plan that is still missing blocks keeps them withheld, and is released
-        when its last parent completes.
+        For a downstream reconstruction child task, the parent task that produces its last withheld output last for a plan
+        holds the full input set of reconstruction blocks for that plan. Plans whose input sets complete at the same time
+        share one release, so the child runs once for all of them. A plan that is still missing blocks keeps them withheld,
+        and is released when its last parent produces its last withheld output.
 
         Args:
-            lineage_task_id: The lineage task ID of the completing task.
-            reconstruction_plan_ids: The set of reconstruction plans served by the completing task.
+            lineage_task_id: The lineage task ID of the parent task.
+            reconstruction_plan_ids: The set of reconstruction plans served by the parent task.
                 This includes the plans on the reconstruction stamp on the task's input bundle and any plans batched into it while the task was queued.
-            task_index: The index of the completing task. Released bundles are added to
+            task_index: The index of the parent task. Released bundles are added to
                 the output queue under this key, so they are ordered with that task's outputs.
         """
         lineage_tracker = self._lineage_tracker

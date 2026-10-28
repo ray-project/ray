@@ -315,20 +315,17 @@ def test_losses_before_the_seed_is_submitted_share_one_reconstruction_task(
     assert producer._batched_plans == {}
 
     # Each re-produced output is withheld under exactly the plan whose child needs
-    # it. Nothing reaches the output queue on its own.
+    # it. Nothing reaches the output queue before the last withheld output.
     second_run = _produced_bundles([[1], [2]])
-    for bundle in second_run:
-        task._output_ready_callback(bundle)
+    task._output_ready_callback(second_run[0])
     assert not producer.has_next()
     assert producer._reconstruction_outputs == {
         plan_ids[0]: {ParentBlockOutput(seed_task_id, 0): second_run[0]},
-        plan_ids[1]: {ParentBlockOutput(seed_task_id, 1): second_run[1]},
     }
 
-    # Completing releases each child once, under its own plan.
-    task._task_done_callback(
-        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
-    )
+    # The last withheld output releases each child once, under its own plan, before
+    # the task completes.
+    task._output_ready_callback(second_run[1])
     released = _drain(producer)
     assert [bundle.block_refs for bundle in released] == [
         second_run[0].block_refs,
@@ -339,6 +336,12 @@ def test_losses_before_the_seed_is_submitted_share_one_reconstruction_task(
         ReconstructionStamp(child_task_ids[1], frozenset({plan_ids[1]})),
     ]
     assert producer._reconstruction_outputs == {}
+
+    # Completing releases nothing more.
+    task._task_done_callback(
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
+    )
+    assert not producer.has_next()
 
 
 def test_joined_plans_sharing_a_child_release_it_once(
@@ -354,7 +357,6 @@ def test_joined_plans_sharing_a_child_release_it_once(
     from ray.data._internal.execution.interfaces.physical_operator import (
         TaskExecDriverStats,
     )
-    from ray.data._internal.execution.lineage_tracker import ParentBlockOutput
     from ray.data._internal.execution.util import make_ref_bundles
 
     producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
@@ -392,25 +394,22 @@ def test_joined_plans_sharing_a_child_release_it_once(
     (task,) = producer._data_tasks.values()
     assert task.reconstruction_plan_ids == frozenset(plan_ids)
 
-    # The child's input is withheld under both plans.
+    # The child's input is the last withheld output under both plans, so producing it
+    # releases the child once, for both plans, before the task completes.
     (second_run,) = _produced_bundles([[1]])
     task._output_ready_callback(second_run)
-    assert not producer.has_next()
-    assert producer._reconstruction_outputs == {
-        plan_id: {ParentBlockOutput(seed_task_id, 0): second_run}
-        for plan_id in plan_ids
-    }
-
-    # Completing releases the child once, for both plans.
-    task._task_done_callback(
-        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
-    )
     (released,) = _drain(producer)
     assert released.block_refs == second_run.block_refs
     assert released.reconstruction_stamp == ReconstructionStamp(
         child_task_id, frozenset(plan_ids)
     )
     assert producer._reconstruction_outputs == {}
+
+    # Completing releases nothing more.
+    task._task_done_callback(
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
+    )
+    assert not producer.has_next()
 
     # The child is submitted once, as a re-execution of both plans.
     consumer._submit_data_task(MagicMock(), released)
@@ -583,8 +582,9 @@ def test_seed_targeted_by_one_plan_and_reused_by_another(
     task = _run_to_completion(producer, stamped, [consumed_output, unqueued_output])
     assert task.reconstruction_plan_ids == frozenset({seed_plan, child_plan})
 
-    # The NEW output is queued as is, then the child is released for its plan.
-    new_output, released = _drain(producer)
+    # The child's input is the last withheld output, so the child is released for its
+    # plan as soon as it is produced. The NEW output after it is queued as is.
+    released, new_output = _drain(producer)
     assert new_output.block_refs == unqueued_output.block_refs
     assert new_output.reconstruction_stamp is None
     assert released.block_refs == consumed_output.block_refs

@@ -642,6 +642,9 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         lineage_tracker = self._lineage_tracker
         lineage_task_id: Optional[LineageTaskId] = None
         reconstruction_plan_ids: FrozenSet[ReconstructionPlanId] = frozenset()
+        # The last output this reconstruction task withholds for its children. Read
+        # once at submission.
+        last_withheld_output_index: Optional[int] = None
         if lineage_tracker is not None:
             (
                 lineage_task_id,
@@ -655,6 +658,9 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     lineage_tracker.register_task_submission(
                         lineage_task_id, dependencies, reconstruction_plan_id
                     )
+                last_withheld_output_index = self._last_withheld_output_index(
+                    lineage_task_id, reconstruction_plan_ids
+                )
             else:
                 lineage_tracker.register_task_submission(lineage_task_id, dependencies)
                 # A fresh seed task retains its input, so reconstruction can resubmit it.
@@ -709,6 +715,15 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                                 lineage_task_id, output_index, reconstruction_plan_id
                             )
                             self._enqueue_reconstruction_output(output, task_index)
+                    # Outputs arrive in index order. So once the last withheld output
+                    # is produced, every output this task withholds is held, and the
+                    # children whose whole input set is held are released now instead
+                    # of when the task completes. Release checks each child's input
+                    # set itself.
+                    if output_index == last_withheld_output_index:
+                        self._release_reconstruction_blocks_to_child(
+                            lineage_task_id, reconstruction_plan_ids, task_index
+                        )
                     # PRUNED (a copy of the rows outlives the loss) or UNRELATED (the
                     # plan already finished with this task), so block is dropped.
                     return
@@ -748,8 +763,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
 
             if lineage_tracker is not None and exception is None:
-                # Hand any child whose whole input set this completion completes
-                # downstream before reporting the completion itself.
+                # Children are released at the last withheld output. Releasing again
+                # here is the fallback for withheld outputs that index did not
+                # cover, such as ones added by a plan re-traced mid-run. It runs
+                # before reporting the completion itself.
                 if sorted_reconstruction_plan_ids:
                     self._release_reconstruction_blocks_to_child(
                         lineage_task_id, reconstruction_plan_ids, task_index
