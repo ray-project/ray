@@ -1149,8 +1149,14 @@
 
 # Ray Data lineage reconstruction under chaos, with output correctness checked. The
 # driver starts with JobConfig(_disable_job_level_lineage_reconstruction=True), so
-# Ray Data reconstructs lost objects and Ray Core does not. Worker raylets are
-# killed mid-run, and the run fails if lineage reconstruction never ran.
+# Ray Data reconstructs lost objects and Ray Core does not. The run fails if
+# lineage reconstruction never ran.
+#
+# Chaos kills two worker raylets at once every minute for the whole pipeline, so
+# several reconstructions overlap and later kills land on reconstructions still in
+# flight. It never takes the cluster below 12 of 20 workers, and resumes as
+# replacement nodes join. The result records `nodes_killed` and
+# `lineage_reconstructions`.
 #
 # `--verify-output` checks the sink against the analytic
 # `(row_serial, patch_x, patch_y)` key set (69,000 images x 36 patches = 2,484,000
@@ -1178,11 +1184,13 @@
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
 
   run:
-    timeout: 3600
+    # About 20 minutes without chaos. Churn and re-executed work add to that.
+    timeout: 5400
     script: >
       python image_embedding_from_uris/main.py
       --inference-concurrency 20 20 --fake-gpu --chaos --lineage-reconstruction
-      --verify-output
+      --chaos-kill-interval-s 60 --chaos-kill-batch-size 2
+      --chaos-min-alive-workers 12 --verify-output
 
 
 - name: image_embedding_from_jsonl_{{case}}

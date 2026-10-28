@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import io
 import os
 import uuid
@@ -25,14 +26,13 @@ import random
 import time
 from ray.data.expressions import download
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.test_utils import RayletKiller
+from ray._common.network_utils import build_address
+from ray._private.test_utils import NodeKillerBase, _shutdown_raylet
 from ray.job_config import JobConfig
 
-# Chaos kills one worker raylet a minute, after a minute's delay so a backlog of
-# produced blocks exists to lose. Sized for the 20-node fake-GPU cluster.
-CHAOS_KILL_INTERVAL_S = 60
+# Chaos starts once the pipeline is about to run, then waits this long so a
+# backlog of produced blocks exists to lose.
 CHAOS_KILL_DELAY_S = 60
-CHAOS_MAX_KILLS = 2
 
 
 WRITE_PATH = os.environ.get("RAY_DATA_WRITE_PATH") or (
@@ -82,6 +82,36 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Whether to enable chaos. If set, this script kills worker raylets, so "
             "the objects on those nodes are lost."
+        ),
+    )
+    parser.add_argument(
+        "--chaos-kill-interval-s",
+        type=float,
+        default=60,
+        help="Seconds between kill rounds. Each round lands at a random point in it.",
+    )
+    parser.add_argument(
+        "--chaos-kill-batch-size",
+        type=int,
+        default=2,
+        help=(
+            "Worker raylets killed together in each round. Above 1, several "
+            "lineage reconstructions run at once."
+        ),
+    )
+    parser.add_argument(
+        "--chaos-max-kills",
+        type=int,
+        default=None,
+        help="Stop after this many raylets are killed. Unlimited by default.",
+    )
+    parser.add_argument(
+        "--chaos-min-alive-workers",
+        type=int,
+        default=12,
+        help=(
+            "Never kill a raylet if fewer than this many worker nodes would stay "
+            "alive. Chaos pauses until replacement nodes join."
         ),
     )
     parser.add_argument(
@@ -240,9 +270,6 @@ class FakeEmbedPatches:
 def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
-    if args.chaos:
-        start_chaos()
-
     reconstruction_state = None
     if args.chaos and args.lineage_reconstruction:
         assert ray.data.DataContext.get_current().enable_ray_data_reconstruction, (
@@ -287,11 +314,23 @@ def main(args: argparse.Namespace):
         ds.write_parquet(WRITE_PATH)
         ds_holder["ds"] = ds
 
+    # Started here rather than at the top of `main`. The model download and
+    # `ray.put` above take a while, and kills that land before the pipeline runs
+    # lose nothing.
+    resource_killer = start_chaos(args) if args.chaos else None
+
     benchmark.run_fn("main", benchmark_fn)
 
     metrics = collect_dataset_stats(ds_holder["ds"])
     metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
     benchmark.result["main"].update(metrics)
+
+    if resource_killer is not None:
+        # Stopped before verification, so the read of the sink isn't disturbed.
+        ray.get(resource_killer.stop_run.remote())
+        nodes_killed = ray.get(resource_killer.num_killed.remote())
+        print(f"Chaos killed {nodes_killed} worker raylets")
+        benchmark.result["main"]["nodes_killed"] = nodes_killed
 
     # Recorded before `write_result` so the count actually reaches result.json.
     if reconstruction_state is not None:
@@ -351,29 +390,70 @@ def install_lineage_reconstruction_counter() -> Dict[str, int]:
     return state
 
 
-def start_chaos():
+@ray.remote(num_cpus=0)
+class FlooredRayletKiller(NodeKillerBase):
+    """Kills worker raylets, but keeps at least `min_alive_workers` workers alive.
+
+    Killing the raylet takes the node's object store down with it, so the
+    objects it held are lost at once. A terminator with a grace period drains the
+    node first, so nothing is lost and lineage reconstruction never runs.
+
+    `NodeKillerBase` only keeps one worker alive, so with unlimited kills a cluster
+    that replaces nodes slowly would shrink to a single node. The floor bounds how
+    much capacity chaos can take at once. Kills resume as replacement nodes join.
+    """
+
+    def __init__(self, *args, min_alive_workers: int, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._min_alive_workers = min_alive_workers
+
+    async def _find_resources_to_kill(self):
+        while self.is_running:
+            # A killed node can still read as alive until the GCS notices, so the
+            # killed set is excluded as well.
+            alive_workers = [
+                (n["NodeID"], n["NodeManagerAddress"], n["NodeManagerPort"])
+                for n in ray.nodes()
+                if n["Alive"] and n["NodeID"] != self.head_node_id
+            ]
+            alive_workers = [w for w in alive_workers if w not in self.killed]
+            if len(alive_workers) - self.batch_size_to_kill >= self._min_alive_workers:
+                return random.sample(alive_workers, self.batch_size_to_kill)
+            await asyncio.sleep(5)
+        return []
+
+    async def _kill_resource(self, node_id: str, ip: str, port: int) -> bool:
+        if port is None:
+            return False
+        _shutdown_raylet(build_address(ip, port), graceful=False)
+        return True
+
+    def num_killed(self) -> int:
+        return len(self.killed)
+
+
+def start_chaos(args: argparse.Namespace):
     assert ray.is_initialized()
 
     head_node_id = ray.get_runtime_context().get_node_id()
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         node_id=head_node_id, soft=False
     )
-    # `RayletKiller`, not a terminator with a grace period. Killing the raylet
-    # takes the node's object store down with it, so the objects it held are lost
-    # at once. A graceful terminator drains the node first, so nothing is lost
-    # and lineage reconstruction never runs.
-    resource_killer = RayletKiller.options(
+    resource_killer = FlooredRayletKiller.options(
         scheduling_strategy=scheduling_strategy
     ).remote(
         head_node_id,
-        kill_interval_s=CHAOS_KILL_INTERVAL_S,
+        kill_interval_s=args.chaos_kill_interval_s,
         kill_delay_s=CHAOS_KILL_DELAY_S,
-        max_to_kill=CHAOS_MAX_KILLS,
+        max_to_kill=args.chaos_max_kills,
+        batch_size_to_kill=args.chaos_kill_batch_size,
+        min_alive_workers=args.chaos_min_alive_workers,
     )
 
     ray.get(resource_killer.ready.remote())
 
     resource_killer.run.remote()
+    return resource_killer
 
 
 if __name__ == "__main__":
