@@ -13,17 +13,14 @@ This guide shows how to deploy the Modal-compatible Ray Sandbox gRPC API on Goog
 Ray Sandboxes run untrusted code inside lightweight [gVisor](https://gvisor.dev/docs/) `runsc` containers directly on worker Pods. The `ray.experimental.sandbox.http.grpc_app` gRPC facade runs behind Ray Serve's gRPC proxy and implements the `ModalClient` control-plane and `TaskCommandRouter` command-router services that the Modal client SDK uses for its Sandbox API. You can point an unmodified Modal Python client at a KubeRay RayService to create sandboxes, execute commands, and read or write files on your own Kubernetes cluster.
 
 :::{warning}
-Ray Sandboxes (`ray.experimental.sandbox`) is an {ref}`alpha <api-stability-alpha>` library. The API can change or disappear in any release before it graduates to stable.
+Ray Sandboxes, provided in the `ray.experimental.sandbox` package, is an {ref}`alpha <api-stability-alpha>` library. The API can change or disappear in any release before it graduates to stable.
 :::
 
 ## How the service works
 
-When you deploy the gRPC facade with a KubeRay RayService, the components interact across the following layers:
+When you deploy the gRPC facade with a KubeRay RayService, the `modal` Python client connects to Ray Serve's gRPC proxy over HTTP/2 on port 9000 and authenticates each request with a shared bearer token. The proxy routes incoming `ModalClient` and `TaskCommandRouter` RPCs to `RaySandboxGrpcFacade`, a single-replica Ray Serve deployment built by `ray.experimental.sandbox.http.grpc_app:build_app`.
 
-* **Modal Python client**: The `modal` package connects to Ray Serve's gRPC proxy over HTTP/2 and sends Sandbox API calls authenticated with a shared bearer token.
-* **Ray Serve gRPC proxy**: Listens on port `9000` on the RayCluster's Pods and routes incoming `ModalClient` and `TaskCommandRouter` RPCs to the facade deployment.
-* **Facade ingress**: `RaySandboxGrpcFacade`, a single-replica Ray Serve deployment built by `ray.experimental.sandbox.http.grpc_app:build_app`. It authenticates requests, translates Modal SDK calls into Ray Sandbox operations, and tracks active command executions in memory.
-* **Per-sandbox actors**: Named, detached `SandboxHost` Ray actors scheduled across worker Pods. Each actor manages one gVisor sandbox container through `SandboxRuntime`.
+The facade translates Modal SDK calls into Ray Sandbox operations and tracks active command executions in memory. For each sandbox, the facade schedules a named, detached `SandboxHost` actor on a worker Pod, and that actor manages one gVisor container through `SandboxRuntime`.
 
 ## Prerequisites
 
@@ -83,10 +80,10 @@ kubectl get pods -l app.kubernetes.io/name=kuberay-operator
 
 Every worker Pod that runs sandboxes needs four tools on its `$PATH`:
 
-* **`runsc` and `gvisor-bin/`**: The gVisor Open Container Initiative (OCI) runtime and its helpers.
-* **`mkfs.erofs`**: Version 1.7 or later from `erofs-utils`, which Ray uses to cache container images as EROFS root filesystems.
-* **`slirp4netns`**: Provides private network namespaces for sandboxes with `network="public"`, which is the default when creating sandboxes from the Modal SDK.
-* **`nft`**: The `nftables` CLI, which Ray uses to filter outbound traffic from `public` sandboxes.
+* `runsc` and `gvisor-bin/`: The gVisor Open Container Initiative (OCI) runtime and its helpers.
+* `mkfs.erofs`: Version 1.7 or later from `erofs-utils`, which Ray uses to cache container images as Enhanced Read-Only File System (EROFS) root filesystems.
+* `slirp4netns`: The user-mode networking tool that provides private network namespaces for sandboxes with `network="public"`, which is the default when creating sandboxes from the Modal SDK.
+* `nft`: The `nftables` CLI, which Ray uses to filter outbound traffic from `public` sandboxes.
 
 Create a `Dockerfile` that adds these tools to the Ray image. Ray's Ubuntu 22.04 base images ship an older `erofs-utils` package, so the first stage compiles `erofs-utils` from source:
 
@@ -269,11 +266,11 @@ spec:
 
 Key parts of this configuration include the following:
 
-* **`grpc_options`**: Starts Ray Serve's gRPC proxy on port `9000` and registers `ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server`, which exposes the `modal.client.ModalClient` and `modal.task_command_router.TaskCommandRouter` gRPC services.
-* **`import_path` and `args`**: Deploys `ray.experimental.sandbox.http.grpc_app:build_app` at `/` as the sole application on the Serve instance. Setting `advertise_url` to `http://127.0.0.1:9000` tells the facade to return that local URL as the command-router endpoint when you connect through `kubectl port-forward`.
-* **Container ports `serve` and `serve-grpc`**: KubeRay uses the `serve` port `8000` to check the health of Ray Serve's proxy and exposes any port named `serve` or prefixed with `serve-` on the `rayservice-modal-sandbox-serve-svc` Kubernetes Service.
-* **`num-cpus: "0"` on the head Pod**: Prevents Ray from scheduling `SandboxHost` actors onto the head Pod, keeping untrusted sandboxes on worker Pods.
-* **`securityContext` and `/dev/net/tun` on worker Pods**: Sets `seccompProfile` and `appArmorProfile` to `Unconfined` so rootless `runsc` and `slirp4netns` can create user and network namespaces inside the worker container, and mounts `/dev/net/tun` from the node so `slirp4netns` can attach network interfaces for `network="public"` sandboxes.
+* `grpc_options`: Starts Ray Serve's gRPC proxy on port 9000 and registers `ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server`, which exposes the `modal.client.ModalClient` and `modal.task_command_router.TaskCommandRouter` gRPC services.
+* `import_path` and `args`: Deploys `ray.experimental.sandbox.http.grpc_app:build_app` at `/` as the sole application on the Serve instance. Setting `advertise_url` to `http://127.0.0.1:9000` tells the facade to return that local URL as the command-router endpoint when you connect through `kubectl port-forward`.
+* `serve` and `serve-grpc` container ports: KubeRay uses the `serve` port 8000 to check the health of Ray Serve's proxy and exposes any port named `serve` or prefixed with `serve-` on the `rayservice-modal-sandbox-serve-svc` Kubernetes Service.
+* `num-cpus: "0"` on the head Pod: Prevents Ray from scheduling `SandboxHost` actors onto the head Pod, keeping untrusted sandboxes on worker Pods.
+* `securityContext` and `/dev/net/tun` on worker Pods: Sets `seccompProfile` and `appArmorProfile` to `Unconfined` so rootless `runsc` and `slirp4netns` can create user and network namespaces inside the worker container, and mounts `/dev/net/tun` from the node so `slirp4netns` can attach network interfaces for `network="public"` sandboxes.
 
 Apply the manifest:
 
@@ -290,13 +287,13 @@ kubectl get pods -l ray.io/is-ray-node=yes
 kubectl get rayservice rayservice-modal-sandbox
 ```
 
-Verify that KubeRay created the Serve Service with both the `serve` port `8000` and the `serve-grpc` port `9000`:
+Verify that KubeRay created the Serve Service with both the `serve` port 8000 and the `serve-grpc` port 9000:
 
 ```bash
 kubectl get service rayservice-modal-sandbox-serve-svc
 ```
 
-Forward local port `9000` to the `serve-grpc` port on `rayservice-modal-sandbox-serve-svc`:
+Forward local port 9000 to the `serve-grpc` port on `rayservice-modal-sandbox-serve-svc`:
 
 ```bash
 kubectl port-forward svc/rayservice-modal-sandbox-serve-svc 9000:9000
@@ -316,7 +313,7 @@ export RAY_SANDBOX_API_TOKEN=$(kubectl get secret ray-sandbox-token -o jsonpath=
 Set `MODAL_SANDBOX_V2=0` when using `modal` version 1.6 or later. The 1.6 release changed the default client protocol to a newer sandbox API, whereas the Ray Sandbox gRPC facade implements the original Sandbox API.
 :::
 
-Save the following script as `run_modal_sandbox.py`. It authenticates to the facade with `modal.Client.from_credentials`, creates a gVisor-isolated sandbox from `python:3.12-slim`, writes a Python script into the sandbox filesystem, executes it, reads back the output file, and terminates the sandbox:
+Save the following script as `run_modal_sandbox.py`. It authenticates to the facade with `modal.Client.from_credentials`, creates a gVisor-isolated sandbox from `python:3.12-slim`, writes a Python script into the sandbox filesystem, executes it, reads back the output file, and stops the sandbox:
 
 ```python
 import os
@@ -392,29 +389,48 @@ Platform: Linux-4.19.0-gvisor-x86_64-with-glibc2.41
 
 ## Configure sandbox networking
 
-The gRPC facade maps the Modal SDK's network parameters onto Ray Sandbox network modes and `nftables` egress allowlists.
+The gRPC facade maps the network parameters of the Modal SDK onto Ray Sandbox network modes and `nftables` egress allowlists.
 
 | Modal SDK setting | Ray Sandbox behavior |
 | --- | --- |
 | `block_network=True` | Creates a sandbox with `network="none"` and no outbound network access. |
 | No network setting | Creates a `network="public"` sandbox with the default `["internet"]` allowlist, which allows public internet addresses and drops traffic to private networks, instance metadata, and the Kubernetes API Service. |
-| `outbound_cidr_allowlist=[...]` | Creates a `network="public"` sandbox restricted to the listed CIDRs and ports, plus DNS on port 53. |
+| `outbound_cidr_allowlist=[...]` | Creates a `network="public"` sandbox restricted to the listed Classless Inter-Domain Routing (CIDR) ranges and ports, plus Domain Name System (DNS) queries on port 53. |
 | `_experimental_set_outbound_network_policy(...)` | Atomically replaces the egress allowlist of a running `network="public"` sandbox. |
 
 For untrusted code that doesn't need network access, pass `block_network=True`:
 
 ```python
+import os
+import modal
+
+client = modal.Client.from_credentials(
+    "ak-ray",
+    os.environ["RAY_SANDBOX_API_TOKEN"],
+)
+app = modal.App.lookup("ray-sandbox-demo", create_if_missing=True, client=client)
+
 sb = modal.Sandbox.create(
     app=app,
     image=modal.Image.from_registry("python:3.12-slim"),
     block_network=True,
     client=client,
 )
+sb.terminate()
 ```
 
 For untrusted code that needs to install packages first and then run with restricted or no internet egress, start the sandbox with an HTTPS allowlist and tighten the policy at runtime:
 
 ```python
+import os
+import modal
+
+client = modal.Client.from_credentials(
+    "ak-ray",
+    os.environ["RAY_SANDBOX_API_TOKEN"],
+)
+app = modal.App.lookup("ray-sandbox-demo", create_if_missing=True, client=client)
+
 sb = modal.Sandbox.create(
     app=app,
     image=modal.Image.from_registry("python:3.12-slim"),
@@ -425,15 +441,16 @@ sb = modal.Sandbox.create(
 # Install dependencies over HTTPS.
 sb.exec("pip", "install", "--quiet", "requests").wait()
 
-# Restrict the running sandbox to an empty allowlist (DNS only).
+# Restrict the running sandbox to DNS queries only.
 sb._experimental_set_outbound_network_policy(outbound_cidr_allowlist=[])
+sb.terminate()
 ```
 
-To block additional internal or public IP ranges across every sandbox on the cluster, set `RAY_SANDBOX_EGRESS_DENY` to a comma-separated list of CIDRs in the `ray-worker` container environment. See {ref}`Restrict egress to an allowlist <ray-sandbox-egress-allowlist>` for full details on egress filtering.
+To block additional internal or public IP ranges across every sandbox on the cluster, set `RAY_SANDBOX_EGRESS_DENY` to a comma-separated list of CIDR blocks in the `ray-worker` container environment. See {ref}`Restrict egress to an allowlist <ray-sandbox-egress-allowlist>` for full details on egress filtering.
 
 ## Optional: Expose the service behind a TLS Gateway
 
-The Modal Python SDK accepts plaintext `http://` URLs only when connecting to `localhost` or `127.0.0.1`. To connect from remote machines without port-forwarding, terminate TLS on port 443 in front of `rayservice-modal-sandbox-serve-svc` and remove `advertise_url` from `serveConfigV2`:
+The Modal Python SDK accepts plaintext `http://` URLs only when connecting to `localhost` or `127.0.0.1`. To connect from remote machines without port-forwarding, configure a TLS proxy on port 443 in front of `rayservice-modal-sandbox-serve-svc` and remove `advertise_url` from `serveConfigV2`:
 
 ```yaml
   serveConfigV2: |
@@ -449,11 +466,11 @@ The Modal Python SDK accepts plaintext `http://` URLs only when connecting to `l
           max_ttl_seconds: 86400
 ```
 
-When `advertise_url` is omitted, the facade inspects the `x-modal-host` header that the client SDK sends on control-plane RPCs and returns `https://<dialed-host>` as the command-router URL.
+When you omit `advertise_url`, the facade inspects the `x-modal-host` header that the client SDK sends on control-plane RPCs and returns `https://<dialed-host>` as the command-router URL.
 
 Keep two proxy requirements in mind when exposing the facade over TLS:
 
-* **Use Envoy Gateway or a proxy that detects HTTP/2 without ALPN**: Through `modal` 1.6.1, the client SDK's command-router TLS connection omits Application-Layer Protocol Negotiation (ALPN) during the TLS handshake and then sends HTTP/2 frames. Envoy detects HTTP/2 from the connection preface and accepts the connection. `ingress-nginx` rejects it, causing `sb.exec()` and `sb.filesystem` calls to fail after sandbox creation succeeds.
+* **Use Envoy Gateway or a proxy that detects HTTP/2 without ALPN**: Through `modal` 1.6.1, the command-router TLS connection from the client SDK omits Application-Layer Protocol Negotiation (ALPN) during the TLS handshake and then sends HTTP/2 frames. Envoy detects HTTP/2 from the connection preface and accepts the connection. `ingress-nginx` rejects it, causing `sb.exec()` and `sb.filesystem` calls to fail after sandbox creation succeeds.
 * **Disable stream timeouts for long-running commands**: The client SDK streams file writes and waits for command output over long-lived HTTP/2 streams. On Envoy Gateway, apply a `BackendTrafficPolicy` that disables the default 15-second route timeout:
 
 ```yaml
@@ -477,11 +494,11 @@ spec:
 
 Keep the following constraints in mind when using the Modal-compatible gRPC facade:
 
-* **Single replica**: The facade stores active command execution records in memory, so `RaySandboxGrpcFacade` always runs with `num_replicas=1`. Passing `num_replicas` greater than `1` raises a `ValueError`. If the replica restarts, running sandboxes survive because each sandbox is hosted by a detached `SandboxHost` actor, and only in-flight `exec` handles are lost.
+* **Single replica**: The facade stores active command execution records in memory, so `RaySandboxGrpcFacade` always runs with `num_replicas=1`. Setting `num_replicas` greater than one raises a `ValueError`. If the replica restarts, running sandboxes keep running because a detached `SandboxHost` actor hosts each sandbox, and the restart loses only in-flight `exec` handles.
 * **Single Serve application**: Keep `sandbox-facade` as the only application in `serveConfigV2`. The Modal client SDK doesn't send Ray Serve's `application` routing metadata header.
-* **Prebuilt registry images only**: Use `modal.Image.from_registry("<image>")`. The facade rejects multi-stage Dockerfiles and server-side build steps such as `.pip_install()` or `.run_commands()`. To pull from private registries such as Artifact Registry, configure credentials on the worker Pods as described in {ref}`Ray Sandboxes <ray-core-sandboxes>`.
-* **CIDR allowlists only**: `outbound_domain_allowlist` is rejected with `INVALID_ARGUMENT` because Ray Sandboxes filter egress by IP address and port with `nftables` rather than a TLS-inspecting proxy.
-* **No interactive stdin**: Writing to `process.stdin` on a running command isn't supported and returns `UNIMPLEMENTED`. Use `sb.filesystem.write_bytes()` to pass input data into a sandbox.
+* **Prebuilt registry images only**: Use `modal.Image.from_registry("<image>")`. The facade rejects multi-stage `Dockerfile` definitions and server-side build steps such as `.pip_install()` or `.run_commands()`. To pull from private registries such as Artifact Registry, configure credentials on the worker Pods as described in {ref}`Ray Sandboxes <ray-core-sandboxes>`.
+* **CIDR allowlists only**: The facade rejects `outbound_domain_allowlist` with `INVALID_ARGUMENT` because Ray Sandboxes filter egress by IP address and port with `nftables` rather than a TLS-inspecting proxy.
+* **No interactive standard input**: Writing to `process.stdin` on a running command isn't supported and returns `UNIMPLEMENTED`. Use `sb.filesystem.write_bytes()` to pass input data into a sandbox.
 
 ## Clean up
 
