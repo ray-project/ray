@@ -1510,7 +1510,7 @@ async def test_routing_task_cancelled_while_cancelled_probe_finishes(pow_2_route
     """
     s = pow_2_router
     # Long enough that the cancellation, not the deadline, ends the wait.
-    s.queue_len_response_deadline_s = 2
+    s.queue_len_response_deadline_s = 1
     loop = get_or_create_event_loop()
 
     r1 = SlowToCancelReplica("r1", cleanup_s=100)
@@ -1519,12 +1519,16 @@ async def test_routing_task_cancelled_while_cancelled_probe_finishes(pow_2_route
     # The probe started by `update_replicas` and the routing task's probe.
     await async_wait_for_condition(lambda: r1.num_cleanups_started >= 2)
     assert s.curr_num_routing_tasks == 1
+    (routing_task,) = s._routing_tasks
 
     task.cancel()
     start = time.monotonic()
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(task, timeout=5)
-    await async_wait_for_condition(lambda: s.curr_num_routing_tasks == 0, timeout=5)
+    await asyncio.wait([routing_task], timeout=5)
+    # The routing task ends cancelled rather than swallowing the cancellation.
+    assert routing_task.cancelled()
+    assert s.curr_num_routing_tasks == 0
     # The routing task's cancellation ends the wait instead of being held until
     # its bound.
     assert time.monotonic() - start < 0.5
@@ -1631,7 +1635,7 @@ async def test_probe_results_kept_when_cancelled_during_probe_cleanup(pow_2_rout
     """
     s = pow_2_router
     # Long enough that the cancellation, not the deadline, ends the wait.
-    s.queue_len_response_deadline_s = 2
+    s.queue_len_response_deadline_s = 1
     loop = get_or_create_event_loop()
 
     r1 = FakeRunningReplica("r1")
