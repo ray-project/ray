@@ -232,7 +232,9 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
             default=None,
         )
 
-    def _consumer_of(self, child_task_id: LineageTaskId) -> "LineageReconstructionMixin":
+    def _consumer_of(
+        self, child_task_id: LineageTaskId
+    ) -> "LineageReconstructionMixin":
         """The downstream operator that owns ``child_task_id``."""
         for op in self.output_dependencies:
             if isinstance(op, LineageReconstructionMixin) and op.owns_data_task(

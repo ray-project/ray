@@ -504,7 +504,9 @@ def test_shared_child_is_batched_until_it_is_submitted(
 
     # Both plans share the first seed's re-run. Its completion completes the child's
     # input for the first plan only.
-    stamped = producer.stamp_seed_reconstruction_task(seed_task_ids[0], {plan_a}, seed_input)
+    stamped = producer.stamp_seed_reconstruction_task(
+        seed_task_ids[0], {plan_a}, seed_input
+    )
     assert producer.join_queued_reconstruction_task(seed_task_ids[0], {plan_b})
     (first_seed,) = _produced_bundles([[1]])
     _run_to_completion(producer, stamped, [first_seed])
@@ -576,7 +578,9 @@ def test_seed_targeted_by_one_plan_and_reused_by_another(
     seed_plan = tracker.register_task_failed(seed_task_id)[1]
     child_plan = tracker.register_task_failed(child_task_id)[1]
 
-    stamped = producer.stamp_seed_reconstruction_task(seed_task_id, {seed_plan}, seed_input)
+    stamped = producer.stamp_seed_reconstruction_task(
+        seed_task_id, {seed_plan}, seed_input
+    )
     assert producer.join_queued_reconstruction_task(seed_task_id, {child_plan})
     consumed_output, unqueued_output = _produced_bundles([[1], [2]])
     task = _run_to_completion(producer, stamped, [consumed_output, unqueued_output])
