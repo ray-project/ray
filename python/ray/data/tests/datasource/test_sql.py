@@ -234,9 +234,14 @@ def test_read_sql_falls_back_to_percent_when_mod_denied(temp_database: str):
 
     def deny_mod(action, arg1, arg2, db_name, trigger):
         # Authorizer callback: refuse the MOD() function so the probe must fall
-        # back to the % operator.
-        if action == sqlite3.SQLITE_FUNCTION and str(arg1).lower() == "mod":
-            return sqlite3.SQLITE_DENY
+        # back to the % operator. For SQLITE_FUNCTION, SQLite passes NULL as
+        # arg1 and the function name as arg2, and the name's case is arbitrary
+        # (see SQLite's "Authorizer Action Codes"), so match arg2
+        # case-insensitively.
+        if action == sqlite3.SQLITE_FUNCTION:
+            name = arg2.decode() if isinstance(arg2, bytes) else (arg2 or "")
+            if name.lower() == "mod":
+                return sqlite3.SQLITE_DENY
         return sqlite3.SQLITE_OK
 
     def connection_factory():
