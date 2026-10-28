@@ -840,11 +840,18 @@ class TestValidateEnvVars:
         with pytest.raises(TypeError, match=".*Dict[str, str]*"):
             validation.parse_and_validate_env_vars({1: "hi"})
 
-        with pytest.raises(TypeError, match=".*value 123 is of type <class 'int'>*"):
+        # The message names the key but not the value, which may be a secret.
+        with pytest.raises(
+            TypeError, match=".*value of hi is of type <class 'int'>*"
+        ) as exc_info:
             validation.parse_and_validate_env_vars({"hi": 123})
+        assert "123" not in str(exc_info.value)
 
-        with pytest.raises(TypeError, match=".*value True is of type <class 'bool'>*"):
+        with pytest.raises(
+            TypeError, match=".*value of hi is of type <class 'bool'>*"
+        ) as exc_info:
             validation.parse_and_validate_env_vars({"hi": True})
+        assert "True" not in str(exc_info.value)
 
         with pytest.raises(TypeError, match=".*key 1.23 is of type <class 'float'>*"):
             validation.parse_and_validate_env_vars({1.23: "hi"})
