@@ -1,0 +1,5 @@
+# Layered on the ray-torch image for the huggingface_transformers and
+# huggingface_accelerate release tests. transformers and datasets come from
+# the image.
+accelerate
+evaluate

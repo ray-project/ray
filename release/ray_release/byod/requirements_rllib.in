@@ -1,0 +1,11 @@
+# Layered on the ray-torch image for the rllib_learning_tests_* release tests.
+# Replaces byod_rllib.sh, which reinstalled torch on top of the image.
+gymnasium[atari,mujoco]
+ale_py
+imageio
+opencv-python-headless
+pettingzoo
+pygame
+wandb
+msgpack
+msgpack-numpy

@@ -60,14 +60,14 @@
 
 
 - name: audio_transcription
+  python: "3.11"
 
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: audio_transcription/compute.yaml
     byod:
-      type: gpu
-      post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
-      python_depset: audio_transcription_py3.10.lock
+      type: torch-cu128
+      python_depset: torch_cu128_audio_transcription_py3.11.lock
 
   run:
     timeout: 3600

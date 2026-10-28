@@ -1,0 +1,4 @@
+# The image_classification datasets were written with Ray's old tensor
+# extension type, which subclasses pyarrow.PyExtensionType (removed in
+# pyarrow 21). Swap the image's pyarrow for 19 until the data is rewritten.
+pyarrow==19.0.1
