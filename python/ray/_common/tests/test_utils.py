@@ -96,7 +96,7 @@ def test_env_set_by_user(value, monkeypatch):
     else:
         monkeypatch.setenv(key, value)
 
-    assert env_set_by_user(key) is (value is not None)
+    assert env_set_by_user(key) == (value is not None)
 
 
 @pytest.mark.asyncio

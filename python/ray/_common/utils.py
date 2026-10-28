@@ -62,7 +62,7 @@ def env_bool(key, default):
     return default
 
 
-def env_set_by_user(key):
+def env_set_by_user(key: str) -> bool:
     return key in os.environ
 
 
