@@ -1,4 +1,4 @@
-"""Tests for token-load state across LLMRouter ingress replicas.
+"""Tests for KV routing state across LLMRouter ingress replicas.
 
 Each ingress owns a local KV selector. The routing ingress atomically selects
 and reserves a worker, then asynchronously broadcasts that already-selected
@@ -327,6 +327,8 @@ class TestIngressSynchronization:
 
 SESSION_APP_NAME = "session_affinity_test"
 SESSION_KV_EVENTS_PORT_BASE = 21900
+# Long enough for the pinning tests, short enough to wait out.
+SESSION_TTL_S = 30
 # Unpinned reservations that make the bound worker the costlier choice.
 SKEW_REQUESTS = 8
 
@@ -424,6 +426,7 @@ class TestSessionAffinity:
             request_router_class=KVAwareRouter,
             kv_events_port_base=SESSION_KV_EVENTS_PORT_BASE,
             num_replicas=2,
+            request_router_kwargs={"session_affinity_ttl_s": SESSION_TTL_S},
         )
         with patch_ingress():
             serve.run(build_kv_app(llm_config), name=SESSION_APP_NAME)
@@ -533,6 +536,27 @@ class TestSessionAffinity:
             assert await routed("http") == [bound] * 4
         finally:
             await _complete(router, *skew)
+
+    @pytest.mark.asyncio
+    async def test_expired_session_rebinds(self):
+        """A session bound on one ingress follows load on another ingress once
+        it has been idle past the TTL."""
+        router = serve.get_deployment_handle("LLMRouter", app_name=SESSION_APP_NAME)
+        ingress_ids, (other, bound) = await _session_deployment(router)
+        workers = [other, bound]
+
+        skew = await _skew_load(router, ingress_ids[0], bound, "ttl-skew")
+        try:
+            worker = await _select_on(router, ingress_ids[0], "ttl-1", 1, [bound], "t")
+            assert worker == bound
+            await _complete(router, "ttl-1")
+            await _wait_for_binding(router, "t", bound, workers)
+
+            await asyncio.sleep(SESSION_TTL_S + 1)
+            worker = await _select_on(router, ingress_ids[-1], "ttl-2", 2, workers, "t")
+            assert worker == other, "expired session should follow load"
+        finally:
+            await _complete(router, *skew, "ttl-2")
 
 
 if __name__ == "__main__":

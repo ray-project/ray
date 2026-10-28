@@ -37,6 +37,7 @@ def build_kv_config(
     kv_events_port_base,
     num_replicas=1,
     decode_progress=False,
+    request_router_kwargs=None,
 ):
     """Config for a direct-streaming KV-aware app with engine KV events enabled.
 
@@ -58,7 +59,8 @@ def build_kv_config(
             # A KVAwareRouter (subclass) gates engine token tracking and the
             # KV-events plane; the ingress builds the KVTokenTracker.
             request_router_config=RequestRouterConfig(
-                request_router_class=request_router_class
+                request_router_class=request_router_class,
+                request_router_kwargs=request_router_kwargs or {},
             ),
         ),
         engine_kwargs=dict(
