@@ -17,6 +17,7 @@
 #include <boost/thread.hpp>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -167,6 +168,9 @@ class WorkerContext {
 
   bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  std::vector<std::string> CurrentActorRestartOnExceptionPatterns() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   /**
    * @brief Set a flag to indicate that the current actor should exit, it'll be checked
    *        periodically and the actor will exit if the flag is set.
@@ -208,6 +212,8 @@ class WorkerContext {
   ActorID current_actor_id_ ABSL_GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ ABSL_GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ ABSL_GUARDED_BY(mutex_) = false;
+  std::vector<std::string> current_actor_restart_on_exception_patterns_
+      ABSL_GUARDED_BY(mutex_);
   bool current_actor_should_exit_ ABSL_GUARDED_BY(mutex_) = false;
   bool is_detached_actor_ ABSL_GUARDED_BY(mutex_) = false;
   // The placement group id that the current actor belongs to.

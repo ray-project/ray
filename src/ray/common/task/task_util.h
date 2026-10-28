@@ -267,7 +267,8 @@ class TaskSpecBuilder {
       const std::string &extension_data = "",
       bool allow_out_of_order_execution = false,
       ActorID root_detached_actor_id = ActorID::Nil(),
-      int64_t actor_generator_backpressure_num_objects = -1) {
+      int64_t actor_generator_backpressure_num_objects = -1,
+      const std::vector<std::string> &restart_on_exception_patterns = {}) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -296,6 +297,9 @@ class TaskSpecBuilder {
     actor_creation_spec->set_allow_out_of_order_execution(allow_out_of_order_execution);
     actor_creation_spec->set_actor_generator_backpressure_num_objects(
         actor_generator_backpressure_num_objects);
+    for (const auto &pattern : restart_on_exception_patterns) {
+      actor_creation_spec->add_restart_on_exception_patterns(pattern);
+    }
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());

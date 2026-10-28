@@ -318,6 +318,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
 
+  // Exception substring patterns that should turn a matching actor method /
+  // __init__ failure into a worker system-error exit (so the actor restarts).
+  // Returns empty for non-actor-creation specs.
+  std::vector<std::string> RestartOnExceptionPatterns() const;
+
   absl::flat_hash_map<std::string, std::string> GetLabels() const;
 
   // Methods specific to actor tasks.

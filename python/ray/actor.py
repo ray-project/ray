@@ -1793,6 +1793,23 @@ class ActorClass(Generic[T]):
                   PendingCallsLimitExceeded will be raised for further tasks.
                   Note that this limit is counted per handle. -1 means that
                   the number of pending calls is unlimited.
+                - ``restart_on_exceptions``: A list of exception substring
+                  patterns. When an actor method or the actor's ``__init__``
+                  raises an exception whose formatted text
+                  (``f"{type(e).__name__}: {e}"``, including the
+                  ``__cause__``/``__context__`` chain) contains any of these
+                  patterns (case-insensitive substring match), the actor
+                  worker exits with a system error so the actor is restarted
+                  on a fresh process, consuming one of its ``max_restarts``,
+                  instead of surfacing the exception to the caller. Intended
+                  for transient process-level faults (for example CUDA/GPU
+                  soft errors) that require a full worker restart to recover.
+                  Note that this restarts the actor, not the failed call:
+                  unless ``max_task_retries`` also retries the task, the
+                  original call (and any other in-flight calls on the actor)
+                  fails with a ``RayActorError``, and all actor state is lost.
+                  Defaults to ``None``, which disables the feature. Requires
+                  ``max_restarts`` to be non-zero for the restart to happen.
                 - ``max_concurrency``: The max number of concurrent calls to
                   allow for this actor. This only works with direct actor
                   calls. The max concurrency defaults to 1 for threaded
@@ -1968,6 +1985,7 @@ class ActorClass(Generic[T]):
         max_restarts = actor_options["max_restarts"]
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
+        restart_on_exceptions = actor_options.get("restart_on_exceptions")
 
         # Override enable_task_events to default for actor if not specified (i.e. None)
         enable_task_events = actor_options.get("enable_task_events")
@@ -2218,6 +2236,7 @@ class ActorClass(Generic[T]):
             actor_generator_backpressure_num_objects=(
                 actor_generator_backpressure_num_objects
             ),
+            restart_on_exceptions=restart_on_exceptions,
         )
 
         if _actor_launch_hook:

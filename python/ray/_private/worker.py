@@ -3957,6 +3957,21 @@ def remote(
               means restart indefinitely.
             - ``max_task_retries``: *actors only*. How many times to retry
               an actor task if it fails due to a system error.
+            - ``restart_on_exceptions``: *actors only*. List of case-insensitive
+              exception substring patterns. When an actor method, its
+              ``__init__``, or one of its (streaming or dynamic) generator
+              methods raises an exception whose formatted text
+              (``f"{type(e).__name__}: {e}"``, walking the
+              ``__cause__``/``__context__`` chain) contains any pattern, the
+              actor worker exits with a system error so the actor is restarted
+              on a fresh process (consuming one of its ``max_restarts``)
+              instead of surfacing the exception to the caller. Intended for
+              transient process-level faults (e.g. CUDA/GPU soft errors).
+              This restarts the actor, not the failed call: unless
+              ``max_task_retries`` also retries the task, the original call
+              (and other in-flight calls) fail with a ``RayActorError`` and
+              all actor state is lost. Defaults to ``None`` (disabled);
+              requires ``max_restarts`` to be non-zero.
             - ``max_retries``: *remote functions only*. Maximum number of
               times to rerun the function when the worker crashes
               unexpectedly. Default is 3; ``-1`` means infinite retries.

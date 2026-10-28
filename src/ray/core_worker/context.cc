@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "ray/common/runtime_env_common.h"
@@ -321,6 +322,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
+    current_actor_restart_on_exception_patterns_ = task_spec.RestartOnExceptionPatterns();
     is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
@@ -431,6 +433,11 @@ int WorkerContext::CurrentActorMaxConcurrency() const {
 bool WorkerContext::CurrentActorIsAsync() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_is_asyncio_;
+}
+
+std::vector<std::string> WorkerContext::CurrentActorRestartOnExceptionPatterns() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_actor_restart_on_exception_patterns_;
 }
 
 void WorkerContext::SetCurrentActorShouldExit() {
