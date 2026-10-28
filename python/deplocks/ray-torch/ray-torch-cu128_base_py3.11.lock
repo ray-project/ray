@@ -854,7 +854,7 @@ cuda-bindings==12.9.4 ; sys_platform == 'linux' \
 cuda-pathfinder==1.8.2 ; sys_platform == 'linux' \
     --hash=sha256:4e65059febdb4d19d5cbc4798677e19db2b582f2f702f457b609e571690d357e
     # via cuda-bindings
-cupy-cuda12x==13.6.0 \
+cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
     --hash=sha256:4d2dfd9bb4705d446f542739a3616b4c9eea98d674fce247402cc9bcec89a1e4 \
     --hash=sha256:52d9e7f83d920da7d81ec2e791c2c2c747fdaa1d7b811971b34865ce6371e98a \
@@ -872,7 +872,6 @@ cupy-cuda12x==13.6.0 \
     --hash=sha256:f33c9c975782ef7a42c79b6b4fb3d5b043498f9b947126d792592372b432d393
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
-    #   -r docker/ray-torch/torch-requirements.txt
     #   ray
 cython==0.29.37 \
     --hash=sha256:0301d4739c6894e012f1d410052082fdda9e63888c815d9e23e0f7f82fff7d79 \
@@ -1097,7 +1096,7 @@ fastjsonschema==2.21.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   nbformat
-fastrlock==0.8.3 \
+fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
