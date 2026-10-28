@@ -485,6 +485,37 @@ class ArrowBlockAccessor(TableBlockAccessor):
         import pyarrow.compute as pac
 
         result_size = min(limit, self._table.num_rows)
+
+        def sort_and_take() -> Block:
+            if result_size == self._table.num_rows:
+                return self.sort(sort_key)
+
+            # Sort only the keys to avoid materializing the full payload.
+            keys = self._table.select(sort_key.get_columns())
+            context = DataContext.get_current()
+
+            if not (context.use_polars or context.use_polars_sort):
+                indices = pac.sort_indices(
+                    keys, sort_keys=sort_key.to_arrow_sort_args()
+                )
+                return self.take(indices.slice(0, result_size))
+
+            # Preserve the original row indices during Polars sorting.
+            index_column = "__top_n_row_index"
+            while index_column in keys.column_names:
+                index_column += "_"
+
+            keys = keys.append_column(
+                index_column, pyarrow.array(np.arange(self._table.num_rows))
+            )
+            sorted_keys = ArrowBlockAccessor(keys).sort(sort_key)
+            result = self.take(sorted_keys[index_column].slice(0, result_size))
+
+            # Preserve Polars schema conversions on selected rows.
+            import polars
+
+            return polars.from_arrow(result).to_arrow()
+
         primary_column = self._table[sort_key.get_columns()[0]]
         # SelectK excludes rows whose primary key is null or NaN, while a full
         # sort places them at the end. Fall back if the result must include them.
@@ -496,8 +527,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             excluded_primary_values += nan_count or 0
 
         if excluded_primary_values > self._table.num_rows - result_size:
-            sorted_table = self.sort(sort_key)
-            return BlockAccessor.for_block(sorted_table).slice(0, result_size)
+            return sort_and_take()
 
         try:
             indices = pac.select_k_unstable(
@@ -506,8 +536,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 sort_keys=sort_key.to_arrow_sort_args(),
             )
         except pyarrow.ArrowNotImplementedError:
-            sorted_table = self.sort(sort_key)
-            return BlockAccessor.for_block(sorted_table).slice(0, result_size)
+            return sort_and_take()
 
         return self.take(indices)
 

@@ -36,7 +36,6 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_o
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
 )
-from ray.data._internal.execution.operators.top_n_operator import TopNMergeOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
@@ -67,7 +66,6 @@ STARVATION_WARNING_DELAY_S = env_float("RAY_DATA_STARVATION_WARNING_DELAY_S", 60
 _BLOCKING_MATERIALIZING_OPERATORS = (
     HashShufflingOperatorBase,
     AllToAllOperator,
-    TopNMergeOperator,
     ShuffleMapOp,
     DiskHashShuffleMapOp,
     # TODO remove after zip made fully streaming

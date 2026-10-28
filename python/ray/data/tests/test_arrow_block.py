@@ -2,6 +2,7 @@ import base64
 import os
 import sys
 import types
+from contextlib import nullcontext
 from decimal import Decimal
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -23,7 +24,7 @@ from ray.data._internal.arrow_block import (
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import GiB, MiB
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 
@@ -69,23 +70,6 @@ def test_top_n_uses_arrow_bounded_selection():
     ]
 
 
-def test_top_n_falls_back_when_arrow_selection_is_unsupported():
-    table = pa.table({"key": [4, 1, 3, 2], "value": [40, 10, 30, 20]})
-    accessor = ArrowBlockAccessor(table)
-
-    with mock.patch.object(
-        pc,
-        "select_k_unstable",
-        side_effect=pa.ArrowNotImplementedError("unsupported"),
-    ):
-        result = accessor.top_n(SortKey("key"), 2)
-
-    assert result.to_pylist() == [
-        {"key": 1, "value": 10},
-        {"key": 2, "value": 20},
-    ]
-
-
 @pytest.mark.parametrize("descending", [False, True])
 def test_top_n_matches_sort_with_nan(descending):
     table = pa.table(
@@ -101,6 +85,65 @@ def test_top_n_matches_sort_with_nan(descending):
     result = accessor.top_n(sort_key, 4)
 
     assert result["row_id"].to_pylist() == expected["row_id"].to_pylist()
+
+
+@pytest.mark.parametrize("use_polars", [False, True])
+@pytest.mark.parametrize("fallback", ["nulls", "unsupported"])
+@pytest.mark.parametrize("limit", [2, 128])
+def test_top_n_fallback_compacts_selected_payload(
+    restore_data_context, use_polars: bool, fallback: str, limit: int
+) -> None:
+    ctx = DataContext.get_current()
+    ctx.use_polars = False
+    ctx.use_polars_sort = use_polars
+
+    table = pa.table(
+        {
+            "key": pa.array(
+                [None] * 128 if fallback == "nulls" else list(range(128)),
+                type=pa.int64(),
+            ),
+            "row_id": list(reversed(range(128))),
+            "payload": [b"x" * 4096] * 128,
+            "__top_n_row_index": list(range(128)),
+            "__top_n_row_index_": list(range(128)),
+        }
+    )
+    accessor = ArrowBlockAccessor(table)
+    sort_key = SortKey(["key", "row_id", "__top_n_row_index", "__top_n_row_index_"])
+    expected = accessor.sort(sort_key).slice(0, limit)
+
+    selection_patch = (
+        mock.patch.object(
+            pc,
+            "select_k_unstable",
+            side_effect=pa.ArrowNotImplementedError("unsupported"),
+        )
+        if fallback == "unsupported"
+        else nullcontext()
+    )
+
+    original_sort = ArrowBlockAccessor.sort
+    sorted_columns = []
+
+    def record_sort(block: ArrowBlockAccessor, keys: SortKey) -> Block:
+        sorted_columns.append(block.to_arrow().column_names)
+        return original_sort(block, keys)
+
+    with (
+        selection_patch,
+        mock.patch.object(ArrowBlockAccessor, "sort", record_sort),
+    ):
+        result = accessor.top_n(sort_key, limit)
+
+    assert result.equals(expected)
+
+    if limit < table.num_rows:
+        assert len(sorted_columns) == int(use_polars)
+        assert all("payload" not in cols for cols in sorted_columns)
+        assert result.get_total_buffer_size() < table.get_total_buffer_size() // 8
+    else:
+        assert sorted_columns == [table.column_names]
 
 
 def test_combine_chunked_fixed_width_array_large():

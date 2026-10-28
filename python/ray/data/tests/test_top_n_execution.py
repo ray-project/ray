@@ -1,4 +1,7 @@
+import asyncio
+import math
 import random
+from typing import Any, Iterator, List
 from unittest import mock
 
 import pandas as pd
@@ -6,10 +9,10 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.top_n_operator import (
     TopNMergeOperator,
-    _batch_candidates,
 )
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.rules.top_n_rewrite import (
@@ -18,6 +21,7 @@ from ray.data._internal.logical.rules.top_n_rewrite import (
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa: F401, F403
 
 
@@ -31,10 +35,11 @@ def test_top_n_planner_routes_to_local_map_and_final_merge(
     ds = ray.data.range(10, override_num_blocks=2).sort("id").limit(3)
 
     dag = get_execution_plan(ds._logical_plan)[0].dag
+    local_map = dag.input_dependencies[0]
 
     assert isinstance(dag, TopNMergeOperator)
     assert dag.name == "TopNMerge(limit=3)"
-    local_map = dag.input_dependencies[0]
+
     assert isinstance(local_map, MapOperator)
     assert local_map.name == "LocalTopN(limit=3)"
     assert not local_map.supports_fusion()
@@ -57,11 +62,13 @@ def test_top_n_shuffle_v2_end_to_end(
         .sort(["a", "b"], descending=[False, True])
         .limit(limit)
     )
+    result = ds.take_all()
+
+    # A zero limit intentionally bypasses the Top-N rewrite.
     if limit > 0:
         assert isinstance(
             get_execution_plan(ds._logical_plan)[0].dag, TopNMergeOperator
         )
-    result = ds.take_all()
 
     assert result == sorted(rows, key=lambda row: (row["a"], -row["b"]))[:limit]
 
@@ -81,9 +88,10 @@ def test_top_n_shuffle_v2_handles_non_adjacent_sort_and_large_limit(
         .limit(10)
     )
     result = ds.take_all()
+    physical_dag = get_execution_plan(ds._logical_plan)[0].dag
 
     assert result == [{"id": value} for value in range(4, -1, -1)]
-    physical_dag = get_execution_plan(ds._logical_plan)[0].dag
+
     assert isinstance(physical_dag.input_dependencies[0], TopNMergeOperator)
 
 
@@ -113,6 +121,7 @@ def test_top_n_shuffle_v2_preserves_typed_empty_arrow_schema(
     result = ds.materialize()
 
     assert result.take_all() == []
+
     assert result.schema().base_schema == schema
 
 
@@ -135,6 +144,7 @@ def test_top_n_shuffle_v2_preserves_typed_empty_pandas_schema(
     result = ds.materialize()
 
     assert result.take_all() == []
+
     assert result.schema().base_schema == expected_schema
 
 
@@ -150,21 +160,27 @@ def test_top_n_shuffle_v2_preserves_invalid_key_error(
         ray.data.range(5).sort("missing").limit(3).take_all()
 
 
-def test_top_n_merges_candidates_in_batches(
+@pytest.mark.parametrize("cpu_limit", [1, 2])
+def test_top_n_merges_candidates_in_batches_under_memory_pressure(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
-):
+    cpu_limit: int,
+) -> None:
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    # Constrain the executor's logical budget, not the physical object store.
+    ctx.execution_options.resource_limits = ExecutionResources(
+        cpu=cpu_limit, object_store_memory=1024
+    )
     ds = ray.data.range(100, override_num_blocks=20).sort("id", descending=True)
 
-    ref_batches = []
+    submissions = []
+    original_submit = TopNMergeOperator._submit_merge_task
 
-    def record_batches(entries):
-        batches, merge_bytes = _batch_candidates(entries)
-        ref_batches.extend(batches)
-        return batches, merge_bytes
+    def record_submit(operator: TopNMergeOperator, batch: List[RefBundle]) -> None:
+        submissions.append((operator._inputs_complete, len(batch)))
+        original_submit(operator, batch)
 
     # Force one candidate block per batch so the merge runs 20 rounds.
     with (
@@ -172,15 +188,91 @@ def test_top_n_merges_candidates_in_batches(
             "ray.data._internal.execution.operators.top_n_operator._MERGE_BATCH_BYTES",
             1,
         ),
-        mock.patch(
-            "ray.data._internal.execution.operators.top_n_operator._batch_candidates",
-            side_effect=record_batches,
-        ),
+        mock.patch.object(TopNMergeOperator, "_submit_merge_task", record_submit),
     ):
         result = ds.limit(3).take_all()
 
-    assert [len(batch) for batch in ref_batches] == [1] * 20
+    assert [size for _, size in submissions] == [1] * 20
+    assert any(not complete for complete, _ in submissions)
+
     assert result == [{"id": 99}, {"id": 98}, {"id": 97}]
+
+
+@pytest.mark.parametrize("failure", [None, "upstream", "downstream"])
+def test_top_n_partial_batch_unblocks_waiting_upstream(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    failure,
+) -> None:
+    class Gate:
+        def __init__(self) -> None:
+            self._opened = asyncio.Event()
+
+        async def wait(self) -> None:
+            await asyncio.wait_for(self._opened.wait(), timeout=30)
+
+        async def open(self) -> None:
+            self._opened.set()
+
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    # Flush the first row before waiting instead of buffering it with the next row.
+    ctx.target_max_block_size = 1
+    ctx.target_min_block_size = 1
+    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    gate: Any = ray.remote(Gate).options(num_cpus=0).remote()
+    submissions = []
+    operators = []
+    original_submit = TopNMergeOperator._submit_merge_task
+
+    def produce(batch: pa.Table) -> Iterator[pa.Table]:
+        yield pa.table({"id": [2]})
+        # Waiting for upstream completion before submitting a merge would deadlock.
+        ray.get(gate.wait.remote())
+        if failure == "upstream":
+            raise RuntimeError("upstream failed after first candidate")
+        yield pa.table({"id": [1]})
+
+    def fail_downstream(batch: pa.Table) -> pa.Table:
+        raise RuntimeError("downstream failed after final merge")
+
+    def record_submit(operator: TopNMergeOperator, batch: List[RefBundle]) -> None:
+        submissions.append((operator._inputs_complete, len(batch)))
+        operators.append(operator)
+        gate.open.remote()
+        original_submit(operator, batch)
+
+    try:
+        with mock.patch.object(TopNMergeOperator, "_submit_merge_task", record_submit):
+            ds = (
+                ray.data.range(1, override_num_blocks=1)
+                .map_batches(produce, batch_size=None, batch_format="pyarrow")
+                .sort("id")
+                .limit(1)
+            )
+            if failure == "downstream":
+                ds = ds.map_batches(fail_downstream, batch_format="pyarrow")
+            if failure is None:
+                result = ds.take_all()
+            else:
+                with pytest.raises(RayTaskError, match=f"{failure} failed"):
+                    ds.take_all()
+
+        if failure is None:
+            assert result == [{"id": 1}]
+
+        assert submissions[0] == (False, 1)
+
+        for operator in operators:
+            assert not operator.get_active_tasks()
+            assert not operator.has_next()
+
+            assert operator._merge.output is None
+            assert not operator._merge.inputs
+
+            assert operator.metrics.obj_store_mem_pending_task_inputs == 0
+    finally:
+        ray.kill(gate)
 
 
 def test_top_n_shuffle_v2_arrow_nulls_last(
@@ -232,7 +324,12 @@ def test_top_n_shuffle_v2_matches_global_sort_with_arrow_nan(
         .take_all()
     )
 
-    assert [row["row_id"] for row in top_n] == [row["row_id"] for row in baseline]
+    assert len(top_n) == len(baseline) == 5
+    assert top_n[:4] == baseline[:4]
+
+    # NaNs tie at the cutoff; the two execution paths may select different rows.
+    assert math.isnan(top_n[-1]["key"])
+    assert top_n[-1]["row_id"] in {1, 3}
 
 
 def test_top_n_shuffle_v2_pandas_block(
@@ -270,10 +367,14 @@ def test_top_n_shuffle_v2_allows_any_rows_at_boundary_tie(
     result = (
         ray.data.from_items(rows, override_num_blocks=3).sort("key").limit(3).take_all()
     )
+    tied_row_ids = {row["row_id"] for row in result[1:]}
 
     assert [row["key"] for row in result] == [0, 1, 1]
     assert result[0] == {"key": 0, "row_id": 0}
-    assert {row["row_id"] for row in result[1:]} <= {1, 2, 3}
+
+    # Any boundary-tied rows are valid, but the same input row cannot appear twice.
+    assert tied_row_ids <= {1, 2, 3}
+    assert len(tied_row_ids) == 2
 
 
 def test_top_n_shuffle_v2_promotes_compatible_block_schemas(

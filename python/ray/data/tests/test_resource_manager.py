@@ -813,10 +813,8 @@ class TestResourceManager:
         assert resource_manager2._is_blocking_materializing_op(o5) is False
         assert resource_manager2._is_blocking_materializing_op(o7) is False
 
-    def test_top_n_materialization_disables_upstream_object_store_backpressure(
-        self, restore_data_context
-    ):
-        """Ensure TopNMerge does not block upstream materialization."""
+    def test_top_n_merge_preserves_upstream_memory_budget(self, restore_data_context):
+        """TopNMerge consumes inputs incrementally and needs no barrier exemption."""
         ctx = DataContext.get_current()
         upstream = mock_map_op(InputDataBuffer(ctx, []))
         merge = TopNMergeOperator(
@@ -828,6 +826,7 @@ class TestResourceManager:
             output_schema=None,
             name="TopNMerge",
         )
+
         options = ExecutionOptions()
         counter = noop_counter()
         topology = build_streaming_topology(merge, options, counter)
@@ -838,14 +837,12 @@ class TestResourceManager:
             ctx,
             counter,
         )
-
         resource_manager.update_usages()
+        assert resource_manager.is_op_eligible(merge)
 
-        assert not resource_manager.is_op_eligible(merge)
-        assert resource_manager._is_blocking_materializing_op(upstream)
         upstream_budget = resource_manager.get_budget(upstream)
         assert upstream_budget is not None
-        assert upstream_budget.object_store_memory == math.inf
+        assert upstream_budget.object_store_memory < math.inf
 
     def test_memory_limit_blocks_task_submission(self, restore_data_context):
         """Test that tasks are blocked when memory limit is exceeded."""
