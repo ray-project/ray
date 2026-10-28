@@ -132,6 +132,18 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        """Report health metrics for the controller to read on its next poll.
+
+        This method is used by the public API function :func:`ray.train.health.report`.
+
+        Args:
+            metrics: The metrics to report.
+            step: The step they belong to.
+        """
+        pass
+
+    @abstractmethod
     def is_distributed(self) -> bool:
         pass
 
@@ -195,6 +207,9 @@ class DistributedTrainFnUtils(TrainFnUtils):
             caller_method_name="ray.train.get_preemption_info",
             relaxable=True,
         )
+
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        get_internal_train_context().report_health(metrics, step)
 
     def is_distributed(self) -> bool:
         return True
@@ -270,6 +285,10 @@ class LocalTrainFnUtils(TrainFnUtils):
     def get_preemption_info(self) -> Optional["PreemptionInfo"]:
         # Local mode runs in a single process with no preemption watcher.
         return None
+
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        # Local mode has no controller to read health reports.
+        pass
 
     def is_distributed(self) -> bool:
         return False

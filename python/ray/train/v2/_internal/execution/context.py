@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -146,9 +147,10 @@ class TrainContext:
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
     # The worker health sent on each status poll: the latest reading of each
-    # sampled WorkerProbe.
+    # sampled WorkerProbe, and the latest health.report().
     health_lock: threading.Lock = field(default_factory=threading.Lock)
     probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
+    health_report: Optional[ProbeResult] = None
 
     def __post_init__(self):
         # Ray train initializes worker with current report index
@@ -212,6 +214,17 @@ class TrainContext:
                 timeout_s,
             )
         )
+
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        """Replace this worker's latest health report.
+
+        Args:
+            metrics: The metrics to report.
+            step: The step they belong to.
+        """
+        report = ProbeResult(metrics=metrics, timestamp_s=time.time(), step=step)
+        with self.health_lock:
+            self.health_report = report
 
     def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> "DataIterator":
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
