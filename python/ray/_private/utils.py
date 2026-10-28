@@ -281,13 +281,30 @@ def set_num_threads_env_vars_if_unset() -> List[str]:
         # If modules like torch were pre-imported before fork(), their internal thread
         # pool is already initialized and ignores subsequent os.environ["OMP_NUM_THREADS"]
         # updates.
-        for module_name in ray_constants.THREAD_POOL_MODULES:
-            if module_name in sys.modules:
-                try:
-                    sys.modules[module_name].set_num_threads(int(num_threads))
-                except Exception:
-                    pass
+        set_thread_pool_module_threads(int(num_threads))
     return unset_env_vars
+
+
+def set_thread_pool_module_threads(num_threads: int) -> None:
+    """Set the thread count of already-imported THREAD_POOL_MODULES (e.g. torch).
+
+    These modules size their thread pool at import time and ignore later changes to
+    OMP_NUM_THREADS, so modules imported before fork() must be resized explicitly.
+
+    Args:
+        num_threads: The number of threads to set on each imported module.
+    """
+    for module_name in ray_constants.THREAD_POOL_MODULES:
+        module = sys.modules.get(module_name)
+        if module is not None:
+            try:
+                module.set_num_threads(num_threads)
+            except Exception:
+                pass
+
+
+_cached_torch_backend_eps = None
+_torch_backends_autoload_pending: bool = False
 
 
 def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
@@ -328,6 +345,19 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
         for key in env_before.keys() | os.environ.keys():
             if env_before.get(key) != os.environ.get(key):
                 original_visible_accelerator_env_vars[key] = env_before.get(key)
+    global _torch_backends_autoload_pending
+    if _torch_backends_autoload_pending:
+        _torch_backends_autoload_pending = False
+        torch_mod = sys.modules.get("torch")
+        if (
+            torch_mod is not None
+            and os.environ.get("TORCH_DEVICE_BACKEND_AUTOLOAD", "1") != "0"
+        ):
+            if _cached_torch_backend_eps is not None:
+                for ep in _cached_torch_backend_eps:
+                    ep.load()()
+            elif hasattr(torch_mod, "_import_device_backends"):
+                torch_mod._import_device_backends()
     return original_visible_accelerator_env_vars
 
 
