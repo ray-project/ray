@@ -41,6 +41,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -522,10 +523,12 @@ class MockReplicaActorWrapper:
         self.stopped = False
         # Expected to be set in the test.
         self.done_stopping = False
+        self.killed = False
         # Will be set when `force_stop()` is called.
         self.force_stopped_counter = 0
         # Will be set when `check_health()` is called.
         self.health_check_called = False
+        self._push_stands_in_for_probe = False
         # Returned by the health check.
         self.healthy = True
         self._is_cross_language = False
@@ -789,7 +792,9 @@ class MockReplicaActorWrapper:
         self.stopped = True
         return self.graceful_shutdown_timeout_s
 
-    def check_stopped(self) -> bool:
+    def check_stopped(self, *, kill_actor: bool = True) -> bool:
+        if self.done_stopping and kill_actor:
+            self.killed = True
         return self.done_stopping
 
     @staticmethod
@@ -797,11 +802,35 @@ class MockReplicaActorWrapper:
         REMOVED_GANG_PG_NAMES.append(pg_name)
 
     def force_stop(self, log_shutdown_message: bool = False):
+        self.killed = True
         self.force_stopped_counter += 1
 
     def check_health(self):
+        if self._push_stands_in_for_probe:
+            # A fresh push means the real wrapper would not arm a probe.
+            self._push_stands_in_for_probe = False
+            return self.healthy
         self.health_check_called = True
         return self.healthy
+
+    def record_pushed_health(
+        self,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ) -> None:
+        """Match ActorReplicaWrapper, stubbing only the verdict.
+
+        The real arbitration lives in PushedHealthTracker and is tested there; here
+        the push sets the verdict directly so end-to-end tests can exercise the
+        manager's routing and the state machine.
+        """
+        self.pushed_health = (checked_at, healthy, consecutive_failures)
+        self._push_stands_in_for_probe = True
+        self.healthy = (
+            healthy
+            or (consecutive_failures or 0) < REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        )
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}

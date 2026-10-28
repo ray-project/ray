@@ -62,6 +62,8 @@ class ExternalEnv(threading.Thread):
         Args:
             action_space: Action space of the env.
             observation_space: Observation space of the env.
+            max_concurrent: Deprecated. Setting this to anything but None raises
+                a deprecation warning.
         """
 
         threading.Thread.__init__(self)
@@ -226,6 +228,8 @@ class ExternalEnv(threading.Thread):
             remote_env_batch_wait_ms: The wait time (in ms) to poll remote
                 sub-environments for, if applicable. Only used if
                 `remote_envs` is True.
+            restart_failed_sub_environments: Whether to restart (rather than
+                raise an error on) a failed sub-environment.
 
         Returns:
             The resulting BaseEnv object.

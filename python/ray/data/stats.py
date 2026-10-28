@@ -310,6 +310,7 @@ def _default_dtype_aggregators() -> Dict[
         DataType.uint64(): _numerical_aggregators,
         DataType.float32(): _numerical_aggregators,
         DataType.float64(): _numerical_aggregators,
+        # Booleans are treated as 0/1 numbers (mean = fraction of true values).
         DataType.bool(): _numerical_aggregators,
         # String and binary types
         DataType.string(): _basic_aggregators,
@@ -337,7 +338,8 @@ def _get_fallback_aggregators(column: str, dtype: "DataType") -> List[AggregateF
         # Check for null type first
         if dtype.is_arrow_type() and pa.types.is_null(dtype._physical_dtype):
             return [Count(on=column, ignore_nulls=False)]
-        elif dtype.is_numerical_type():
+        elif dtype.is_boolean_type() or dtype.is_numerical_type():
+            # Booleans are treated as 0/1 numbers.
             return _numerical_aggregators(column)
         elif dtype.is_temporal_type():
             return _temporal_aggregators(column)

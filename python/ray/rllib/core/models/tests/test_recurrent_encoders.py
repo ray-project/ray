@@ -2,6 +2,7 @@ import itertools
 import unittest
 
 import numpy as np
+import pytest
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
@@ -144,6 +145,46 @@ class TestRecurrentEncoders(unittest.TestCase):
             # layers-tensorflow-vs-pytorch-77a31d742f74
             if use_bias is False:
                 model_checker.check()
+
+    def test_lstm_encoder_onnx_export_with_dynamic_batch(self):
+        """Tests exporting an LSTM encoder to ONNX with a dynamic batch dim."""
+        pytest.importorskip("onnxruntime")
+        pytest.importorskip("onnxscript")
+        encoder = RecurrentEncoderConfig(
+            recurrent_layer_type="lstm", input_dims=[4], num_layers=2, hidden_dim=16
+        ).build(framework="torch")
+
+        class FlatEncoder(torch.nn.Module):
+            # The exporter takes flat tensors, not the encoder's nested dicts.
+            def __init__(self):
+                super().__init__()
+                self.encoder = encoder
+
+            def forward(self, obs, h, c):
+                out = self.encoder(
+                    {Columns.OBS: obs, Columns.STATE_IN: {"h": h, "c": c}}
+                )
+                state_out = out[Columns.STATE_OUT]
+                return out[ENCODER_OUT], state_out["h"], state_out["c"]
+
+        def inputs(batch_size):
+            return tuple(
+                torch.randn(batch_size, *shape) for shape in [(1, 4), (2, 16), (2, 16)]
+            )
+
+        model = FlatEncoder().eval()
+        # Export from a batch of two: from a batch of one, torch may fix the batch
+        # dim at one.
+        batch = torch.export.Dim("batch")
+        onnx_program = torch.onnx.export(
+            model, inputs(2), dynamic_shapes=[{0: batch}] * 3, dynamo=True
+        )
+        x = inputs(3)
+        with torch.no_grad():
+            # Calling the exported program runs it in onnxruntime.
+            torch.testing.assert_close(
+                list(onnx_program(*x)), list(model(*x)), rtol=1e-5, atol=1e-5
+            )
 
 
 if __name__ == "__main__":

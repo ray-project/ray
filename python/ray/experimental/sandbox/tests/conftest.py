@@ -14,11 +14,19 @@ _SLIRP4NETNS_URL = (
     "v1.3.5/slirp4netns-{arch}"
 )
 
+# An empty Docker config directory, so that no pull in these tests uses the
+# registry credentials, or runs the credential helpers, of the machine that
+# runs them.
+_EMPTY_DOCKER_CONFIG = tempfile.mkdtemp(prefix="sandbox-tests-docker-config-")
+
 
 def pytest_runtest_setup(item):
     if not sandbox_test_enabled():
         pytest.skip("Sandbox tests are only run when TEST_SANDBOX=1")
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
+    # A pull mustn't evict cached images because the runner's disk is full.
+    os.environ["RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"] = "0"
+    os.environ["DOCKER_CONFIG"] = _EMPTY_DOCKER_CONFIG
 
 
 @pytest.fixture
@@ -114,17 +122,54 @@ def _public_netns_supported() -> bool:
     return True
 
 
+def _nft_in_userns_supported() -> bool:
+    """Whether an unprivileged user+network namespace here can load a ruleset.
+
+    That is exactly what every network="public" sandbox does before runsc
+    starts.
+    It fails where nf_tables is missing from the kernel or the namespace
+    cannot be created.
+    """
+    ruleset = (
+        "table inet probe {\n"
+        "    chain output {\n"
+        "        type filter hook output priority 0; policy accept;\n"
+        "    }\n"
+        "}\n"
+    )
+    try:
+        proc = subprocess.run(
+            ["unshare", "--user", "--map-root-user", "--net", "nft", "-f", "-"],
+            input=ruleset.encode("utf-8"),
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
 @pytest.fixture(scope="session")
 def ensure_slirp4netns(ensure_runsc):
-    """slirp4netns plus a host that can actually run the network="public" path.
+    """slirp4netns, nft, and a host that can run the network="public" path.
 
     Requested rather than autouse, so only the netns tests skip when the
     environment forbids the per-sandbox user+network namespace the path
-    relies on. slirp4netns and runsc are installed first because the support
-    probe boots a real sandbox.
+    relies on, or can't load its egress ruleset there (the nftables package
+    is missing, or the kernel can't load a ruleset from an unprivileged
+    namespace). slirp4netns and runsc are installed first because the
+    support probe boots a real sandbox.
     """
     arch = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
     _install_on_path("slirp4netns", _SLIRP4NETNS_URL.format(arch=arch))
+    if not shutil.which("nft"):
+        pytest.skip('network="public" needs the nft binary (nftables package)')
+    if not _nft_in_userns_supported():
+        pytest.skip(
+            "nft cannot load a ruleset inside an unprivileged user+network "
+            "namespace here (nf_tables missing from the kernel, or namespaces "
+            "restricted)"
+        )
     if not _public_netns_supported():
         pytest.skip(
             'network="public" needs a per-sandbox user+network namespace this '

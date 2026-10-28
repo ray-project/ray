@@ -1,11 +1,6 @@
 # flake8: noqa
 # isort: skip_file
 
-import os
-
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
-
-
 # __torchmetrics_start__
 
 # First, pip install torchmetrics
@@ -101,10 +96,6 @@ print(result.metrics["valid_loss"], result.metrics["mean_valid_loss_collected"])
 # __torchmetrics_end__
 
 # __report_callback_start__
-import os
-
-assert os.environ["RAY_TRAIN_V2_ENABLED"] == "1"
-
 from typing import Any, Dict, List, Optional
 
 import ray.train

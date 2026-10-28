@@ -450,6 +450,22 @@ SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id"
 # returned by /internal/route.
 SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 
+# Marks a router-application response that HAProxy should return directly to
+# the client instead of interpreting as an application/replica decision.
+SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER = "x-serve-router-direct-response"
+
+# Original client method forwarded to a router application's internal decision
+# request. The decision transport itself always uses POST so it can carry a body.
+SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "original-method"
+)
+
+# Original client request target forwarded by HAProxy to /internal/route. Router
+# applications receive the path and query; ingress request routers receive the path.
+SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "request-path"
+)
+
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
@@ -1045,17 +1061,19 @@ RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
     "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
 )
 
+# Both ranges sit below the Linux ephemeral range (32768-60999), where Ray
+# workers bind their own listen ports.
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
 RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "40000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "31500")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", "31000")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "41000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "32500")
 )
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")

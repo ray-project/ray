@@ -68,7 +68,7 @@ class ResultGrid:
     If a trial is not in terminated state, its latest result and checkpoint as
     seen by Tune will be provided.
 
-    See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
+    See :doc:`/tune/examples/tune-analyze-results` for more usage examples.
     """
 
     def __init__(

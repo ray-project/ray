@@ -1966,7 +1966,77 @@ class OperatorStatsSummary:
             A `OperatorStatsSummary` object initialized with the calculated statistics
         """
         if isinstance(block_stats, _OutputBlockStatsCollector):
-            collector = block_stats
+            return block_stats.build_summary(operator_name, is_sub_operator)
+        # Single pass over block_stats to collect all metrics.
+        wall_time_acc: _StatsAccumulator = _StatsAccumulator()
+        cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
+        block_transform_time_acc: _StatsAccumulator = _StatsAccumulator()
+        input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
+        function_body_time_acc: _StatsAccumulator = _StatsAccumulator()
+        output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
+        stage_time_accs: List[_StatsAccumulator] = []
+        output_rows_acc: _StatsAccumulator = _StatsAccumulator()
+        output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
+        rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
+        tasks_per_node: DefaultDict[str, Set[int]] = collections.defaultdict(set)
+        num_exec = 0
+        earliest_start_time, latest_end_time = float("inf"), float("-inf")
+
+        for block_meta in block_stats:
+            if block_meta.num_rows is not None:
+                output_rows_acc.add(block_meta.num_rows)
+            if block_meta.size_bytes is not None:
+                output_sizes_acc.add(block_meta.size_bytes)
+
+            es = block_meta.exec_stats
+            if es is not None:
+                num_exec += 1
+                if es.wall_time_s is not None:
+                    wall_time_acc.add(es.wall_time_s)
+                if es.cpu_time_s is not None:
+                    cpu_time_acc.add(es.cpu_time_s)
+                if es.block_transform_time_s is not None:
+                    block_transform_time_acc.add(es.block_transform_time_s)
+                if es.input_prep_time_s is not None:
+                    input_prep_time_acc.add(es.input_prep_time_s)
+                if es.function_body_time_s is not None:
+                    function_body_time_acc.add(es.function_body_time_s)
+                if es.output_build_time_s is not None:
+                    output_build_time_acc.add(es.output_build_time_s)
+                if es.stage_time_s is not None:
+                    # Sized on first sight. Every block a chain produces has the
+                    # same number of stages, but a retry that re-planned could
+                    # in principle differ, so grow rather than assume.
+                    while len(stage_time_accs) < len(es.stage_time_s):
+                        stage_time_accs.append(_StatsAccumulator())
+                    for acc, seconds in zip(stage_time_accs, es.stage_time_s):
+                        acc.add(seconds)
+                tasks_per_node[es.node_id].add(es.task_idx)
+                if es.start_unix_time_s is not None and es.wall_time_s is not None:
+                    earliest_start_time = min(earliest_start_time, es.start_unix_time_s)
+                    latest_end_time = max(
+                        latest_end_time, es.start_unix_time_s + es.wall_time_s
+                    )
+                if block_meta.num_rows is not None:
+                    rows_per_task[es.task_idx] += block_meta.num_rows
+
+        # Compute timing totals.
+        if num_exec and earliest_start_time != float("inf"):
+            time_total_s = latest_end_time - earliest_start_time
+            # Handle -0.0 case.
+            rounded_total = round(time_total_s, 2)
+            if rounded_total <= 0:
+                rounded_total = 0
+        else:
+            time_total_s = 0
+            rounded_total = 0
+            earliest_start_time, latest_end_time = None, None
+
+        # Build execution summary string.
+        if is_sub_operator:
+            exec_summary_str = f"{num_exec} blocks produced\n"
+        elif num_exec:
+            exec_summary_str = f"{num_exec} blocks produced in {rounded_total}s\n"
         else:
             # Single pass over block_stats to collect all metrics.
             collector = _OutputBlockStatsCollector()
