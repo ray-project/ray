@@ -14,6 +14,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.logical.operators.n_ary_operator import (
     MixStoppingCondition,
     estimate_num_mix_outputs,
+    validate_mix_weights,
 )
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
@@ -39,8 +40,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
     ):
         assert len(input_ops) >= 1
         assert len(weights) == len(input_ops)
-        if any(w <= 0 for w in weights):
-            raise ValueError("Weights must be positive.")
+        validate_mix_weights(weights)
 
         total_weight = sum(weights)
         self._weights = [w / total_weight for w in weights]
