@@ -314,9 +314,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     // task is queued and this read must post one. If not, a task is already queued and
     // will pick up all messages in the buffer later.
     if (buffer_was_empty) {
-      io_context_.dispatch(
-          [this, self = self_ref_]() { ProcessBufferedSyncMessages(); },
-          "RaySyncer.ProcessBufferedSyncMessages");
+      io_context_.dispatch([this, self = self_ref_]() { ProcessBufferedSyncMessages(); },
+                           "RaySyncer.ProcessBufferedSyncMessages");
     }
   }
 
