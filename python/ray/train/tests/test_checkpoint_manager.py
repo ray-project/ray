@@ -313,6 +313,45 @@ def test_insert_into_sorted_list_key_calls_are_logarithmic():
     assert calls <= 2 * n * n.bit_length()
 
 
+@pytest.mark.parametrize("order", ["min", "max"])
+def test_mixed_scored_and_unscored_checkpoints(order, checkpoint_paths):
+    """Ensure v1 register_checkpoint keeps the right top-K checkpoints when
+    checkpoints omitting checkpoint_score_attribute are interleaved with scored ones."""
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=2,
+            checkpoint_score_attribute="score",
+            checkpoint_score_order=order,
+        )
+    )
+
+    # Interleave scored checkpoints with an unscored checkpoint that v1 appends.
+    entries = [
+        (checkpoint_paths[0], {"score": 3.0}),
+        (checkpoint_paths[1], {"other": 1.0}),
+        (checkpoint_paths[2], {"score": 1.0}),
+        (checkpoint_paths[3], {"score": 2.0}),
+    ]
+    for path, metrics in entries:
+        manager.register_checkpoint(
+            _TrainingResult(
+                checkpoint=Checkpoint.from_directory(path),
+                metrics=metrics,
+            )
+        )
+
+    # Checkpoints 0 (score=3.0) and 2 (score=1.0) are the best for max and min
+    # respectively; with latest=checkpoint 3 (score=2.0), the top scored checkpoint
+    # must never be evicted by the appended unscored checkpoint.
+    kept_paths = {r.checkpoint.path for r in manager.best_checkpoint_results}
+    if order == "max":
+        assert checkpoint_paths[0] in kept_paths
+        assert Path(checkpoint_paths[0]).exists()
+    else:
+        assert checkpoint_paths[2] in kept_paths
+        assert Path(checkpoint_paths[2]).exists()
+
+
 if __name__ == "__main__":
     import sys
 

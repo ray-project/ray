@@ -29,13 +29,15 @@ def _insert_into_sorted_list(
         checkpoint_to_report_index: A dictionary mapping checkpoints to report indices.
             Used to break ties when scores are equal.
     """
-    if not list:
-        list.append(item)
-        return
-
     checkpoint_to_report_index = checkpoint_to_report_index or {}
     item_key = key(item)
     item_index = checkpoint_to_report_index.get(item.checkpoint, 0)
+
+    def _is_ordered_after(elem: _TrainingResult, elem_key: Any) -> bool:
+        return elem_key > item_key or (
+            elem_key == item_key
+            and checkpoint_to_report_index.get(elem.checkpoint, 0) > item_index
+        )
 
     # Binary search for the first element ordered after ``item``. When scores are
     # equal, later checkpoints are later in the list.
@@ -43,11 +45,25 @@ def _insert_into_sorted_list(
     while lo < hi:
         mid = (lo + hi) // 2
         mid_key = key(list[mid])
-        if mid_key > item_key or (
-            mid_key == item_key
-            and checkpoint_to_report_index.get(list[mid].checkpoint, 0) > item_index
-        ):
+        if _is_ordered_after(list[mid], mid_key):
             hi = mid
+        elif mid_key == (True, float("-inf")) or mid_key == float("-inf"):
+            # In v1 _CheckpointManager (mode="max"), checkpoints omitting
+            # checkpoint_score_attribute are appended to the list, yet their
+            # score key evaluates to (True, -inf). Scan left past any such
+            # entries before concluding all elements in [lo, mid] precede item.
+            probe = mid - 1
+            while probe >= lo:
+                probe_key = key(list[probe])
+                if _is_ordered_after(list[probe], probe_key):
+                    hi = probe
+                    break
+                if probe_key != (True, float("-inf")) and probe_key != float("-inf"):
+                    lo = mid + 1
+                    break
+                probe -= 1
+            else:
+                lo = mid + 1
         else:
             lo = mid + 1
     list.insert(lo, item)
