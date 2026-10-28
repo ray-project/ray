@@ -8,10 +8,9 @@ from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
     ArrowFileScanner,
 )
 from ray.data._internal.datasource_v2.common.file_pruners import (
-    SchemaAwarePartitionPredicatePruner,
+    PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.file_reader import (
-    _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
@@ -19,7 +18,6 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     combine_predicates,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
@@ -38,6 +36,7 @@ class OrcScanner(ArrowFileScanner):
     """
 
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
+    target_block_size: Optional[int] = None
 
     @override
     def prune_partitions(self, predicate: Expr) -> "OrcScanner":
@@ -52,24 +51,14 @@ class OrcScanner(ArrowFileScanner):
         )
 
     @override
-    def pushed_partition_pruner(self) -> Optional[FilePruner]:
+    def _create_partition_pruner(self) -> Optional[FilePruner]:
         if self.partitioning is None or self.partition_predicate is None:
             return None
-        return SchemaAwarePartitionPredicatePruner(
-            self.partitioning, self.partition_predicate, self.schema
-        )
-
-    @override
-    def prune_input_split(self, input_split: FileManifest) -> FileManifest:
-        """Use the same conservative path pruning as upstream file listing."""
-        pruner = self.pushed_partition_pruner()
-        if pruner is None:
-            return input_split
-        keep = [pruner.should_include(path) for path in input_split.paths]
-        if all(keep):
-            return input_split
-        return FileManifest(
-            input_split.as_block().filter(pa.array(keep, type=pa.bool_()))
+        return PartitionPredicatePruner(
+            self.partitioning,
+            self.partition_predicate,
+            schema=self.schema,
+            keep_unknown=True,
         )
 
     def read_schema(self) -> pa.Schema:
@@ -124,14 +113,9 @@ class OrcScanner(ArrowFileScanner):
 
     def create_reader(self) -> OrcFileReader:
         """Create a reader with this scanner's projection and filters."""
-        batch_size = (
-            self.batch_size
-            if self.batch_size is not None
-            else _ARROW_DEFAULT_BATCH_SIZE
-        )
         return OrcFileReader(
             format=FileFormat.ORC,
-            batch_size=batch_size,
+            batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
             predicate=self.predicate,
             limit=self.limit,
@@ -140,4 +124,5 @@ class OrcScanner(ArrowFileScanner):
             ignore_prefixes=self.ignore_prefixes,
             synthesized_columns=self.synthesized_columns,
             schema=self.schema,
+            target_block_size=self.target_block_size,
         )

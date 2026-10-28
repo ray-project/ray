@@ -463,7 +463,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             residual_predicate = split.residual_predicate
             if split.partition_predicate is not None and (
                 _evaluate_path_predicate(
-                    split.partition_predicate, values, self._schema
+                    split.partition_predicate, values, self._schema, path=fragment.path
                 )
                 is False
             ):

@@ -12,7 +12,7 @@ import pytest
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.common.file_pruners import (
-    SchemaAwarePartitionPredicatePruner,
+    PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     FooterReader,
@@ -62,8 +62,8 @@ def test_partition_filter_root_survivor_counts_are_not_file_counts(
     table = pa.table({"id": list(range(100)), "year": ["2024"] + ["2023"] * 99})
     path, size = _write(root, table, row_group_size=100)
     scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
-    pruner = SchemaAwarePartitionPredicatePruner(
-        scheme, col("year") == "2024", table.schema
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=table.schema, keep_unknown=True
     )
     assert pruner.should_include(path)
     chunks = _reader(
@@ -84,8 +84,8 @@ def test_path_value_overrides_physical_statistics_and_preserves_exact_counts(
     table = pa.table({"id": list(range(40)), "year": [physical_year] * 40})
     path, size = _write(path, table, row_group_size=20)
     scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
-    pruner = SchemaAwarePartitionPredicatePruner(
-        scheme, col("year") == "2024", table.schema
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=table.schema, keep_unknown=True
     )
     reader = _reader(partitioning=scheme, partition_pruner=pruner)
     chunks = reader._read_and_chunk(FileInfo(path, size))
@@ -101,7 +101,9 @@ def test_partition_filter_keeps_physical_statistics_pruning(tmp_path):
     path, size = _write(path, table, row_group_size=25)
     schema = table.schema.append(pa.field("year", pa.string()))
     scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
-    pruner = SchemaAwarePartitionPredicatePruner(scheme, col("year") == "2024", schema)
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=schema, keep_unknown=True
+    )
     chunks = _reader(
         filter_expr=col("id") >= 50, partitioning=scheme, partition_pruner=pruner
     )._read_and_chunk(FileInfo(path, size))
@@ -127,8 +129,8 @@ def test_root_physical_condition_can_still_prove_exact_survivors(tmp_path):
     table = pa.table({"id": list(range(40)), "year": ["2024"] * 40})
     path, size = _write(tmp_path / "root.parquet", table, row_group_size=20)
     scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
-    pruner = SchemaAwarePartitionPredicatePruner(
-        scheme, col("year") == "2024", table.schema
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=table.schema, keep_unknown=True
     )
     chunks = _reader(partition_pruner=pruner)._read_and_chunk(FileInfo(path, size))
     assert len(chunks.row_groups) == 2
@@ -140,10 +142,30 @@ def test_root_statistics_with_different_logical_type_remain_unknown(tmp_path):
     path, size = _write(tmp_path / "root.parquet", table, row_group_size=1)
     schema = pa.schema([("id", pa.int64()), ("year", pa.int64())])
     scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
-    pruner = SchemaAwarePartitionPredicatePruner(scheme, col("year") == 2024, schema)
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == 2024, schema=schema, keep_unknown=True
+    )
     chunks = _reader(partition_pruner=pruner)._read_and_chunk(FileInfo(path, size))
     assert len(chunks.row_groups) == 2
     assert not any(group.fully_matched for group in chunks.row_groups)
+
+
+def test_footer_partition_conversion_error_has_path_and_cause(tmp_path):
+    path = tmp_path / "year=invalid" / "data.parquet"
+    path.parent.mkdir()
+    table = pa.table({"id": [1], "year": [2024]})
+    pq.write_table(table, path)
+    pruner = PartitionPredicatePruner(
+        Partitioning(PartitionStyle.HIVE),
+        col("year") == 2024,
+        schema=table.schema,
+        keep_unknown=True,
+    )
+    reader = _reader(partition_pruner=pruner)
+    with pytest.raises(pa.ArrowInvalid) as error:
+        reader._filter_for_file(str(path), pq.ParquetFile(path).metadata.schema)
+    assert str(path) in str(error.value)
+    assert isinstance(error.value.__cause__, pa.ArrowInvalid)
 
 
 def test_declared_schema_cast_prevents_raw_statistics_pruning(tmp_path):

@@ -19,7 +19,7 @@ from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
 
 import ray
 from ray.data._internal.datasource_v2.common.file_pruners import (
-    SchemaAwarePartitionPredicatePruner,
+    PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
@@ -128,7 +128,7 @@ class FooterReader:
         retried_io_errors: list[str] | None = None,
         excluded_read_unit_ids: AbstractSet[str] | None = None,
         partitioning: Partitioning | None = None,
-        partition_pruner: SchemaAwarePartitionPredicatePruner | None = None,
+        partition_pruner: PartitionPredicatePruner | None = None,
         logical_schema: pa.Schema | None = None,
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
@@ -280,7 +280,10 @@ class FooterReader:
             if complete:
                 complete = (
                     _evaluate_path_predicate(
-                        split.partition_predicate, values, self.logical_schema
+                        split.partition_predicate,
+                        values,
+                        self.logical_schema,
+                        path=path,
                     )
                     is True
                 )

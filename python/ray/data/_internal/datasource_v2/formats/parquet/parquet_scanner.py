@@ -6,7 +6,7 @@ from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.arrow_file_scanner import ArrowFileScanner
 from ray.data._internal.datasource_v2.common.file_pruners import (
-    SchemaAwarePartitionPredicatePruner,
+    PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
@@ -15,7 +15,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     check_for_legacy_tensor_type,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
@@ -55,27 +54,14 @@ class ParquetScanner(ArrowFileScanner):
         )
 
     @override
-    def pushed_partition_pruner(self) -> Optional[FilePruner]:
+    def _create_partition_pruner(self) -> Optional[FilePruner]:
         if self.partitioning is None or self.partition_predicate is None:
             return None
-        return SchemaAwarePartitionPredicatePruner(
-            self.partitioning, self.partition_predicate, self.schema
-        )
-
-    @override
-    def prune_input_split(self, input_split: FileManifest) -> FileManifest:
-        pruner = self.pushed_partition_pruner()
-        if pruner is None:
-            return input_split
-        indices = [
-            index
-            for index, path in enumerate(input_split.paths)
-            if pruner.should_include(path)
-        ]
-        if len(indices) == len(input_split):
-            return input_split
-        return FileManifest(
-            input_split.as_block().take(pa.array(indices, type=pa.int64()))
+        return PartitionPredicatePruner(
+            self.partitioning,
+            self.partition_predicate,
+            schema=self.schema,
+            keep_unknown=True,
         )
 
     def read_schema(self) -> pa.Schema:

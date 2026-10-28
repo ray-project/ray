@@ -6,7 +6,7 @@ from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.common.file_pruners import (
     FileExtensionPruner,
-    SchemaAwarePartitionPredicatePruner,
+    PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.listing_utils import (
     list_files_for_each_block,
@@ -48,8 +48,11 @@ def test_schema_aware_partition_pruner_uses_logical_values(
     tmp_path, data_type, value, matching, other
 ):
     scheme = Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path))
-    pruner = SchemaAwarePartitionPredicatePruner(
-        scheme, col("key") == value, pa.schema([("key", data_type)])
+    pruner = PartitionPredicatePruner(
+        scheme,
+        col("key") == value,
+        schema=pa.schema([("key", data_type)]),
+        keep_unknown=True,
     )
     assert pruner.should_include(str(tmp_path / "root"))
     assert pruner.should_include(str(tmp_path / f"key={matching}" / "data"))
@@ -59,15 +62,17 @@ def test_schema_aware_partition_pruner_uses_logical_values(
 def test_schema_aware_partition_pruner_ignores_unused_logical_fields(tmp_path):
     scheme = Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path))
     schema = pa.schema([("country", pa.string()), ("year", pa.int64())])
-    pruner = SchemaAwarePartitionPredicatePruner(scheme, col("country") == "US", schema)
+    pruner = PartitionPredicatePruner(
+        scheme, col("country") == "US", schema=schema, keep_unknown=True
+    )
     assert pruner.should_include(
         str(tmp_path / "country=US" / "year=invalid" / "data.parquet")
     )
     assert not pruner.should_include(
         str(tmp_path / "country=CA" / "year=invalid" / "data.parquet")
     )
-    year_pruner = SchemaAwarePartitionPredicatePruner(
-        scheme, col("year") == 2024, schema
+    year_pruner = PartitionPredicatePruner(
+        scheme, col("year") == 2024, schema=schema, keep_unknown=True
     )
     with pytest.raises(pa.ArrowInvalid):
         year_pruner.should_include(
@@ -80,24 +85,70 @@ def test_schema_aware_partition_pruner_preserves_unknown_and_errors(tmp_path):
         PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}
     )
     schema = pa.schema([("year", pa.int64()), ("month", pa.int64())])
-    pruner = SchemaAwarePartitionPredicatePruner(scheme, col("year") == 2024, schema)
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == 2024, schema=schema, keep_unknown=True
+    )
     assert pruner.should_include(str(tmp_path / "root"))
     with pytest.raises(ValueError):
         pruner.should_include(str(tmp_path / "year=invalid" / "data"))
-    untyped = SchemaAwarePartitionPredicatePruner(
+    untyped = PartitionPredicatePruner(
         Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
         col("year") == 2024,
-        schema,
+        schema=schema,
+        keep_unknown=True,
     )
     with pytest.raises(pa.ArrowInvalid):
         untyped.should_include(str(tmp_path / "year=invalid" / "data"))
-    unknown = SchemaAwarePartitionPredicatePruner(
-        scheme, (col("year") == 2024) & (col("month") == 1), schema
+    unknown = PartitionPredicatePruner(
+        scheme,
+        (col("year") == 2024) & (col("month") == 1),
+        schema=schema,
+        keep_unknown=True,
     )
     assert unknown.should_include(str(tmp_path / "year=2024" / "data"))
     for value in [True, False]:
-        constant = SchemaAwarePartitionPredicatePruner(scheme, lit(value), schema)
+        constant = PartitionPredicatePruner(
+            scheme, lit(value), schema=schema, keep_unknown=True
+        )
         assert constant.should_include(str(tmp_path / "root")) is value
+
+
+def test_partition_pruner_default_policy_is_unchanged(tmp_path):
+    scheme = Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path))
+    schema = pa.schema([("year", pa.int64())])
+    default = PartitionPredicatePruner(scheme, col("year") == 2024, schema=schema)
+    conservative = PartitionPredicatePruner(
+        scheme, col("year") == 2024, schema=schema, keep_unknown=True
+    )
+    root = str(tmp_path / "root.parquet")
+    assert not default.should_include(root)
+    assert conservative.should_include(root)
+    for year, expected in [(2024, True), (2023, False)]:
+        path = str(tmp_path / f"year={year}" / "data.parquet")
+        assert default.should_include(path) is expected
+        assert conservative.should_include(path) is expected
+
+
+@pytest.mark.parametrize("explicit_type", [False, True])
+def test_partition_pruner_conversion_error_has_path_and_cause(tmp_path, explicit_type):
+    scheme = Partitioning(
+        PartitionStyle.HIVE,
+        base_dir=str(tmp_path),
+        field_types={"year": int} if explicit_type else {},
+    )
+    pruner = PartitionPredicatePruner(
+        scheme,
+        col("year") == 2024,
+        schema=pa.schema([("year", pa.int64())]),
+        keep_unknown=True,
+    )
+    path = str(tmp_path / "year=invalid" / "data.parquet")
+    error_type = ValueError if explicit_type else pa.ArrowInvalid
+    with pytest.raises(error_type) as error:
+        pruner.should_include(path)
+    assert type(error.value) is error_type
+    assert path in str(error.value)
+    assert type(error.value.__cause__) is error_type
 
 
 def test_partition_discovery_preserves_config_and_validates_layout(tmp_path):

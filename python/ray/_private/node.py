@@ -27,6 +27,10 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.authentication import authentication_utils as auth_utils
+from ray._private.authentication.authentication_constants import (
+    K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE,
+)
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -104,6 +108,11 @@ class Node:
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
         """
+        if (
+            auth_utils.is_k8s_token_auth_enabled()
+            or ray_params._system_config.get("ENABLE_K8S_TOKEN_AUTH")
+        ) and not auth_utils.is_token_auth_enabled():
+            raise ValueError(K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE)
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(

@@ -10,7 +10,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.file_pruners import (
-    SchemaAwarePartitionPredicatePruner,
+    PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
@@ -307,7 +307,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             (
                 pruner
                 for pruner in pruners or []
-                if isinstance(pruner, SchemaAwarePartitionPredicatePruner)
+                if isinstance(pruner, PartitionPredicatePruner)
             ),
             None,
         )

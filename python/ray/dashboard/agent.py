@@ -120,12 +120,7 @@ class DashboardAgent:
         from grpc import aio as aiogrpc
 
         from ray._common.tls_utils import add_port_to_grpc_server
-        from ray._private.authentication.authentication_utils import (
-            is_token_auth_enabled,
-        )
-        from ray._private.authentication.grpc_authentication_server_interceptor import (
-            AsyncAuthenticationServerInterceptor,
-        )
+        from ray._private.grpc_utils import create_grpc_server_with_interceptors
         from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
@@ -141,13 +136,8 @@ class DashboardAgent:
         else:
             aiogrpc.init_grpc_aio()
 
-        # Add authentication interceptor if token auth is enabled
-        interceptors = []
-        if is_token_auth_enabled():
-            interceptors.append(AsyncAuthenticationServerInterceptor())
-
-        self.server = aiogrpc.server(
-            interceptors=interceptors,
+        self.server = create_grpc_server_with_interceptors(
+            asynchronous=True,
             options=(
                 ("grpc.so_reuseport", 0),
                 (

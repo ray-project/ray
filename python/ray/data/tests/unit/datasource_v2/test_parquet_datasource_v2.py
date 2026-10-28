@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from ray.data._internal.datasource_v2.common.file_pruners import (
-    SchemaAwarePartitionPredicatePruner,
+    PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.online_bin_packer import (
     OnlineBinPacker,
@@ -47,6 +47,45 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
+
+
+def test_read_pruning_does_not_depend_on_listing_hook(tmp_path):
+    class NoListingPruner(ParquetScanner):
+        def pushed_partition_pruner(self):
+            return None
+
+    scanner = NoListingPruner(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.int64())]),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    ).prune_partitions(col("year") == 2024)
+    paths = [
+        str(tmp_path / "root.parquet"),
+        str(tmp_path / "year=2024" / "data.parquet"),
+        str(tmp_path / "year=2023" / "data.parquet"),
+    ]
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=[1] * 3, chunk_metadatas=[None] * 3
+    )
+    assert scanner.pushed_partition_pruner() is None
+    assert scanner.prune_input_split(manifest).paths.tolist() == paths[:2]
+
+
+def test_reader_partition_conversion_error_has_path_and_cause(tmp_path):
+    import pyarrow.dataset as pds
+
+    path = tmp_path / "year=invalid" / "data.parquet"
+    path.parent.mkdir()
+    pq.write_table(pa.table({"id": [1], "year": [2024]}), path)
+    reader = ParquetFileReader(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.int64())]),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+        predicate=col("year") == 2024,
+    )
+    fragment = next(pds.dataset(str(path), format="parquet").get_fragments())
+    with pytest.raises(pa.ArrowInvalid) as error:
+        list(reader._iter_fragment_tables(fragment, {}))
+    assert str(path) in str(error.value)
+    assert isinstance(error.value.__cause__, pa.ArrowInvalid)
 
 
 def _write_parquet(path: str, table: pa.Table) -> None:
@@ -312,8 +351,8 @@ def test_footer_listing_stops_after_proven_partition_survivors(
     pq.write_table(pa.table({"id": list(range(120, 140))}), tail)
     pq.write_table(root_table, rejected)
     scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
-    pruner = SchemaAwarePartitionPredicatePruner(
-        scheme, col("year") == "2024", root_table.schema
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=root_table.schema, keep_unknown=True
     )
     scanned = []
 

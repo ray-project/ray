@@ -1,6 +1,4 @@
-from typing import TYPE_CHECKING, List
-
-import pyarrow as pa
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
@@ -11,6 +9,8 @@ from ray.data.datasource import PathPartitionFilter, PathPartitionParser
 from ray.data.datasource.path_util import _has_file_extension
 
 if TYPE_CHECKING:
+    import pyarrow
+
     from ray.data.datasource.partitioning import Partitioning
     from ray.data.expressions import Expr
 
@@ -52,9 +52,10 @@ class PartitionPredicatePruner(FilePruner):
     reader also performs (``FileScanner.prune_input_split``), so the two
     must drop exactly the same files: a pushed-down limit stops listing early,
     and every row listing counted towards it has to belong to a file the reader
-    keeps. Sharing
-    :meth:`PathPartitionParser.evaluate_predicate_on_partition` with
-    ``prune_input_split`` is what holds that equality.
+    keeps. Both listing and ``prune_input_split`` use ``should_include``.
+    The default policy delegates to ``PathPartitionParser``. Mixed-root
+    scanners set ``keep_unknown`` to retain missing path fields for the reader
+    and evaluate known values using the same logical types as row filtering.
 
     The two are therefore not interchangeable. A ``PathPartitionFilter`` is an
     opaque callable carrying no such obligation, and expressing a pushed-down
@@ -62,31 +63,29 @@ class PartitionPredicatePruner(FilePruner):
     behind a lambda.
     """
 
-    def __init__(self, partitioning: "Partitioning", predicate: "Expr"):
-        self._parser = PathPartitionParser(partitioning)
-        self._predicate = predicate
-
-    def should_include(self, path: str) -> bool:
-        return self._parser.evaluate_predicate_on_partition(path, self._predicate)
-
-
-class SchemaAwarePartitionPredicatePruner(FilePruner):
-    """Prune typed path values while retaining files with unknown values.
-
-    The schema is the reader's logical schema, so path pruning compares the
-    same values as row filtering. Missing path keys may be physical columns
-    or logical nulls in root files and must be evaluated by the reader.
-    """
-
     def __init__(
-        self, partitioning: "Partitioning", predicate: "Expr", schema: pa.Schema
-    ) -> None:
+        self,
+        partitioning: "Partitioning",
+        predicate: "Expr",
+        *,
+        schema: Optional["pyarrow.Schema"] = None,
+        keep_unknown: bool = False,
+    ):
+        self._parser = PathPartitionParser(partitioning)
         self.partitioning = partitioning
         self.predicate = predicate
         self.schema = schema
+        # Mixed-root readers can evaluate missing path fields from physical
+        # columns or logical nulls. Other callers retain the parser's policy.
+        self._keep_unknown = keep_unknown
 
     def should_include(self, path: str) -> bool:
-        values = _parse_partition_values(path, self.partitioning)
-        return (
-            _evaluate_path_predicate(self.predicate, values, self.schema) is not False
+        if self._keep_unknown:
+            values = _parse_partition_values(path, self.partitioning)
+            return (
+                _evaluate_path_predicate(self.predicate, values, self.schema, path=path)
+                is not False
+            )
+        return self._parser.evaluate_predicate_on_partition(
+            path, self.predicate, schema=self.schema
         )
