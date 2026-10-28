@@ -27,6 +27,9 @@ def ray_client_instance():
             "16",
             "--ray-client-server-port",
             f"{port}",
+            # Bazel points usage reports at 127.0.0.1:8000, so the first one, sent 60s
+            # after start, would hit whichever test app holds route "/".
+            "--disable-usage-stats",
         ]
     )
     try:
