@@ -1800,6 +1800,7 @@
     anyscale_sdk_2026: true
     byod:
       type: torch-cu128
+      python_depset: torch_cu128_serve_resnet_py3.11.lock
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
