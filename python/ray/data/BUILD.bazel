@@ -2505,6 +2505,20 @@ py_test(
 )
 
 py_test(
+    name = "test_download_expression_errors",
+    size = "small",
+    srcs = ["tests/test_download_expression_errors.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_combine_downloads",
     size = "small",
     srcs = ["tests/test_combine_downloads.py"],
