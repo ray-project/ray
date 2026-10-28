@@ -1761,6 +1761,7 @@ def build_serve_application(
         if (
             RAY_SERVE_ENABLE_HA_PROXY
             and app._ingress_request_router is None
+            and not app._router_application_target
             and deployment_to_request_router_cls.get(
                 ingress_name, DEFAULT_REQUEST_ROUTER_PATH
             )

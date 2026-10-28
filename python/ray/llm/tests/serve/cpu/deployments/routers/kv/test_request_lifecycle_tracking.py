@@ -14,6 +14,8 @@ import ray.cloudpickle
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    PD_BACKEND_APP_NAME,
+    PD_ROUTER_APP_NAME,
     REQUEST_TRACKING_TTL_S,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
@@ -247,13 +249,14 @@ def build_token_tracking_engine(monkeypatch):
         monkeypatch.setattr(
             "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
             "token_tracking.get_llm_router_handle",
-            lambda: _BroadcastHandle(*targets),
+            lambda app_name=None: _BroadcastHandle(*targets),
         )
         monkeypatch.setattr(
             serve,
             "get_replica_context",
             lambda: SimpleNamespace(
-                replica_id=SimpleNamespace(unique_id=REPLICA_UNIQUE_ID)
+                app_name="app",
+                replica_id=SimpleNamespace(unique_id=REPLICA_UNIQUE_ID),
             ),
         )
         return enable_token_tracking(
@@ -275,7 +278,7 @@ async def consume(stream, limit=None):
 
 async def drain(engine):
     """Wait for the engine forwarder's queued lifecycle batches to land."""
-    await engine._lifecycle_forwarder.flush()
+    await engine._resolve_lifecycle_forwarder().flush()
 
 
 def decode_counts(events):
@@ -639,12 +642,38 @@ def test_decorator_returns_subclass():
     assert issubclass(enable_token_tracking(MockAsyncLLM), MockAsyncLLM)
 
 
+def test_pd_backend_reports_to_router_app(monkeypatch):
+    """P/D engines report to the router app, tagged with their deployment."""
+    apps = []
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
+        "token_tracking.get_llm_router_handle",
+        lambda app_name: apps.append(app_name) or _BroadcastHandle(),
+    )
+    monkeypatch.setattr(
+        serve,
+        "get_replica_context",
+        lambda: SimpleNamespace(
+            app_name=PD_BACKEND_APP_NAME,
+            replica_id=SimpleNamespace(
+                unique_id=REPLICA_UNIQUE_ID, deployment_id="decode-id"
+            ),
+        ),
+    )
+    engine = enable_token_tracking(MockAsyncLLM)(delta_steps(2))
+
+    forwarder = engine._resolve_lifecycle_forwarder()
+
+    assert apps == [PD_ROUTER_APP_NAME]
+    assert forwarder._broadcast_kwargs == {"deployment_id": "decode-id"}
+
+
 @pytest.mark.asyncio
 async def test_passthrough_without_llm_router(monkeypatch):
     """Outside a replica (no LLMRouter handle resolvable) the engine is a pure
     pass-through."""
 
-    def _raise():
+    def _raise(app_name=None):
         raise RuntimeError("no LLMRouter")
 
     monkeypatch.setattr(

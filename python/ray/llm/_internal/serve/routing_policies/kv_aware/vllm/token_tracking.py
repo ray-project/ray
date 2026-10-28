@@ -9,12 +9,15 @@ from ray import serve
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+    PD_BACKEND_APP_NAME,
+    PD_ROUTER_APP_NAME,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_llm_router_handle,
     get_worker_id,
 )
 from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
+from ray.serve._private.common import DeploymentID
 from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
@@ -34,9 +37,17 @@ class LifecycleEventForwarder:
     the next one.
     """
 
-    def __init__(self, handle: DeploymentHandle, worker_id: int):
+    def __init__(
+        self,
+        handle: DeploymentHandle,
+        worker_id: int,
+        deployment_id: Optional[DeploymentID] = None,
+    ):
         self.handle = handle
         self.worker_id = worker_id
+        self._broadcast_kwargs = (
+            {"deployment_id": deployment_id} if deployment_id else {}
+        )
         self._events: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
 
@@ -58,7 +69,7 @@ class LifecycleEventForwarder:
                 # return_exceptions so one failed replica cannot mask delivery
                 # to the rest; failures are logged and dropped below.
                 results = await self.handle.broadcast(
-                    "on_lifecycle_events", batch
+                    "on_lifecycle_events", batch, **self._broadcast_kwargs
                 ).results_async(
                     timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
                     return_exceptions=True,
@@ -150,12 +161,18 @@ def enable_token_tracking(
                 try:
                     # The KVTokenTracker lives inside the LLMRouter, so
                     # forward lifecycle events to its deployment handle method.
-                    handle = get_llm_router_handle()
-                    worker_id = get_worker_id(
-                        serve.get_replica_context().replica_id.unique_id
-                    )
+                    replica_context = serve.get_replica_context()
+                    replica_id = replica_context.replica_id
+                    app_name, deployment_id = replica_context.app_name, None
+                    if app_name == PD_BACKEND_APP_NAME:
+                        # P/D engines report to the router app, which keeps a
+                        # tracker per deployment.
+                        app_name = PD_ROUTER_APP_NAME
+                        deployment_id = replica_id.deployment_id
                     self._lifecycle_forwarder = LifecycleEventForwarder(
-                        handle, worker_id
+                        get_llm_router_handle(app_name),
+                        get_worker_id(replica_id.unique_id),
+                        deployment_id,
                     )
                 except Exception as e:
                     # Warn once: resolution is retried per request until it succeeds.

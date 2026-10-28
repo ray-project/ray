@@ -68,9 +68,7 @@ def build_tokenize_request(
             return ChatCompletionRequest.model_validate(payload)
         if request_path.endswith("/v1/completions"):
             request = CompletionRequest.model_validate(payload)
-            if not isinstance(request.prompt, str) or request.prompt_embeds is not None:
-                return None
-            return request
+            return request if _is_single_text_prompt(request) else None
         # Only the generation endpoints above support prompt-token routing here.
         return None
     except (ValidationError, VLLMValidationError) as e:
@@ -79,6 +77,10 @@ def build_tokenize_request(
         # client error; failing the router consultation would become a 500.
         logger.warning("Unsupported tokenize request, falling back: %s", e)
         return None
+
+
+def _is_single_text_prompt(request: CompletionRequest) -> bool:
+    return isinstance(request.prompt, str) and request.prompt_embeds is None
 
 
 class Tokenizer:
@@ -129,12 +131,16 @@ class Tokenizer:
         )
 
     async def tokenize(
-        self, payload: Dict[str, Any], *, request_path: Optional[str] = None
+        self,
+        payload: Union[Dict[str, Any], ChatCompletionRequest, CompletionRequest],
+        *,
+        request_path: Optional[str] = None,
     ) -> Optional[List[int]]:
         """Tokenize a request ``payload`` into prompt token IDs.
 
         Args:
-            payload: The request body, already parsed into a dict by ``LLMRouter``.
+            payload: The request body parsed into a dict, or an already
+                validated chat or completions request, which skips validation.
             request_path: The original API path forwarded by HAProxy, if present.
 
         Returns:
@@ -143,11 +149,18 @@ class Tokenizer:
         Raises:
             TokenizeError: vLLM's prompt renderer rejected the request.
         """
-        request = build_tokenize_request(
-            payload,
-            merge_inline_system=self._merge_inline_system,
-            request_path=request_path,
-        )
+        if isinstance(payload, dict):
+            request = build_tokenize_request(
+                payload,
+                merge_inline_system=self._merge_inline_system,
+                request_path=request_path,
+            )
+        elif isinstance(payload, CompletionRequest) and not _is_single_text_prompt(
+            payload
+        ):
+            return None
+        else:
+            request = payload
         if request is None:
             return None
 
@@ -156,7 +169,8 @@ class Tokenizer:
                 # Conversion defaults disabled thinking to "none". Resolve the
                 # configured effort before rendering, since it can change tokens.
                 if (
-                    request_path.endswith("/v1/messages")
+                    request_path is not None
+                    and request_path.endswith("/v1/messages")
                     and request.reasoning_effort == "none"
                 ):
                     request.reasoning_effort = (

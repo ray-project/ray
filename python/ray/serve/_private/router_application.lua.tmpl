@@ -219,6 +219,7 @@ local function route(txn, router)
         return fail(txn, "replica_unavailable")
     end
 
+    set_router_response_headers(txn, response_body)
     txn.http:req_set_path(moved_path(txn.sf:path(), router.p, target.p))
     txn:set_var("txn.router_server", server_name)
     txn:set_var("txn.router_backend", target.b)

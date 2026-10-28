@@ -256,6 +256,7 @@ def _fake_replica(port: int, name: str) -> uvicorn.Server:
             "query": request.url.query,
             "body": (await request.body()).decode(),
             "request_id": request.headers.get("x-request-id"),
+            "request_headers": dict(request.headers),
             "serve_headers": sorted(
                 k for k in request.headers if k.startswith("x-serve-")
             ),
@@ -483,6 +484,26 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
             assert "x-serve-router-forged" not in call["headers"]
 
     assert len(router.calls) == len(cases)
+
+
+@pytest.mark.asyncio
+async def test_decision_request_headers_reach_replica(router_cluster):
+    """Decision headers are stamped on the forwarded request, replacing client values."""
+    url, router, _ = router_cluster
+    header = "x-serve-router-kv-token-key"
+    router.response = (
+        200,
+        json.dumps(
+            {
+                "application": "model-a",
+                "replica_id": _replica_id("model-a", "a1"),
+                "request_headers": {header: "from-router"},
+            }
+        ),
+    )
+    resp = _chat(url, {"messages": []}, headers={header: "forged"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["request_headers"][header] == "from-router"
 
 
 @pytest.mark.asyncio
