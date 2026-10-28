@@ -2,6 +2,8 @@ import logging
 import pickle
 import random
 import sys
+from typing import Any, Dict, List
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -60,6 +62,60 @@ def test_top_n_uses_pandas_bounded_selection():
         {"key": 1, "value": 10},
         {"key": 2, "value": 20},
     ]
+
+
+@pytest.mark.parametrize(
+    "keys,sort_key,method",
+    [
+        ({"key": [2, 1, 1, 3]}, SortKey("key"), "nsmallest"),
+        ({"key": [2, 1, 1, 3]}, SortKey("key", descending=True), "nlargest"),
+        ({"key": [2, None, 1, 3]}, SortKey("key"), "sort_values"),
+        ({"key": ["b", "a", "a", "c"]}, SortKey("key"), "sort_values"),
+        (
+            {"key": [2, 1, 1, 3], "secondary": [0, 1, 2, 3]},
+            SortKey(["key", "secondary"], descending=[False, True]),
+            "sort_values",
+        ),
+    ],
+)
+@pytest.mark.parametrize("limit", [2, 10])
+@pytest.mark.parametrize(
+    "index",
+    [
+        pd.Index([7, 7, 2, 9], name="original"),
+        pd.MultiIndex.from_tuples(
+            [("a", 1), ("a", 1), ("b", 2), ("c", 3)],
+            names=["group", "row"],
+        ),
+    ],
+)
+def test_top_n_selects_only_keys_and_preserves_index(
+    keys: Dict[str, List[Any]],
+    sort_key: SortKey,
+    method: str,
+    limit: int,
+    index: pd.Index,
+) -> None:
+    frame = pd.DataFrame(keys, index=index)
+    frame["payload"] = pd.Categorical(["x", "y", "z", "w"])
+    frame["nullable_payload"] = pd.array([1, None, 3, 4], dtype="Int64")
+    columns, ascending = sort_key.to_pandas_sort_args()
+
+    if method == "sort_values":
+        expected = frame.sort_values(columns, ascending=ascending).head(limit)
+    else:
+        expected = getattr(frame, method)(limit, columns)
+
+    original = getattr(pd.DataFrame, method)
+
+    with mock.patch.object(
+        pd.DataFrame, method, autospec=True, side_effect=original
+    ) as select:
+        result = PandasBlockAccessor(frame).top_n(sort_key, limit)
+
+    pd.testing.assert_frame_equal(result, expected)
+    assert select.call_count == 1
+    assert list(select.call_args.args[0].columns) == columns
 
 
 def simple_series(null):

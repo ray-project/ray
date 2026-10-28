@@ -45,6 +45,54 @@ def test_top_n_planner_routes_to_local_map_and_final_merge(
     assert not local_map.supports_fusion()
 
 
+@pytest.mark.parametrize(
+    "rows_per_block,expected_task_blocks",
+    [
+        ([2, 2, 2, 2, 2], [2, 2, 1]),
+        ([6, 1, 1, 1], [1, 3]),
+        ([0, 2, 0, 2, 1], [4, 1]),
+    ],
+)
+def test_top_n_bundles_small_blocks_and_flushes_remainder(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    rows_per_block,
+    expected_task_blocks,
+) -> None:
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    blocks = []
+    offset = 0
+    for num_rows in rows_per_block:
+        blocks.append(
+            pa.table(
+                {"id": pa.array(range(offset, offset + num_rows), type=pa.int64())}
+            )
+        )
+        offset += num_rows
+    submissions = []
+    original_submit = MapOperator._submit_data_task
+
+    def record_submit(
+        operator: MapOperator, gen: Any, inputs: RefBundle, **kwargs: Any
+    ) -> None:
+        if operator.name == "LocalTopN(limit=3)":
+            submissions.append(len(inputs.blocks))
+        return original_submit(operator, gen, inputs, **kwargs)
+
+    with (
+        mock.patch("ray.data._internal.planner.top_n._LOCAL_TOP_N_MIN_BYTES", 32),
+        mock.patch.object(MapOperator, "_submit_data_task", record_submit),
+    ):
+        result = (
+            ray.data.from_arrow(blocks).sort("id", descending=True).limit(3).take_all()
+        )
+
+    assert result == [{"id": i} for i in range(offset - 1, offset - 4, -1)]
+    assert submissions == expected_task_blocks
+
+
 @pytest.mark.parametrize("limit", [0, 1, 7, 10, 20])
 def test_top_n_shuffle_v2_end_to_end(
     ray_start_regular_shared_2_cpus,
