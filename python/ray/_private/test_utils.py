@@ -1345,6 +1345,12 @@ def placement_group_assert_no_leak(pgs_created):
 
     def wait_for_resource_recovered():
         for resource, val in ray.available_resources().items():
+            # Detached actors pinned to a node (e.g. to the head node) hold a
+            # slice of its node: resource for the life of the cluster. That's
+            # not placement group capacity, and leaked bundles show up as
+            # _group_ resources below.
+            if resource.startswith("node:"):
+                continue
             if resource in cluster_resources and cluster_resources[resource] != val:
                 return False
             if "_group_" in resource:
