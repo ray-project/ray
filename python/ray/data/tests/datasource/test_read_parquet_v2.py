@@ -12,7 +12,7 @@ import logging
 import os
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Iterator, List, cast
+from typing import Iterator, cast
 
 import fsspec
 import numpy as np
@@ -43,6 +43,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
+from ray.data.tests.schema_planning_utils import get_prelisted_blocks
 
 
 def _write(path, table):
@@ -1387,12 +1388,7 @@ def test_merge_schema_generated_id_binds_after_read(
         [str(first), str(last)], merge_schema=True, override_num_blocks=1
     )
     assert dataset.schema(fetch_if_missing=False).names == ["id", "late"]
-    blocks = cast(
-        List[pa.Table],
-        cast(
-            ListFiles, dataset._logical_plan.dag.input_dependencies[0]
-        ).prelisted_file_infos,
-    )
+    blocks = get_prelisted_blocks(dataset._logical_plan.dag)
     assert (
         sum(
             value["num_rows"]
@@ -1418,10 +1414,7 @@ def test_merge_schema_generated_id_binds_after_read(
     (bound_read,) = [
         op for op in bound.dag.post_order_iter() if isinstance(op, ReadFiles)
     ]
-    bound_blocks = cast(
-        List[pa.Table],
-        cast(ListFiles, bound_read.input_dependencies[0]).prelisted_file_infos,
-    )
+    bound_blocks = get_prelisted_blocks(bound_read)
     assert len(bound_blocks) == len(blocks)
     assert all(before.equals(after) for before, after in zip(blocks, bound_blocks))
     assert projected.count() == 4

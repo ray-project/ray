@@ -4,6 +4,7 @@ import os
 from collections import Counter
 from dataclasses import replace
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, Dict
 
 import pyarrow as pa
@@ -63,6 +64,16 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+
+_METADATA_READERS = [
+    ("Parquet", pq.write_table, ParquetFileReader, {}),
+    (
+        "ORC",
+        orc.write_table,
+        OrcFileReader,
+        {"format": FileFormat.ORC, "reuse_file_metadata": True},
+    ),
+]
 
 
 def _filesystem(**kwargs):
@@ -200,9 +211,11 @@ def test_driver_restores_extension_unknown_to_worker():
 
 
 @pytest.mark.parametrize(
-    "format_name,write", [("Parquet", pq.write_table), ("ORC", orc.write_table)]
+    "format_name,write,reader_class,reader_options", _METADATA_READERS
 )
-def test_schema_and_metadata_share_one_open(tmp_path, format_name, write):
+def test_schema_metadata_and_cached_counts_share_one_open(
+    tmp_path, format_name, write, reader_class, reader_options
+):
     paths = [tmp_path / "empty", tmp_path / "rows"]
     write(pa.table({"id": pa.array([], type=pa.int64())}), paths[0])
     write(pa.table({"id": [1, 2, 3]}), paths[1])
@@ -220,6 +233,15 @@ def test_schema_and_metadata_share_one_open(tmp_path, format_name, write):
             )
     else:
         assert all(value["parquet_footer"] is None for value in values)
+    block = sample.as_block()
+    assert isinstance(block, pa.Table)
+    manifest = FileManifest(
+        block.append_column(FILE_METADATA_COLUMN_NAME, result.metadata)
+    )
+    reader = reader_class(filesystem=filesystem, **reader_options)
+    backing.fail_open = True
+    assert [metadata.num_rows for metadata in reader.read_metadata(manifest)] == [0, 3]
+    assert MetadataType.NUM_ROWS in reader.available_metadata()
 
 
 @pytest.mark.parametrize("budget", [0, 31, 32, 96, 4096])
@@ -330,39 +352,6 @@ def test_cached_parquet_footer_preserves_statistics_and_int96(tmp_path, case):
         )
     finally:
         reader.pool.shutdown()
-
-
-@pytest.mark.parametrize(
-    "format_name,write,reader_class",
-    [
-        ("Parquet", pq.write_table, ParquetFileReader),
-        ("ORC", orc.write_table, OrcFileReader),
-    ],
-)
-def test_count_consumes_zero_and_positive_cached_rows(
-    tmp_path, format_name, write, reader_class
-):
-    paths = [tmp_path / "empty", tmp_path / "rows"]
-    write(pa.table({"id": pa.array([], type=pa.int64())}), paths[0])
-    write(pa.table({"id": [1, 2, 3]}), paths[1])
-    filesystem, backing = _filesystem()
-    sample = _sample(paths, filesystem)
-    result = _infer(sample, filesystem, format_name=format_name)
-    block = sample.as_block()
-    assert isinstance(block, pa.Table)
-    assert result.metadata is not None
-    manifest = FileManifest(
-        block.append_column(FILE_METADATA_COLUMN_NAME, result.metadata)
-    )
-    kwargs = (
-        {"format": FileFormat.ORC, "reuse_file_metadata": True}
-        if format_name == "ORC"
-        else {}
-    )
-    reader = reader_class(filesystem=filesystem, **kwargs)
-    backing.fail_open = True
-    assert [metadata.num_rows for metadata in reader.read_metadata(manifest)] == [0, 3]
-    assert MetadataType.NUM_ROWS in reader.available_metadata()
 
 
 def test_orc_default_does_not_add_metadata_count():
@@ -567,10 +556,6 @@ def test_ordered_task_window_and_failure_cleanup(monkeypatch, tmp_path, failure)
     cancelled = []
     options = {}
 
-    class Ref:
-        def __init__(self, kind, value, index):
-            self.kind, self.value, self.index = kind, value, index
-
     class Remote:
         def options(self, **kwargs):
             options.update(kwargs)
@@ -582,7 +567,10 @@ def test_ordered_task_window_and_failure_cleanup(monkeypatch, tmp_path, failure)
             state["submitted"] += 1
             state["pending"] += 1
             state["peak"] = max(state["peak"], state["pending"])
-            return Ref("summary", result[0], index), Ref("original", result[1], index)
+            return (
+                SimpleNamespace(kind="summary", value=result[0], index=index),
+                SimpleNamespace(kind="original", value=result[1], index=index),
+            )
 
     def remote_fn(fn, **kwargs):
         assert fn is inference._read_schema_batch
@@ -642,6 +630,8 @@ def test_local_or_unsupported_options_do_not_submit_tasks(
         chunk_metadatas=[None] * 3,
     )
     monkeypatch.setattr(inference, "_SCHEMA_READ_BATCH_SIZE", 1)
+    monkeypatch.setattr(inference, "_SCHEMA_READ_MIN_FILES", 0)
+    monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
     monkeypatch.setattr(
         inference,
         "cached_remote_fn",
@@ -655,14 +645,10 @@ def test_local_or_unsupported_options_do_not_submit_tasks(
 
 
 @pytest.mark.parametrize(
-    "format_name,write,reader_class",
-    [
-        ("Parquet", pq.write_table, ParquetFileReader),
-        ("ORC", orc.write_table, OrcFileReader),
-    ],
+    "format_name,write,reader_class,reader_options", _METADATA_READERS
 )
 def test_count_cache_miss_and_replacement_read_current_footer(
-    tmp_path, format_name, write, reader_class
+    tmp_path, format_name, write, reader_class, reader_options
 ):
     path = tmp_path / "rows"
     write(pa.table({"id": [1]}), path)
@@ -675,12 +661,7 @@ def test_count_cache_miss_and_replacement_read_current_footer(
     cached = FileManifest(
         block.append_column(FILE_METADATA_COLUMN_NAME, result.metadata)
     )
-    kwargs = (
-        {"format": FileFormat.ORC, "reuse_file_metadata": True}
-        if format_name == "ORC"
-        else {}
-    )
-    reader = reader_class(filesystem=filesystem, **kwargs)
+    reader = reader_class(filesystem=filesystem, **reader_options)
     before = len(backing.opens)
     assert [value.num_rows for value in reader.read_metadata(sample)] == [1]
     assert len(backing.opens) == before + 1
@@ -771,10 +752,6 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling)
         partial, encoded = inference._encode_schemas([schema] * len(files))
         return inference._SchemaBatchSummary(partial, None, 0), encoded
 
-    class Ref:
-        def __init__(self, value):
-            self.value = value
-
     class Remote:
         def options(self, **kwargs):
             return self
@@ -782,7 +759,7 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling)
         def remote(self, *args):
             submissions.append(len(args[0]))
             summary, encoded = read_batch(*args)
-            return Ref(summary), encoded
+            return SimpleNamespace(value=summary), encoded
 
     def remote_fn(fn, **kwargs):
         assert fn is read_batch

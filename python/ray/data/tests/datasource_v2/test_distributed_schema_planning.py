@@ -3,7 +3,6 @@
 import json
 import os
 from collections import Counter
-from typing import List, cast
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -21,17 +20,24 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_METADATA_COLUMN_NAME,
 )
-from ray.data._internal.logical.operators import ListFiles
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
-from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
+from ray.data.tests.schema_planning_utils import (
+    RecordingLocalFileSystem,
+    get_prelisted_blocks,
+)
 from ray.exceptions import RayTaskError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+
+_READ_FORMATS = [
+    ("parquet", pq.write_table, ray.data.read_parquet),
+    ("orc", orc.write_table, ray.data.read_orc),
+]
 
 
 def _filesystem(**kwargs):
@@ -58,43 +64,7 @@ def _infer(sample, filesystem, *, format_name, distributed, remote_args):
     )
 
 
-@pytest.mark.parametrize(
-    "format_name,write", [("Parquet", pq.write_table), ("ORC", orc.write_table)]
-)
-def test_real_workers_receive_runtime_env_and_files(
-    monkeypatch, tmp_path, ray_start_2_cpus, format_name, write
-):
-    paths = [tmp_path / f"f{i}" for i in range(6)]
-    for i, path in enumerate(paths):
-        write(pa.table({"id": [i]}), path)
-    trace = tmp_path / "opens.jsonl"
-    filesystem, _ = _filesystem(trace_path=str(trace), require_env="RAY_SCHEMA_TEST")
-    monkeypatch.setattr(inference, "_SCHEMA_READ_BATCH_SIZE", 2)
-    monkeypatch.setattr(inference, "_SCHEMA_READ_MIN_FILES", 0)
-    result = _infer(
-        _sample(paths, filesystem),
-        filesystem,
-        format_name=format_name,
-        distributed=True,
-        remote_args={"runtime_env": {"env_vars": {"RAY_SCHEMA_TEST": "enabled"}}},
-    )
-    records = [json.loads(line) for line in trace.read_text().splitlines()]
-    assert Counter(record["path"] for record in records) == {
-        str(path): 1 for path in paths
-    }
-    assert all(record["pid"] != os.getpid() for record in records)
-    assert result.schema == pa.schema([("id", pa.int64())])
-    assert result.metadata is not None
-    assert sum(value["num_rows"] for value in result.metadata.to_pylist()) == 6
-
-
-@pytest.mark.parametrize(
-    "format_name,write,read",
-    [
-        ("parquet", pq.write_table, ray.data.read_parquet),
-        ("orc", orc.write_table, ray.data.read_orc),
-    ],
-)
+@pytest.mark.parametrize("format_name,write,read", _READ_FORMATS)
 def test_full_schema_uses_driver_for_fractional_cpu_placement_group(
     monkeypatch, tmp_path, ray_start_2_cpus, format_name, write, read
 ):
@@ -155,13 +125,7 @@ def test_full_schema_uses_driver_for_fractional_cpu_placement_group(
         remove_placement_group(pg)
 
 
-@pytest.mark.parametrize(
-    "format_name,write,read",
-    [
-        ("parquet", pq.write_table, ray.data.read_parquet),
-        ("orc", orc.write_table, ray.data.read_orc),
-    ],
-)
+@pytest.mark.parametrize("format_name,write,read", _READ_FORMATS)
 def test_full_schema_uses_driver_for_hard_node_affinity(
     monkeypatch, tmp_path, ray_start_cluster, format_name, write, read
 ):
@@ -252,12 +216,7 @@ def test_orc_count_preserves_read_runtime_env(
         runtime_env={"env_vars": {env_key: "enabled"}},
         override_num_blocks=1,
     )
-    blocks = cast(
-        List[pa.Table],
-        cast(
-            ListFiles, dataset._logical_plan.dag.input_dependencies[0]
-        ).prelisted_file_infos,
-    )
+    blocks = get_prelisted_blocks(dataset._logical_plan.dag)
     assert all(FILE_METADATA_COLUMN_NAME in block.column_names for block in blocks) == (
         cache_metadata
     )
@@ -268,13 +227,7 @@ def test_orc_count_preserves_read_runtime_env(
     )
 
 
-@pytest.mark.parametrize(
-    "format_name,write,read",
-    [
-        ("parquet", pq.write_table, ray.data.read_parquet),
-        ("orc", orc.write_table, ray.data.read_orc),
-    ],
-)
+@pytest.mark.parametrize("format_name,write,read", _READ_FORMATS)
 def test_merge_schema_gates_metadata_reuse_and_lineage(
     monkeypatch, tmp_path, ray_start_2_cpus, format_name, write, read
 ):
@@ -337,7 +290,10 @@ def test_full_schema_reads_span_two_nodes(
     assert Counter(record["path"] for record in records) == {
         str(path): 1 for path in paths
     }
+    assert all(record["pid"] != os.getpid() for record in records)
     assert result.schema == pa.schema([("id", pa.int64())])
+    assert result.metadata is not None
+    assert sum(value["num_rows"] for value in result.metadata.to_pylist()) == 12
 
 
 class _RegisteredBinaryType(pa.ExtensionType):

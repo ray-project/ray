@@ -123,22 +123,16 @@ def test_file_source_defaults():
     assert source.shuffle is None
 
 
-def test_file_source_full_schema_defaults_to_infer_schema(monkeypatch):
+def test_file_source_full_schema_defaults_to_infer_schema(mocker):
     source = _FileSource()
     sample = FileManifest.construct_manifest(
         paths=["example.parquet"], sizes=[1], chunk_metadatas=[None]
     )
-    calls = []
-
-    def infer_schema(received_sample):
-        calls.append(received_sample)
-        return _SCHEMA
-
-    monkeypatch.setattr(source, "infer_schema", infer_schema)
+    infer_schema = mocker.spy(source, "infer_schema")
     result = source.infer_full_schema(sample, ray_remote_args={})
 
-    assert len(calls) == 1
-    assert calls[0] is sample
+    infer_schema.assert_called_once()
+    assert infer_schema.call_args.args[0] is sample
     assert result.schema is _SCHEMA
     assert result.metadata is None
 
