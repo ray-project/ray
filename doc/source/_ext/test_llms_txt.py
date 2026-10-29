@@ -153,6 +153,7 @@ INCLUDE_FILES = {
     # Big enough that expanding it pushes inc/ past the budget the expansion
     # test sets, though the pages' own source stays well under it.
     "inc/doc_code/big.py": "".join(f"VALUE_{i} = {i}\n" for i in range(600)),
+    "inc/doc_code/nested.py": "NESTED = True\n",
     "inc/a/page.md": (
         "---\norphan: true\n---\n\n"
         "# Include Page A\n\n"
@@ -173,7 +174,17 @@ INCLUDE_FILES = {
         "   :language: python\n"
         "   :start-after: __sample_start__\n"
         "   :end-before: __sample_end__\n"
+        "```\n\n"
+        "Nested in colon fences, which MyST reports a line or two late:\n\n"
+        ":::::{note}\n"
+        "::::{tip}\n"
+        ":::{important}\n"
+        "```{literalinclude} /inc/doc_code/nested.py\n"
+        ":language: python\n"
         "```\n"
+        ":::\n"
+        "::::\n"
+        ":::::\n"
     ),
     "inc/b/page.rst": (
         ":orphan:\n\n"
@@ -415,14 +426,18 @@ def test_literalinclude_expansion():
     Sphinx never publishes the included file, so the directive alone leaves the
     code unreachable. The expansion honors the directive's options, reaches an
     RST directive nested in another or in a MyST ``{eval-rst}`` block without
-    breaking the block's fence, leaves a directive quoted inside a code block
-    alone, and counts toward the shard budget. The budget here keeps the pages'
-    source under it and their expanded text over it, so inc/ splits into
+    breaking the block's fence, finds a directive nested in colon-fenced ones
+    although MyST reports its line late, leaves a directive quoted inside a code
+    block alone, and counts toward the shard budget. The budget here keeps the
+    pages' source under it and their expanded text over it, so inc/ splits into
     sub-shards only when the expansion is on.
     """
-    budget = "\nllms_txt_full_max_shard_tokens = 1000\n"
+    conf = (
+        "\nllms_txt_full_max_shard_tokens = 1000\n"
+        'myst_enable_extensions = ["colon_fence"]\n'
+    )
     with tempfile.TemporaryDirectory() as tmp:
-        out = _build(Path(tmp), extra_conf=budget, extra_files=INCLUDE_FILES)
+        out = _build(Path(tmp), extra_conf=conf, extra_files=INCLUDE_FILES)
         page_a = (out / "inc" / "a" / "llms-full.txt").read_text(encoding="utf-8")
         _check(
             "```python\ndef included():\n    return 42\n```" in page_a,
@@ -445,6 +460,10 @@ def test_literalinclude_expansion():
             in page_a,
             "an include in an {eval-rst} block got a fence that closes the block",
         )
+        _check(
+            ":::{important}\n```python\nNESTED = True\n```\n:::" in page_a,
+            "an include nested in colon fences wasn't expanded",
+        )
         page_b = (out / "inc" / "b" / "llms-full.txt").read_text(encoding="utf-8")
         _check(
             "   ~~~python\n   VALUE_0 = 0\n" in page_b
@@ -460,7 +479,7 @@ def test_literalinclude_expansion():
     with tempfile.TemporaryDirectory() as tmp:
         out = _build(
             Path(tmp),
-            extra_conf=budget + "llms_txt_expand_literalinclude = False\n",
+            extra_conf=conf + "llms_txt_expand_literalinclude = False\n",
             extra_files=INCLUDE_FILES,
         )
         whole = (out / "inc" / "llms-full.txt").read_text(encoding="utf-8")
@@ -477,22 +496,38 @@ def test_literalinclude_expansion():
 
 
 def test_splice_literalincludes():
-    """The splice replaces only directives that open on a reported line, ends an
-    RST directive where its options do, and picks a fence the code can't close
-    and that can't close a fence around the directive."""
+    """The splice replaces the directive whose lines hold a block's reported line
+    if it includes the block's file, ends an RST directive where its options do,
+    and picks a fence the code can't close and that can't close a fence around
+    the directive."""
     import sys
 
     sys.path.insert(0, _EXT_DIR)
     import llms_txt
 
+    def splice(text, *blocks):
+        # Each block's path is the argument its directive names, as written.
+        return llms_txt._splice_literalincludes(text, list(blocks), lambda arg: arg)
+
     myst = "Intro\n\n```{literalinclude} a.py\n:language: python\n```\n\nOutro\n"
-    out, spliced, missed = llms_txt._splice_literalincludes(
-        myst, [(3, "x = 1\n", "python"), (1, "y = 2\n", "python")]
+    spliced_myst = "Intro\n\n```python\nx = 1\n```\n\nOutro\n"
+    out, spliced, missed = splice(
+        myst, (3, "x = 1\n", "python", "a.py"), (1, "y = 2\n", "python", "a.py")
     )
-    _check(out == "Intro\n\n```python\nx = 1\n```\n\nOutro\n", "MyST splice wrong")
+    _check(out == spliced_myst, "MyST splice wrong")
     _check(
-        (spliced, missed) == (1, [1]),
-        "a line where no directive opens wasn't skipped and reported",
+        (spliced, missed) == (1, [(1, "a.py")]),
+        "a line no directive holds wasn't skipped and reported",
+    )
+    out, spliced, _ = splice(myst, (5, "x = 1\n", "python", "a.py"))
+    _check(
+        (out, spliced) == (spliced_myst, 1),
+        "a line reported late, inside the directive, didn't find it",
+    )
+    out, spliced, missed = splice(myst, (3, "x = 1\n", "python", "b.py"))
+    _check(
+        (out, spliced, missed) == (myst, 0, [(3, "b.py")]),
+        "a directive that includes another file was replaced",
     )
 
     rst = (
@@ -501,7 +536,7 @@ def test_splice_literalincludes():
         "      :language: python\n\n"
         "   Still in the note.\n"
     )
-    out, _, _ = llms_txt._splice_literalincludes(rst, [(3, "x = 1\n", "python")])
+    out, _, _ = splice(rst, (3, "x = 1\n", "python", "a.py"))
     _check(
         out == ".. note::\n\n   ~~~python\n   x = 1\n   ~~~\n\n   Still in the note.\n",
         "RST splice didn't end at the directive's options or keep its indent",
@@ -514,14 +549,14 @@ def test_splice_literalincludes():
         "```\n\n"
         "After the block.\n"
     )
-    out, _, _ = llms_txt._splice_literalincludes(eval_rst, [(2, "x = 1\n", "python")])
+    out, _, _ = splice(eval_rst, (2, "x = 1\n", "python", "a.py"))
     _check(
         out == "```{eval-rst}\n~~~python\nx = 1\n~~~\n```\n\nAfter the block.\n",
         "an include in an {eval-rst} block got a fence that closes the block",
     )
 
-    out, _, _ = llms_txt._splice_literalincludes(
-        "```{literalinclude} a.md\n```\n", [(1, "```\nhi\n```\n", "markdown")]
+    out, _, _ = splice(
+        "```{literalinclude} a.md\n```\n", (1, "```\nhi\n```\n", "markdown", "a.md")
     )
     _check(
         out == "~~~markdown\n```\nhi\n```\n~~~\n",

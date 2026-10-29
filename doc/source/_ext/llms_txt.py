@@ -437,16 +437,17 @@ def _render_index(
 
 
 # The line a ``literalinclude`` directive opens on, in MyST (backtick or colon
-# fence) and RST syntax.
+# fence) and RST syntax. ``arg`` is the rest of the line, naming the file.
 _MYST_LITERALINCLUDE = re.compile(
-    r"^(?P<indent>[ \t]*)(?P<fence>`{3,}|:{3,})\{literalinclude\}"
+    r"^(?P<indent>[ \t]*)(?P<fence>`{3,}|:{3,})\{literalinclude\}(?P<arg>.*)"
 )
-_RST_LITERALINCLUDE = re.compile(r"^(?P<indent>[ \t]*)\.\. literalinclude::")
+_RST_LITERALINCLUDE = re.compile(r"^(?P<indent>[ \t]*)\.\. literalinclude::(?P<arg>.*)")
 
 
 def _directive_span(lines, start):
-    """Return ``(start, end, indent)`` for the ``literalinclude`` directive that
-    opens at ``lines[start]`` (``end`` inclusive), or None if none opens there."""
+    """Return ``(start, end, indent, arg)`` for the ``literalinclude`` directive
+    that opens at ``lines[start]`` (``end`` inclusive, ``arg`` the argument naming
+    the file it includes), or None if none opens there."""
     if not 0 <= start < len(lines):
         return None
     myst = _MYST_LITERALINCLUDE.match(lines[start])
@@ -455,7 +456,7 @@ def _directive_span(lines, start):
         closing = re.compile(rf"^[ \t]*{re.escape(fence[0])}{{{len(fence)},}}[ \t]*$")
         for end in range(start + 1, len(lines)):
             if closing.match(lines[end]):
-                return start, end, myst["indent"]
+                return start, end, myst["indent"], myst["arg"].strip()
         return None
     rst = _RST_LITERALINCLUDE.match(lines[start])
     if rst:
@@ -470,7 +471,7 @@ def _directive_span(lines, start):
             if len(lines[i]) - len(stripped) <= depth:
                 break
             end = i
-        return start, end, rst["indent"]
+        return start, end, rst["indent"], rst["arg"].strip()
     return None
 
 
@@ -492,41 +493,47 @@ def _code_fence(code, language, indent, tildes=False):
     return [f"{indent}{marker}{language or ''}", *body, f"{indent}{marker}"]
 
 
-def _splice_literalincludes(text, blocks):
+def _splice_literalincludes(text, blocks, resolve):
     """Replace each ``literalinclude`` directive in a page's source with the code
     it includes.
 
-    ``blocks`` holds ``(line, code, language)`` per directive, where ``line`` is
-    the 1-based line the directive opens on. Returns ``(text, spliced, missed)``:
-    the new text, how many directives it replaced, and the lines in ``blocks``
-    where no directive opens, which are left as written.
+    ``blocks`` holds ``(line, code, language, path)`` per rendered include, where
+    ``line`` is the 1-based line the doctree reports for it and ``path`` is the
+    file it includes. That's the line the directive opens on, except that MyST
+    can report one nested in other directives a line or two late, inside the
+    directive. So a block replaces the directive whose lines hold its line,
+    provided ``resolve`` maps that directive's argument to ``path``. Returns
+    ``(text, spliced, missed)``: the new text, how many directives it replaced,
+    and ``(line, path)`` for each block no directive matched, whose directive is
+    left as written.
     """
     lines = text.split("\n")
-    spans, missed, seen = [], [], set()
-    for line, code, language in blocks:
-        if line in seen:
-            continue
-        seen.add(line)
-        span = _directive_span(lines, line - 1)
-        if span is None:
-            missed.append(line)
-        else:
-            spans.append((span, code, language))
+    spans = [_directive_span(lines, i) for i in range(len(lines))]
+    spans = [span for span in spans if span]
+    matched, missed, seen = [], [], set()
+    for line, code, language, path in blocks:
+        span = next((s for s in spans if s[0] <= line - 1 <= s[1]), None)
+        if span is None or resolve(span[3]) != path:
+            missed.append((line, path))
+        elif span[0] not in seen:
+            seen.add(span[0])
+            matched.append((span, code, language))
     # Bottom-up, so a splice never shifts the lines of one still to come.
-    for (start, end, indent), code, language in sorted(
-        spans, key=lambda item: item[0][0], reverse=True
+    for (start, end, indent, _), code, language in sorted(
+        matched, key=lambda item: item[0][0], reverse=True
     ):
         # A directive that doesn't open with backticks, like RST in a MyST
         # {eval-rst} block, can sit inside a backtick fence, which a backtick
         # fence spliced in its place would close early. So it gets tildes.
         tildes = not lines[start].lstrip().startswith("`")
         lines[start : end + 1] = _code_fence(code, language, indent, tildes)
-    return "\n".join(lines), len(spans), missed
+    return "\n".join(lines), len(matched), missed
 
 
 def _literalinclude_blocks(doctree, source):
-    """Return ``(line, code, language)`` for each ``literalinclude`` rendered
-    from ``source``, in document order.
+    """Return ``(line, code, language, path)`` for each ``literalinclude``
+    rendered from ``source``, in document order, where ``path`` is the file it
+    includes.
 
     Sphinx gives the literal block a ``literalinclude`` renders a ``source``
     attribute naming the included file, which no other literal block carries.
@@ -539,7 +546,9 @@ def _literalinclude_blocks(doctree, source):
             continue
         if node.source and Path(node.source) != source:
             continue
-        blocks.append((node.line, node.astext(), node.get("language")))
+        blocks.append(
+            (node.line, node.astext(), node.get("language"), Path(node["source"]))
+        )
     return blocks
 
 
@@ -575,18 +584,22 @@ def _page_text(env, docname, cache):
     if text is not None and expand and "literalinclude" in text:
         doctree = _get_doctree(env, docname, cache)
         if doctree is not None:
+            # The same resolution Sphinx gave the block its path with.
             text, spliced, missed = _splice_literalincludes(
-                text, _literalinclude_blocks(doctree, source)
+                text,
+                _literalinclude_blocks(doctree, source),
+                lambda arg: Path(env.relfn2path(arg, docname)[1]),
             )
             cache[("expanded",)] = cache.get(("expanded",), 0) + spliced
-            for line in missed:
+            for line, path in missed:
                 # info, not warning: a warning raised during build-finished
                 # still fails a build run with fail_on_warning, as RtD's is.
                 logger.info(
-                    "[llms_txt] %s:%d: no literalinclude directive opens on the "
-                    "line its code came from; leaving it as written",
+                    "[llms_txt] %s:%d: no literalinclude directive of %s holds "
+                    "the line its code came from; leaving it as written",
                     docname,
                     line,
+                    path.name,
                 )
     cache[key] = text
     return text
