@@ -19,6 +19,7 @@ ray_cc_test(
     srcs = [
         "global_state_accessor_test.cc",
     ],
+    auth_token = True,
     data = [
         "//:redis-cli",
         "//:redis-server",
@@ -49,6 +50,7 @@ ray_cc_test(
     srcs = [
         "gcs_client_test.cc",
     ],
+    auth_token = True,
     data = [
         "//:redis-cli",
         "//:redis-server",
@@ -71,6 +73,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/observability:fake_metric",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:network_util",
         "//src/ray/util:raii",
         "//src/ray/util:time",
@@ -82,6 +85,7 @@ ray_cc_test(
     srcs = [
         "gcs_client_reconnection_test.cc",
     ],
+    auth_token = True,
     data = [
         "//:redis-cli",
         "//:redis-server",

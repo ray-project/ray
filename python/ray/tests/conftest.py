@@ -863,7 +863,7 @@ def call_ray_start_context(request):
 
     command_args = parameter.split(" ")
     head_auth_mode = (env or os.environ).get("RAY_AUTH_MODE", "token")
-    with ray_start_head_auth(enable_token_auth=head_auth_mode != "disabled"):
+    with hold_test_auth_mode(enable_token_auth=head_auth_mode != "disabled"):
         try:
             out = ray._common.utils.decode(
                 subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
@@ -1691,10 +1691,11 @@ def _restore_token_auth_env(_token_auth_env_baseline):
 
 
 @contextmanager
-def ray_start_head_auth(enable_token_auth: bool = True):
-    """Set the auth mode and create the token, which ``ray start --head`` never
-    creates, for as long as a head started by the test is running. Per-test env
-    cleanup leaves both alone in that time, so a module-scoped head keeps its token.
+def hold_test_auth_mode(enable_token_auth: bool = True):
+    """Set the auth mode, and in token mode create the token, for tests where
+    nothing else creates it: a head the test starts with ``ray start --head``, or
+    Ray servers and clients it runs with no driver. Per-test env cleanup leaves
+    both alone meanwhile, so a module-scoped head keeps its token.
     """
     auth_mode = _TestClusterAuthMode(enable_token_auth)
     auth_mode.apply(None)
@@ -1705,8 +1706,8 @@ def ray_start_head_auth(enable_token_auth: bool = True):
 
 
 @pytest.fixture
-def ray_start_head_auth_token():
-    with ray_start_head_auth():
+def create_auth_token():
+    with hold_test_auth_mode():
         yield
 
 

@@ -1995,8 +1995,15 @@ def get_resource_usage(gcs_address, timeout=10):
 
 # Gets the load metrics report assuming gcs is local.
 def get_load_metrics_report(webui_url):
+    from ray._private.authentication.http_token_authentication import (
+        get_auth_headers_if_auth_enabled,
+    )
+
     webui_url = format_web_url(webui_url)
-    response = requests.get(f"{webui_url}/api/cluster_status")
+    response = requests.get(
+        f"{webui_url}/api/cluster_status",
+        headers=get_auth_headers_if_auth_enabled({}),
+    )
     response.raise_for_status()
     return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
 

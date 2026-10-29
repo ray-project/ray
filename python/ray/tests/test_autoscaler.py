@@ -942,8 +942,11 @@ class AutoscalingTest(unittest.TestCase):
             }
         ]
         runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
-        # Two initial calls to rsync, +1 more call during run_init
-        runner.respond_to_call(".State.Running", ["false", "false", "true", "true"])
+        # Three initial calls to rsync, one of them for the auth token, +1 more
+        # call during run_init
+        runner.respond_to_call(
+            ".State.Running", ["false", "false", "false", "true", "true"]
+        )
         runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
             config,
@@ -991,11 +994,24 @@ class AutoscalingTest(unittest.TestCase):
                 "Mode": "ro",
                 "RW": False,
                 "Propagation": "rprivate",
-            }
+            },
+            # The container already has the auth token `ray up` mounts. The mock
+            # runner's home directory is "command-output".
+            {
+                "Type": "bind",
+                "Source": "/tmp/ray_tmp_mount/default/~/.ray/auth_token",
+                "Destination": "command-output/.ray/auth_token",
+                "Mode": "ro",
+                "RW": False,
+                "Propagation": "rprivate",
+            },
         ]
         runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
-        # Two initial calls to rsync, +1 more call during run_init
-        runner.respond_to_call(".State.Running", ["false", "false", "true", "true"])
+        # Three initial calls to rsync, one of them for the auth token, +1 more
+        # call during run_init
+        runner.respond_to_call(
+            ".State.Running", ["false", "false", "false", "true", "true"]
+        )
         runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
             config,

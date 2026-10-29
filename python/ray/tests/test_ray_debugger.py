@@ -244,7 +244,9 @@ time.sleep(5)
     sys.platform == "win32", reason="Windows does not print '--address' on init"
 )
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
-def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_external):
+def test_ray_debugger_public(
+    shutdown_only, call_ray_stop_only, ray_debugger_external, create_auth_token
+):
     redis_substring_prefix = "--address='"
     cmd = ["ray", "start", "--head", "--num-cpus=1"]
     if ray_debugger_external:

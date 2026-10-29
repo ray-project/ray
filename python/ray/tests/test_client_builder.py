@@ -188,7 +188,8 @@ print("NODE_ID:", ray.get_runtime_context().get_node_id())
     existing_node_id = ray.get_runtime_context().get_node_id()
 
     p1, p2 = None, None
-    unbuffered = {"PYTHONUNBUFFERED": "1"}
+    # The driver reads the head's token from ~/.ray/auth_token, so it needs HOME.
+    unbuffered = {**os.environ, "PYTHONUNBUFFERED": "1"}
     try:
         # ray.client() should connect to the running cluster.
         p1 = run_string_as_driver_nonblocking(
@@ -264,7 +265,7 @@ def test_http_address_error_message(address):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
-def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
+def test_disconnect(call_ray_stop_only, set_enable_auto_connect, create_auth_token):
     subprocess.check_output(
         "ray start --head --ray-client-server-port=25555", shell=True
     )
@@ -299,7 +300,7 @@ def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
-def test_address_resolution(call_ray_stop_only):
+def test_address_resolution(call_ray_stop_only, create_auth_token):
     subprocess.check_output(
         "ray start --head --ray-client-server-port=50055", shell=True
     )

@@ -1,3 +1,4 @@
+import secrets
 import subprocess
 import time
 from typing import List
@@ -89,6 +90,9 @@ head_node_vol = volume()
 worker_node_vol = volume()
 head_node_container_name = "gcs" + str(int(time.time()))
 
+# Shared by every node container, since `ray start --head` never creates a token.
+_cluster_auth_token = secrets.token_hex(32)
+
 
 def gen_head_node(envs):
     return container(
@@ -110,7 +114,7 @@ def gen_head_node(envs):
             "0.0.0.0",
         ],
         volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-        environment=envs,
+        environment={**envs, "RAY_AUTH_TOKEN": _cluster_auth_token},
         wrapper_class=Container,
         ports={
             "8000/tcp": None,
@@ -139,7 +143,7 @@ def gen_worker_node(envs, num_cpus):
             f"{num_cpus}",
         ],
         volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-        environment=envs,
+        environment={**envs, "RAY_AUTH_TOKEN": _cluster_auth_token},
         wrapper_class=Container,
         ports={
             "8000/tcp": None,

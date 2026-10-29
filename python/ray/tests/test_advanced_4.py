@@ -28,7 +28,7 @@ def test_initialized(shutdown_only_with_initialization_check):
     assert ray.is_initialized()
 
 
-def test_ray_start_and_stop():
+def test_ray_start_and_stop(create_auth_token):
     for i in range(10):
         subprocess.check_call(["ray", "start", "--head"])
         subprocess.check_call(["ray", "stop"])

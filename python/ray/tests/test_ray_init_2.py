@@ -242,7 +242,7 @@ def test_ports_assignment(ray_start_cluster):
         )
 
 
-def test_non_default_ports_visible_on_init(shutdown_only, ray_start_head_auth_token):
+def test_non_default_ports_visible_on_init(shutdown_only, create_auth_token):
     import subprocess
 
     ports = {

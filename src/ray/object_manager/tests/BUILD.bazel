@@ -103,6 +103,7 @@ ray_cc_test(
     srcs = [
         "object_manager_test.cc",
     ],
+    auth_token = True,
     tags = ["team:core"],
     deps = [
         "//src/ray/gcs_rpc_client:fake_gcs_client",
