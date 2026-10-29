@@ -7,8 +7,9 @@ import) that exercises:
 * all three description sources (MyST ``html_meta``, RST ``.. meta::``, and the
   first-paragraph fallback),
 * ``llms_txt_exclude`` globs,
-* the ``## Optional`` section, and
-* the per-directory ``llms-full.txt`` shards + the root manifest.
+* the ``## Optional`` section,
+* the per-directory ``llms-full.txt`` shards + the root manifest, and
+* ``literalinclude`` directives expanded into the code they include.
 
 Run directly (``python doc/source/_ext/test_llms_txt.py``) or under pytest. It
 needs ``sphinx`` + ``myst-parser`` but not the full Ray docs toolchain.
@@ -139,13 +140,52 @@ FILES = {
 }
 
 
-def _build(tmp: Path, extra_conf: str = "") -> Path:
+# Pages whose code comes from ``literalinclude``, for the expansion test. Kept
+# out of FILES so the main fixture's shard layout stays as asserted there.
+INCLUDE_FILES = {
+    "inc/doc_code/sample.py": (
+        "OUTSIDE_THE_MARKERS = 1\n"
+        "# __sample_start__\n"
+        "def included():\n"
+        "    return 42\n"
+        "# __sample_end__\n"
+    ),
+    # Big enough that expanding it pushes inc/ past the budget the expansion
+    # test sets, though the pages' own source stays well under it.
+    "inc/doc_code/big.py": "".join(f"VALUE_{i} = {i}\n" for i in range(600)),
+    "inc/a/page.md": (
+        "---\norphan: true\n---\n\n"
+        "# Include Page A\n\n"
+        "```{literalinclude} /inc/doc_code/sample.py\n"
+        ":language: python\n"
+        ":start-after: __sample_start__\n"
+        ":end-before: __sample_end__\n"
+        "```\n\n"
+        "The syntax quoted as an example, which renders no include:\n\n"
+        "````markdown\n"
+        "```{literalinclude} /inc/doc_code/sample.py\n"
+        ":start-after: __quoted_example__\n"
+        "```\n"
+        "````\n"
+    ),
+    "inc/b/page.rst": (
+        ":orphan:\n\n"
+        "Include Page B\n==============\n\n"
+        ".. note::\n\n"
+        "   .. literalinclude:: /inc/doc_code/big.py\n"
+        "      :language: python\n\n"
+        "   Text after the include, still in the note.\n"
+    ),
+}
+
+
+def _build(tmp: Path, extra_conf: str = "", extra_files: dict | None = None) -> Path:
     from sphinx.application import Sphinx
 
     srcdir = tmp / "src"
     outdir = tmp / "out"
     doctreedir = tmp / "doctrees"
-    for relpath, content in FILES.items():
+    for relpath, content in {**FILES, **(extra_files or {})}.items():
         if relpath == "conf.py":
             content = content + extra_conf
         path = srcdir / relpath
@@ -362,6 +402,107 @@ def test_llms_txt():
     return True
 
 
+def test_literalinclude_expansion():
+    """Shards carry the code a ``literalinclude`` renders, not the directive.
+
+    Sphinx never publishes the included file, so the directive alone leaves the
+    code unreachable. The expansion honors the directive's options, reaches an
+    RST directive nested in another, leaves a directive quoted inside a code
+    block alone, and counts toward the shard budget. The budget here keeps the
+    pages' source under it and their expanded text over it, so inc/ splits into
+    sub-shards only when the expansion is on.
+    """
+    budget = "\nllms_txt_full_max_shard_tokens = 1000\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        out = _build(Path(tmp), extra_conf=budget, extra_files=INCLUDE_FILES)
+        page_a = (out / "inc" / "a" / "llms-full.txt").read_text(encoding="utf-8")
+        _check(
+            "```python\ndef included():\n    return 42\n```" in page_a,
+            "included code missing from the shard, or not fenced with its language",
+        )
+        _check(
+            "OUTSIDE_THE_MARKERS" not in page_a,
+            ":start-after: / :end-before: not honored",
+        )
+        _check(
+            ":start-after: __sample_start__" not in page_a,
+            "the expanded directive was left in the shard",
+        )
+        _check(
+            ":start-after: __quoted_example__" in page_a,
+            "a directive quoted inside a code block was rewritten",
+        )
+        page_b = (out / "inc" / "b" / "llms-full.txt").read_text(encoding="utf-8")
+        _check(
+            "   ```python\n   VALUE_0 = 0\n" in page_b
+            and "   VALUE_599 = 599\n   ```\n\n   Text after the include" in page_b,
+            "nested RST include not spliced at the directive's indent",
+        )
+        _check(".. literalinclude::" not in page_b, "RST directive left in the shard")
+        _check(
+            not (out / "inc" / "llms-full.txt").exists(),
+            "inc/ didn't split, so the shard budget ignored the included code",
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = _build(
+            Path(tmp),
+            extra_conf=budget + "llms_txt_expand_literalinclude = False\n",
+            extra_files=INCLUDE_FILES,
+        )
+        whole = (out / "inc" / "llms-full.txt").read_text(encoding="utf-8")
+        _check(
+            ":start-after: __sample_start__" in whole
+            and "def included():" not in whole,
+            "directive expanded although llms_txt_expand_literalinclude is False",
+        )
+        _check(
+            not (out / "inc" / "a" / "llms-full.txt").exists(),
+            "inc/ split although its unexpanded source is under budget",
+        )
+    return True
+
+
+def test_splice_literalincludes():
+    """The splice replaces only directives that open on a reported line, ends an
+    RST directive where its options do, and picks a fence the code can't close."""
+    import sys
+
+    sys.path.insert(0, _EXT_DIR)
+    import llms_txt
+
+    myst = "Intro\n\n```{literalinclude} a.py\n:language: python\n```\n\nOutro\n"
+    out, spliced, missed = llms_txt._splice_literalincludes(
+        myst, [(3, "x = 1\n", "python"), (1, "y = 2\n", "python")]
+    )
+    _check(out == "Intro\n\n```python\nx = 1\n```\n\nOutro\n", "MyST splice wrong")
+    _check(
+        (spliced, missed) == (1, [1]),
+        "a line where no directive opens wasn't skipped and reported",
+    )
+
+    rst = (
+        ".. note::\n\n"
+        "   .. literalinclude:: a.py\n"
+        "      :language: python\n\n"
+        "   Still in the note.\n"
+    )
+    out, _, _ = llms_txt._splice_literalincludes(rst, [(3, "x = 1\n", "python")])
+    _check(
+        out == ".. note::\n\n   ```python\n   x = 1\n   ```\n\n   Still in the note.\n",
+        "RST splice didn't end at the directive's options or keep its indent",
+    )
+
+    out, _, _ = llms_txt._splice_literalincludes(
+        "```{literalinclude} a.md\n```\n", [(1, "```\nhi\n```\n", "markdown")]
+    )
+    _check(
+        out == "~~~markdown\n```\nhi\n```\n~~~\n",
+        "code containing a backtick fence wasn't given a tilde fence",
+    )
+    return True
+
+
 def test_notebook_exclusion():
     """Notebooks are dropped by source suffix (so build-time-fetched notebooks a
     conf-load scan would miss are also caught), independent of llms_txt_exclude.
@@ -474,6 +615,8 @@ def test_markdown_hint():
 
 if __name__ == "__main__":
     test_llms_txt()
+    test_literalinclude_expansion()
+    test_splice_literalincludes()
     test_notebook_exclusion()
     test_build_gate()
     test_clean_coercion()
@@ -481,6 +624,7 @@ if __name__ == "__main__":
     test_base_url_override()
     print(
         "PASS: llms_txt extension produced a correct index, Optional section, "
-        "llms-full shards, excludes notebooks by source type, gates the "
-        "Markdown pointer, and honors the llms_txt_build gate."
+        "llms-full shards with literalinclude code expanded, excludes notebooks "
+        "by source type, gates the Markdown pointer, and honors the "
+        "llms_txt_build gate."
     )
