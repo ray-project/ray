@@ -18,6 +18,7 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
@@ -268,6 +269,7 @@ def blocks_to_batches(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
+    batch_format: Optional[str] = None,
 ) -> Iterator[Batch]:
     """Given an iterator over blocks, returns an iterator over batches."""
     return _BatchingIterator(
@@ -278,6 +280,7 @@ def blocks_to_batches(
         shuffle_buffer_min_size=shuffle_buffer_min_size,
         shuffle_seed=shuffle_seed,
         ensure_copy=ensure_copy,
+        batch_format=batch_format,
     )
 
 
@@ -297,6 +300,7 @@ class _BatchingIterator(Iterator[Batch]):
         shuffle_buffer_min_size: Optional[int] = None,
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
+        batch_format: Optional[str] = None,
     ):
         self._block_iter = block_iter
         self._stats = stats
@@ -313,7 +317,11 @@ class _BatchingIterator(Iterator[Batch]):
                 shuffle_seed=shuffle_seed,
             )
         else:
-            self._batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
+            self._batcher = Batcher(
+                batch_size=batch_size,
+                ensure_copy=ensure_copy,
+                batch_format=batch_format,
+            )
 
     def __iter__(self) -> "_BatchingIterator":
         return self
@@ -374,11 +382,17 @@ def _format_batch(
     ensure_copy: bool = False,
 ) -> Batch:
     with _maybe_time(stats.iter_format_batch_s if stats else None) as span:
-        formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
-            batch_format
-        )
-        if ensure_copy:
-            formatted_data = _copy_batch(formatted_data)
+        accessor = BlockAccessor.for_block(batch.data)
+        if (
+            ensure_copy
+            and batch_format == "numpy"
+            and isinstance(accessor, ArrowBlockAccessor)
+        ):
+            formatted_data = accessor.to_numpy(ensure_copy=True)
+        else:
+            formatted_data = accessor.to_batch_format(batch_format)
+            if ensure_copy:
+                formatted_data = _copy_batch(formatted_data)
     batch.metadata.stage_timings.format = span
     return dataclasses.replace(batch, data=formatted_data)
 

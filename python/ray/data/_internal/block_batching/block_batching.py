@@ -44,6 +44,7 @@ def batch_blocks(
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
             ensure_copy=ensure_copy,
+            batch_format=batch_format,
         ),
         batch_format=batch_format,
         stats=stats,

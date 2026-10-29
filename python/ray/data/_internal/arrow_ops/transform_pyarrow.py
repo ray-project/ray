@@ -1407,6 +1407,24 @@ def table_to_numpy_dict_chunked(
     return numpy_batch
 
 
+def is_numpy_scalar_type(data_type: "pyarrow.DataType") -> bool:
+    """Whether NumPy conversion contains only immutable scalar values.
+
+    Unlike tensor, nested, and arbitrary extension types, these types cannot
+    retain mutable objects inside an object-dtype NumPy array. Nullable booleans
+    can produce object arrays, but their elements are immutable bools or None.
+    """
+    return (
+        pyarrow.types.is_integer(data_type)
+        or pyarrow.types.is_floating(data_type)
+        or pyarrow.types.is_boolean(data_type)
+        or pyarrow.types.is_null(data_type)
+        or pyarrow.types.is_timestamp(data_type)
+        or pyarrow.types.is_date(data_type)
+        or pyarrow.types.is_duration(data_type)
+    )
+
+
 def to_numpy(
     array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
     *,

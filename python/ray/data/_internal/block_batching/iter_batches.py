@@ -209,6 +209,7 @@ class BatchIterator:
             shuffle_buffer_min_size=self._shuffle_buffer_min_size,
             shuffle_seed=self._shuffle_seed,
             ensure_copy=self._ensure_copy,
+            batch_format=self._batch_format,
         )
 
     def _format_batches(self, batches: Iterator[Batch]) -> Iterator[Batch]:
