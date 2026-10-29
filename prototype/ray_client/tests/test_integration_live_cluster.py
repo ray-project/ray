@@ -24,12 +24,20 @@ from ray_client import (
     RayJobExecutionError,
     RayJobTimeoutError,
 )
+from ray_client.packaging import extract_class_source_and_globals
 
 import ray
 
 LIVE_ADDRESS = os.environ.get("RAY_LIVE_CLUSTER_ADDRESS")
 
 GLOBAL_FACTOR = 10
+
+
+class _TopLevelLiveActorWithClassAttrDefault:
+    DEFAULT_BONUS = 25
+
+    def compute(self, x: int = DEFAULT_BONUS) -> int:
+        return x + self.DEFAULT_BONUS
 
 
 @unittest.skipUnless(
@@ -487,7 +495,12 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             t0 = time.monotonic()
             with self.assertRaises(RayJobTimeoutError):
                 trainer.spawn_blocking_child_task.call(30.0, timeout=0.35)
-            time.sleep(0.3)
+            deadline = time.monotonic() + 2.5
+            while (
+                time.monotonic() < deadline
+                and trainer.info().get("active_calls", 1) != 0
+            ):
+                time.sleep(0.1)
             # Actor is immediately responsive and active_calls returns to 0
             self.assertLess(time.monotonic() - t0, 5.0)
             self.assertEqual(trainer.info()["active_calls"], 0)
@@ -556,6 +569,10 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             return name
 
         self.cluster.run(spawn_external_detached_actor, "recreate_race_target")
+        # User detached child actor in "ray_client" namespace is ignored by list_actors() / get_actor()
+        self.assertNotIn(
+            "recreate_race_target", [a["name"] for a in self.cluster.list_actors()]
+        )
         with ThreadPoolExecutor(max_workers=2) as pool:
             f1 = pool.submit(
                 self.cluster.actor,
@@ -598,6 +615,306 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         finally:
             busy_actor.kill()
             recorder.kill()
+
+    def test_run_worker_reuse_observability_and_edge_cases(self):
+        # 1. Warm @ray.remote worker reuse across consecutive cluster.run() calls
+        #    (requires non-detached root actor so root_detached_actor_id is Nil in WorkerPool)
+        def get_remote_worker_pid() -> int:
+            import os
+
+            import ray
+
+            @ray.remote(num_cpus=1)
+            def _worker_pid() -> int:
+                return os.getpid()
+
+            return ray.get(_worker_pid.remote())
+
+        pid_first = self.cluster.run(get_remote_worker_pid)
+        pid_second = self.cluster.run(get_remote_worker_pid)
+        self.assertEqual(pid_first, pid_second)
+
+        # 2. _ClientRootActor.__repr__ sets ActorTableData.repr_name in Ray GCS,
+        #    task name is set to ClassName.method_name, and `from ray.util.placement_group import placement_group`
+        #    is fate-shared
+        class ObservableActor:
+            def __init__(self, label: str):
+                self.label = label
+
+            def __repr__(self) -> str:
+                return f"ObservableActor({self.label})"
+
+            def inspect_gcs_and_create_pg(self) -> dict:
+                import ray
+                from ray._raylet import ActorID
+                from ray.core.generated import gcs_pb2
+                from ray.util.placement_group import (
+                    placement_group,
+                    placement_group_table,
+                )
+
+                pg = placement_group([{"CPU": 1}], strategy="PACK")
+                ray.get(pg.ready())
+                pg_id = pg.id.hex()
+                rt_ctx = ray.get_runtime_context()
+                actor_id = rt_ctx.get_actor_id()
+                accessor = ray._private.state.state._connect_and_get_accessor()
+                raw_info = accessor.get_actor_info(ActorID.from_hex(actor_id))
+                actor_proto = gcs_pb2.ActorTableData.FromString(raw_info)
+                return {
+                    "repr_name": actor_proto.repr_name,
+                    "task_name": rt_ctx.get_task_name(),
+                    "pg_id": pg_id,
+                    "pg_state": placement_group_table(pg).get("state"),
+                    "self_repr": repr(self),
+                }
+
+        obs = self.cluster.actor(
+            ObservableActor,
+            "live-1",
+            name="live_observable_actor",
+            get_if_exists="recreate",
+        )
+        try:
+            obs_data = obs.inspect_gcs_and_create_pg()
+            self.assertEqual(obs_data["pg_state"], "CREATED")
+            self.assertEqual(obs_data["repr_name"], "ObservableActor(live-1)")
+            self.assertEqual(
+                obs_data["task_name"], "ObservableActor.inspect_gcs_and_create_pg"
+            )
+            self.assertEqual(obs.logs(), "")
+            pg_id_hex = obs_data["pg_id"]
+        finally:
+            obs.kill()
+
+        def check_pg_state(pg_hex: str) -> str:
+            from ray._raylet import PlacementGroupID
+            from ray.util.placement_group import PlacementGroup, placement_group_table
+
+            pg_obj = PlacementGroup(PlacementGroupID.from_hex(pg_hex))
+            info = placement_group_table(pg_obj)
+            return str(info.get("state", "UNKNOWN"))
+
+        self.assertEqual(self.cluster.run(check_pg_state, pg_id_hex), "REMOVED")
+
+        # 3. cluster.actor(..., detached=False) creates an owner-bound root actor
+        with self.cluster.actor(
+            ObservableActor,
+            "owned-1",
+            name="live_owned_actor",
+            detached=False,
+            get_if_exists="recreate",
+        ) as owned_obs:
+            self.assertIs(owned_obs.info()["detached"], False)
+
+        # 4. Unschedulable actor creation respects short timeout without hanging 30s
+        class UnschedulableActor:
+            def ping(self) -> str:
+                return "ok"
+
+        t0 = time.monotonic()
+        with self.assertRaises(RayJobTimeoutError):
+            self.cluster.actor(
+                UnschedulableActor,
+                name="live_unschedulable_actor",
+                num_cpus=9999,
+                timeout=0.8,
+            )
+        elapsed = time.monotonic() - t0
+        self.assertLess(elapsed, 4.0)
+        self.assertNotIn(
+            "live_unschedulable_actor",
+            [a["name"] for a in self.cluster.list_actors()],
+        )
+
+        # 5. Slow __init__ creation timeout kills the actor and waits for GCS deregistration
+        #    so immediate recreation with the same name (get_if_exists=False) succeeds.
+        class SlowInitActor:
+            def __init__(self, delay_s: float = 0.0):
+                import time
+
+                if delay_s > 0:
+                    time.sleep(delay_s)
+
+            def ping(self) -> str:
+                return "ready"
+
+        with self.assertRaises(RayJobTimeoutError):
+            self.cluster.actor(
+                SlowInitActor,
+                10.0,
+                name="live_slow_init_actor",
+                get_if_exists=False,
+                timeout=0.8,
+            )
+        with self.cluster.actor(
+            SlowInitActor,
+            0.0,
+            name="live_slow_init_actor",
+            get_if_exists=False,
+        ) as fast_recreated:
+            self.assertEqual(fast_recreated.ping(), "ready")
+
+        # 6. Concurrent kill_actor(name) while POST /api/actors is blocked in a slow __init__
+        #    completes in < 2.0s without deadlocking on name_lock and allows clean recreation.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            slow_fut = pool.submit(
+                self.cluster.actor,
+                SlowInitActor,
+                10.0,
+                name="live_slow_kill_actor",
+                get_if_exists=False,
+            )
+            time.sleep(0.35)
+            t_kill = time.monotonic()
+            self.assertTrue(self.cluster.kill_actor("live_slow_kill_actor"))
+            self.assertLess(time.monotonic() - t_kill, 2.0)
+            with self.assertRaises(Exception):
+                slow_fut.result(timeout=3.0)
+        with self.cluster.actor(
+            SlowInitActor,
+            0.0,
+            name="live_slow_kill_actor",
+            get_if_exists=False,
+        ) as after_kill:
+            self.assertEqual(after_kill.ping(), "ready")
+
+        # 6b. Client HTTP disconnect during streaming POST /api/actors (with no timeout)
+        #     propagates cancellation through JobHead -> JobAgent -> ActorManager and cleans up.
+        _, slow_mod_src, slow_glob = extract_class_source_and_globals(SlowInitActor)
+        disc_spec = {
+            "name": "live_disconnect_init_actor",
+            "kind": "class",
+            "class_name": "SlowInitActor",
+            "module_source": slow_mod_src,
+            "captured_globals": slow_glob,
+            "args": [10.0],
+            "kwargs": {},
+            "detached": True,
+            "get_if_exists": False,
+        }
+        disc_resp = self.cluster.request(
+            "POST",
+            "/api/actors",
+            json_data=disc_spec,
+            idempotent=False,
+            stream=True,
+            timeout=5.0,
+        )
+        try:
+            self.assertEqual(disc_resp.status_code, 200)
+            first_byte = disc_resp.raw.read(1)
+            self.assertEqual(first_byte, b" ")
+        finally:
+            disc_resp.close()
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            names = [a["name"] for a in self.cluster.list_actors()]
+            if "live_disconnect_init_actor" not in names:
+                break
+            time.sleep(0.1)
+        with self.cluster.actor(
+            SlowInitActor,
+            0.0,
+            name="live_disconnect_init_actor",
+            get_if_exists=False,
+        ) as after_disc:
+            self.assertEqual(after_disc.ping(), "ready")
+
+        # 7. Unified Ray 3.0 resources={"CPU": ..., "memory": ...} on run() and actor()
+        def unified_res_fn(x: int) -> int:
+            return x * 3
+
+        self.assertEqual(
+            self.cluster.run(
+                unified_res_fn,
+                7,
+                resources={"CPU": 1, "memory": 32 * 1024**2},
+            ),
+            21,
+        )
+        with self.cluster.actor(
+            SlowInitActor,
+            0.0,
+            name="live_unified_res_actor",
+            resources={"CPU": 1, "memory": 32 * 1024**2},
+            get_if_exists="recreate",
+        ) as u_act:
+            self.assertEqual(u_act.ping(), "ready")
+            reattached = self.cluster.actor(
+                SlowInitActor,
+                0.0,
+                name="live_unified_res_actor",
+                num_cpus=1,
+                resources={"memory": 32 * 1024**2},
+                get_if_exists=True,
+            )
+            self.assertFalse(reattached.created)
+
+        # 8. Failing __init__ reports user exception + stdout logs, cleans up non-detached
+        #    placement groups created in __init__, and frees the actor name immediately.
+        class FailingInitWithPgActor:
+            def __init__(self):
+                import ray
+                from ray.util.placement_group import placement_group
+
+                pg = placement_group([{"CPU": 1}], strategy="PACK")
+                ray.get(pg.ready())
+                print(f"INIT_PG_ID={pg.id.hex()}", flush=True)
+                raise ValueError("custom_init_explosion")
+
+        with self.assertRaises(RayJobExecutionError) as err_ctx:
+            self.cluster.actor(
+                FailingInitWithPgActor,
+                name="live_failing_init_actor",
+                get_if_exists=False,
+            )
+        self.assertIn("ValueError", str(err_ctx.exception))
+        self.assertIn("custom_init_explosion", str(err_ctx.exception))
+        self.assertIn("INIT_PG_ID=", err_ctx.exception.logs)
+        leaked_pg_hex = (
+            err_ctx.exception.logs.split("INIT_PG_ID=")[1].splitlines()[0].strip()
+        )
+        self.assertEqual(self.cluster.run(check_pg_state, leaked_pg_hex), "REMOVED")
+        with self.cluster.actor(
+            SlowInitActor,
+            0.0,
+            name="live_failing_init_actor",
+            get_if_exists=False,
+        ) as recovered:
+            self.assertEqual(recovered.ping(), "ready")
+
+        # 9. Top-level class with class-attribute method default + TTL preserved on reattach
+        with self.cluster.actor(
+            _TopLevelLiveActorWithClassAttrDefault,
+            name="live_top_level_ttl_actor",
+            ttl_seconds=120.0,
+            get_if_exists="recreate",
+        ) as top_act:
+            self.assertEqual(top_act.compute(), 50)
+            self.assertEqual(top_act.info()["ttl_seconds"], 120.0)
+            reattached_top = self.cluster.actor(
+                _TopLevelLiveActorWithClassAttrDefault,
+                name="live_top_level_ttl_actor",
+                get_if_exists=True,
+            )
+            self.assertFalse(reattached_top.created)
+            self.assertEqual(reattached_top.info()["ttl_seconds"], 120.0)
+
+        # 10. Short cluster.run() updates /api/component_activities driver.last_activity_at
+        act_before = (
+            self.cluster.request("GET", "/api/component_activities", timeout=5.0)
+            .json()
+            .get("driver", {})
+        )
+        before_last_activity = act_before.get("last_activity_at") or 0.0
+        time.sleep(0.05)
+        self.assertEqual(self.cluster.run(unified_res_fn, 2), 6)
+        act_resp = self.cluster.request("GET", "/api/component_activities", timeout=5.0)
+        self.assertEqual(act_resp.status_code, 200)
+        driver_activity = act_resp.json().get("driver", {})
+        self.assertIsNotNone(driver_activity.get("last_activity_at"))
+        self.assertGreater(driver_activity["last_activity_at"], before_last_activity)
 
     def test_examples_run_end_to_end(self):
         examples_dir = Path(__file__).resolve().parents[1] / "examples"

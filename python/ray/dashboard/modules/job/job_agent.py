@@ -4,7 +4,7 @@ import dataclasses
 import json
 import logging
 import traceback
-from typing import Optional
+from typing import Any, Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
@@ -223,18 +223,58 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         return ws
 
+    async def _stream_json_with_keepalive(
+        self,
+        req: Request,
+        coro: Any,
+        *,
+        not_found_name: Optional[str] = None,
+    ) -> aiohttp.web.StreamResponse:
+        # Commit to a 200 JSON response up front, then write a single space every
+        # second until the coroutine returns. JSON parsers skip leading whitespace,
+        # and the bytes keep proxies and load balancers from timing out an idle
+        # connection. Checking the transport notices a client disconnect, which
+        # cancels the coroutine (cleaning up an in-progress creation or reaping a
+        # one-shot run actor).
+        sresp = aiohttp.web.StreamResponse(
+            status=aiohttp.web.HTTPOk.status_code,
+            headers={"Content-Type": "application/json", "Cache-Control": "no-cache"},
+        )
+        await sresp.prepare(req)
+        call_task = asyncio.ensure_future(coro)
+        ticks = 0
+        try:
+            await sresp.write(b" ")
+            while True:
+                done, _ = await asyncio.wait({call_task}, timeout=0.1)
+                if done:
+                    break
+                if req.transport is None or req.transport.is_closing():
+                    return sresp
+                ticks += 1
+                if ticks % 10 == 0:
+                    await sresp.write(b" ")
+            res = call_task.result()
+            if res is None and not_found_name is not None:
+                res = _actor_not_found(not_found_name)
+            await sresp.write(json.dumps(res).encode("utf-8"))
+            if req.transport is not None and not req.transport.is_closing():
+                await sresp.write_eof()
+        except (ConnectionResetError, aiohttp.ClientConnectionError):
+            pass
+        finally:
+            if not call_task.done():
+                call_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await call_task
+        return sresp
+
     @routes.post("/api/job_agent/actors")
     @optional_utils.init_ray_and_catch_exceptions()
-    async def create_actor(self, req: Request) -> Response:
+    async def create_actor(self, req: Request) -> aiohttp.web.StreamResponse:
         spec = await req.json()
-        res = await self.get_actor_manager().create_actor(spec)
-        status = (
-            aiohttp.web.HTTPOk.status_code
-            if res.get("ok", True)
-            else aiohttp.web.HTTPBadRequest.status_code
-        )
-        return Response(
-            text=json.dumps(res), content_type="application/json", status=status
+        return await self._stream_json_with_keepalive(
+            req, self.get_actor_manager().create_actor(spec)
         )
 
     @routes.get("/api/job_agent/actors")
@@ -269,8 +309,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_actor(self, req: Request) -> Response:
         name = req.match_info["actor_name"]
-        no_restart = req.query.get("no_restart", "1") in ("1", "true", "True")
-        res = await self.get_actor_manager().kill_actor(name, no_restart=no_restart)
+        res = await self.get_actor_manager().kill_actor(name)
         if res is None or not res.get("killed"):
             return Response(
                 text=json.dumps({"ok": False, "killed": False, "name": name}),
@@ -338,45 +377,17 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             finally:
                 if next_item_task is not None and not next_item_task.done():
                     next_item_task.cancel()
-                    with contextlib.suppress(Exception, asyncio.CancelledError):
+                    with contextlib.suppress(BaseException):
                         await next_item_task
                 with contextlib.suppress(Exception):
                     await agen.aclose()
             return sresp
 
-        # Commit to a 200 JSON response up front, then write a single space every
-        # second until the call returns. JSON parsers skip leading whitespace, and
-        # the bytes keep proxies and load balancers from timing out an idle
-        # connection. The same ticks notice a client disconnect, which cancels the
-        # call (and reaps an ephemeral actor).
-        sresp = aiohttp.web.StreamResponse(
-            status=aiohttp.web.HTTPOk.status_code,
-            headers={"Content-Type": "application/json", "Cache-Control": "no-cache"},
+        return await self._stream_json_with_keepalive(
+            req,
+            actor_mgr.call_actor_method(name, method, body),
+            not_found_name=name,
         )
-        await sresp.prepare(req)
-        call_task = asyncio.ensure_future(
-            actor_mgr.call_actor_method(name, method, body)
-        )
-        try:
-            while True:
-                done, _ = await asyncio.wait({call_task}, timeout=1.0)
-                if done:
-                    break
-                if req.transport is None or req.transport.is_closing():
-                    return sresp
-                await sresp.write(b" ")
-            # None means a concurrent DELETE removed the actor after the lookup.
-            res = call_task.result() or _actor_not_found(name)
-            await sresp.write(json.dumps(res).encode("utf-8"))
-            await sresp.write_eof()
-        except (ConnectionResetError, aiohttp.ClientConnectionError):
-            pass
-        finally:
-            if not call_task.done():
-                call_task.cancel()
-                with contextlib.suppress(Exception, asyncio.CancelledError):
-                    await call_task
-        return sresp
 
     def get_job_manager(self):
         if not self._job_manager:

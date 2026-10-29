@@ -1,6 +1,6 @@
 """Example 2: Stateful actor session over HTTP (`cluster.actor` & `ActorHandle`).
 
-Deploys a Python class as a persistent top-level Ray Actor on `/api/actors`,
+Deploys a Python class as a detached root actor on `/api/actors`,
 invokes methods across multiple steps, reconnects by name, and inspects logs.
 """
 

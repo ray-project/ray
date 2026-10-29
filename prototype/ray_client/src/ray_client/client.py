@@ -34,6 +34,7 @@ from ray_client.packaging import (
 _RETRYABLE_HTTP_STATUS = frozenset({502, 503, 504})
 _TERMINAL_JOB_STATUSES = frozenset({"SUCCEEDED", "FAILED", "STOPPED"})
 _MAX_RETRIES = 5
+_UNSET: Any = object()
 _AUTH_HINT = (
     " The cluster requires token authentication: set RAY_AUTH_TOKEN or "
     "RAY_AUTH_TOKEN_PATH, or pass headers={'Authorization': 'Bearer <token>'}."
@@ -168,6 +169,104 @@ def _validate_get_if_exists(get_if_exists: Any) -> Union[bool, str]:
     raise ValueError(
         f"get_if_exists must be True, False, or 'recreate', got {get_if_exists!r}."
     )
+
+
+def _is_timeout_exception(exc: BaseException) -> bool:
+    timeout_types: Tuple[type, ...] = (
+        (TimeoutError, requests.exceptions.Timeout)
+        if requests is not None
+        else (TimeoutError,)
+    )
+    curr: Optional[BaseException] = exc
+    seen: set[int] = set()
+    while curr is not None and id(curr) not in seen:
+        seen.add(id(curr))
+        if isinstance(curr, timeout_types):
+            return True
+        curr = curr.__cause__ or curr.__context__
+    return "timed out" in str(exc).lower()
+
+
+def _validate_resource_num(
+    val: Any, name: str, *, integer: bool = False
+) -> Union[int, float]:
+    if (
+        isinstance(val, bool)
+        or not isinstance(val, (int, float))
+        or not math.isfinite(val)
+        or val < 0
+    ):
+        raise ValueError(
+            f"Invalid {name} value {val!r}; must be a non-negative finite number."
+        )
+    if integer:
+        if isinstance(val, float) and not val.is_integer():
+            raise ValueError(
+                f"Invalid {name} value {val!r}; must be an integer number of bytes."
+            )
+        return int(val)
+    return val
+
+
+def _normalize_resources(
+    num_cpus: Optional[Union[int, float]],
+    num_gpus: Optional[Union[int, float]],
+    memory: Optional[Union[int, float]],
+    resources: Optional[Dict[str, float]],
+    *,
+    default_cpus: Optional[Union[int, float]] = None,
+) -> Tuple[
+    Optional[Union[int, float]],
+    Optional[Union[int, float]],
+    Optional[int],
+    Optional[Dict[str, float]],
+]:
+    """Normalizes Ray 2.x (`num_cpus`, `num_gpus`, `memory`) and Ray 3.0
+    (`resources={"CPU": ..., "GPU": ..., "memory": ...}`) resource specifications."""
+    if num_cpus is not None:
+        num_cpus = _validate_resource_num(num_cpus, "num_cpus")
+    if num_gpus is not None:
+        num_gpus = _validate_resource_num(num_gpus, "num_gpus")
+    if memory is not None:
+        memory = int(_validate_resource_num(memory, "memory", integer=True))
+    custom: Dict[str, float] = {}
+    if resources is not None:
+        if not isinstance(resources, dict):
+            raise TypeError(f"resources must be a dict[str, float], got {resources!r}.")
+        for k, v in resources.items():
+            if not isinstance(k, str):
+                raise ValueError(
+                    f"Invalid resource key {k!r}; resource keys must be strings."
+                )
+            v_num = _validate_resource_num(
+                v, f"resources[{k!r}]", integer=(k == "memory")
+            )
+            if k == "CPU":
+                if num_cpus is not None and float(num_cpus) != float(v_num):
+                    raise ValueError(
+                        f"Conflicting CPU requirements: num_cpus={num_cpus!r} vs "
+                        f"resources['CPU']={v!r}."
+                    )
+                num_cpus = v_num
+            elif k == "GPU":
+                if num_gpus is not None and float(num_gpus) != float(v_num):
+                    raise ValueError(
+                        f"Conflicting GPU requirements: num_gpus={num_gpus!r} vs "
+                        f"resources['GPU']={v!r}."
+                    )
+                num_gpus = v_num
+            elif k == "memory":
+                if memory is not None and int(memory) != int(v_num):
+                    raise ValueError(
+                        f"Conflicting memory requirements: memory={memory!r} vs "
+                        f"resources['memory']={v!r}."
+                    )
+                memory = int(v_num)
+            elif v_num > 0:
+                custom[k] = float(v_num)
+    if num_cpus is None and default_cpus is not None:
+        num_cpus = default_cpus
+    return num_cpus, num_gpus, memory, (custom or None)
 
 
 class JobResult:
@@ -610,7 +709,7 @@ class RayCluster:
                                 yield item
                 except requests.exceptions.RequestException as exc:
                     if timeout is not None and (
-                        "timed out" in str(exc).lower()
+                        _is_timeout_exception(exc)
                         or (deadline is not None and time.monotonic() >= deadline)
                     ):
                         raise RayJobTimeoutError(
@@ -623,6 +722,54 @@ class RayCluster:
                 _run_on_close()
 
         return _SSEStreamIterator(_gen(), resp, on_close=_run_on_close)
+
+    def _read_json_stream_response(
+        self,
+        resp: "requests.Response",
+        *,
+        endpoint: str,
+        timeout: Optional[float],
+        timeout_message: str,
+        submission_id: str,
+    ) -> Any:
+        raw_text: Optional[str] = None
+        try:
+            if timeout is not None:
+                grace_deadline = time.monotonic() + float(timeout) + 5.0
+                chunks: List[bytes] = []
+                chunk_size = (
+                    65536
+                    if (
+                        getattr(resp.raw, "chunked", False)
+                        or "Content-Length" in resp.headers
+                    )
+                    else 1
+                )
+                for chunk in resp.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        chunks.append(chunk)
+                    if time.monotonic() >= grace_deadline:
+                        raise RayJobTimeoutError(
+                            timeout_message,
+                            submission_id=submission_id,
+                        )
+                raw_text = b"".join(chunks).decode("utf-8", errors="replace")
+                return json.loads(raw_text)
+            return resp.json()
+        except ValueError as exc:
+            preview = raw_text[:200] if raw_text is not None else resp.text[:200]
+            raise RayClientError(
+                f"POST {endpoint} returned a non-JSON response from "
+                f"{self._address}; is this the Ray Dashboard HTTP address? Body starts "
+                f"with: {preview!r}"
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            if timeout is not None and _is_timeout_exception(exc):
+                raise RayJobTimeoutError(
+                    timeout_message,
+                    submission_id=submission_id,
+                ) from exc
+            raise RayClientError(f"POST {endpoint} failed: {exc}") from exc
 
     def _call_or_stream_actor_method(
         self,
@@ -640,11 +787,12 @@ class RayCluster:
         if timeout is not None:
             req_body["timeout"] = float(timeout)
         http_timeout: Any = (
-            (self._timeout, max(float(timeout) + 5.0, self._timeout))
+            (min(self._timeout, float(timeout) + 5.0), float(timeout) + 5.0)
             if timeout is not None
             else (self._timeout, None)
         )
         kind_label = "Actor method" if is_actor_method else "Function"
+        timeout_msg = f"{kind_label} '{target}' timed out after {timeout}s."
         try:
             resp = self.request(
                 "POST",
@@ -654,16 +802,16 @@ class RayCluster:
                 timeout=http_timeout,
                 stream=True,
             )
-        except Exception as exc:
+        except BaseException as exc:
             if on_close is not None:
                 on_close()
             if (
                 isinstance(exc, RayClientError)
                 and timeout is not None
-                and "timed out" in str(exc).lower()
+                and _is_timeout_exception(exc)
             ):
                 raise RayJobTimeoutError(
-                    f"{kind_label} '{target}' timed out after {timeout}s.",
+                    timeout_msg,
                     submission_id=sub_id,
                 ) from exc
             raise
@@ -687,38 +835,16 @@ class RayCluster:
                 on_close=on_close,
             )
 
-        raw_text: Optional[str] = None
+        reaped_by_server = False
         try:
-            try:
-                if timeout is not None:
-                    grace_deadline = time.monotonic() + float(timeout) + 5.0
-                    chunks: List[bytes] = []
-                    for chunk in resp.iter_content(chunk_size=65536):
-                        if chunk:
-                            chunks.append(chunk)
-                        if time.monotonic() >= grace_deadline:
-                            raise RayJobTimeoutError(
-                                f"{kind_label} '{target}' timed out after {timeout}s.",
-                                submission_id=sub_id,
-                            )
-                    raw_text = b"".join(chunks).decode("utf-8", errors="replace")
-                    data = json.loads(raw_text)
-                else:
-                    data = resp.json()
-            except ValueError as exc:
-                preview = raw_text[:200] if raw_text is not None else resp.text[:200]
-                raise RayClientError(
-                    f"POST {endpoint} returned a non-JSON response from "
-                    f"{self._address}; is this the Ray Dashboard HTTP address? Body starts "
-                    f"with: {preview!r}"
-                ) from exc
-            except requests.exceptions.RequestException as exc:
-                if timeout is not None and "timed out" in str(exc).lower():
-                    raise RayJobTimeoutError(
-                        f"{kind_label} '{target}' timed out after {timeout}s.",
-                        submission_id=sub_id,
-                    ) from exc
-                raise RayClientError(f"POST {endpoint} failed: {exc}") from exc
+            data = self._read_json_stream_response(
+                resp,
+                endpoint=endpoint,
+                timeout=timeout,
+                timeout_message=timeout_msg,
+                submission_id=sub_id,
+            )
+            reaped_by_server = isinstance(data, dict)
             if not data.get("ok", True):
                 self._raise_remote_error(
                     target,
@@ -728,7 +854,7 @@ class RayCluster:
             return data.get("result")
         finally:
             resp.close()
-            if on_close is not None:
+            if on_close is not None and not reaped_by_server:
                 on_close()
 
     def _ensure_package_uploaded(self, package_uri: str, zip_bytes: bytes) -> bool:
@@ -777,16 +903,14 @@ class RayCluster:
         for conflict_key in ("image_uri", "container"):
             if merged.get(conflict_key) is not None:
                 raise RayClientError(
-                    f"runtime_env[{conflict_key!r}] cannot be combined with "
-                    "working_dir; configure the container image on the cluster."
+                    f"runtime_env[{conflict_key!r}] is not supported; "
+                    "configure the container image on the cluster."
                 )
 
         working_dir = merged.pop("working_dir", None)
         if working_dir is not None and "://" in str(working_dir):
-            raise RayClientError(
-                f"runtime_env['working_dir']={working_dir!r} is a remote URI; "
-                "place remote archives in runtime_env['py_modules'] instead."
-            )
+            merged["working_dir"] = str(working_dir)
+            working_dir = None
         py_modules = merged.get("py_modules")
         if py_modules is not None:
             if not isinstance(py_modules, (list, tuple)) or not all(
@@ -805,18 +929,36 @@ class RayCluster:
                     )
         return merged, working_dir, excludes
 
+    def _prepare_and_upload_runtime_env(
+        self, runtime_env: Optional[Dict[str, Any]]
+    ) -> Tuple[Optional[Dict[str, Any]], bool]:
+        merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
+        uploaded = False
+        if working_dir is not None:
+            zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
+            uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
+            merged_env["working_dir"] = pkg_uri
+        return (merged_env or None), uploaded
+
     def _build_driver_actor_spec(
         self,
         fn: Union[Callable[..., Any], str],
         args: Tuple[Any, ...] = (),
         kwargs: Optional[Dict[str, Any]] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
-        num_cpus: Union[int, float] = 0,
+        num_cpus: Optional[Union[int, float]] = None,
         num_gpus: Optional[Union[int, float]] = None,
         resources: Optional[Dict[str, float]] = None,
         *,
+        label_selector: Optional[Dict[str, str]] = None,
         allow_generator: bool = False,
     ) -> Tuple[Dict[str, Any], List[Any], Dict[str, Any]]:
+        (
+            resolved_cpus,
+            resolved_gpus,
+            resolved_memory,
+            resolved_resources,
+        ) = _normalize_resources(num_cpus, num_gpus, None, resources, default_cpus=0)
         if isinstance(fn, str):
             module_path, fn_name = _parse_entrypoint_str(fn, "Function")
             module_source = None
@@ -839,25 +981,23 @@ class RayCluster:
         if captured_globals is not None:
             to_json(captured_globals, "Captured globals")
 
-        merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
-        if working_dir is not None:
-            zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
-            self._ensure_package_uploaded(pkg_uri, zip_bytes)
-            merged_env["working_dir"] = pkg_uri
+        merged_env, _ = self._prepare_and_upload_runtime_env(runtime_env)
 
         actor_name = f"driver_{fn_name}_{uuid.uuid4().hex[:8]}"
         spec: Dict[str, Any] = {
             "name": actor_name,
             "kind": "function",
-            "ephemeral": True,
+            "detached": False,
             "fn_name": fn_name,
             "module": module_path,
             "module_source": module_source,
             "captured_globals": captured_globals,
-            "runtime_env": merged_env or None,
-            "num_cpus": num_cpus,
-            "num_gpus": num_gpus,
-            "resources": resources,
+            "runtime_env": merged_env,
+            "num_cpus": resolved_cpus,
+            "num_gpus": resolved_gpus,
+            "memory": resolved_memory,
+            "resources": resolved_resources,
+            "label_selector": dict(label_selector) if label_selector else None,
             "max_concurrency": 10,
             "ttl_seconds": 300.0,
             "get_if_exists": False,
@@ -871,37 +1011,63 @@ class RayCluster:
         target_label: str,
         *,
         timeout: Optional[float] = None,
+        on_unreaped_error: Optional[Callable[[], None]] = None,
     ) -> Dict[str, Any]:
+        payload = dict(spec)
+        if timeout is not None:
+            payload["timeout"] = float(timeout)
         http_timeout: Any = (
-            (self._timeout, max(float(timeout) + 5.0, self._timeout))
+            (min(self._timeout, float(timeout) + 5.0), float(timeout) + 5.0)
             if timeout is not None
             else (self._timeout, None)
         )
+        sub_id = spec.get("name", target_label)
+        timeout_msg = f"Actor '{target_label}' deployment timed out after {timeout}s."
+        reaped_by_server = False
+        resp: Optional["requests.Response"] = None
         try:
-            resp = self.request(
-                "POST",
-                "/api/actors",
-                json_data=spec,
-                idempotent=False,
-                timeout=http_timeout,
+            try:
+                resp = self.request(
+                    "POST",
+                    "/api/actors",
+                    json_data=payload,
+                    idempotent=False,
+                    timeout=http_timeout,
+                    stream=True,
+                )
+            except RayClientError as exc:
+                if timeout is not None and _is_timeout_exception(exc):
+                    raise RayJobTimeoutError(
+                        timeout_msg,
+                        submission_id=sub_id,
+                    ) from exc
+                raise
+            if resp.status_code not in (200, 400):
+                raise self._http_error("POST", "/api/actors", resp)
+            data = self._read_json_stream_response(
+                resp,
+                endpoint="/api/actors",
+                timeout=timeout,
+                timeout_message=timeout_msg,
+                submission_id=sub_id,
             )
-        except RayClientError as exc:
-            if timeout is not None and "timed out" in str(exc).lower():
-                raise RayJobTimeoutError(
-                    f"Actor '{target_label}' deployment timed out after {timeout}s.",
-                    submission_id=spec.get("name", target_label),
-                ) from exc
+            reaped_by_server = isinstance(data, dict)
+            if not data.get("ok", True):
+                self._raise_remote_error(
+                    target_label,
+                    data.get("error") or {},
+                    logs=str(data.get("logs") or ""),
+                )
+            return data
+        except BaseException:
+            if resp is not None:
+                resp.close()
+            if on_unreaped_error is not None and not reaped_by_server:
+                on_unreaped_error()
             raise
-        if resp.status_code not in (200, 400):
-            raise self._http_error("POST", "/api/actors", resp)
-        data = resp.json()
-        if not data.get("ok", True):
-            self._raise_remote_error(
-                target_label,
-                data.get("error") or {},
-                logs=str(data.get("logs") or ""),
-            )
-        return data
+        finally:
+            if resp is not None:
+                resp.close()
 
     def _safe_kill_actor(self, actor_name: str) -> None:
         try:
@@ -916,12 +1082,13 @@ class RayCluster:
         *args: Any,
         kwargs: Optional[Dict[str, Any]] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
-        num_cpus: Union[int, float] = 0,
+        num_cpus: Optional[Union[int, float]] = None,
         num_gpus: Optional[Union[int, float]] = None,
         resources: Optional[Dict[str, float]] = None,
+        label_selector: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
     ) -> Any:
-        """Packages `fn` and runs it in an ephemeral top-level Ray Actor.
+        """Packages `fn` and runs it in a one-shot root Ray Actor.
 
         Returns the JSON result for a regular/async function, or an SSE iterator of
         yielded JSON items if `fn` is a generator or async generator function.
@@ -934,15 +1101,27 @@ class RayCluster:
             num_cpus,
             num_gpus,
             resources,
+            label_selector=label_selector,
             allow_generator=True,
         )
         actor_name = spec["name"]
         fn_name = spec["fn_name"]
-        try:
-            self._deploy_actor_spec(spec, fn_name, timeout=timeout)
-        except Exception:
-            self._safe_kill_actor(actor_name)
-            raise
+        t_start = time.monotonic()
+        self._deploy_actor_spec(
+            spec,
+            fn_name,
+            timeout=timeout,
+            on_unreaped_error=lambda: self._safe_kill_actor(actor_name),
+        )
+        call_timeout: Optional[float] = None
+        if timeout is not None:
+            call_timeout = float(timeout) - (time.monotonic() - t_start)
+            if call_timeout <= 0:
+                self._safe_kill_actor(actor_name)
+                raise RayJobTimeoutError(
+                    f"Function '{fn_name}' timed out after {timeout}s.",
+                    submission_id=actor_name,
+                )
         call_body: Dict[str, Any] = {
             "args": bound_args,
             "kwargs": bound_kwargs,
@@ -953,7 +1132,7 @@ class RayCluster:
             call_body,
             target=fn_name,
             submission_id=actor_name,
-            timeout=timeout,
+            timeout=call_timeout,
             on_close=lambda: self._safe_kill_actor(actor_name),
         )
 
@@ -983,18 +1162,24 @@ class RayCluster:
             ):
                 raise TypeError(f"metadata must be a dict[str, str], got {metadata!r}.")
 
-        merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
-        uploaded = False
-        if working_dir is not None:
-            zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
-            uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
-            merged_env["working_dir"] = pkg_uri
+        (
+            entrypoint_num_cpus,
+            entrypoint_num_gpus,
+            entrypoint_memory,
+            entrypoint_resources,
+        ) = _normalize_resources(
+            entrypoint_num_cpus,
+            entrypoint_num_gpus,
+            entrypoint_memory,
+            entrypoint_resources,
+        )
+        merged_env, uploaded = self._prepare_and_upload_runtime_env(runtime_env)
 
         sub_id = submission_id or f"raysubmit_{uuid.uuid4().hex[:16]}"
         body: Dict[str, Any] = {
             "entrypoint": entrypoint,
             "submission_id": sub_id,
-            "runtime_env": merged_env or None,
+            "runtime_env": merged_env,
             "metadata": dict(metadata) if metadata else None,
             "entrypoint_num_cpus": entrypoint_num_cpus,
             "entrypoint_num_gpus": entrypoint_num_gpus,
@@ -1094,26 +1279,52 @@ class RayCluster:
         num_cpus: Optional[Union[int, float]] = None,
         num_gpus: Optional[Union[int, float]] = None,
         resources: Optional[Dict[str, float]] = None,
+        label_selector: Optional[Dict[str, str]] = None,
         max_concurrency: Optional[int] = None,
-        ttl_seconds: Optional[float] = 1800.0,
+        ttl_seconds: Optional[float] = _UNSET,
         get_if_exists: Union[bool, str] = True,
+        detached: bool = True,
         timeout: Optional[float] = None,
     ) -> ActorHandle:
-        """Deploys or reattaches to a persistent top-level Ray Actor on `/api/actors`."""
-        validated_ttl = _validate_ttl_seconds(ttl_seconds)
+        """Deploys or reattaches to a root Ray Actor on `/api/actors`."""
+        has_explicit_ttl = ttl_seconds is not _UNSET
+        validated_ttl = _validate_ttl_seconds(ttl_seconds) if has_explicit_ttl else None
         validated_get_if_exists = _validate_get_if_exists(get_if_exists)
+        if not isinstance(detached, bool):
+            raise ValueError(f"detached must be a bool, got {detached!r}.")
+        raw_resources = resources
+        num_cpus, num_gpus, memory, resources = _normalize_resources(
+            num_cpus, num_gpus, None, resources
+        )
         default_opts = (
             getattr(cls_or_path, "_default_options", None)
             if not isinstance(cls_or_path, str)
             else None
         )
         if isinstance(default_opts, dict):
-            if num_cpus is None and default_opts.get("num_cpus") is not None:
-                num_cpus = default_opts["num_cpus"]
-            if num_gpus is None and default_opts.get("num_gpus") is not None:
-                num_gpus = default_opts["num_gpus"]
-            if resources is None and default_opts.get("resources") is not None:
-                resources = dict(default_opts["resources"])
+            (def_cpus, def_gpus, def_memory, def_resources,) = _normalize_resources(
+                default_opts.get("num_cpus"),
+                default_opts.get("num_gpus"),
+                default_opts.get("memory"),
+                default_opts.get("resources"),
+            )
+            if num_cpus is None and def_cpus is not None:
+                num_cpus = def_cpus
+            if num_gpus is None and def_gpus is not None:
+                num_gpus = def_gpus
+            if memory is None and def_memory is not None:
+                memory = def_memory
+            has_custom_override = isinstance(raw_resources, dict) and (
+                len(raw_resources) == 0
+                or any(k not in ("CPU", "GPU", "memory") for k in raw_resources)
+            )
+            if not has_custom_override and def_resources is not None:
+                resources = dict(def_resources)
+            if (
+                label_selector is None
+                and default_opts.get("label_selector") is not None
+            ):
+                label_selector = dict(default_opts["label_selector"])
             if (
                 max_concurrency is None
                 and default_opts.get("max_concurrency") is not None
@@ -1156,32 +1367,34 @@ class RayCluster:
         if captured_globals is not None:
             to_json(captured_globals, f"Actor '{class_name}' captured globals")
 
-        merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
-        uploaded = False
-        if working_dir is not None:
-            zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
-            uploaded = self._ensure_package_uploaded(pkg_uri, zip_bytes)
-            merged_env["working_dir"] = pkg_uri
+        merged_env, uploaded = self._prepare_and_upload_runtime_env(runtime_env)
 
         actor_name = name or f"{class_name}_{uuid.uuid4().hex[:8]}"
         spec: Dict[str, Any] = {
             "name": actor_name,
             "kind": "class",
+            "detached": detached,
             "class_name": class_name,
             "module": module_path,
             "module_source": module_source,
             "captured_globals": captured_globals,
             "args": bound_args,
             "kwargs": bound_kwargs,
-            "runtime_env": merged_env or None,
+            "runtime_env": merged_env,
             "num_cpus": resolved_cpus,
             "num_gpus": num_gpus,
+            "memory": memory,
             "resources": resources,
+            "label_selector": dict(label_selector) if label_selector else None,
             "max_concurrency": resolved_concurrency,
             "ttl_seconds": validated_ttl,
             "get_if_exists": validated_get_if_exists,
         }
-        spec = {k: v for k, v in spec.items() if v is not None or k == "ttl_seconds"}
+        spec = {
+            k: v
+            for k, v in spec.items()
+            if v is not None or (k == "ttl_seconds" and has_explicit_ttl)
+        }
         data = self._deploy_actor_spec(spec, actor_name, timeout=timeout)
         if data.get("spec_mismatch"):
             warnings.warn(
@@ -1219,37 +1432,16 @@ class RayCluster:
     # 3. Cluster Resource Management (planned KubeRay control-plane extension)
     def scale_worker_group(self, group: str, replicas: int) -> Dict[str, Any]:
         """Updates target replica count for a KubeRay worker group."""
+        if not isinstance(group, str) or not group.strip():
+            raise ValueError("group must be a non-empty string.")
+        if isinstance(replicas, bool) or not isinstance(replicas, int) or replicas < 0:
+            raise ValueError(
+                f"replicas must be a non-negative integer, got {replicas!r}."
+            )
         return self._json(
             "PATCH",
             f"/api/cluster/worker_groups/{group}",
-            json_data={"replicas": int(replicas)},
-            idempotent=False,
-        )
-
-    def add_worker_group(
-        self,
-        group: str,
-        *,
-        replicas: int = 1,
-        num_cpus: Optional[Union[int, float]] = None,
-        num_gpus: Optional[Union[int, float]] = None,
-        resources: Optional[Dict[str, float]] = None,
-        **extra_options: Any,
-    ) -> Dict[str, Any]:
-        """Adds a new worker group to a KubeRay-managed cluster."""
-        payload: Dict[str, Any] = {
-            "group": group,
-            "replicas": int(replicas),
-            "num_cpus": num_cpus,
-            "num_gpus": num_gpus,
-            "resources": resources,
-            **extra_options,
-        }
-        payload = {k: v for k, v in payload.items() if v is not None}
-        return self._json(
-            "POST",
-            "/api/cluster/worker_groups",
-            json_data=payload,
+            json_data={"replicas": replicas},
             idempotent=False,
         )
 
@@ -1277,20 +1469,11 @@ def run(
     )
     try:
         res = cluster.run(fn, *args, **options)
-    except Exception:
+    except BaseException:
         cluster.close()
         raise
     if isinstance(res, _SSEStreamIterator):
         res._add_close_callback(cluster.close)
         return res
-    if isinstance(res, Iterator):
-
-        def _gen() -> Iterator[Any]:
-            try:
-                yield from res
-            finally:
-                cluster.close()
-
-        return _gen()
     cluster.close()
     return res

@@ -36,11 +36,16 @@ from ray_client import (
     RayCluster,
     RayJobExecutionError,
     RayJobTimeoutError,
+    RayTimeoutError,
     packaging,
     run,
 )
 from ray_client._ignore import _compile_ignore_rules, _is_ignored
-from ray_client.client import _validate_get_if_exists, _validate_ttl_seconds
+from ray_client.client import (
+    _normalize_resources,
+    _validate_get_if_exists,
+    _validate_ttl_seconds,
+)
 from ray_client.packaging import (
     IGNORE_GITIGNORE_ENV_VAR,
     build_driver_package,
@@ -51,14 +56,40 @@ from ray_client.packaging import (
 
 try:
     from ray.dashboard.modules.job.actor_manager import (
+        ActorManager,
         _ClientRootActor,
         _compute_spec_hash,
+        _is_client_root_actor_handle,
         _load_user_target,
         _LogTeeStream,
+        _normalize_module_source,
     )
-except ImportError:
+except (ImportError, OSError):
+    ActorManager = None  # type: ignore[assignment]
     _ClientRootActor = None  # type: ignore[assignment]
     _LogTeeStream = None  # type: ignore[assignment]
+    _is_client_root_actor_handle = None  # type: ignore[assignment]
+
+    def _normalize_module_source(module_source: Optional[str]) -> Optional[str]:
+        if module_source is None:
+            return None
+        src = module_source.lstrip("\n")
+        if src.startswith(
+            ("import ray  # noqa: F401\n", "from __future__ import annotations\n")
+        ):
+            lines = src.splitlines(keepends=True)
+            idx = 0
+            while idx < len(lines) and lines[idx].startswith(
+                (
+                    "from __future__ import annotations",
+                    "import ",
+                    "from ",
+                    "_RayHint =",
+                )
+            ):
+                idx += 1
+            return "".join(lines[:idx]) + "".join(lines[idx:]).lstrip("\n")
+        return src
 
     def _compute_spec_hash(
         spec: Dict[str, Any],
@@ -67,24 +98,35 @@ except ImportError:
         num_cpus: Any,
         max_concurrency: Any,
     ) -> str:
+        norm_cpus, norm_gpus, norm_memory, norm_resources = _normalize_resources(
+            spec.get("num_cpus"),
+            spec.get("num_gpus"),
+            spec.get("memory"),
+            spec.get("resources"),
+            default_cpus=(
+                num_cpus
+                if isinstance(num_cpus, (int, float))
+                else (0 if kind == "function" else 1)
+            ),
+        )
         canonical = {
             "kind": kind,
             "target_name": target_name,
-            "module_source": spec.get("module_source"),
+            "module_source": _normalize_module_source(spec.get("module_source")),
             "module": spec.get("module"),
             "captured_globals": spec.get("captured_globals") or {},
             "args": spec.get("args") or [],
             "kwargs": spec.get("kwargs") or {},
             "runtime_env": spec.get("runtime_env") or {},
             "num_cpus": (
-                float(num_cpus) if isinstance(num_cpus, (int, float)) else num_cpus
+                float(norm_cpus) if isinstance(norm_cpus, (int, float)) else norm_cpus
             ),
             "num_gpus": (
-                float(spec["num_gpus"])
-                if isinstance(spec.get("num_gpus"), (int, float))
-                else spec.get("num_gpus")
+                float(norm_gpus) if isinstance(norm_gpus, (int, float)) else norm_gpus
             ),
-            "resources": spec.get("resources") or {},
+            "memory": norm_memory,
+            "resources": norm_resources or {},
+            "label_selector": spec.get("label_selector") or {},
             "max_concurrency": (
                 int(max_concurrency)
                 if isinstance(max_concurrency, int)
@@ -135,13 +177,27 @@ def top_level_fn(x: int, y: int = GLOBAL_SCALE) -> dict:
     return {"result": (x + y) * GLOBAL_SCALE}
 
 
+class TopLevelClassWithAttrDefault:
+    DEFAULT_STEP = 3
+    SCALED_STEP = GLOBAL_SCALE
+
+    def __init__(self, base: int = DEFAULT_STEP):
+        self.val = base
+
+    def step(self, delta: int = DEFAULT_STEP, mult: int = SCALED_STEP) -> int:
+        self.val += delta * mult
+        return self.val
+
+
 class _MockClusterState:
     def __init__(self, tmp_root: str):
         self.tmp_root = Path(tmp_root)
         self.packages: Dict[str, bytes] = {}
         self.actors: Dict[str, Dict[str, Any]] = {}
         self.jobs: Dict[str, Dict[str, Any]] = {}
+        self.worker_groups: Dict[str, int] = {}
         self.last_created_actor_spec: Optional[Dict[str, Any]] = None
+        self.delete_actor_calls = 0
         self.fail_next_requests = 0
         self.drop_next_job_post_response = False
         self.job_info_gets = 0
@@ -354,6 +410,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         "name": name,
                         "class_name": act["class_name"],
                         "status": "ALIVE",
+                        "detached": act.get("detached", True),
                         "active_calls": act.get("active_calls", 0),
                         "ttl_seconds": act["ttl_seconds"],
                         "spec_hash": act.get("spec_hash", ""),
@@ -381,6 +438,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                             "name": actor_name,
                             "class_name": act["class_name"],
                             "status": "ALIVE",
+                            "detached": act.get("detached", True),
                             "active_calls": act.get("active_calls", 0),
                             "ttl_seconds": act["ttl_seconds"],
                             "spec_hash": act.get("spec_hash", ""),
@@ -413,6 +471,19 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             return
         self._send_json(404, {"error": "unknown endpoint"})
 
+    def do_PATCH(self) -> None:  # noqa: N802
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        body = self._read_json()
+        if path.startswith("/api/cluster/worker_groups/"):
+            group = path[len("/api/cluster/worker_groups/") :]
+            replicas = int(body["replicas"])
+            with self.state.lock:
+                self.state.worker_groups[group] = replicas
+            self._send_json(200, {"ok": True, "group": group, "replicas": replicas})
+            return
+        self._send_json(404, {"error": "unknown endpoint"})
+
     def do_DELETE(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
@@ -425,6 +496,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/actors/"):
             actor_name = path[len("/api/actors/") :]
             with self.state.lock:
+                self.state.delete_actor_calls += 1
                 self.state.check_ttls_locked()
                 popped = self.state.actors.pop(actor_name, None)
                 existed = popped is not None
@@ -481,13 +553,20 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                 self.state.check_ttls_locked()
 
                 try:
-                    ttl_seconds = _validate_ttl_seconds(body.get("ttl_seconds", 1800.0))
+                    has_explicit_ttl = "ttl_seconds" in body
+                    ttl_seconds = _validate_ttl_seconds(
+                        body["ttl_seconds"] if has_explicit_ttl else 1800.0
+                    )
                     get_if_exists = _validate_get_if_exists(
                         body.get("get_if_exists", True)
                     )
-                    num_cpus = body.get("num_cpus")
-                    if num_cpus is None:
-                        num_cpus = 0 if kind == "function" else 1
+                    num_cpus, _, _, _ = _normalize_resources(
+                        body.get("num_cpus"),
+                        body.get("num_gpus"),
+                        body.get("memory"),
+                        body.get("resources"),
+                        default_cpus=0 if kind == "function" else 1,
+                    )
                     max_concurrency = (
                         int(body["max_concurrency"])
                         if body.get("max_concurrency") is not None
@@ -527,6 +606,8 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                                     f"'{act['class_name']}', cannot reattach as "
                                     f"'{target_name}'."
                                 )
+                            if has_explicit_ttl:
+                                act["ttl_seconds"] = ttl_seconds
                             act["last_active"] = time.monotonic()
                             self._send_json(
                                 200,
@@ -534,21 +615,24 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                                     "ok": True,
                                     "name": name,
                                     "class_name": act["class_name"],
+                                    "detached": act.get("detached", True),
                                     "created": False,
+                                    "ttl_seconds": act.get("ttl_seconds"),
                                     "spec_hash": act.get("spec_hash", ""),
                                     "spec_mismatch": spec_mismatch,
                                 },
+                                keepalive_prefix=b"   ",
                             )
                             return
 
                     work_dir, env_vars = self._unpack_actor_runtime_env_locked(
                         name, body.get("runtime_env")
                     )
-                    ephemeral = bool(body.get("ephemeral", kind == "function"))
+                    detached = bool(body.get("detached", kind != "function"))
                     act_entry: Dict[str, Any] = {
                         "name": name,
                         "kind": kind,
-                        "ephemeral": ephemeral,
+                        "detached": detached,
                         "class_name": target_name,
                         "spec_hash": spec_hash,
                         "ttl_seconds": ttl_seconds,
@@ -597,14 +681,17 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                             "ok": True,
                             "name": name,
                             "class_name": target_name,
+                            "detached": detached,
                             "created": True,
+                            "ttl_seconds": ttl_seconds,
                             "spec_hash": spec_hash,
                             "spec_mismatch": False,
                         },
+                        keepalive_prefix=b"   ",
                     )
                 except Exception as exc:
                     self._send_json(
-                        400,
+                        200,
                         {
                             "ok": False,
                             "error": {
@@ -641,6 +728,15 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     act["active_calls"] = act.get("active_calls", 0) + 1
                     act["last_active"] = time.monotonic()
 
+                def _finish_non_stream_call() -> None:
+                    with self.state.lock:
+                        act["active_calls"] = max(0, act.get("active_calls", 1) - 1)
+                        act["last_active"] = time.monotonic()
+                        if act.get("kind") == "function":
+                            popped = self.state.actors.pop(actor_name, None)
+                            self.state._cleanup_actor_locked(popped)
+
+                stream_sent = False
                 try:
                     args = body.get("args") or []
                     kwargs = body.get("kwargs") or {}
@@ -656,14 +752,17 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
 
                     out = self._exec_in_actor_env(act, target_callable, args, kwargs)
                     if is_stream or inspect.isgenerator(out):
+                        stream_sent = True
                         self._send_sse_stream(out, act["logs"])
                         return
+                    _finish_non_stream_call()
                     self._send_json(
                         200,
                         {"ok": True, "result": out},
                         keepalive_prefix=b"   ",
                     )
                 except SystemExit as exc:
+                    _finish_non_stream_call()
                     code = exc.code
                     if code in (None, 0):
                         self._send_json(
@@ -686,6 +785,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                             keepalive_prefix=b"   ",
                         )
                 except Exception as exc:
+                    _finish_non_stream_call()
                     self._send_json(
                         200,
                         {
@@ -700,12 +800,8 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         keepalive_prefix=b"   ",
                     )
                 finally:
-                    with self.state.lock:
-                        act["active_calls"] = max(0, act.get("active_calls", 1) - 1)
-                        act["last_active"] = time.monotonic()
-                        if act.get("ephemeral") or body.get("ephemeral"):
-                            popped = self.state.actors.pop(actor_name, None)
-                            self.state._cleanup_actor_locked(popped)
+                    if stream_sent:
+                        _finish_non_stream_call()
                 return
 
         self._send_json(404, {"error": "unknown endpoint"})
@@ -1221,12 +1317,12 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertEqual(cluster.run(step, 5), {"doubled": 10})
             self.assertIsNotNone(self.state.last_created_actor_spec)
             self.assertEqual(self.state.last_created_actor_spec["num_cpus"], 0)
-            self.assertIs(self.state.last_created_actor_spec["ephemeral"], True)
+            self.assertIs(self.state.last_created_actor_spec["detached"], False)
             self.assertEqual(
                 cluster.run(step, 21, timeout=5.0),
                 {"doubled": 42},
             )
-            # Ephemeral driver actors are deleted in `finally`
+            # One-shot driver actors are reaped on completion
             self.assertEqual(cluster.list_actors(), [])
 
             async def async_step(msg: str) -> str:
@@ -1744,10 +1840,10 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertEqual(d_act.read_all(), {"prop": 24, "static": 22})
             d_act.kill()
 
-            # 5. P9 & P15: @ray.remote options inheritance and ttl_seconds=None preserved
+            # 5. P9, P15 & Finding 1.3: @ray.remote options inheritance and ttl_seconds preserved on reattach
             try:
                 import ray  # type: ignore[import-not-found]
-            except ImportError:
+            except (ImportError, OSError):
 
                 def _fake_ray_remote(**opts: Any) -> Any:
                     def _wrap(cls: type) -> Any:
@@ -1774,9 +1870,307 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertEqual(self.state.last_created_actor_spec["num_cpus"], 2)
             self.assertEqual(self.state.last_created_actor_spec["num_gpus"], 1)
             self.assertEqual(self.state.last_created_actor_spec["max_concurrency"], 4)
+            self.assertIn("ttl_seconds", self.state.last_created_actor_spec)
+            self.assertIsNone(self.state.last_created_actor_spec["ttl_seconds"])
             self.assertEqual(dec_handle.ping(), "pong")
             self.assertIsNone(dec_handle.info()["ttl_seconds"])
+
+            # Reattaching without passing ttl_seconds omits "ttl_seconds" from spec and preserves None
+            dec_reattached = cluster.actor(DecoratedActor, name="dec_act")
+            self.assertFalse(dec_reattached.created)
+            self.assertNotIn("ttl_seconds", self.state.last_created_actor_spec)
+            self.assertIsNone(dec_reattached.info()["ttl_seconds"])
+
+            # Reattaching with explicit ttl_seconds=120.0 updates TTL; subsequent reattach without ttl_seconds preserves 120.0
+            dec_updated = cluster.actor(
+                DecoratedActor, name="dec_act", ttl_seconds=120.0
+            )
+            self.assertFalse(dec_updated.created)
+            self.assertEqual(self.state.last_created_actor_spec["ttl_seconds"], 120.0)
+            self.assertEqual(dec_updated.info()["ttl_seconds"], 120.0)
+
+            dec_preserved_120 = cluster.actor(DecoratedActor, name="dec_act")
+            self.assertFalse(dec_preserved_120.created)
+            self.assertNotIn("ttl_seconds", self.state.last_created_actor_spec)
+            self.assertEqual(dec_preserved_120.info()["ttl_seconds"], 120.0)
             dec_handle.kill()
+
+            # Finding 1.1: Top-level class and nested class using class attributes in method defaults
+            top_cls_handle = cluster.actor(
+                TopLevelClassWithAttrDefault, name="top_cls_def"
+            )
+            self.assertEqual(top_cls_handle.step(), 3 + 3 * 42)
+            self.assertEqual(top_cls_handle.step(2, 10), 3 + 3 * 42 + 20)
+            top_cls_handle.kill()
+
+            class NestedWithValidClassAttrDefault:
+                STEP = 4
+                SCALED = GLOBAL_SCALE
+
+                def __init__(self, base: int = STEP):
+                    self.v = base
+
+                def add(self, delta: int = STEP, mult: int = SCALED) -> int:
+                    return self.v + delta * mult
+
+            nested_cls_handle = cluster.actor(
+                NestedWithValidClassAttrDefault, name="nested_cls_def"
+            )
+            self.assertEqual(nested_cls_handle.add(), 4 + 4 * 42)
+            nested_cls_handle.kill()
+
+            def make_nested_shadowed_class_attr_default():
+                GLOBAL_SCALE = 999  # shadows module-level GLOBAL_SCALE
+
+                class ShadowedAttrDefault:
+                    STEP = GLOBAL_SCALE
+
+                    def run(self, x: int = STEP) -> int:
+                        return x
+
+                return ShadowedAttrDefault
+
+            with self.assertRaisesRegex(
+                RayClientSerializationError, "enclosing function or class scope"
+            ):
+                extract_class_source_and_globals(
+                    make_nested_shadowed_class_attr_default()
+                )
+
+            class NestedComplexClassBody:
+                STEP = 1
+                STEP: int
+                STEP = GLOBAL_SCALE
+                STEP += 1
+                PAIR_A, PAIR_B = 5, GLOBAL_SCALE
+                DYNAMIC_TAG = str(GLOBAL_SCALE)
+                DERIVED_TAG = DYNAMIC_TAG + "_ok"
+                TEMP = 99
+                del TEMP
+                if GLOBAL_SCALE > 0:
+                    MODE = "pos"
+                else:
+                    MODE = "neg"
+
+                def overwritten(self) -> int:
+                    return 1
+
+                OVERWRITTEN_TUP = (overwritten, 10)
+
+                def overwritten(self) -> int:  # noqa: F811
+                    return 2
+
+                def helper(self, x: int) -> int:
+                    return x + self.STEP
+
+                ALIAS = helper
+
+                def compute(
+                    self,
+                    val: int = PAIR_A,
+                    mult: int = PAIR_B,
+                    fn: Any = helper,
+                    tag: str = DERIVED_TAG,
+                    mode: str = MODE,
+                ) -> Dict[str, Any]:
+                    return {
+                        "total": fn(self, val * mult) + self.overwritten(),
+                        "tag": tag,
+                        "mode": mode,
+                    }
+
+            complex_handle = cluster.actor(
+                NestedComplexClassBody, name="nested_complex_cls"
+            )
+            self.assertEqual(
+                complex_handle.compute(),
+                {"total": (5 * 42) + 43 + 2, "tag": "42_ok", "mode": "pos"},
+            )
+            complex_handle.kill()
+
+            ext_mod_obj = types.ModuleType("_ray_test_ext_base_mod")
+            ext_base_src = (
+                "GLOBAL_SCALE = -999\n"
+                "class ExtBase:\n"
+                "    def base_val(self) -> int:\n"
+                "        return GLOBAL_SCALE\n"
+            )
+            linecache.cache["<_ray_test_ext_base_mod>"] = (
+                len(ext_base_src),
+                None,
+                ext_base_src.splitlines(keepends=True),
+                "<_ray_test_ext_base_mod>",
+            )
+            exec(
+                compile(ext_base_src, "<_ray_test_ext_base_mod>", "exec"),
+                ext_mod_obj.__dict__,
+            )
+            sys.modules["_ray_test_ext_base_mod"] = ext_mod_obj
+            globals()["ext_base_mod"] = ext_mod_obj
+            try:
+
+                class SubOfExternalBase(ext_base_mod.ExtBase):  # noqa: F821
+                    def get_scale(self) -> int:
+                        return GLOBAL_SCALE
+
+                _, _, sub_captured = extract_class_source_and_globals(SubOfExternalBase)
+                self.assertEqual(sub_captured.get("GLOBAL_SCALE"), GLOBAL_SCALE)
+            finally:
+                globals().pop("ext_base_mod", None)
+                sys.modules.pop("_ray_test_ext_base_mod", None)
+                linecache.cache.pop("<_ray_test_ext_base_mod>", None)
+
+            def make_nested_shadowed_tuple_unpack():
+                GLOBAL_SCALE = 777
+
+                class ShadowedTupleActor:
+                    A, B = 1, GLOBAL_SCALE
+
+                    def get(self) -> int:
+                        return self.A + self.B
+
+                return ShadowedTupleActor
+
+            with self.assertRaisesRegex(
+                RayClientSerializationError, "enclosing function or class scope"
+            ):
+                extract_class_source_and_globals(make_nested_shadowed_tuple_unpack())
+
+            def make_nested_shadowed_property_setter():
+                GLOBAL_SCALE = 888
+
+                class ShadowedPropSetterActor:
+                    @property
+                    def val(self) -> int:
+                        return 1
+
+                    @val.setter
+                    def val(self, v: int = GLOBAL_SCALE) -> None:
+                        self._v = v
+
+                return ShadowedPropSetterActor
+
+            with self.assertRaisesRegex(
+                RayClientSerializationError, "enclosing function or class scope"
+            ):
+                extract_class_source_and_globals(make_nested_shadowed_property_setter())
+
+            # Shadowed enclosing variables inside function-call expressions are caught
+            def make_nested_shadowed_call_default():
+                GLOBAL_SCALE = -500
+
+                def fn_call_def(x: int = abs(GLOBAL_SCALE)) -> int:
+                    return x
+
+                class ShadowedCallAttrActor:
+                    TAG = str(GLOBAL_SCALE)
+
+                    def get(self) -> str:
+                        return self.TAG
+
+                return fn_call_def, ShadowedCallAttrActor
+
+            bad_call_fn, bad_call_cls = make_nested_shadowed_call_default()
+            with self.assertRaisesRegex(
+                RayClientSerializationError, "enclosing function or class scope"
+            ):
+                extract_function_source_and_globals(bad_call_fn)
+            with self.assertRaisesRegex(
+                RayClientSerializationError, "enclosing function or class scope"
+            ):
+                extract_class_source_and_globals(bad_call_cls)
+
+            # Mutating a class attribute on a nested class before extraction does not falsely fail
+            class MutatedAttrActor:
+                COUNT = 0
+
+                def next_count(self) -> int:
+                    return self.COUNT + GLOBAL_SCALE
+
+            MutatedAttrActor.COUNT += 5
+            _, _, mut_captured = extract_class_source_and_globals(MutatedAttrActor)
+            self.assertEqual(mut_captured, {"GLOBAL_SCALE": 42})
+
+            # Class-body comprehension captures module global even when class defines same-named attr
+            class CompBodyActor:
+                GLOBAL_SCALE = 10
+                ITEMS = [i + GLOBAL_SCALE for i in [1, 2]]
+
+                def get_items(self) -> List[int]:
+                    return self.ITEMS
+
+            _, _, comp_captured = extract_class_source_and_globals(CompBodyActor)
+            self.assertEqual(comp_captured, {"GLOBAL_SCALE": 42})
+
+            # Enclosing comprehension loop variable does not falsely shadow module global in default arg
+            def make_fn_after_comp():
+                _ = [GLOBAL_SCALE + 1 for GLOBAL_SCALE in [1, 2]]
+
+                def fn_after_comp(x: int = GLOBAL_SCALE) -> int:
+                    return x
+
+                return fn_after_comp
+
+            _, _, after_comp_captured = extract_function_source_and_globals(
+                make_fn_after_comp()
+            )
+            self.assertEqual(after_comp_captured, {"GLOBAL_SCALE": 42})
+
+            # Self-referential unquoted return annotation on actor method (e.g., re-run notebook cell) emits _RayHint
+            SelfAnnotatedActor: Any = object()
+
+            class SelfAnnotatedActor:
+                def clone(self) -> SelfAnnotatedActor:
+                    return self
+
+            _, self_ann_src, _ = extract_class_source_and_globals(SelfAnnotatedActor)
+            self.assertIn("SelfAnnotatedActor = _RayHint", self_ann_src)
+
+            # Methodless actor class in a module with `from __future__ import annotations` preserves future import
+            future_cell_file = "<ipython-input-future-methodless>"
+            future_cell_src = (
+                "from __future__ import annotations\n"
+                "class MethodlessFutureActor:\n"
+                "    pending: UndefinedFutureType\n"
+            )
+            linecache.cache[future_cell_file] = (
+                len(future_cell_src),
+                None,
+                future_cell_src.splitlines(keepends=True),
+                future_cell_file,
+            )
+            future_mod = types.ModuleType("_test_future_methodless_mod")
+            future_mod.__file__ = future_cell_file
+            sys.modules[future_mod.__name__] = future_mod
+            try:
+                exec(
+                    compile(future_cell_src, future_cell_file, "exec"),
+                    future_mod.__dict__,
+                )
+                _, mless_src, _ = extract_class_source_and_globals(
+                    future_mod.MethodlessFutureActor
+                )
+                self.assertIn("from __future__ import annotations", mless_src)
+            finally:
+                sys.modules.pop(future_mod.__name__, None)
+                linecache.cache.pop(future_cell_file, None)
+
+            # Conditionally defined / redefined class name extracts the active class definition
+            if False:
+
+                class RedefinedActor:
+                    def v1(self) -> int:
+                        return 1
+
+            else:
+
+                class RedefinedActor:
+                    def v2(self) -> int:
+                        return 2
+
+            _, redef_src, _ = extract_class_source_and_globals(RedefinedActor)
+            self.assertIn("def v2", redef_src)
+            self.assertNotIn("def v1", redef_src)
 
             # 6. P11 & P19: Eager argument validation, _ActorMethodProxy.call(timeout=...) on generator, cyclic JSON
             def gen_with_defaults(x: int):
@@ -1813,13 +2207,26 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertEqual(ut_ctx.exception.exc_type, "TimeoutError")
             self.assertIn("downstream socket timed out", str(ut_ctx.exception))
 
-            # 8. KubeRay resource management methods route to /api/cluster/worker_groups
-            with self.assertRaises(RayClientError):
-                cluster.scale_worker_group("gpu-group", replicas=2)
-            with self.assertRaises(RayClientError):
-                cluster.add_worker_group(
-                    "tpu-workers", replicas=2, resources={"TPU": 4}
-                )
+            # 8. Decision 1 & Finding 1.10: scale_worker_group routes to PATCH /api/cluster/worker_groups/{group},
+            #    add_worker_group is removed, and runtime_env image_uri/container error message is accurate.
+            self.assertFalse(hasattr(cluster, "add_worker_group"))
+            scale_res = cluster.scale_worker_group("gpu-group", replicas=2)
+            self.assertEqual(
+                scale_res, {"ok": True, "group": "gpu-group", "replicas": 2}
+            )
+            self.assertEqual(self.state.worker_groups.get("gpu-group"), 2)
+            for bad_group in ("", "   ", 123):
+                with self.assertRaises(ValueError):
+                    cluster.scale_worker_group(bad_group, replicas=1)  # type: ignore[arg-type]
+            for bad_replicas in (-1, True, 1.5, "2"):
+                with self.assertRaises(ValueError):
+                    cluster.scale_worker_group("gpu-group", replicas=bad_replicas)  # type: ignore[arg-type]
+            for bad_env_key in ("image_uri", "container"):
+                with self.assertRaisesRegex(
+                    RayClientError,
+                    f"runtime_env\\[{bad_env_key!r}\\] is not supported; configure the container image on the cluster\\.",
+                ):
+                    cluster._prepare_runtime_env({bad_env_key: "rayproject/ray:latest"})
 
         # 9. Validation helpers (_validate_ttl_seconds, _validate_get_if_exists)
         for bad_ttl in (0, 0.0, -1.0, float("nan"), float("inf"), True):
@@ -1866,10 +2273,12 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         orig_worker_get_actor = ray._private.worker.get_actor
         orig_actor_remote = ActorClass._remote
         orig_pg = ray.util.placement_group
+        orig_remove_pg = ray.util.remove_placement_group
         orig_rt_ns = RuntimeContext.__dict__.get("namespace")
 
         recorded_remote_opts: List[Dict[str, Any]] = []
         recorded_get_actor_calls: List[Tuple[str, Optional[str]]] = []
+        removed_pgs: List[Any] = []
 
         def fake_actor_remote(actor_cls, args=None, kwargs=None, **actor_options):
             recorded_remote_opts.append(dict(actor_options))
@@ -1918,6 +2327,12 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             "    def gen_exit(self):\n"
             "        yield {'step': 1}\n"
             "        raise SystemExit(4)\n"
+            "    def gen_exit_on_close(self):\n"
+            "        try:\n"
+            "            yield {'step': 0}\n"
+            "            yield {'step': 1}\n"
+            "        finally:\n"
+            "            raise SystemExit(5)\n"
             "    async def close(self):\n"
             "        EVENTS.append('async_closed')\n"
         )
@@ -1929,11 +2344,41 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             "        time.sleep(0.12)\n"
             "        CTX_EVENTS.append(('exit', exc_type, exc_val, exc_tb))\n"
         )
+        failing_init_src = (
+            "import ray\n"
+            "class FailingInitActor:\n"
+            "    def __init__(self):\n"
+            "        print('init_log_before_crash', flush=True)\n"
+            "        ray.util.placement_group([{'CPU': 1}])\n"
+            "        raise RuntimeError('boom in __init__')\n"
+        )
         root_act = None
         ctx_act = None
+        fail_init_act = None
         try:
             ray.get_actor = fake_get_actor
             ActorClass._remote = fake_actor_remote
+            ray.util.placement_group = lambda *a, **kw: ("pg_created", a, kw)
+            ray.util.remove_placement_group = lambda pg: removed_pgs.append(pg)
+
+            # Finding 1.5: _ClientRootActor.__init__ catches user exceptions, records logs in _init_error,
+            # and removes any non-detached placement groups created before __init__ failed.
+            fail_init_act = _ClientRootActor(
+                {
+                    "name": "test_fail_init",
+                    "kind": "class",
+                    "class_name": "FailingInitActor",
+                    "module_source": failing_init_src,
+                    "ttl_seconds": None,
+                }
+            )
+            fail_info = fail_init_act.get_info()
+            self.assertFalse(fail_info["ok"])
+            self.assertEqual(fail_info["error"]["exc_type"], "RuntimeError")
+            self.assertIn("boom in __init__", fail_info["error"]["exc_message"])
+            self.assertIn("init_log_before_crash", fail_info.get("logs", ""))
+            self.assertEqual(len(removed_pgs), 1)
+
             root_act = _ClientRootActor(
                 {
                     "name": "test_root_exit",
@@ -2056,11 +2501,53 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertFalse(gen_frames[1]["ok"])
             self.assertEqual(gen_frames[1]["error"]["exc_type"], "SystemExit")
 
+            # Finding 1.6: Generator raising SystemExit inside finally on close() still decrements _active_calls
+            close_exit_iter = root_act.invoke_stream(
+                "gen_exit_on_close", [], {}, "s_close_exit"
+            )
+            self.assertEqual(next(close_exit_iter), {"ok": True, "item": {"step": 0}})
+            close_exit_iter.close()
+            self.assertEqual(root_act._active_calls, 0)
+
+            # Verify _ClientRootActor.__repr__ returns class name by default and custom __repr__ when defined
+            self.assertEqual(repr(root_act), "AsyncExitActor")
+
+            # Verify `from ray.util.placement_group import placement_group` is hooked
+            from ray.util.placement_group import placement_group as imported_pg
+
+            self.assertIs(imported_pg, ray.util.placement_group)
+
+            # Verify shutdown(only_if_idle=True) checks _active_calls and elapsed >= ttl atomically
+            root_act._ttl_seconds = 10.0
+            root_act._last_active_mono = time.monotonic()
+            self.assertEqual(
+                root_act.shutdown(only_if_idle=True), {"ok": True, "reaped": False}
+            )
+            self.assertFalse(root_act._shutting_down)
+
+            root_act._last_active_mono = time.monotonic() - 20.0
+            root_act._active_calls = 1
+            self.assertEqual(
+                root_act.shutdown(only_if_idle=True), {"ok": True, "reaped": False}
+            )
+            self.assertFalse(root_act._shutting_down)
+            root_act._active_calls = 0
+
             # Verify async close() runs exactly once across multiple _cleanup_resources() / shutdown() calls
             mod_events = sys.modules[root_act._instance.__class__.__module__].EVENTS
-            root_act._cleanup_resources()
+            self.assertEqual(
+                root_act.shutdown(only_if_idle=True), {"ok": True, "reaped": True}
+            )
             root_act.shutdown()
             self.assertEqual(mod_events.count("async_closed"), 1)
+
+            # Once _shutting_down is True, get_info(), set_ttl(), and _begin_call() / invoke() reject calls
+            with self.assertRaisesRegex(RuntimeError, "is shutting down"):
+                root_act.get_info()
+            with self.assertRaisesRegex(RuntimeError, "is shutting down"):
+                root_act.set_ttl(60.0)
+            with self.assertRaisesRegex(RuntimeError, "is shutting down"):
+                root_act.invoke("__call__", [1], {})
 
             # Verify __exit__(None, None, None) fallback when close() is not defined,
             # and verify a concurrent shutdown() call waits until _cleanup_resources() completes
@@ -2100,8 +2587,707 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             ray._private.worker.get_actor = orig_worker_get_actor
             ActorClass._remote = orig_actor_remote
             ray.util.placement_group = orig_pg
+            ray.util.remove_placement_group = orig_remove_pg
+            pg_mod = sys.modules.get("ray.util.placement_group")
+            if pg_mod is not None:
+                pg_mod.placement_group = orig_pg
+                pg_mod.remove_placement_group = orig_remove_pg
             if orig_rt_ns is not None:
                 RuntimeContext.namespace = orig_rt_ns
+
+    def test_lifetimes_observability_and_edge_case_fixes(self) -> None:
+        # 1. Bug 3: _compute_spec_hash normalizes leading blank lines and pad_lines after header,
+        #    and includes memory + label_selector
+        header = "import ray  # noqa: F401\nimport math\n"
+        body = "class MyWorker:\n    def run(self):\n        return math.ceil(1.2)\n"
+        spec_pad_1 = {"module_source": header + "\n" + body}
+        spec_pad_20 = {"module_source": "\n\n" + header + ("\n" * 20) + body}
+        h1 = _compute_spec_hash(spec_pad_1, "class", "MyWorker", 1, 10)
+        h2 = _compute_spec_hash(spec_pad_20, "class", "MyWorker", 1, 10)
+        self.assertEqual(h1, h2)
+
+        h_mem = _compute_spec_hash(
+            {**spec_pad_1, "memory": 1024 * 1024}, "class", "MyWorker", 1, 10
+        )
+        h_lbl = _compute_spec_hash(
+            {**spec_pad_1, "label_selector": {"accel": "tpu"}},
+            "class",
+            "MyWorker",
+            1,
+            10,
+        )
+        self.assertNotEqual(h1, h_mem)
+        self.assertNotEqual(h1, h_lbl)
+        self.assertNotEqual(h_mem, h_lbl)
+
+        # 2. Item 1: cluster.run() uses detached=False and makes 0 redundant DELETE calls
+        #    on normal non-streaming completion, while early SSE close DOES send DELETE.
+        with RayCluster(address=self.address) as cluster:
+            with self.state.lock:
+                self.state.delete_actor_calls = 0
+            out = cluster.run(top_level_fn, 3, kwargs={"y": 4})
+            self.assertEqual(out, {"result": 294})
+            self.assertIs(self.state.last_created_actor_spec["detached"], False)
+            self.assertNotIn("ephemeral", self.state.last_created_actor_spec)
+            self.assertEqual(self.state.delete_actor_calls, 0)
+            self.assertEqual(cluster.list_actors(), [])
+
+            # When POST /api/actors returns a JSON error (already reaped by server),
+            # run() does not send a redundant DELETE /api/actors/{name}.
+            with self.state.lock:
+                self.state.delete_actor_calls = 0
+            with self.assertRaises(RayJobExecutionError):
+                cluster.run("nonexistent_module_xyz:missing_fn")
+            self.assertEqual(self.state.delete_actor_calls, 0)
+
+            def stream_three():
+                yield {"i": 0}
+                yield {"i": 1}
+                yield {"i": 2}
+
+            gen = cluster.run(stream_three)
+            self.assertEqual(next(gen), {"i": 0})
+            gen.close()
+            self.assertGreaterEqual(self.state.delete_actor_calls, 1)
+
+            # cluster.actor() defaults to detached=True and supports detached=False
+            class SimpleSvc:
+                def __repr__(self) -> str:
+                    return "SimpleSvc(custom=1)"
+
+                def ping(self) -> str:
+                    return "ok"
+
+            h_det = cluster.actor(SimpleSvc, name="svc_det")
+            self.assertIs(self.state.last_created_actor_spec["detached"], True)
+            self.assertIs(h_det.info()["detached"], True)
+            h_det.kill()
+
+            h_owned = cluster.actor(SimpleSvc, name="svc_owned", detached=False)
+            self.assertIs(self.state.last_created_actor_spec["detached"], False)
+            self.assertIs(h_owned.info()["detached"], False)
+            h_owned.kill()
+
+            with self.assertRaises(ValueError):
+                cluster.actor(SimpleSvc, detached="yes")  # type: ignore[arg-type]
+
+            # Short timeout is NOT floored at self._timeout (30.0s) and is sent in POST /api/actors
+            recorded_timeouts: List[Any] = []
+            orig_req = cluster.request
+
+            def spy_request(method: str, endpoint: str, **kw: Any) -> Any:
+                recorded_timeouts.append((method, endpoint, kw.get("timeout")))
+                return orig_req(method, endpoint, **kw)
+
+            with patch.object(cluster, "request", side_effect=spy_request):
+                cluster.run(top_level_fn, 1, timeout=0.5)
+            post_actor_call = [
+                t for m, e, t in recorded_timeouts if m == "POST" and e == "/api/actors"
+            ]
+            self.assertEqual(post_actor_call, [(5.5, 5.5)])
+            self.assertEqual(self.state.last_created_actor_spec.get("timeout"), 0.5)
+
+            # Finding 1.2: _deploy_actor_spec enforces monotonic deadline even when server trickles keepalive spaces
+            class _SlowTrickleCreateHandler(BaseHTTPRequestHandler):
+                def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+                    return
+
+                def do_POST(self) -> None:  # noqa: N802
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length > 0:
+                        _ = self.rfile.read(length)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    for _ in range(100):
+                        try:
+                            self.wfile.write(b" ")
+                            self.wfile.flush()
+                            time.sleep(0.05)
+                        except Exception:
+                            return
+
+            trickle_srv = ThreadingHTTPServer(
+                ("127.0.0.1", 0), _SlowTrickleCreateHandler
+            )
+            threading.Thread(target=trickle_srv.serve_forever, daemon=True).start()
+            try:
+                trickle_addr = f"http://127.0.0.1:{trickle_srv.server_address[1]}"
+                with RayCluster(address=trickle_addr) as trickle_cluster, patch(
+                    "ray_client.client.time.monotonic",
+                    side_effect=[0.0, 0.0, 10.0, 10.0],
+                ):
+                    with self.assertRaises(RayTimeoutError):
+                        trickle_cluster.actor(SimpleSvc, name="slow_act", timeout=0.1)
+            finally:
+                trickle_srv.shutdown()
+                trickle_srv.server_close()
+
+        if ActorManager is None or _ClientRootActor is None:
+            return
+
+        # 3. Item 2 & Bugs 1, 2, 5 & Findings 1.5, 1.7, 1.8: Test ActorManager create_actor timeout
+        #    (including name_lock contention), CancelledError cleanup, kill_actor non-blocking during
+        #    stuck creation, _lookup_actor non-_ClientRootActor and _creating_handles check,
+        #    _init_error cleanup, _name_locks pruning, and RAY_BACKEND=rust fallbacks.
+        import asyncio
+
+        async def _run_async_checks() -> None:
+            mgr = ActorManager()
+            killed_handles: List[Tuple[Any, bool]] = []
+            destroyed_handles: List[Tuple[Any, str]] = []
+            recorded_invoke_names: List[str] = []
+            recorded_stream_names: List[str] = []
+            raise_options_not_impl = [False]
+            raise_kill_not_impl = [False]
+
+            class _FakeMethod:
+                def __init__(self, fn, name_sink: Optional[List[str]] = None):
+                    self._fn = fn
+                    self._name_sink = name_sink
+
+                def options(self, **opts: Any) -> "_FakeMethod":
+                    if raise_options_not_impl[0]:
+                        raise NotImplementedError(
+                            "options not supported on Rust handle"
+                        )
+                    if self._name_sink is not None and "name" in opts:
+                        self._name_sink.append(opts["name"])
+                    return self
+
+                def remote(self, *args: Any, **kwargs: Any) -> Any:
+                    return self._fn(*args, **kwargs)
+
+            class _FakeRootHandle:
+                def __init__(
+                    self, mode: str = "ready", cls_desc: str = "_ClientRootActor"
+                ):
+                    self._ray_actor_creation_function_descriptor = (
+                        types.SimpleNamespace(class_name=cls_desc)
+                    )
+                    self._mode = mode
+                    self.reap_allowed = True
+                    self.unblock_event = asyncio.Event()
+                    self.get_info = _FakeMethod(self._get_info)
+                    self.shutdown = _FakeMethod(self._shutdown)
+                    self.invoke = _FakeMethod(self._invoke, recorded_invoke_names)
+                    self.invoke_stream = _FakeMethod(
+                        self._invoke_stream, recorded_stream_names
+                    )
+                    self.cancel_stream = _FakeMethod(lambda *_a, **_kw: None)
+
+                def __ray_destroy__(self, reason: str = "") -> None:
+                    destroyed_handles.append((self, reason))
+                    self.unblock_event.set()
+
+                async def _get_info(self) -> Dict[str, Any]:
+                    if self._mode == "hang":
+                        await self.unblock_event.wait()
+                    if self._mode == "init_error":
+                        return {
+                            "ok": False,
+                            "error": {
+                                "exc_type": "ValueError",
+                                "exc_message": "bad actor init arg",
+                            },
+                            "logs": "init log line\n",
+                        }
+                    return {
+                        "ok": True,
+                        "name": "test_act",
+                        "class_name": "MyService",
+                        "kind": "class",
+                        "namespace": "ray_client",
+                        "status": "ALIVE",
+                        "detached": True,
+                        "generator_methods": ["stream_vals"],
+                    }
+
+                async def _shutdown(self, only_if_idle: bool = False) -> Dict[str, Any]:
+                    if self._mode == "hang_shutdown":
+                        await self.unblock_event.wait()
+                    if only_if_idle and not self.reap_allowed:
+                        return {"ok": True, "reaped": False}
+                    return {"ok": True, "reaped": True}
+
+                async def _invoke(
+                    self, method_name: str, args: list, kwargs: dict
+                ) -> Dict[str, Any]:
+                    return {"ok": True, "result": {"method": method_name, "args": args}}
+
+                def _invoke_stream(
+                    self, method_name: str, args: list, kwargs: dict, stream_id: str
+                ):
+                    async def _agen():
+                        fut: asyncio.Future = asyncio.Future()
+                        fut.set_result({"ok": True, "item": 1})
+                        yield fut
+
+                    return _agen()
+
+            created_handles: List[_FakeRootHandle] = []
+            current_mode = ["hang"]
+            recorded_actor_options: List[Dict[str, Any]] = []
+
+            class _FakeRemoteActorClass:
+                def options(self, **opts: Any) -> Any:
+                    recorded_actor_options.append(dict(opts))
+
+                    def _remote(_spec: Dict[str, Any]) -> _FakeRootHandle:
+                        h = _FakeRootHandle(mode=current_mode[0])
+                        created_handles.append(h)
+                        return h
+
+                    return types.SimpleNamespace(remote=_remote)
+
+            def _fake_ray_kill(handle: Any, no_restart: bool = True) -> None:
+                if raise_kill_not_impl[0]:
+                    raise NotImplementedError("ray.kill not implemented on Rust handle")
+                killed_handles.append((handle, no_restart))
+                if isinstance(handle, _FakeRootHandle):
+                    handle.unblock_event.set()
+
+            user_child_handle = _FakeRootHandle(
+                mode="ready", cls_desc="user_mod.UserChildActor"
+            )
+            creating_ready_handle = _FakeRootHandle(mode="ready")
+
+            def _fake_ray_get_actor(name: str, namespace: Optional[str] = None) -> Any:
+                if name == "user_detached_child":
+                    return user_child_handle
+                if name == "in_progress_actor":
+                    return creating_ready_handle
+                raise ValueError(f"Actor {name} not found")
+
+            with patch(
+                "ray.dashboard.modules.job.actor_manager._RemoteClientRootActor",
+                new=_FakeRemoteActorClass(),
+            ), patch(
+                "ray.dashboard.modules.job.actor_manager.ray.kill",
+                side_effect=_fake_ray_kill,
+            ), patch(
+                "ray.dashboard.modules.job.actor_manager.ray.get_actor",
+                side_effect=_fake_ray_get_actor,
+            ), patch(
+                "ray.dashboard.modules.job.actor_manager.ray.get_runtime_context"
+            ) as mock_rt:
+                mock_rt.return_value.get_node_id.return_value = "node_head"
+
+                # Bug 5: _lookup_actor ignores non-_ClientRootActor handles in ray_client namespace
+                looked_up = await mgr._lookup_actor("user_detached_child")
+                self.assertIsNone(looked_up)
+
+                # Finding 1.7: _lookup_actor returns None while actor is in _creating_handles
+                mgr._creating_handles["in_progress_actor"] = creating_ready_handle
+                self.assertIsNone(await mgr._lookup_actor("in_progress_actor"))
+                mgr._creating_handles.pop("in_progress_actor", None)
+
+                # Finding 1.5: create_actor cleans up handle and returns _init_error when __init__ fails
+                current_mode[0] = "init_error"
+                res_init_err = await mgr.create_actor(
+                    {
+                        "name": "bad_init_act",
+                        "kind": "class",
+                        "class_name": "MyService",
+                        "module_source": "class MyService:\n    pass\n",
+                    }
+                )
+                self.assertFalse(res_init_err["ok"])
+                self.assertEqual(res_init_err["error"]["exc_type"], "ValueError")
+                self.assertEqual(res_init_err.get("logs"), "init log line\n")
+                self.assertEqual(len(killed_handles), 1)
+                self.assertNotIn("bad_init_act", mgr._actors)
+                self.assertNotIn("bad_init_act", mgr._name_locks)
+                killed_handles.clear()
+                current_mode[0] = "hang"
+
+                # Bug 1a: create_actor with timeout kills unschedulable actor and returns TimeoutError
+                res_timeout = await mgr.create_actor(
+                    {
+                        "name": "unsched_timeout",
+                        "kind": "class",
+                        "class_name": "MyService",
+                        "module_source": "class MyService:\n    pass\n",
+                        "timeout": 0.05,
+                    }
+                )
+                self.assertFalse(res_timeout["ok"])
+                self.assertEqual(res_timeout["error"]["exc_type"], "TimeoutError")
+                self.assertTrue(res_timeout["error"]["timed_out"])
+                self.assertEqual(len(killed_handles), 1)
+                self.assertIs(killed_handles[0][0], created_handles[-1])
+                self.assertNotIn("unsched_timeout", mgr._name_locks)
+                killed_handles.clear()
+
+                # Bug 1b: cancelling create_actor (e.g. client disconnect) kills the handle
+                create_task = asyncio.create_task(
+                    mgr.create_actor(
+                        {
+                            "name": "unsched_cancel",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                        }
+                    )
+                )
+                await asyncio.sleep(0.02)
+                create_task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await create_task
+                self.assertEqual(len(killed_handles), 1)
+                self.assertIs(killed_handles[0][0], created_handles[-1])
+                self.assertNotIn("unsched_cancel", mgr._name_locks)
+                killed_handles.clear()
+
+                # Cancelling _terminate_actor_for_recreate while awaiting shutdown.remote()
+                # still calls _destroy_actor_handle in finally so the actor does not leak.
+                hang_shutdown_handle = _FakeRootHandle(mode="hang_shutdown")
+                mgr._actors["recreate_cancel_act"] = {
+                    "name": "recreate_cancel_act",
+                    "handle": hang_shutdown_handle,
+                    "class_name": "MyService",
+                    "kind": "class",
+                    "namespace": "ray_client",
+                    "detached": True,
+                    "spec_hash": "h",
+                    "ttl_seconds": None,
+                    "created_at": 1.0,
+                    "last_active": 1.0,
+                    "last_active_mono": 1.0,
+                    "active_calls": 0,
+                    "generator_methods": set(),
+                }
+                term_task = asyncio.create_task(
+                    mgr._terminate_actor_for_recreate(
+                        "recreate_cancel_act", "ray_client", timeout=2.0
+                    )
+                )
+                await asyncio.sleep(0.02)
+                term_task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await term_task
+                self.assertEqual(len(killed_handles), 1)
+                self.assertIs(killed_handles[0][0], hang_shutdown_handle)
+                self.assertNotIn("recreate_cancel_act", mgr._actors)
+                killed_handles.clear()
+
+                # Bug 1c: kill_actor(name) and concurrent create_actor(name, timeout=...)
+                # while create_actor is awaiting get_info do NOT deadlock on name_lock
+                stuck_task = asyncio.create_task(
+                    mgr.create_actor(
+                        {
+                            "name": "stuck_actor",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                        }
+                    )
+                )
+                await asyncio.sleep(0.02)
+                contended_res = await asyncio.wait_for(
+                    mgr.create_actor(
+                        {
+                            "name": "stuck_actor",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "timeout": 0.05,
+                        }
+                    ),
+                    timeout=0.5,
+                )
+                self.assertFalse(contended_res["ok"])
+                self.assertTrue(contended_res["error"]["timed_out"])
+                kill_res = await asyncio.wait_for(
+                    mgr.kill_actor("stuck_actor"), timeout=0.5
+                )
+                self.assertEqual(
+                    kill_res, {"ok": True, "name": "stuck_actor", "killed": True}
+                )
+                stuck_res = await asyncio.wait_for(stuck_task, timeout=0.5)
+                self.assertFalse(stuck_res["ok"])
+                self.assertNotIn("stuck_actor", mgr._actors)
+                self.assertNotIn("stuck_actor", mgr._name_locks)
+
+                # Item 1 & Item 2: verify detached vs non-detached options and task name options
+                current_mode[0] = "ready"
+                recorded_actor_options.clear()
+                res_fn = await mgr.create_actor(
+                    {
+                        "name": "driver_my_fn_1",
+                        "kind": "function",
+                        "fn_name": "my_fn",
+                        "module_source": "def my_fn():\n    return 1\n",
+                    }
+                )
+                self.assertTrue(res_fn["ok"])
+                self.assertNotIn("lifetime", recorded_actor_options[-1])
+
+                res_cls = await mgr.create_actor(
+                    {
+                        "name": "svc_1",
+                        "kind": "class",
+                        "class_name": "MyService",
+                        "module_source": "class MyService:\n    pass\n",
+                    }
+                )
+                self.assertTrue(res_cls["ok"])
+                self.assertEqual(recorded_actor_options[-1].get("lifetime"), "detached")
+
+                await mgr.call_actor_method("svc_1", "compute", {"args": [1]})
+                await mgr.call_actor_method("svc_1", "__call__", {"args": [1]})
+                await mgr.call_actor_method("driver_my_fn_1", "__call__", {"args": []})
+                self.assertEqual(
+                    recorded_invoke_names,
+                    ["MyService.compute", "MyService", "my_fn"],
+                )
+
+                items = [
+                    it
+                    async for it in mgr.stream_actor_method(
+                        "svc_1", "stream_vals", {"args": []}
+                    )
+                ]
+                self.assertTrue(any(it == {"ok": True, "item": 1} for it in items))
+                self.assertEqual(recorded_stream_names, ["MyService.stream_vals"])
+
+                # Finding 1.8 & Part 4.2: RAY_BACKEND=rust fallbacks when .options() or ray.kill raises NotImplementedError
+                raise_options_not_impl[0] = True
+                raise_kill_not_impl[0] = True
+                try:
+                    res_rust_call = await mgr.call_actor_method(
+                        "svc_1", "compute", {"args": [9]}
+                    )
+                    self.assertEqual(
+                        res_rust_call,
+                        {"ok": True, "result": {"method": "compute", "args": [9]}},
+                    )
+                    rust_stream_items = [
+                        it
+                        async for it in mgr.stream_actor_method(
+                            "svc_1", "stream_vals", {"args": []}
+                        )
+                    ]
+                    self.assertTrue(
+                        any(it == {"ok": True, "item": 1} for it in rust_stream_items)
+                    )
+                    kill_rust = await mgr.kill_actor("svc_1")
+                    self.assertEqual(
+                        kill_rust, {"ok": True, "name": "svc_1", "killed": True}
+                    )
+                    self.assertEqual(len(destroyed_handles), 1)
+                    self.assertNotIn("svc_1", mgr._name_locks)
+                finally:
+                    raise_options_not_impl[0] = False
+                    raise_kill_not_impl[0] = False
+
+                # Item 3: verify unified Ray 3.0 resources (CPU, GPU, memory) normalization in ActorManager
+                recorded_actor_options.clear()
+                res_unified = await mgr.create_actor(
+                    {
+                        "name": "svc_unified_res",
+                        "kind": "class",
+                        "class_name": "MyService",
+                        "module_source": "class MyService:\n    pass\n",
+                        "resources": {
+                            "CPU": 2,
+                            "GPU": 1,
+                            "memory": 1073741824,
+                            "TPU": 4,
+                        },
+                        "label_selector": {"ray.io/accelerator-type": "TPU-V6E"},
+                    }
+                )
+                self.assertTrue(res_unified["ok"])
+                opts_unified = recorded_actor_options[-1]
+                self.assertEqual(opts_unified["num_cpus"], 2)
+                self.assertEqual(opts_unified["num_gpus"], 1)
+                self.assertEqual(opts_unified["memory"], 1073741824)
+                self.assertEqual(opts_unified["resources"], {"TPU": 4.0})
+                self.assertEqual(
+                    opts_unified["label_selector"],
+                    {"ray.io/accelerator-type": "TPU-V6E"},
+                )
+
+                # Reattaching with Ray 2.x explicit num_cpus/num_gpus/memory produces identical spec_hash
+                hash_explicit = _compute_spec_hash(
+                    {
+                        "module_source": "class MyService:\n    pass\n",
+                        "num_gpus": 1,
+                        "memory": 1073741824,
+                        "resources": {"TPU": 4},
+                        "label_selector": {"ray.io/accelerator-type": "TPU-V6E"},
+                    },
+                    "class",
+                    "MyService",
+                    2,
+                    10,
+                )
+                self.assertEqual(res_unified["spec_hash"], hash_explicit)
+
+                # Conflicting explicit num_cpus vs resources['CPU'] returns ValueError
+                res_conflict = await mgr.create_actor(
+                    {
+                        "name": "svc_conflict_res",
+                        "kind": "class",
+                        "class_name": "MyService",
+                        "module_source": "class MyService:\n    pass\n",
+                        "num_cpus": 2,
+                        "resources": {"CPU": 4},
+                    }
+                )
+                self.assertFalse(res_conflict["ok"])
+                self.assertEqual(res_conflict["error"]["exc_type"], "ValueError")
+
+            if mgr._reaper_task is not None:
+                mgr._reaper_task.cancel()
+
+        asyncio.run(_run_async_checks())
+
+    def test_unified_resources_label_selector_and_remote_working_dir_uri(self):
+        with RayCluster(address=self.address) as cluster:
+            # 1. Remote working_dir URIs pass through without local zip packaging
+            merged, local_wd, _ = cluster._prepare_runtime_env(
+                {"working_dir": "https://example.com/archive.zip"}
+            )
+            self.assertEqual(merged["working_dir"], "https://example.com/archive.zip")
+            self.assertIsNone(local_wd)
+
+            def check_fn(x: int) -> int:
+                return x + 1
+
+            out = cluster.run(
+                check_fn,
+                41,
+                runtime_env={"working_dir": "s3://my-bucket/pkg.zip"},
+                resources={"CPU": 2, "GPU": 0.5, "memory": 256 * 1024**2, "TPU": 4},
+                label_selector={"tier": "spot"},
+            )
+            self.assertEqual(out, 42)
+            self.assertEqual(len(self.state.packages), 0)
+            last_spec = self.state.last_created_actor_spec
+            assert last_spec is not None
+            self.assertEqual(
+                last_spec["runtime_env"], {"working_dir": "s3://my-bucket/pkg.zip"}
+            )
+            self.assertEqual(last_spec["num_cpus"], 2)
+            self.assertEqual(last_spec["num_gpus"], 0.5)
+            self.assertEqual(last_spec["memory"], 256 * 1024**2)
+            self.assertEqual(last_spec["resources"], {"TPU": 4.0})
+            self.assertEqual(last_spec["label_selector"], {"tier": "spot"})
+
+            # 2. Actor unified resources and Ray 2.x num_cpus/num_gpus equivalence (no spec_mismatch warning)
+            class PlacedWorker:
+                def ping(self) -> str:
+                    return "pong"
+
+            h1 = cluster.actor(
+                PlacedWorker,
+                name="placed_worker_1",
+                resources={"CPU": 2, "GPU": 1, "memory": 512 * 1024**2, "TPU": 2},
+                label_selector={"zone": "us-central1-a"},
+            )
+            self.assertTrue(h1.created)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                h2 = cluster.actor(
+                    PlacedWorker,
+                    name="placed_worker_1",
+                    num_cpus=2,
+                    num_gpus=1,
+                    resources={"memory": 512 * 1024**2, "TPU": 2},
+                    label_selector={"zone": "us-central1-a"},
+                )
+            self.assertFalse(h2.created)
+            self.assertEqual(len(caught), 0)
+            h1.kill()
+
+            # 3. @ray.remote _default_options inheritance and override via unified resources
+            class FakeRemoteClass:
+                _default_options = {
+                    "num_cpus": 2,
+                    "memory": 128 * 1024**2,
+                    "resources": {"custom_accel": 1},
+                    "label_selector": {"pool": "default"},
+                    "max_concurrency": 4,
+                }
+                __ray_metadata__ = types.SimpleNamespace(
+                    modified_class=types.SimpleNamespace(
+                        __ray_actor_class__=PlacedWorker
+                    )
+                )
+
+            # 3a. Overriding only CPU via unified resources preserves default custom resources
+            h3_partial = cluster.actor(
+                FakeRemoteClass,
+                name="placed_worker_partial_override",
+                resources={"CPU": 4},
+            )
+            spec3_partial = self.state.last_created_actor_spec
+            assert spec3_partial is not None
+            self.assertEqual(spec3_partial["num_cpus"], 4)
+            self.assertEqual(spec3_partial["memory"], 128 * 1024**2)
+            self.assertEqual(spec3_partial["resources"], {"custom_accel": 1.0})
+            self.assertEqual(spec3_partial["label_selector"], {"pool": "default"})
+            self.assertEqual(spec3_partial["max_concurrency"], 4)
+            h3_partial.kill()
+
+            # 3b. Overriding custom resources or clearing with resources={}
+            h3 = cluster.actor(
+                FakeRemoteClass,
+                name="placed_worker_inherited",
+                resources={"CPU": 4, "custom_accel": 2},
+            )
+            spec3 = self.state.last_created_actor_spec
+            assert spec3 is not None
+            self.assertEqual(spec3["num_cpus"], 4)
+            self.assertEqual(spec3["memory"], 128 * 1024**2)
+            self.assertEqual(spec3["resources"], {"custom_accel": 2.0})
+            h3.kill()
+
+            h3_clear = cluster.actor(
+                FakeRemoteClass,
+                name="placed_worker_cleared",
+                resources={},
+            )
+            spec3_clear = self.state.last_created_actor_spec
+            assert spec3_clear is not None
+            self.assertEqual(spec3_clear["num_cpus"], 2)
+            self.assertNotIn("resources", spec3_clear)
+            h3_clear.kill()
+
+            # 4. Direct _compute_spec_hash equivalence between Ray 2.x and Ray 3.0 specs
+            hash_v2 = _compute_spec_hash(
+                {"num_cpus": 2, "num_gpus": 1, "memory": 4096, "resources": {"TPU": 4}},
+                "class",
+                "PlacedWorker",
+                2,
+                10,
+            )
+            hash_v3 = _compute_spec_hash(
+                {"resources": {"CPU": 2, "GPU": 1, "memory": 4096, "TPU": 4}},
+                "class",
+                "PlacedWorker",
+                None,
+                10,
+            )
+            self.assertEqual(hash_v2, hash_v3)
+
+            # 5. Conflict detection and invalid resource value validation
+            with self.assertRaisesRegex(ValueError, "Conflicting CPU"):
+                cluster.run(check_fn, 1, num_cpus=1, resources={"CPU": 2})
+            with self.assertRaisesRegex(ValueError, "Conflicting GPU"):
+                cluster.actor(PlacedWorker, num_gpus=1, resources={"GPU": 2})
+            with self.assertRaisesRegex(ValueError, "Conflicting memory"):
+                _normalize_resources(None, None, 1024, {"memory": 2048})
+            with self.assertRaisesRegex(ValueError, "Invalid num_cpus"):
+                cluster.run(check_fn, 1, num_cpus=-1)
+            with self.assertRaisesRegex(ValueError, "Invalid num_gpus"):
+                cluster.actor(PlacedWorker, num_gpus=True)
+            with self.assertRaisesRegex(ValueError, "resources\\['memory'\\]"):
+                cluster.actor(PlacedWorker, resources={"memory": 1024.5})
+            with self.assertRaisesRegex(ValueError, "resources\\['memory'\\]"):
+                cluster.run(check_fn, 1, resources={"memory": 1024.5})
 
 
 if __name__ == "__main__":

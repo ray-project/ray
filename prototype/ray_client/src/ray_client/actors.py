@@ -1,4 +1,4 @@
-"""ActorHandle and method proxies for persistent top-level Ray Actors."""
+"""ActorHandle and method proxies for stateful root actors."""
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 class ActorHandle:
-    """Handle to a persistent top-level Ray Actor managed through `/api/actors`."""
+    """Handle to a root actor managed through `/api/actors`."""
 
     def __init__(
         self,

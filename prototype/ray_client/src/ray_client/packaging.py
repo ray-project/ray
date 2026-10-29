@@ -181,6 +181,18 @@ def to_json(value: Any, context_name: str, *, sort_keys: bool = False) -> str:
         ) from exc
 
 
+_FAST_OR_DEREF_LOADS = frozenset(
+    {
+        "LOAD_FAST",
+        "LOAD_FAST_CHECK",
+        "LOAD_FAST_BORROW",
+        "LOAD_DEREF",
+        "LOAD_CLASSDEREF",
+        "LOAD_CLOSURE",
+    }
+)
+
+
 def _referenced_global_names(module_code: types.CodeType) -> Set[str]:
     """Names the shipped module reads from module scope without defining them first.
 
@@ -198,7 +210,12 @@ def _referenced_global_names(module_code: types.CodeType) -> Set[str]:
         for instr in dis.get_instructions(current):
             if instr.opname in _STORE_OPS:
                 stored.add(instr.argval)
-            elif instr.opname in _LOAD_OPS and instr.argval not in stored:
+            elif instr.opname == "DELETE_NAME":
+                stored.discard(instr.argval)
+            elif instr.opname in _LOAD_OPS and (
+                (current is not module_code and instr.opname == "LOAD_GLOBAL")
+                or instr.argval not in stored
+            ):
                 names.add(instr.argval)
         stack.extend(c for c in current.co_consts if isinstance(c, types.CodeType))
     defined_at_module_level = {
@@ -207,29 +224,144 @@ def _referenced_global_names(module_code: types.CodeType) -> Set[str]:
     return names - defined_at_module_level - _MODULE_ATTRS
 
 
-def _definition_time_names(
-    module_code: types.CodeType, target_name: str, *, is_class: bool = False
-) -> Set[str]:
-    """Names loaded when the module body (and class body / `def` defaults) runs."""
-    names: Set[str] = set()
-    stack: List[Tuple[types.CodeType, bool]] = [(module_code, False)]
+def _definition_time_names(module_code: types.CodeType) -> Tuple[Set[str], Set[str]]:
+    """Returns `(header_names, body_names)` loaded externally when the module body,
+    class bodies, and `def` default-argument expressions execute."""
+    header_names: Set[str] = set()
+    body_names: Set[str] = set()
+    stack: List[Tuple[types.CodeType, bool]] = [(module_code, True)]
     while stack:
-        current, inside_class_body = stack.pop()
+        current, is_header = stack.pop()
+        stored: Set[str] = set()
+        target_set = header_names if is_header else body_names
         for instr in dis.get_instructions(current):
-            if instr.opname in _LOAD_OPS:
-                names.add(instr.argval)
+            if instr.opname in _STORE_OPS:
+                stored.add(instr.argval)
+            elif instr.opname == "DELETE_NAME":
+                stored.discard(instr.argval)
+            elif instr.opname in _LOAD_OPS and (
+                (current is not module_code and instr.opname == "LOAD_GLOBAL")
+                or instr.argval not in stored
+            ):
+                target_set.add(instr.argval)
         for c in current.co_consts:
             if not isinstance(c, types.CodeType):
                 continue
-            if not is_class:
-                if c.co_name != target_name:
-                    stack.append((c, False))
-            elif not inside_class_body:
-                if c.co_name == target_name or c.co_name.startswith("<"):
-                    stack.append((c, c.co_name == target_name))
+            if not (c.co_flags & inspect.CO_OPTIMIZED):
+                stack.append((c, False))
             elif c.co_name.startswith("<"):
-                stack.append((c, True))
-    return names
+                stack.append((c, is_header))
+    return header_names - _MODULE_ATTRS, body_names - _MODULE_ATTRS
+
+
+def _find_enclosing_code_path(
+    root: types.CodeType,
+    target_name: str,
+    target_linenos: Set[int],
+    qualname: str,
+) -> Tuple[Optional[List[types.CodeType]], Optional[types.CodeType]]:
+    stack: List[Tuple[types.CodeType, List[types.CodeType]]] = [(root, [])]
+    best_path: Optional[List[types.CodeType]] = None
+    best_target: Optional[types.CodeType] = None
+    while stack:
+        curr, path = stack.pop()
+        for c in curr.co_consts:
+            if not isinstance(c, types.CodeType):
+                continue
+            next_path = path + [curr]
+            if c.co_name == target_name and c.co_firstlineno in target_linenos:
+                if getattr(c, "co_qualname", qualname) == qualname:
+                    return next_path, c
+                best_path, best_target = next_path, c
+            stack.append((c, next_path))
+    return best_path, best_target
+
+
+def _unclosed_enclosing_names(
+    filename: Optional[str],
+    target_name: str,
+    target_linenos: Set[int],
+    end_lineno: int,
+    qualname: str,
+    scope_globals: Dict[str, Any],
+    cells: Dict[str, Any],
+) -> Tuple[Set[str], Set[str]]:
+    """Returns `(header_unclosed, body_unclosed)` for a nested function or class
+    using Python's compiled `CodeType` scope tree."""
+    if "." not in qualname or not filename:
+        return set(), set()
+    all_lines = linecache.getlines(filename, scope_globals)
+    if not all_lines:
+        return set(), set()
+    try:
+        file_code = compile("".join(all_lines), filename, "exec", dont_inherit=True)
+    except SyntaxError:
+        return set(), set()
+    ancestors, target_code = _find_enclosing_code_path(
+        file_code, target_name, target_linenos, qualname
+    )
+    if not ancestors or target_code is None:
+        return set(), set()
+
+    min_lineno = min(target_linenos)
+    body_unclosed = set(target_code.co_freevars) - set(cells)
+    parent_code = ancestors[-1]
+    header_unclosed: Set[str] = set()
+
+    if not (parent_code.co_flags & inspect.CO_OPTIMIZED):
+        parent_cls_vars: Set[str] = set()
+        for instr in dis.get_instructions(parent_code):
+            lineno = (
+                instr.positions.lineno
+                if hasattr(instr, "positions") and instr.positions is not None
+                else instr.starts_line
+            )
+            if lineno is not None and lineno >= min_lineno:
+                break
+            if instr.opname in _STORE_OPS:
+                parent_cls_vars.add(instr.argval)
+            elif instr.opname == "DELETE_NAME":
+                parent_cls_vars.discard(instr.argval)
+        header_unclosed = parent_cls_vars | (set(parent_code.co_freevars) - set(cells))
+    else:
+        comp_stack: List[Dict[str, Any]] = []
+        for instr in dis.get_instructions(parent_code):
+            lineno = (
+                instr.positions.lineno
+                if hasattr(instr, "positions") and instr.positions is not None
+                else instr.starts_line
+            )
+            if lineno is None or not (min_lineno <= lineno <= end_lineno):
+                continue
+            if instr.opname == "LOAD_FAST_AND_CLEAR":
+                if not comp_stack or comp_stack[-1]["for_depth"] > 0:
+                    comp_stack.append({"vars": set(), "for_depth": 0})
+                comp_stack[-1]["vars"].add(instr.argval)
+            elif instr.opname == "FOR_ITER" and comp_stack:
+                comp_stack[-1]["for_depth"] += 1
+            elif instr.opname in ("END_FOR", "CLEANUP_THROW") and comp_stack:
+                comp_stack[-1]["for_depth"] -= 1
+                if comp_stack[-1]["for_depth"] <= 0:
+                    comp_stack.pop()
+            else:
+                active_comp = (
+                    set().union(*(f["vars"] for f in comp_stack))
+                    if comp_stack
+                    else set()
+                )
+                if instr.opname in _FAST_OR_DEREF_LOADS:
+                    if instr.argval not in cells and instr.argval not in active_comp:
+                        header_unclosed.add(instr.argval)
+                elif (
+                    instr.opname == "STORE_FAST_LOAD_FAST"
+                    and isinstance(instr.argval, tuple)
+                    and len(instr.argval) == 2
+                ):
+                    loaded = instr.argval[1]
+                    if loaded not in cells and loaded not in active_comp:
+                        header_unclosed.add(loaded)
+
+    return header_unclosed, body_unclosed
 
 
 def _import_statement_for(
@@ -306,93 +438,6 @@ def _validate_captured(name: str, val: Any, fn_name: str, kind: str) -> None:
     to_json(val, f"{kind} '{name}' referenced by '{fn_name}'")
 
 
-def _values_differ(a: Any, b: Any) -> bool:
-    if a is b:
-        return False
-    if type(a) is not type(b):
-        return True
-    if isinstance(a, float) and math.isnan(a) and math.isnan(b):
-        return False
-    try:
-        return bool(a != b)
-    except Exception:
-        return True
-
-
-def _check_shadowed_defaults(
-    func_node: Union[ast.FunctionDef, ast.AsyncFunctionDef],
-    fn: Callable[..., Any],
-    cells: Dict[str, Any],
-) -> None:
-    """Verifies that default argument expressions did not resolve to an enclosing
-    class or function scope variable that happens to share a name with a module global."""
-    qualname = getattr(fn, "__qualname__", "") or ""
-    if "." not in qualname:
-        return
-
-    cell_env: Dict[str, Any] = {}
-    for k, cell in cells.items():
-        try:
-            cell_env[k] = cell.cell_contents
-        except ValueError:
-            pass
-    eval_globals = {"__builtins__": builtins.__dict__, **fn.__globals__, **cell_env}
-
-    pairs: List[Tuple[ast.expr, Any]] = []
-    if fn.__defaults__ and func_node.args.defaults:
-        pairs.extend(zip(func_node.args.defaults, fn.__defaults__))
-    if fn.__kwdefaults__ and func_node.args.kw_defaults:
-        for kw_arg, kw_def in zip(
-            func_node.args.kwonlyargs, func_node.args.kw_defaults
-        ):
-            if kw_def is not None and kw_arg.arg in fn.__kwdefaults__:
-                pairs.append((kw_def, fn.__kwdefaults__[kw_arg.arg]))
-
-    for expr_node, actual_default in pairs:
-        stored_in_expr = {
-            n.id
-            for n in ast.walk(expr_node)
-            if isinstance(n, ast.Name) and not isinstance(n.ctx, ast.Load)
-        }
-        ref_names = [
-            n.id
-            for n in ast.walk(expr_node)
-            if isinstance(n, ast.Name)
-            and isinstance(n.ctx, ast.Load)
-            and n.id not in stored_in_expr
-        ]
-        if not ref_names:
-            continue
-        for name in ref_names:
-            if name not in eval_globals and not hasattr(builtins, name):
-                raise RayClientSerializationError(
-                    f"Default argument of '{fn.__name__}' references '{name}' from an "
-                    "enclosing function or class scope; pass it as an argument or "
-                    "define it at module level."
-                )
-        # Avoid re-evaluating expressions containing function calls (`ast.Call`) or
-        # lambdas so side-effectful defaults (e.g. `time.time()`, `uuid.uuid4()`)
-        # are never executed or falsely flagged as shadowed.
-        if any(isinstance(n, (ast.Call, ast.Lambda)) for n in ast.walk(expr_node)):
-            continue
-        try:
-            expr = ast.Expression(body=expr_node)
-            ast.fix_missing_locations(expr)
-            re_eval = eval(compile(expr, "<default>", "eval"), eval_globals)
-        except Exception:
-            continue
-        if _values_differ(re_eval, actual_default):
-            shadowed = next(
-                (n for n in ref_names if n in fn.__globals__ and n not in cell_env),
-                ref_names[0],
-            )
-            raise RayClientSerializationError(
-                f"Default argument of '{fn.__name__}' references '{shadowed}' from an "
-                "enclosing function or class scope; pass it as an argument or define "
-                "it at module level."
-            )
-
-
 def _extract_func_node_and_body(
     fn: Callable[..., Any],
 ) -> Tuple[Union[ast.FunctionDef, ast.AsyncFunctionDef], str, bool]:
@@ -439,6 +484,137 @@ def _extract_func_node_and_body(
     return func_node, body, indented
 
 
+def _compile_and_assemble_module(
+    target_name: str,
+    body: str,
+    indented: bool,
+    target_lineno: int,
+    owner_module: Optional[str],
+    scope_globals: Dict[str, Any],
+    cells: Dict[str, Any],
+    *,
+    is_class: bool,
+    client_future_annotations: bool,
+    filename: Optional[str] = None,
+    qualname: str = "",
+    target_linenos: Optional[Set[int]] = None,
+) -> Tuple[str, str, Dict[str, Any]]:
+    try:
+        deferred_code = compile(
+            body,
+            USER_FN_FILENAME,
+            "exec",
+            flags=__future__.CO_FUTURE_ANNOTATIONS,
+            dont_inherit=True,
+        )
+        eager_code = compile(body, USER_FN_FILENAME, "exec", dont_inherit=True)
+    except SyntaxError as exc:
+        raise RayClientSerializationError(
+            f"'{target_name}' cannot run as a standalone module: {exc}"
+        ) from exc
+
+    header_def_names, body_def_names = _definition_time_names(deferred_code)
+    definition_time = header_def_names | body_def_names
+    eager_header_def, eager_body_def = _definition_time_names(eager_code)
+    eager_def_time = eager_header_def | eager_body_def
+    runtime_names = (_referenced_global_names(deferred_code) | definition_time) - {
+        "ray"
+    }
+    all_names = (_referenced_global_names(eager_code) | eager_def_time) - {"ray"}
+    raw_hint_names = sorted((all_names - runtime_names) - set(dir(builtins)))
+    end_lineno = target_lineno + len(body.splitlines()) - (2 if indented else 1)
+    header_unclosed, body_unclosed = _unclosed_enclosing_names(
+        filename,
+        target_name,
+        target_linenos or {target_lineno},
+        end_lineno,
+        qualname or target_name,
+        scope_globals,
+        cells,
+    )
+
+    captured: Dict[str, Any] = {}
+    import_stmts: List[str] = []
+    for name in sorted(runtime_names):
+        if (name in header_def_names and name in header_unclosed) or (
+            name in body_def_names and name in body_unclosed
+        ):
+            if is_class:
+                raise RayClientSerializationError(
+                    f"Class '{target_name}' references '{name}' from an enclosing "
+                    "function or class scope; pass it to __init__ or define it at module level."
+                )
+            raise RayClientSerializationError(
+                f"Default argument of '{target_name}' references '{name}' from an "
+                "enclosing function or class scope; pass it as an argument or define "
+                "it at module level."
+            )
+        if name in cells:
+            try:
+                value = cells[name].cell_contents
+            except ValueError:
+                raise RayClientSerializationError(
+                    f"Closure variable '{name}' referenced by '{target_name}' is "
+                    "not assigned yet; assign it before calling cluster.run."
+                ) from None
+            kind = "Closure variable"
+        elif name in scope_globals:
+            value, kind = scope_globals[name], "Global"
+        elif name in definition_time and not hasattr(builtins, name):
+            if is_class:
+                raise RayClientSerializationError(
+                    f"Class '{target_name}' references '{name}' from an enclosing "
+                    "function or class scope; pass it to __init__ or define it at module level."
+                )
+            raise RayClientSerializationError(
+                f"Default argument of '{target_name}' references '{name}' from an "
+                "enclosing function or class scope; pass it as an argument or define "
+                "it at module level."
+            )
+        else:
+            continue
+        imp_stmt = _import_statement_for(name, value, owner_module)
+        if imp_stmt is not None:
+            import_stmts.append(imp_stmt)
+            continue
+        _validate_captured(name, value, target_name, kind)
+        captured[name] = value
+
+    hint_names: List[str] = []
+    for name in raw_hint_names:
+        hint_val: Any = None
+        if name in cells:
+            try:
+                hint_val = cells[name].cell_contents
+            except ValueError:
+                hint_val = None
+        elif name in scope_globals:
+            hint_val = scope_globals[name]
+        imp_stmt = (
+            _import_statement_for(name, hint_val, owner_module)
+            if hint_val is not None
+            else None
+        )
+        if imp_stmt is not None and _is_stdlib_import(imp_stmt):
+            import_stmts.append(imp_stmt)
+        else:
+            hint_names.append(name)
+
+    header_lines = ["import ray  # noqa: F401"]
+    if import_stmts:
+        header_lines.append("; ".join(import_stmts))
+    if hint_names:
+        header_lines.append(f"{_HINT_HELPER_LINE}; {' = '.join(hint_names)} = _RayHint")
+    if client_future_annotations:
+        header_lines.insert(0, "from __future__ import annotations")
+
+    header = "\n".join(header_lines) + "\n"
+    wrapper_lines = 1 if indented else 0
+    pad_lines = max(1, target_lineno - len(header_lines) - wrapper_lines)
+    module_source = header + ("\n" * (pad_lines - 1)) + body
+    return target_name, module_source, captured
+
+
 def extract_function_source_and_globals(
     fn: Callable[..., Any],
     *,
@@ -462,97 +638,25 @@ def extract_function_source_and_globals(
             "function returning strict JSON."
         )
 
-    func_node, body, indented = _extract_func_node_and_body(fn)
-    try:
-        deferred_code = compile(
-            body,
-            USER_FN_FILENAME,
-            "exec",
-            flags=__future__.CO_FUTURE_ANNOTATIONS,
-            dont_inherit=True,
-        )
-        eager_code = compile(body, USER_FN_FILENAME, "exec", dont_inherit=True)
-    except SyntaxError as exc:
-        raise RayClientSerializationError(
-            f"'{fn.__name__}' cannot run as a standalone module: {exc}"
-        ) from exc
-
-    runtime_names = _referenced_global_names(deferred_code) - {"ray"}
-    all_names = _referenced_global_names(eager_code) - {"ray"}
-    raw_hint_names = sorted((all_names - runtime_names) - set(dir(builtins)))
-
+    _, body, indented = _extract_func_node_and_body(fn)
     cells = dict(zip(fn.__code__.co_freevars, fn.__closure__ or ()))
-    _check_shadowed_defaults(func_node, fn, cells)
-    definition_time = _definition_time_names(deferred_code, fn.__name__)
-
-    captured: Dict[str, Any] = {}
-    import_stmts: List[str] = []
-    owner_module = getattr(fn, "__module__", None)
-    for name in sorted(runtime_names):
-        if name in cells:
-            try:
-                value = cells[name].cell_contents
-            except ValueError:
-                raise RayClientSerializationError(
-                    f"Closure variable '{name}' referenced by '{fn.__name__}' is "
-                    "not assigned yet; assign it before calling cluster.run."
-                ) from None
-            kind = "Closure variable"
-        elif name in fn.__globals__:
-            value, kind = fn.__globals__[name], "Global"
-        elif name in definition_time and not hasattr(builtins, name):
-            raise RayClientSerializationError(
-                f"Default argument of '{fn.__name__}' references '{name}' from an "
-                "enclosing function or class scope; pass it as an argument or define "
-                "it at module level."
-            )
-        else:
-            # A builtin, or a NameError at call time on the client and cluster alike.
-            continue
-        imp_stmt = _import_statement_for(name, value, owner_module)
-        if imp_stmt is not None:
-            import_stmts.append(imp_stmt)
-            continue
-        _validate_captured(name, value, fn.__name__, kind)
-        captured[name] = value
-
-    hint_names: List[str] = []
-    for name in raw_hint_names:
-        hint_val: Any = None
-        if name in cells:
-            try:
-                hint_val = cells[name].cell_contents
-            except ValueError:
-                hint_val = None
-        elif name in fn.__globals__:
-            hint_val = fn.__globals__[name]
-        imp_stmt = (
-            _import_statement_for(name, hint_val, owner_module)
-            if hint_val is not None
-            else None
-        )
-        if imp_stmt is not None and _is_stdlib_import(imp_stmt):
-            import_stmts.append(imp_stmt)
-        else:
-            hint_names.append(name)
-
-    header_lines = ["import ray  # noqa: F401"]
-    if import_stmts:
-        header_lines.append("; ".join(import_stmts))
-    if hint_names:
-        header_lines.append(f"{_HINT_HELPER_LINE}; {' = '.join(hint_names)} = _RayHint")
-    client_future_annotations = bool(
-        fn.__code__.co_flags & __future__.CO_FUTURE_ANNOTATIONS
+    fn_lineno = getattr(fn.__code__, "co_firstlineno", 1)
+    return _compile_and_assemble_module(
+        fn.__name__,
+        body,
+        indented,
+        fn_lineno,
+        getattr(fn, "__module__", None),
+        fn.__globals__,
+        cells,
+        is_class=False,
+        client_future_annotations=bool(
+            fn.__code__.co_flags & __future__.CO_FUTURE_ANNOTATIONS
+        ),
+        filename=getattr(fn.__code__, "co_filename", None),
+        qualname=getattr(fn, "__qualname__", "") or fn.__name__,
+        target_linenos={fn_lineno},
     )
-    if client_future_annotations:
-        header_lines.insert(0, "from __future__ import annotations")
-
-    header = "\n".join(header_lines) + "\n"
-    target_lineno = getattr(fn.__code__, "co_firstlineno", 1)
-    wrapper_lines = 1 if indented else 0
-    pad_lines = max(1, target_lineno - len(header_lines) - wrapper_lines)
-    module_source = header + ("\n" * (pad_lines - 1)) + body
-    return fn.__name__, module_source, captured
 
 
 def unwrap_actor_class(cls: Any) -> type:
@@ -596,55 +700,65 @@ def _iter_class_functions(raw_cls: type) -> Iterator[types.FunctionType]:
             if inspect.isfunction(unwrapped) and id(unwrapped) not in seen:
                 seen.add(id(unwrapped))
                 yield unwrapped
-    for _, member in inspect.getmembers(raw_cls, inspect.isfunction):
-        unwrapped = inspect.unwrap(member)
-        if inspect.isfunction(unwrapped) and id(unwrapped) not in seen:
-            seen.add(id(unwrapped))
-            yield unwrapped
 
 
-def _get_class_source_and_lineno(raw_cls: type) -> Tuple[str, int]:
-    """Extracts `(raw_source, start_lineno)` for `raw_cls`, falling back to method
-    code objects + `linecache` for classes defined in interactive notebook cells."""
+def _get_class_source_and_lineno(raw_cls: type) -> Tuple[str, int, Optional[str]]:
+    """Extracts `(raw_source, start_lineno, filename)` for `raw_cls`, falling back to
+    method code objects + `linecache` for classes defined in interactive notebook cells."""
+    first_exc: Optional[BaseException] = None
     try:
         src_lines, start_lineno = inspect.getsourcelines(raw_cls)
-        return "".join(src_lines), max(1, int(start_lineno))
-    except (OSError, TypeError) as first_exc:
-        for fn_member in _iter_class_functions(raw_cls):
-            code = getattr(fn_member, "__code__", None)
-            if code is None:
-                continue
-            filename = getattr(code, "co_filename", None)
-            method_lineno = getattr(code, "co_firstlineno", 0)
-            if not filename or method_lineno <= 0:
-                continue
-            mod_globals = getattr(fn_member, "__globals__", None)
-            all_lines = linecache.getlines(filename, mod_globals)
-            if not all_lines:
-                continue
-            try:
-                tree = ast.parse("".join(all_lines))
-            except SyntaxError:
-                continue
-            candidates: List[ast.ClassDef] = []
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef) and node.name == raw_cls.__name__:
-                    end_lineno = getattr(node, "end_lineno", len(all_lines))
-                    if node.lineno <= method_lineno <= end_lineno:
-                        candidates.append(node)
-            if candidates:
-                best = max(candidates, key=lambda n: n.lineno)
-                start = (
-                    best.decorator_list[0].lineno
-                    if best.decorator_list
-                    else best.lineno
-                )
-                end = getattr(best, "end_lineno", len(all_lines))
-                return "".join(all_lines[start - 1 : end]), max(1, int(start))
-        raise RayClientSerializationError(
-            f"Could not extract source code for class '{raw_cls.__name__}': {first_exc}. "
-            "Define it in a .py file or a notebook cell."
-        ) from first_exc
+        try:
+            filename: Optional[str] = inspect.getsourcefile(raw_cls) or inspect.getfile(
+                raw_cls
+            )
+        except TypeError:
+            filename = None
+        end_lineno = start_lineno + len(src_lines) - 1
+        methods = list(_iter_class_functions(raw_cls))
+        if not methods or all(
+            start_lineno
+            <= getattr(m.__code__, "co_firstlineno", start_lineno)
+            <= end_lineno
+            for m in methods
+        ):
+            return "".join(src_lines), max(1, int(start_lineno)), filename
+    except (OSError, TypeError) as exc:
+        first_exc = exc
+
+    for fn_member in _iter_class_functions(raw_cls):
+        code = getattr(fn_member, "__code__", None)
+        if code is None:
+            continue
+        filename = getattr(code, "co_filename", None)
+        method_lineno = getattr(code, "co_firstlineno", 0)
+        if not filename or method_lineno <= 0:
+            continue
+        mod_globals = getattr(fn_member, "__globals__", None)
+        all_lines = linecache.getlines(filename, mod_globals)
+        if not all_lines:
+            continue
+        try:
+            tree = ast.parse("".join(all_lines))
+        except SyntaxError:
+            continue
+        candidates: List[ast.ClassDef] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == raw_cls.__name__:
+                end_lineno = getattr(node, "end_lineno", len(all_lines))
+                if node.lineno <= method_lineno <= end_lineno:
+                    candidates.append(node)
+        if candidates:
+            best = max(candidates, key=lambda n: n.lineno)
+            start = (
+                best.decorator_list[0].lineno if best.decorator_list else best.lineno
+            )
+            end = getattr(best, "end_lineno", len(all_lines))
+            return "".join(all_lines[start - 1 : end]), max(1, int(start)), filename
+    raise RayClientSerializationError(
+        f"Could not extract source code for class '{raw_cls.__name__}': {first_exc}. "
+        "Define it in a .py file or a notebook cell."
+    ) from first_exc
 
 
 def extract_class_source_and_globals(
@@ -652,7 +766,8 @@ def extract_class_source_and_globals(
 ) -> Tuple[str, str, Dict[str, Any]]:
     """Returns `(class_name, module_source, captured_globals)` for an actor class."""
     raw_cls = unwrap_actor_class(cls)
-    raw_source, cls_lineno = _get_class_source_and_lineno(raw_cls)
+    raw_source, orig_lineno, filename = _get_class_source_and_lineno(raw_cls)
+    cls_lineno = orig_lineno
 
     indented = raw_source[0].isspace()
     body = f"if True:\n{raw_source}" if indented else raw_source
@@ -699,112 +814,35 @@ def extract_class_source_and_globals(
         if not body.endswith("\n"):
             body += "\n"
 
-    try:
-        deferred_code = compile(
-            body,
-            USER_FN_FILENAME,
-            "exec",
-            flags=__future__.CO_FUTURE_ANNOTATIONS,
-            dont_inherit=True,
-        )
-        eager_code = compile(body, USER_FN_FILENAME, "exec", dont_inherit=True)
-    except SyntaxError as exc:
-        raise RayClientSerializationError(
-            f"'{raw_cls.__name__}' cannot run as a standalone module: {exc}"
-        ) from exc
-
-    runtime_names = _referenced_global_names(deferred_code) - {"ray"}
-    all_names = _referenced_global_names(eager_code) - {"ray"}
-    raw_hint_names = sorted((all_names - runtime_names) - set(dir(builtins)))
-
     cls_globals: Dict[str, Any] = {}
     cls_cells: Dict[str, Any] = {}
-    methods_by_name: Dict[str, types.FunctionType] = {}
-    client_future_annotations = False
     sys_mod = sys.modules.get(raw_cls.__module__)
     if sys_mod is not None:
         cls_globals.update(sys_mod.__dict__)
+    client_future_annotations = cls_globals.get("annotations") is __future__.annotations
     for fn_member in _iter_class_functions(raw_cls):
+        if filename is None:
+            filename = getattr(fn_member.__code__, "co_filename", None)
         cls_globals.update(fn_member.__globals__)
         if fn_member.__code__.co_flags & __future__.CO_FUTURE_ANNOTATIONS:
             client_future_annotations = True
         for k, cell in zip(fn_member.__code__.co_freevars, fn_member.__closure__ or ()):
             cls_cells[k] = cell
-        methods_by_name.setdefault(fn_member.__name__, fn_member)
 
-    for item in cls_node.body:
-        if (
-            isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and item.name in methods_by_name
-        ):
-            m_fn = methods_by_name[item.name]
-            m_cells = dict(zip(m_fn.__code__.co_freevars, m_fn.__closure__ or ()))
-            _check_shadowed_defaults(item, m_fn, m_cells)
-
-    definition_time = _definition_time_names(
-        deferred_code, raw_cls.__name__, is_class=True
+    return _compile_and_assemble_module(
+        raw_cls.__name__,
+        body,
+        indented,
+        cls_lineno,
+        raw_cls.__module__,
+        cls_globals,
+        cls_cells,
+        is_class=True,
+        client_future_annotations=client_future_annotations,
+        filename=filename,
+        qualname=getattr(raw_cls, "__qualname__", "") or raw_cls.__name__,
+        target_linenos={orig_lineno, cls_lineno},
     )
-    captured: Dict[str, Any] = {}
-    import_stmts: List[str] = []
-    for name in sorted(runtime_names):
-        if name in cls_cells:
-            try:
-                value = cls_cells[name].cell_contents
-            except ValueError:
-                raise RayClientSerializationError(
-                    f"Closure variable '{name}' referenced by '{raw_cls.__name__}' is "
-                    "not assigned yet."
-                ) from None
-            kind = "Closure variable"
-        elif name in cls_globals:
-            value, kind = cls_globals[name], "Global"
-        elif name in definition_time and not hasattr(builtins, name):
-            raise RayClientSerializationError(
-                f"Class '{raw_cls.__name__}' references '{name}' from an enclosing "
-                "function or class scope; pass it to __init__ or define it at module level."
-            )
-        else:
-            continue
-        imp_stmt = _import_statement_for(name, value, raw_cls.__module__)
-        if imp_stmt is not None:
-            import_stmts.append(imp_stmt)
-            continue
-        _validate_captured(name, value, raw_cls.__name__, kind)
-        captured[name] = value
-
-    hint_names: List[str] = []
-    for name in raw_hint_names:
-        hint_val: Any = None
-        if name in cls_cells:
-            try:
-                hint_val = cls_cells[name].cell_contents
-            except ValueError:
-                hint_val = None
-        elif name in cls_globals:
-            hint_val = cls_globals[name]
-        imp_stmt = (
-            _import_statement_for(name, hint_val, raw_cls.__module__)
-            if hint_val is not None
-            else None
-        )
-        if imp_stmt is not None and _is_stdlib_import(imp_stmt):
-            import_stmts.append(imp_stmt)
-        else:
-            hint_names.append(name)
-
-    header_lines = ["import ray  # noqa: F401"]
-    if import_stmts:
-        header_lines.append("; ".join(import_stmts))
-    if hint_names:
-        header_lines.append(f"{_HINT_HELPER_LINE}; {' = '.join(hint_names)} = _RayHint")
-    if client_future_annotations:
-        header_lines.insert(0, "from __future__ import annotations")
-
-    header = "\n".join(header_lines) + "\n"
-    wrapper_lines = 1 if indented else 0
-    pad_lines = max(1, cls_lineno - len(header_lines) - wrapper_lines)
-    module_source = header + ("\n" * (pad_lines - 1)) + body
-    return raw_cls.__name__, module_source, captured
 
 
 def _write_deterministic_entry(

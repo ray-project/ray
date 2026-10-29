@@ -16,7 +16,7 @@ import time
 import traceback
 import types
 import uuid
-from typing import Any, Deque, Dict, List, Optional, Set, Union
+from typing import Any, Deque, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray._private.worker
@@ -104,6 +104,120 @@ def _validate_get_if_exists(get_if_exists: Any) -> Union[bool, str]:
     )
 
 
+def _normalize_module_source(module_source: Optional[str]) -> Optional[str]:
+    if module_source is None:
+        return None
+    src = module_source.lstrip("\n")
+    if src.startswith(
+        ("import ray  # noqa: F401\n", "from __future__ import annotations\n")
+    ):
+        lines = src.splitlines(keepends=True)
+        idx = 0
+        while idx < len(lines) and lines[idx].startswith(
+            (
+                "from __future__ import annotations",
+                "import ",
+                "from ",
+                "_RayHint =",
+            )
+        ):
+            idx += 1
+        return "".join(lines[:idx]) + "".join(lines[idx:]).lstrip("\n")
+    return src
+
+
+def _validate_resource_num(
+    val: Any, name: str, *, integer: bool = False
+) -> Union[int, float]:
+    if (
+        isinstance(val, bool)
+        or not isinstance(val, (int, float))
+        or not math.isfinite(val)
+        or val < 0
+    ):
+        raise ValueError(
+            f"Invalid {name} value {val!r}; must be a non-negative finite number."
+        )
+    if integer:
+        if isinstance(val, float) and not val.is_integer():
+            raise ValueError(
+                f"Invalid {name} value {val!r}; must be an integer number of bytes."
+            )
+        return int(val)
+    return val
+
+
+def _normalize_spec_resources(
+    spec: Dict[str, Any],
+    kind: str,
+    default_cpus: Optional[Union[int, float]] = None,
+) -> Tuple[
+    Union[int, float],
+    Optional[Union[int, float]],
+    Optional[int],
+    Dict[str, float],
+]:
+    raw_cpus = spec.get("num_cpus")
+    raw_gpus = spec.get("num_gpus")
+    raw_memory = spec.get("memory")
+    num_cpus = (
+        _validate_resource_num(raw_cpus, "num_cpus") if raw_cpus is not None else None
+    )
+    num_gpus = (
+        _validate_resource_num(raw_gpus, "num_gpus") if raw_gpus is not None else None
+    )
+    memory = (
+        int(_validate_resource_num(raw_memory, "memory", integer=True))
+        if raw_memory is not None
+        else None
+    )
+    raw_resources = spec.get("resources")
+    custom_resources: Dict[str, float] = {}
+    if raw_resources is not None:
+        if not isinstance(raw_resources, dict):
+            raise ValueError(
+                f"resources must be a dict[str, float], got {raw_resources!r}."
+            )
+        for k, v in raw_resources.items():
+            if not isinstance(k, str):
+                raise ValueError(
+                    f"Invalid resource key {k!r}; resource keys must be strings."
+                )
+            v_num = _validate_resource_num(
+                v, f"resources[{k!r}]", integer=(k == "memory")
+            )
+            if k == "CPU":
+                if num_cpus is not None and float(num_cpus) != float(v_num):
+                    raise ValueError(
+                        f"Conflicting CPU requirements: num_cpus={num_cpus!r} vs "
+                        f"resources['CPU']={v!r}."
+                    )
+                num_cpus = v_num
+            elif k == "GPU":
+                if num_gpus is not None and float(num_gpus) != float(v_num):
+                    raise ValueError(
+                        f"Conflicting GPU requirements: num_gpus={num_gpus!r} vs "
+                        f"resources['GPU']={v!r}."
+                    )
+                num_gpus = v_num
+            elif k == "memory":
+                if memory is not None and int(memory) != int(v_num):
+                    raise ValueError(
+                        f"Conflicting memory requirements: memory={memory!r} vs "
+                        f"resources['memory']={v!r}."
+                    )
+                memory = int(v_num)
+            elif v_num > 0:
+                custom_resources[k] = float(v_num)
+    if num_cpus is None:
+        num_cpus = (
+            default_cpus
+            if default_cpus is not None
+            else (0 if kind == "function" else 1)
+        )
+    return num_cpus, num_gpus, memory, custom_resources
+
+
 def _compute_spec_hash(
     spec: Dict[str, Any],
     kind: str,
@@ -111,24 +225,29 @@ def _compute_spec_hash(
     num_cpus: Any,
     max_concurrency: Any,
 ) -> str:
+    norm_cpus, norm_gpus, norm_memory, norm_resources = _normalize_spec_resources(
+        spec,
+        kind,
+        default_cpus=num_cpus if isinstance(num_cpus, (int, float)) else None,
+    )
     canonical = {
         "kind": kind,
         "target_name": target_name,
-        "module_source": spec.get("module_source"),
+        "module_source": _normalize_module_source(spec.get("module_source")),
         "module": spec.get("module"),
         "captured_globals": spec.get("captured_globals") or {},
         "args": spec.get("args") or [],
         "kwargs": spec.get("kwargs") or {},
         "runtime_env": spec.get("runtime_env") or {},
         "num_cpus": (
-            float(num_cpus) if isinstance(num_cpus, (int, float)) else num_cpus
+            float(norm_cpus) if isinstance(norm_cpus, (int, float)) else norm_cpus
         ),
         "num_gpus": (
-            float(spec["num_gpus"])
-            if isinstance(spec.get("num_gpus"), (int, float))
-            else spec.get("num_gpus")
+            float(norm_gpus) if isinstance(norm_gpus, (int, float)) else norm_gpus
         ),
-        "resources": spec.get("resources") or {},
+        "memory": norm_memory,
+        "resources": norm_resources,
+        "label_selector": spec.get("label_selector") or {},
         "max_concurrency": (
             int(max_concurrency)
             if isinstance(max_concurrency, int)
@@ -216,7 +335,7 @@ class _LogTeeStream(io.TextIOBase):
             self._stream.write(s)
         except Exception:
             pass
-        if s:
+        if s and not s.startswith((":actor_name:", ":task_name:", ":job_id:")):
             with self._lock:
                 self._buffer.append(s)
                 self._chars += len(s)
@@ -294,7 +413,7 @@ async def _anext_catching_system_exit(
 
 
 class _ClientRootActor:
-    """Top-level Ray Actor hosting a user class or driver function.
+    """Root Ray Actor hosting a user class or driver function.
 
     All user-facing methods (`invoke`, `invoke_stream`) run on the default
     `max_concurrency` thread pool, while control methods (`get_info`, `get_logs`,
@@ -317,7 +436,7 @@ class _ClientRootActor:
         self._ttl_seconds: Optional[float] = _validate_ttl_seconds(
             spec.get("ttl_seconds", 1800.0)
         )
-        self._ephemeral: bool = bool(spec.get("ephemeral", self._kind == "function"))
+        self._detached: bool = bool(spec.get("detached", self._kind != "function"))
         self._spec_hash: Optional[str] = spec.get("spec_hash")
         self._created_at: float = time.time()
         self._last_active: float = time.time()
@@ -330,6 +449,11 @@ class _ClientRootActor:
         self._cleaned_up = False
         self._cleanup_lock = threading.RLock()
 
+        with contextlib.suppress(Exception):
+            sys.__stdout__.write(f":actor_name:{self._target_name}\n")
+            sys.__stdout__.flush()
+            sys.__stderr__.write(f":actor_name:{self._target_name}\n")
+            sys.__stderr__.flush()
         self._log_buffer: Deque[str] = collections.deque()
         self._log_lock = threading.Lock()
         sys.stdout = _LogTeeStream(sys.__stdout__, self._log_buffer, self._log_lock)
@@ -341,51 +465,61 @@ class _ClientRootActor:
 
         self._install_ray_hooks()
 
-        target = _load_user_target(
-            self._name,
-            self._target_name,
-            spec.get("module_source"),
-            spec.get("module"),
-            spec.get("captured_globals") or {},
-        )
+        self._fn = None
+        self._instance = None
         self._generator_methods: Set[str] = set()
-        if self._kind == "function":
-            self._fn = target
-            self._instance = None
-            unwrapped_fn = inspect.unwrap(target)
-            if inspect.isgeneratorfunction(unwrapped_fn) or inspect.isasyncgenfunction(
-                unwrapped_fn
-            ):
-                self._generator_methods = {"__call__", self._target_name}
-        else:
-            raw_cls = getattr(target, "__ray_actor_class__", None)
-            if raw_cls is None and hasattr(target, "__ray_metadata__"):
-                mod_cls = getattr(target.__ray_metadata__, "modified_class", None)
-                raw_cls = getattr(mod_cls, "__ray_actor_class__", target)
-            cls_to_instantiate = raw_cls if inspect.isclass(raw_cls) else target
-            self._fn = None
-            self._instance = cls_to_instantiate(
-                *(spec.get("args") or []), **(spec.get("kwargs") or {})
+        self._init_error: Optional[Dict[str, Any]] = None
+        try:
+            target = _load_user_target(
+                self._name,
+                self._target_name,
+                spec.get("module_source"),
+                spec.get("module"),
+                spec.get("captured_globals") or {},
             )
-            for attr_name in dir(self._instance):
-                if (
-                    attr_name != "__call__"
-                    and attr_name.startswith("__")
-                    and attr_name.endswith("__")
-                ):
-                    continue
-                with contextlib.suppress(Exception):
-                    static_attr = inspect.getattr_static(self._instance, attr_name)
-                    if isinstance(static_attr, property) or inspect.isdatadescriptor(
-                        static_attr
+            if self._kind == "function":
+                self._fn = target
+                unwrapped_fn = inspect.unwrap(target)
+                if inspect.isgeneratorfunction(
+                    unwrapped_fn
+                ) or inspect.isasyncgenfunction(unwrapped_fn):
+                    self._generator_methods = {"__call__", self._target_name}
+            else:
+                raw_cls = getattr(target, "__ray_actor_class__", None)
+                if raw_cls is None and hasattr(target, "__ray_metadata__"):
+                    mod_cls = getattr(target.__ray_metadata__, "modified_class", None)
+                    raw_cls = getattr(mod_cls, "__ray_actor_class__", target)
+                cls_to_instantiate = raw_cls if inspect.isclass(raw_cls) else target
+                self._instance = cls_to_instantiate(
+                    *(spec.get("args") or []), **(spec.get("kwargs") or {})
+                )
+                for attr_name in dir(self._instance):
+                    if (
+                        attr_name != "__call__"
+                        and attr_name.startswith("__")
+                        and attr_name.endswith("__")
                     ):
                         continue
-                    member = getattr(self._instance, attr_name)
-                    unwrapped = inspect.unwrap(member)
-                    if inspect.isgeneratorfunction(
-                        unwrapped
-                    ) or inspect.isasyncgenfunction(unwrapped):
-                        self._generator_methods.add(attr_name)
+                    with contextlib.suppress(Exception):
+                        static_attr = inspect.getattr_static(self._instance, attr_name)
+                        if isinstance(
+                            static_attr, property
+                        ) or inspect.isdatadescriptor(static_attr):
+                            continue
+                        member = getattr(self._instance, attr_name)
+                        unwrapped = inspect.unwrap(member)
+                        if inspect.isgeneratorfunction(
+                            unwrapped
+                        ) or inspect.isasyncgenfunction(unwrapped):
+                            self._generator_methods.add(attr_name)
+        except (Exception, SystemExit) as exc:
+            self._init_error = {
+                "ok": False,
+                "error": _format_exception_dict(exc),
+                "logs": self._get_logs_text(),
+            }
+            self._cleanup_resources()
+            return
 
         self._reaper_thread = threading.Thread(
             target=self._self_reap_loop,
@@ -394,13 +528,22 @@ class _ClientRootActor:
         )
         self._reaper_thread.start()
 
+    def __repr__(self) -> str:
+        if (
+            getattr(self, "_instance", None) is not None
+            and type(self._instance).__repr__ is not object.__repr__
+        ):
+            with contextlib.suppress(Exception):
+                return repr(self._instance)
+        return getattr(self, "_target_name", "_ClientRootActor")
+
     def _install_ray_hooks(self) -> None:
         ns = self._namespace
         # Fate-shared actors created in this process default to a namespace of their
         # own, so concurrent roots that create identically named children don't
         # collide. Detached actors outlive the root, so they default to `ns`, where
         # other roots can find them by name. Lookups without a namespace fall back
-        # to `ns`, which also holds the top-level client actors. The hooks are
+        # to `ns`, which also holds the root client actors. The hooks are
         # process-local: nested tasks and actors run in other workers and use the
         # dashboard agent job's namespace.
         child_ns = f"{ns}_{self._name}"
@@ -422,7 +565,9 @@ class _ClientRootActor:
 
         def _client_actor_remote(actor_cls, args=None, kwargs=None, **actor_options):
             if actor_options.get("namespace") is None:
-                detached = actor_options.get("lifetime") == "detached"
+                detached = actor_options.get("lifetime") == "detached" or bool(
+                    actor_options.get("detached")
+                )
                 actor_options["namespace"] = ns if detached else child_ns
             return _orig_actor_remote(
                 actor_cls, args=args, kwargs=kwargs, **actor_options
@@ -430,7 +575,7 @@ class _ClientRootActor:
 
         def _client_placement_group(*args, **kwargs):
             pg = _orig_pg(*args, **kwargs)
-            if kwargs.get("lifetime") != "detached":
+            if kwargs.get("lifetime") != "detached" and not kwargs.get("detached"):
                 with state_lock:
                     pg_list.append(pg)
             return pg
@@ -441,18 +586,25 @@ class _ClientRootActor:
         ray._private.worker.get_actor = _client_get_actor
         ActorClass._remote = _client_actor_remote
         ray.util.placement_group = _client_placement_group
+        pg_mod = sys.modules.get("ray.util.placement_group")
+        if pg_mod is not None:
+            pg_mod.placement_group = _client_placement_group
         RuntimeContext.namespace = property(lambda _self: child_ns)
 
     def _self_reap_loop(self) -> None:
         while not self._shutting_down:
             time.sleep(0.2)
+            should_reap = False
             with self._state_lock:
                 if self._shutting_down:
                     return
                 ttl = self._ttl_seconds
                 active = self._active_calls
                 elapsed = time.monotonic() - self._last_active_mono
-            if ttl is not None and ttl > 0 and active == 0 and elapsed >= ttl:
+                if ttl is not None and ttl > 0 and active == 0 and elapsed >= ttl:
+                    self._shutting_down = True
+                    should_reap = True
+            if should_reap:
                 self._cleanup_resources()
                 with contextlib.suppress(Exception):
                     ray.actor.exit_actor()
@@ -470,20 +622,17 @@ class _ClientRootActor:
             if self._instance is not None:
                 try:
                     close_fn = getattr(self._instance, "close", None)
+                    exit_fn = getattr(self._instance, "__exit__", None)
                     if callable(close_fn):
                         res = close_fn()
-                        if inspect.iscoroutine(res):
-                            asyncio.run_coroutine_threadsafe(
-                                res, self._ensure_async_loop()
-                            ).result(timeout=_CONTROL_TIMEOUT_S)
+                    elif callable(exit_fn):
+                        res = exit_fn(None, None, None)
                     else:
-                        exit_fn = getattr(self._instance, "__exit__", None)
-                        if callable(exit_fn):
-                            res = exit_fn(None, None, None)
-                            if inspect.iscoroutine(res):
-                                asyncio.run_coroutine_threadsafe(
-                                    res, self._ensure_async_loop()
-                                ).result(timeout=_CONTROL_TIMEOUT_S)
+                        res = None
+                    if inspect.iscoroutine(res):
+                        asyncio.run_coroutine_threadsafe(
+                            res, self._ensure_async_loop()
+                        ).result(timeout=_CONTROL_TIMEOUT_S)
                 except BaseException:
                     logger.debug(
                         "Error in user cleanup hook for actor '%s'",
@@ -499,10 +648,24 @@ class _ClientRootActor:
 
     def _ensure_async_loop(self) -> asyncio.AbstractEventLoop:
         with self._async_lock:
-            if self._async_loop is None or not self._async_loop.is_running():
+            if (
+                self._async_loop is None
+                or self._async_loop.is_closed()
+                or (
+                    self._async_thread is not None and not self._async_thread.is_alive()
+                )
+            ):
                 loop = asyncio.new_event_loop()
+
+                def _run_loop() -> None:
+                    try:
+                        loop.run_forever()
+                    finally:
+                        with contextlib.suppress(Exception):
+                            loop.close()
+
                 thread = threading.Thread(
-                    target=loop.run_forever,
+                    target=_run_loop,
                     name=f"ray-client-async-{self._name}",
                     daemon=True,
                 )
@@ -518,6 +681,12 @@ class _ClientRootActor:
             return bool(ray.get_runtime_context().is_canceled())
         return False
 
+    def _is_stream_canceled(self, stream_id: str) -> bool:
+        with self._state_lock:
+            if stream_id in self._cancelled_streams:
+                return True
+        return self._is_current_task_canceled()
+
     def _wait_coroutine_future(
         self,
         fut: concurrent.futures.Future,
@@ -529,10 +698,11 @@ class _ClientRootActor:
             try:
                 return fut.result(timeout=0.05)
             except concurrent.futures.TimeoutError:
-                cancelled = self._is_current_task_canceled()
-                if not cancelled and stream_id is not None:
-                    with self._state_lock:
-                        cancelled = stream_id in self._cancelled_streams
+                cancelled = (
+                    self._is_stream_canceled(stream_id)
+                    if stream_id is not None
+                    else self._is_current_task_canceled()
+                )
                 if cancelled:
                     if task_holder and task_holder[0] is not None:
                         loop.call_soon_threadsafe(task_holder[0].cancel)
@@ -545,6 +715,8 @@ class _ClientRootActor:
 
     def _begin_call(self) -> None:
         with self._state_lock:
+            if self._shutting_down:
+                raise RuntimeError(f"Actor '{self._name}' is shutting down.")
             self._active_calls += 1
             self._last_active = time.time()
             self._last_active_mono = time.monotonic()
@@ -578,11 +750,20 @@ class _ClientRootActor:
 
     @ray.method(concurrency_group="_control")
     def get_info(self) -> Dict[str, Any]:
+        if self._init_error is not None:
+            return self._init_error
+        shutting_down = False
         with self._state_lock:
-            active_calls = self._active_calls
-            last_active = self._last_active
-            elapsed = time.monotonic() - self._last_active_mono
-            ttl = self._ttl_seconds
+            if self._shutting_down:
+                shutting_down = True
+            else:
+                active_calls = self._active_calls
+                last_active = self._last_active
+                elapsed = time.monotonic() - self._last_active_mono
+                ttl = self._ttl_seconds
+        if shutting_down:
+            with self._cleanup_lock:
+                raise RuntimeError(f"Actor '{self._name}' is shutting down.")
         remaining_ttl: Optional[float] = None
         if ttl is not None and ttl > 0:
             if active_calls > 0:
@@ -596,7 +777,7 @@ class _ClientRootActor:
             "kind": self._kind,
             "namespace": self._namespace,
             "status": "ALIVE",
-            "ephemeral": self._ephemeral,
+            "detached": self._detached,
             "spec_hash": self._spec_hash,
             "active_calls": active_calls,
             "ttl_seconds": ttl,
@@ -610,6 +791,8 @@ class _ClientRootActor:
     def set_ttl(self, ttl_seconds: Optional[float]) -> Dict[str, Any]:
         validated = _validate_ttl_seconds(ttl_seconds)
         with self._state_lock:
+            if self._shutting_down:
+                raise RuntimeError(f"Actor '{self._name}' is shutting down.")
             self._ttl_seconds = validated
             self._last_active = time.time()
             self._last_active_mono = time.monotonic()
@@ -637,34 +820,18 @@ class _ClientRootActor:
         try:
             target = self._resolve_callable(method_name)
             try:
-                if inspect.iscoroutinefunction(target):
+                res = target(*args, **kwargs)
+                if inspect.iscoroutine(res):
                     loop = self._ensure_async_loop()
                     task_holder: List[Any] = []
                     fut = asyncio.run_coroutine_threadsafe(
-                        _await_coro_catching_system_exit(
-                            target(*args, **kwargs), task_holder
-                        ),
+                        _await_coro_catching_system_exit(res, task_holder),
                         loop,
                     )
                     is_exit, val = self._wait_coroutine_future(fut, loop, task_holder)
                     if is_exit:
                         raise SystemExit(val)
                     res = val
-                else:
-                    res = target(*args, **kwargs)
-                    if inspect.iscoroutine(res):
-                        loop = self._ensure_async_loop()
-                        task_holder = []
-                        fut = asyncio.run_coroutine_threadsafe(
-                            _await_coro_catching_system_exit(res, task_holder),
-                            loop,
-                        )
-                        is_exit, val = self._wait_coroutine_future(
-                            fut, loop, task_holder
-                        )
-                        if is_exit:
-                            raise SystemExit(val)
-                        res = val
             except SystemExit as exc:
                 if exc.code in (0, None):
                     res = None
@@ -690,6 +857,8 @@ class _ClientRootActor:
             }
         finally:
             self._end_call()
+            if self._kind == "function":
+                self._cleanup_resources()
 
     def invoke_stream(
         self,
@@ -710,12 +879,7 @@ class _ClientRootActor:
             )
             if inspect.isasyncgen(gen):
                 loop = self._ensure_async_loop()
-                while True:
-                    with self._state_lock:
-                        if stream_id in self._cancelled_streams:
-                            break
-                    if self._is_current_task_canceled():
-                        break
+                while not self._is_stream_canceled(stream_id):
                     task_holder: List[Any] = []
                     fut = asyncio.run_coroutine_threadsafe(
                         _anext_catching_system_exit(gen, task_holder), loop
@@ -732,19 +896,12 @@ class _ClientRootActor:
                     with self._state_lock:
                         self._last_active = time.time()
                         self._last_active_mono = time.monotonic()
-                        if stream_id in self._cancelled_streams:
-                            break
-                    if self._is_current_task_canceled():
+                    if self._is_stream_canceled(stream_id):
                         break
                     _validate_strict_json(item, label)
                     yield {"ok": True, "item": item}
             elif inspect.isgenerator(gen):
-                while True:
-                    with self._state_lock:
-                        if stream_id in self._cancelled_streams:
-                            break
-                    if self._is_current_task_canceled():
-                        break
+                while not self._is_stream_canceled(stream_id):
                     try:
                         item = next(gen)
                     except StopIteration:
@@ -756,17 +913,10 @@ class _ClientRootActor:
                     with self._state_lock:
                         self._last_active = time.time()
                         self._last_active_mono = time.monotonic()
-                        if stream_id in self._cancelled_streams:
-                            break
-                    if self._is_current_task_canceled():
+                    if self._is_stream_canceled(stream_id):
                         break
                     _validate_strict_json(item, label)
                     yield {"ok": True, "item": item}
-                    with self._state_lock:
-                        if stream_id in self._cancelled_streams:
-                            break
-                    if self._is_current_task_canceled():
-                        break
             else:
                 raise TypeError(
                     f"'{self._target_name}.{method_name}' is not a generator function."
@@ -778,9 +928,7 @@ class _ClientRootActor:
         ):
             pass
         except Exception as exc:
-            with self._state_lock:
-                cancelled = stream_id in self._cancelled_streams
-            if not cancelled and not self._is_current_task_canceled():
+            if not self._is_stream_canceled(stream_id):
                 yield {
                     "ok": False,
                     "error": _format_exception_dict(exc),
@@ -790,7 +938,7 @@ class _ClientRootActor:
             with self._state_lock:
                 self._cancelled_streams.discard(stream_id)
             if gen is not None:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(BaseException):
                     if inspect.isasyncgen(gen) and self._async_loop is not None:
                         asyncio.run_coroutine_threadsafe(
                             gen.aclose(), self._async_loop
@@ -798,11 +946,26 @@ class _ClientRootActor:
                     elif hasattr(gen, "close"):
                         gen.close()
             self._end_call()
+            if self._kind == "function":
+                self._cleanup_resources()
 
     @ray.method(concurrency_group="_control")
-    def shutdown(self) -> Dict[str, Any]:
+    def shutdown(self, only_if_idle: bool = False) -> Dict[str, Any]:
+        if only_if_idle:
+            with self._state_lock:
+                if not self._shutting_down:
+                    ttl = self._ttl_seconds
+                    elapsed = time.monotonic() - self._last_active_mono
+                    if (
+                        ttl is None
+                        or ttl <= 0
+                        or self._active_calls > 0
+                        or elapsed < ttl
+                    ):
+                        return {"ok": True, "reaped": False}
+                    self._shutting_down = True
         self._cleanup_resources()
-        return {"ok": True}
+        return {"ok": True, "reaped": True}
 
 
 _RemoteClientRootActor = ray.remote(concurrency_groups={"_control": 4})(
@@ -810,11 +973,45 @@ _RemoteClientRootActor = ray.remote(concurrency_groups={"_control": 4})(
 )
 
 
+def _is_client_root_actor_handle(handle: Any) -> bool:
+    desc = getattr(handle, "_ray_actor_creation_function_descriptor", None)
+    cls_name = getattr(desc, "class_name", None)
+    if isinstance(cls_name, str):
+        return cls_name.endswith("_ClientRootActor")
+    return True
+
+
+def _destroy_actor_handle(
+    handle: Any, reason: str = "terminated by ray_client"
+) -> None:
+    try:
+        ray.kill(handle, no_restart=True)
+    except (NotImplementedError, AttributeError):
+        destroy_fn = getattr(handle, "__ray_destroy__", None)
+        if callable(destroy_fn):
+            destroy_fn(reason=reason)
+        else:
+            raise
+
+
+async def _wait_actor_deregistered(
+    name: str, namespace: str, timeout: float = 2.0
+) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            ray.get_actor(name, namespace=namespace)
+        except Exception:
+            return
+        await asyncio.sleep(0.02)
+
+
 class ActorManager:
-    """Dashboard agent manager for `/api/actors` top-level Ray Actors."""
+    """Dashboard agent manager for `/api/actors` root Ray Actors."""
 
     def __init__(self) -> None:
         self._actors: Dict[str, Dict[str, Any]] = {}
+        self._creating_handles: Dict[str, Any] = {}
         self._lock = asyncio.Lock()
         self._name_locks: Dict[str, asyncio.Lock] = {}
         self._reaper_task: Optional[asyncio.Task] = None
@@ -826,6 +1023,17 @@ class ActorManager:
                 lock = self._name_locks[name] = asyncio.Lock()
             return lock
 
+    def _prune_name_lock_locked(self, name: str) -> None:
+        if name in self._actors or name in self._creating_handles:
+            return
+        lock = self._name_locks.get(name)
+        if (
+            lock is not None
+            and not lock.locked()
+            and not getattr(lock, "_waiters", None)
+        ):
+            self._name_locks.pop(name, None)
+
     def _ensure_reaper(self) -> None:
         if self._reaper_task is None or self._reaper_task.done():
             with contextlib.suppress(RuntimeError):
@@ -836,7 +1044,7 @@ class ActorManager:
         while True:
             await asyncio.sleep(0.5)
             now_mono = time.monotonic()
-            to_reap: List[str] = []
+            candidates: List[Tuple[str, Dict[str, Any]]] = []
             async with self._lock:
                 for name, meta in list(self._actors.items()):
                     ttl = meta.get("ttl_seconds")
@@ -846,20 +1054,30 @@ class ActorManager:
                         and meta.get("active_calls", 0) == 0
                         and (now_mono - meta.get("last_active_mono", now_mono)) >= ttl
                     ):
-                        to_reap.append(name)
-            for name in to_reap:
+                        candidates.append((name, meta))
+            for name, meta in candidates:
+                if meta.get("active_calls", 0) > 0:
+                    continue
+                handle = meta["handle"]
                 try:
-                    info = await self.get_actor_info(name)
-                    if info is None:
-                        continue
-                    rem = info.get("remaining_ttl_seconds")
-                    if (
-                        info.get("active_calls", 0) == 0
-                        and rem is not None
-                        and rem <= 0
-                    ):
+                    res = await asyncio.wait_for(
+                        handle.shutdown.remote(True), timeout=_CONTROL_TIMEOUT_S
+                    )
+                    if isinstance(res, dict) and res.get("reaped"):
                         logger.info("Actor '%s' idle TTL expired; terminating.", name)
-                        await self.kill_actor(name, no_restart=True)
+                        async with self._lock:
+                            if self._actors.get(name) is meta:
+                                self._actors.pop(name, None)
+                                self._prune_name_lock_locked(name)
+                        with contextlib.suppress(Exception):
+                            _destroy_actor_handle(
+                                handle, reason="idle TTL expired in ray_client"
+                            )
+                except (RayActorError, RayTaskError):
+                    async with self._lock:
+                        if self._actors.get(name) is meta:
+                            self._actors.pop(name, None)
+                            self._prune_name_lock_locked(name)
                 except Exception:
                     logger.debug(
                         "Reaper check failed for actor '%s'", name, exc_info=True
@@ -877,25 +1095,42 @@ class ActorManager:
             meta["last_active"] = time.time()
             meta["last_active_mono"] = time.monotonic()
 
-    async def _reap_ephemeral(self, name: str) -> None:
+    async def _reap_one_shot(self, name: str, clean: bool = False) -> None:
+        async def _do_reap() -> None:
+            async with self._lock:
+                meta = self._actors.pop(name, None)
+                self._prune_name_lock_locked(name)
+            if meta is None:
+                return
+            handle = meta["handle"]
+            if not clean:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(handle.shutdown.remote(), timeout=1.0)
+            with contextlib.suppress(Exception):
+                _destroy_actor_handle(handle, reason="one-shot driver finished")
+
         # Run the kill as its own task so that a client disconnect, which cancels
         # the request awaiting it, can't interrupt the cleanup halfway.
         with contextlib.suppress(Exception):
-            await asyncio.shield(
-                run_background_task(self.kill_actor(name, no_restart=True))
-            )
+            await asyncio.shield(run_background_task(_do_reap()))
 
-    async def _lookup_actor(self, name: str) -> Optional[Dict[str, Any]]:
+    async def _lookup_actor(
+        self, name: str, timeout: float = _CONTROL_TIMEOUT_S
+    ) -> Optional[Dict[str, Any]]:
         self._ensure_reaper()
         async with self._lock:
             meta = self._actors.get(name)
-        if meta is not None:
-            return meta
+            if meta is not None:
+                return meta
+            if name in self._creating_handles:
+                return None
         try:
             handle = ray.get_actor(name, namespace=CLIENT_ACTOR_NAMESPACE)
-            info = await asyncio.wait_for(
-                handle.get_info.remote(), timeout=_CONTROL_TIMEOUT_S
-            )
+            if not _is_client_root_actor_handle(handle):
+                return None
+            info = await asyncio.wait_for(handle.get_info.remote(), timeout=timeout)
+            if not isinstance(info, dict) or not info.get("ok", True):
+                return None
             now_mono = time.monotonic()
             rem = info.get("remaining_ttl_seconds")
             ttl = info.get("ttl_seconds")
@@ -910,7 +1145,7 @@ class ActorManager:
                 "class_name": info.get("class_name", name),
                 "kind": info.get("kind", "class"),
                 "namespace": info.get("namespace", CLIENT_ACTOR_NAMESPACE),
-                "ephemeral": bool(info.get("ephemeral", False)),
+                "detached": bool(info.get("detached", True)),
                 "spec_hash": info.get("spec_hash"),
                 "ttl_seconds": ttl,
                 "created_at": info.get("created_at", time.time()),
@@ -920,39 +1155,74 @@ class ActorManager:
                 "generator_methods": set(info.get("generator_methods") or []),
             }
             async with self._lock:
+                if name in self._creating_handles:
+                    return None
+                existing = self._actors.get(name)
+                if existing is not None:
+                    return existing
                 self._actors[name] = meta
             return meta
         except Exception:
             return None
 
     async def _terminate_actor_for_recreate(
-        self, name: str, namespace: str, no_restart: bool = True
+        self,
+        name: str,
+        namespace: str,
+        already_killed: bool = False,
+        timeout: float = 2.0,
     ) -> bool:
+        wait_timeout = min(2.0, max(0.01, float(timeout)))
         async with self._lock:
             meta = self._actors.pop(name, None)
-        handle = meta["handle"] if meta is not None else None
-        if handle is None:
+            creating_handle = self._creating_handles.pop(name, None)
+            self._prune_name_lock_locked(name)
+        handle = meta["handle"] if meta is not None else creating_handle
+        if handle is None and not already_killed:
             try:
                 handle = ray.get_actor(name, namespace=namespace)
             except Exception:
                 return False
-        with contextlib.suppress(Exception):
-            await asyncio.wait_for(handle.shutdown.remote(), timeout=2.0)
-        try:
-            ray.kill(handle, no_restart=no_restart)
-        except ValueError:
-            if meta is None:
-                return False
-        except Exception:
-            pass
-        deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline:
+        if handle is not None:
             try:
-                ray.get_actor(name, namespace=namespace)
-            except Exception:
-                break
-            await asyncio.sleep(0.02)
+                if (
+                    meta is not None or creating_handle is None
+                ) and _is_client_root_actor_handle(handle):
+                    with contextlib.suppress(Exception):
+                        await asyncio.wait_for(
+                            handle.shutdown.remote(), timeout=wait_timeout
+                        )
+            finally:
+                try:
+                    _destroy_actor_handle(handle, reason="recreated by ray_client")
+                except ValueError:
+                    if meta is None and creating_handle is None and not already_killed:
+                        return False
+                except Exception:
+                    pass
+        elif not already_killed:
+            return False
+        await _wait_actor_deregistered(name, namespace, timeout=wait_timeout)
         return True
+
+    async def _cleanup_failed_creation(
+        self, name: str, namespace: str, handle: Any
+    ) -> None:
+        async def _do_cleanup() -> None:
+            async with self._lock:
+                if self._creating_handles.get(name) is handle:
+                    self._creating_handles.pop(name, None)
+                    self._prune_name_lock_locked(name)
+            if handle is not None:
+                with contextlib.suppress(Exception):
+                    _destroy_actor_handle(
+                        handle, reason="failed actor creation cleanup"
+                    )
+                with contextlib.suppress(Exception):
+                    await _wait_actor_deregistered(name, namespace, timeout=2.0)
+
+        with contextlib.suppress(BaseException):
+            await asyncio.shield(run_background_task(_do_cleanup()))
 
     async def create_actor(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         self._ensure_reaper()
@@ -976,15 +1246,37 @@ class ActorManager:
                 spec["ttl_seconds"] if has_explicit_ttl else 1800.0
             )
             get_if_exists = _validate_get_if_exists(spec.get("get_if_exists", True))
+            (
+                num_cpus,
+                num_gpus,
+                memory,
+                custom_resources,
+            ) = _normalize_spec_resources(spec, kind)
         except ValueError as exc:
             return {"ok": False, "error": _format_exception_dict(exc)}
 
+        create_timeout = spec.get("timeout")
+        if create_timeout is not None:
+            if (
+                isinstance(create_timeout, bool)
+                or not isinstance(create_timeout, (int, float))
+                or not math.isfinite(create_timeout)
+                or create_timeout <= 0
+            ):
+                return {
+                    "ok": False,
+                    "error": {
+                        "exc_type": "ValueError",
+                        "exc_message": "timeout must be a positive finite number or None.",
+                    },
+                }
+
         name = spec.get("name") or f"{target_name}_{uuid.uuid4().hex[:8]}"
-        # Driver functions are single-use: the call that runs them also kills them.
-        ephemeral = bool(spec.get("ephemeral", kind == "function"))
-        num_cpus = spec.get("num_cpus")
-        if num_cpus is None:
-            num_cpus = 0 if kind == "function" else 1
+        # One-shot driver functions (`cluster.run`) default to owner-bound
+        # (`detached=False`) so they fate-share with the agent and allow warm
+        # worker reuse across consecutive runs; persistent actors default to
+        # `detached=True`.
+        detached = bool(spec.get("detached", kind != "function"))
         max_concurrency = (
             spec["max_concurrency"] if spec.get("max_concurrency") is not None else 10
         )
@@ -996,85 +1288,165 @@ class ActorManager:
             name=name,
             kind=kind,
             ttl_seconds=ttl_seconds,
-            ephemeral=ephemeral,
+            detached=detached,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            resources=custom_resources or None,
             spec_hash=spec_hash,
         )
         namespace = spec.get("namespace") or CLIENT_ACTOR_NAMESPACE
+        deadline = (
+            time.monotonic() + float(create_timeout)
+            if create_timeout is not None
+            else None
+        )
+
+        def _remaining_timeout(default: Optional[float] = None) -> Optional[float]:
+            if deadline is None:
+                return default
+            rem = deadline - time.monotonic()
+            if rem <= 0:
+                raise asyncio.TimeoutError()
+            return min(rem, default) if default is not None else rem
+
+        def _timeout_error() -> Dict[str, Any]:
+            return {
+                "ok": False,
+                "error": {
+                    "exc_type": "TimeoutError",
+                    "exc_message": (
+                        f"Creation of actor '{name}' timed out after {create_timeout}s."
+                    ),
+                    "timed_out": True,
+                },
+            }
 
         name_lock = await self._get_name_lock(name)
-        async with name_lock:
+        try:
+            if deadline is not None:
+                await asyncio.wait_for(
+                    name_lock.acquire(), timeout=_remaining_timeout()
+                )
+            else:
+                await name_lock.acquire()
+        except asyncio.TimeoutError:
+            async with self._lock:
+                self._prune_name_lock_locked(name)
+            return _timeout_error()
+
+        try:
             if get_if_exists in (True, "recreate"):
-                existing = await self._lookup_actor(name)
+                try:
+                    lookup_timeout = _remaining_timeout(_CONTROL_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    return _timeout_error()
+                existing = await self._lookup_actor(
+                    name,
+                    timeout=lookup_timeout
+                    if lookup_timeout is not None
+                    else _CONTROL_TIMEOUT_S,
+                )
+                should_terminate_existing = False
                 if existing is not None:
-                    recreate_existing = False
                     try:
                         info = await asyncio.wait_for(
                             existing["handle"].get_info.remote(),
-                            timeout=_CONTROL_TIMEOUT_S,
+                            timeout=_remaining_timeout(_CONTROL_TIMEOUT_S),
                         )
-                        existing_cls = info.get("class_name") or existing.get(
-                            "class_name"
-                        )
-                        existing_hash = info.get("spec_hash") or existing.get(
-                            "spec_hash"
-                        )
-                        class_mismatch = bool(
-                            spec.get("class_name")
-                            and existing_cls
-                            and existing_cls != target_name
-                        )
-                        spec_mismatch = bool(
-                            class_mismatch or existing_hash != spec_hash
-                        )
-                        if get_if_exists == "recreate" and spec_mismatch:
-                            recreate_existing = True
-                        elif class_mismatch:
-                            return {
-                                "ok": False,
-                                "error": {
-                                    "exc_type": "ValueError",
-                                    "exc_message": (
-                                        f"Actor '{name}' already exists with class "
-                                        f"'{existing_cls}', cannot reattach as '{target_name}'."
-                                    ),
-                                },
-                            }
+                        if not isinstance(info, dict) or not info.get("ok", True):
+                            should_terminate_existing = True
                         else:
-                            if has_explicit_ttl:
-                                info = await asyncio.wait_for(
-                                    existing["handle"].set_ttl.remote(ttl_seconds),
-                                    timeout=_CONTROL_TIMEOUT_S,
-                                )
-                                existing["ttl_seconds"] = ttl_seconds
-                            existing["generator_methods"] = set(
-                                info.get("generator_methods") or []
+                            existing_cls = info.get("class_name") or existing.get(
+                                "class_name"
                             )
-                            existing["last_active"] = time.time()
-                            existing["last_active_mono"] = time.monotonic()
-                            return {
-                                **info,
-                                "ok": True,
-                                "name": name,
-                                "created": False,
-                                "spec_hash": existing_hash or spec_hash,
-                                "spec_mismatch": spec_mismatch,
-                            }
+                            existing_hash = info.get("spec_hash") or existing.get(
+                                "spec_hash"
+                            )
+                            class_mismatch = bool(
+                                spec.get("class_name")
+                                and existing_cls
+                                and existing_cls != target_name
+                            )
+                            spec_mismatch = bool(
+                                class_mismatch or existing_hash != spec_hash
+                            )
+                            if get_if_exists == "recreate" and spec_mismatch:
+                                should_terminate_existing = True
+                            elif class_mismatch:
+                                return {
+                                    "ok": False,
+                                    "error": {
+                                        "exc_type": "ValueError",
+                                        "exc_message": (
+                                            f"Actor '{name}' already exists with class "
+                                            f"'{existing_cls}', cannot reattach as '{target_name}'."
+                                        ),
+                                    },
+                                }
+                            else:
+                                effective_ttl = (
+                                    ttl_seconds
+                                    if has_explicit_ttl
+                                    else existing.get("ttl_seconds")
+                                )
+                                if hasattr(existing["handle"], "set_ttl"):
+                                    info = await asyncio.wait_for(
+                                        existing["handle"].set_ttl.remote(
+                                            effective_ttl
+                                        ),
+                                        timeout=_remaining_timeout(_CONTROL_TIMEOUT_S),
+                                    )
+                                if has_explicit_ttl:
+                                    existing["ttl_seconds"] = ttl_seconds
+                                existing["generator_methods"] = set(
+                                    info.get("generator_methods") or []
+                                )
+                                existing["last_active"] = time.time()
+                                existing["last_active_mono"] = time.monotonic()
+                                return {
+                                    **info,
+                                    "ok": True,
+                                    "name": name,
+                                    "created": False,
+                                    "spec_hash": existing_hash or spec_hash,
+                                    "spec_mismatch": spec_mismatch,
+                                }
+                    except asyncio.TimeoutError:
+                        if deadline is not None and time.monotonic() >= deadline:
+                            return _timeout_error()
+                        should_terminate_existing = True
                     except Exception:
-                        recreate_existing = True
-                    if recreate_existing:
-                        await self._terminate_actor_for_recreate(name, namespace)
+                        should_terminate_existing = True
                 elif get_if_exists == "recreate":
-                    await self._terminate_actor_for_recreate(name, namespace)
+                    should_terminate_existing = True
+                else:
+                    with contextlib.suppress(Exception):
+                        stale_handle = ray.get_actor(name, namespace=namespace)
+                        should_terminate_existing = _is_client_root_actor_handle(
+                            stale_handle
+                        )
+                if should_terminate_existing:
+                    try:
+                        term_timeout = _remaining_timeout(2.0)
+                    except asyncio.TimeoutError:
+                        return _timeout_error()
+                    await self._terminate_actor_for_recreate(
+                        name,
+                        namespace,
+                        timeout=term_timeout if term_timeout is not None else 2.0,
+                    )
 
             handle = None
             try:
                 options: Dict[str, Any] = {
                     "name": name,
                     "namespace": namespace,
-                    "lifetime": "detached",
                     "num_cpus": num_cpus,
                     "max_concurrency": max_concurrency,
                 }
+                if detached:
+                    options["lifetime"] = "detached"
                 if spec.get("runtime_env"):
                     options["runtime_env"] = spec["runtime_env"]
                 placement_keys = ("num_gpus", "memory", "resources", "label_selector")
@@ -1095,17 +1467,43 @@ class ActorManager:
                     }
 
                 handle = _RemoteClientRootActor.options(**options).remote(spec)
-                info = await handle.get_info.remote()
+                async with self._lock:
+                    self._creating_handles[name] = handle
+                info_ref = handle.get_info.remote()
+                if deadline is not None:
+                    info = await asyncio.wait_for(
+                        info_ref, timeout=_remaining_timeout()
+                    )
+                else:
+                    info = await info_ref
+                if not isinstance(info, dict) or not info.get("ok", True):
+                    await self._cleanup_failed_creation(name, namespace, handle)
+                    return (
+                        info
+                        if isinstance(info, dict)
+                        else {
+                            "ok": False,
+                            "error": {
+                                "exc_type": "RuntimeError",
+                                "exc_message": f"Actor '{name}' failed to initialize.",
+                            },
+                        }
+                    )
                 now = time.time()
                 now_mono = time.monotonic()
                 async with self._lock:
+                    if self._creating_handles.get(name) is not handle:
+                        raise RuntimeError(
+                            f"Actor '{name}' was killed during creation."
+                        )
+                    self._creating_handles.pop(name, None)
                     self._actors[name] = {
                         "name": name,
                         "handle": handle,
                         "class_name": target_name,
                         "kind": kind,
                         "namespace": namespace,
-                        "ephemeral": ephemeral,
+                        "detached": detached,
                         "spec_hash": spec_hash,
                         "ttl_seconds": ttl_seconds,
                         "created_at": now,
@@ -1122,11 +1520,18 @@ class ActorManager:
                     "spec_hash": spec_hash,
                     "spec_mismatch": False,
                 }
-            except Exception as exc:
-                if handle is not None:
-                    with contextlib.suppress(Exception):
-                        ray.kill(handle, no_restart=True)
+            except asyncio.TimeoutError:
+                await self._cleanup_failed_creation(name, namespace, handle)
+                return _timeout_error()
+            except BaseException as exc:
+                await self._cleanup_failed_creation(name, namespace, handle)
+                if not isinstance(exc, Exception):
+                    raise
                 return {"ok": False, "error": _format_exception_dict(exc)}
+        finally:
+            name_lock.release()
+            async with self._lock:
+                self._prune_name_lock_locked(name)
 
     async def list_actors(self) -> List[Dict[str, Any]]:
         self._ensure_reaper()
@@ -1150,13 +1555,17 @@ class ActorManager:
                 info = await asyncio.wait_for(
                     meta["handle"].get_info.remote(), timeout=_CONTROL_TIMEOUT_S
                 )
+                if not isinstance(info, dict) or not info.get("ok", True):
+                    return None
                 info["active_calls"] = max(
                     info.get("active_calls", 0), meta.get("active_calls", 0)
                 )
                 return info
-            except RayActorError:
+            except (RayActorError, RayTaskError):
                 async with self._lock:
-                    self._actors.pop(name, None)
+                    if self._actors.get(name) is meta:
+                        self._actors.pop(name, None)
+                        self._prune_name_lock_locked(name)
                 return None
             except Exception:
                 return {
@@ -1166,6 +1575,7 @@ class ActorManager:
                     "kind": meta.get("kind", "class"),
                     "namespace": meta.get("namespace", CLIENT_ACTOR_NAMESPACE),
                     "status": "ALIVE",
+                    "detached": meta.get("detached", True),
                     "spec_hash": meta.get("spec_hash"),
                     "active_calls": meta.get("active_calls", 0),
                     "ttl_seconds": meta.get("ttl_seconds"),
@@ -1184,13 +1594,17 @@ class ActorManager:
             info = await asyncio.wait_for(
                 meta["handle"].get_info.remote(), timeout=_CONTROL_TIMEOUT_S
             )
+            if not isinstance(info, dict) or not info.get("ok", True):
+                return None
             info["active_calls"] = max(
                 info.get("active_calls", 0), meta.get("active_calls", 0)
             )
             return info
-        except RayActorError:
+        except (RayActorError, RayTaskError):
             async with self._lock:
-                self._actors.pop(name, None)
+                if self._actors.get(name) is meta:
+                    self._actors.pop(name, None)
+                    self._prune_name_lock_locked(name)
             return None
         except Exception:
             return None
@@ -1205,7 +1619,9 @@ class ActorManager:
             )
         except RayActorError:
             async with self._lock:
-                self._actors.pop(name, None)
+                if self._actors.get(name) is meta:
+                    self._actors.pop(name, None)
+                    self._prune_name_lock_locked(name)
             return None
         except Exception:
             return None
@@ -1227,14 +1643,28 @@ class ActorManager:
         args = payload.get("args") or []
         kwargs = payload.get("kwargs") or {}
         timeout = payload.get("timeout")
-        ephemeral = bool(meta.get("ephemeral") or payload.get("ephemeral"))
+        one_shot = meta.get("kind") == "function"
+        target_name = meta.get("class_name") or name
+        task_name = (
+            target_name
+            if (method_name == "__call__" or one_shot)
+            else f"{target_name}.{method_name}"
+        )
 
         async with self._track_call(meta):
+            completed_in_worker = False
             try:
-                obj_ref = meta["handle"].invoke.remote(method_name, args, kwargs)
+                try:
+                    invoke_method = meta["handle"].invoke.options(name=task_name)
+                except (AttributeError, TypeError, NotImplementedError):
+                    invoke_method = meta["handle"].invoke
+                obj_ref = invoke_method.remote(method_name, args, kwargs)
                 if timeout is not None:
-                    return await asyncio.wait_for(obj_ref, timeout=float(timeout))
-                return await obj_ref
+                    res = await asyncio.wait_for(obj_ref, timeout=float(timeout))
+                else:
+                    res = await obj_ref
+                completed_in_worker = True
+                return res
             except asyncio.TimeoutError:
                 with contextlib.suppress(Exception):
                     ray.cancel(obj_ref, force=False, recursive=True)
@@ -1256,8 +1686,8 @@ class ActorManager:
             except Exception as exc:
                 return {"ok": False, "error": _format_exception_dict(exc)}
             finally:
-                if ephemeral:
-                    await self._reap_ephemeral(name)
+                if one_shot:
+                    await self._reap_one_shot(name, clean=completed_in_worker)
 
     async def stream_actor_method(
         self,
@@ -1281,14 +1711,25 @@ class ActorManager:
         kwargs = payload.get("kwargs") or {}
         timeout = payload.get("timeout")
         deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
-        ephemeral = bool(meta.get("ephemeral") or payload.get("ephemeral"))
+        one_shot = meta.get("kind") == "function"
+        target_name = meta.get("class_name") or name
+        task_name = (
+            target_name
+            if (method_name == "__call__" or one_shot)
+            else f"{target_name}.{method_name}"
+        )
         stream_id = f"stream_{uuid.uuid4().hex[:12]}"
         handle = meta["handle"]
 
         async with self._track_call(meta):
-            gen = handle.invoke_stream.options(
-                _generator_backpressure_num_objects=16
-            ).remote(method_name, args, kwargs, stream_id)
+            try:
+                stream_method = handle.invoke_stream.options(
+                    name=task_name,
+                    _generator_backpressure_num_objects=16,
+                )
+            except (AttributeError, TypeError, NotImplementedError):
+                stream_method = handle.invoke_stream
+            gen = stream_method.remote(method_name, args, kwargs, stream_id)
             ait = gen.__aiter__()
             next_task: Optional[asyncio.Task] = None
             completed_normally = False
@@ -1341,23 +1782,38 @@ class ActorManager:
             finally:
                 if next_task is not None and not next_task.done():
                     next_task.cancel()
+                    with contextlib.suppress(BaseException):
+                        await next_task
                 if not completed_normally:
                     with contextlib.suppress(Exception):
                         handle.cancel_stream.remote(stream_id)
                     with contextlib.suppress(Exception):
                         ray.cancel(gen, force=False, recursive=True)
-                if ephemeral:
-                    await self._reap_ephemeral(name)
+                if one_shot:
+                    await self._reap_one_shot(name, clean=completed_normally)
 
-    async def kill_actor(
-        self, name: str, no_restart: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    async def kill_actor(self, name: str) -> Optional[Dict[str, Any]]:
+        async with self._lock:
+            creating_handle = self._creating_handles.pop(name, None)
+        killed_creating = False
+        if creating_handle is not None:
+            try:
+                _destroy_actor_handle(creating_handle, reason="killed by ray_client")
+                killed_creating = True
+            except Exception:
+                pass
         name_lock = await self._get_name_lock(name)
-        async with name_lock:
-            killed = await self._terminate_actor_for_recreate(
-                name, CLIENT_ACTOR_NAMESPACE, no_restart=no_restart
-            )
-        if not killed:
+        try:
+            async with name_lock:
+                killed = await self._terminate_actor_for_recreate(
+                    name,
+                    CLIENT_ACTOR_NAMESPACE,
+                    already_killed=killed_creating,
+                )
+        finally:
+            async with self._lock:
+                self._prune_name_lock_locked(name)
+        if not killed and not killed_creating:
             return None
         return {"ok": True, "name": name, "killed": True}
 

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import dataclasses
 import enum
 import json
@@ -296,6 +297,8 @@ class JobAgentSubmissionClient:
             finally:
                 if next_chunk_task is not None and not next_chunk_task.done():
                     next_chunk_task.cancel()
+                    with contextlib.suppress(BaseException):
+                        await next_chunk_task
 
 
 def _job_details_to_dict(job: JobDetails, redact: bool) -> Dict:
@@ -598,10 +601,11 @@ class JobHead(SubprocessModule):
         except Exception:
             body = None
         params = dict(req.query) if req.query else None
+        is_mutating = req.method in ("POST", "DELETE")
         stream = (
             (req.query.get("stream", "0") in ("1", "true", "True"))
             or (isinstance(body, dict) and bool(body.get("stream", False)))
-            or (req.method == "POST" and "/methods/" in subpath)
+            or req.method == "POST"
         )
         sresp: Optional[StreamResponse] = None
         try:
@@ -610,6 +614,11 @@ class JobHead(SubprocessModule):
                 status, text, content_type = await agent.forward_actor_request(
                     req.method, subpath, json_body=body, params=params
                 )
+                if is_mutating and status == 200:
+                    self._last_client_actor_activity_at = max(
+                        self._last_client_actor_activity_at,
+                        datetime.now().timestamp(),
+                    )
                 return Response(text=text, status=status, content_type=content_type)
             # Relay the agent's response as it arrives: SSE frames from generators,
             # or keepalive whitespace followed by the JSON result of other calls.
@@ -625,6 +634,11 @@ class JobHead(SubprocessModule):
                             return Response(
                                 body=chunk, status=status, content_type=content_type
                             )
+                        if is_mutating:
+                            self._last_client_actor_activity_at = max(
+                                self._last_client_actor_activity_at,
+                                datetime.now().timestamp(),
+                            )
                         sresp = StreamResponse(
                             status=status,
                             headers={
@@ -636,6 +650,11 @@ class JobHead(SubprocessModule):
                     if chunk:
                         await sresp.write(chunk)
             finally:
+                if is_mutating and sresp is not None:
+                    self._last_client_actor_activity_at = max(
+                        self._last_client_actor_activity_at,
+                        datetime.now().timestamp(),
+                    )
                 await relay.aclose()
             await sresp.write_eof()
             return sresp
@@ -653,7 +672,7 @@ class JobHead(SubprocessModule):
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
 
-    @routes.post("/api/actors")
+    @routes.post("/api/actors", resp_type=ResponseType.STREAM)
     async def create_actor(self, req: Request) -> StreamResponse:
         return await self._proxy_actor_request(req, "")
 
@@ -958,8 +977,8 @@ class JobHead(SubprocessModule):
                     f"before or equal to the current timestamp {current_timestamp}"
                 )
 
-            # `/api/actors` actors are detached actors that the head node's dashboard
-            # agent creates from its `_ray_internal_dashboard` driver, so they keep
+            # `/api/actors` root actors are created by the head node's dashboard
+            # agent from its `_ray_internal_dashboard` driver, so they keep
             # the cluster busy without any user driver. Ask the agent only if such a
             # driver has existed, so that this probe never makes an idle agent
             # connect to Ray.

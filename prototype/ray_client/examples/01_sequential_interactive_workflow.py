@@ -1,6 +1,6 @@
 """Example 1: Sequential driver function workflow (`main_1` -> `main_2`).
 
-Runs self-contained functions as ephemeral top-level driver actors via
+Runs self-contained functions as non-detached root actors via
 `cluster.run` and passes JSON outputs between steps.
 """
 
