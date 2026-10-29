@@ -115,7 +115,9 @@ class TaskExecDriverStats:
 
 
 # Called as (exception, worker_stats, driver_stats, aborted). ``aborted`` is True
-# only for a task torn down without a failure (see ``DataOpTask.mark_aborted``).
+# only for a task torn down because lineage reconstruction is rebuilding its lost
+# output; ``exception`` is then the lost-object error (see
+# ``DataOpTask.mark_aborted``).
 TaskDoneCallbackType = Callable[
     [
         Optional[Exception],
@@ -536,12 +538,16 @@ class DataOpTask(OpTask):
             )
         self._state = TaskGeneratorState.FINISHED
 
-    def mark_aborted(self, exception: Optional[Exception]) -> None:
+    def mark_aborted(
+        self, exception: Exception, aborted_for_reconstruction: bool = False
+    ) -> None:
         """Tear down a task whose output was lost, without reading its stream.
 
-        ``exception`` is why the task failed. ``None`` aborts it without a
-        failure, for a lineage-tracked task whose lost output is being
-        reconstructed: the done-callback then gets ``aborted=True``.
+        ``exception`` is why the task is torn down. With
+        ``aborted_for_reconstruction``, lineage reconstruction is re-running the
+        task to rebuild its lost output, so the done-callback gets
+        ``aborted=True`` and the operator doesn't count the task as finished or
+        failed: the re-run task is counted instead.
 
         Transitions the task to FINISHED and runs the normal done-callback
         so the owning operator releases every resource the task reserved --
@@ -556,16 +562,14 @@ class DataOpTask(OpTask):
             # earlier abort); firing it twice would double-release the task's
             # resource reservations.
             return
-        # A task either failed (``exception`` set) or was aborted, never both:
-        # ``aborted`` is derived as ``exception is None``. Only a lineage-tracked
-        # task can be aborted, because reconstruction re-runs it and counts the
-        # replacement; any other task must report why it failed.
-        assert exception is not None or self.is_lineage_tracked
+        # Only lineage reconstruction re-runs a task, so only a lineage-tracked
+        # task can be aborted for it.
+        assert not aborted_for_reconstruction or self.is_lineage_tracked
         self._task_done_callback(
             exception,
             None,  # TaskExecStats
             None,  # TaskExecDriverStats
-            exception is None,  # aborted
+            aborted_for_reconstruction,  # aborted
         )
         self._state = TaskGeneratorState.FINISHED
 

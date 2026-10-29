@@ -524,9 +524,9 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
     abort_errors = []
     original_mark_aborted = DataOpTask.mark_aborted
 
-    def recording_mark_aborted(self, exception):
+    def recording_mark_aborted(self, exception, aborted_for_reconstruction=False):
         abort_errors.append(exception)
-        original_mark_aborted(self, exception)
+        original_mark_aborted(self, exception, aborted_for_reconstruction)
 
     monkeypatch.setattr(DataOpTask, "mark_aborted", recording_mark_aborted)
 
@@ -538,8 +538,9 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
     assert reconstruction_attempts == [0]
 
 
-def test_started_reconstruction_aborts_without_failure():
-    """A task whose lost output is being reconstructed is aborted, not failed."""
+def test_started_reconstruction_aborts_for_reconstruction():
+    """A task whose lost output is being reconstructed is aborted for
+    reconstruction, keeping the lost-object error."""
     calls = []
     task = _abortable_task(lambda *args: calls.append(args))
     tracker = MagicMock()
@@ -549,7 +550,7 @@ def test_started_reconstruction_aborts_without_failure():
     _reconstruct_lost_object({}, tracker, MagicMock(), task, lost_error)
 
     assert task.has_finished
-    assert calls == [(None, None, None, True)]
+    assert calls == [(lost_error, None, None, True)]
 
 
 def test_reconstruction_error_wraps_object_lost_error():

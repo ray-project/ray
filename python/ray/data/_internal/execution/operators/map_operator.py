@@ -718,7 +718,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             #       emitted (current limitation, since it's emitted along with
             #       `BlockMetadata`)
             assert (
-                aborted or exception or task_exec_driver_stats
+                exception or task_exec_driver_stats
             ), "Driver's task execution stats must be provided on task's successful completion"
 
             if aborted:
@@ -738,7 +738,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
             )
 
-            if lineage_tracker is not None and exception is None and not aborted:
+            if lineage_tracker is not None and exception is None:
                 # Hand any child whose whole input set this completion completes
                 # downstream before reporting the completion itself.
                 if reconstruction_plan_id is not None:

@@ -754,8 +754,8 @@ def _reconstruct_lost_object(
         resubmissions.append((seed_id, seed_op, seed_input))
 
     # Abort the task so the operator releases every resource it reserved. It's
-    # aborted without a failure since its lost output is being reconstructed.
-    task.mark_aborted(None)
+    # not counted as failed since its lost output is being reconstructed.
+    task.mark_aborted(lost_error, aborted_for_reconstruction=True)
 
     for seed_id, seed_op, seed_input in resubmissions:
         # Clear the completion state of the seed op and everything downstream so a
