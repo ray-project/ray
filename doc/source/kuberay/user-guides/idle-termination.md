@@ -10,11 +10,7 @@ myst:
 
 Idle termination reclaims a RayCluster that has no drivers connected. The Ray autoscaler can scale worker Pods down to zero based on `idleTimeoutSeconds`, but the head Pod keeps running and might reserve capacity even when the Ray cluster is idle. With idle termination, the KubeRay operator and Ray autoscaler v2 work together to suspend or delete a RayCluster after it has had no active drivers for a configured period.
 
-## How does idle termination work?
-
-Idle termination offers two policies, `Suspend` and `Delete`. `Suspend` is the default.
-
-### How does the Ray autoscaler detect an idle Ray cluster?
+## How does the Ray autoscaler detect an idle Ray cluster?
 
 The Ray autoscaler queries the Global Control Service (GCS) job table and checks that no driver has connected to the Ray cluster for `spec.idleTerminationOptions.timeoutSeconds`. The autoscaler ignores the following when it looks for drivers:
 
@@ -22,9 +18,13 @@ The Ray autoscaler queries the Global Control Service (GCS) job table and checks
 - Ray-internal jobs, such as the dashboard.
 - A Ray job whose entrypoint never calls `ray.init()`. The entrypoint process doesn't connect to the Ray cluster, so it isn't a driver.
 
-The autoscaler applies the policy `timeoutSeconds` after the last driver disconnects. If no driver has run, it applies the policy `timeoutSeconds` after the RayCluster is created or resumed. A connected driver keeps the RayCluster alive for as long as it runs.
+The autoscaler suspends or deletes the RayCluster `timeoutSeconds` after the last driver disconnects. If no driver has run, the countdown starts when the RayCluster is created or resumed. A connected driver keeps the RayCluster alive for as long as it runs.
 
 If the autoscaler can't query the GCS job table, it treats the Ray cluster as having a connected driver and doesn't terminate it.
+
+## How does each policy work?
+
+Idle termination offers two policies, `Suspend` and `Delete`. `Suspend` is the default.
 
 ### `Suspend` policy
 
