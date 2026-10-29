@@ -69,6 +69,25 @@ def _get_unique_value_arrow_arrays(
     return keys_array, values_array
 
 
+def _get_cached_unique_value_arrow_arrays(
+    preprocessor: Preprocessor, input_col: str
+) -> Tuple[pa.Array, pa.Array]:
+    """Get cached Arrow lookup arrays for ``input_col``, rebuilding only if the
+    underlying ``stats_`` entry for the column changed."""
+    stat_value = preprocessor.stats_[f"unique_values({input_col})"]
+    if not isinstance(stat_value, dict):
+        return stat_value
+    cache = preprocessor.__dict__.setdefault("_arrow_arrays_cache", {})
+    cached = cache.get(input_col)
+    if cached is None or cached[0] is not stat_value or cached[1] != len(stat_value):
+        keys_array, values_array = _get_unique_value_arrow_arrays(
+            preprocessor.stats_, input_col
+        )
+        cached = (stat_value, len(stat_value), keys_array, values_array)
+        cache[input_col] = cached
+    return cached[2], cached[3]
+
+
 @PublicAPI(stability="alpha")
 @SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.ordinal_encoder")
 class OrdinalEncoder(SerializablePreprocessorBase):
@@ -217,7 +236,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
     def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
         """Get Arrow arrays for keys and values."""
-        return _get_unique_value_arrow_arrays(self.stats_, input_col)
+        return _get_cached_unique_value_arrow_arrays(self, input_col)
 
     def _encode_list_element(self, element: list, *, column_name: str):
         ordinal_map = self._get_ordinal_map(column_name)
@@ -313,6 +332,11 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         self._encode_lists = fields["encode_lists"]
         # optional fields
         self._fitted = fields.get("_fitted")
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state = super().__getstate__()
+        state.pop("_arrow_arrays_cache", None)
+        return state
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
@@ -550,7 +574,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
 
     def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
         """Get Arrow arrays for keys and values."""
-        return _get_unique_value_arrow_arrays(self.stats_, input_col)
+        return _get_cached_unique_value_arrow_arrays(self, input_col)
 
     def _encode_column_one_hot(
         self, column: pa.ChunkedArray, input_col: str
@@ -605,6 +629,11 @@ class OneHotEncoder(SerializablePreprocessorBase):
         self._max_categories = fields["max_categories"]
         # optional fields
         self._fitted = fields.get("_fitted")
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state = super().__getstate__()
+        state.pop("_arrow_arrays_cache", None)
+        return state
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
@@ -958,16 +987,20 @@ class LabelEncoder(SerializablePreprocessorBase):
         )
 
     def _inverse_transform_pandas(self, df: pd.DataFrame):
-        def column_label_decoder(s: pd.Series):
-            inverse_values = {
-                value: key
-                for key, value in self.stats_[
-                    f"unique_values({self._label_column})"
-                ].items()
-            }
-            return s.map(inverse_values)
+        stat_value = self.stats_[f"unique_values({self._label_column})"]
+        cached = self.__dict__.get("_inverse_label_cache")
+        if (
+            cached is None
+            or cached[0] is not stat_value
+            or cached[1] != len(stat_value)
+        ):
+            inverse_values = {value: key for key, value in stat_value.items()}
+            cached = (stat_value, len(stat_value), inverse_values)
+            self._inverse_label_cache = cached
+        else:
+            inverse_values = cached[2]
 
-        df[self._label_column] = df[self._output_column].transform(column_label_decoder)
+        df[self._label_column] = df[self._output_column].map(inverse_values)
         return df
 
     def get_input_columns(self) -> List[str]:
@@ -989,6 +1022,11 @@ class LabelEncoder(SerializablePreprocessorBase):
         self._output_column = fields["output_column"]
         # optional fields
         self._fitted = fields.get("_fitted")
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state = super().__getstate__()
+        state.pop("_inverse_label_cache", None)
+        return state
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""

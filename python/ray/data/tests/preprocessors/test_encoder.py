@@ -1698,6 +1698,65 @@ def test_encoders_fit_via_aggregation():
         assert encoder.has_stats(), f"{type(encoder).__name__} should have stats"
 
 
+def test_encoder_arrow_and_inverse_label_caching(monkeypatch):
+    """Verify OrdinalEncoder, OneHotEncoder, and LabelEncoder cache lookup structures
+    across batches, invalidate on refit, and exclude caches when pickled."""
+    import pickle
+    import ray.data.preprocessors.encoder as encoder_mod
+
+    calls = []
+    orig_fn = encoder_mod._get_unique_value_arrow_arrays
+
+    def counting_fn(stats, col):
+        calls.append(col)
+        return orig_fn(stats, col)
+
+    monkeypatch.setattr(encoder_mod, "_get_unique_value_arrow_arrays", counting_fn)
+
+    for cls in (OrdinalEncoder, OneHotEncoder):
+        calls.clear()
+        enc = cls(columns=["cat"])
+        enc.stats_ = {"unique_values(cat)": {"a": 0, "b": 1, "c": 2}}
+        enc._fitted = True
+
+        batch = pa.table({"cat": ["a", "b", "c", "a"]})
+        out1 = enc._transform_arrow(batch)
+        out2 = enc._transform_arrow(batch)
+        assert out1.equals(out2)
+        assert calls == ["cat"]
+
+        # Refitting / replacing the stats dict invalidates the cache
+        enc.stats_ = {"unique_values(cat)": {"x": 0, "y": 1}}
+        out3 = enc._transform_arrow(pa.table({"cat": ["y", "x"]}))
+        assert calls == ["cat", "cat"]
+        if cls is OrdinalEncoder:
+            assert out3.column("cat").to_pylist() == [1, 0]
+
+        # Pickling excludes transient cache
+        restored = pickle.loads(pickle.dumps(enc))
+        assert "_arrow_arrays_cache" not in restored.__dict__
+
+    label_enc = LabelEncoder(label_column="label", output_column="encoded")
+    label_enc.stats_ = {"unique_values(label)": {"cat": 0, "dog": 1}}
+    label_enc._fitted = True
+
+    df = pd.DataFrame({"encoded": [1, 0, 1]})
+    inv1 = label_enc._inverse_transform_pandas(df.copy())
+    inv2 = label_enc._inverse_transform_pandas(df.copy())
+    assert inv1["label"].tolist() == ["dog", "cat", "dog"]
+    assert inv2["label"].tolist() == ["dog", "cat", "dog"]
+    assert "_inverse_label_cache" in label_enc.__dict__
+
+    # Replacing stats dict invalidates inverse label cache
+    label_enc.stats_ = {"unique_values(label)": {"bird": 0, "fish": 1}}
+    inv3 = label_enc._inverse_transform_pandas(df.copy())
+    assert inv3["label"].tolist() == ["fish", "bird", "fish"]
+
+    restored_label = pickle.loads(pickle.dumps(label_enc))
+    assert "_inverse_label_cache" not in restored_label.__dict__
+
+
+
 @pytest.mark.parametrize(
     "make_encoder",
     [
