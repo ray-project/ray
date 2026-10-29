@@ -6264,16 +6264,16 @@ torch-geometric==2.5.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
 torch-scatter==2.1.2+cu.12.8.torch.2.10 \
-    --hash=sha256:1dfdd2ded28d90d00cf8ba1f337e0b7f6a2f3ada029bcc83e5f4613f1730a7a8 \
-    --hash=sha256:1e7e231cf58e9a405c4fc38c1f391382be13306fd7f9c61905b439a76499ad28 \
-    --hash=sha256:62a2663007f1b58282716ed8dfdbff04ce1e720f6359531c7f59e33c1697aff1 \
-    --hash=sha256:75b0d9e428b7e87d0f505909dfee72caa62b76eae297945bd8e6c6b43712892f \
-    --hash=sha256:ae0f6a283e7addd2028beedc8a9be918aa2dfd62807e241f8f2cc7fbef412f00 \
-    --hash=sha256:b4f1e2a20de49b4e526539380f7a3233119943c9b86362c0eb0a1ea793557bb2 \
-    --hash=sha256:c77ca62a15d3e661651d714e07b824707733ed07306d534c6b88b7cd5cdd2655 \
-    --hash=sha256:d0e00e63e575c486ea9cb100dea306cb6f1e8d0878fb5026a3a5e40b8d732e6b \
-    --hash=sha256:e3cfa898075792f7626a1312d36a6b4128a3a771328ccf301e97dcbff573f106 \
-    --hash=sha256:efebd44a8ba61ae59a796329bc8b7a2ceb61a01bf4b95948f0d21ab1e47a6f20
+    --hash=sha256:2d4a6320b815a90fe43f5c362eca78702aee8b2c4043c30e624c2f3a82db818a \
+    --hash=sha256:57b7d08486eaffb29f5a91d0824c5fd5c69eb9dc175db0525fb472b48f7f5a2c \
+    --hash=sha256:6fc185836e80d7f53765967f7c1ff9fc8edd2ff5b07060ee6653b7e684539ec1 \
+    --hash=sha256:890700bc52b226362926192f98fef0f93106bf3c8d5eef8ba2a6446055704baa \
+    --hash=sha256:a7d4fdd30aaa277bf8f44f22199246585f8c57e9610ce1fedeb81b3f83bf9fa0 \
+    --hash=sha256:c0417fe0f7aebfeef951dbc03eca6d7c0b6b9f10a2231837fae8226d0eef5e6e \
+    --hash=sha256:ced841afeb2f210bcd3b0616bf009621b4a7a901a2376d9ca5dfd0e631781e65 \
+    --hash=sha256:d3fa90d89d636b74d0853e4fd9d6987d19dc421599b4ea1d7dad5fa284506bfe \
+    --hash=sha256:e999bb0abb799f2c0c8e15395a6a7bfc84619abdc06dd3caa72dc96a2033e8be \
+    --hash=sha256:fe54d9554019894c4589298ecba51fc850a79f64fcbd6821e06b8e3ef0612008
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
