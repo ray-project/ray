@@ -636,7 +636,7 @@ class LearnerGroup(Checkpointable):
 
     def foreach_learner(
         self,
-        func: Callable[..., T],
+        func: Callable[[Learner], T],
         *,
         healthy_only: bool = True,
         remote_actor_ids: List[int] = None,
