@@ -9,7 +9,8 @@ class PartitionHints:
     """Sizing hints ``read_api`` derives for ``DataSourceV2.get_file_partitioner``.
 
     They are hints: a partitioner that sizes read units from its own metadata
-    (Parquet's ``OnlineBinPacker``) ignores them.
+    may ignore them. Parquet's ``OnlineBinPacker`` takes only
+    ``max_bucket_size``, as its bin budget.
 
     Attributes:
         min_bucket_size: Lower bound on estimated bytes per read unit, from

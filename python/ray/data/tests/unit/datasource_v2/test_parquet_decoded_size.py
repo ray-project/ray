@@ -692,3 +692,159 @@ def test_added_columns_are_bounded(tmp_path):
     estimate = _estimate(path, added=added) - _estimate(path)
     assert estimate == math.ceil(N * added[0]) + added[1]
     assert 1 <= estimate / held <= 1.1
+
+
+# ---------------------------------------------------------------------------
+# The planner: footer reader, bin packing
+# ---------------------------------------------------------------------------
+
+
+def _read_and_chunk(path):
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        FooterReader,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+
+    return FooterReader(LocalFileSystem())._read_and_chunk(
+        FileInfo(str(path), os.path.getsize(path))
+    )
+
+
+def _estimate_through_footer_reader(path):
+    return sum(run.size_bytes for run in _read_and_chunk(path).row_groups)
+
+
+@pytest.mark.parametrize("page_read_fails", [False, True])
+def test_footer_reader_reads_dictionary_page_headers(
+    tmp_path, monkeypatch, page_read_fails
+):
+    """The footer reader reads the page headers the estimate asks for.
+
+    A failed read loosens that column to a bound rather than failing.
+    """
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+
+    path = _write(_cases()["mixed-int-string"], tmp_path / "f.parquet")
+    monkeypatch.setattr(reader, "read_size_statistics", _no_size_statistics)
+    if page_read_fails:
+
+        def unreadable(buf):
+            raise OSError("unreadable")
+
+        monkeypatch.setattr(reader, "read_dictionary_page", unreadable)
+
+    assert _estimate_through_footer_reader(path) == _estimate(
+        path, size_statistics=_no_size_statistics, read_pages=not page_read_fails
+    )
+
+
+def test_unmodeled_schema_falls_back_to_the_encoding_ratio(tmp_path, monkeypatch):
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_size_estimator import (
+        PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+    )
+
+    path = _write(_cases()["mixed-int-string"], tmp_path / "f.parquet")
+    monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
+    row_group = pq.read_metadata(str(path)).row_group(0)
+    uncompressed = sum(
+        row_group.column(j).total_uncompressed_size
+        for j in range(row_group.num_columns)
+    )
+
+    assert (
+        _estimate_through_footer_reader(path)
+        == uncompressed * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+    )
+
+
+def _pack_through_footer_reader(paths, max_bin_bytes):
+    """Footer read, estimate, coalescing and packing, without a Ray runtime."""
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
+        OnlineBinPacker,
+    )
+    from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+        _chunked_file_to_manifest,
+    )
+
+    packer = OnlineBinPacker(max_bin_bytes=max_bin_bytes)
+    manifests = []
+
+    def drain():
+        while packer.has_partition():
+            manifests.append(packer.next_partition())
+
+    for path in paths:
+        packer.add_input(_chunked_file_to_manifest(_read_and_chunk(path)))
+        drain()
+    packer.finalize()
+    drain()
+    return manifests
+
+
+def _bin_totals(manifests):
+    return [
+        sum(meta["size_bytes"] for meta in manifest.file_chunk_metadatas)
+        for manifest in manifests
+    ]
+
+
+@pytest.mark.parametrize(
+    "label",
+    # Opposite ends of the fixed ratio's error: dictionary-encoded strings,
+    # whose uncompressed size badly understates the Arrow block, and plain
+    # numerics, which it overstates once scaled by 5.
+    ["string-low-cardinality", "int64-plain"],
+)
+def test_bins_land_near_the_target(tmp_path, label):
+    table = _cases()[label]
+    path = _write(table, tmp_path / "f.parquet", row_group_size=len(table) // 10)
+    actual = _allocated(path)
+    target = actual // 4
+
+    totals = _bin_totals(_pack_through_footer_reader([path], target))
+
+    assert sum(totals) == pytest.approx(actual, rel=0.02)
+    # A bin seals once no further row group fits, so bins may undershoot.
+    assert all(total <= target for total in totals)
+    assert 3 <= len(totals) <= 6, totals
+
+
+def test_dictionary_strings_sized_on_disk_would_share_one_bin(tmp_path):
+    """On uncompressed bytes, low-cardinality strings would pack into one read task."""
+    table = _cases()["string-low-cardinality"]
+    path = _write(table, tmp_path / "f.parquet", row_group_size=len(table) // 10)
+    metadata = pq.read_metadata(str(path))
+    uncompressed = sum(
+        metadata.row_group(rg).column(0).total_uncompressed_size
+        for rg in range(metadata.num_row_groups)
+    )
+    target = _allocated(path) // 4
+
+    assert uncompressed < target
+    assert len(_pack_through_footer_reader([path], target)) > 1
+
+
+def test_files_share_bins_by_decoded_size(tmp_path):
+    table = _cases()["mixed-int-string"]
+    paths = [
+        _write(table, tmp_path / f"part{i}.parquet", row_group_size=len(table) // 4)
+        for i in range(4)
+    ]
+    per_file = _allocated(paths[0])
+
+    manifests = _pack_through_footer_reader(paths, per_file * 2)
+    totals = _bin_totals(manifests)
+
+    assert sum(totals) == pytest.approx(per_file * 4, rel=0.02)
+    assert all(total <= per_file * 2 for total in totals)
+    # Every row group lands in exactly one bin.
+    covered = [
+        (str(path), rg_id)
+        for manifest in manifests
+        for path, meta in zip(manifest.paths, manifest.file_chunk_metadatas)
+        for rg_id in meta["unit_ids"]
+    ]
+    assert len(covered) == len(set(covered)) == 4 * 4
