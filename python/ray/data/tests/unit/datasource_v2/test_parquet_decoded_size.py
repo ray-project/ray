@@ -6,6 +6,7 @@ held to its documented range.
 
 import datetime
 import math
+import os
 from decimal import Decimal
 
 import numpy as np
@@ -14,6 +15,7 @@ import pytest
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
     _leaf_layout,
     _UnsupportedLayout,
+    added_bytes,
     build_leaf_profiles,
     dictionary_page_read_size,
     estimate_row_group_decoded_size,
@@ -200,17 +202,19 @@ def _write(table, path, **kwargs):
     return path
 
 
-def _allocated(path, columns=None):
+def _allocated(path, columns=None, schema=None, **format_kwargs):
     """Bytes PyArrow allocates scanning ``path`` as a Ray read task does.
 
     ``get_total_buffer_size``, since ``nbytes`` leaves out a nested array's bitmap.
     """
     from pyarrow.fs import LocalFileSystem
 
-    fragment = pds.ParquetFileFormat().make_fragment(
+    fragment = pds.ParquetFileFormat(**format_kwargs).make_fragment(
         str(path), filesystem=LocalFileSystem()
     )
-    scanner = fragment.scanner(schema=fragment.physical_schema, columns=columns)
+    scanner = fragment.scanner(
+        schema=schema or fragment.physical_schema, columns=columns
+    )
     return scanner.to_table().get_total_buffer_size()
 
 
@@ -224,10 +228,18 @@ def _estimate(
     leaf_indices=None,
     size_statistics=read_size_statistics,
     read_pages=True,
+    schema=None,
+    format_kwargs=None,
+    added=(0, 0),
 ):
     """The estimate over ``path``'s row groups, read as the footer reader does."""
     metadata = pq.read_metadata(str(path))
-    profiles = build_leaf_profiles(metadata.schema, file_metadata=metadata)
+    profiles = build_leaf_profiles(
+        metadata.schema,
+        pinned_schema=schema,
+        format_kwargs=format_kwargs,
+        file_metadata=metadata,
+    )
     assert profiles is not None
     stats = size_statistics(metadata)
     total = 0
@@ -253,6 +265,8 @@ def _estimate(
                 leaf_indices=leaf_indices,
                 size_stats=rg_stats,
                 dictionary_pages=pages,
+                format_kwargs=format_kwargs,
+                added=added,
             )
             assert estimate is not None
             total += estimate
@@ -593,3 +607,88 @@ def test_delta_byte_array_is_a_guess(tmp_path):
 
     assert _estimate(path) == expected
     assert _estimate(path, size_statistics=_no_size_statistics) == expected
+
+
+# ---------------------------------------------------------------------------
+# Ray's read: the schema pin, read options and added columns
+# ---------------------------------------------------------------------------
+
+
+def _nulls_hide_a_dictionary():
+    """A struct with nulls over a non-nullable dictionary field."""
+    field = pa.field("d", pa.dictionary(pa.int32(), pa.string()), nullable=False)
+    mask = pa.array([i % 3 == 0 for i in range(N)])
+    return pa.StructArray.from_arrays(
+        [_arrow_dictionary(50, 12)], fields=[field], mask=mask
+    )
+
+
+_STRINGS = pa.array([f"v{i % 5}" for i in range(N)])
+_LISTS = pa.array([[1, 2]] * N, pa.list_(pa.int64()))
+
+
+@pytest.mark.parametrize(
+    "column, schema_type, format_kwargs, high",
+    [
+        # The pin, cast the leaves follow one for one.
+        (pa.array(range(N), pa.int32()), pa.int64(), {}, 1.02),
+        (_STRINGS, pa.large_string(), {}, 1),
+        (_LISTS, pa.large_list(pa.int64()), {}, 1),
+        (_arrow_dictionary(50, 12), pa.string(), {}, 1),
+        # Numbers cast to text: sized as stored plus a crude bound.
+        (pa.array(range(N), pa.int64()), pa.string(), {}, 1.25),
+        # Each slot the null struct hides copies a dictionary value.
+        (
+            _nulls_hide_a_dictionary(),
+            pa.struct([pa.field("d", pa.string(), nullable=False)]),
+            {},
+            math.inf,
+        ),
+        # Read options, on a file without a stored Arrow schema.
+        (_STRINGS, None, {"dictionary_columns": ["a"]}, 1.1),
+        (_STRINGS, None, {"binary_type": pa.large_binary()}, 1),
+        (_STRINGS, None, {"binary_type": pa.binary_view()}, 1.1),
+        (_LISTS, None, {"list_type": pa.LargeListType}, 1),
+    ],
+    ids=[
+        "int32-to-int64",
+        "string-to-large-string",
+        "list-to-large-list",
+        "dictionary-to-string",
+        "int64-to-string",
+        "hidden-dictionary-slots",
+        "dictionary-columns",
+        "binary-type-large",
+        "binary-type-view",
+        "list-type-large",
+    ],
+)
+def test_ray_read(tmp_path, column, schema_type, format_kwargs, high):
+    # The read options retype only a file without a stored Arrow schema.
+    path = _write(
+        pa.table({"a": column}), tmp_path / "f.parquet", store_schema=not format_kwargs
+    )
+    schema = None if schema_type is None else pa.schema([("a", schema_type)])
+    estimate = _estimate(path, schema=schema, format_kwargs=format_kwargs)
+
+    assert 1 <= estimate / _allocated(path, schema=schema, **format_kwargs) <= high
+
+
+def test_added_columns_are_bounded(tmp_path):
+    """The path, a Hive value cut from it, and a column the pin fills with nulls."""
+    path = str(tmp_path / "year=2024" / "f.parquet")
+    os.makedirs(os.path.dirname(path))
+    _write(pa.table({"a": _STRINGS}), path)
+    fields = [pa.field(name, pa.string()) for name in ("path", "year", "notes")]
+    added = added_bytes(fields, path)
+    held = pa.table(
+        {
+            "path": pa.array([path] * N),
+            "year": pa.array(["2024"] * N),
+            "notes": pa.nulls(N, pa.string()),
+        }
+    ).get_total_buffer_size()
+
+    estimate = _estimate(path, added=added) - _estimate(path)
+    assert estimate == math.ceil(N * added[0]) + added[1]
+    assert 1 <= estimate / held <= 1.1
