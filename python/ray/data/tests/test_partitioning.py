@@ -1115,6 +1115,61 @@ def test_read_csv_hive_null_partition_column_in_data(
     assert ds.take_all() == [{"number": 0, "year": None}]
 
 
+def test_read_json_hive_null_partition_column_in_data(
+    ray_start_regular_shared, tmp_path
+):
+    path = os.path.join(tmp_path, "flag=__HIVE_DEFAULT_PARTITION__", "data.jsonl")
+    os.makedirs(os.path.dirname(path))
+    with open(path, "w") as f:
+        f.write(json.dumps({"flag": None, "number": 0}))
+
+    # `lines=True` reads with pandas.
+    ds = ray.data.read_json(tmp_path, lines=True, partitioning=Partitioning("hive"))
+
+    assert ds.take_all() == [{"flag": None, "number": 0}]
+
+
+@pytest.mark.parametrize("flags", [[True], [False], [None, True]])
+def test_read_json_hive_null_partition_conflicts_with_data(
+    ray_start_regular_shared, tmp_path, flags
+):
+    path = os.path.join(tmp_path, "flag=__HIVE_DEFAULT_PARTITION__", "data.jsonl")
+    os.makedirs(os.path.dirname(path))
+    with open(path, "w") as f:
+        f.write("\n".join(json.dumps({"flag": flag, "number": 0}) for flag in flags))
+
+    # `lines=True` reads with pandas.
+    ds = ray.data.read_json(tmp_path, lines=True, partitioning=Partitioning("hive"))
+
+    with pytest.raises(ValueError, match="different from in-data values"):
+        ds.take_all()
+
+
+@pytest.mark.parametrize(
+    "field_types,arrow_type,values",
+    [(None, pa.string(), ["2020"]), ({"year": int}, pa.int64(), [2020])],
+)
+def test_read_parquet_v1_hive_null_partition(
+    ray_start_regular_shared,
+    restore_data_context,
+    tmp_path,
+    field_types,
+    arrow_type,
+    values,
+):
+    restore_data_context.use_datasource_v2 = False
+    ray.data.from_items([{"number": 0, "year": None}]).write_parquet(
+        tmp_path, partition_cols=["year"]
+    )
+
+    ds = ray.data.read_parquet(
+        tmp_path, partitioning=Partitioning("hive", field_types=field_types)
+    ).materialize()
+
+    assert ds.schema().base_schema.field("year").type == arrow_type
+    assert ds.filter(expr=col("year").is_in(values)).count() == 0
+
+
 @pytest.mark.parametrize(
     "value,arrow_type,expected",
     [

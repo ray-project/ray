@@ -267,7 +267,7 @@ class PathPartitionParser:
             PartitionStyle.HIVE: self._parse_hive_path,
             PartitionStyle.DIRECTORY: self._parse_dir_path,
         }
-        self._parser_fn: Callable[[str], Dict[str, str]] = parsers.get(style)
+        self._parser_fn: Callable[[str], Dict[str, Optional[str]]] = parsers.get(style)
         if self._parser_fn is None:
             raise ValueError(
                 f"Unsupported partition style: {style}. "
@@ -275,7 +275,7 @@ class PathPartitionParser:
             )
         self._scheme = partitioning
 
-    def __call__(self, path: str) -> Dict[str, str]:
+    def __call__(self, path: str) -> Dict[str, Any]:
         """Parses partition keys and values from a single file path.
 
         Args:
@@ -288,7 +288,7 @@ class PathPartitionParser:
         dir_path = self._dir_path_trim_base(path)
         if dir_path is None:
             return {}
-        partitions: Dict[str, str] = self._parser_fn(dir_path)
+        partitions: Dict[str, Any] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
             partitions[field] = _cast_value(partitions[field], data_type)
@@ -311,7 +311,8 @@ class PathPartitionParser:
             path: File path to parse partition values from.
             predicate: Expression that references partition columns.
             schema: Logical schema used to cast path values to the reader's types.
-                If omitted, infer types from the parsed values as before.
+                If omitted, use the types from the partitioning's ``field_types``;
+                fields not listed there are strings.
 
         Returns:
             True if the partition satisfies the predicate (should read the file),
@@ -493,7 +494,7 @@ class PathPartitionFilter:
 
     @staticmethod
     def of(
-        filter_fn: Callable[[Dict[str, str]], bool],
+        filter_fn: Callable[[Dict[str, Any]], bool],
         style: PartitionStyle = PartitionStyle.HIVE,
         base_dir: Optional[str] = None,
         field_names: Optional[List[str]] = None,
@@ -555,7 +556,7 @@ class PathPartitionFilter:
     def __init__(
         self,
         path_partition_parser: PathPartitionParser,
-        filter_fn: Callable[[Dict[str, str]], bool],
+        filter_fn: Callable[[Dict[str, Any]], bool],
     ):
         """Creates a new path-based partition filter based on a parser.
 

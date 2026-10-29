@@ -301,7 +301,7 @@ class FileBasedDatasource(Datasource):
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
             for read_path in read_paths:
-                partitions: Dict[str, str] = {}
+                partitions: Dict[str, Any] = {}
                 partition_schema = None
                 if partitioning is not None:
                     parse = PathPartitionParser(partitioning)
@@ -563,9 +563,16 @@ def _add_partitions_to_dataframe(
         column = pd.Series(data=[value] * len(df), name=field)
 
         if field in df:
-            column = column.astype(df[field].dtype)
-            mask = df[field].notna()
-            if not df[field][mask].equals(column[mask]):
+            if value is None:
+                # Casting None to the file's dtype (bool -> False) would hide a
+                # conflict, so a null partition only matches an all-null column.
+                conflict = df[field].notna().any()
+                column = df[field]
+            else:
+                column = column.astype(df[field].dtype)
+                mask = df[field].notna()
+                conflict = not df[field][mask].equals(column[mask])
+            if conflict:
                 raise ValueError(
                     f"Partition column {field} exists in table data, but partition "
                     f"value '{value}' is different from in-data values: "
