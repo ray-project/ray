@@ -248,8 +248,9 @@ def _with_extra(manifest: FileManifest, values: list[str]) -> FileManifest:
     """``manifest`` plus a source-specific column, one value per row."""
     import pyarrow as pa
 
-    block = manifest.as_block().append_column("__src", pa.array(values))
-    return FileManifest(block)
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    return FileManifest(block.append_column("__src", pa.array(values)))
 
 
 def test_source_columns_survive_packing() -> None:
