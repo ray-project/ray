@@ -198,6 +198,12 @@ class TestRun:
             lambda: is_proxy_location_correct(expected_proxy_location=expected),
             timeout=15,
         )
+        # The proxy location shows up while `serve run` is still starting up, where a
+        # SIGINT can land in an object finalizer that discards the KeyboardInterrupt
+        # and leaves `p.wait()` hanging. Interrupt it only once the app is RUNNING.
+        wait_for_condition(
+            check_app_running, app_name=SERVE_DEFAULT_APP_NAME, timeout=30
+        )
         p.send_signal(signal.SIGINT)
         p.wait()
 
