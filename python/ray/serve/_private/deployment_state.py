@@ -2383,10 +2383,8 @@ class DeploymentReplica:
             extra={"log_to_stderr": False},
         )
         self._shutdown_start_time = time.time()
-        if self._actor.is_pending_allocation:
-            # Replica has not yet been allocated to a node, so skip the graceful shutdown
-            # entirely and let check_stopped() force kill it immediately
-            # on the next tick.
+        # Skip graceful shutdown for replica that is STARTING and has not yet been allocated to a node.
+        if state == ReplicaState.STARTING and self._actor.is_pending_allocation:
             timeout_s = 0.0
         else:
             timeout_s = self._actor.graceful_stop()
