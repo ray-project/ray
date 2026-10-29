@@ -10,6 +10,7 @@ Constructed from `read_api.read_parquet` when
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 
@@ -17,6 +18,7 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource_v2.common.file_reader import casts_to_schema
 from ray.data._internal.datasource_v2.common.schema_inference import (
     infer_schema_from_files,
 )
@@ -40,7 +42,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data._internal.util import RetryingPyFileSystem, _is_local_scheme
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -182,7 +184,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
     def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
         return self._shuffle
 
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
         # Parquet V2 reads always use the footer-based indexer: it reads each
         # file's footer on a ``FooterReader`` actor pool so listing rows carry
         # per-row-group stats, and predicate / limit / projection push-down
@@ -191,7 +193,12 @@ class ParquetDatasourceV2(FileDataSourceV2):
         from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
             FooterFileIndexer,
         )
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+            read_format_kwargs,
+        )
 
+        # The footer readers size row groups as the read tasks return them, so
+        # they get the kwargs those pass and the schema they cast to.
         return FooterFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
@@ -199,6 +206,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
             small_shuffle_chunk_size=(
                 DataContext.get_current().small_shuffle_chunk_size
             ),
+            format_kwargs=read_format_kwargs(
+                kwargs=self._parquet_format_kwargs, casts=casts_to_schema(schema)
+            ),
+            read_schema=schema,
         )
 
     def get_file_partitioner(self, **kwargs):
@@ -207,9 +218,21 @@ class ParquetDatasourceV2(FileDataSourceV2):
         from ray.data._internal.datasource_v2.common.online_bin_packer import (
             OnlineBinPacker,
         )
-        from ray.data._internal.util import MiB
 
-        max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
+        # Bins are budgeted in decoded Arrow bytes, which is what
+        # ``target_max_block_size`` bounds, so the cap defaults to it. Without a
+        # block target ``read_api`` passes ``sys.maxsize``, which would pack every
+        # file into one bin, so that falls back to the default block size.
+        hints = kwargs.get("hints")
+        max_bucket_size = hints.max_bucket_size if hints is not None else None
+        default_bin_bytes = (
+            max_bucket_size
+            if max_bucket_size and max_bucket_size < sys.maxsize
+            else DEFAULT_TARGET_MAX_BLOCK_SIZE
+        )
+        max_bin_bytes = env_integer(
+            "RAY_DATA_PARQUET_BIN_PACKING_BYTES", default_bin_bytes
+        )
         max_shared_open_bins = env_integer(
             "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )

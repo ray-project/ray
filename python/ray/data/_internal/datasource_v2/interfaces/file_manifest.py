@@ -26,8 +26,8 @@ class FileChunk:
     :meth:`to_metadata` in its chunk column, and ``OnlineBinPacker`` reads it
     back, splits it at unit boundaries and emits one merged run per file. The
     packer only sums ``size_bytes`` against its budget; the indexer decides
-    what the number measures (Parquet records the projection-scoped
-    uncompressed size from the footer).
+    what the number measures (Parquet records the projection-scoped decoded
+    Arrow size it estimates from the footer).
     """
 
     unit_ids: Tuple[int, ...]
