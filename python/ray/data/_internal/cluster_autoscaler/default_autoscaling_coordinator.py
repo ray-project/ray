@@ -796,7 +796,7 @@ def _sticky_node_order(
 
     Every refresh places every requester from scratch, trying nodes in order.
     With the cluster's order alone, a node joining or leaving shifts where each
-    requester lands, even requesters whose nodes are all still there, often
+    requester lands even for request whose nodes are all still there and often
     onto a node where another requester's workers are still running. This
     order fixes that in three tiers:
 
@@ -812,9 +812,6 @@ def _sticky_node_order(
     sets the order nodes are tried in; capacity is still subtracted in priority
     order, so a higher-priority requester placed earlier in the refresh still
     wins over a lower-priority one's stickiness.
-
-    For example, with ``node_ids=[a, b, c, d]``, ``held=[c]`` and
-    ``held_by_others={a}``, the order is ``[c, b, d, a]``.
 
     Args:
         node_ids: The nodes in the requester's subcluster, in the cluster's
