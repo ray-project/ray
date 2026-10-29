@@ -92,6 +92,23 @@ def get_map_worker_cls_name(op_name: str) -> str:
     return f"MapWorker({op_name})"
 
 
+def _actor_task_retried_exceptions(
+    task_args: Dict[str, Any], actor_args: Dict[str, Any]
+) -> Union[bool, List[type]]:
+    """The exceptions Ray reruns an actor task on.
+
+    Ray reruns an actor task only while ``max_task_retries`` allows it. The task
+    option overrides the actor's, and Ray defaults it to 0, as it stays when
+    ``max_restarts=0``.
+    """
+    max_task_retries = task_args.get(
+        "max_task_retries", actor_args.get("max_task_retries", 0)
+    )
+    if max_task_retries == 0:
+        return False
+    return task_args.get("retry_exceptions", False)
+
+
 class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     """A MapOperator implementation that executes tasks on an actor pool.
 
@@ -474,7 +491,9 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
                 target_max_block_size_override=self.target_max_block_size_override,
-                ray_retried_exceptions=actor_task_args.get("retry_exceptions", False),
+                ray_retried_exceptions=_actor_task_retried_exceptions(
+                    actor_task_args, self._ray_remote_args
+                ),
             )
             extra_labels = actor_task_args.pop("_labels", None) or {}
             gen = actor.submit.options(
