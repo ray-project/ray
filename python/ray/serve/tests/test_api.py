@@ -1426,7 +1426,10 @@ def test_backoff_params_imperative(serve_instance):
     # A lower bound of 3.0s proves the backoff sleep was applied.
     # An upper bound of 5.0s proves only ONE sleep occurred (two would be ≥6s),
     # confirming it was the initial backoff (attempt 0).
-    assert custom_initial_backoff_s <= elapsed < 5.0, (
+    # asyncio fires timers up to one clock tick early, and a monotonic tick on
+    # Windows is 15.6ms before Python 3.13, so allow one tick under the sleep.
+    clock_resolution_s = time.get_clock_info("monotonic").resolution
+    assert custom_initial_backoff_s - clock_resolution_s <= elapsed < 5.0, (
         f"Expected [{custom_initial_backoff_s}, 5.0)s due to a single backoff sleep, "
         f"but request completed in {elapsed:.2f}s"
     )
