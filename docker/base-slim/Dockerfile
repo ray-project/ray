@@ -132,12 +132,21 @@ if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
     # conda-forge pip 26.2.2 requires python>=3.11; 3.10 installs it from PyPI below.
     CONDA_PIP_SPEC=()
 fi
-/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "certifi=2026.10.19" "${CONDA_PIP_SPEC[@]}"
+# CVE-2026-111497: brotli-python < 1.2.1 is vulnerable. conda-forge has no py3.10
+# build of 1.2.1, so 3.10 installs the PyPI wheel below.
+CONDA_BROTLI_SPEC=("brotli-python>=1.2.1")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    CONDA_BROTLI_SPEC=()
+fi
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "certifi=2026.10.19" "${CONDA_PIP_SPEC[@]}" "${CONDA_BROTLI_SPEC[@]}"
 /home/ray/anaconda3/bin/conda clean -a
 
 # conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
 if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
     uv pip install --system --no-cache-dir pip==26.2.2
+    /home/ray/anaconda3/bin/conda remove --force -y brotli-python
+    uv pip install --system --no-cache-dir --no-deps "Brotli==1.2.1"
+    /home/ray/anaconda3/bin/conda clean -y --all
 fi
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
