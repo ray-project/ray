@@ -574,6 +574,102 @@ def test_partition_shadow_and_missing_columns_in_stripe_path(striped_file):
     assert rows == [{"year": 2024, "missing": None, "x": x} for x in range(3501, 4096)]
 
 
+@pytest.mark.parametrize("mode", ["off", "file", "stripe"])
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
+def test_logical_partition_pruning_and_statistics(tmp_path, monkeypatch, mode, style):
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
+    rng = random.Random(66995)
+    table = pa.table(
+        {
+            "x": range(4096),
+            "payload": [rng.randbytes(128) for _ in range(4096)],
+            "year": pa.array([1900] * 4096, type=pa.int32()),
+        }
+    )
+    paths = []
+    for year, name, values in (
+        (2, "partition-excluded", range(4096)),
+        (10, "statistics-excluded", range(-4096, 0)),
+        (10, "candidate", range(4096)),
+    ):
+        parts = (
+            [f"year={year}", "unused=not-an-int"]
+            if style == PartitionStyle.HIVE
+            else [str(year), "not-an-int"]
+        )
+        directory = tmp_path.joinpath(*parts)
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{name}.orc"
+        _write(path, table.set_column(0, "x", pa.array(values)), "zlib")
+        paths.append(str(path))
+    schema = table.schema.append(pa.field("unused", pa.int32()))
+    partitioning = Partitioning(
+        style, base_dir=str(tmp_path), field_names=["year", "unused"]
+    )
+    scanner = OrcScanner(
+        schema=schema,
+        partitioning=partitioning,
+        statistics_pruning=mode,
+        batch_size=37,
+    ).prune_partitions(col("year") > 2)
+    scanner, residual = scanner.push_filters(col("x") >= 3500)
+    assert residual is None
+    scanner = scanner.prune_columns(["payload"]).push_limit(73)
+    assert isinstance(scanner, OrcScanner)
+    manifest = FileManifest.construct_manifest(
+        paths=paths,
+        sizes=[Path(path).stat().st_size for path in paths],
+        chunk_metadatas=[None] * len(paths),
+    )
+    pruner = scanner.pushed_partition_pruner()
+    assert pruner is not None
+    assert [path for path in paths if pruner.should_include(path)] == paths[1:]
+    pruned = scanner.prune_input_split(manifest)
+    assert pruned.paths.tolist() == paths[1:]
+    assert partitioning.field_types == {}
+
+    streamed, decoded = [], []
+    native_scan = reader_module.OrcFileReader._scan_with_statistics
+    native_read_stripe = orc.ORCFile.read_stripe
+
+    def scan(self, fragment, *args, **kwargs):
+        class Fragment:
+            def __getattr__(self, name):
+                return getattr(fragment, name)
+
+            def scanner(self, **scan_kwargs):
+                native = fragment.scanner(**scan_kwargs)
+
+                class Scanner:
+                    def scan_batches(self):
+                        streamed.append(fragment.path)
+                        yield from native.scan_batches()
+
+                return Scanner()
+
+        yield from native_scan(self, Fragment(), *args, **kwargs)
+
+    def read_stripe(self, index, **kwargs):
+        decoded.append(index)
+        return native_read_stripe(self, index, **kwargs)
+
+    monkeypatch.setattr(reader_module.OrcFileReader, "_scan_with_statistics", scan)
+    monkeypatch.setattr(orc.ORCFile, "read_stripe", read_stripe)
+    batches = list(scanner.create_reader().read(pruned))
+    assert pa.concat_tables(batches).equals(table.slice(3500, 73).select(["payload"]))
+    assert all(batch.num_rows <= 37 for batch in batches)
+    assert sorted(streamed) == sorted(
+        paths[1:] if mode == "off" else paths[2:] if mode == "file" else []
+    )
+    if mode == "stripe":
+        assert decoded == sorted(set(decoded))
+        assert 0 < len(decoded) < orc.ORCFile(paths[2]).nstripes
+    else:
+        assert decoded == []
+
+
 def test_unsafe_output_cast_is_not_hidden_by_pruning(tmp_path):
     path = tmp_path / "data.orc"
     table = pa.table({"x": [0], "text": ["not-an-integer"]})
