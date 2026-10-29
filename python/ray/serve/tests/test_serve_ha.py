@@ -107,13 +107,15 @@ def test_ray_serve_basic(docker_cluster):
     # Make sure the serve controller still runs on the head node after restart.
     check_controller_head_node_script = """
 import ray
-import requests
+from ray._private.test_utils import request_with_auth_token
 from ray.serve.schema import ServeInstanceDetails
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 ray.init(address="auto")
 head_node_id = ray.get_runtime_context().get_node_id()
 serve_details = ServeInstanceDetails(
-    **requests.get("http://localhost:8265/api/serve/applications/").json())
+    **request_with_auth_token(
+        "GET", "http://localhost:8265/api/serve/applications/"
+    ).json())
 assert serve_details.controller_info.node_id == head_node_id
 """
     output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")

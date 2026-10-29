@@ -17,7 +17,7 @@ MAX_DYNAMIC_PORT = 65535
 
 
 @pytest.fixture
-def ray_client_instance(scope="module"):
+def ray_client_instance(create_auth_token, scope="module"):
     port = random.randint(MIN_DYNAMIC_PORT, MAX_DYNAMIC_PORT)
     subprocess.check_output(
         [
