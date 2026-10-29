@@ -4171,6 +4171,31 @@ def read_hive(
         Immediate operation cancellation or explicit connection cleanup isn't
         guaranteed.
 
+    Notes:
+        Direct reads retain Hive's declared columns and types. Signed integers
+        can widen, FLOAT can become DOUBLE, and DECIMAL precision can increase
+        at the same scale, including within supported ARRAY/MAP/STRUCT types.
+        Top-level CHAR/VARCHAR respect their lengths and CHAR padding; nested
+        CHAR/VARCHAR aren't supported. TIMESTAMP uses microseconds without an
+        inferred time zone, rounding down to microsecond precision even before
+        the Unix epoch. Filters run after these value conversions.
+
+        Parquet uses names and rejects positional access. ORC follows the
+        metadata session's settings: ``orc.force.positional.evolution=true``
+        enables top-level positional mapping. ``orc.schema.evolution.case.sensitive``
+        controls name matching. Direct ORC reads require
+        ``hive.exec.schema.evolution=true`` and
+        ``orc.force.positional.evolution.level=1``. Legacy ORC files whose
+        top-level names all match ``_col[0-9]+`` follow the session's
+        missing-schema policy. Nested fields use names. Missing
+        columns become typed NULLs and extra file columns are ignored.
+        Custom SerDes and Iceberg/Delta/Hudi tables aren't supported.
+
+        Sampling doesn't guarantee compatibility of later files. Mixed Parquet
+        timestamp units can fail in Arrow before Hive conversion. Per-split
+        Parquet schema validation adds footer I/O, which can repeat across
+        splits and delay first output. Native read errors never replay via HS2.
+
     Examples:
 
         Read a table or a query result. These examples assume
@@ -4252,12 +4277,13 @@ def read_hive(
             checked on the driver before file scanning. Query reads and
             partitioned tables aren't supported in direct mode. Filesystem
             credentials and client dependencies are separate from HS2.
-            See :ref:`native-hive-file-reads` for supported types, column mapping
-            settings, and compatibility rules.
+            See the direct-read compatibility notes above.
         filesystem: The filesystem used by native direct reads. If omitted,
-            infer it from the table location. Reading workers need access to
-            the storage and its client dependencies. Only supported in direct
-            mode; the HS2 connection is used only for metadata in that mode.
+            infer it from the table location. Driver and workers need storage
+            credentials, network access, and client dependencies independently
+            of HS2 authorization policies. HDFS requires a working Hadoop/libhdfs
+            environment; S3 uses the configured filesystem's credentials.
+            Only supported in direct mode; HS2 supplies metadata in that mode.
         merge_schema: For direct Parquet and ORC reads, read all eligible file
             schemas on the driver before returning the Dataset, instead of
             sampling up to 16 files. Defaults to ``False``. This

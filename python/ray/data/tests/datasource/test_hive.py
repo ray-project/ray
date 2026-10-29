@@ -1,8 +1,6 @@
 """Tests for the public HiveServer2 read API."""
 
-import json
 import sys
-from dataclasses import fields
 from types import SimpleNamespace
 from typing import Any, Callable, cast
 
@@ -102,374 +100,249 @@ def test_public_api_rejects_replaced_connection_keywords(keyword):
         ({"merge_schema": "true"}, TypeError),
         ({"merge_schema": True}, ValueError),
         ({"filesystem": object()}, ValueError),
+        (
+            {"read_mode": "direct", "schema": pa.schema([("id", pa.int64())])},
+            ValueError,
+        ),
+        (
+            {
+                "read_mode": "direct",
+                "query": "SELECT id FROM events",
+                "schema": pa.schema([("id", pa.int64())]),
+            },
+            ValueError,
+        ),
     ],
 )
-def test_public_api_rejects_unsupported_native_options_without_connecting(
-    options, error
-):
+def test_public_api_rejects_native_options_before_connecting(options, error):
     with pytest.raises(error):
         read_hive(
-            "events",
+            None if "query" in options else "events",
             connection_factory=lambda: pytest.fail("Invalid options must not connect"),
             **options,
         )
 
 
-def test_direct_table_schema_rejected_before_connection():
-    with pytest.raises(ValueError, match="schema is only supported for query reads"):
-        read_hive(
-            "events",
-            schema=pa.schema([("id", pa.int64())]),
-            read_mode="direct",
-            connection_factory=lambda: pytest.fail(
-                "Direct table schema must not connect"
+@pytest.fixture
+def direct_table(tmp_path, monkeypatch):
+    from ray.data._internal.datasource_v2.formats.hive import hive_direct
+
+    def read(file_format, schema, *, positional=False, **options):
+        monkeypatch.setattr(
+            hive_direct,
+            "read_file_table_metadata",
+            lambda spec: hive_direct.HiveFileTable(
+                str(tmp_path),
+                file_format,
+                schema,
+                force_positional_evolution=positional,
             ),
         )
-
-
-def test_direct_query_rejected_before_connection():
-    with pytest.raises(ValueError, match="table reads"):
-        read_hive(
-            query="SELECT id FROM events",
-            schema=pa.schema([("id", pa.int64())]),
+        return read_hive(
+            "events",
+            connection_factory=lambda: pytest.fail("HS2 replay is forbidden"),
             read_mode="direct",
-            connection_factory=lambda: pytest.fail("Direct queries must not connect"),
+            **options,
         )
 
-
-def test_direct_api_uses_native_parallelism_and_global_limit(monkeypatch, tmp_path):
-    from ray.data import read_api
-    from ray.data._internal.datasource_v2.formats.hive import hive_direct
-
-    class FakeDataset:
-        def limit(self, value):
-            self.source_limit = value
-            return self
-
-    dataset = FakeDataset()
-    calls = []
-    monkeypatch.setattr(
-        hive_direct,
-        "read_file_table_metadata",
-        lambda spec: hive_direct.HiveFileTable(
-            str(tmp_path), "parquet", pa.schema([("id", pa.int64())])
-        ),
-    )
-    monkeypatch.setattr(
-        read_api,
-        "_read_datasource_v2",
-        lambda datasource, **kwargs: calls.append((datasource, kwargs)) or dataset,
-    )
-    result = read_hive(
-        "events",
-        connection_factory=lambda: object(),
-        read_mode="direct",
-        limit=3,
-        override_num_blocks=4,
-    )
-    assert result is dataset
-    assert dataset.source_limit == 3
-    assert calls[0][1]["parallelism"] == 4
-    assert "ray_remote_args" not in calls[0][1]
+    return read
 
 
-def test_direct_api_reuses_project_for_column_name_case(monkeypatch, tmp_path):
-    import pyarrow.parquet as pq
+def test_direct_api_forwards_native_execution_options(monkeypatch, direct_table):
+    from unittest.mock import MagicMock
 
     from ray.data import read_api
-    from ray.data._internal.datasource_v2.formats.hive import hive_direct
 
-    pq.write_table(pa.table({"ID": [1]}), tmp_path / "000000_0")
-    calls = []
-
-    class FakeDataset:
-        def rename_columns(self, mapping):
-            calls.append(mapping)
-            return self
-
-    dataset = FakeDataset()
-    monkeypatch.setattr(
-        hive_direct,
-        "read_file_table_metadata",
-        lambda spec: hive_direct.HiveFileTable(
-            str(tmp_path), "parquet", pa.schema([("id", pa.int64())])
-        ),
+    read = MagicMock(return_value=object())
+    monkeypatch.setattr(read_api, "_read_datasource_v2", read)
+    assert (
+        direct_table("parquet", pa.schema([("id", pa.int64())]), override_num_blocks=4)
+        is read.return_value
     )
-    monkeypatch.setattr(
-        read_api, "_read_datasource_v2", lambda *args, **kwargs: dataset
-    )
-    result = read_hive(
-        "events", connection_factory=lambda: object(), read_mode="direct"
-    )
-    assert result is dataset
-    assert calls == [{"ID": "id"}]
+    assert read.call_args.kwargs["parallelism"] == 4
+    assert "ray_remote_args" not in read.call_args.kwargs
 
 
 def test_direct_parquet_converts_values_before_filter_projection_and_limit(
-    ray_start_regular_shared, tmp_path, monkeypatch
+    ray_start_regular_shared, tmp_path, direct_table
 ):
     from datetime import datetime, timedelta
 
     import pyarrow.parquet as pq
 
-    from ray.data._internal.datasource_v2.formats.hive import hive_direct
     from ray.data.expressions import col
 
     pq.write_table(
         pa.table(
             {
-                "id": [0, 1, 2, 3],
-                "code": [None, "ab", "ab", "ab"],
-                "tag": [None, "abcdef", "abcdef", "abcdef"],
-                "ts": pa.array([None, 1001, 1001, 1001], type=pa.timestamp("ns")),
+                "ID": range(5),
+                " code": [None, "ab", "ab", "中文😀abc", ""],
+                "tag ": [None, "abcdef", "abcdef", "中文😀abc", ""],
+                "ts": pa.array([None, 1001, 1001, -1, 0], type=pa.timestamp("ns")),
             }
         ),
-        tmp_path / "000000_0",
+        tmp_path / "part",
     )
-    hive_schema = pa.schema(
+    declared = pa.schema(
         [
             ("id", pa.int64()),
-            pa.field("code", pa.string(), metadata={b"hive_type": b"char(4)"}),
-            pa.field("tag", pa.string(), metadata={b"hive_type": b"varchar(3)"}),
+            pa.field(" code", pa.string(), metadata={b"hive_type": b"char(4)"}),
+            pa.field("tag ", pa.string(), metadata={b"hive_type": b"varchar(3)"}),
             ("ts", pa.timestamp("us")),
         ]
     )
-    monkeypatch.setattr(
-        hive_direct,
-        "read_file_table_metadata",
-        lambda spec: hive_direct.HiveFileTable(str(tmp_path), "parquet", hive_schema),
-    )
-    converted_time = datetime(1970, 1, 1) + timedelta(microseconds=1)
-    dataset = (
-        read_hive(
-            "events",
-            connection_factory=lambda: pytest.fail(
-                "Native workers must not connect to HS2"
-            ),
-            read_mode="direct",
+    dataset = direct_table("parquet", declared)
+    epoch = datetime(1970, 1, 1)
+    result = sorted(dataset.take_all(), key=lambda row: row["id"])
+    assert [(row[" code"], row["tag "], row["ts"]) for row in result] == [
+        (None, None, None),
+        *[("ab  ", "abc", epoch + timedelta(microseconds=1))] * 2,
+        ("中文😀a", "中文😀", epoch - timedelta(microseconds=1)),
+        ("    ", "", epoch),
+    ]
+    selected = (
+        dataset.filter(
+            expr=(col(" code") == "ab  ")
+            & (col("tag ") == "abc")
+            & (col("ts") == epoch + timedelta(microseconds=1))
         )
-        .filter(
-            expr=(col("code") == "ab  ")
-            & (col("tag") == "abc")
-            & (col("ts") == converted_time)
-        )
-        .select_columns(["id", "tag", "ts"])
-        .limit(2)
+        .select_columns(["id", "tag ", "ts"])
+        .limit(1)
     )
-    assert dataset.schema().base_schema == pa.schema(
-        [("id", pa.int64()), ("tag", pa.string()), ("ts", pa.timestamp("us"))]
+    assert selected.schema().base_schema == pa.schema(
+        [("id", pa.int64()), ("tag ", pa.string()), ("ts", pa.timestamp("us"))]
     )
-    rows = dataset.take_all()
-    assert len(rows) == 2
-    ids = {row["id"] for row in rows}
-    assert len(ids) == 2 and ids <= {1, 2, 3}
-    assert all(row["tag"] == "abc" and row["ts"] == converted_time for row in rows)
+    assert selected.take_all() == [
+        {"id": 1, "tag ": "abc", "ts": epoch + timedelta(microseconds=1)}
+    ]
 
 
-@pytest.mark.parametrize("positional", [False, True])
-def test_direct_orc_full_schema_retains_candidates_and_lineage(
-    ray_start_regular_shared, tmp_path, monkeypatch, positional
+@pytest.mark.parametrize(
+    "file_format,positional", [("parquet", False), ("orc", False), ("orc", True)]
+)
+def test_direct_full_schema_retains_candidates_and_lineage(
+    ray_start_regular_shared, tmp_path, direct_table, file_format, positional
 ):
+    from datetime import datetime, timedelta
+
+    import pyarrow.parquet as pq
     from pyarrow import orc
 
     import ray
-    from ray.data._internal.datasource_v2.formats.hive import hive_direct
     from ray.data.expressions import col
 
+    writer = pq.write_table if file_format == "parquet" else orc.write_table
+    expected = []
     for index in range(17):
-        name = "old_id" if positional else "id"
-        values = {name: [index]}
+        prefix = ("new_" if index == 16 else "old_") if positional else ""
+        values = {
+            prefix + "id": pa.array([index], type=pa.int32()),
+            prefix
+            + "payload": pa.array(
+                [None if index == 0 else {"ts": -1 if index % 2 else 1001}],
+                type=pa.struct([("ts", pa.timestamp("ns"))]),
+            ),
+        }
         if index == 16:
-            values = {
-                "new_id" if positional else "ID": [index],
-                "new_late" if positional else "late": ["present"],
+            values[prefix + "late"] = ["present"]
+        writer(pa.table(values), tmp_path / f"{index:06d}_0")
+        expected.append(
+            {
+                "id": index,
+                "payload": None
+                if index == 0
+                else {
+                    "ts": datetime(1970, 1, 1)
+                    + timedelta(microseconds=-1 if index % 2 else 1)
+                },
+                "late": "present" if index == 16 else None,
             }
-        orc.write_table(pa.table(values), tmp_path / f"{index:06d}_0")
-    declared = pa.schema([("id", pa.int64()), ("late", pa.string())])
-    monkeypatch.setattr(
-        hive_direct,
-        "read_file_table_metadata",
-        lambda spec: hive_direct.HiveFileTable(
-            str(tmp_path), "orc", declared, force_positional_evolution=positional
-        ),
-    )
-    dataset = read_hive(
-        "events",
-        connection_factory=lambda: pytest.fail(
-            "Native workers must not connect to HS2"
-        ),
-        read_mode="direct",
-        merge_schema=True,
-    )
-    assert dataset.schema().base_schema == declared
-    orc.write_table(
-        pa.table({"id": [99], "late": ["not planned"]}),
-        tmp_path / "published_later",
-    )
-    assert sorted(dataset.take_all(), key=lambda row: row["id"]) == [
-        {"id": index, "late": "present" if index == 16 else None} for index in range(17)
-    ]
-    restored = ray.data.Dataset.deserialize_lineage(dataset.serialize_lineage())
-    projected = restored.filter(expr=col("id") >= 16).select_columns(["late"]).limit(2)
-    assert projected.schema().base_schema == pa.schema([("late", pa.string())])
-    assert projected.take_all() == [{"late": "present"}]
-
-
-@pytest.mark.parametrize("positional", [False, True])
-@pytest.mark.parametrize("unsampled", [False, True])
-@pytest.mark.parametrize("operation", ["projection", "filter_only"])
-def test_direct_orc_scan_requests_prune_unused_columns(
-    ray_start_regular_shared, tmp_path, monkeypatch, positional, unsampled, operation
-):
-    import pyarrow.dataset as pds
-    from pyarrow import orc
-
-    from ray.data._internal.datasource_v2.formats.hive import hive_direct
-    from ray.data.expressions import col
-
-    directory = tmp_path / "data"
-    directory.mkdir()
-    file_count = 17 if unsampled else 1
-    physical_names = {}
-    for index in range(file_count):
-        late = index == 16
-        if positional:
-            prefix = "renamed" if late else "old"
-            names = [
-                prefix + suffix for suffix in ("_unused", "_id", "_value", "_payload")
-            ]
-            data = dict(
-                zip(
-                    names,
-                    [
-                        [-1, -1],
-                        [2 * index, 2 * index + 1],
-                        [10 + 2 * index, 11 + 2 * index],
-                        ["wide" * 1024] * 2,
-                    ],
-                )
-            )
-        else:
-            data = {
-                "ID" if late else "id": [2 * index, 2 * index + 1],
-                "value": [10 + 2 * index, 11 + 2 * index],
-                "payload": ["wide" * 1024] * 2,
-                "unused": [-1, -1],
-            }
-            names = (
-                ["ID", "payload", "value", "unused"]
-                if late
-                else ["payload", "value", "id", "unused"]
-            )
-            data = {name: data[name] for name in names}
-        path = directory / f"{index:06d}_0"
-        orc.write_table(pa.table(data), path)
-        physical_names[str(path)] = names
-
-    hive_schema = pa.schema(
+        )
+    declared = pa.schema(
         [
-            ("unused", pa.int64()),
             ("id", pa.int64()),
-            ("value", pa.int64()),
-            ("payload", pa.string()),
+            ("payload", pa.struct([("ts", pa.timestamp("us"))])),
+            ("late", pa.string()),
         ]
     )
-    monkeypatch.setattr(
-        hive_direct,
-        "read_file_table_metadata",
-        lambda spec: hive_direct.HiveFileTable(
-            str(directory), "orc", hive_schema, force_positional_evolution=positional
-        ),
+    dataset = direct_table(
+        file_format, declared, merge_schema=True, positional=positional
     )
-    sampled_paths = []
-    original_infer = hive_direct._infer_orc_read_schema
-
-    def infer_schema(table, sample, filesystem):
-        sampled_paths.extend(str(path) for path in sample.paths)
-        return original_infer(table, sample, filesystem)
-
-    monkeypatch.setattr(hive_direct, "_infer_orc_read_schema", infer_schema)
-    trace_path = str(tmp_path / "scan-requests.jsonl")
-    original_create_scanner = hive_direct.HiveDirectDatasource.create_scanner
-
-    class TracingScanner(hive_direct._HiveOrcScanner):
-        def create_reader(self):
-            reader = super().create_reader()
-            original_iter = reader._iter_fragment_tables
-
-            class Fragment:
-                def __init__(self, fragment):
-                    self._fragment = fragment
-
-                def __getattr__(self, name):
-                    return getattr(self._fragment, name)
-
-                def scanner(self, **kwargs):
-                    request = {
-                        "path": self._fragment.path,
-                        "columns": {
-                            name: str(expr) for name, expr in kwargs["columns"].items()
-                        },
-                        "filter": str(kwargs["filter"]),
-                    }
-                    with open(trace_path, "a") as trace:
-                        trace.write(json.dumps(request) + "\n")
-                    return self._fragment.scanner(**kwargs)
-
-            def traced_iter(fragment, scanner_kwargs):
-                yield from original_iter(Fragment(fragment), scanner_kwargs)
-
-            reader._iter_fragment_tables = traced_iter
-            return reader
-
-    def create_scanner(datasource, *args, **kwargs):
-        scanner = original_create_scanner(datasource, *args, **kwargs)
-        return TracingScanner(
-            **{
-                field.name: getattr(scanner, field.name)
-                for field in fields(scanner)
-                if field.init
-            }
-        )
-
-    monkeypatch.setattr(
-        hive_direct.HiveDirectDatasource, "create_scanner", create_scanner
+    writer(
+        pa.table({"id": [99], "late": ["not planned"]}), tmp_path / "published_later"
     )
-    dataset = read_hive(
-        "events",
-        connection_factory=lambda: pytest.fail(
-            "Native workers must not connect to HS2"
-        ),
-        read_mode="direct",
-        override_num_blocks=2,
+    assert dataset.schema().base_schema == declared
+    assert sorted(dataset.take_all(), key=lambda row: row["id"]) == expected
+    assert dataset.filter(expr=col("id") < 2).select_columns(["late"]).take_all() == [
+        {"late": None},
+        {"late": None},
+    ]
+    assert dataset.select_columns([]).count() == 17
+    restored = ray.data.Dataset.deserialize_lineage(dataset.serialize_lineage())
+    selected = (
+        restored.filter(expr=col("id") >= 16)
+        .select_columns(["payload", "late"])
+        .limit(2)
     )
-    assert sampled_paths == list(physical_names)[:16]
-    if operation == "filter_only":
-        dataset = dataset.filter(expr=col("id") > 0)
-    dataset = dataset.select_columns(["value"])
-    assert dataset.schema().base_schema == pa.schema([("value", pa.int64())])
-    expected = range(11 if operation == "filter_only" else 10, 10 + 2 * file_count)
-    assert sorted(row["value"] for row in dataset.take_all()) == list(expected)
+    assert selected.schema().base_schema == pa.schema(
+        [declared.field("payload"), declared.field("late")]
+    )
+    assert selected.take_all() == [
+        {"payload": expected[-1]["payload"], "late": "present"}
+    ]
 
-    with open(trace_path) as trace:
-        requests = [json.loads(line) for line in trace]
-    assert len(requests) == file_count
-    assert {request["path"] for request in requests} == set(physical_names)
-    required = ["id", "value"] if operation == "filter_only" else ["value"]
-    for request in requests:
-        names = physical_names[request["path"]]
-        indices = (
-            {"id": 1, "value": 2}
-            if positional
+
+@pytest.mark.parametrize(
+    "file_format,kind,error",
+    [
+        ("parquet", "type", "type mismatch"),
+        ("orc", "type", "type mismatch"),
+        ("parquet", "case", "column name changes"),
+        ("parquet", "ambiguous", "ambiguous"),
+        ("orc", "ambiguous", "ambiguous"),
+    ],
+)
+def test_direct_late_file_failure_does_not_replay_hs2(
+    ray_start_regular_shared, tmp_path, direct_table, file_format, kind, error
+):
+    import pyarrow.parquet as pq
+    from pyarrow import orc
+
+    writer = pq.write_table if file_format == "parquet" else orc.write_table
+    for index in range(17):
+        data = (
+            {"id": [index]}
+            if index < 16
             else {
-                "id": names.index("ID" if "ID" in names else "id"),
-                "value": names.index("value"),
-            }
+                "type": {"id": ["bad"]},
+                "case": {"ID": [42]},
+                "ambiguous": {"id": [42], "ID": [43]},
+            }[kind]
         )
-        assert request["columns"] == {
-            name: str(pds.field(indices[name])) for name in required
-        }
-        assert request["filter"] == "None"
+        writer(pa.table(data), tmp_path / f"{index:06d}_0")
+
+    dataset = direct_table(file_format, pa.schema([("id", pa.int64())]))
+    with pytest.raises(Exception, match=error) as failure:
+        dataset.take_all()
+    assert "HS2 replay is forbidden" not in str(failure.value)
+    if file_format == "parquet" and kind == "type":
+        with pytest.raises((pa.ArrowInvalid, pa.ArrowTypeError)):
+            direct_table(
+                file_format, pa.schema([("id", pa.int64())]), merge_schema=True
+            )
+
+
+@pytest.mark.parametrize(
+    "file_format,merge_schema", [("parquet", True), ("orc", False), ("orc", True)]
+)
+def test_direct_empty_table_preserves_schema(
+    ray_start_regular_shared, direct_table, file_format, merge_schema
+):
+
+    declared = pa.schema([("id", pa.int64())])
+    dataset = direct_table(file_format, declared, merge_schema=merge_schema)
+    assert dataset.take_all() == []
+    assert dataset.schema().base_schema == declared
 
 
 if __name__ == "__main__":
