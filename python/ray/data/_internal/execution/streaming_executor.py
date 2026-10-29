@@ -799,9 +799,9 @@ class StreamingExecutor(Executor, threading.Thread):
     def _get_phase_metrics(self) -> Dict[str, Dict[str, "OpRuntimeMetrics"]]:
         """Returns each multi-phase operator's phase metrics, keyed by its tag."""
         return {
-            self._get_operator_id(op, i): phases
+            self._get_operator_id(op, i): phase_metrics
             for i, op in enumerate(self._topology)
-            if (phases := op.get_phase_metrics())
+            if (phase_metrics := op.get_phase_metrics())
         }
 
     def _get_state_dict(self, state):
