@@ -4634,9 +4634,39 @@ class Dataset:
         self, fetch_if_missing: bool = True
     ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
         """Gets the underlying raw schema value not wrapped in Schema class."""
-        base_schema = self._cache.get_schema(self._logical_plan.dag)
+        config = self._logical_plan.context.checkpoint_config
+        generated_id = config.generated_id_column if config is not None else None
+        base_schema = self._cache.get_schema(
+            self._logical_plan.dag, generated_id=generated_id
+        )
         if base_schema is None:
             base_schema = self._logical_plan.dag.infer_schema()
+
+        # ``BindGeneratedIdColumn`` adds the configured generated ID column
+        # when the plan is optimized for execution, possibly after this
+        # dataset was built (Ray Train sets ``checkpoint_config`` on built
+        # datasets). Re-infer over the bound plan when the column is missing
+        # from the current answer, so the schema matches the rows execution
+        # produces — also when the schema was cached before the config was
+        # set.
+        schema_names = getattr(base_schema, "names", None)
+        if generated_id is not None and (
+            schema_names is None or generated_id not in schema_names
+        ):
+            # Lazy import: the rules package imports back into ``ray.data``.
+            from ray.data._internal.logical.rules.bind_generated_id_column import (
+                BindGeneratedIdColumn,
+            )
+
+            bound_plan = BindGeneratedIdColumn().apply(self._logical_plan)
+            if bound_plan is not self._logical_plan:
+                bound_schema = bound_plan.dag.infer_schema()
+                # ``None`` when an op erases the schema (e.g. a UDF). The
+                # current answer may come from executed blocks and is the
+                # best one available; never trade a known schema for None.
+                if bound_schema is not None:
+                    base_schema = bound_schema
+
         if base_schema is None and fetch_if_missing:
             # Lazily execute only the first block to minimize computation.
             # We achieve this by appending a Limit[1] operation to a copy of
@@ -4661,7 +4691,9 @@ class Dataset:
                         bundle.schema for bundle in iter_ref_bundles
                     )
         if base_schema is not None:
-            self._cache.set_schema(self._logical_plan.dag, base_schema)
+            self._cache.set_schema(
+                self._logical_plan.dag, base_schema, generated_id=generated_id
+            )
         return base_schema
 
     @ConsumptionAPI(
@@ -8802,7 +8834,14 @@ class _CacheMetadataIterator(OutputIterator):
             self._dataset._cache.set_num_rows(dag, self._num_rows)
             self._dataset._cache.set_size_bytes(dag, self._size_bytes)
             if schema:
-                self._dataset._cache.set_schema(dag, schema)
+                config = self._dataset._logical_plan.context.checkpoint_config
+                self._dataset._cache.set_schema(
+                    dag,
+                    schema,
+                    generated_id=(
+                        config.generated_id_column if config is not None else None
+                    ),
+                )
             raise
 
 
@@ -8833,6 +8872,9 @@ class _ExecutionCache:
         self._size_bytes: Optional[int] = None
         # Note schema can be cached via other means as well.
         self._schema: Optional["Schema"] = None
+        # The ``CheckpointConfig.generated_id_column`` binding in effect when
+        # ``_schema`` was written; ``None`` if no column was configured.
+        self._schema_generated_id: Optional[str] = None
 
         # --- Other ---
         self._stats: Optional[DatasetStats] = None
@@ -8856,12 +8898,27 @@ class _ExecutionCache:
         # backwards compatibility.
         return self._stats
 
-    def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
-        if self._cache_is_fresh(dag):
-            if self._bundle is not None and self._bundle.schema is not None:
-                return self._bundle.schema
-            return self._schema
-        return None
+    def get_schema(
+        self, dag: "LogicalOperator", *, generated_id: Optional[str] = None
+    ) -> Optional["Schema"]:
+        """Return the cached schema, or ``None`` on a miss.
+
+        ``generated_id`` is the ``CheckpointConfig.generated_id_column``
+        currently in effect. The column appears and disappears with the
+        config (Ray Train sets ``checkpoint_config`` on built datasets), so
+        a cached schema is valid only under the binding it was computed
+        with; any other binding is a miss.
+        """
+        if not self._cache_is_fresh(dag):
+            return None
+        if self._bundle is not None and self._bundle.schema is not None:
+            # A materialized bundle is exactly what iteration returns — no
+            # re-execution happens — so its schema holds regardless of any
+            # config set afterwards.
+            return self._bundle.schema
+        if generated_id != self._schema_generated_id:
+            return None
+        return self._schema
 
     def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
         if self._cache_is_fresh(dag):
@@ -8895,11 +8952,18 @@ class _ExecutionCache:
         self._operator = dag
         self._size_bytes = size_bytes
 
-    def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
+    def set_schema(
+        self,
+        dag: "LogicalOperator",
+        schema: "Schema",
+        *,
+        generated_id: Optional[str] = None,
+    ) -> None:
         if dag != self._operator:
             self._clear_dag_dependent_cache()
         self._operator = dag
         self._schema = schema
+        self._schema_generated_id = generated_id
 
     def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
         if dag != self._operator:
@@ -8917,6 +8981,7 @@ class _ExecutionCache:
         self._operator = None
         self._bundle = None
         self._schema = None
+        self._schema_generated_id = None
         self._num_rows = None
         self._size_bytes = None
 
@@ -8926,6 +8991,7 @@ class _ExecutionCache:
         new._bundle = self._bundle
         new._stats = self._stats
         new._schema = self._schema
+        new._schema_generated_id = self._schema_generated_id
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
         return new
@@ -8936,6 +9002,7 @@ class _ExecutionCache:
         new._bundle = copy.copy(self._bundle)
         new._stats = copy.copy(self._stats)
         new._schema = copy.copy(self._schema)
+        new._schema_generated_id = self._schema_generated_id
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
         return new

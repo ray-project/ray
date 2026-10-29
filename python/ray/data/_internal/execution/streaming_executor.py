@@ -205,6 +205,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[Tuple[PhysicalOperator, OpState]] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
+        self._lineage_tracker: Optional[LineageTracker] = None
 
         self._dataset_id = dataset_id
         # Set by IssueDetectionExecutionCallback when issue detection is registered;
@@ -247,6 +248,12 @@ class StreamingExecutor(Executor, threading.Thread):
     def issue_detector_manager(self) -> Optional["IssueDetectorManager"]:
         """The issue detector manager, or None if issue detection isn't registered."""
         return self._issue_detector_manager
+
+    @property
+    def ray_data_reconstruction_enabled(self) -> bool:
+        """Whether this execution runs Ray Data lineage reconstruction: the
+        context requested it and the DAG supports it. False before ``execute``."""
+        return self._lineage_tracker is not None
 
     def execute(
         self,
@@ -799,9 +806,9 @@ class StreamingExecutor(Executor, threading.Thread):
     def _get_phase_metrics(self) -> Dict[str, Dict[str, "OpRuntimeMetrics"]]:
         """Returns each multi-phase operator's phase metrics, keyed by its tag."""
         return {
-            self._get_operator_id(op, i): phases
+            self._get_operator_id(op, i): phase_metrics
             for i, op in enumerate(self._topology)
-            if (phases := op.get_phase_metrics())
+            if (phase_metrics := op.get_phase_metrics())
         }
 
     def _get_state_dict(self, state):

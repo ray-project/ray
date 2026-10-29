@@ -26,8 +26,27 @@ from ray.dashboard.modules.aggregator.publisher.configs import (
     PUBLISHER_TIMEOUT_SECONDS,
     TASK_EVENT_TYPES,
 )
+from ray.dashboard.runtime_env_redaction import redact_runtime_env_deep
 
 logger = logging.getLogger(__name__)
+
+# Event types with no `runtime_env` field, so no redaction is needed.
+_EVENT_TYPES_WITHOUT_RUNTIME_ENV = frozenset(
+    events_base_event_pb2.RayEvent.EventType.Value(name)
+    for name in (
+        "TASK_LIFECYCLE_EVENT",
+        "TASK_PROFILE_EVENT",
+        "DRIVER_JOB_LIFECYCLE_EVENT",
+        "NODE_DEFINITION_EVENT",
+        "NODE_LIFECYCLE_EVENT",
+        "ACTOR_LIFECYCLE_EVENT",
+        "PLACEMENT_GROUP_DEFINITION_EVENT",
+        "PLACEMENT_GROUP_LIFECYCLE_EVENT",
+        "SUBMISSION_JOB_LIFECYCLE_EVENT",
+        "WORKER_DEFINITION_EVENT",
+        "WORKER_LIFECYCLE_EVENT",
+    )
+)
 
 
 @dataclass
@@ -143,16 +162,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         # Convert protobuf objects to python dictionaries for HTTP POST. Run in executor to avoid blocking the event loop.
         filtered_json = await get_or_create_event_loop().run_in_executor(
             self._executor,
-            lambda: [
-                json.loads(
-                    message_to_json(
-                        e,
-                        always_print_fields_with_no_presence=True,
-                        preserving_proto_field_name=self._preserve_proto_field_name,
-                    )
-                )
-                for e in filtered
-            ],
+            lambda: [self._event_to_json(e) for e in filtered],
         )
 
         try:
@@ -168,6 +178,32 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
                 num_events_published=0,
                 num_events_filtered_out=0,
             )
+
+    def _event_to_json(self, event: events_base_event_pb2.RayEvent) -> dict:
+        """Convert `event` to the JSON dict sent to the external HTTP endpoint.
+
+        Args:
+            event: The event to convert. It isn't mutated, because the other
+                publishers send the same event objects with plaintext values.
+
+        Returns:
+            The event as a JSON dict. When redaction is enabled, every `env_vars`
+            value in its serialized runtime env is masked, unless the event type
+            is in `_EVENT_TYPES_WITHOUT_RUNTIME_ENV`.
+        """
+        event_json = json.loads(
+            message_to_json(
+                event,
+                always_print_fields_with_no_presence=True,
+                preserving_proto_field_name=self._preserve_proto_field_name,
+            )
+        )
+        if (
+            event.event_type not in _EVENT_TYPES_WITHOUT_RUNTIME_ENV
+            and ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV
+        ):
+            event_json = redact_runtime_env_deep(event_json)
+        return event_json
 
     async def _send_http_request(self, json_data, num_filtered_out) -> PublishStats:
         async with self._session.post(

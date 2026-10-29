@@ -1,5 +1,4 @@
-"""
-Generic model definitions for common utilities.
+"""Generic model definitions for common utilities.
 
 These models represent generic concepts that can be used by both
 serve and batch components.

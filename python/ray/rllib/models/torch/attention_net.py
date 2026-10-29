@@ -1,5 +1,4 @@
-"""
-[1] - Attention Is All You Need - Vaswani, Jones, Shazeer, Parmar,
+"""[1] - Attention Is All You Need - Vaswani, Jones, Shazeer, Parmar,
       Uszkoreit, Gomez, Kaiser - Google Brain/Research, U Toronto - 2017.
       https://arxiv.org/pdf/1706.03762.pdf
 [2] - Stabilizing Transformers for Reinforcement Learning - E. Parisotto

@@ -43,6 +43,10 @@ const acceleratorColumnLabels = {
     utilization: "TPUs",
     memory: "HBM",
   },
+  npu: {
+    utilization: "NPUs",
+    memory: "HBM",
+  },
   generic: {
     utilization: "Accelerators",
     memory: "Accelerator Memory",
@@ -89,14 +93,14 @@ const getColumns = (acceleratorType: keyof typeof acceleratorColumnLabels) => [
     label: acceleratorColumnLabels[acceleratorType].utilization,
     helpInfo: (
       <Typography>
-        Usage of each accelerator device (e.g. GPU, TPU). If no usage is
+        Usage of each accelerator device (e.g. GPU, NPU, TPU). If no usage is
         detected, here are the potential root causes:
         <br />
         1. Non-accelerator Ray image is used on this node. Switch to an
         appropriate image and try again. <br />
-        2. Non Nvidia, AMD, or Google TPU accelerators are being used.
+        2. An unsupported accelerator or driver version is being used.
         <br />
-        3. pynvml, pyamdsmi, or TPU plugin raises an exception.
+        3. pynvml, pyamdsmi, Ascend DCMI, or the TPU plugin raises an exception.
       </Typography>
     ),
   },
@@ -269,6 +273,9 @@ const Nodes = () => {
   }
   if (nodeList.some((node) => node.tpus && node.tpus.length > 0)) {
     accelerators.push("tpu");
+  }
+  if (nodeList.some((node) => node.npus && node.npus.length > 0)) {
+    accelerators.push("npu");
   }
   const accelerator = accelerators.length !== 1 ? "generic" : accelerators[0];
   const showAcceleratorColumns = accelerators.length > 0;
