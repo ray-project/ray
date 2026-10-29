@@ -69,24 +69,82 @@ def _get_unique_value_arrow_arrays(
     return keys_array, values_array
 
 
+class _VersionedDict(dict):
+    """A ``dict`` subclass that increments ``_version`` on in-place mutations."""
+
+    __slots__ = ("_version",)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._version = 0
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self._version += 1
+
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        self._version += 1
+
+    def clear(self):
+        super().clear()
+        self._version += 1
+
+    def pop(self, *args):
+        result = super().pop(*args)
+        self._version += 1
+        return result
+
+    def popitem(self):
+        result = super().popitem()
+        self._version += 1
+        return result
+
+    def setdefault(self, key, default=None):
+        if key not in self:
+            self[key] = default
+            return default
+        return self[key]
+
+    def update(self, *args, **kwargs):
+        super().update(*args, **kwargs)
+        self._version += 1
+
+    def __ior__(self, other):
+        result = super().__ior__(other)
+        self._version += 1
+        return result
+
+    def __reduce__(self):
+        return (dict, (dict(self),))
+
+
 def _get_cached_unique_value_arrow_arrays(
     preprocessor: Preprocessor, input_col: str
 ) -> Tuple[pa.Array, pa.Array]:
     """Get cached Arrow lookup arrays for ``input_col``, rebuilding only if the
     underlying ``stats_`` entry for the column changed."""
-    stat_value = preprocessor.stats_[f"unique_values({input_col})"]
+    stat_key = f"unique_values({input_col})"
+    stat_value = preprocessor.stats_[stat_key]
     if not isinstance(stat_value, dict):
         return stat_value
+    if not isinstance(stat_value, _VersionedDict):
+        stat_value = _VersionedDict(stat_value)
+        preprocessor.stats_[stat_key] = stat_value
     cache = getattr(preprocessor, "_arrow_arrays_cache", None)
     if cache is None:
         cache = {}
         preprocessor._arrow_arrays_cache = cache
     cached = cache.get(input_col)
-    if cached is None or cached[0] is not stat_value or cached[1] != stat_value:
+    if (
+        cached is None
+        or cached[0] is not stat_value
+        or cached[1] != stat_value._version
+    ):
         keys_array, values_array = _get_unique_value_arrow_arrays(
             preprocessor.stats_, input_col
         )
-        cached = (stat_value, stat_value.copy(), keys_array, values_array)
+        cached = (stat_value, stat_value._version, keys_array, values_array)
         cache[input_col] = cached
     return cached[2], cached[3]
 
@@ -990,11 +1048,19 @@ class LabelEncoder(SerializablePreprocessorBase):
         )
 
     def _inverse_transform_pandas(self, df: pd.DataFrame):
-        stat_value = self.stats_[f"unique_values({self._label_column})"]
+        stat_key = f"unique_values({self._label_column})"
+        stat_value = self.stats_[stat_key]
+        if not isinstance(stat_value, _VersionedDict):
+            stat_value = _VersionedDict(stat_value)
+            self.stats_[stat_key] = stat_value
         cached = getattr(self, "_inverse_label_cache", None)
-        if cached is None or cached[0] is not stat_value or cached[1] != stat_value:
+        if (
+            cached is None
+            or cached[0] is not stat_value
+            or cached[1] != stat_value._version
+        ):
             inverse_values = {value: key for key, value in stat_value.items()}
-            cached = (stat_value, stat_value.copy(), inverse_values)
+            cached = (stat_value, stat_value._version, inverse_values)
             self._inverse_label_cache = cached
         else:
             inverse_values = cached[2]
@@ -1301,11 +1367,11 @@ def unique_post_fn(
 
         non_null_values = [v for v in values if not _is_null(v)]
 
-        return {
-            (v if not isinstance(v, list) else tuple(v)): i
+        return _VersionedDict(
+            (v if not isinstance(v, list) else tuple(v), i)
             # NOTE: Sorting applied to produce stable encoding
             for i, v in enumerate(sorted(non_null_values))
-        }
+        )
 
     def gen_value_index_arrow_from_arrow(
         values: Union["pa.ListScalar", "pa.Array"],

@@ -1747,9 +1747,11 @@ def test_encoder_arrow_and_inverse_label_caching(monkeypatch):
             assert calls == ["cat", "cat", "cat"]
             assert out4.column("cat").to_pylist() == [[1, 0], [0, 1]]
 
-        # Pickling excludes transient cache
+        # Pickling excludes transient cache and serializes stats_ entries as plain dicts
+        assert isinstance(enc._arrow_arrays_cache["cat"][1], int)
         restored = pickle.loads(pickle.dumps(enc))
         assert "_arrow_arrays_cache" not in restored.__dict__
+        assert type(restored.stats_["unique_values(cat)"]) is dict
 
     label_enc = LabelEncoder(label_column="label", output_column="encoded")
     label_enc.stats_ = {"unique_values(label)": {"cat": 0, "dog": 1}}
@@ -1773,8 +1775,10 @@ def test_encoder_arrow_and_inverse_label_caching(monkeypatch):
     inv4 = label_enc._inverse_transform_pandas(df.copy())
     assert inv4["label"].tolist() == ["hawk", "owl", "hawk"]
 
+    assert isinstance(label_enc._inverse_label_cache[1], int)
     restored_label = pickle.loads(pickle.dumps(label_enc))
     assert "_inverse_label_cache" not in restored_label.__dict__
+    assert type(restored_label.stats_["unique_values(label)"]) is dict
 
 
 @pytest.mark.parametrize(
