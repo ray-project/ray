@@ -82,6 +82,24 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     assert "b" in schema.names
 
 
+@pytest.mark.parametrize("as_list", [False, True])
+def test_read_parquet_list_files_keeps_caller_source_paths(
+    tmp_path, restore_ctx, as_list
+):
+    # Lineage tracking reads ``ListFiles.source_paths``. ``paths`` holds the
+    # resolved paths, which lose the URI scheme.
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+    uri = f"file://{tmp_path}"
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([uri] if as_list else uri)
+
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    assert list_files_op.paths == [str(tmp_path)]
+    assert list_files_op.source_paths == [uri]
+
+
 def test_read_parquet_tracks_tensor_columns_for_predicate_pushdown(
     tmp_path, restore_ctx
 ):

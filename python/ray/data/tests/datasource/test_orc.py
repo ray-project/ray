@@ -462,6 +462,26 @@ def test_read_orc_v2_unifies_schema_and_hive_partitions(
     assert materialized.num_blocks() == 1
 
 
+def test_read_orc_v2_list_files_keeps_caller_source_paths(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data._internal.logical.operators import ListFiles
+    from ray.data.context import DataContext
+
+    # Lineage tracking reads ``ListFiles.source_paths``. ``paths`` holds the
+    # resolved paths, which lose the URI scheme.
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    _write_orc(str(tmp_path / "data.orc"), pa.table({"id": [1, 2]}))
+    uri = f"file://{tmp_path}"
+
+    ds = ray.data.read_orc(uri)
+
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    assert list_files_op.paths == [str(tmp_path)]
+    assert list_files_op.source_paths == [uri]
+
+
 def test_read_orc_v1_fallback(ray_start_regular_shared, tmp_path, monkeypatch):
     from ray.data.context import DataContext
 

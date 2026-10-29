@@ -734,7 +734,7 @@ def _read_datasource_v2(
         paths=list(datasource.paths),
         file_indexer=indexer,
         filesystem=filesystem,
-        source_paths=list(datasource.paths),
+        source_paths=list(datasource.source_paths),
         prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
