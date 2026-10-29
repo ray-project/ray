@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Set up the Ray History Server with KubeRay to access logs, events, and the Ray dashboard for RayCluster, RayJob, and RayService workloads after they terminate."
+    description: "Set up the Ray History Server with KubeRay to access logs, events, and the Ray dashboard for RayCluster, RayJob, and RayService workloads, both while they run and after they terminate."
 ---
 
 (kuberay-history-server)=
@@ -345,7 +345,7 @@ The `ttlSecondsAfterFinished` setting in the manifest automatically deletes the 
 kubectl delete rayjob ${RAY_JOB} -n ${NAMESPACE}
 ```
 
-The collector uploads logs periodically while the cluster runs, so most logs survive even an ungraceful shutdown. After the RayJob terminates, the collector uploads the final events and logs to object storage.
+The collector uploads logs periodically while the cluster runs, so an ungraceful shutdown loses only the log content written since the last upload. After the RayJob terminates, the collector uploads the final events and logs to object storage.
 
 ### Storage layout
 
@@ -399,9 +399,9 @@ gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-his
 gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/job_events/AQAAAA==/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-07-28-17
 ```
 
-## Access a terminated RayJob from the Ray dashboard
+## Access a RayJob from the Ray dashboard
 
-To view terminated Ray clusters, set up a local Ray dashboard that uses the History Server as its backend.
+To view Ray clusters, set up a local Ray dashboard that uses the History Server as its backend.
 
 ### Port-forward the History Server
 
@@ -526,9 +526,9 @@ Ray job page using Ray History Server as a backend:
 
 ## Access a running RayCluster
 
-By default, the History Server serves a running RayCluster from the data that the collector has uploaded to object storage so far, without sending requests to the live cluster. A running cluster appears in `/clusters` and on the [cluster selection page](#cluster-selection-page) as soon as its head collector detects the session, and you can enter it like a terminated session.
+By default, the History Server serves a running RayCluster from the data that the collector has uploaded to object storage so far, without sending requests to the live cluster. A running cluster appears in `/clusters` and on the [cluster selection page](#cluster-selection-page) as soon as its head collector detects the session. Enter it the same way as a terminated session.
 
-The History Server caches a session after the first load, so the view doesn't update on its own. To pick up newly uploaded events and logs, click the reload button on the cluster selection page, or add `?reload=true`:
+The History Server caches a session after the first load, so the view doesn't update on its own. To pick up newly uploaded events and logs, click the reload button on the cluster selection page, or add `?reload=true` to the `/enter_cluster` URL:
 
 ```text
 http://localhost:8265/enter_cluster/default/rayjob/rayjob-historyserver-gcs/<SESSION_ID>?reload=true
@@ -539,7 +539,7 @@ After the RayCluster is deleted, the History Server reloads the session automati
 Keep the following limitations in mind:
 
 * The collector uploads logs every `RAY_COLLECTOR_LOG_UPLOAD_INTERVAL`, so the latest log lines can take up to that long to appear.
-* Uploading logs in chunks doesn't support Ray log rotation yet.
+* Chunked log uploads don't support Ray log rotation. After Ray rotates a log file, the History Server can show that file with content from before and after the rotation mixed together.
 
 ## Data retention
 
