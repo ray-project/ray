@@ -214,10 +214,11 @@ def test_context_records_ray_data_reconstruction(
 
 
 def test_executor_reconstruction_enabled_follows_lineage_tracker():
-    executor = StreamingExecutor(ray.data.DataContext.get_current())
-    assert executor.ray_data_reconstruction_enabled is False
-    executor._lineage_tracker = LineageTracker()
-    assert executor.ray_data_reconstruction_enabled is True
+    ctx = ray.data.DataContext.get_current()
+    assert StreamingExecutor(ctx).ray_data_reconstruction_enabled is False
+    tracked = StreamingExecutor(ctx)
+    tracked._lineage_tracker = LineageTracker()
+    assert tracked.ray_data_reconstruction_enabled is True
 
 
 def test_execution_setting_missing_on_executor_recorded_as_none():

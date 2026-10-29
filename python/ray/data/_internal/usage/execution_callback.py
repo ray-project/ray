@@ -191,6 +191,10 @@ class UsageCallback(ExecutionCallback):
 
     def build_usage_info(self) -> UsageInfo:
         """Assemble the usage collection payload for this execution."""
+        # Both are populated before this runs: on_collection_start sets
+        # _started_at, and before_execution_starts/_finish set _executor.
+        assert self._started_at is not None
+        assert self._executor is not None
         if self._workload is None:
             self._usage_id_map = collector.build_usage_id_map(
                 self._logical_plan, self.anonymize_op_name
@@ -202,8 +206,10 @@ class UsageCallback(ExecutionCallback):
         if self._finished:
             metric_deltas = self._cluster_deltas or {}
             if self._executor.ray_data_reconstruction_enabled:
+                lineage_tracker = self._executor._lineage_tracker
+                assert lineage_tracker is not None
                 object_reconstruction_attempts = (
-                    self._executor._lineage_tracker.num_object_reconstruction_attempts
+                    lineage_tracker.num_object_reconstruction_attempts
                 )
             else:
                 object_reconstruction_attempts = metric_deltas.get(
@@ -226,10 +232,6 @@ class UsageCallback(ExecutionCallback):
                     num_object_lost_task_failures=self._num_object_lost_task_failures,
                 ),
             )
-        # Both are populated before this runs: on_collection_start sets
-        # _started_at, and before_execution_starts/_finish set _executor.
-        assert self._started_at is not None
-        assert self._executor is not None
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
