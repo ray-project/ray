@@ -35,10 +35,12 @@ from pyiceberg.exceptions import (
     UnauthorizedError,
 )
 from pyiceberg.io.pyarrow import schema_to_pyarrow
+from requests.exceptions import HTTPError
 
 import ray
 from ray.data.catalog import GravitinoCatalog, ReaderFormat
 from ray.data.tests.conftest import *  # noqa: F401,F403
+from ray.exceptions import RayTaskError
 
 _PREFIX = "RAY_GRAVITINO_TEST"
 
@@ -185,7 +187,10 @@ def test_missing_iceberg_object(ray_start_regular_shared, gravitino_catalog, mis
         ray.data.read_iceberg(
             table_identifier=identifier, catalog=gravitino_catalog
         ).take_all()
-    assert caught.value.__cause__.response.status_code == 404
+    cause = caught.value.__cause__
+    assert isinstance(cause, HTTPError)
+    assert cause.response is not None
+    assert cause.response.status_code == 404
 
 
 def _assert_storage_denial(error):
@@ -209,7 +214,7 @@ def test_iceberg_worker_storage_read_denial(ray_start_regular_shared):
         resolved.table_identifier
     )
     assert list(table.scan().plan_files()), "Metadata and manifest reads must succeed."
-    with pytest.raises(ray.exceptions.RayTaskError) as caught:
+    with pytest.raises(RayTaskError) as caught:
         ray.data.read_iceberg(table_identifier=identifier, catalog=catalog).take_all()
     _assert_storage_denial(caught.value)
 
@@ -230,7 +235,7 @@ def test_iceberg_worker_storage_write_denial(ray_start_regular_shared):
     batch = pa.Table.from_pylist(
         [{"id": f"denied-{uuid.uuid4().hex}"}], schema=schema_to_pyarrow(table.schema())
     )
-    with pytest.raises(ray.exceptions.RayTaskError) as caught:
+    with pytest.raises(RayTaskError) as caught:
         ray.data.from_arrow(batch).write_iceberg(identifier, catalog=catalog)
     _assert_storage_denial(caught.value)
     table.refresh()

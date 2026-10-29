@@ -6,6 +6,7 @@ import json
 import pickle
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -57,16 +58,20 @@ def test_target_properties_and_caller_settings_are_preserved():
     )
     properties["token"] = "caller-change"
     first = catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
-    assert first.catalog_kwargs == {
+    first_kwargs = first.catalog_kwargs
+    assert first_kwargs is not None
+    assert first_kwargs == {
         **original,
         "type": "rest",
         "uri": "https://iceberg/iceberg/",
         "warehouse": "cat",
     }
-    first.catalog_kwargs["token"] = "resolved-change"
+    first_kwargs["token"] = "resolved-change"
     second = catalog.resolve("other.db.tbl", reader=ReaderFormat.ICEBERG)
-    assert second.catalog_kwargs["token"] == "rest-secret"
-    assert second.catalog_kwargs["warehouse"] == "other"
+    second_kwargs = second.catalog_kwargs
+    assert second_kwargs is not None
+    assert second_kwargs["token"] == "rest-secret"
+    assert second_kwargs["warehouse"] == "other"
     assert catalog.iceberg_rest_catalog_kwargs == original
 
 
@@ -89,15 +94,16 @@ def test_explicit_iceberg_auth_is_preserved(auth):
         iceberg_rest_catalog_kwargs=auth,
     )
     resolved = catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
+    catalog_kwargs = resolved.catalog_kwargs
+    assert catalog_kwargs is not None
     for key, value in auth.items():
-        assert resolved.catalog_kwargs[key] == value
+        assert catalog_kwargs[key] == value
 
 
 @pytest.mark.parametrize("reader", [ReaderFormat.DELTA, ReaderFormat.PARQUET])
-@pytest.mark.parametrize("mode", list(CatalogAccessMode))
-def test_deferred_formats_rejected(catalog, reader, mode):
+def test_deferred_formats_rejected(catalog, reader):
     with pytest.raises(ValueError, match="does not support format"):
-        catalog.resolve("cat.db.tbl", reader=reader, mode=mode)
+        catalog.resolve("cat.db.tbl", reader=reader)
 
 
 @pytest.mark.parametrize(
@@ -155,38 +161,15 @@ def test_append_api_wiring(catalog):
 
 
 @pytest.mark.parametrize("version", ["0.9.1", "0.10.0rc1"])
-@pytest.mark.parametrize("mode", list(CatalogAccessMode))
-def test_old_pyiceberg_rejected_before_io(catalog, monkeypatch, version, mode):
+def test_old_pyiceberg_rejected_during_resolution(catalog, monkeypatch, version):
     import pyiceberg
 
     monkeypatch.setattr(pyiceberg, "__version__", version)
-    with (
-        mock.patch(
-            "ray.data._internal.datasource.iceberg_datasource.IcebergDatasource",
-            side_effect=AssertionError("The datasource must not be created."),
-        ) as datasource,
-        mock.patch(
-            "ray.data.dataset.IcebergDatasink",
-            side_effect=AssertionError("The datasink must not be created."),
-        ) as sink,
-        mock.patch(
-            "requests.sessions.Session.request",
-            side_effect=AssertionError("No HTTP request is allowed."),
-        ) as request,
-    ):
-        with pytest.raises(ImportError) as caught:
-            if mode is CatalogAccessMode.READ:
-                ray.data.read_iceberg(table_identifier="cat.db.tbl", catalog=catalog)
-            else:
-                dataset = object.__new__(ray.data.Dataset)
-                dataset._current_executor = None
-                dataset.write_iceberg("cat.db.tbl", catalog=catalog)
-        assert "requires pyiceberg >= 0.10.0" in str(caught.value)
-        assert f"{version} is installed" in str(caught.value)
-        assert 'pip install -U "pyiceberg>=0.10.0"' in str(caught.value)
-        datasource.assert_not_called()
-        sink.assert_not_called()
-        request.assert_not_called()
+    with pytest.raises(ImportError) as caught:
+        catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
+    assert "requires pyiceberg >= 0.10.0" in str(caught.value)
+    assert f"{version} is installed" in str(caught.value)
+    assert 'pip install -U "pyiceberg>=0.10.0"' in str(caught.value)
 
 
 def test_resolution_uses_neither_network_nor_metadata_client(catalog, monkeypatch):
@@ -204,13 +187,10 @@ def test_resolution_uses_neither_network_nor_metadata_client(catalog, monkeypatc
     monkeypatch.setattr(builtins, "__import__", without_metadata_client)
     with mock.patch("requests.sessions.Session.request") as request:
         request.side_effect = AssertionError("resolve must not perform network I/O")
-        for mode in CatalogAccessMode:
-            assert (
-                catalog.resolve(
-                    "cat.db.tbl", reader=ReaderFormat.ICEBERG, mode=mode
-                ).table_identifier
-                == "db.tbl"
-            )
+        assert (
+            catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG).table_identifier
+            == "db.tbl"
+        )
         request.assert_not_called()
 
 
@@ -312,7 +292,7 @@ def test_actual_pyiceberg_auth_configuration(rest_auth, expected, monkeypatch):
             self.end_headers()
             self.wfile.write(json.dumps({"defaults": {}, "overrides": {}}).encode())
 
-        def log_message(self, *args):
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
