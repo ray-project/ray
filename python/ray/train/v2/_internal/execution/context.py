@@ -410,8 +410,7 @@ class TrainContext:
         ] = None,
         validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
-        """
-        Upload checkpoint to remote storage and put a training
+        """Upload checkpoint to remote storage and put a training
         result on the result queue of this worker process.
 
         TODO: the report function should be implemented in the worker instead
