@@ -79,7 +79,13 @@ def _fragments_from_row_group_ids(
 
     path = fragment.path
     if not per_row_group_offsets:
-        return [ReadUnitFragment(_subset(ids), ReadUnit(id=path, source=path, count=1))]
+        lazy = fragment.format.make_fragment(
+            path,
+            filesystem=fragment.filesystem,
+            partition_expression=fragment.partition_expression,
+            row_groups=ids,
+        )
+        return [ReadUnitFragment(lazy, ReadUnit(id=path, source=path, count=1))]
 
     metadata = _with_io_retry(
         lambda: fragment.metadata, f"read Parquet footer for {path}"
