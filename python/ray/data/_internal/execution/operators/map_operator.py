@@ -712,17 +712,21 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             exception: Optional[Exception],
             task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
+            aborted: bool,
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
             #       emitted (current limitation, since it's emitted along with
             #       `BlockMetadata`)
-            assert exception or (
-                task_exec_driver_stats
+            assert (
+                exception or task_exec_driver_stats
             ), "Driver's task execution stats must be provided on task's successful completion"
 
-            self._metrics.on_task_finished(
-                task_index, exception, task_exec_stats, task_exec_driver_stats
-            )
+            if aborted:
+                self._metrics.on_task_aborted(task_index)
+            else:
+                self._metrics.on_task_finished(
+                    task_index, exception, task_exec_stats, task_exec_driver_stats
+                )
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far

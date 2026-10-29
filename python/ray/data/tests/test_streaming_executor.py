@@ -1556,8 +1556,9 @@ class TestDataOpTask:
             raise_exception=AssertionError("Block generation failed"),
         )
 
-        def verify_exception(exc, task_exec_stats, task_exec_driver_stats):
+        def verify_exception(exc, task_exec_stats, task_exec_driver_stats, aborted):
             assert isinstance(exc, AssertionError)
+            assert not aborted
             assert task_exec_stats is None
             assert task_exec_driver_stats is None
 
@@ -2185,7 +2186,7 @@ class TestDataOpTask:
 
         captured_stats = {}
 
-        def capture_done(exc, task_exec_stats, task_exec_driver_stats):
+        def capture_done(exc, task_exec_stats, task_exec_driver_stats, aborted):
             captured_stats["exc"] = exc
             captured_stats["task_exec_stats"] = task_exec_stats
             captured_stats["task_exec_driver_stats"] = task_exec_driver_stats
