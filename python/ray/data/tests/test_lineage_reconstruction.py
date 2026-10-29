@@ -183,16 +183,16 @@ def _produced_bundles(simple_data):
         exec_stats = BlockExecStats.builder().build(block_ser_time_s=0.0)
         bundles.append(
             RefBundle(
-                [
+                (
                     BlockEntry(
-                        ray.put(block),
+                        ray.put(block),  # pyrefly: ignore[bad-argument-type]
                         BlockAccessor.for_block(block).get_metadata(
                             block_exec_stats=exec_stats
                         ),
-                    )
-                ],
+                    ),
+                ),
                 owns_blocks=True,
-                schema=pa.lib.Schema.from_pandas(block, preserve_index=False),
+                schema=pa.Schema.from_pandas(block, preserve_index=False),
             )
         )
     return bundles
@@ -284,7 +284,7 @@ def test_losses_before_the_seed_is_submitted_share_one_reconstruction_task(
     for output_index, (child_task_id, bundle) in enumerate(
         zip(child_task_ids, first_run)
     ):
-        block_id = bundle.block_refs[0].hex()
+        block_id = bundle.block_refs[0].hex()  # pyrefly: ignore[missing-attribute]
         tracker.register_block_output(seed_task_id, block_id, output_index)
         tracker.register_block_queued(seed_task_id, output_index)
         tracker.register_task_submission(
@@ -365,7 +365,8 @@ def test_joined_plans_sharing_a_child_release_it_once(
     seed_task_id = producer._lineage_task_id_for(0)
     child_task_id = consumer._lineage_task_id_for(0)
     leaf_task_ids = ["leaf:0", "leaf:1"]
-    seed_block_id = make_ref_bundles([[1]])[0].block_refs[0].hex()
+    seed_block_ref = make_ref_bundles([[1]])[0].block_refs[0]
+    seed_block_id = seed_block_ref.hex()  # pyrefly: ignore[missing-attribute]
     tracker.register_task_submission(seed_task_id, [])
     tracker.register_block_output(seed_task_id, seed_block_id, 0)
     tracker.register_block_queued(seed_task_id, 0)
@@ -473,7 +474,8 @@ def test_shared_child_is_batched_until_it_is_submitted(
     leaf_task_ids = ["leaf:0", "leaf:1"]
     seed_block_ids = []
     for seed_task_id in seed_task_ids:
-        block_id = make_ref_bundles([[1]])[0].block_refs[0].hex()
+        block_ref = make_ref_bundles([[1]])[0].block_refs[0]
+        block_id = block_ref.hex()  # pyrefly: ignore[missing-attribute]
         tracker.register_task_submission(seed_task_id, [])
         tracker.register_block_output(seed_task_id, block_id, 0)
         tracker.register_block_queued(seed_task_id, 0)
