@@ -403,18 +403,19 @@ class DataOpTask(OpTask):
         return bytes_read
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
-        if max_bytes_to_read == 0:
-            # Whenever provided `max_bytes_to_read == 0` we treat as task
-            # being in output backpressure, therefore correspondingly starting
-            # the timer (if necessary)
+        has_unread_output = (
+            not self._pending_block_ref.is_nil()
+            or not self._pending_meta_ref.is_nil()
+            or not self._streaming_gen._stream_exhausted()
+        )
+
+        if max_bytes_to_read == 0 and has_unread_output:
+            # A zero read budget counts as output backpressure only while the
+            # task still has output to consume.
             if self._start_output_backpressure_s is None:
                 self._start_output_backpressure_s = time.perf_counter()
 
-        elif (
-            max_bytes_to_read is None or max_bytes_to_read > 0
-        ) and self._start_output_backpressure_s is not None:
-            # Increment cumulative duration of task being in output
-            # backpressure
+        elif self._start_output_backpressure_s is not None:
             self._total_output_backpressure_s += (
                 time.perf_counter() - self._start_output_backpressure_s
             )
@@ -1204,6 +1205,16 @@ class PhysicalOperator(Operator):
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
         self._task_output_backpressure_policy = policy_name
+
+    @property
+    def in_task_output_backpressure(self) -> bool:
+        """Whether reading this operator's task outputs is currently blocked."""
+        return self._in_task_output_backpressure
+
+    @property
+    def in_task_submission_backpressure(self) -> bool:
+        """Whether submitting new tasks for this operator is currently blocked."""
+        return self._in_task_submission_backpressure
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
