@@ -1,5 +1,4 @@
-"""
-TensorFlow policy class used for APPO.
+"""TensorFlow policy class used for APPO.
 
 Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.

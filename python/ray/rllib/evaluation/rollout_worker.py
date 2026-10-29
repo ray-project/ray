@@ -1318,8 +1318,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def foreach_policy_to_train(
         self, func: Callable[[Policy, PolicyID, Optional[Any]], T], **kwargs
     ) -> List[T]:
-        """
-        Calls the given function with each (policy, policy_id) tuple.
+        """Calls the given function with each (policy, policy_id) tuple.
 
         Only those policies/IDs will be called on, for which
         `self.is_policy_to_train()` returns True.

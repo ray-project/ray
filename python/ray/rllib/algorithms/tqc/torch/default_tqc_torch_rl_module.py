@@ -1,6 +1,4 @@
-"""
-PyTorch implementation of the TQC RLModule.
-"""
+"""PyTorch implementation of the TQC RLModule."""
 
 from typing import Any, Dict
 

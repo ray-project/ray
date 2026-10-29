@@ -298,6 +298,12 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
             self._send_resource_request(None)
             return self._last_resource_request
 
+        # More nodes won't speed up a slow consumer.
+        if self._utility_calculator.is_blocked_on_consumer():
+            logger.debug("Blocked on a slow consumer -- skipping cluster autoscaling.")
+            self._send_resource_request(None)
+            return self._last_resource_request
+
         # Get the current resources allocated to the cluster. This requires an RPC
         # so we call it once here and reuse it for all the computations.
         current_resources = self.get_total_resources()

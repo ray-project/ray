@@ -1,6 +1,5 @@
 # @OldAPIStack
-"""
-Tests, whether APPO can learn in a fault-tolerant fashion in a
+"""Tests, whether APPO can learn in a fault-tolerant fashion in a
 multi-agent setting.
 
 Workers will be configured to automatically get recreated upon failures (here: within

@@ -22,6 +22,7 @@ For an introduction and usage guides, see {ref}`ray-core-sandboxes`.
     :toctree: doc/
 
     ray.experimental.sandbox.create
+    ray.experimental.sandbox.restore
     ray.experimental.sandbox.Sandbox
     ray.experimental.sandbox.SandboxRuntime
 ```
