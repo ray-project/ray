@@ -3,6 +3,7 @@ from libcpp.memory cimport shared_ptr
 from ray.includes.rpc_token_authentication cimport (
     CAuthenticationMode,
     GetAuthenticationMode,
+    InvalidAuthenticationModeError,
     IsK8sTokenAuthEnabled,
     CAuthenticationToken,
     CAuthenticationTokenLoader,
@@ -26,7 +27,13 @@ def get_authentication_mode():
 
     Returns:
         AuthenticationMode enum value (DISABLED or TOKEN)
+
+    Raises:
+        ValueError: RAY_AUTH_MODE is neither "token" nor "disabled".
     """
+    error = InvalidAuthenticationModeError().decode()
+    if error:
+        raise ValueError(error)
     return GetAuthenticationMode()
 
 

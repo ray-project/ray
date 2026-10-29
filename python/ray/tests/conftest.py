@@ -16,7 +16,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
-from typing import List, Optional
+from typing import Iterator, List, Optional
 from unittest import mock
 
 import pytest
@@ -863,7 +863,7 @@ def call_ray_start_context(request):
 
     command_args = parameter.split(" ")
     head_auth_mode = (env or os.environ).get("RAY_AUTH_MODE", "token")
-    with hold_test_auth_mode(enable_token_auth=head_auth_mode != "disabled"):
+    with hold_test_auth_mode(enable_token_auth=head_auth_mode.lower() != "disabled"):
         try:
             out = ray._common.utils.decode(
                 subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
@@ -1691,7 +1691,7 @@ def _restore_token_auth_env(_token_auth_env_baseline):
 
 
 @contextmanager
-def hold_test_auth_mode(enable_token_auth: bool = True):
+def hold_test_auth_mode(enable_token_auth: bool = True) -> Iterator[None]:
     """Set the auth mode, and in token mode create the token, for tests where
     nothing else creates it: a head the test starts with ``ray start --head``, or
     Ray servers and clients it runs with no driver. Per-test env cleanup leaves
@@ -1706,7 +1706,7 @@ def hold_test_auth_mode(enable_token_auth: bool = True):
 
 
 @pytest.fixture
-def create_auth_token():
+def create_auth_token() -> Iterator[None]:
     with hold_test_auth_mode():
         yield
 

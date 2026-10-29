@@ -406,11 +406,17 @@ def test_ray_start_head_without_token_fails(tmp_path: Path) -> None:
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
-def test_ray_start_head_reports_a_missing_token_path_file(tmp_path: Path) -> None:
-    """ray start --head with RAY_AUTH_TOKEN_PATH naming a missing file reports
-    that file, not the head no-token error."""
+@pytest.mark.parametrize("token_file_content", [None, ""], ids=["missing", "empty"])
+def test_ray_start_head_reports_a_missing_token_path_file(
+    tmp_path: Path, token_file_content: Optional[str]
+) -> None:
+    """ray start --head with RAY_AUTH_TOKEN_PATH naming a missing or empty file
+    reports that file, not the head no-token error."""
+    token_path = tmp_path / "token"
+    if token_file_content is not None:
+        token_path.write_text(token_file_content)
     env = _token_mode_env_without_token()
-    env["RAY_AUTH_TOKEN_PATH"] = str(tmp_path / "missing_token")
+    env["RAY_AUTH_TOKEN_PATH"] = str(token_path)
 
     try:
         result = _run_ray_start_and_verify_status(
@@ -913,6 +919,37 @@ def test_ray_start_address_after_generate_and_start_head_joins_with_token_auth()
         )
     finally:
         _cleanup_ray_start(env)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+@pytest.mark.parametrize("auth_mode", ["tokn", "none", ""])
+def test_ray_start_rejects_unknown_auth_mode(auth_mode):
+    """Only `token` and `disabled` are valid, so a typo can't turn auth off."""
+    env = _env_without_auth_settings()
+    env["RAY_AUTH_MODE"] = auth_mode
+
+    try:
+        result = _run_ray_start_and_verify_status(
+            ["--head", f"--port={find_free_port()}"], env, expect_success=False
+        )
+        output = result.stdout + result.stderr
+        assert f"Invalid RAY_AUTH_MODE '{auth_mode}'" in output, output
+        assert "'token' or 'disabled'" in output, output
+    finally:
+        _cleanup_ray_start(env)
+
+
+def test_get_authentication_mode_rejects_unknown_auth_mode(monkeypatch):
+    from ray._raylet import get_authentication_mode
+
+    monkeypatch.setenv("RAY_AUTH_MODE", "tokn")
+    reset_auth_token_state()
+
+    with pytest.raises(ValueError, match="Invalid RAY_AUTH_MODE 'tokn'"):
+        get_authentication_mode()
 
 
 _AUTH_DISABLED_WARNING = "Token authentication is disabled"

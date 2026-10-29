@@ -33,6 +33,7 @@ from ray.tests.conftest import (  # noqa
     _isolate_token_auth_state,  # noqa: F401  autouse fixture
     _restore_token_auth_env,  # noqa: F401
     _token_auth_env_baseline,  # noqa: F401
+    # Fixture parameters named create_auth_token below shadow this import on purpose.
     create_auth_token,
     external_redis,
     hold_test_auth_mode,
