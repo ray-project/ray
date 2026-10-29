@@ -48,15 +48,13 @@ parser.add_argument(
 
 
 class CustomJsonReader(JsonReader):
-    """
-    Example custom InputReader implementation (extended from JsonReader).
+    """Example custom InputReader implementation (extended from JsonReader).
 
     This gets wrapped in ShuffledInput to comply with offline rl algorithms.
     """
 
     def __init__(self, ioctx: IOContext):
-        """
-        The constructor must take an IOContext to be used in the input config.
+        """The constructor must take an IOContext to be used in the input config.
         Args:
             ioctx: use this to access the `input_config` arguments.
         """
@@ -64,8 +62,7 @@ class CustomJsonReader(JsonReader):
 
 
 def input_creator(ioctx: IOContext) -> InputReader:
-    """
-    The input creator method can be used in the input registry or set as the
+    """The input creator method can be used in the input registry or set as the
     config["input"] parameter.
 
     Args:
