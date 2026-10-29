@@ -1,0 +1,204 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: default
+
+# The maximum number of workers nodes to launch in addition to the head
+# node.
+max_workers: 3
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+# This executes all commands on all nodes in the docker container,
+# and opens all the necessary ports to support the Ray cluster.
+# Empty object means disabled.
+docker: {}
+
+# If a node is idle for this many minutes, it will be removed.
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: oci
+    # OCI region identifier, e.g. us-ashburn-1, eu-frankfurt-1.
+    region: us-ashburn-1
+    # Compartment in which all instances (and, if needed, the default VCN,
+    # dynamic group and policy) are created.
+    compartment_id: ocid1.compartment.oc1..YOUR_COMPARTMENT
+    # Availability domain for the nodes. Defaults to the first AD of the region.
+    # availability_domain: Uocm:US-ASHBURN-AD-1
+    # Subnet for the nodes. If omitted, `ray up` creates an idempotent
+    # `ray-autoscaler-vcn` (10.77.0.0/16) with a public subnet, internet
+    # gateway and a security list allowing SSH from anywhere and all traffic
+    # inside the VCN. Override the CIDRs with `vcn_cidr` / `subnet_cidr`.
+    # subnet_id: ocid1.subnet.oc1..YOUR_SUBNET
+    # Credentials used on this machine: an OCI config file profile. API-key
+    # profiles (`oci setup config`) and session-token profiles
+    # (`oci session authenticate`) are both supported.
+    oci_config_file: ~/.oci/config
+    oci_config_profile: DEFAULT
+    # How the autoscaler on the head node authenticates. When true (default),
+    # `ray up` creates a dynamic group matching the instances in the
+    # compartment plus a policy granting it the compute/network permissions
+    # it needs, and the head node uses instance principals. When false, you
+    # must copy credentials to the head node with `file_mounts`, e.g.
+    #   file_mounts:
+    #       "~/.oci/config": "./head-oci-config"   # key_file paths valid on the head
+    #       "~/.oci/oci_api_key.pem": "~/.oci/oci_api_key.pem"
+    use_instance_principal: true
+    # Set to false if a tenancy administrator has already created the dynamic
+    # group and policy for you (see the docs for the required statements).
+    create_iam_resources: true
+    # Whether to stop (and later reuse) nodes instead of terminating them.
+    # Note that OCI keeps billing stopped GPU and dense I/O shapes.
+    cache_stopped_nodes: false
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+# By default Ray creates a new private keypair, but you can also use your own.
+# If you do so, the public key is added to each node's `ssh_authorized_keys`.
+#    ssh_private_key: ~/.ssh/id_rsa
+#    ssh_public_key: ~/.ssh/id_rsa.pub
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# The key is the name of the node type, which is just for debugging purposes.
+# The node config specifies the launch config and physical instance type.
+available_node_types:
+    ray.head.default:
+        # The node type's CPU and GPU resources are auto-detected from the shape
+        # (one OCPU is two vCPUs on x86 shapes and one vCPU on Ampere A1 shapes).
+        # If desired, you can override the autodetected CPU and GPU resources
+        # advertised to the autoscaler. You can also set custom resources.
+        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of
+        # a resource called "custom", set
+        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        resources: {"CPU": 4}
+        # Provider-specific config for this node type. Keys are the snake_case
+        # fields of the OCI `LaunchInstanceDetails` API model; see
+        # https://docs.oracle.com/iaas/api/#/en/iaas/latest/datatypes/LaunchInstanceDetails
+        node_config:
+            shape: VM.Standard.E4.Flex
+            shape_config:
+                ocpus: 2
+                memory_in_gbs: 16
+            # Defaults to the newest Canonical Ubuntu 22.04 platform image that
+            # is compatible with the shape. Pin an image for reproducibility:
+            # image_id: ocid1.image.oc1..YOUR_IMAGE
+            # Boot volume size (the platform image default is ~47 GB).
+            boot_volume_size_in_gbs: 100
+            # Additional instance metadata (the SSH public key is added for you).
+            # metadata:
+            #     user_data: <base64 encoded cloud-init>
+            # User free-form tags. Ray adds its own tags; OCI allows at most 10.
+            # freeform_tags: {"team": "ml"}
+    ray.worker.cpu:
+        # The minimum number of worker nodes of this type to launch.
+        # This number should be >= 0.
+        min_workers: 0
+        # The maximum number of worker nodes of this type to launch.
+        # This takes precedence over min_workers.
+        max_workers: 2
+        resources: {"CPU": 4}
+        node_config:
+            shape: VM.Standard.E4.Flex
+            shape_config:
+                ocpus: 2
+                memory_in_gbs: 16
+            boot_volume_size_in_gbs: 100
+            # Run workers as preemptible instances (OCI's spot equivalent).
+            # Comment this out to use on-demand instances.
+            preemptible_instance_config:
+                preemption_action:
+                    preserve_boot_volume: false
+    ray.worker.gpu:
+        min_workers: 0
+        max_workers: 1
+        # VM.GPU.A10.1: 15 OCPUs (30 vCPUs), 240 GB RAM, one NVIDIA A10.
+        resources: {"CPU": 30, "GPU": 1}
+        node_config:
+            shape: VM.GPU.A10.1
+            boot_volume_size_in_gbs: 200
+        # Node-type specific setup commands replace `setup_commands` and
+        # `worker_setup_commands` for this type. Platform Ubuntu images have no
+        # NVIDIA driver, so build and load it here (no reboot required).
+        worker_setup_commands:
+            - cloud-init status --wait > /dev/null 2>&1 || true
+            - sudo iptables -I INPUT -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+            - for i in 1 2 3 4 5 6; do sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get -o DPkg::Lock::Timeout=300 update -qq && break; sleep 10; done && sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get -o DPkg::Lock::Timeout=300 install -y -qq python3-pip python-is-python3
+            # Build the NVIDIA kernel module with DKMS (headers are preinstalled) so it always
+            # matches the user-space driver; Ubuntu's prebuilt modules can lag behind it.
+            - sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get -o DPkg::Lock::Timeout=300 install -y -qq nvidia-headless-580-server nvidia-utils-580-server
+            - sudo modprobe -r nouveau || true; sudo modprobe nvidia; for i in 1 2 3 4 5 6; do nvidia-smi -L && break; sleep 5; done
+            - grep -q '.local/bin' ~/.bashrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+            - pip3 install -q -U "ray[default]"
+
+# Specify the node type of the head node (as configured above).
+head_node_type: ray.head.default
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+file_mounts: {
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
+}
+
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
+file_mounts_sync_continuously: False
+
+# Patterns for files to exclude when running rsync up or rsync down
+rsync_exclude:
+    - "**/.git"
+    - "**/.git/**"
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+rsync_filter:
+    - ".gitignore"
+
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    # Wait for first-boot configuration to finish before using apt.
+    - cloud-init status --wait > /dev/null 2>&1 || true
+    # OCI Ubuntu images ship host firewall rules that only allow SSH. Open the
+    # host firewall for Ray's ports; the VCN security list still restricts
+    # traffic from the internet to SSH only.
+    - sudo iptables -I INPUT -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+    # Non-interactive apt (Ubuntu's needrestart would otherwise block on a dialog);
+    # `apt-get update` is retried because mirrors may be unreachable right after boot.
+    - for i in 1 2 3 4 5 6; do sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get -o DPkg::Lock::Timeout=300 update -qq && break; sleep 10; done && sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get -o DPkg::Lock::Timeout=300 install -y -qq python3-pip python-is-python3
+    - grep -q '.local/bin' ~/.bashrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    - pip3 install -q -U "ray[default]"
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands:
+    # The autoscaler on the head node needs the OCI SDK.
+    - pip3 install -q -U oci
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
