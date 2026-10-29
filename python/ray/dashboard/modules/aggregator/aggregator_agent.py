@@ -86,8 +86,7 @@ class AggregatorAgent(
     dashboard_utils.DashboardAgentModule,
     events_event_aggregator_service_pb2_grpc.EventAggregatorServiceServicer,
 ):
-    """
-    AggregatorAgent is a dashboard agent module that collects events sent with
+    """AggregatorAgent is a dashboard agent module that collects events sent with
     gRPC from other components, buffers them, and periodically sends them to GCS and
     an external service with HTTP POST requests for further processing or storage
     """
@@ -212,8 +211,7 @@ class AggregatorAgent(
         )
 
     async def AddEvents(self, request, context) -> None:
-        """
-        gRPC handler for adding events to the event aggregator. Receives events from the
+        """gRPC handler for adding events to the event aggregator. Receives events from the
         request and adds them to the event buffer.
         """
         if not self._event_processing_enabled:
