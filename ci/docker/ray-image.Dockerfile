@@ -63,9 +63,11 @@ $HOME/anaconda3/bin/pip --no-cache-dir install \
 # images ship a CUDA-13 runtime where that build is broken. Swap it for the
 # matching CUDA-13 build. cupy-cuda12x and cupy-cuda13x both own the top-level
 # `cupy` package and cannot coexist, so this is an uninstall-then-install.
-# Scoped to IMAGE_TYPE=ray (covers ray + ray-extra); ray-llm flows through this
-# same Dockerfile but manages cupy via its own llm locks, so leave it untouched.
-if [[ "${IMAGE_TYPE}" == "ray" && "${PLATFORM}" == cu13* ]]; then
+# Scoped to IMAGE_TYPE=ray (covers ray + ray-extra) and ray-torch (whose cu13x
+# locks carry no cupy, so the only one present is ray[all]'s cupy-cuda12x);
+# ray-llm flows through this same Dockerfile but manages cupy via its own llm
+# locks, so leave it untouched.
+if [[ ("${IMAGE_TYPE}" == "ray" || "${IMAGE_TYPE}" == "ray-torch") && "${PLATFORM}" == cu13* ]]; then
     # cupy-cuda13x 13.6.0 ships wheels only up to cp313, so py3.14 needs 14.0.1
     # (the first cu13 build with a cp314 wheel). Keep py3.10-3.13 on 13.6.0.
     if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
