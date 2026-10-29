@@ -258,9 +258,7 @@ class StatefulStageUDF:
 
 
 class StatefulStage(BaseModel):
-    """
-    A basic building block to compose a Processor.
-    """
+    """A basic building block to compose a Processor."""
 
     fn: Type[StatefulStageUDF] = Field(
         description="The well-optimized stateful UDF for this stage."

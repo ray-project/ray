@@ -602,8 +602,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         should_continue_on_error: bool = False,
         log_engine_metrics: bool = True,
     ):
-        """
-        Initialize the vLLMEngineStageUDF.
+        """Initialize the vLLMEngineStageUDF.
 
         Args:
             data_column: The data column name.
@@ -682,8 +681,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         self,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """
-        Normalize the engine kwargs.
+        """Normalize the engine kwargs.
 
         Args:
             engine_kwargs: The kwargs to normalize.
@@ -874,9 +872,7 @@ def _ray_scheduling_strategy_fn(
 
 
 class vLLMEngineStage(StatefulStage):
-    """
-    A stage that runs vLLM engine.
-    """
+    """A stage that runs vLLM engine."""
 
     fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
 
