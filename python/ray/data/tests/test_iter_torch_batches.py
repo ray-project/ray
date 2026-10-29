@@ -128,5 +128,61 @@ def test_iter_torch_batches_pin_memory_with_custom_collate_fn(
     )
 
 
+def test_iter_torch_batches_device_with_custom_collate_fn(ray_start_regular_shared):
+    """Test that an explicit device composes with a custom collate fn."""
+    from ray.data.collate_fn import NumpyBatchCollateFn
+
+    class _TensorDictCollateFn(NumpyBatchCollateFn):
+        def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
+            return {k: torch.as_tensor(v) for k, v in batch.items()}
+
+    ds = ray.data.range(8)
+
+    # Explicit CPU device: tensors stay on CPU with the collated values.
+    batches = list(
+        ds.iterator().iter_torch_batches(
+            collate_fn=_TensorDictCollateFn(), batch_size=4, device="cpu"
+        )
+    )
+    assert len(batches) == 2
+    assert all(batch["id"].device.type == "cpu" for batch in batches)
+    assert sorted(t for batch in batches for t in batch["id"].tolist()) == list(
+        range(8)
+    )
+
+    # Non-CPU device: collated tensors are moved to the requested device. Use
+    # the "meta" device so the test doesn't require an accelerator.
+    batches = list(
+        ds.iterator().iter_torch_batches(
+            collate_fn=_TensorDictCollateFn(), batch_size=4, device="meta"
+        )
+    )
+    assert len(batches) == 2
+    assert all(batch["id"].device.type == "meta" for batch in batches)
+    assert all(batch["id"].shape == (4,) for batch in batches)
+
+
+def test_iter_torch_batches_device_with_non_tensor_collate_output(
+    ray_start_regular_shared,
+):
+    """Test that non-TensorBatchType collate outputs pass through unchanged when
+    an explicit device is specified."""
+    from ray.data.collate_fn import NumpyBatchCollateFn
+
+    class _ListCollateFn(NumpyBatchCollateFn):
+        def __call__(self, batch: Dict[str, np.ndarray]) -> list:
+            return batch["id"].tolist()
+
+    ds = ray.data.range(8)
+    batches = list(
+        ds.iterator().iter_torch_batches(
+            collate_fn=_ListCollateFn(), batch_size=4, device="meta"
+        )
+    )
+    assert len(batches) == 2
+    assert all(isinstance(batch, list) for batch in batches)
+    assert sorted(t for batch in batches for t in batch) == list(range(8))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

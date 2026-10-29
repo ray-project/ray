@@ -29,68 +29,75 @@ Concretely, you will learn how to:
 
 The Ray docs present all the information you need to start running Ray workloads on VMs.
 
-```{eval-rst}
-.. grid:: 1 2 2 2
-    :gutter: 1
-    :class-container: container pb-3
+::::{grid} 1 2 2 2
+:gutter: 1
+:class-container: container pb-3
 
-    .. grid-item-card::
+:::{grid-item-card}
 
-        **Getting Started**
-        ^^^
+**Getting Started**
+^^^
 
-        Learn how to start a Ray cluster and deploy Ray applications in the cloud.
+Learn how to start a Ray cluster and deploy Ray applications in the cloud.
 
-        +++
-        .. button-ref:: vm-cluster-quick-start
-            :color: primary
-            :outline:
-            :expand:
++++
+```{button-ref} vm-cluster-quick-start
+:color: primary
+:outline:
+:expand:
 
-            Get Started with Ray on Cloud VMs
-
-    .. grid-item-card::
-
-        **Examples**
-        ^^^
-
-        Try example Ray workloads in the Cloud
-
-        +++
-        .. button-ref:: vm-cluster-examples
-            :color: primary
-            :outline:
-            :expand:
-
-            Try example workloads
-
-    .. grid-item-card::
-
-        **User Guides**
-        ^^^
-
-        Learn best practices for configuring cloud clusters
-
-        +++
-        .. button-ref:: vm-cluster-guides
-            :color: primary
-            :outline:
-            :expand:
-
-            Read the User Guides
-
-    .. grid-item-card::
-
-        **API Reference**
-        ^^^
-
-        Find API references for cloud clusters
-
-        +++
-        .. button-ref:: vm-cluster-api-references
-            :color: primary
-            :outline:
-            :expand:
-
-            Check API references
+Get Started with Ray on Cloud VMs
 ```
+:::
+
+:::{grid-item-card}
+
+**Examples**
+^^^
+
+Try example Ray workloads in the Cloud
+
++++
+```{button-ref} vm-cluster-examples
+:color: primary
+:outline:
+:expand:
+
+Try example workloads
+```
+:::
+
+:::{grid-item-card}
+
+**User Guides**
+^^^
+
+Learn best practices for configuring cloud clusters
+
++++
+```{button-ref} vm-cluster-guides
+:color: primary
+:outline:
+:expand:
+
+Read the User Guides
+```
+:::
+
+:::{grid-item-card}
+
+**API Reference**
+^^^
+
+Find API references for cloud clusters
+
++++
+```{button-ref} vm-cluster-api-references
+:color: primary
+:outline:
+:expand:
+
+Check API references
+```
+:::
+::::

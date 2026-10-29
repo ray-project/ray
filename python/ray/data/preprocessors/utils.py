@@ -18,6 +18,8 @@ from ray.data.aggregate import AggregateFnV2
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from ray.data.dataset import Dataset
 
 
@@ -25,6 +27,35 @@ if TYPE_CHECKING:
 def simple_split_tokenizer(value: str) -> List[str]:
     """Tokenize a string using a split on spaces."""
     return value.split(" ")
+
+
+def _tokenize_ignoring_nulls(
+    values: "pd.Series", tokenization_fn: Callable[[str], List[str]]
+) -> "pd.Series":
+    """Tokenize every present value, leaving missing ones missing.
+
+    A missing document has no text to split, so it gets no token list: the null
+    is carried through to the output rather than handed to ``tokenization_fn``,
+    which would call ``.split()`` on it and raise ``AttributeError``.
+
+    The guard lives here rather than in :func:`simple_split_tokenizer` because
+    ``tokenization_fn`` can be supplied by the caller, and a user-written
+    tokenizer should not have to know about ``pd.NA`` either.
+    """
+    return values.map(tokenization_fn, na_action="ignore")
+
+
+def _null_where_source_is_missing(rows: List[Any], source: "pd.Series") -> List[Any]:
+    """Blank out entries of ``rows`` whose document in ``source`` was missing.
+
+    The vectorizers build one fixed-width row of counts per document by
+    concatenating a column per token, which leaves a row of nulls where the
+    document was missing. Replacing that with a single ``None`` keeps the output
+    a list column of numbers with a missing entry, rather than a list of missing
+    numbers.
+    """
+    missing_mask = source.isna().to_numpy()
+    return [None if missing else row for row, missing in zip(rows, missing_mask)]
 
 
 @DeveloperAPI
@@ -87,6 +118,53 @@ class CallableStatSpec(BaseStatSpec):
         self.columns = columns
         self.stat_key_fn = stat_key_fn
         self.post_key_fn = post_key_fn
+
+
+def execute_aggregate_specs(
+    dataset: "Dataset", specs: List["AggregateStatSpec"]
+) -> Dict[str, Any]:
+    """Run a list of :class:`AggregateStatSpec` as one global aggregation query.
+
+    All aggregations run in a single ``dataset.groupby(None).aggregate(...)``
+    pass. A global aggregation returns exactly one row; each spec's result is
+    read from the column named by its aggregator's alias and post-processed.
+
+    Aggregator aliases must be unique within one call - each alias is one
+    result column.
+
+    Args:
+        dataset: The Ray Dataset to compute the aggregations over.
+        specs: The aggregate stat specs to run.
+
+    Returns:
+        A dict mapping each aggregator's alias name to its post-processed
+        result.
+    """
+    if not specs:
+        return {}
+
+    aggregators = [spec.stat_fn for spec in specs]
+    agg_ds = dataset.groupby(None).aggregate(*aggregators)
+    arrow_refs = agg_ds.to_arrow_refs()
+    if not arrow_refs:
+        raise ValueError("Aggregation returned no results")
+    arrow_table = ray.get(arrow_refs[0])
+
+    stats = {}
+    for spec in specs:
+        stat_key = spec.stat_fn.name
+        # Aggregation returns single row - extract the scalar value
+        # ChunkedArray[0] handles multi-chunk arrays automatically
+        agg_result = arrow_table.column(stat_key)[0]
+        # Convert to appropriate format based on batch_format
+        if spec.batch_format == BatchFormat.ARROW:
+            # Pass Arrow scalar (e.g., ListScalar) for Arrow-optimized post-processing
+            stats[stat_key] = spec.post_process_fn(agg_result)
+        else:
+            # Convert to Python for pandas-style post-processing
+            stats[stat_key] = spec.post_process_fn(agg_result.as_py())
+
+    return stats
 
 
 class StatComputationPlan:
@@ -181,27 +259,8 @@ class StatComputationPlan:
         Returns:
             A dictionary of computed statistics.
         """
-        stats = {}
         # Run batched aggregators (AggregateFnV2)
-        aggregators = self._get_aggregate_fn_list()
-        if aggregators:
-            agg_ds = dataset.groupby(None).aggregate(*aggregators)
-            arrow_refs = agg_ds.to_arrow_refs()
-            if not arrow_refs:
-                raise ValueError("Aggregation returned no results")
-            arrow_table = ray.get(arrow_refs[0])
-            for spec in self._get_aggregate_specs():
-                stat_key = spec.stat_fn.name
-                # Aggregation returns single row - extract the scalar value
-                # ChunkedArray[0] handles multi-chunk arrays automatically
-                agg_result = arrow_table.column(stat_key)[0]
-                # Convert to appropriate format based on batch_format
-                if spec.batch_format == BatchFormat.ARROW:
-                    # Pass Arrow scalar (e.g., ListScalar) for Arrow-optimized post-processing
-                    stats[stat_key] = spec.post_process_fn(agg_result)
-                else:
-                    # Convert to Python for pandas-style post-processing
-                    stats[stat_key] = spec.post_process_fn(agg_result.as_py())
+        stats = execute_aggregate_specs(dataset, self._get_aggregate_specs())
 
         # Run sequential stat functions
         for spec in self._get_custom_stat_fn_specs():

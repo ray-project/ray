@@ -13,9 +13,12 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.rules import (
+    BindGeneratedIdColumn,
+    CombineDownloads,
     CombineShuffles,
     CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
+    DeriveListFilesPushdown,
     FuseOperators,
     InheritTargetMaxBlockSizeRule,
     LimitPushdownRule,
@@ -32,6 +35,7 @@ _LOGICAL_RULESET = Ruleset(
         ProjectionPushdown,
         PredicatePushdown,
         CombineShuffles,
+        CombineDownloads,
         PushdownCountFiles,
     ]
 )
@@ -67,7 +71,16 @@ class LogicalOptimizer(Optimizer):
         # CommonSubExprElimination is only supposed to run once
         # isolated from the optimizer rule loop as it applies to
         # a single Projection operator not a chain of operators.
-        return CommonSubExprElimination().apply(plan)
+        plan = CommonSubExprElimination().apply(plan)
+        # Runs after the rule loop so no ruleset rule, including ones callers
+        # add, can project the generated ID column away again.
+        plan = BindGeneratedIdColumn().apply(plan)
+        # Must run last, over the final plan: it derives each ``ListFiles``'
+        # listing-time constraints from the scanner of the ``ReadFiles`` that
+        # consumes it. Running it earlier (or as a ruleset entry, which a
+        # caller-added rule could follow) would let a later rewrite leave
+        # ``ListFiles`` pruning by a predicate the reader no longer applies.
+        return DeriveListFilesPushdown().apply(plan)
 
 
 class PhysicalOptimizer(Optimizer):

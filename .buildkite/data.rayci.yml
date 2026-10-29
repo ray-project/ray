@@ -53,7 +53,9 @@ steps:
     env:
       PYTHON: "3.12"
     depends_on: oss-ci-base_gpu-multipy(python=3.12)
-    tags: cibase
+    tags:
+      - oss
+      - cibase
 
   # type check
   - label: ":python: pyrefly type check"
@@ -231,11 +233,10 @@ steps:
         --only-tags dask
     depends_on: datalbuild-multipy(python=3.12)
 
-  - label: ":database: data: doc tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
+  - label: ":database: data: docs example tests"
     tags:
       - data
-      - doc
+      - data_doc
     instance_type: medium
     commands:
       # doc tests
@@ -254,11 +255,10 @@ steps:
         --skip-ray-installation
     depends_on: datalbuild-multipy(python=3.10)
 
-  - label: ":database: data: dask doc tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
+  - label: ":database: data: dask docs example tests"
     tags:
       - data
-      - doc
+      - data_doc
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
@@ -268,11 +268,10 @@ steps:
         --parallelism-per-worker 2
     depends_on: datalbuild-multipy(python=3.12)
 
-  - label: ":database: data: doc gpu tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
+  - label: ":database: data: docs example gpu tests"
     tags:
       - data
-      - doc
+      - data_doc
       - gpu
     instance_type: gpu-large
     commands:

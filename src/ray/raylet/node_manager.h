@@ -18,7 +18,9 @@
 
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -230,12 +232,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  // Consume a RaySyncer sync message from another Raylet.
+  // Consume a batch of RaySyncer sync messages of one type from other Raylets.
   //
   // The two types of messages that are received are:
   //   - RESOURCE_VIEW: an update of the resources available on another Raylet.
   //   - COMMANDS: a request to run the Python garbage collector globally across Raylets.
-  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+  //
+  // \param message_type The type every message in `messages` has.
+  // \param messages The messages received together. For RESOURCE_VIEW, the whole batch
+  //     is applied first, then scheduling runs once.
+  void ConsumeSyncMessages(
+      syncer::MessageType message_type,
+      std::vector<std::shared_ptr<const syncer::RaySyncMessage>> messages) override;
 
   // Generate a RaySyncer sync message to be sent to other Raylets.
   //
@@ -411,23 +419,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool ResourceCreateUpdated(const NodeID &node_id,
                              const ResourceRequest &createUpdatedResources);
 
-  /// Handler for the deletion of a resource in the GCS
-  /// \param node_id ID of the node that deleted resources.
-  /// \param resource_names Names of deleted resources.
-  /// \return Whether the deletion is applied.
-  bool ResourceDeleted(const NodeID &node_id,
-                       const std::vector<std::string> &resource_names);
-
-  /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
-  /// This is called whenever there's an update to the resources on the local node.
-  void TryLocalInfeasibleTaskScheduling();
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
-
-  /// Flush objects that are out of scope in the application. This will attempt
-  /// to eagerly evict all plasma copies of the object from the cluster.
-  void FlushObjectsToFree();
 
   /// Handler for a resource usage notification from the GCS.
   ///
@@ -498,10 +491,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param disconnect_detail The detailed reason for a given exit.
   /// \param force true to destroy immediately, false to give time for the worker to
   /// clean up and exit gracefully.
+  /// \param memory_used_bytes_at_death The worker's memory usage at death; only set
+  /// for OOM kills.
   void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                      rpc::WorkerExitType disconnect_type,
                      const std::string &disconnect_detail,
-                     bool force = false);
+                     bool force = false,
+                     std::optional<int64_t> memory_used_bytes_at_death = std::nullopt);
 
   /// Handles the event that a job is started.
   ///
@@ -725,26 +721,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// unable to schedule new tasks or actors at all.
   void WarnAndGCStuckActors();
 
-  /// Dispatch tasks to available workers.
-  void DispatchScheduledTasksToWorkers();
-
-  /// Whether a task is an actor creation task.
-  bool IsActorCreationTask(const TaskID &task_id);
-
-  /// Return back all the bundle resource.
-  ///
-  /// \param bundle_spec: Specification of bundle whose resources will be returned.
-  /// \return Whether the resource is returned successfully.
-  bool ReturnBundleResources(const BundleSpecification &bundle_spec);
-
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
-  /// resource_load and resource_load_by_shape.
-  ///
-  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
-  /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &data);
-
   /// Disconnect a client.
   ///
   /// \param client The client that sent the message.
@@ -754,12 +730,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///        closing the connection.
   /// \param disconnect_type The reason to disconnect the specified client.
   /// \param disconnect_detail Disconnection information in details.
-  /// \param client_error_message Extra error messages about this disconnection
+  /// \param creation_task_exception Exception from the creation task, if the worker
+  /// died executing one.
+  /// \param memory_used_bytes_at_death The worker's memory usage at death; only set
+  /// for OOM kills.
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                         bool graceful,
                         rpc::WorkerExitType disconnect_type,
                         const std::string &disconnect_detail,
-                        const rpc::RayException *creation_task_exception = nullptr);
+                        const rpc::RayException *creation_task_exception = nullptr,
+                        std::optional<int64_t> memory_used_bytes_at_death = std::nullopt);
 
   /// Will trigger local gc if needed and do a syncer global gc broadcast if needed.
   void TriggerLocalOrGlobalGCIfNeeded();
@@ -830,14 +810,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Checks the expiry time of the worker failures and garbage collect them.
   void GCWorkerFailureReason();
 
-  /// Creates a AgentManager that creates and manages a dashboard agent.
+  /// Records a CancelWorkerLease tombstone so a later-arriving RequestWorkerLease
+  /// for the same lease ID is rejected. Evicts the oldest tombstones if the cap
+  /// is exceeded.
+  void AddCancelledLeaseTombstone(const LeaseID &lease_id);
+
+  /// Garbage-collects CancelWorkerLease tombstones past their TTL.
+  void GCCancelledLeaseTombstones();
+
+  /// Creates an AgentManager that creates and manages a dashboard agent.
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
   std::tuple<int, int, int> WaitForDashboardAgentPorts(const NodeID &self_node_id,
                                                        const NodeManagerConfig &config);
 
-  /// Creates a AgentManager that creates and manages a runtime env agent.
+  /// Creates an AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
@@ -909,6 +897,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int metrics_export_port_{0};
   int dashboard_agent_listen_port_{0};
 
+  /// Ray syncer for synchronization
+  syncer::RaySyncer ray_syncer_;
+
+  /// Owns the RaySyncer stream handler; must outlive node_manager_server_ which holds
+  /// a raw reference to it.
+  std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
+
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 
@@ -925,6 +920,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Optional extra information about why the worker failed.
   absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
+
+  /// Lease IDs whose CancelWorkerLease we have already handled. Used to reject a
+  /// RequestWorkerLease that arrives after its cancellation due to message reordering.
+  absl::flat_hash_set<LeaseID> cancelled_lease_tombstones_;
+  /// Tombstones in insertion order, which is also expiry order because the TTL is
+  /// uniform. Used to evict the oldest entries first.
+  std::deque<std::pair<LeaseID, SteadyTimePoint>> cancelled_lease_tombstone_queue_;
 
   /// Whether to trigger global GC at the next gc check.
   /// This will broadcast a global GC message to all raylets except for this one.
@@ -992,9 +994,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Managers all bundle-related operations.
   PlacementGroupResourceManager &placement_group_resource_manager_;
-
-  /// Ray syncer for synchronization
-  syncer::RaySyncer ray_syncer_;
 
   /// `version` for the RaySyncer COMMANDS channel. Monotonically incremented each time
   /// we issue a GC command so that none of the messages are dropped.

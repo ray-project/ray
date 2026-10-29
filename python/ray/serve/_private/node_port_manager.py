@@ -267,7 +267,12 @@ class NodePortManager:
                 del cls._node_managers[node_id]
 
     @classmethod
-    def update_ports(cls, ingress_replicas_info: List[Tuple[str, str, int, int]]):
+    def update_ports(
+        cls,
+        ingress_replicas_info: List[
+            Tuple[Optional[str], str, Optional[int], Optional[int]]
+        ],
+    ):
         """Update port values for ingress replicas."""
         for node_id, replica_id, http_port, grpc_port in ingress_replicas_info:
             if node_id is None:

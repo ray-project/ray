@@ -26,6 +26,8 @@ from ray.data._internal.block_batching.interfaces import (
     BlockPrefetcher,
     BlockStageTimings,
     CollatedBatch,
+    FinalizedBatch,
+    FinalizedData,
     ResolvedBlock,
 )
 from ray.data._internal.stats import DatasetStats, TimeSpan, _maybe_time
@@ -448,20 +450,27 @@ def collate(
 
 def _finalize_batch(
     batch: CollatedBatch,
-    finalize_fn: Callable[[Any], Any],
+    finalize_fn: Optional[Callable[[Any], FinalizedData]],
     stats: Optional[DatasetStats],
-) -> CollatedBatch:
+) -> FinalizedBatch:
+    if finalize_fn is None:
+        return FinalizedBatch(data=batch.data, metadata=batch.metadata)
     with _maybe_time(stats.iter_finalize_batch_s if stats else None) as span:
         finalized_data = finalize_fn(batch.data)
+    assert isinstance(finalized_data, FinalizedData)
     batch.metadata.stage_timings.finalize = span
-    return dataclasses.replace(batch, data=finalized_data)
+    return FinalizedBatch(
+        data=finalized_data.data,
+        metadata=batch.metadata,
+        on_consume=finalized_data.on_consume,
+    )
 
 
 def finalize_batches(
     batch_iter: Iterator[CollatedBatch],
-    finalize_fn: Callable[[Any], Any],
+    finalize_fn: Optional[Callable[[Any], FinalizedData]],
     stats: Optional[DatasetStats] = None,
-) -> Iterator[CollatedBatch]:
+) -> Iterator[FinalizedBatch]:
     """Returns an iterator with finalize_fn applied to batches."""
     if not isinstance(batch_iter, Iterator):
         batch_iter = iter(batch_iter)

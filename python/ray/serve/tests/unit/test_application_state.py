@@ -18,6 +18,7 @@ from ray.serve._private.application_state import (
     ApplicationStatusInfo,
     BuildAppStatus,
     StatusOverview,
+    _get_shared_build_app_label_selector,
     build_serve_application,
     override_deployment_info,
 )
@@ -51,6 +52,7 @@ from ray.serve.config import (
     GangSchedulingConfig,
     RequestRouterConfig,
 )
+from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.generated.serve_pb2 import (
@@ -85,6 +87,7 @@ class MockDeploymentStateManager:
         self.deployment_infos: Dict[DeploymentID, DeploymentInfo] = dict()
         self.deployment_statuses: Dict[DeploymentID, DeploymentStatusInfo] = dict()
         self.deleting: Dict[DeploymentID, bool] = dict()
+        self._shutting_down = False
 
         # Recover
         recovered_deployments = self.kv_store.get("fake_deployment_state_checkpoint")
@@ -208,6 +211,9 @@ class MockDeploymentStateManager:
         """Mock method to return outbound deployments for a deployment."""
         # Return None by default, tests can override this
         return getattr(self, f"_outbound_deps_{id.name}_{id.app_name}", None)
+
+    def is_shutting_down(self) -> bool:
+        return self._shutting_down
 
 
 @pytest.fixture
@@ -386,6 +392,38 @@ def test_ingress_request_router_rejects_autoscaling_config():
         )
 
 
+def _build_serve_application_deploy_args(app: Application) -> List[Dict]:
+    """Runs the declarative build task on `app` under HAProxy; returns its deploy args."""
+    runtime_context = Mock()
+    runtime_context.runtime_env = {}
+    runtime_context.get_job_id.return_value = "job-id"
+
+    with (
+        patch("ray.serve._private.application_state.import_attr", return_value=app),
+        patch(
+            "ray.serve._private.application_state.ray.get_runtime_context",
+            return_value=runtime_context,
+        ),
+        patch("ray.serve._private.application_state.configure_component_logger"),
+        patch("ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True),
+        patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
+    ):
+        _, deploy_args, error = build_serve_application._function(
+            "module.app",
+            "code-version",
+            "default",
+            {},
+            LoggingConfig(),
+            None,
+            {},
+            {"LLMServer": "ray.serve.experimental.round_robin_router.RoundRobinRouter"},
+            {},
+        )
+
+    assert error is None
+    return deploy_args
+
+
 def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
     ingress_api = FastAPI()
     router_api = FastAPI()
@@ -404,18 +442,120 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
     app = llm_server._with_ingress_request_router(
         IngressRequestRouter.bind(llm_deployment=llm_server)
     )
+    deploy_args = _build_serve_application_deploy_args(app)
+    assert [
+        (args["deployment_name"], args["ingress_request_router"])
+        for args in deploy_args
+    ] == [
+        ("LLMServer", False),
+        ("IngressRequestRouter", True),
+    ]
+
+
+def test_build_serve_application_puts_router_marker_on_ingress_args():
+    @serve.deployment
+    class Helper:
+        pass
+
+    @serve.deployment
+    @serve._router_application
+    class Router:
+        def __init__(self, helper):
+            pass
+
+    app = Router.bind(Helper.bind())
+    deploy_args = _build_serve_application_deploy_args(app)
+    assert {
+        args["deployment_name"]: args["router_application"] for args in deploy_args
+    } == {"Helper": False, "Router": True}
+
+
+class TestRouterApplicationState:
+    def test_manager_reads_marker_from_ingress_deployment(
+        self, mocked_application_state_manager
+    ):
+        app_state_manager, _, _ = mocked_application_state_manager
+        ingress_params = deployment_params("router", "/")
+        ingress_params["router_application"] = True
+        app_state_manager.deploy_app(
+            "app1",
+            [ingress_params, deployment_params("other")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+
+        assert app_state_manager.is_router_application("app1")
+        assert not app_state_manager.is_router_application("missing")
+
+    def test_manager_defaults_to_not_router(self, mocked_application_state_manager):
+        app_state_manager, _, _ = mocked_application_state_manager
+        app_state_manager.deploy_app(
+            "app1",
+            [deployment_params("a", "/")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+
+        assert not app_state_manager.is_router_application("app1")
+
+    def test_marker_on_non_ingress_deployment_is_ignored(
+        self, mocked_application_state_manager
+    ):
+        """Only the ingress deployment's marker describes the application."""
+        app_state_manager, _, _ = mocked_application_state_manager
+        other_params = deployment_params("other")
+        other_params["router_application"] = True
+        app_state_manager.deploy_app(
+            "app1",
+            [deployment_params("a", "/"), other_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+
+        assert not app_state_manager.is_router_application("app1")
+
+    def test_deployment_info_keeps_marker(self):
+        params = deployment_params("router", "/")
+        params["router_application"] = True
+        info = deploy_args_to_deployment_info(**params, app_name="app1")
+
+        assert info.update(route_prefix="/new").router_application
+        assert cloudpickle.loads(cloudpickle.dumps(info)).router_application
+        assert DeploymentInfo.from_proto(info.to_proto()).router_application
+        assert not DeploymentInfo.from_proto(
+            deployment_info("a", "/").to_proto()
+        ).router_application
+
+
+@pytest.mark.parametrize("uses_multiplexing", [False, True])
+def test_build_serve_application_rejects_custom_ingress_router_override(
+    uses_multiplexing,
+):
+    if uses_multiplexing:
+
+        @serve.deployment
+        class Ingress:
+            @serve.multiplexed(max_num_models_per_replica=2)
+            async def load_model(self, model_id: str) -> str:
+                return model_id
+
+    else:
+
+        @serve.deployment
+        class Ingress:
+            pass
+
     runtime_context = Mock()
     runtime_context.runtime_env = {}
-    runtime_context.get_job_id.return_value = "job-id"
 
     with (
-        patch("ray.serve._private.application_state.import_attr", return_value=app),
+        patch(
+            "ray.serve._private.application_state.import_attr",
+            return_value=Ingress.bind(),
+        ),
         patch(
             "ray.serve._private.application_state.ray.get_runtime_context",
             return_value=runtime_context,
         ),
         patch("ray.serve._private.application_state.configure_component_logger"),
-        patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
+        patch("ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True),
     ):
         _, deploy_args, error = build_serve_application._function(
             "module.app",
@@ -425,18 +565,12 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
             LoggingConfig(),
             None,
             {},
-            {},
+            {"Ingress": ("ray.serve.experimental.round_robin_router.RoundRobinRouter")},
             {},
         )
 
-    assert error is None
-    assert [
-        (args["deployment_name"], args["ingress_request_router"])
-        for args in deploy_args
-    ] == [
-        ("LLMServer", False),
-        ("IngressRequestRouter", True),
-    ]
+    assert deploy_args is None
+    assert CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR in error
 
 
 @pytest.fixture
@@ -475,6 +609,64 @@ def test_application_state_clears_stale_ingress_request_router(
         target_config=None,
     )
     assert application_state.ingress_request_router_deployment is None
+
+
+def test_application_state_preserves_router_metadata_during_rebuild(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+    router_params = deployment_params("Router", "/")
+    router_params["router_application"] = True
+    router_info = deploy_args_to_deployment_info(**router_params, app_name="test_app")
+
+    application_state._set_target_state(
+        {"Router": router_info},
+        api_type=APIType.DECLARATIVE,
+        code_version="1",
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Router"
+    assert application_state.is_router_application
+
+    # The old router continues serving while the replacement build is pending.
+    application_state._set_target_state(
+        None,
+        api_type=APIType.DECLARATIVE,
+        code_version=None,
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Router"
+    assert application_state.is_router_application
+
+    # A completed non-router replacement updates the retained metadata.
+    application_state._set_target_state(
+        {"Ingress": deployment_info("Ingress", "/")},
+        api_type=APIType.DECLARATIVE,
+        code_version="2",
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Ingress"
+    assert not application_state.is_router_application
+
+
+def test_application_state_clears_router_metadata_on_delete(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+    router_params = deployment_params("Router", "/")
+    router_params["router_application"] = True
+    router_info = deploy_args_to_deployment_info(**router_params, app_name="test_app")
+    application_state._set_target_state(
+        {"Router": router_info},
+        api_type=APIType.DECLARATIVE,
+        code_version="1",
+        target_config=None,
+    )
+
+    application_state._set_target_state_deleting()
+
+    assert application_state.ingress_deployment is None
+    assert not application_state.is_router_application
 
 
 class TestApplicationStatusInfo:
@@ -838,6 +1030,31 @@ def test_deploy_and_delete_app(mocked_application_state):
     assert ready_to_be_deleted
 
 
+def test_delete_app_does_not_bypass_full_shutdown(mocked_application_state):
+    """Deleting an app must not delete its deployments
+    directly while a full instance shutdown is in progress.
+    """
+
+    app_state, deployment_state_manager = mocked_application_state
+
+    d1_id = DeploymentID(name="d1", app_name="test_app")
+    d2_id = DeploymentID(name="d2", app_name="test_app")
+    app_state.deploy_app(
+        {"d1": deployment_info("d1"), "d2": deployment_info("d2")},
+        external_scaler_enabled=False,
+    )
+    app_state.update()
+    assert not deployment_state_manager.deleting.get(d1_id)
+    assert not deployment_state_manager.deleting.get(d2_id)
+
+    deployment_state_manager._shutting_down = True
+    app_state.delete()
+    app_state.update()
+
+    assert not deployment_state_manager.deleting.get(d1_id)
+    assert not deployment_state_manager.deleting.get(d2_id)
+
+
 def test_app_deploy_failed_and_redeploy(mocked_application_state):
     """Test DEPLOYING -> DEPLOY_FAILED -> (redeploy) -> DEPLOYING -> RUNNING"""
     app_state, deployment_state_manager = mocked_application_state
@@ -1008,6 +1225,72 @@ def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     deployment_state_manager.set_deployment_healthy(deployment_id)
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
+
+
+@pytest.mark.parametrize(
+    "label_selectors,expected_selector",
+    [
+        ([], None),
+        ([None], None),
+        (
+            [
+                {"ray.io/group": "vllm"},
+                {"ray.io/group": "vllm"},
+            ],
+            {"ray.io/group": "vllm"},
+        ),
+        (
+            [
+                {"ray.io/group": "vllm"},
+                None,
+            ],
+            {"ray.io/group": "vllm"},
+        ),
+        (
+            [
+                {"group": "a"},
+                {"group": "b"},
+            ],
+            None,
+        ),
+    ],
+)
+def test_get_shared_build_app_label_selector(label_selectors, expected_selector):
+    deployments = []
+    for index, label_selector in enumerate(label_selectors):
+        schema_args = {"name": f"deployment_{index}"}
+        if label_selector is not None:
+            schema_args["ray_actor_options"] = {"label_selector": label_selector}
+
+        deployments.append(DeploymentSchema(**schema_args))
+
+    app_config = ServeApplicationSchema(
+        name="test_app",
+        import_path="module.app",
+        deployments=deployments,
+    )
+
+    assert _get_shared_build_app_label_selector(app_config) == expected_selector
+
+
+def test_get_shared_build_app_label_selector_with_fallback_strategy():
+    app_config = ServeApplicationSchema(
+        name="test_app",
+        import_path="module.app",
+        deployments=[
+            DeploymentSchema(
+                name="deployment",
+                ray_actor_options={
+                    "label_selector": {"ray.io/group": "primary"},
+                    "fallback_strategy": [
+                        {"label_selector": {"ray.io/group": "fallback"}}
+                    ],
+                },
+            )
+        ],
+    )
+
+    assert _get_shared_build_app_label_selector(app_config) is None
 
 
 @patch(
@@ -1550,7 +1833,9 @@ class TestOverrideDeploymentInfo:
         )
 
     @staticmethod
-    def _make_info(ingress=False, ingress_request_router=False):
+    def _make_info(
+        ingress=False, ingress_request_router=False, router_application=False
+    ):
         return DeploymentInfo(
             route_prefix="/" if ingress else None,
             version="123",
@@ -1560,7 +1845,30 @@ class TestOverrideDeploymentInfo:
             deployer_job_id="",
             ingress=ingress,
             ingress_request_router=ingress_request_router,
+            router_application=router_application,
         )
+
+    @pytest.mark.parametrize("router_application", [False, True])
+    def test_override_null_route_prefix_rejects_router_application(
+        self, router_application
+    ):
+        """A router application routes HTTP, so it cannot drop its route."""
+        infos = {
+            "Ingress": self._make_info(
+                ingress=True, router_application=router_application
+            )
+        }
+        config = ServeApplicationSchema(
+            name="router", import_path="test.import.path", route_prefix=None
+        )
+
+        if router_application:
+            with pytest.raises(RayServeException, match="Application 'router'"):
+                override_deployment_info(infos, config)
+        else:
+            assert override_deployment_info(infos, config)["Ingress"].route_prefix is (
+                None
+            )
 
     def test_override_deployment_config(self, info):
         config = ServeApplicationSchema(
@@ -1658,71 +1966,15 @@ class TestOverrideDeploymentInfo:
         assert updated_info.route_prefix == "/bob"
         assert updated_info.version == "123"
 
-    @pytest.mark.parametrize(
-        "haproxy_enabled, attach_ingress_request_router, rejected",
-        [
-            # A custom router added by config override is rejected only under
-            # HAProxy, since build_app cannot see the override...
-            (True, False, True),
-            (False, False, False),
-            # ...unless an ingress request router is attached (direct streaming),
-            # where routing flows through the Serve router.
-            (True, True, False),
-        ],
-    )
-    def test_override_custom_ingress_request_router_under_haproxy(
-        self, monkeypatch, haproxy_enabled, attach_ingress_request_router, rejected
-    ):
-        monkeypatch.setattr(
-            "ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY",
-            haproxy_enabled,
-        )
-
-        infos = {"Ingress": self._make_info(ingress=True)}
-        if attach_ingress_request_router:
-            infos["Router"] = self._make_info(ingress_request_router=True)
+    @pytest.mark.parametrize("ingress", [False, True])
+    def test_override_allows_custom_router(self, ingress):
+        infos = {"Deployment": self._make_info(ingress=ingress)}
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
             deployments=[
                 DeploymentSchema(
-                    name="Ingress",
-                    request_router_config=RequestRouterConfig(
-                        request_router_class=RoundRobinRouter
-                    ),
-                )
-            ],
-        )
-
-        if rejected:
-            with pytest.raises(
-                RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
-            ):
-                override_deployment_info(infos, config)
-        else:
-            router_config = override_deployment_info(infos, config)[
-                "Ingress"
-            ].deployment_config.request_router_config
-            assert not router_config.is_default_request_router()
-
-    def test_override_allows_custom_router_on_non_ingress_under_haproxy(
-        self, monkeypatch
-    ):
-        """The guard targets only the ingress, so a custom router on a downstream
-        deployment is honored under HAProxy."""
-        monkeypatch.setattr(
-            "ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True
-        )
-        infos = {
-            "Ingress": self._make_info(ingress=True),
-            "Downstream": self._make_info(ingress=False),
-        }
-        config = ServeApplicationSchema(
-            name="default",
-            import_path="test.import.path",
-            deployments=[
-                DeploymentSchema(
-                    name="Downstream",
+                    name="Deployment",
                     request_router_config=RequestRouterConfig(
                         request_router_class=RoundRobinRouter
                     ),
@@ -1731,7 +1983,7 @@ class TestOverrideDeploymentInfo:
         )
 
         router_config = override_deployment_info(infos, config)[
-            "Downstream"
+            "Deployment"
         ].deployment_config.request_router_config
         assert not router_config.is_default_request_router()
 
@@ -2629,13 +2881,6 @@ class TestAutoscale:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        r1.to_full_id_str(): 3,
-                        r2.to_full_id_str(): 3,
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         r1.to_full_id_str(): [TimeStampedValue(timestamp_offset, 3)],
@@ -2649,7 +2894,6 @@ class TestAutoscale:
             for i in [1, 2]:
                 replica_report = ReplicaMetricReport(
                     replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]
                     },
@@ -2776,7 +3020,6 @@ class TestAutoscale:
         for replica_id in app1_d1_replicas + app1_d2_replicas:
             replica_report = ReplicaMetricReport(
                 replica_id=replica_id,
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]},
                 timestamp=time.time(),
             )
@@ -2786,7 +3029,6 @@ class TestAutoscale:
         for replica_id in app2_d1_replicas + app2_d2_replicas:
             replica_report = ReplicaMetricReport(
                 replica_id=replica_id,
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 0},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 0)]},
                 timestamp=time.time(),
             )
@@ -2850,7 +3092,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]},
                 timestamp=time.time(),
             )
@@ -2931,7 +3172,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 4},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 4)]},
                 timestamp=time.time(),
             )
@@ -3060,7 +3300,6 @@ class TestAutoscale:
             for replica in replicas:
                 replica_report = ReplicaMetricReport(
                     replica_id=replica,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: load},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, load)]
                     },
@@ -3135,7 +3374,6 @@ class TestAutoscale:
         for i in range(3):
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 10},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 10)]
                 },
@@ -3272,13 +3510,6 @@ class TestAutoscale:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    d1_r1.to_full_id_str(): d1_load,
-                    d1_r2.to_full_id_str(): d1_load,
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     d1_r1.to_full_id_str(): [
@@ -3302,13 +3533,6 @@ class TestAutoscale:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    d2_r3.to_full_id_str(): d2_load,
-                    d2_r4.to_full_id_str(): d2_load,
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     d2_r3.to_full_id_str(): [
@@ -3331,7 +3555,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: d1_load},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, d1_load)]
                 },
@@ -3343,7 +3566,6 @@ class TestAutoscale:
         for i in [3, 4]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d2_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: d2_load},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, d2_load)]
                 },
@@ -3492,6 +3714,7 @@ class TestApplicationLevelAutoscaling:
                 deployment_infos,
                 BuildAppStatus.SUCCEEDED,
                 "",
+                None,
             )
             app_state.update()
 
@@ -3549,6 +3772,7 @@ class TestApplicationLevelAutoscaling:
                     deployment_infos,
                     BuildAppStatus.SUCCEEDED,
                     "",
+                    None,
                 )
                 app_state.update()
 
@@ -3707,6 +3931,71 @@ class TestApplicationLevelAutoscaling:
         new_app_state_manager.update()
 
         assert new_deployment_state_manager._scaling_decisions[d1_id] == 3
+
+    @patch("ray.serve._private.application_state.build_serve_application", Mock())
+    @patch(
+        "ray.serve._private.application_state.check_obj_ref_ready_nowait",
+        Mock(return_value=True),
+    )
+    def test_app_level_autoscaling_policy_bytes_survive_recovery_and_update(
+        self, mocked_application_state_manager
+    ):
+        """The serialized policy must be carried through every target state.
+
+        A policy that lives only in the app's runtime_env can be imported by
+        the build task but not by the controller, so the controller relies on
+        the bytes the build task returned. Dropping them from the target state
+        on recovery or on a same-code-version update lets the next checkpoint
+        persist None, and the recovery after that imports the policy by path in
+        the controller and crashes it.
+        """
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        serialized_policy = cloudpickle.dumps(simple_app_level_policy)
+
+        def config(max_ongoing_requests):
+            return ServeApplicationSchema(
+                name="test_app",
+                import_path="fa.ke",
+                route_prefix="/",
+                # Not importable in this process, like a runtime_env-only module.
+                autoscaling_policy={"policy_function": "hidden_app:app_policy"},
+                deployments=[
+                    {"name": "a", "max_ongoing_requests": max_ongoing_requests}
+                ],
+            )
+
+        def recover():
+            return ApplicationStateManager(
+                MockDeploymentStateManager(kv_store),
+                AutoscalingStateManager(),
+                MockEndpointState(),
+                kv_store,
+                LoggingConfig(),
+            )
+
+        def policy_bytes(manager):
+            return manager._application_states[
+                "test_app"
+            ]._target_state.serialized_application_autoscaling_policy_def
+
+        with patch(
+            "ray.get",
+            Mock(return_value=(serialized_policy, [deployment_params("a", "/")], None)),
+        ):
+            app_state_manager.apply_app_configs([config(5)])
+            app_state_manager.update()
+        assert policy_bytes(app_state_manager) == serialized_policy
+
+        app_state_manager.save_checkpoint()
+        recovered = recover()
+        assert policy_bytes(recovered) == serialized_policy
+
+        # Same import_path and runtime_env: applied in place without a rebuild.
+        recovered.apply_app_configs([config(11)])
+        assert policy_bytes(recovered) == serialized_policy
+
+        recovered.save_checkpoint()
+        assert recover()._autoscaling_state_manager._application_has_policy("test_app")
 
     def test_app_level_autoscaling_policy_deregistration_on_deletion(
         self, mocked_application_state_manager
@@ -3942,6 +4231,122 @@ class TestApplicationLevelAutoscaling:
 
         assert d1_id in decisions
         assert decisions[d1_id] == 3  # Our policy scales to 3
+
+    def _create_two_deployment_app_config(self, has_policy: bool):
+        """App config with two autoscaling deployments, d1 and d2."""
+        autoscaling_config = {
+            "target_ongoing_requests": 1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "initial_replicas": 1,
+        }
+        return self._create_app_config(
+            has_policy=has_policy,
+            deployments=[
+                DeploymentSchema(
+                    name="d1", autoscaling_config=dict(autoscaling_config)
+                ),
+                DeploymentSchema(
+                    name="d2", autoscaling_config=dict(autoscaling_config)
+                ),
+            ],
+        )
+
+    @pytest.mark.parametrize("has_policy", [False, True])
+    def test_get_decision_num_replicas_skips_untargeted_deployment(
+        self, mocked_application_state_manager, has_policy
+    ):
+        """A deployment that left the app's target state must not raise KeyError.
+
+        A deployment stays registered with the autoscaling state manager until
+        it is fully torn down, but it drops out of the application's target
+        deployments -- and therefore out of `deployment_to_target_num_replicas`
+        -- as soon as the new target state is set. Autoscaling must skip it
+        rather than indexing the caller's dict with a key it doesn't have.
+        """
+        app_state_manager, _, _ = mocked_application_state_manager
+
+        app_config = self._create_two_deployment_app_config(has_policy)
+        self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        assert asm.should_autoscale_deployment(d2_id)
+
+        # d2 has been removed from the app but is still registered because its
+        # replicas haven't finished stopping, so the caller only reports d1.
+        decisions = asm.get_decision_num_replicas("test_app", {d1_id: 1})
+
+        assert d1_id in decisions
+        assert d2_id not in decisions
+
+    def test_autoscale_after_deployment_removed_from_app(
+        self, mocked_application_state_manager
+    ):
+        """Removing one deployment must not stop the app's control loop.
+
+        `ApplicationStateManager.update` calls `autoscale()` before `update()`,
+        so a raise in `autoscale()` would prevent the removed deployment from
+        ever being deleted -- and therefore from ever being deregistered --
+        leaving the application unreconciled on every subsequent loop.
+        """
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+        asm = app_state_manager._autoscaling_state_manager
+
+        autoscaling_config = {
+            "target_ongoing_requests": 1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 0.0,
+        }
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        app_state_manager.deploy_app(
+            "test_app",
+            [
+                deployment_params(
+                    "d1", "/hi", autoscaling_config=dict(autoscaling_config)
+                ),
+                deployment_params("d2", autoscaling_config=dict(autoscaling_config)),
+            ],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state = app_state_manager._application_states["test_app"]
+        app_state_manager.update()
+        for deployment_id in (d1_id, d2_id):
+            deployment_state_manager.set_deployment_healthy(deployment_id)
+            asm.register_deployment(
+                deployment_id,
+                deployment_state_manager.deployment_infos[deployment_id],
+                1,
+            )
+
+        # Redeploy without d2. It drops out of the target state immediately but
+        # stays registered for autoscaling until its replicas finish stopping.
+        app_state_manager.deploy_app(
+            "test_app",
+            [
+                deployment_params(
+                    "d1", "/hi", autoscaling_config=dict(autoscaling_config)
+                )
+            ],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        assert app_state.target_deployments == ["d1"]
+        assert asm.should_autoscale_deployment(d2_id)
+
+        app_state_manager.update()
+
+        # d2 is marked for deletion only if `autoscale()` returned normally and
+        # `update()` got to run.
+        assert deployment_state_manager.deleting[d2_id] is True
 
     def test_multiple_applications_autoscaling_isolation(
         self, mocked_application_state_manager
@@ -4944,6 +5349,113 @@ class TestDeploymentDAG:
         # Verify leaf nodes have no dependencies
         assert len(topology.nodes["database"].outbound_deployments) == 0
         assert len(topology.nodes["cache"].outbound_deployments) == 0
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+class TestConfigOverridesFromBuild:
+    """Removing config overrides restores code defaults, including after recovery."""
+
+    SPARSE = ServeApplicationSchema(
+        name="test_app", import_path="fa.ke", route_prefix="/"
+    )
+
+    @staticmethod
+    def _build(app_state_manager, check_obj_ref_ready_nowait):
+        app_state_manager.apply_app_configs([TestConfigOverridesFromBuild.SPARSE])
+        app_state = app_state_manager._application_states["test_app"]
+        check_obj_ref_ready_nowait.return_value = True
+        app_state.update()
+        assert app_state._target_state.build is not None
+        return app_state
+
+    @staticmethod
+    def _with_overrides(**deployment_overrides):
+        return ServeApplicationSchema(
+            name="test_app",
+            import_path="fa.ke",
+            route_prefix="/",
+            deployments=[{"name": "a", **deployment_overrides}],
+        )
+
+    @staticmethod
+    def _num_replicas(app_state):
+        return app_state._target_state.deployment_infos[
+            "a"
+        ].deployment_config.num_replicas
+
+    @staticmethod
+    def _actor_options(app_state):
+        return app_state._target_state.deployment_infos[
+            "a"
+        ].replica_config.ray_actor_options
+
+    @staticmethod
+    def _recover(kv_store):
+        new_app_state_manager = ApplicationStateManager(
+            MockDeploymentStateManager(kv_store),
+            AutoscalingStateManager(),
+            MockEndpointState(),
+            kv_store,
+            LoggingConfig(),
+        )
+        return new_app_state_manager._application_states["test_app"]
+
+    def test_removed_override_returns_to_code_defined_value(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, _ = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        assert self._num_replicas(app_state) == 1
+        assert "runtime_env" not in self._actor_options(app_state)
+
+        app_state.apply_app_config(
+            self._with_overrides(
+                num_replicas=5,
+                ray_actor_options={"runtime_env": {"env_vars": {"FAIL": "1"}}},
+            ),
+            None,
+            None,
+            deployment_time=1.0,
+        )
+        assert app_state._target_state.build is not None
+        assert self._num_replicas(app_state) == 5
+        assert self._actor_options(app_state)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+
+        app_state.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        assert self._num_replicas(app_state) == 1
+        assert "runtime_env" not in self._actor_options(app_state)
+
+    def test_sparse_rollback_after_controller_restart(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        app_state.apply_app_config(
+            self._with_overrides(
+                ray_actor_options={"runtime_env": {"env_vars": {"FAIL": "1"}}}
+            ),
+            None,
+            None,
+            deployment_time=1.0,
+        )
+        assert self._actor_options(app_state)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+        app_state_manager.save_checkpoint()
+
+        recovered = self._recover(kv_store)
+        assert recovered._target_state.build is not None
+        assert self._actor_options(recovered)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+
+        recovered.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        assert "runtime_env" not in self._actor_options(recovered)
+        assert self._num_replicas(recovered) == 1
 
 
 if __name__ == "__main__":

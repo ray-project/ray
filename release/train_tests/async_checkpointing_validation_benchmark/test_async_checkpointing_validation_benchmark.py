@@ -171,7 +171,11 @@ def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_func,
         train_loop_config={"checkpoint": checkpoint},
-        scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
+        scaling_config=ray.train.ScalingConfig(
+            num_workers=2,
+            use_gpu=True,
+            label_selector={"ray-subcluster": "validation"},
+        ),
         datasets={"async_val_torch_trainer": validation_dataset},
         run_config=ray.train.RunConfig(
             name=f"{parent_run_name}-validation_epoch={epoch}_batch_idx={batch_idx}"
@@ -386,7 +390,13 @@ def run_training_with_validation(
 ):
     # Launch distributed training job.
     start_time = time.time()
-    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
+    # `label_selector` keeps training workers off the validation subcluster.
+    # `ExecutionOptions.label_selector` below only constrains Ray Data tasks, not
+    # Ray Train worker actors; without this the trainer can take both validation
+    # GPUs and starve async validation for the whole run.
+    scaling_config = ray.train.ScalingConfig(
+        num_workers=2, use_gpu=True, label_selector={"ray-subcluster": "train"}
+    )
 
     if validation_type == ValidationType.INLINE:
         validation_config = None

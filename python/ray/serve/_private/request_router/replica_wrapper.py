@@ -6,9 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set, Tuple, Union
 
-import grpc
-
 import ray
+from ray._private.grpc_utils import init_grpc_channel
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     DeploymentID,
@@ -286,7 +285,10 @@ class RunningReplica:
     @property
     def stub(self):
         if self._stub is None:
-            self._channel = grpc.aio.insecure_channel(
+            # Created via the shared helper so that Ray's authentication client
+            # interceptors and TLS credentials are applied; a raw insecure
+            # channel would be rejected by the replica's authenticated server.
+            self._channel = init_grpc_channel(
                 f"{self._replica_info.node_ip}:{self._replica_info.port}",
                 options=[
                     (
@@ -294,6 +296,7 @@ class RunningReplica:
                         RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
                     )
                 ],
+                asynchronous=True,
             )
             self._stub = ASGIServiceStub(self._channel)
 

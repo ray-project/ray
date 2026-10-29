@@ -29,6 +29,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         themeMode: "light",
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         toggleTheme: () => {},
+        showAcceleratorColumns: true,
       }}
     >
       <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
@@ -61,6 +62,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         themeMode: "light",
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         toggleTheme: () => {},
+        showAcceleratorColumns: true,
       }}
     >
       <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
@@ -161,6 +163,7 @@ describe("Metrics", () => {
             themeMode: "light",
             // eslint-disable-next-line @typescript-eslint/no-empty-function
             toggleTheme: () => {},
+            showAcceleratorColumns: true,
           }}
         >
           <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
@@ -209,6 +212,7 @@ describe("Metrics", () => {
             themeMode: "light",
             // eslint-disable-next-line @typescript-eslint/no-empty-function
             toggleTheme: () => {},
+            showAcceleratorColumns: true,
           }}
         >
           <STYLE_WRAPPER>{children}</STYLE_WRAPPER>

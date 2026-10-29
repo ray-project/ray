@@ -1,9 +1,13 @@
 import os
 import sys
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 from opentelemetry.metrics import NoOpHistogram
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from ray._private.metrics_agent import Gauge, Record
 from ray._private.telemetry.metric_types import MetricType
@@ -372,6 +376,39 @@ def test_record_histogram_aggregated_batch(
     mock_logger_warning.assert_not_called()
 
 
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_record_histogram_aggregated_batch_bucket_count_mismatch(
+    mock_get_meter, mock_set_meter_provider, mock_logger_warning
+):
+    """A data point that omits its bounds and disagrees with the registered ones is
+    skipped with a warning instead of raising."""
+    mock_meter = MagicMock()
+    real_histogram = NoOpHistogram(name="test_histogram")
+    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
+    mock_meter.create_histogram.return_value = mock_histogram
+    mock_get_meter.return_value = mock_meter
+
+    recorder = OpenTelemetryMetricRecorder()
+    recorder.register_histogram_metric(
+        name="test_histogram",
+        description="Test Histogram",
+        buckets=[1.0, 10.0, 100.0],
+    )
+
+    recorder.record_histogram_aggregated_batch(
+        name="test_histogram",
+        data_points=[
+            {"tags": {"model_name": "a"}, "bucket_counts": [1, 2]},
+            {"tags": {"model_name": "b"}, "bucket_counts": [1, 0, 0, 0]},
+        ],
+    )
+
+    assert mock_histogram.record.call_count == 1
+    mock_logger_warning.assert_called_once()
+
+
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 @pytest.mark.parametrize(
@@ -508,6 +545,106 @@ def test_init_metrics_sets_service_name_resource(
         )
     finally:
         OpenTelemetryMetricRecorder._metrics_initialized = original_flag
+
+
+@pytest.mark.parametrize(
+    "register_method,register_args",
+    [
+        ("register_gauge_metric", ("test_deadlock_gauge", "description")),
+        ("register_counter_metric", ("test_deadlock_counter", "description")),
+        ("register_sum_metric", ("test_deadlock_sum", "description")),
+        # Histogram registration does not go through the measurement-consumer
+        # lock today (synchronous instruments are not registered with the
+        # consumer), so it could not deadlock pre-fix; included as a tripwire
+        # in case that ever changes.
+        (
+            "register_histogram_metric",
+            ("test_deadlock_histogram", "description", [1.0, 10.0]),
+        ),
+    ],
+)
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_register_does_not_deadlock_with_concurrent_collect(
+    mock_get_meter, mock_set_meter_provider, register_method, register_args
+):
+    """Regression test for an AB/BA deadlock between instrument registration and
+    metric collection.
+
+    The OpenTelemetry SDK holds an SDK-internal lock while invoking
+    observable-instrument callbacks during collect(), and the recorder's
+    callbacks acquire ``recorder._lock``. If registration holds
+    ``recorder._lock`` across ``meter.create_*`` (which acquires that same
+    SDK-internal lock), a registration that races a collect() deadlocks the
+    process permanently:
+
+        registration: recorder._lock -> SDK lock
+        collect():    SDK lock       -> recorder._lock
+
+    This test parks a real SDK collect() inside an instrument callback that
+    contends on ``recorder._lock`` (exactly like the recorder's own callbacks
+    do) while another thread registers a new instrument, and asserts that both
+    complete.
+    """
+    mock_get_meter.return_value = MagicMock()
+    recorder = OpenTelemetryMetricRecorder()
+    # Use a local provider/reader so collect() exercises the real SDK locking,
+    # independent of the process-global meter provider.
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    recorder.meter = provider.get_meter(__name__)
+
+    in_callback = threading.Event()
+    registration_started = threading.Event()
+
+    def contending_callback(options):
+        # Runs inside collect() with the SDK lock held.
+        in_callback.set()
+        registration_started.wait(timeout=30)
+        # Contend on the recorder lock exactly like the recorder's own
+        # observable callbacks do on every scrape.
+        with recorder._lock:
+            return []
+
+    recorder.meter.create_observable_gauge(
+        name="test_contending_gauge", callbacks=[contending_callback]
+    )
+
+    collect_thread = threading.Thread(target=reader.collect, daemon=True)
+    collect_thread.start()
+    assert in_callback.wait(timeout=10), "collect() never invoked the callback"
+
+    register_thread = threading.Thread(
+        target=getattr(recorder, register_method),
+        args=register_args,
+        daemon=True,
+    )
+    register_thread.start()
+    # Let the registration reach its lock acquisitions before releasing the
+    # callback. Under the pre-fix locking (recorder._lock held across
+    # meter.create_*) recorder._lock is what becomes visibly held; under the
+    # fixed locking it is _registration_lock — break on either so the barrier
+    # is fast in both worlds instead of sleeping out the full budget.
+    for _ in range(100):
+        if (
+            recorder._registration_lock.locked()
+            or recorder._lock.locked()
+            or not register_thread.is_alive()
+        ):
+            break
+        time.sleep(0.01)
+    registration_started.set()
+
+    register_thread.join(timeout=10)
+    registration_deadlocked = register_thread.is_alive()
+    collect_thread.join(timeout=10)
+    assert not registration_deadlocked, (
+        f"{register_method}() deadlocked against a concurrent collect(); "
+        "instrument creation must not run while holding recorder._lock."
+    )
+    assert not collect_thread.is_alive(), "collect() did not complete"
+    with recorder._lock:
+        assert register_args[0] in recorder._registered_instruments
 
 
 def test_get_service_name_decodes_otel_resource_attributes():

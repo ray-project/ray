@@ -1,11 +1,18 @@
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
     make_partition_sentinel,
@@ -14,6 +21,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
     ShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     _encode_partition_ipc,
     _get_shard_batch,
     _ipc_write_options,
@@ -52,10 +60,147 @@ def _assert_keys_colocated(per_block):
 
 
 @pytest.fixture(autouse=True)
-def data_context_use_hash_shuffle_v2(restore_data_context):
+def data_context_shuffle_v2(restore_data_context):
     ctx = restore_data_context
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    ctx.use_hash_shuffle_v2 = True
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+
+@pytest.mark.parametrize(
+    "num_rows,num_partitions",
+    [(0, 4), (12, 1), (12, 4), (11, 4), (10, 6), (3, 5)],
+)
+def test_slice_partition(num_rows, num_partitions):
+    from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+        _make_slice_partition_fn,
+    )
+    from ray.data.extensions import ArrowTensorArray
+
+    tensors = np.arange(48).reshape(12, 2, 2)
+    table = pa.table(
+        {
+            "id": range(12),
+            "tensor": ArrowTensorArray.from_numpy(tensors),
+            "null": pa.nulls(12),
+        }
+    ).slice(0, num_rows)
+    # Exercise slicing on chunked inputs as well.
+    table = pa.concat_tables([table.slice(0, 5), table.slice(5)])
+    partition_fn = _make_slice_partition_fn(num_partitions)
+    partitions = partition_fn(table)
+    num_slices = min(num_rows, num_partitions)
+    assert set(partitions) == set(range(num_slices))
+    slice_size, remainder = divmod(num_rows, num_slices) if num_slices else (0, 0)
+    slice_ranges = []
+    row_start = 0
+    for partition_id in range(num_slices):
+        current_slice_size = slice_size + (1 if partition_id < remainder else 0)
+        slice_ranges.append((row_start, row_start + current_slice_size))
+        row_start += current_slice_size
+    for partition_id, shard in partitions.items():
+        row_start, row_end = slice_ranges[partition_id]
+        assert shard.schema == table.schema
+        assert shard["id"].to_pylist() == list(range(row_start, row_end))
+        assert shard["null"].null_count == shard.num_rows
+        np.testing.assert_array_equal(
+            shard["tensor"].combine_chunks().to_numpy(),
+            tensors[row_start:row_end],
+        )
+
+
+@pytest.mark.parametrize("use_disk", [False, True])
+@pytest.mark.parametrize("input_batch_bytes", [0, 1024 * 1024])
+@pytest.mark.parametrize(
+    "num_rows,num_partitions", [(0, 4), (11, 1), (11, 4), (10, 6), (3, 5)]
+)
+def test_slice_repartition(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    use_disk,
+    input_batch_bytes,
+    num_rows,
+    num_partitions,
+):
+    ctx = DataContext.get_current()
+    ctx.use_disk_based_hash_shuffle = use_disk
+    ctx.shuffle_input_batch_bytes = input_batch_bytes
+    tables = [
+        pa.table({"id": list(range(start, start + num_rows))}) for start in (0, 100)
+    ]
+    out = (
+        ray.data.from_arrow(tables)
+        .repartition(num_partitions, shuffle=True)
+        .materialize()
+    )
+    blocks = [
+        ray.get(block_ref)
+        for ref_bundle in out.iter_internal_ref_bundles()
+        for block_ref in ref_bundle.block_refs
+    ]
+    assert len(blocks) == num_partitions
+    assert all(block.schema == tables[0].schema for block in blocks)
+    rows_by_partition = [block["id"].to_pylist() for block in blocks]
+    assert sorted(row for rows in rows_by_partition for row in rows) == (
+        list(range(num_rows)) + list(range(100, 100 + num_rows))
+    )
+    # Each input block's contiguous slices are assigned in partition order.
+    num_slices = min(num_rows, num_partitions)
+    slice_size, remainder = divmod(num_rows, num_slices) if num_slices else (0, 0)
+    expected_shards = []
+    row_start = 0
+    for partition_id in range(num_slices):
+        current_slice_size = slice_size + (1 if partition_id < remainder else 0)
+        expected_shards.append(list(range(row_start, row_start + current_slice_size)))
+        row_start += current_slice_size
+    expected_shards.extend([[] for _ in range(num_partitions - num_slices)])
+    expected_shards.sort()
+    for start in (0, 100):
+        shards = [
+            [row - start for row in rows if start <= row < start + num_rows]
+            for rows in rows_by_partition
+        ]
+        assert sorted(shards) == expected_shards
+    prefix = "Disk" if use_disk else ""
+    assert f"{prefix}SliceShuffleMap(partitions={num_partitions})" in out.stats()
+    assert f"{prefix}SliceShuffleReduce(partitions={num_partitions})" in out.stats()
+
+
+@pytest.mark.parametrize("use_disk", [False, True])
+def test_slice_repartition_chunked_extensions(
+    ray_start_regular_shared_2_cpus, use_disk
+):
+    from ray.data.extensions import ArrowPythonObjectArray, ArrowTensorArray
+
+    DataContext.get_current().use_disk_based_hash_shuffle = use_disk
+    tensors = np.arange(48).reshape(12, 2, 2)
+    table = pa.table(
+        {
+            "id": range(12),
+            "tensor": ArrowTensorArray.from_numpy(tensors),
+            "object": ArrowPythonObjectArray.from_objects(
+                [{"id": i} for i in range(12)]
+            ),
+        }
+    )
+    table = pa.concat_tables([table.slice(0, 5), table.slice(5)])
+    assert all(column.num_chunks == 2 for column in table.columns)
+
+    out = ray.data.from_arrow(table).repartition(4, shuffle=True).materialize()
+    blocks = [
+        ray.get(block_ref)
+        for ref_bundle in out.iter_internal_ref_bundles()
+        for block_ref in ref_bundle.block_refs
+    ]
+    assert len(blocks) == 4
+    all_ids = []
+    for block in blocks:
+        assert block.schema == table.schema
+        ids = block["id"].to_numpy()
+        all_ids.extend(ids.tolist())
+        np.testing.assert_array_equal(
+            block["tensor"].combine_chunks().to_numpy(), tensors[ids]
+        )
+        assert block["object"].to_pylist() == [{"id": i} for i in ids]
+    assert sorted(all_ids) == list(range(12))
 
 
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
@@ -178,6 +323,26 @@ def test_repartition_with_sort_produces_sorted_partitions(
             assert ids == sorted(ids)
 
 
+def test_sort_reduce_uses_higher_multiplier(ray_start_regular_shared_2_cpus):
+    """Sorted reduces request 3x their input (sort_by materializes a sorted
+    copy on top of the concatenated shards); plain concat reduces keep the
+    2x default."""
+    from ray.data._internal.logical.optimizers import get_execution_plan
+
+    sorted_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"], sort=True)._logical_plan
+    )[0].dag
+    assert sorted_dag._peak_memory_multiplier == 3
+    # The multiplier drives the reduce task's memory request.
+    sorted_dag.input_dependencies[0]._partition_bytes[0] = 100
+    assert sorted_dag.incremental_resource_usage().memory == 300
+
+    plain_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"])._logical_plan
+    )[0].dag
+    assert plain_dag._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
+
+
 def test_get_shard_batch_no_timeout(ray_start_regular_shared_2_cpus):
     """timeout_s <= 0 fetches in a single blocking ray.get."""
     refs = [ray.put(i) for i in range(4)]
@@ -234,6 +399,34 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     ray.cancel(ref, force=True)
 
 
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, DiskHashShuffleMapOp])
+@pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
+def test_shuffle_input_batch_bytes_controls_map_task_batching(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    map_op_cls,
+    batch_bytes,
+    expected_num_tasks,
+):
+    """batch_bytes=0 submits one map task per input bundle; a large value
+    buffers all input into a single map task, flushed when input ends.
+    Both map-op variants share the same batching policy."""
+    restore_data_context.shuffle_input_batch_bytes = batch_bytes
+    op = map_op_cls(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    for bundle in make_ref_bundles([[0], [1]]):
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+
+    assert len(op.get_active_tasks()) == expected_num_tasks
+
+
 def test_shuffle_map_task_uses_operator_name():
     ctx = DataContext.get_current()
     name = "JoinShuffleMapLeft(keys=('id',), parts=2)"
@@ -242,7 +435,6 @@ def test_shuffle_map_task_uses_operator_name():
         ctx,
         num_partitions=2,
         partition_fn=lambda table: {},
-        pre_map_merge_threshold=0,
         name=name,
     )
     op.start(ExecutionOptions(), noop_counter())
@@ -290,10 +482,72 @@ def test_shuffle_reduce_task_uses_operator_name():
     assert shuffle_reduce_task.options.call_args.kwargs["name"] == name
 
 
+def test_disk_shuffle_map_task_uses_context_label_selector(restore_data_context):
+    restore_data_context.execution_options.label_selector = {
+        "subcluster": "train",
+        "zone": "us-west",
+    }
+    op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_map_operator._disk_shuffle_map_task"
+    ) as shuffle_map_task:
+        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_shuffle_map_task([], [])
+
+    assert shuffle_map_task.options.call_args.kwargs["label_selector"] == {
+        "subcluster": "train",
+        "zone": "us-west",
+    }
+
+
+def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
+    restore_data_context.execution_options.label_selector = {
+        "subcluster": "train",
+        "zone": "us-west",
+    }
+    map_op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    op = DiskHashShuffleReduceOp(
+        map_op,
+        restore_data_context,
+        num_partitions=1,
+        reduce_fn=lambda partition_id, tables_by_input: iter(()),
+        reduce_ray_remote_args={
+            "label_selector": {"subcluster": "validation", "node": "worker-1"}
+        },
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_reduce_operator._disk_shuffle_reduce_task"
+    ) as shuffle_reduce_task:
+        shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
+
+    assert shuffle_reduce_task.options.call_args.kwargs["label_selector"] == {
+        "subcluster": "validation",
+        "zone": "us-west",
+        "node": "worker-1",
+    }
+
+
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
 # shuffle_tasks tests above) into a dedicated operator/task-level test file --
-# they aren't specific to hash-shuffle-v2.
+# they aren't specific to shuffle-v2.
 def _ipc_shard_bundle(partition_id, table):
     """One partition's shard as a ShuffleMapOp emits it: an IPC-encoded buffer
     stamped with the partition id."""
@@ -383,6 +637,123 @@ def test_reduce_op_runs_when_an_input_is_missing(ray_start_regular_shared_2_cpus
     out = pa.concat_tables(_drain_reduce_op(op, feed))
     assert out.column("src").to_pylist() == ["L"]
     assert op.has_completed()
+
+
+_V2_OP_CLASSES = [
+    (ShuffleMapOp, ShuffleReduceOp),
+    (DiskHashShuffleMapOp, DiskHashShuffleReduceOp),
+]
+
+
+def _make_map_op(map_op_cls, upstream_total_rows=None, block_transformer=None):
+    ctx = DataContext.get_current()
+    upstream = InputDataBuffer(ctx, [])
+    upstream.num_output_rows_total = lambda: upstream_total_rows
+    return map_op_cls(
+        upstream,
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+        block_transformer=block_transformer,
+    )
+
+
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, DiskHashShuffleMapOp])
+def test_map_num_output_rows_total_unknown_with_block_transformer(map_op_cls):
+    map_op = _make_map_op(
+        map_op_cls, upstream_total_rows=100, block_transformer=lambda table: table
+    )
+
+    assert map_op.num_output_rows_total() is None
+
+
+@pytest.mark.parametrize("map_op_cls,reduce_op_cls", _V2_OP_CLASSES)
+def test_reduce_num_output_rows_total_borrows_map_total(map_op_cls, reduce_op_cls):
+    map_op = _make_map_op(map_op_cls, upstream_total_rows=100)
+    reduce_op = reduce_op_cls(
+        map_op, map_op.data_context, num_partitions=2, reduce_fn=lambda *args: []
+    )
+
+    assert reduce_op.num_output_rows_total() == 100
+
+
+@pytest.mark.parametrize("map_op_cls,reduce_op_cls", _V2_OP_CLASSES)
+def test_reduce_num_output_rows_total_unknown_when_row_count_not_preserved(
+    map_op_cls, reduce_op_cls
+):
+    map_op = _make_map_op(map_op_cls, upstream_total_rows=100)
+    reduce_op = reduce_op_cls(
+        map_op,
+        map_op.data_context,
+        num_partitions=2,
+        reduce_fn=lambda *args: [],
+        preserves_row_count=False,
+    )
+
+    assert reduce_op.num_output_rows_total() is None
+
+
+def test_reduce_op_none_target_emits_blocks_as_is(ray_start_regular_shared_2_cpus):
+    """With block splitting disallowed (target_max_block_size=None), the reduce
+    task must emit reduce_fn's blocks as-is instead of coalescing them into a
+    single block."""
+
+    def _one_row_blocks_reduce(partition_id, tables_by_input):
+        tables = [t for shards in tables_by_input for t in shards]
+        combined = pa.concat_tables(tables)
+        for i in range(combined.num_rows):
+            yield combined.slice(i, 1)
+
+    op = _make_multi_input_reduce_op(_one_row_blocks_reduce, num_inputs=2)
+    feed = [
+        (_ipc_shard_bundle(0, pa.table({"v": [1, 2]})), 0),
+        (_ipc_shard_bundle(0, pa.table({"v": [3, 4]})), 1),
+    ]
+    tables = _drain_reduce_op(op, feed)
+    assert [t.num_rows for t in tables] == [1, 1, 1, 1]
+    assert sorted(v for t in tables for v in t.column("v").to_pylist()) == [1, 2, 3, 4]
+
+
+@pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
+def test_shuffle_ops_report_per_task_exec_stats(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    restore_data_context,
+    use_disk,
+):
+    """Shuffle map and reduce tasks build their exec stats worker-side, where
+    the task index isn't known; the operators are responsible for stamping it.
+    Without the stamp (or with the old zero-width reduce spans), shuffle
+    operators silently vanish from per-task stats consumers."""
+    DataContext.get_current().use_disk_based_hash_shuffle = use_disk
+
+    ds = ray.data.range(1000, override_num_blocks=4).groupby("id").count().materialize()
+
+    stats = (
+        ds._current_executor.get_stats() if ds._current_executor else ds._raw_stats()
+    )
+    block_stats_by_op = {}
+
+    def visit(s):
+        for name, block_stats in s.metadata.items():
+            block_stats_by_op.setdefault(name, []).extend(block_stats)
+        for parent in s.parents:
+            visit(parent)
+
+    visit(stats)
+
+    for phase in ("HashAggregateMap", "HashAggregateReduce"):
+        blocks = [
+            bs for name, bss in block_stats_by_op.items() if phase in name for bs in bss
+        ]
+        assert blocks, (phase, sorted(block_stats_by_op))
+        for bs in blocks:
+            assert bs.exec_stats is not None, phase
+            assert bs.exec_stats.task_idx is not None, phase
+        assert (
+            sum(bs.exec_stats.end_time_s - bs.exec_stats.start_time_s for bs in blocks)
+            > 0
+        ), phase
 
 
 if __name__ == "__main__":

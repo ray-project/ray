@@ -7,7 +7,10 @@ from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_EVENTS_PORT_BASE,
     DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET,
+    DEFAULT_KV_TOKEN_PORT_BASE,
     KV_EVENTS_PORT_BASE_KEY,
+    KV_TOKEN_METADATA_KEY,
+    KV_TOKEN_PORT_BASE_KEY,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
@@ -39,20 +42,38 @@ def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
         }
     )
 
-    _pin_block_hash_seed(llm_config)
+    _configure_runtime_env_for_kv_routing(llm_config)
 
 
-def _pin_block_hash_seed(llm_config: LLMConfig) -> None:
-    """Make engine block hashes content-deterministic across replicas.
+def enable_native_kv_offload_events(vllm_config: Any) -> None:
+    """Make vLLM's native CPU-offload events usable by the KV router."""
+    cache_config = vllm_config.cache_config
+    if (
+        cache_config.kv_offloading_size is None
+        or cache_config.kv_offloading_backend != "native"
+    ):
+        return
+
+    vllm_config.kv_transfer_config.kv_connector_extra_config[
+        "self_describing_kv_events"
+    ] = True
+
+
+def _configure_runtime_env_for_kv_routing(llm_config: LLMConfig) -> None:
+    """Configure vLLM process-wide settings required by KV-aware routing.
 
     The KV router's global indexer chains and dedups blocks by the engines'
     block hashes, so identical content must hash identically on every
     replica. vLLM salts its block-hash chain root per process unless
     ``PYTHONHASHSEED`` is set, so pin it deployment-wide.
+
+    Native offloading must use ``OffloadingConnector`` because it emits the
+    self-describing CPU-tier events consumed by the KV router.
     """
     runtime_env = dict(llm_config.runtime_env or {})
     env_vars = dict(runtime_env.get("env_vars") or {})
     env_vars.setdefault("PYTHONHASHSEED", "0")
+    env_vars["VLLM_USE_SIMPLE_KV_OFFLOAD"] = "0"
     runtime_env["env_vars"] = env_vars
     llm_config.runtime_env = runtime_env
 
@@ -62,7 +83,7 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
 
     Replicas of a deployment share one ``engine_kwargs``, so colocated
     replicas would otherwise bind the same ZMQ port. Offsets the configured
-    base port by the replica's rank.
+    base port so the engine binds at base + node-local replica rank.
     """
     if not is_kv_aware(llm_config):
         return
@@ -72,12 +93,10 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     updated = dict(kv_events_config)
     endpoint = updated.pop("endpoint")
     replay_endpoint = updated.pop("replay_endpoint")
-    # With data parallelism the engine offsets ports by dp_rank under ZmqEventPublisher;
-    # otherwise offset by the replica's node-local rank so colocated replicas don't collide.
-    if llm_config.engine_kwargs.get("data_parallel_rank") is not None:
-        offset = 0
-    else:
-        offset = _get_replica_rank()
+    # vllm.distributed.kv_events.ZmqEventPublisher adds dp_rank itself. Subtract it here so the
+    # final port uses the node-local replica rank, even when multiple DP groups share a node.
+    dp_rank = llm_config.engine_kwargs.get("data_parallel_rank") or 0
+    offset = _get_replica_rank() - dp_rank
     updated["endpoint"] = _get_offset_endpoint_port(endpoint, offset)
     updated["replay_endpoint"] = _get_offset_endpoint_port(replay_endpoint, offset)
     llm_config.update_engine_kwargs(kv_events_config=updated)
@@ -96,6 +115,27 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
     if kv_events_config is None:
         return None
     return _get_node_routable_endpoint(llm_config, kv_events_config["endpoint"])
+
+
+def resolve_kv_event_block_size(vllm_config: Any) -> int:
+    """Token span of the KV blocks the engine hashes and publishes.
+
+    The KV router must register this span, or it drops the engine's KV
+    events. Under decode context parallelism (DCP) it is
+    ``block_size * decode_context_parallel_size``, not the per-rank
+    ``cache_config.block_size``.
+
+    Uses the engine-reported ``cache_config.effective_attention_block_size``
+    when available, else ``block_size * decode_context_parallel_size``.
+    """
+    cache_config = vllm_config.cache_config
+    effective_block_size = getattr(cache_config, "effective_attention_block_size", None)
+    if effective_block_size:
+        return effective_block_size
+    dcp_size = (
+        getattr(vllm_config.parallel_config, "decode_context_parallel_size", 1) or 1
+    )
+    return cache_config.block_size * dcp_size
 
 
 def get_kv_event_routing_stats(
@@ -120,6 +160,28 @@ def get_kv_event_routing_stats(
         ),
     }
     return {"kv_event_metadata": kv_event_metadata}
+
+
+def get_token_channel_endpoints(
+    llm_config: LLMConfig,
+) -> Optional[tuple[str, str]]:
+    """Return (bind_endpoint, advertised_endpoint) for prompt-token ZMQ.
+
+    This is a per-LLMServer-replica token channel, not a vLLM engine socket. Use
+    the Serve replica's node-local rank to avoid collisions among colocated
+    replicas, independent of vLLM data-parallel rank.
+    """
+    if not is_kv_aware(llm_config):
+        return None
+    port = _default_prompt_token_port(llm_config) + _get_replica_rank()
+    return f"tcp://*:{port}", f"tcp://{ray.util.get_node_ip_address()}:{port}"
+
+
+def get_prompt_token_routing_stats(endpoint: Optional[str]) -> Dict[str, Any]:
+    """Return routing stats advertising this replica's prompt-token endpoint."""
+    if not endpoint:
+        return {}
+    return {KV_TOKEN_METADATA_KEY: {"endpoint": endpoint}}
 
 
 def _get_node_routable_endpoint(llm_config: LLMConfig, endpoint: str) -> str:
@@ -155,6 +217,14 @@ def _default_kv_events_replay_endpoint(llm_config: LLMConfig) -> str:
         )
     )
     return f"tcp://*:{port_base + DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET}"
+
+
+def _default_prompt_token_port(llm_config: LLMConfig) -> int:
+    return int(
+        llm_config.experimental_configs.get(
+            KV_TOKEN_PORT_BASE_KEY, DEFAULT_KV_TOKEN_PORT_BASE
+        )
+    )
 
 
 def _get_offset_endpoint_port(endpoint: str, offset: int) -> str:

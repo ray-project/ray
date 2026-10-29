@@ -279,7 +279,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// Get names of named actors.
   //
   /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
-  /// \param[in] namespace The namespace to filter to if all_namespaces is false.
+  /// \param[in] ray_namespace The namespace to filter to if all_namespaces is false.
   /// \returns List of <namespace, name> pairs.
   std::vector<std::pair<std::string, std::string>> ListNamedActors(
       bool all_namespaces, const std::string &ray_namespace) const;
@@ -598,6 +598,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   FRIEND_TEST(GcsActorManagerTest, TestGetAllActorInfoLimit);
   FRIEND_TEST(GcsActorManagerTest, TestDestroyWhileRegistering);
   FRIEND_TEST(GcsActorManagerTest, TestNodeFailureDestroysAllOwnedActors);
+  FRIEND_TEST(GcsActorManagerTest, TestPreviousIncarnationsAppendedOnRestart);
+  FRIEND_TEST(GcsActorManagerTest, TestPreviousIncarnationsBoundedByLimit);
+  FRIEND_TEST(GcsActorManagerTest, TestPreviousIncarnationsIdempotentOnRetriedRestart);
 
   friend class GcsActorManagerTest;
 };

@@ -1,4 +1,5 @@
 import logging
+import os
 
 import pytest
 
@@ -6,9 +7,24 @@ import ray
 from ray import runtime_context
 from ray._common import utils as ray_utils
 from ray.cluster_utils import Cluster
+
+# * `propagate_logs` is re-exported so tests in this directory can request it
+#   to use caplog/capsys with Ray's loggers, which do not propagate to the root
+#   logger by default.
+# * Importing `pytest_runtest_makereport` registers the hook that zips
+#   /tmp/ray/session_latest/logs into RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR
+#   (the Buildkite artifact mount) whenever a test fails.
+from ray.tests.conftest import (  # noqa: F401
+    propagate_logs,
+    pytest_runtest_makereport,
+)
 from ray.train.v2._internal.constants import (
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
 )
+
+# Keep the footer-reader pool tiny for Data-integrated train tests. Mirrored
+# in python/ray/train/v2/BUILD.bazel for bazel test targets.
+os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
 
 
 @pytest.fixture()

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Speed up Ray Serve LLM startup: load models from Hugging Face or remote storage, handle gated models, and use the RunAI Streamer."
+---
+
 (deployment-initialization-guide)=
 # Deployment Initialization
 
@@ -10,7 +16,7 @@ The initialization phase of a serve.llm deployment involves many steps, includin
 - **Model Loading**: Retrieve model either from Hugging Face or cloud storage, including time spent downloading the model and moving it to GPU memory
 - **Torch Compile**: Torch compile is integral to vLLM's design and it is enabled by default.
 - **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
-- **CUDA Graph Capture**: vLLM captures the CUDA graphs for different input sizes ahead of time. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs.html)
+- **CUDA Graph Capture**: vLLM captures the CUDA graphs for different input sizes ahead of time. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs/)
 - **Warmup**: Initialize KV cache, run model inference.
 
 
@@ -321,8 +327,17 @@ llm_config = LLMConfig(
 `````
 
 
+## RunAI Streamer
+
+RunAI Streamer is a vLLM extension that streams model weights directly from remote storage into GPU memory, reducing model load latency.
+
+:::{note}
+These snippets are examples. Check the [RunAI Streamer docs](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer/) for S3, Azure, and GCS compatibility with your vLLM version.
+:::
+
 ### S3 and RunAI Streamer
-S3 can be combined with RunAI Streamer, an extension in vLLM that enables streaming the model weights directly from remote cloud storage into GPU memory, improving model load latency. More details can be found [here](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer.html).
+
+Set `model_source` to an `s3://` URI and `load_format` to `runai_streamer`:
 
 ```python
 llm_config = LLMConfig(
@@ -360,7 +375,7 @@ llm_config = LLMConfig(
 ```
 
 ### Model Sharding
-Modern LLM model sizes often outgrow the memory capacity of a single GPU, requiring the use of tensor parallelism to split computation across multiple devices. In this paradigm, only a subset of weights are stored on each GPU, and model sharding ensures that each device only loads the relevant portion of the model. By sharding the model files in advance, we can reduce load times significantly, since GPUs avoid loading unneeded weights. vLLM provides a utility script for this purpose: [save_sharded_state.py](https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/save_sharded_state.py).
+Modern LLM model sizes often outgrow the memory capacity of a single GPU, requiring the use of tensor parallelism to split computation across multiple devices. In this paradigm, only a subset of weights are stored on each GPU, and model sharding ensures that each device only loads the relevant portion of the model. By sharding the model files in advance, we can reduce load times significantly, since GPUs avoid loading unneeded weights. vLLM provides a utility script for this purpose: [save_sharded_state.py](https://github.com/vllm-project/vllm/blob/main/examples/features/sharded_state/save_sharded_state_offline.py).
 
 Once the sharded weights have been saved, upload them to S3 and use RunAI streamer with a new flag to load the sharded weights
 
@@ -374,6 +389,32 @@ llm_config = LLMConfig(
     ...
 )
 ```
+
+### Azure Blob streaming with RunAI Streamer
+
+RunAI Streamer reads Azure Blob Storage natively through the `az://` scheme, streaming weights into GPU memory without staging them on disk first. This requires versions of `runai-model-streamer` and vLLM that support `az://`, so confirm the versions bundled in your image.
+
+Set `model_source` to an `az://<container>/<model>` URI and `load_format` to `runai_streamer`. The `AZURE_STORAGE_ACCOUNT_NAME` environment variable tells the streamer which storage account to read from. On AKS, bind the pod to a workload identity that holds the **Storage Blob Data Reader** role so the streamer authenticates with a Microsoft Entra ID token instead of a key.
+
+```python
+from ray.serve.llm import LLMConfig
+
+llm_config = LLMConfig(
+    model_loading_config={
+        "model_id": "phi-4",
+        "model_source": "az://models/phi-4",
+    },
+    engine_kwargs={
+        "tensor_parallel_size": 1,
+        "load_format": "runai_streamer",
+    },
+    runtime_env={"env_vars": {"AZURE_STORAGE_ACCOUNT_NAME": "mystorageacct"}},
+)
+```
+
+Unlike the `abfss://` and `azure://` schemes, which download the model to disk before loading, the `az://` scheme streams directly from Blob into GPU memory.
+
+For an end-to-end AKS walkthrough that provisions the cluster, workload identity, and Blob storage, and benchmarks streaming against download-then-load, see [Stream models from Azure Blob Storage into vLLM with the RunAI Model Streamer](https://blog.aks.azure.com/2026/07/13/runai-streamer-vllm).
 
 ## Additional Optimizations
 
@@ -454,11 +495,11 @@ config = LLMConfig(
 
 ### Cloud storage access errors
 
-- Verify bucket URI format (for example, `s3://bucket/path`, `gs://bucket/path`, or `abfss://container@account.dfs.core.windows.net/path`)
+- Verify bucket or container URI format (for example, `s3://bucket/path`, `gs://bucket/path`, or `abfss://container@account.dfs.core.windows.net/path`)
 - Check AWS/GCP/Azure credentials and regions are configured correctly
 - Ensure your IAM role, service account, or Azure identity has read access (`s3:GetObject`, `storage.objects.get`, or the **Storage Blob Data Reader** role)
 - For Azure, confirm the `adlfs` and `azure-identity` Python packages are installed on every node
-- Verify the bucket exists and is accessible from your deployment region
+- Verify the bucket or container exists and is accessible from your deployment region
 
 ### Model files not found
 

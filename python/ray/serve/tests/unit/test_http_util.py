@@ -10,12 +10,19 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from ray._common.utils import get_or_create_event_loop
 from ray.serve import HTTPOptions
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
     configure_http_middlewares,
     configure_http_options_with_defaults,
+    convert_object_to_asgi_messages,
+    get_http_response_status,
+    retry_after_headers,
+    send_http_response_on_exception,
 )
+from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 
 
 @pytest.mark.asyncio
@@ -352,6 +359,76 @@ class TestConfigureHttpOptionsWithDefaults:
         assert base_http_options.request_timeout_s == original_timeout
         # Result should be a different object
         assert result is not base_http_options
+
+
+class TestBackpressureHTTPResponse:
+    def test_backpressure_error_defaults_to_503_without_headers(self):
+        status = get_http_response_status(BackPressureError(1, 1), None, "req-1")
+        assert status.code == 503
+        assert status.is_error
+        assert status.headers is None
+        assert "backpressure" in status.message
+
+    def test_backpressure_error_with_configured_status_and_retry_after(self):
+        exc = BackPressureError(1, 1, status_code=429, retry_after_s=7)
+        status = get_http_response_status(exc, None, "req-1")
+        assert status.code == 429
+        assert status.is_error
+        assert status.headers == [(b"retry-after", b"7")]
+
+    def test_retry_after_headers_rounds_up_to_delay_seconds(self):
+        assert retry_after_headers(None) is None
+        assert retry_after_headers(0) == [(b"retry-after", b"0")]
+        assert retry_after_headers(0.2) == [(b"retry-after", b"1")]
+        assert retry_after_headers(7.5) == [(b"retry-after", b"8")]
+        assert retry_after_headers(10) == [(b"retry-after", b"10")]
+        # Negative values can't come from config (validated >= 0), but the
+        # helper clamps at 0 so an invalid header is never sent on the wire.
+        assert retry_after_headers(-5) == [(b"retry-after", b"0")]
+
+    def test_deployment_unavailable_error_stays_503_without_headers(self):
+        exc = DeploymentUnavailableError(DeploymentID(name="d", app_name="app"))
+        status = get_http_response_status(exc, None, "req-1")
+        assert status.code == 503
+        assert status.headers is None
+
+    def test_send_http_response_on_exception_emits_429_with_headers(self):
+        status = ResponseStatus(
+            code=429,
+            is_error=True,
+            message="Request dropped due to backpressure",
+            headers=[(b"retry-after", b"5")],
+        )
+        messages = send_http_response_on_exception(status, response_started=False)
+        start = messages[0]
+        assert start["type"] == "http.response.start"
+        assert start["status"] == 429
+        assert [b"retry-after", b"5"] in [list(h) for h in start["headers"]]
+
+        # Nothing can be sent if the response already started.
+        assert send_http_response_on_exception(status, response_started=True) == []
+
+    def test_convert_object_to_asgi_messages_extra_headers(self):
+        messages = convert_object_to_asgi_messages(
+            "hi", status_code=429, extra_headers=[(b"retry-after", b"3")]
+        )
+        headers = [list(h) for h in messages[0]["headers"]]
+        assert [b"retry-after", b"3"] in headers
+
+    def test_backpressure_error_pickle_round_trip(self):
+        # The carried fields must survive pickling (e.g., when the error
+        # crosses process boundaries wrapped in a RayTaskError).
+        exc = pickle.loads(
+            pickle.dumps(BackPressureError(3, 2, status_code=429, retry_after_s=1.5))
+        )
+        assert exc.status_code == 429
+        assert exc.retry_after_s == 1.5
+        assert "backpressure" in exc.message
+
+        # Old-style construction without the new arguments still works.
+        exc = pickle.loads(pickle.dumps(BackPressureError(3, 2)))
+        assert exc.status_code == 503
+        assert exc.retry_after_s is None
 
 
 if __name__ == "__main__":

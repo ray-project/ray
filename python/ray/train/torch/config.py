@@ -11,10 +11,12 @@ from packaging.version import Version
 import ray
 from ray._common.network_utils import build_address
 from ray._private import ray_constants
+from ray._private.accelerators.tpu import DEFAULT_MEGASCALE_PORT
 from ray.air._internal.device_manager import register_custom_torch_dist_backend
 from ray.exceptions import GetTimeoutError
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import get_address_and_port
+from ray.train._internal.worker_group import WorkerGroup as V1WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
@@ -22,6 +24,7 @@ from ray.train.constants import (
 )
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
+from ray.util.tpu import get_tpu_coordinator_env_vars, get_tpu_worker_resources
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +47,7 @@ class TorchConfigContextManager:
 class TorchConfig(BackendConfig):
     """Configuration for torch process group setup.
 
-    See https://pytorch.org/docs/stable/distributed.html for more info.
+    See https://docs.pytorch.org/docs/stable/distributed.html for more info.
 
     Args:
         backend: The backend to use for training.
@@ -138,7 +141,7 @@ def _setup_torch_process_group(
                 f"To override this behavior, you can set {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR}=0."  # noqa: E501
             )
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
-    elif backend == "hccl":
+    elif backend in ("hccl", "tpu_dist"):
         register_custom_torch_dist_backend(backend)
 
     dist.init_process_group(
@@ -165,7 +168,7 @@ def _shutdown_torch(destroy_process_group=False):
 
 def _set_torch_distributed_env_vars():
     # Same env vars as in
-    # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
+    # https://docs.pytorch.org/docs/stable/elastic/run.html#environment-variables
     from ray.train.torch import get_device
 
     context = ray.train.get_context()
@@ -180,8 +183,72 @@ def _set_torch_distributed_env_vars():
     os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
 
 
+def _validate_tpu_resources(worker_group: BaseWorkerGroup):
+    resources = worker_group.get_resources_per_worker()
+    num_tpus_per_worker = resources.get("TPU", 0)
+    if num_tpus_per_worker != 1:
+        logger.warning(
+            "For PyTorch TPU training, it is recommended that each worker "
+            f"has exactly 1 TPU device. Got resources_per_worker={{'TPU': {num_tpus_per_worker}}}. "
+            "Note that the PyTorch TPU runtime binds each process to a single TPU device."
+        )
+
+
+def _set_tpu_multislice_env_vars(tpu_env_vars: Dict[str, str]) -> None:
+    """Sets multi-slice coordination environment variables for the worker process.
+
+    Assigns a unique MEGASCALE_PORT per local worker (base_port + LOCAL_RANK)
+    to prevent port bind collisions when multiple workers share a single TPU host.
+    """
+    os.environ.update(tpu_env_vars)
+    local_rank = (
+        int(os.environ["LOCAL_RANK"])
+        if "LOCAL_RANK" in os.environ
+        else ray.train.get_context().get_local_rank()
+    )
+    base_port = int(tpu_env_vars.get("MEGASCALE_PORT", DEFAULT_MEGASCALE_PORT))
+    os.environ["MEGASCALE_PORT"] = str(base_port + local_rank)
+
+
 class _TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
+
+    def _setup_tpu_multislice(
+        self, worker_group: BaseWorkerGroup, master_addr: str, num_slices: int
+    ) -> None:
+        """Configures MegaScale coordination environment variables across workers for multi-slice TPU training."""
+        scaling_config = getattr(
+            getattr(worker_group, "_train_run_context", None), "scaling_config", None
+        )
+        if (
+            scaling_config is not None
+            and scaling_config.topology
+            and scaling_config.accelerator_type
+        ):
+            workers_per_slice, _ = get_tpu_worker_resources(
+                topology=scaling_config.topology,
+                accelerator_type=scaling_config.accelerator_type,
+                resources_per_worker=scaling_config.resources_per_worker,
+                num_slices=1,
+            )
+        else:
+            workers_per_slice = max(1, len(worker_group) // num_slices)
+        coordinator_port = str(os.environ.get("MEGASCALE_PORT", DEFAULT_MEGASCALE_PORT))
+
+        futures = [
+            worker_group.execute_single_async(
+                i,
+                _set_tpu_multislice_env_vars,
+                tpu_env_vars=get_tpu_coordinator_env_vars(
+                    coordinator_address=build_address(master_addr, coordinator_port),
+                    num_slices=num_slices,
+                    slice_id=min(i // workers_per_slice, num_slices - 1),
+                    coordinator_port=coordinator_port,
+                ),
+            )
+            for i in range(len(worker_group))
+        ]
+        ray.get(futures)
 
     def on_start(self, worker_group: BaseWorkerGroup, backend_config: TorchConfig):
         if dist.is_available():
@@ -189,9 +256,12 @@ class _TorchBackend(Backend):
             if backend_config.backend is None:
                 resources = worker_group.get_resources_per_worker()
                 num_gpus_per_worker = resources.get("GPU", 0)
+                num_tpus_per_worker = resources.get("TPU", 0)
 
                 if num_gpus_per_worker > 0:
                     backend = "nccl"
+                elif num_tpus_per_worker > 0:
+                    backend = "tpu_dist"
                 else:
                     backend = "gloo"
             else:
@@ -200,6 +270,7 @@ class _TorchBackend(Backend):
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
             )
+
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
@@ -216,6 +287,21 @@ class _TorchBackend(Backend):
                     f"{backend_config.init_method}) is not supported. Must "
                     f"be either 'env' or 'tcp'."
                 )
+
+            if backend == "tpu_dist":
+                _validate_tpu_resources(worker_group)
+                num_slices = (
+                    worker_group.get_worker_group_context().num_slices
+                    if hasattr(worker_group, "get_worker_group_context")
+                    else 1
+                )
+                if num_slices > 1:
+                    self._setup_tpu_multislice(worker_group, master_addr, num_slices)
+
+            # PyTorch distributed backends require LOCAL_RANK and other env vars
+            # before init_process_group. See https://docs.pytorch.org/docs/stable/distributed.html
+            if not isinstance(worker_group, V1WorkerGroup):
+                worker_group.execute(_set_torch_distributed_env_vars)
 
             setup_futures = []
             for i in range(len(worker_group)):
@@ -253,4 +339,5 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: BaseWorkerGroup, backend_config: BackendConfig
     ):
-        worker_group.execute(_set_torch_distributed_env_vars)
+        if isinstance(worker_group, V1WorkerGroup):
+            worker_group.execute(_set_torch_distributed_env_vars)

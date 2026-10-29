@@ -336,6 +336,17 @@ class Reconciler:
             autoscaling_config=autoscaling_config,
         )
 
+        # Reclaim long-TERMINATED instance records last, so this cycle's
+        # _fill_autoscaling_state still reports instances terminated earlier in
+        # the same cycle. TERMINATED is terminal and nothing else deletes these
+        # records, so without this the storage scanned every cycle grows without
+        # bound on churning clusters and the autoscaler eventually OOMs.
+        Reconciler._gc_terminated_instances(
+            instance_manager=instance_manager,
+            reconcile_config=autoscaling_config.get_instance_reconcile_config(),
+            ray_nodes=ray_cluster_resource_state.node_states,
+        )
+
     #######################################################
     # Utility methods for reconciling instance states.
     #######################################################
@@ -368,8 +379,12 @@ class Reconciler:
             and instance.status
             not in [IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED]
         }
-        launch_errors: Dict[str, LaunchNodeError] = {
-            error.request_id: error
+        # A single launch request could launch multiple node types, so a launch
+        # request id alone doesn't identify a launch error: key the errors by
+        # (request id, node type) so that errors of different node types from the
+        # same request don't overwrite each other.
+        launch_errors: Dict[Tuple[str, NodeType], LaunchNodeError] = {
+            (error.request_id, error.node_type): error
             for error in cloud_provider_errors
             if isinstance(error, LaunchNodeError)
         }
@@ -390,11 +405,24 @@ class Reconciler:
             )
         )
 
+        # Fail at most the summed LaunchNodeError.count instances per
+        # (request id, type). NodeProviderAdapter can emit several batch
+        # failures with the same key in one poll; do not keep only the last.
+        remaining_launch_failures: Dict[Tuple[str, NodeType], int] = defaultdict(int)
+        for error in cloud_provider_errors:
+            if isinstance(error, LaunchNodeError):
+                remaining_launch_failures[
+                    (error.request_id, error.node_type)
+                ] += error.count
+
         # For each instance, try to allocate or fail the allocation.
         for instance in instances_with_launch_requests:
             # Try allocate or fail with errors.
             update_event = Reconciler._try_resolve_pending_allocation(
-                instance, unassigned_cloud_instances_by_type, launch_errors
+                instance,
+                unassigned_cloud_instances_by_type,
+                launch_errors,
+                remaining_launch_failures,
             )
             if not update_event:
                 continue
@@ -408,7 +436,8 @@ class Reconciler:
     def _try_resolve_pending_allocation(
         im_instance: IMInstance,
         unassigned_cloud_instances_by_type: Dict[str, List[CloudInstance]],
-        launch_errors: Dict[str, LaunchNodeError],
+        launch_errors: Dict[Tuple[str, NodeType], LaunchNodeError],
+        remaining_launch_failures: Dict[Tuple[str, NodeType], int],
     ) -> Optional[IMInstanceUpdateEvent]:
         """
         Allocate, or fail the cloud instance allocation for the instance.
@@ -416,7 +445,10 @@ class Reconciler:
         Args:
             im_instance: The instance to allocate or fail.
             unassigned_cloud_instances_by_type: The unassigned cloud instances by type.
-            launch_errors: The launch errors from the cloud provider.
+            launch_errors: The launch errors from the cloud provider, keyed by
+                (launch request id, node type).
+            remaining_launch_failures: Remaining number of instances to fail for
+                each (launch request id, node type), from LaunchNodeError.count.
 
         Returns:
             Instance update to ALLOCATED: if there's a matching unassigned cloud
@@ -450,9 +482,12 @@ class Reconciler:
                 ),
             )
 
-        # If there's a launch error, transition to ALLOCATION_FAILED.
-        launch_error = launch_errors.get(im_instance.launch_request_id)
-        if launch_error and launch_error.node_type == im_instance.instance_type:
+        # Fail at most `count` instances for this (request id, type). The rest
+        # stay REQUESTED so a partial cap can still bind later pods.
+        launch_error_key = (im_instance.launch_request_id, im_instance.instance_type)
+        if remaining_launch_failures.get(launch_error_key, 0) > 0:
+            remaining_launch_failures[launch_error_key] -= 1
+            launch_error = launch_errors[launch_error_key]
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
@@ -677,6 +712,73 @@ class Reconciler:
         assert (
             reply.status.code == StatusCode.OK
         ), f"Failed to update instance manager: {reply}"
+
+    @staticmethod
+    def _gc_terminated_instances(
+        instance_manager: InstanceManager,
+        reconcile_config: InstanceReconcileConfig,
+        ray_nodes: List[NodeState],
+    ) -> None:
+        """Delete terminal instance records retained past the GC window.
+
+        TERMINATED and ALLOCATION_FAILED are both terminal statuses (no outgoing
+        transitions) and no other reconcile step removes these records, so the
+        instance storage—read in full every cycle and serialized into
+        AutoscalingState—otherwise grows without bound on instance-churning
+        clusters until the autoscaler OOMs. Records are kept for
+        ``terminated_instance_gc_retention_s`` after they enter their terminal
+        status so a just-terminated instance stays reportable for at least one
+        more cycle before being reclaimed.
+
+        A record whose ``node_id`` is still present in the GCS node snapshot is
+        kept regardless of age: its ``node_id`` is what makes
+        ``_handle_extra_cloud_instances_from_ray_nodes`` treat the ray node as
+        managed, so deleting it while GCS still references the node would
+        resurrect it as a spurious ALLOCATED instance. (Only TERMINATED records
+        that once reached ALLOCATED carry a node_id; ALLOCATION_FAILED is
+        reached from REQUESTED and never has one.)
+        """
+        retention_s = reconcile_config.terminated_instance_gc_retention_s
+        if retention_s < 0:
+            # Negative retention disables GC (escape hatch for debugging).
+            return
+
+        terminal_statuses = (IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED)
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        live_ray_node_ids = {binary_to_hex(n.node_id) for n in ray_nodes}
+        now_ns = time.time_ns()
+        retention_ns = retention_s * 1_000_000_000
+        to_delete: List[str] = []
+        for instance in instances:
+            if instance.status not in terminal_statuses:
+                continue
+            # Keep records GCS still references, else they get resurrected as
+            # ALLOCATED by _handle_extra_cloud_instances_from_ray_nodes.
+            if instance.node_id and instance.node_id in live_ray_node_ids:
+                continue
+            terminal_times = InstanceUtil.get_status_transition_times_ns(
+                instance, instance.status
+            )
+            if not terminal_times:
+                continue
+            if now_ns - max(terminal_times) >= retention_ns:
+                to_delete.append(instance.instance_id)
+
+        if not to_delete:
+            return
+
+        success, _ = instance_manager.delete_instances(
+            instance_ids=to_delete,
+            expected_storage_version=version,
+        )
+        # A version mismatch means another write landed first; the records are
+        # still terminal and will be retried next cycle, so this is not fatal.
+        if not success:
+            logger.debug(
+                "Deferred GC of %d terminal instances due to storage version "
+                "mismatch; will retry next reconcile.",
+                len(to_delete),
+            )
 
     @staticmethod
     def _handle_ray_status_transition(
@@ -1225,6 +1327,7 @@ class Reconciler:
             cluster_resource_constraints=ray_state.cluster_resource_constraints,
             current_instances=autoscaler_instances,
             idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
+            pending_idle_timeout_s=autoscaling_config.get_pending_idle_timeout_s(),
             disable_launch_config_check=(
                 autoscaling_config.disable_launch_config_check()
             ),

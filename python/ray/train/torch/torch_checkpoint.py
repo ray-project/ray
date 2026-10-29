@@ -11,15 +11,31 @@ from ray.air._internal.torch_utils import (
     load_torch_model,
 )
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.train.constants import V2_MIGRATION_GUIDE_LINK_MESSAGE
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 ENCODED_DATA_KEY = "torch_encoded_data"
 
+_TORCH_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`TorchCheckpoint` is deprecated and will be removed in a future release. "
+    "Use `ray.train.Checkpoint` directly instead. "
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
+)
+
+_TORCH_CHECKPOINT_FROM_MODEL_DEPRECATION_MESSAGE = (
+    "`TorchCheckpoint.from_model()` is deprecated and will be removed in a future "
+    "release. It stores the entire ``nn.Module`` via pickle, which allows arbitrary "
+    "code execution when loaded from an untrusted source. "
+    "Use `TorchCheckpoint.from_state_dict()` or migrate to `ray.train.Checkpoint`. "
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
+)
+
 
 @PublicAPI(stability="beta")
+@Deprecated(message=_TORCH_CHECKPOINT_DEPRECATION_MESSAGE, warning=True)
 class TorchCheckpoint(FrameworkCheckpoint):
     """A :class:`~ray.train.Checkpoint` with Torch-specific functionality."""
 
@@ -47,39 +63,27 @@ class TorchCheckpoint(FrameworkCheckpoint):
             A :class:`TorchCheckpoint` containing the specified state dictionary.
 
         Examples:
-
-            .. testcode::
-
-                import torch
-                import torch.nn as nn
-                from ray.train.torch import TorchCheckpoint
-
-                # Set manual seed
-                torch.manual_seed(42)
-
-                # Function to create a NN model
-                def create_model() -> nn.Module:
-                    model = nn.Sequential(nn.Linear(1, 10),
-                            nn.ReLU(),
-                            nn.Linear(10,1))
-                    return model
-
-                # Create a TorchCheckpoint from our model's state_dict
-                model = create_model()
-                checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
-
-                # Now load the model from the TorchCheckpoint by providing the
-                # model architecture
-                model_from_chkpt = checkpoint.get_model(create_model())
-
-                # Assert they have the same state dict
-                assert str(model.state_dict()) == str(model_from_chkpt.state_dict())
-                print("worked")
-
-            .. testoutput::
-                :hide:
-
-                ...
+            >>> import torch
+            >>> import torch.nn as nn
+            >>> from ray.train.torch import TorchCheckpoint
+            >>> # Set manual seed
+            >>> _ = torch.manual_seed(42)
+            >>> # Function to create a NN model
+            >>> def create_model() -> nn.Module:
+            ...     model = nn.Sequential(nn.Linear(1, 10),
+            ...             nn.ReLU(),
+            ...             nn.Linear(10,1))
+            ...     return model
+            >>> # Create a TorchCheckpoint from our model's state_dict
+            >>> model = create_model()
+            >>> checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
+            >>> # Now load the model from the TorchCheckpoint by providing the
+            >>> # model architecture
+            >>> model_from_chkpt = checkpoint.get_model(create_model())
+            >>> # Assert they have the same state dict
+            >>> assert str(model.state_dict()) == str(model_from_chkpt.state_dict())
+            >>> print("worked")
+            worked
         """
         tempdir = tempfile.mkdtemp()
 
@@ -95,6 +99,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
         return checkpoint
 
     @classmethod
+    @Deprecated(message=_TORCH_CHECKPOINT_FROM_MODEL_DEPRECATION_MESSAGE, warning=True)
     def from_model(
         cls,
         model: torch.nn.Module,
@@ -119,25 +124,16 @@ class TorchCheckpoint(FrameworkCheckpoint):
             A :class:`TorchCheckpoint` containing the specified model.
 
         Examples:
-
-            .. testcode::
-
-                from ray.train.torch import TorchCheckpoint
-                import torch
-
-                # Create model identity and send a random tensor to it
-                model = torch.nn.Identity()
-                input = torch.randn(2, 2)
-                output = model(input)
-
-                # Create a checkpoint
-                checkpoint = TorchCheckpoint.from_model(model)
-                print(checkpoint)
-
-            .. testoutput::
-                :hide:
-
-                ...
+            >>> from ray.train.torch import TorchCheckpoint
+            >>> import torch
+            >>> # Create model identity and send a random tensor to it
+            >>> model = torch.nn.Identity()
+            >>> input = torch.randn(2, 2)
+            >>> output = model(input)
+            >>> # Create a checkpoint
+            >>> checkpoint = TorchCheckpoint.from_model(model)
+            >>> print(checkpoint)  # doctest: +ELLIPSIS
+            Checkpoint(filesystem=local, path=...)
         """
         tempdir = tempfile.mkdtemp()
 

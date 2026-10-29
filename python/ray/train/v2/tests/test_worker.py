@@ -95,7 +95,7 @@ def test_mark_preempt_stores_info(monkeypatch):
     info = PreemptionInfo(deadline_ms=30_000, preempted_node_to_ranks={"node-a": [0]})
     worker.mark_preempt(info)
 
-    assert get_train_context().preemption_context.get() is info
+    assert get_train_context().preemption_context.preemption_info is info
 
 
 if __name__ == "__main__":

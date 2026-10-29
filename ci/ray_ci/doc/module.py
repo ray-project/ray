@@ -3,7 +3,7 @@ import inspect
 from types import ModuleType
 from typing import List
 
-from ci.ray_ci.doc.api import API, AnnotationType, CodeType
+from ci.ray_ci.doc.api import API, AnnotationType, CodeType, _is_directly_annotated
 
 
 class Module:
@@ -16,6 +16,11 @@ class Module:
         self._module = importlib.import_module(module)
         self._visited = set()
         self._apis = []
+        # Names of the modules the walk actually reaches, for the coverage guard.
+        # A submodule its parent's __init__ never imports is not an attribute of
+        # any walked module and so never lands here -- which is exactly the
+        # "annotated but unwalked" gap the guard looks for.
+        self._reachable_modules = set()
 
     def walk(self) -> None:
         self._walk(self._module)
@@ -23,6 +28,11 @@ class Module:
     def get_apis(self) -> List[API]:
         self.walk()
         return self._apis
+
+    def get_reachable_modules(self) -> List[str]:
+        """Return the names of every module reached by the walk (walks if needed)."""
+        self.walk()
+        return sorted(self._reachable_modules)
 
     def _walk(self, module: ModuleType) -> None:
         """
@@ -35,6 +45,9 @@ class Module:
 
         if not self._is_valid_child(module):
             return
+
+        if inspect.ismodule(module):
+            self._reachable_modules.add(module.__name__)
 
         for child in dir(module):
             attribute = getattr(module, child)
@@ -77,7 +90,7 @@ class Module:
         return module.__name__.startswith(self._module.__name__)
 
     def _is_api(self, module: ModuleType) -> bool:
-        return self._is_valid_child(module) and hasattr(module, "_annotated")
+        return self._is_valid_child(module) and _is_directly_annotated(module)
 
     def _get_annotation_type(self, module: ModuleType) -> AnnotationType:
         return AnnotationType(module._annotated_type.value)

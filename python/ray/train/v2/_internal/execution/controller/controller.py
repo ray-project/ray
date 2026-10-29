@@ -14,6 +14,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
+    DEFAULT_PREEMPTION_DEADLINE_S,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
@@ -41,6 +42,7 @@ from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
     InitializingState,
+    PreemptingState,
     ReschedulingState,
     ResizingState,
     RestartingState,
@@ -53,6 +55,7 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
+from ray.train.v2._internal.execution.preemption import merge_preemption_info
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
@@ -64,10 +67,15 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
 )
 from ray.train.v2._internal.logging import LoggingManager
-from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
+from ray.train.v2._internal.util import (
+    ObjectRefWrapper,
+    time_monotonic,
+    time_seconds,
+)
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    PreemptionError,
     TrainingFailedError,
 )
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
@@ -75,6 +83,7 @@ from ray.train.v2.api.result import Result
 from ray.train.v2.api.validation_config import ValidationConfig
 
 if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 from ray.util.tpu import get_tpu_num_slices_for_workers
@@ -148,7 +157,7 @@ class TrainController:
             )
         else:
             validation_manager = None
-        report_handler = ReportCallbackHandler(
+        self._report_handler = ReportCallbackHandler(
             report_callbacks=(
                 [self._checkpoint_manager]
                 + ([validation_manager] if validation_manager else [])
@@ -168,7 +177,7 @@ class TrainController:
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
-            [report_handler]
+            [self._report_handler]
             + ([validation_manager] if validation_manager else [])
             + [
                 c
@@ -342,7 +351,7 @@ class TrainController:
         controller_state: TrainControllerState,
         training_failed_error: TrainingFailedError,
     ) -> TrainControllerState:
-        if isinstance(controller_state, RunningState):
+        if isinstance(controller_state, (RunningState, PreemptingState)):
             return RestartingState(training_failed_error=training_failed_error)
         elif isinstance(controller_state, SchedulingState):
             return ReschedulingState(training_failed_error=training_failed_error)
@@ -644,7 +653,7 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
-            if worker_group_status.finished and not worker_group_status.errors:
+            if self._is_training_succeeded(worker_group_status):
                 self._return_value = worker_group_status.worker_statuses[0].return_value
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
@@ -653,6 +662,21 @@ class TrainController:
                         next_state=FinishedState(),
                     ),
                 )
+
+            # A node hosting one of the workers is being preempted: move to
+            # PreemptingState to wait out the grace window before restarting.
+            preemption_info = worker_group_status.get_preemption_info()
+            if preemption_info is not None:
+                self._relax_collectives_during_preemption(preemption_info)
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=PreemptingState(
+                        preemption_info=preemption_info,
+                        detected_at_s=time_seconds(),
+                    ),
+                )
+
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
                 failure_decision = self._failure_policy.make_decision(
@@ -683,6 +707,8 @@ class TrainController:
                 previous_state=controller_state,
                 next_state=next_state,
             )
+        elif isinstance(controller_state, PreemptingState):
+            return await self._handle_preempting_state(controller_state)
         elif isinstance(controller_state, ResizingState):
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -695,6 +721,162 @@ class TrainController:
             return await self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
+
+    @staticmethod
+    def _is_training_succeeded(
+        worker_group_status: WorkerGroupPollStatus,
+    ) -> bool:
+        """Whether every rank exited successfully."""
+        return worker_group_status.finished and not worker_group_status.errors
+
+    @staticmethod
+    def _is_preemption_deadline_exceeded(
+        preemption_info: "PreemptionInfo",
+        detected_at_s: float,
+        extra_grace_s: float = 0.0,
+    ) -> bool:
+        """Whether the preemption deadline, plus any extra grace, has passed.
+
+        `deadline_ms` is when the preempted node will be taken away (epoch ms),
+        used as-is. When it is unknown (None), fall back to
+        `DEFAULT_PREEMPTION_DEADLINE_S` after the preemption was first detected
+        so we don't wait forever.
+
+        `extra_grace_s` keeps the surviving workers running past that point, so
+        a checkpoint that outlasts the drain window still has a chance to
+        finish. The preempted node is already gone by then, so this only
+        delays the restart.
+        """
+        deadline_ms = preemption_info.deadline_ms
+        if deadline_ms is None:
+            deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
+        return time_seconds() * 1000 >= deadline_ms + extra_grace_s * 1000
+
+    def _relax_collectives_during_preemption(
+        self, preemption_info: "PreemptionInfo"
+    ) -> None:
+        """Let healthy ranks finish collectives without the preempted ones.
+
+        Narrows the `SynchronizationActor` and the `ReportCallbackHandler`
+        consolidation gate to the surviving ranks, so a worker reclaimed before
+        it reaches `report()` does not strand the rest. Only Ray Train's own
+        preemption and checkpoint collectives opt in; the public
+        `ray.train.collective` APIs stay strict.
+
+        """
+        if not self._run_config.failure_config.relax_collectives_on_preemption:
+            return
+
+        worker_group = self.get_worker_group()
+        if worker_group is None:
+            return
+
+        preempted = set(preemption_info.preempted_ranks)
+        surviving = sorted(set(range(len(worker_group))) - preempted)
+
+        # TODO(lehui): make rank 0 relaxable too. It is excluded because
+        # `SynchronizationActor` keeps a single `_reduced_data`, written by
+        # rank 0, so releasing without it broadcasts `None`. Lifting this means
+        # keeping each rank's payload and picking the lowest expected rank
+        # instead.
+        if 0 in preempted:
+            logger.info(
+                "Rank 0 is being preempted (preempted ranks: %s), so "
+                "`relax_collectives_during_preemption` is ignored.",
+                sorted(preempted),
+            )
+            return
+        if not surviving:
+            return
+
+        try:
+            applied = worker_group.set_required_barrier_ranks(surviving)
+        except Exception:
+            # Never let this wedge the control loop: without it the survivors
+            # just fall back to the last committed checkpoint, as before.
+            logger.warning(
+                "Failed to relax the synchronization barrier to ranks %s.",
+                surviving,
+                exc_info=True,
+            )
+            return
+
+        if not applied:
+            return
+
+        self._report_handler.set_required_ranks(surviving)
+        logger.info(
+            "Preemption detected on ranks %s. Relaxed the report barrier to "
+            "ranks %s so they can commit a just-in-time checkpoint without "
+            "them.",
+            sorted(preempted),
+            surviving,
+        )
+
+    async def _handle_preempting_state(
+        self, controller_state: PreemptingState
+    ) -> TrainControllerLoopIterationResult:
+        worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+
+        # Training finished successfully before the preemption.
+        if self._is_training_succeeded(worker_group_status):
+            self._return_value = worker_group_status.worker_statuses[0].return_value
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=ShuttingDownState(
+                    next_state=FinishedState(),
+                ),
+            )
+
+        # A worker failed for a reason other than the preemption should fail fast.
+        if (
+            worker_group_status.errors
+            and not worker_group_status.has_preempted_worker()
+        ):
+            worker_group_error = worker_group_status.get_worker_group_error()
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=worker_group_error,
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=worker_group_error
+            )
+
+        # Merge any new preemption info so the info covers every preempted node.
+        new_preemption_info = worker_group_status.get_preemption_info()
+        preemption_info = (
+            merge_preemption_info(controller_state.preemption_info, new_preemption_info)
+            if new_preemption_info is not None
+            else controller_state.preemption_info
+        )
+
+        deadline_exceeded = self._is_preemption_deadline_exceeded(
+            preemption_info,
+            controller_state.detected_at_s,
+            self._run_config.failure_config.preemption_grace_s,
+        )
+        if worker_group_status.finished or deadline_exceeded:
+            preemption_error = PreemptionError(
+                preemption_info=preemption_info,
+                drain_timed_out=not worker_group_status.finished,
+            )
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=preemption_error,
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=preemption_error
+            )
+
+        # Otherwise the preemption is still in progress: keep the healthy ranks
+        # running until every rank exits or the deadline passes.
+        return TrainControllerLoopIterationResult(
+            run_attempt_id=self._get_run_attempt_id(),
+            previous_state=controller_state,
+            next_state=PreemptingState(
+                preemption_info=preemption_info,
+                detected_at_s=controller_state.detected_at_s,
+            ),
+        )
 
     def _generate_run_attempt_id(self):
         self._run_attempt_id = uuid.uuid4().hex

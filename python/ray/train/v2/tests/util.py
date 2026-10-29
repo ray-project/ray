@@ -150,6 +150,26 @@ class DummyWorkerGroup(WorkerGroup):
         status = self._worker_statuses[worker_index]
         status.running = False
 
+    def preempt_worker(self, worker_index, preemption_info):
+        """Simulate the watcher echoing a preemption signal to this worker."""
+        status = self._worker_statuses[worker_index]
+        status.preemption_info = preemption_info
+
+    def preempt_kill_worker(self, worker_index):
+        """Simulate a worker killed by a node reclaim with no advance echo.
+
+        The death surfaces as a WorkerHealthCheckFailedError wrapping a
+        RayActorError with preempted=True (see RayActorError.preempted).
+        """
+        from ray.exceptions import RayActorError
+        from ray.train.v2._internal.exceptions import WorkerHealthCheckFailedError
+
+        status = self._worker_statuses[worker_index]
+        status.running = False
+        status.error = WorkerHealthCheckFailedError(
+            f"Worker {worker_index} died", failure=RayActorError(preempted=True)
+        )
+
     @classmethod
     def set_start_failure(cls, start_failure):
         cls._start_failure = start_failure

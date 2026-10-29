@@ -155,22 +155,6 @@ def build_and_run_pipeline(
 # ---------------------------------------------------------------------------
 
 
-def main(args):
-    build_and_run_pipeline(
-        num_rows=args.num_rows,
-        gen_batch_size=args.gen_batch_size,
-        cpu_batch_size=args.cpu_batch_size,
-        gpu_batch_size=args.gpu_batch_size,
-        gpu_concurrency=args.gpu_concurrency,
-        set_memory=args.set_memory,
-    )
-
-    return {
-        "num_rows_input": int(args.num_rows),
-        "gpu_concurrency": int(args.gpu_concurrency),
-    }
-
-
 def parse_args():
     p = argparse.ArgumentParser(
         description="Heterogeneous memory batch inference benchmark"
@@ -194,5 +178,20 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     benchmark = Benchmark()
-    benchmark.run_fn("heterogeneous-memory-batch-inference", main, args)
+    benchmark.run_fn(
+        "heterogeneous-memory-batch-inference",
+        build_and_run_pipeline,
+        num_rows=args.num_rows,
+        gen_batch_size=args.gen_batch_size,
+        cpu_batch_size=args.cpu_batch_size,
+        gpu_batch_size=args.gpu_batch_size,
+        gpu_concurrency=args.gpu_concurrency,
+        set_memory=args.set_memory,
+    )
+    benchmark.result["heterogeneous-memory-batch-inference"].update(
+        {
+            "num_rows_input": int(args.num_rows),
+            "gpu_concurrency": int(args.gpu_concurrency),
+        }
+    )
     benchmark.write_result()

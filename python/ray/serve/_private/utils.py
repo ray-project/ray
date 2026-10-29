@@ -67,13 +67,16 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
     runtime, since it is not visible on the class statically.
     """
-    # NOTE: the marker is checked with `is True` rather than truthiness because some
-    # objects (e.g. `DeploymentHandle`, whose `__getattr__` returns a handle for any
-    # name) return a truthy value for an arbitrary attribute. The decorator always
-    # sets the marker to the literal `True`, so this stays exact without false
-    # positives.
+    # Static: a plain `getattr` on a `DeploymentHandle` runs `__getattr__`, which
+    # eagerly initializes its Router. `is True` guards against truthy impostors.
     def _has_marker(obj: Any) -> bool:
-        return getattr(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False) is True
+        try:
+            return (
+                inspect.getattr_static(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False)
+                is True
+            )
+        except Exception:
+            return False
 
     # Standalone function deployment decorated with `@serve.multiplexed`.
     if _has_marker(callable_obj):
@@ -88,11 +91,34 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
 
     # An instance that stored a multiplexed wrapper as an instance attribute.
     if not isinstance(callable_obj, type):
-        for attr in getattr(callable_obj, "__dict__", {}).values():
+        # `getattr` falls back to `__getattr__` on a `__slots__` class;
+        # `getattr_static` returns the descriptor rather than the instance mapping.
+        try:
+            instance_vars = object.__getattribute__(callable_obj, "__dict__")
+        except AttributeError:
+            instance_vars = {}
+        for attr in instance_vars.values():
             if _has_marker(attr):
                 return True
 
     return False
+
+
+# Set by `serve._router_application`.
+ROUTER_APPLICATION_MARKER_ATTR = "_serve_router_application"
+
+
+def _is_router_application_class(obj: Any) -> bool:
+    """Whether `obj` is a class marked with `@serve._router_application`."""
+    if not isinstance(obj, type):
+        return False
+    # Walks the MRO, so the marker survives `@serve.ingress`'s wrapper subclass.
+    try:
+        return (
+            inspect.getattr_static(obj, ROUTER_APPLICATION_MARKER_ATTR, False) is True
+        )
+    except Exception:
+        return False
 
 
 def asyncio_grpc_exception_handler(loop, context):
@@ -306,6 +332,47 @@ def _register_thread_lock_serializer(serialization_context):
             custom_serializer=lambda lock: None,
             custom_deserializer=lambda _serialized, factory=lock_factory: factory(),
         )
+
+
+def _register_pydantic_mock_serializer(serialization_context):
+    """Restore pydantic's MockValSer (an unbuilt model's placeholder) from its slots.
+
+    Its __getattr__ reads a slot that is still unset mid-unpickle, so unpickling recursed.
+    """
+    try:
+        from pydantic import BaseModel
+        from pydantic._internal._mock_val_ser import MockValSer
+    except ImportError:
+        return
+
+    # Nested so cloudpickle ships it by value and loading never imports ray.serve.
+    def restore(mock, state):
+        for name, value in state.items():
+            object.__setattr__(mock, name, value)
+        # cloudpickle restores a by-value model onto a built, field-less skeleton and
+        # omits its `__pydantic_complete__ = False` (BaseModel's object); undo both.
+        for cell in getattr(state["_attempt_rebuild"], "__closure__", None) or ():
+            owner = cell.cell_contents
+            if isinstance(owner, type) and issubclass(owner, BaseModel):
+                owner.__pydantic_complete__ = False
+                if "__pydantic_core_schema__" in owner.__dict__:
+                    del owner.__pydantic_core_schema__
+
+    serialization_context._register_cloudpickle_reducer(
+        MockValSer,
+        lambda mock: (
+            object.__new__,
+            (MockValSer,),
+            {name: getattr(mock, name) for name in MockValSer.__slots__},
+            None,
+            None,
+            restore,
+        ),
+    )
+
+
+# Serve pickles user code in many places, some before Ray starts, so register on import.
+_register_pydantic_mock_serializer(StandaloneSerializationContext())
 
 
 def ensure_serialization_context():
@@ -792,9 +859,12 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
         if request_metadata._by_reference and obj.by_reference:
-            # If sending requests by reference, launch async task to
-            # convert DeploymentResponse to an object ref
-            return asyncio.create_task(obj._to_object_ref())
+
+            # Peek, then wait for presence only. Downstream fetches the value.
+            async def to_ready_ref():
+                return await (await obj._to_object_ref())._ready()
+
+            return asyncio.create_task(to_ready_ref())
         else:
             # Otherwise, resolve DeploymentResponse directly to result
             return asyncio.create_task(await_deployment_response(obj))

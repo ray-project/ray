@@ -1,8 +1,12 @@
 import logging
-from typing import Iterator, List, Optional
+import time
+from collections import Counter
+from functools import partial
+from typing import Any, Callable, Iterator, List, Optional
 
 import pyarrow as pa
 
+from ray._common.utils import env_integer
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -17,8 +21,17 @@ from ray.data._internal.logical.operators import Download
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner._obstore_download import (
     OBSTORE_AVAILABLE,
+    _download_attempt_settings,
+    _download_error,
+    _DownloadFailure,
+    _is_permanent_download_error,
+    _is_usable_uri,
     _log_fallback_warning,
+    _log_skipped_uris,
     _plan_obstore_routing,
+    _raise_if_all_denied,
+    _retry_backoff_s,
+    _skip_reason,
     download_bytes_async,
 )
 from ray.data._internal.planner.download_partition_actor import (
@@ -28,6 +41,7 @@ from ray.data._internal.planner.download_partition_actor import (
 )
 from ray.data._internal.util import (
     RetryingPyFileSystem,
+    _arrow_batcher,
     _iter_arrow_table_for_target_max_block_size,
     make_async_gen,
 )
@@ -39,6 +53,28 @@ from ray.data.datasource.path_util import (
 )
 
 logger = logging.getLogger(__name__)
+
+URI_SPLIT_MAX_ROWS = max(1, env_integer("RAY_DATA_DOWNLOAD_URI_SHARD_NUM_ROWS", 8192))
+URI_METADATA_FETCH_MAX_ACTORS = max(
+    1, env_integer("RAY_DATA_DOWNLOAD_PARTITION_MAX_ACTORS", 16)
+)
+
+
+def split_download_uri_blocks(
+    blocks: Iterator[pa.Table],
+    _,
+    *,
+    max_rows_per_block: int,
+) -> Iterator[pa.Table]:
+    """Split large URI-string blocks before exact metadata fetching."""
+    max_rows_per_block = max(1, max_rows_per_block)
+    for block in blocks:
+        if not isinstance(block, pa.Table):
+            block = BlockAccessor.for_block(block).to_arrow()
+        if block.num_rows == 0:
+            yield block
+            continue
+        yield from _arrow_batcher(block, max_rows_per_block)
 
 
 def plan_download_op(
@@ -68,10 +104,9 @@ def plan_download_op(
         _get_udf,
     )
 
-    # If we have multiple download operators in a row, we should only include the partition actor
-    # at the start of the chain. This is primarily done to prevent partition actors from bottlenecking
-    # the chain becuase the interleaved operators would be a single actor. As a result, the
-    # URIDownloader physical operator is responsible for outputting appropriately sized blocks.
+    # If we have multiple download operators in a row, only include the
+    # metadata planning stage at the start of the chain. The downstream download
+    # operators then use normal block shaping.
     # Decide obstore vs threaded upfront. For fsspec-S3 filesystems backed by
     # a session we can't statically introspect (Okta / STS / profile-based),
     # _plan_obstore_routing emits a warning and returns use_obstore=False so
@@ -81,14 +116,35 @@ def plan_download_op(
     if OBSTORE_AVAILABLE:
         use_obstore_path, _ = _plan_obstore_routing(filesystem)
 
-    partition_map_operator = None
+    metadata_map_operator = None
     if not upstream_op_is_download:
+        split_transformer = MapTransformer(
+            [
+                BlockMapTransformFn(
+                    partial(
+                        split_download_uri_blocks,
+                        max_rows_per_block=URI_SPLIT_MAX_ROWS,
+                    ),
+                    disable_block_shaping=True,
+                )
+            ]
+        )
+        split_map_operator = MapOperator.create(
+            split_transformer,
+            input_physical_dag,
+            data_context,
+            name=f"SplitDownloadURIs({uri_column_names_str})",
+            compute_strategy=TaskPoolStrategy(),
+        )
+
         partition_cls = AsyncPartitionActor if use_obstore_path else PartitionActor
         # PartitionActor / AsyncPartitionActor are callable classes, so we need
-        # ActorPoolStrategy.
-        partition_compute = ActorPoolStrategy(
-            size=1, enable_true_multi_threading=True
-        )  # Use single actor for partitioning
+        # ActorPoolStrategy. Let the actor pool autoscale over row-split URI
+        # blocks, but cap it so S3 HEAD concurrency is bounded by default.
+        metadata_compute = ActorPoolStrategy(
+            max_size=URI_METADATA_FETCH_MAX_ACTORS,
+            enable_true_multi_threading=True,
+        )
 
         fn, init_fn = _get_udf(
             partition_cls,
@@ -96,37 +152,36 @@ def plan_download_op(
             {},
             (uri_column_names, data_context, filesystem),
             {},
-            compute=partition_compute,
+            compute=metadata_compute,
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
-        partition_transform_fns = [
+        metadata_transform_fns = [
             BlockMapTransformFn(
                 block_fn,
                 # NOTE: Disable block-shaping to produce blocks as is
                 disable_block_shaping=True,
             ),
         ]
-        partition_map_transformer = MapTransformer(
-            partition_transform_fns,
+        metadata_map_transformer = MapTransformer(
+            metadata_transform_fns,
             init_fn=init_fn,
         )
 
-        partition_map_operator = ActorPoolMapOperator(
-            partition_map_transformer,
-            input_physical_dag,
+        metadata_map_operator = ActorPoolMapOperator(
+            metadata_map_transformer,
+            split_map_operator,
             data_context,
-            name=f"Partition({uri_column_names_str})",
-            # NOTE: Partition actor doesn't use the user-provided `ray_remote_args`
-            #       since those only apply to the actual download tasks. Partitioning is
-            #       a lightweight internal operation that doesn't need custom resource
-            #       requirements.
+            name=f"PlanDownloadBlocks({uri_column_names_str})",
+            # NOTE: The metadata planning actor doesn't use the user-provided
+            #       `ray_remote_args` since those only apply to the actual
+            #       download tasks. Planning is a lightweight internal operation
+            #       that doesn't need custom resource requirements.
             ray_remote_args=None,
-            compute_strategy=partition_compute,  # Use actor-based compute for callable class
-            # NOTE: We set `_generator_backpressure_num_objects` to -1 to unblock
-            #       backpressure since partitioning is extremely fast. Without this, the
-            #       partition actor gets bottlenecked by the Ray Data scheduler, which
-            #       can prevent Ray Data from launching enough download tasks.
+            compute_strategy=metadata_compute,
+            # NOTE: Let each metadata actor stream emitted download blocks without
+            #       generator-object backpressure. Downstream operator
+            #       backpressure still controls the end-to-end pipeline.
             ray_actor_task_remote_args={"_generator_backpressure_num_objects": -1},
         )
 
@@ -169,14 +224,89 @@ def plan_download_op(
 
     download_map_operator = MapOperator.create(
         download_map_transformer,
-        partition_map_operator if partition_map_operator else input_physical_dag,
+        metadata_map_operator if metadata_map_operator else input_physical_dag,
         data_context,
-        name=f"Download({uri_column_names_str})",
+        name=f"DownloadURIBytes({uri_column_names_str})",
         compute_strategy=download_compute,
         ray_remote_args=ray_remote_args,
     )
 
     return download_map_operator
+
+
+def _resolve_threaded_outcomes(
+    uris: List[Any],
+    outcomes: List[Any],
+    uri_column_name: str,
+    load_uri_bytes: Callable[[Iterator[Any]], Iterator[Any]],
+) -> List[Optional[bytes]]:
+    """Turn per-URI outcomes into bytes, re-fetching transient failures.
+
+    Mirrors the obstore path: permanent failures become ``None`` and are
+    counted in one warning per block; transient ones are re-fetched up to
+    ``RAY_DATA_DOWNLOAD_MAX_ATTEMPTS`` times in total, keeping the bytes
+    already read, and raise ``DownloadError`` if any still fail.
+    """
+    results: List[Any] = list(outcomes)
+    skipped: "Counter[str]" = Counter()
+    denied: List[_DownloadFailure] = []
+    max_attempts, backoff_ms = _download_attempt_settings()
+    attempt = 1
+    while True:
+        transient: List[int] = []
+        for index, outcome in enumerate(results):
+            if not isinstance(outcome, _DownloadFailure):
+                continue
+            if outcome.permanent:
+                skipped[outcome.reason] += 1
+                if outcome.reason == "access denied":
+                    denied.append(outcome)
+                logger.debug(
+                    "Skipping uri %r for column %r: %s",
+                    outcome.uri,
+                    uri_column_name,
+                    outcome.error,
+                )
+                results[index] = None
+            else:
+                transient.append(index)
+        if not transient:
+            break
+        first = results[transient[0]]
+        if attempt >= max_attempts:
+            _log_skipped_uris(uri_column_name, skipped, len(uris))
+            raise _download_error(
+                first.uri, uri_column_name, first.error, attempts=attempt
+            ) from first.error
+        delay = _retry_backoff_s(attempt, backoff_ms)
+        logger.warning(
+            "Re-fetching %d of %d URIs for column %r after transient download "
+            "failures (attempt %d of %d, waiting %.1fs). First failure: %r: %s",
+            len(transient),
+            len(uris),
+            uri_column_name,
+            attempt,
+            max_attempts,
+            delay,
+            first.uri,
+            first.error,
+        )
+        if delay > 0:
+            time.sleep(delay)
+        retried = list(
+            make_async_gen(
+                base_iterator=iter([uris[index] for index in transient]),
+                fn=load_uri_bytes,
+                preserve_ordering=True,
+                num_workers=URI_DOWNLOAD_MAX_WORKERS,
+            )
+        )
+        for index, outcome in zip(transient, retried):
+            results[index] = outcome
+        attempt += 1
+    _raise_if_all_denied(uri_column_name, uris, denied)
+    _log_skipped_uris(uri_column_name, skipped, len(uris))
+    return results
 
 
 def download_bytes_threaded(
@@ -260,33 +390,49 @@ def download_bytes_threaded(
             resolved_fs=resolved_fs,
             uri_column_name=uri_column_name,
         ):
-            """Download bytes for each URI using the pre-resolved filesystem."""
+            """Yield bytes, ``None`` or a ``_DownloadFailure`` per URI.
+
+            Uses the pre-resolved filesystem. Classification of failures and
+            the bounded re-fetch of transient ones happen afterwards in
+            ``_resolve_threaded_outcomes``.
+            """
             for uri in uri_iterator:
-                read_bytes = None
+                if uri is None:
+                    # A null input is a legitimate "no value"; it stays null.
+                    yield None
+                    continue
+                if not _is_usable_uri(uri):
+                    yield _DownloadFailure(
+                        uri, "invalid uri", TypeError("not a uri"), permanent=True
+                    )
+                    continue
+                outcome: Any
                 try:
-                    if uri is None:
-                        continue
                     # Normalize the path only; FS is supplied so no network I/O.
                     resolved_paths, _ = _resolve_paths_and_filesystem(
                         uri, filesystem=resolved_fs
                     )
                     resolved_path = resolved_paths[0] if resolved_paths else None
                     if resolved_path is None:
-                        continue
-                    with wrapped_fs.open_input_stream(resolved_path) as f:
-                        read_bytes = f.read()
-                except OSError as e:
-                    logger.debug(
-                        f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
-                    )
+                        outcome = None
+                    else:
+                        with wrapped_fs.open_input_stream(resolved_path) as f:
+                            outcome = f.read()
                 except Exception as e:
-                    # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
-                    # `foo://bar` to avoid failing because of one invalid uri.
-                    logger.warning(
-                        f"Unexpected error reading uri '{uri}' for column '{uri_column_name}': {e}"
+                    # A URI that can never be read (missing file, invalid uri
+                    # like `foo://bar`, access denied) yields None. Anything
+                    # else survived the RetryingPyFileSystem retries and must
+                    # fail the task rather than silently drop the row.
+                    outcome = _DownloadFailure(
+                        uri,
+                        _skip_reason(e),
+                        e,
+                        permanent=_is_permanent_download_error(e),
                     )
-                finally:
-                    yield read_bytes
+                # Exactly one outcome per URI. Yielding inside the ``try``
+                # would add a second one when closing the stream raised after
+                # the bytes were already handed out, shifting every later row.
+                yield outcome
 
         # Use make_async_gen to resolve and download URI bytes concurrently
         # preserve_ordering=True ensures results are returned in the same order as input URIs
@@ -297,6 +443,10 @@ def download_bytes_threaded(
                 preserve_ordering=True,
                 num_workers=URI_DOWNLOAD_MAX_WORKERS,
             )
+        )
+
+        uri_bytes = _resolve_threaded_outcomes(
+            uris, uri_bytes, uri_column_name, load_uri_bytes
         )
 
         # Add the new column to the PyArrow table

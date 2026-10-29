@@ -628,7 +628,7 @@ void LocalObjectManager::RecordMetrics() const {
   spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(spilled_bytes_total_,
                                                                   {{"State", "Spilled"}});
   spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(
-      restored_objects_total_, {{"State", "Restored"}});
+      restored_bytes_total_, {{"State", "Restored"}});
 
   spill_manager_metrics_.spill_manager_request_total_gauge.Record(spilled_objects_total_,
                                                                   {{"Type", "Spilled"}});

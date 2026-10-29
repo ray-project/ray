@@ -43,7 +43,7 @@ class IssueDetectorManager:
         # consumer thread that checks the set of detected issues on shutdown (in the usage callback).
         self._detected_issues_lock = threading.Lock()
 
-    def invoke_detectors(self) -> None:
+    def invoke_periodic_detection(self) -> None:
         curr_time = time.perf_counter()
         issues = []
         for detector in self._issue_detectors:
@@ -54,10 +54,18 @@ class IssueDetectorManager:
                 curr_time - self._last_detection_times[detector]
                 > detector.detection_time_interval_s()
             ):
-                issues.extend(detector.detect())
+                issues.extend(detector.detect_periodic())
 
                 self._last_detection_times[detector] = time.perf_counter()
 
+        self._report_issues(issues)
+
+    def invoke_final_detection(self) -> None:
+        issues = []
+        for detector in self._issue_detectors:
+            if detector.detection_time_interval_s() == -1:
+                continue
+            issues.extend(detector.detect_final())
         self._report_issues(issues)
 
     def _report_issues(self, issues: List[Issue]) -> None:
@@ -66,10 +74,6 @@ class IssueDetectorManager:
         for i, operator in enumerate(self.executor._topology.keys()):
             operators[operator.id] = operator
             op_to_id[operator] = self.executor._get_operator_id(operator, i)
-            # Reset issue detector metrics for each operator so that previous issues
-            # don't affect the current ones.
-            operator.metrics._issue_detector_hanging = 0
-            operator.metrics._issue_detector_high_memory = 0
 
         for issue in issues:
             logger.warning(issue.message)
@@ -96,11 +100,6 @@ class IssueDetectorManager:
                     message=issue.message,
                 )
                 self._operator_event_exporter.export_operator_event(operator_event)
-
-            if issue.issue_type == IssueType.HANGING:
-                operator.metrics._issue_detector_hanging += 1
-            if issue.issue_type == IssueType.HIGH_MEMORY:
-                operator.metrics._issue_detector_high_memory += 1
         if len(issues) > 0:
             logger.warning(
                 f"Found {len(issues)} issues. To disable issue detection, run DataContext.get_current().issue_detectors_config.detectors = []."

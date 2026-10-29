@@ -1,5 +1,3 @@
---index-url https://pypi.org/simple
-
 aioboto3==14.3.0 \
     --hash=sha256:1d18f88bb56835c607b62bb6cb907754d717bedde3ddfff6935727cb48a80135 \
     --hash=sha256:aec5de94e9edc1ffbdd58eead38a37f00ddac59a519db749a910c20b7b81bca7
@@ -187,9 +185,9 @@ botocore==1.37.3 \
     #   anyscale
     #   boto3
     #   s3transfer
-certifi==2026.5.20 \
-    --hash=sha256:3c52e209ba0a4ad7aebe60436a4ab349c39e1e602e8c134221e546902ad25897 \
-    --hash=sha256:69dea482ab64caa7b9f6aba1c6bf48bb6a5448d1c0f1b17ab42ad8c763a5344d
+certifi==2026.10.19 \
+    --hash=sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae \
+    --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
     # via
     #   -r release/requirements_windows.in
     #   anyscale

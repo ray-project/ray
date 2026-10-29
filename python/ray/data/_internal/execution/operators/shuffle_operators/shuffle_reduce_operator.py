@@ -1,12 +1,16 @@
 import functools
 import logging
 import typing
-from collections import deque
 from typing import Any, Dict, List, Optional, Union
 
 import pyarrow as pa
 
 import ray
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+    ReorderingBundleQueue,
+)
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionResources,
@@ -29,25 +33,28 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
     _shuffle_reduce_task,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
-# Isolate shuffle reduce workers into a dedicated worker pool so that
-# ReadParquet/Project tasks don't run on the same workers.  Mirrors the
-# map-side isolation (RAY_DATA_SHUFFLE_MAP_WORKER): without this, shared
-# memory pages from object store accesses (mmap'd during combine_chunks)
-# accumulate across task types and inflate reduce worker RSS.
-_SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_REDUCE_WORKER": "1"}}
+
+_SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
 
 
-class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
+def _merged_reduce_runtime_env(user_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
+    merged = {**_SHUFFLE_REDUCE_RUNTIME_ENV, **user_runtime_env}
+    merged["env_vars"] = {
+        **_SHUFFLE_REDUCE_RUNTIME_ENV["env_vars"],
+        **user_runtime_env.get("env_vars", {}),
+    }
+    return merged
+
+
+class ShuffleReduceOp(PhysicalOperator):
     """Reduce phase of a shuffle.
 
     Supports one or more co-partitioned upstream `ShuffleMapOp`s.  With a single
@@ -69,9 +76,18 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         disallow_block_splitting: If True, output blocks are emitted as-is
             without being reshaped to `target_max_block_size`.
         reduce_ray_remote_args: Remote args for the reducer tasks.
+        preserve_partition_order: If True, buffer completed reducer outputs and
+            expose them downstream in ascending partition-id order.
+        peak_memory_multiplier: Multiplier applied to a partition's shard
+            bytes to derive each reduce task's memory request.  Raise for
+            reduce fns whose peak memory exceeds 2x their input (e.g. a
+            sorting reduce that materializes a sorted copy on top of the
+            concatenated input).
         name: Display name shown in progress bars and logs.
         should_emit_empty_partitions: If True (default), an empty partition emits one
             schema-only placeholder block.
+        preserves_row_count: If False, the reduce may change the row count
+            (aggregation, fused map), so the output row total is unknown.
         fused_output_map_transformer: Set by ``FuseOperators`` when a
             ``TaskPoolMapOperator`` directly downstream is fused into this
             reduce: each reduce task applies it to its output blocks before
@@ -93,8 +109,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         reduce_fn: ReduceFn,
         disallow_block_splitting: bool = False,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        preserve_partition_order: bool = False,
+        peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleReduce",
         should_emit_empty_partitions: bool = True,
+        preserves_row_count: bool = True,
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
@@ -113,7 +132,12 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
+        self._preserve_partition_order: bool = preserve_partition_order
         self._emit_empty_partitions: bool = should_emit_empty_partitions
+        # False when reduce_fn (aggregation) or a fused map can change the row
+        # count, so num_output_rows_total() can't borrow the map op's total.
+        self._preserves_row_count: bool = preserves_row_count
+        self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Reduce task config & tracking -----------------------------------
         self._reduce_ray_remote_args: Dict[str, Any] = dict(
@@ -137,13 +161,14 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
 
         # -- Output queue ----------------------------------------------------
-        self._output_queue: deque = deque()
+        self._output_queue: BaseBundleQueue = (
+            ReorderingBundleQueue()
+            if self._preserve_partition_order
+            else FIFOBundleQueue()
+        )
 
         # -- Stats -----------------------------------------------------------
         self._output_blocks_stats: List[BlockStats] = []
-
-        # -- Sub-progress bars -----------------------------------------------
-        self._reduce_bar: Optional["BaseProgressBar"] = None
 
     def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
         remote_args: Dict[str, Any] = {
@@ -153,7 +178,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
-        remote_args.update(self._reduce_ray_remote_args)
+        user_args = dict(self._reduce_ray_remote_args)
+        user_runtime_env = user_args.pop("runtime_env", None)
+        remote_args.update(user_args)
+        if user_runtime_env is not None:
+            remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         return remote_args
@@ -190,7 +219,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             and not any((m.num_rows or 0) for m in refs.metadata)
         ):
             if self._emit_empty_partitions:
-                self._emit_empty_partition(refs, schema)
+                self._emit_empty_partition(partition_id, refs, schema)
             else:
                 refs.destroy_if_owned()
             return
@@ -234,7 +263,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             estimated_bytes += sum((m.size_bytes or 0) for m in bundle.metadata)
 
         reduce_options = self._reduce_task_remote_args(
-            int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+            int(estimated_bytes * self._peak_memory_multiplier)
             if estimated_bytes > 0
             else 0
         )
@@ -296,7 +325,9 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             partition_id, metrics_bundle, task_id=data_task.get_task_id()
         )
 
-    def _emit_empty_partition(self, refs: RefBundle, schema: pa.Schema) -> None:
+    def _emit_empty_partition(
+        self, partition_id: int, refs: RefBundle, schema: pa.Schema
+    ) -> None:
         """Emit one empty output block for an empty partition.
 
         The partition contributed no rows, so there is nothing to reduce; we
@@ -326,8 +357,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self.id,
         )
         self._num_reduce_tasks_submitted += 1
-        self._output_queue.append(out_bundle)
-        self._metrics.on_output_queued(out_bundle)
+        self._record_partition_output(partition_id, out_bundle, partition_complete=True)
         _, num_outputs, num_rows = estimate_total_num_of_blocks(
             self._num_reduce_tasks_submitted,
             self.upstream_op_num_outputs(),
@@ -336,14 +366,12 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
-        if self._reduce_bar is not None:
-            self._reduce_bar.update(increment=0, total=self.num_output_rows_total())
 
     def has_next(self) -> bool:
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        bundle: RefBundle = self._output_queue.popleft()
+        bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
         return bundle
@@ -352,8 +380,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         return list(self._shuffle_reduce_tasks.values())
 
     def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
-        self._output_queue.append(bundle)
-        self._metrics.on_output_queued(bundle)
+        self._record_partition_output(partition_id, bundle)
         self._metrics.on_task_output_generated(task_index=partition_id, output=bundle)
         _, num_outputs, num_rows = estimate_total_num_of_blocks(
             self._num_reduce_tasks_submitted,
@@ -363,11 +390,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
-        if self._reduce_bar is not None:
-            self._reduce_bar.update(
-                increment=bundle.num_rows() or 0,
-                total=self.num_output_rows_total(),
-            )
 
     def _handle_reduce_done(
         self,
@@ -383,6 +405,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if partition_id not in self._shuffle_reduce_tasks:
             return
         self._shuffle_reduce_tasks.pop(partition_id)
+        if self._preserve_partition_order:
+            self._output_queue.finalize(key=partition_id)
         self._metrics.on_task_finished(
             task_index=partition_id,
             exception=exc,
@@ -394,8 +418,24 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
                 f"Reduce of partition {partition_id} failed: {exc}", exc_info=exc
             )
 
+    def _record_partition_output(
+        self,
+        partition_id: int,
+        bundle: RefBundle,
+        *,
+        partition_complete: bool = False,
+    ) -> None:
+        self._output_queue.add(bundle, key=partition_id)
+        self._metrics.on_output_queued(bundle)
+        if self._preserve_partition_order and partition_complete:
+            self._output_queue.finalize(key=partition_id)
+
     def has_execution_finished(self) -> bool:
-        if self._shuffle_reduce_tasks or self._output_queue or self._pending_inputs:
+        if (
+            self._shuffle_reduce_tasks
+            or len(self._output_queue) > 0
+            or self._pending_inputs
+        ):
             return False
         return super().has_execution_finished()
 
@@ -420,22 +460,25 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         return {self._name: self._output_blocks_stats}
 
     def num_output_rows_total(self) -> Optional[int]:
-        # Multi-input reduces (e.g. join) can grow or shrink the row count, so it
-        # is unknown until the reducers run; a single-input reduce preserves it.
-        if self._num_inputs > 1:
+        # Multi-input reduces (e.g. join) and non-row-preserving reduces
+        # (aggregation, fused map) can grow or shrink the row count, so it is
+        # unknown until the reducers run.
+        if self._num_inputs > 1 or not self._preserves_row_count:
             return None
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, ShuffleMapOp)
         return upstream.num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
-        usage = ExecutionResources.zero()
+        cpu: float = 0
+        memory: float = 0
         for task in self._shuffle_reduce_tasks.values():
             bundle = task.get_requested_resource_bundle()
             if bundle is None:
                 continue
-            usage = usage.add(ExecutionResources(cpu=bundle.cpu, memory=bundle.memory))
-        return usage
+            cpu += bundle.cpu
+            memory += bundle.memory
+        return ExecutionResources(cpu=cpu, memory=memory)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator."""
@@ -445,7 +488,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             sizes = [b for b in upstream.get_partition_bytes().values() if b > 0]
             if sizes:
                 avg_bytes = sum(sizes) / len(sizes)
-                memory += int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+                memory += int(avg_bytes * self._peak_memory_multiplier)
         return ExecutionResources.from_resource_dict(
             self._reduce_task_remote_args(memory)
         )
@@ -457,10 +500,3 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         submitted = self._num_reduce_tasks_submitted
         done = submitted - len(self._shuffle_reduce_tasks)
         return f"reduce: {done}/{submitted}"
-
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return ["Reduce"]
-
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "Reduce":
-            self._reduce_bar = pg

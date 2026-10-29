@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 
@@ -244,6 +245,22 @@ def test_serve_dashboard_utilizes_global_filters():
                 # We skip expressions that are constant value targets serving as visual aids
                 continue
             assert "{global_filters}" in target.expr
+
+
+def test_serve_dashboard_excludes_system_traffic():
+    for panel in SERVE_GRAFANA_PANELS:
+        for target in panel.targets:
+            expr = target.expr
+            # Combined targets select by __name__ and carry neither selector, so both apply.
+            combined = bool(
+                re.search(r'__name__\s*=~\s*["\']ray_serve_\(http\|grpc\)', expr)
+            )
+            if combined or re.search(r"ray_serve_(num_)?http_\w*request", expr):
+                assert 'route!~"/-/.*"' in expr, f"{panel.title}: {expr}"
+            if combined or re.search(r"ray_serve_(num_)?grpc_\w*request", expr):
+                assert (
+                    r'method!~"/ray\\.serve\\.RayServeAPIService/.*"' in expr
+                ), f"{panel.title}: {expr}"
 
 
 if __name__ == "__main__":

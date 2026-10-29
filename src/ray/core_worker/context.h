@@ -32,23 +32,26 @@ class WorkerContext {
  public:
   WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
-  // Return the generator return ID.
-  ///
-  /// By default, it deduces a generator return ID from a current task
-  /// from the context. However, it also supports manual specification of
-  /// put index and task id to support `AllocateDynamicReturnId`.
-  /// See the docstring of AllocateDynamicReturnId for more details.
-  ///
-  /// The caller should either not specify both task_id AND put_index
-  /// or specify both at the same time. Otherwise it will panic.
-  ///
-  /// \param[in] task_id The task id of the dynamically generated return ID.
-  /// If Nil() is specified, it will deduce the Task ID from the current
-  /// worker context.
-  /// \param[in] put_index The equivalent of the return value of
-  /// WorkerContext::GetNextPutIndex.
-  /// If std::nullopt is specified, it will deduce the put index from the
-  /// current worker context.
+  /**
+   * @brief Return the generator return ID.
+   *
+   * By default, it deduces a generator return ID from a current task
+   * from the context. However, it also supports manual specification of
+   * put index and task id to support `AllocateDynamicReturnId`.
+   *
+   * The caller should either not specify both task_id AND put_index
+   * or specify both at the same time. Otherwise it will panic.
+   *
+   * @param task_id The task id of the dynamically generated return ID.
+   *                Nil() together with a std::nullopt put_index deduces both from the
+   * current worker context.
+   * @param put_index The equivalent of the return value of
+   *                  WorkerContext::GetNextPutIndex.
+   * Both task_id and put_index have to be supplied, or neither: deducing one
+   * while the caller supplies the other would key the ObjectID to one task
+   * while drawing the index from another. Mixing them panics.
+   * @return The generator return ID.
+   */
   ObjectID GetGeneratorReturnId(const TaskID &task_id,
                                 std::optional<ObjectIDIndexType> put_index);
 
@@ -75,10 +78,34 @@ class WorkerContext {
   std::shared_ptr<nlohmann::json> GetCurrentRuntimeEnv() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Initialize worker's job_id and job_config if they haven't already.
-  // Note a worker's job config can't be changed after initialization.
-  void MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
+  /**
+   * @brief Initialize worker's job_id and job_config if they haven't already.
+   *        A worker's job config can't be changed after initialization.
+   * @param job_id The job ID to initialize the worker to.
+   * @param job_config The job config to initialize the worker to.
+   * @return True if the job info was initialized by this call.
+   */
+  bool MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @return whether the job config disables job level lineage reconstruction.
+   *         Default to false.
+   */
+  bool GetDisableJobLevelLineageReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @brief Whether this worker should pin the lineage of the objects it owns so
+   *        that they can be reconstructed if lost.
+   *
+   *         If job level lineage reconstruction is disabled, the application
+   *         needs to handle reconstruction of lost objects itself. In this case,
+   *         Ray will simply throw an error when it encounters a lost object.
+   *         Otherwise, we defer to the cluster wide lineage pinning configuration.
+   *
+   * @return whether to pin object lineage on this worker.
+   */
+  bool ShouldPinObjectLineage() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
@@ -89,6 +116,20 @@ class WorkerContext {
 
   void SetTaskDepth(int64_t depth) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /**
+   * @brief Records `task_spec` as the task running on the current thread, and
+   *        updates the worker's actor and runtime env state from it.
+   *
+   *        The first normal or actor creation task sets the worker's runtime env.
+   *        Ray doesn't reuse a worker for a different runtime env, so a later task
+   *        with a different one is a fatal error. Its message masks `env_vars`
+   *        values. A `RAY_CHECK` also aborts the process if the task belongs to a
+   *        different job or actor than the one this worker runs.
+   *
+   * @param task_spec The task about to run on the current thread.
+   * @throws nlohmann::json::parse_error If this task is the first to set the
+   *         runtime env and its serialized runtime env isn't valid JSON.
+   */
   void SetCurrentTask(const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mutex_);
 
   void ResetCurrentTask();
@@ -100,29 +141,41 @@ class WorkerContext {
 
   ActorID GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Returns whether the current thread is the main worker thread.
+  /**
+   * @return whether the current thread is the main worker thread.
+   */
   bool CurrentThreadIsMain() const;
 
-  /// Returns whether we should Block/Unblock through the raylet on Get/Wait.
-  /// This only applies to direct task calls.
+  /**
+   * @return whether we should Block/Unblock through the raylet on Get/Wait.
+   *         This only applies to direct task calls.
+   */
   bool ShouldReleaseResourcesOnBlockingCalls() const;
 
-  /// Returns whether we are in a direct call actor.
+  /**
+   * @return whether we are in a direct call actor.
+   */
   bool CurrentActorIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Returns whether we are in a direct call task. This encompasses both direct
-  /// actor and normal tasks.
+  /**
+   * @return whether we are in a direct call task. This encompasses both direct
+   *         actor and normal tasks.
+   */
   bool CurrentTaskIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   int CurrentActorMaxConcurrency() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Set a flag to indicate that the current actor should exit, it'll be checked
-  /// periodically and the actor will exit if the flag is set.
+  /**
+   * @brief Set a flag to indicate that the current actor should exit, it'll be checked
+   *        periodically and the actor will exit if the flag is set.
+   */
   void SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Get the flag to indicate that the current actor should exit.
+  /**
+   * @return the flag to indicate that the current actor should exit.
+   */
   bool GetCurrentActorShouldExit() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorDetached() const ABSL_LOCKS_EXCLUDED(mutex_);
@@ -131,7 +184,10 @@ class WorkerContext {
 
   uint64_t GetTaskIndex() const;
 
-  // Returns the next put object index; used to calculate ObjectIDs for puts.
+  /**
+   * @brief Returns the next put object index; used to calculate ObjectIDs for puts.
+   * @return The next put object index.
+   */
   ObjectIDIndexType GetNextPutIndex();
 
   int64_t GetTaskDepth() const;

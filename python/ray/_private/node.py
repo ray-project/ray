@@ -27,6 +27,10 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.authentication import authentication_utils as auth_utils
+from ray._private.authentication.authentication_constants import (
+    K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE,
+)
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -47,6 +51,7 @@ from ray._raylet import (
 from ray.core.generated import autoscaler_pb2
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+from ray.exceptions import AuthenticationError
 
 import psutil
 
@@ -57,6 +62,12 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
+
+# Upper bound on how long to wait for a SIGKILLed Ray process to be reaped when
+# the caller asked to wait for it. Reaping is normally immediate; a process that
+# is still around after this long is parked in an uninterruptible syscall and
+# will never be reaped by waiting longer.
+KILLED_PROCESS_REAP_TIMEOUT_SECONDS = 30
 
 
 class Node:
@@ -97,6 +108,11 @@ class Node:
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
         """
+        if (
+            auth_utils.is_k8s_token_auth_enabled()
+            or ray_params._system_config.get("ENABLE_K8S_TOKEN_AUTH")
+        ) and not auth_utils.is_token_auth_enabled():
+            raise ValueError(K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE)
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(
@@ -112,6 +128,13 @@ class Node:
             ray_params.resource_isolation_config
         )
         self.all_processes: dict = {}
+        # Processes that were SIGKILLed but could not be reaped within
+        # KILLED_PROCESS_REAP_TIMEOUT_SECONDS, keyed by process type. They are
+        # removed from `all_processes` like any other killed process, so
+        # restarts and `remaining_processes_alive` behave exactly as before,
+        # but `live_processes` still reports them while they are running so
+        # teardown assertions can see a process that outlived its kill.
+        self._unreaped_processes: dict = {}
         self.removal_lock = threading.Lock()
 
         self.ray_init_cluster = ray_init_cluster
@@ -991,6 +1014,9 @@ class Node:
                     client.internal_kv_get(b"dummy", None)
                 self._gcs_client = client
                 break
+            except AuthenticationError:
+                # A rejected token stays rejected; retrying only delays the error.
+                raise
             except Exception:
                 if gcs_process is not None and gcs_process.poll() is not None:
                     # GCS has exited.
@@ -1765,16 +1791,35 @@ class Node:
             str(p[0].process.pid) for p in self.all_processes.values()
         ]
 
-        # If the dashboard api server was started on the head node, then include all of the api server's
-        # child processes.
+        # The lookup has to be recursive. On POSIX the api server launches its subprocess
+        # modules through a forkserver, so the modules are its grandchildren; asking for
+        # direct children finds the forkserver alone and leaves every module outside the
+        # system cgroup.
         if ray_constants.PROCESS_TYPE_DASHBOARD in self.all_processes:
             dashboard_pid = self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
                 0
             ].process.pid
-            dashboard_process = psutil.Process(dashboard_pid)
-            system_process_pids += [str(p.pid) for p in dashboard_process.children()]
+            # The dashboard may already have exited by now, since by default it starts
+            # with raise_on_failure=False and a dead one is not meant to stop the node
+            # from starting. Raising here would stop it.
+            try:
+                dashboard_process = psutil.Process(dashboard_pid)
+                system_process_pids += [
+                    str(p.pid) for p in dashboard_process.children(recursive=True)
+                ]
+            except psutil.Error:
+                logger.warning(
+                    "Could not enumerate the descendants of the dashboard process "
+                    f"(pid {dashboard_pid}), so they will not be moved into the system "
+                    "cgroup and will run without resource isolation.",
+                    exc_info=True,
+                )
 
-        return ",".join(system_process_pids)
+        # The raylet fails fatally if it cannot move a pid into the system cgroup, and a
+        # system process is allowed to have died by now, so drop the ones that are gone.
+        return ",".join(
+            pid for pid in system_process_pids if psutil.pid_exists(int(pid))
+        )
 
     def _kill_process_type(
         self,
@@ -1799,7 +1844,10 @@ class Node:
             check_alive: If true, then we expect the process to be alive
                 and will raise an exception if the process is already dead.
             wait: If true, then this method will not return until the
-                process in question has exited.
+                process in question has exited, except that a process which
+                does not die within KILLED_PROCESS_REAP_TIMEOUT_SECONDS of
+                being killed is logged and abandoned instead of waited on
+                indefinitely.
 
         Raises:
             This process raises an exception in the following cases:
@@ -1873,13 +1921,45 @@ class Node:
             # If the process did not exit, force kill it.
             if process.poll() is None:
                 process.kill()
-                # After kill, wait must be called
-                # The reason we usually don't set timeout=None here is that
-                # there's some chance we'd end up waiting a really long time.
+                # After kill, wait must be called so the process is reaped
+                # rather than left as a zombie, which would keep its workers
+                # from exiting.
+                #
+                # This wait is bounded even when wait=True. SIGKILL cannot
+                # reap a process parked in uninterruptible sleep (D state),
+                # which happens when it is blocked in a syscall such as the
+                # fsync the RocksDB GCS backend issues on every write. An
+                # unbounded wait here turned a single test failure into a
+                # whole-target CI timeout, because the fixture teardown hung
+                # for the remainder of the Bazel budget instead of failing.
+                # Bound it, log loudly, and let the caller's liveness check
+                # report a real error.
+                timeout = (
+                    KILLED_PROCESS_REAP_TIMEOUT_SECONDS
+                    if wait
+                    else wait_timeout_seconds
+                )
                 try:
-                    process.wait(timeout=None if wait else wait_timeout_seconds)
+                    process.wait(timeout=timeout)
                 except subprocess.TimeoutExpired:
-                    pass
+                    if wait:
+                        logger.warning(
+                            f"Process of type {process_type} (pid "
+                            f"{process.pid}) did not exit within {timeout}s of "
+                            "being killed. It is most likely stuck in an "
+                            "uninterruptible syscall, such as a blocking disk "
+                            "write. Continuing shutdown without it."
+                        )
+                        # Track it separately from `all_processes` so
+                        # `live_processes` still reports it while it runs.
+                        # Leaving it in `all_processes` instead would block a
+                        # later restart of this process type and would make
+                        # `remaining_processes_alive` report a failure once the
+                        # process finally died, even though it was killed on
+                        # purpose.
+                        self._unreaped_processes.setdefault(process_type, []).append(
+                            process_info
+                        )
 
         del self.all_processes[process_type]
 
@@ -1980,7 +2060,10 @@ class Node:
             allow_graceful: Send a SIGTERM first and give each process time
                 to exit gracefully before falling back to SIGKILL.
             wait: If true, then this method will not return until the
-                process in question has exited.
+                process in question has exited, except that a process which
+                does not die within KILLED_PROCESS_REAP_TIMEOUT_SECONDS of
+                being killed is logged and abandoned instead of waited on
+                indefinitely.
         """
         # Kill the raylet first. This is important for suppressing errors at
         # shutdown because we give the raylet a chance to exit gracefully and
@@ -2032,6 +2115,13 @@ class Node:
         """
         result = []
         for process_type, process_infos in self.all_processes.items():
+            for process_info in process_infos:
+                if process_info.process.poll() is None:
+                    result.append((process_type, process_info.process))
+        # Processes that outlived their SIGKILL are no longer in
+        # `all_processes`, but they are still running and callers checking
+        # liveness need to see them.
+        for process_type, process_infos in list(self._unreaped_processes.items()):
             for process_info in process_infos:
                 if process_info.process.poll() is None:
                     result.append((process_type, process_info.process))

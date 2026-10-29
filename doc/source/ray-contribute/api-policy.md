@@ -69,14 +69,14 @@ Users have high expectations for certain exposure levels, so we need to be cauti
   - No
   - Yes
 * - Can this API be demoted to a lower level? If so then how?
-  - Can be demoted to Deprecated only. The API should emit warning messages and a deadline for deprecations in **six months (or +25 Ray minor versions)**.
-  - Can be demoted to Deprecated only. The API should emit warning messages and a deadline for deprecations in **three months (or +12 Ray minor versions)**.
+  - Can be demoted to Deprecated only. The API should emit warning messages and a deadline for deprecations in **six months or +25 Ray minor versions, whichever comes first**.
+  - Can be demoted to Deprecated only. The API should emit warning messages and a deadline for deprecations in **three months or +12 Ray minor versions, whichever comes first**.
   - Users must allow for and expect breaking changes in alpha components, and must have no expectations of stability.
   - Yes
   - No annotations mean it is a developer API by default
 * - Can you remove or change this API's parameters?
-  - Yes. The API should emit warning messages and you must set a deadline for the end-of-life of the original version that is **six months or +25 Ray minor versions**. During the transition period, you must support both the new and old parameters.
-  - Yes. The API should emit warning messages and you must set a deadline for the change in **three months or +12 Ray minor versions**. During the transition period, you must support both the new and old parameters.
+  - Yes. The API should emit warning messages and you must set a deadline for the end-of-life of the original version that is **six months or +25 Ray minor versions, whichever comes first**. During the transition period, you must support both the new and old parameters.
+  - Yes. The API should emit warning messages and you must set a deadline for the change in **three months or +12 Ray minor versions, whichever comes first**. During the transition period, you must support both the new and old parameters.
   - Users must allow for and expect breaking changes in alpha components, and must have no expectations of stability.
   - No
   - Yes

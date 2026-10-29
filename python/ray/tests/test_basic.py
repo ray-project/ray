@@ -2,6 +2,7 @@
 import logging
 import os
 import pickle
+import platform
 import random
 import re
 import sys
@@ -237,11 +238,32 @@ def test_default_worker_import_dependency(shutdown_only):
 @pytest.mark.skipif(
     sys.platform != "linux", reason="Windows/OSX thread count not policed yet."
 )
-def test_worker_thread_count(monkeypatch, shutdown_only):
+@pytest.mark.parametrize(
+    "recorder_env, expected_thread_counts",
+    [
+        pytest.param(
+            {"RAY_enable_ray_task_event_recorder": "0"},
+            {21, 22, 23, 24},
+            id="task_event_recorder_off",
+        ),
+        pytest.param(
+            {"RAY_enable_ray_event": "1", "RAY_enable_ray_task_event_recorder": "1"},
+            {22, 23, 24, 25},
+            id="task_event_recorder_on",
+        ),
+    ],
+)
+def test_worker_thread_count(
+    monkeypatch, shutdown_only, recorder_env, expected_thread_counts
+):
     """This test will fail if the number of threads spawned by a worker process
     increases. If you find that a patch is now causing this test to fail,
     consider if this thread count change is expected and adjust the test
     (or your patch) accordingly!
+
+    RayTaskEventRecorder spawns one dedicated io thread when active (which needs both
+    enable_ray_event and enable_ray_task_event_recorder), so the expected count is
+    parametrized on that flag instead of depending on the compiled default.
     """
 
     @ray.remote
@@ -257,6 +279,8 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
     monkeypatch.setenv("RAY_num_server_call_thread", "1")
     monkeypatch.setenv("RAY_core_worker_num_server_call_thread", "1")
+    for k, v in recorder_env.items():
+        monkeypatch.setenv(k, v)
 
     # TODO(#55215): The for loop and the 'assert ... in {..,..}' complicates this
     # test unnecessarily. We should only need to call the assert after
@@ -268,7 +292,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         ray.get(actor.get_thread_count.remote())
     # Lowering these numbers in this assert should be celebrated,
     # increasing these numbers should be scrutinized
-    assert ray.get(actor.get_thread_count.remote()) in {21, 22, 23, 24}
+    assert ray.get(actor.get_thread_count.remote()) in expected_thread_counts
 
 
 # https://github.com/ray-project/ray/issues/7287
@@ -582,6 +606,15 @@ print("remote", ray.get(check.remote()))
 
 
 # https://github.com/ray-project/ray/issues/54868
+@pytest.mark.skipif(
+    sys.platform == "darwin" and platform.machine() == "arm64",
+    reason=(
+        "On Apple Silicon the GPU resource is managed by AppleGPUAcceleratorManager, "
+        "which has no visible-devices env var (e.g. CUDA_VISIBLE_DEVICES) to set or "
+        "override, so this NVIDIA-specific override behavior does not apply. Manager "
+        "selection is hardware-based, so NVIDIA semantics can't be exercised on a Mac."
+    ),
+)
 def test_not_override_accelerator_ids_when_num_accelerators_is_zero():
     not_override_check_script = """
 import ray

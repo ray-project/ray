@@ -252,6 +252,15 @@ NumPy
    from_numpy
    read_numpy
 
+ORC
+^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_orc
+
 Pandas
 ^^^^^^
 
@@ -287,6 +296,15 @@ SQL Databases
    :toctree: doc/
 
    read_sql
+
+HiveServer2
+^^^^^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hive
 
 Snowflake
 ^^^^^^^^^

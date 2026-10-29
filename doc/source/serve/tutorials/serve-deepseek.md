@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Deploy DeepSeek R1 or V3 with Ray Serve LLM, from a quick local deployment to a production KubeRay setup."
 ---
 
 (serve-deepseek-tutorial)=
@@ -155,7 +158,7 @@ Create a KubeRay cluster using the {ref}`Ray Serve LLM KubeRay guide <kuberay-ra
 Deploy DeepSeek-R1 as a RayService with the following configuration file:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
 ```
 
 ## Troubleshooting

@@ -1,0 +1,177 @@
+import os
+import platform
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from ray._private.test_utils import sandbox_test_enabled
+
+_SLIRP4NETNS_URL = (
+    "https://github.com/rootless-containers/slirp4netns/releases/download/"
+    "v1.3.5/slirp4netns-{arch}"
+)
+
+# An empty Docker config directory, so that no pull in these tests uses the
+# registry credentials, or runs the credential helpers, of the machine that
+# runs them.
+_EMPTY_DOCKER_CONFIG = tempfile.mkdtemp(prefix="sandbox-tests-docker-config-")
+
+
+def pytest_runtest_setup(item):
+    if not sandbox_test_enabled():
+        pytest.skip("Sandbox tests are only run when TEST_SANDBOX=1")
+    os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
+    # A pull mustn't evict cached images because the runner's disk is full.
+    os.environ["RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"] = "0"
+    os.environ["DOCKER_CONFIG"] = _EMPTY_DOCKER_CONFIG
+
+
+@pytest.fixture
+def fake_mkfs_erofs(tmp_path, monkeypatch):
+    """A stand-in ``mkfs.erofs`` first on PATH, for tests that need no gVisor.
+
+    It advertises ``--tar`` and copies the flattened tar it is handed to the
+    image path, so a cached ``rootfs.erofs`` is a tar the test can open and
+    inspect, with the owners the real build would store. Its argv lands in
+    ``mkfs.args`` next to the script. Yields the directory holding both.
+    """
+    from ray.experimental.sandbox._internal.image_utils import mkfs_erofs_path
+
+    bin_dir = tmp_path / "fake-mkfs-bin"
+    bin_dir.mkdir()
+    script = bin_dir / "mkfs.erofs"
+    script.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
+        'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
+        "# args: --tar=f -b<page size> -E^inline_data OUT TAR\n"
+        'cp "$5" "$4"\n'
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+    mkfs_erofs_path.cache_clear()
+    yield bin_dir
+    mkfs_erofs_path.cache_clear()
+
+
+def _install_on_path(name: str, url: str) -> None:
+    """Fetch a static binary into a temp dir prepended to PATH, or skip."""
+    if shutil.which(name):
+        return
+    bin_dir = tempfile.mkdtemp()
+    os.chmod(bin_dir, 0o755)
+    binary = os.path.join(bin_dir, name)
+    try:
+        import urllib.request
+
+        urllib.request.urlretrieve(url, binary)
+    except Exception as e:
+        pytest.skip(f"Failed to install {name} for sandbox tests: {e}")
+    os.chmod(binary, 0o755)
+    os.environ["PATH"] = f"{bin_dir}:{os.environ.get('PATH', '')}"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_runsc():
+    if not sandbox_test_enabled():
+        return
+    os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
+    if not shutil.which("runsc"):
+        temp_bin = tempfile.mkdtemp()
+        script = Path(__file__).resolve().parents[5] / "ci" / "env" / "install-runsc.sh"
+        try:
+            subprocess.check_call(["bash", str(script), temp_bin])
+            os.environ["PATH"] = f"{temp_bin}:{os.environ.get('PATH', '')}"
+        except Exception as e:
+            pytest.skip(f"Failed to install runsc for sandbox tests: {e}")
+
+
+def _public_netns_supported() -> bool:
+    """Whether this host can actually bring a network="public" sandbox up.
+
+    The path parks a sandbox's network+user namespaces in an
+    ``unshare --user --net`` holder and has slirp4netns and a non-rootless runsc
+    re-enter them via ``nsenter -U -n``. Some sandboxed CI environments permit
+    a single unprivileged user namespace (enough for the rootless sandbox
+    tests) and even entering another process's, yet still forbid the *nested*
+    user namespace runsc opens when it drops the sandbox process to ``nobody``
+    -- which only surfaces once the sandbox boots, as ``Started as root, will
+    change to nobody. Couldn't open user namespace ...: Permission denied``. A
+    namespace-entry probe passes there and the tests then fail, so instead
+    bring a throwaway busybox sandbox all the way up and tear it down: only the
+    real path exercises that nested open. runsc and slirp4netns must already be
+    on PATH.
+    """
+    from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+    from ray.experimental.sandbox.config import GVisorSandboxConfig
+    from ray.experimental.sandbox.exceptions import SandboxError
+
+    backend = GVisorSandboxBackend()
+    try:
+        sandbox_id = backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest", shell="/bin/sh", network="public"
+            )
+        )
+    except SandboxError:
+        return False
+    backend.delete_sandbox(sandbox_id)
+    return True
+
+
+def _nft_in_userns_supported() -> bool:
+    """Whether an unprivileged user+network namespace here can load a ruleset.
+
+    That is exactly what every network="public" sandbox does before runsc
+    starts.
+    It fails where nf_tables is missing from the kernel or the namespace
+    cannot be created.
+    """
+    ruleset = (
+        "table inet probe {\n"
+        "    chain output {\n"
+        "        type filter hook output priority 0; policy accept;\n"
+        "    }\n"
+        "}\n"
+    )
+    try:
+        proc = subprocess.run(
+            ["unshare", "--user", "--map-root-user", "--net", "nft", "-f", "-"],
+            input=ruleset.encode("utf-8"),
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+@pytest.fixture(scope="session")
+def ensure_slirp4netns(ensure_runsc):
+    """slirp4netns, nft, and a host that can run the network="public" path.
+
+    Requested rather than autouse, so only the netns tests skip when the
+    environment forbids the per-sandbox user+network namespace the path
+    relies on, or can't load its egress ruleset there (the nftables package
+    is missing, or the kernel can't load a ruleset from an unprivileged
+    namespace). slirp4netns and runsc are installed first because the
+    support probe boots a real sandbox.
+    """
+    arch = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
+    _install_on_path("slirp4netns", _SLIRP4NETNS_URL.format(arch=arch))
+    if not shutil.which("nft"):
+        pytest.skip('network="public" needs the nft binary (nftables package)')
+    if not _nft_in_userns_supported():
+        pytest.skip(
+            "nft cannot load a ruleset inside an unprivileged user+network "
+            "namespace here (nf_tables missing from the kernel, or namespaces "
+            "restricted)"
+        )
+    if not _public_netns_supported():
+        pytest.skip(
+            'network="public" needs a per-sandbox user+network namespace this '
+            "environment forbids (nested user namespace denied at sandbox boot)"
+        )

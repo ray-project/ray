@@ -22,8 +22,9 @@ pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CU
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
-# TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
+# vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.32.0.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/python/requirements/llm/patches/vllm-device-aware-compile-cache.patch"
+VLLM_DEFER_TRITON_PATCH="$(pwd)/python/requirements/llm/patches/vllm-defer-triton-validation.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -47,6 +48,10 @@ PY
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
+    # Validate Triton on inference workers so CPU frontends can build configs.
+    # TODO (jeffreywang): Remove this patch once vLLM PR #62576 is included in Ray's pinned version.
+    # https://github.com/vllm-project/vllm/pull/62576
+    git apply "${VLLM_DEFER_TRITON_PATCH}"
 )
 
 EOF
@@ -57,8 +62,3 @@ EOF
 # introduces longer adds a large one-time engine initialization cost. To avoid performance
 # surprises, we disable the FlashInfer sampler by default.
 ENV VLLM_USE_FLASHINFER_SAMPLER=0
-
-# vLLM 0.25.1 defaults to Model Runner V2, which skips multimodal encoder memory
-# profiling and OOMs the LLM GPU tests. Force Model Runner V1 for now.
-# TODO (jeffreywang): Use the default MRV2 once https://github.com/vllm-project/vllm/pull/47985 lands.
-ENV VLLM_USE_V2_MODEL_RUNNER=0

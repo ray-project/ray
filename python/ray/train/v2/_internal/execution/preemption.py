@@ -1,11 +1,13 @@
 import logging
 import threading
-from dataclasses import dataclass, field
+from collections import defaultdict
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
+from ray.train.v2.api.preemption import PreemptionInfo
 from ray.util.tpu import get_tpu_slice_name_from_node
 
 if TYPE_CHECKING:
@@ -14,48 +16,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class PreemptionInfo:
-    """Information about an imminent preemption event.
+def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> PreemptionInfo:
+    """Combine two preemption signals into one."""
+    ranks_by_node: Dict[str, Set[int]] = defaultdict(set)
+    for info in (old, new):
+        for node, ranks in info.preempted_node_to_ranks.items():
+            ranks_by_node[node].update(ranks)
 
-    Attributes:
-        deadline_ms: Earliest preemption deadline (UNIX time in milliseconds)
-            across all preempted nodes. ``None`` if no deadline was reported.
-        preempted_node_to_ranks: Map of preempted ``node_id`` to the worker ``world_rank``s affected when that node
-            is preempted.
-    """
-
-    deadline_ms: Optional[int]
-    preempted_node_to_ranks: Dict[str, List[int]]
-
-    @property
-    def preempted_node_ids(self) -> List[str]:
-        """Preempted node IDs, sorted lexicographically."""
-        return sorted(self.preempted_node_to_ranks)
-
-    @property
-    def preempted_ranks(self) -> List[int]:
-        """All affected ranks across the preempted nodes, sorted ascending."""
-        return sorted(
-            {r for ranks in self.preempted_node_to_ranks.values() for r in ranks}
-        )
+    deadlines = [d for d in (old.deadline_ms, new.deadline_ms) if d is not None]
+    return PreemptionInfo(
+        deadline_ms=min(deadlines, default=None),
+        preempted_node_to_ranks={
+            node: sorted(ranks) for node, ranks in ranks_by_node.items()
+        },
+    )
 
 
 @dataclass
 class PreemptionContext:
-    """Thread-shared preemption signal for one worker actor."""
+    """The preemption info for one worker actor, or ``None`` if not preempted.
 
-    _preemption_info: Optional[PreemptionInfo] = field(default=None, init=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+    Written by the worker actor's main thread (``mark_preempt``) and read from
+    the training thread (``ray.train.get_preemption_info``) and the status
+    poll.
+    """
 
-    def set(self, info: PreemptionInfo) -> None:
-        with self._lock:
-            self._preemption_info = info
-
-    def get(self) -> Optional[PreemptionInfo]:
-        """Return the current preemption signal, or ``None`` if none received."""
-        with self._lock:
-            return self._preemption_info
+    preemption_info: Optional[PreemptionInfo] = None
 
 
 def _get_draining_nodes() -> Dict[str, int]:

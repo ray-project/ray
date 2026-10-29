@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Write non-flaky Ray Data tests: prefer unit tests and fixtures, avoid assuming output order, and don't depend on block count or repr output."
+---
+
 (how-to-write-tests)=
 # How to write tests
 
@@ -32,7 +38,7 @@ def test_dynamic_block_split(ray_start_regular_shared):
     original_target_max_block_size = ctx.target_max_block_size
 
     ctx.target_max_block_size = 1
-    try: 
+    try:
         ...
     finally:
         ctx.target_max_block_size = original_target_max_block_size
@@ -172,5 +178,5 @@ assert ds._plan._logical_plan.dag.name == "FromArrow"
 
 **Better**
 ```python
-# (Assertions removed). 
+# (Assertions removed).
 ```

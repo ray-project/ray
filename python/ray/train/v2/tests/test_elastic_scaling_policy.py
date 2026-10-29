@@ -5,6 +5,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from freezegun import freeze_time
 
+from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+    ReservedResources,
+    ResourceDict,
+)
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     ResourceRequestPriority,
 )
@@ -30,9 +34,9 @@ from ray.train.v2.api.config import ScalingConfig
 @pytest.fixture(autouse=True)
 def mock_autoscaling_coordinator(monkeypatch):
     mock_coordinator = MagicMock()
-    mock_coordinator._allocated_resources = None
-    mock_coordinator.get_allocated_resources.remote = MagicMock(
-        side_effect=lambda _: mock_coordinator._allocated_resources
+    mock_coordinator._reserved_resources = None
+    mock_coordinator.get_reserved_resources.remote = MagicMock(
+        side_effect=lambda _: mock_coordinator._reserved_resources
     )
 
     monkeypatch.setattr(
@@ -54,13 +58,15 @@ def _start_scaling_policy(policy, run_id: str = "test-run") -> None:
     policy.after_controller_start(MagicMock(run_id=run_id))
 
 
-def _make_reserved(resources_per_worker: dict, num_nodes: int) -> list:
-    """Build a list of reserved resource bundles with ``num_nodes`` entries.
+def _make_reserved(
+    resources_per_worker: ResourceDict, num_nodes: int
+) -> ReservedResources:
+    """Build per-node reserved resources with ``num_nodes`` entries.
 
-    Mirrors the ``List[ResourceDict]`` returned by
-    ``AutoscalingCoordinator.get_allocated_resources``.
+    Mirrors the ``ReservedResources`` returned by
+    ``AutoscalingCoordinator.get_reserved_resources``.
     """
-    return [dict(resources_per_worker) for _ in range(num_nodes)]
+    return {f"n{i}": dict(resources_per_worker) for i in range(num_nodes)}
 
 
 def _get_mock_worker_group_status(num_workers: int) -> WorkerGroupPollStatus:
@@ -82,7 +88,7 @@ def _get_mock_worker_group_state(
     )
 
 
-@patch.object(ElasticScalingPolicy, "GET_ALLOCATED_RESOURCES_INTERVAL_S", 0.0)
+@patch.object(ElasticScalingPolicy, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0)
 def test_non_running_worker_group_decision():
     """Test decisions being made when the worker group is initializing/restarting.
     Ensures that the policy will resize the worker group as soon as resources are available.
@@ -104,14 +110,14 @@ def test_non_running_worker_group_decision():
     assert isinstance(decision, NoopDecision)
 
     # Resources for < min workers are available
-    mock_coordinator._allocated_resources = _make_reserved(
+    mock_coordinator._reserved_resources = _make_reserved(
         resources_per_worker, min_workers - 1
     )
     decision = policy.make_decision_for_non_running_worker_group()
     assert isinstance(decision, NoopDecision)
 
     # Resources for >= min workers are available
-    mock_coordinator._allocated_resources = _make_reserved(
+    mock_coordinator._reserved_resources = _make_reserved(
         resources_per_worker, min_workers
     )
     decision = policy.make_decision_for_non_running_worker_group()
@@ -119,7 +125,7 @@ def test_non_running_worker_group_decision():
     assert decision.num_workers == min_workers
 
     # Resources for >= max workers are available
-    mock_coordinator._allocated_resources = _make_reserved(
+    mock_coordinator._reserved_resources = _make_reserved(
         resources_per_worker, max_workers
     )
     decision = policy.make_decision_for_non_running_worker_group()
@@ -146,12 +152,12 @@ def test_before_controller_abort():
     )
 
 
-def test_get_allocated_resources_interval():
+def test_get_reserved_resources_interval():
     """Tests that remote calls to the AutoscalingCoordinator are spaced out by a minimum time interval."""
     min_workers, max_workers = 4, 64
     resources_per_worker = {"CPU": 8, "GPU": 1}
-    get_allocated_resources_interval_s = (
-        ElasticScalingPolicy.GET_ALLOCATED_RESOURCES_INTERVAL_S
+    get_reserved_resources_interval_s = (
+        ElasticScalingPolicy.GET_RESERVED_RESOURCES_INTERVAL_S
     )
 
     scaling_config = ScalingConfig(
@@ -165,54 +171,54 @@ def test_get_allocated_resources_interval():
 
     with freeze_time() as frozen_time:
         # No resources are available at the start
-        allocated_resources = policy._get_allocated_resources()
-        assert allocated_resources is None
+        reserved_resources = policy._get_reserved_resources()
+        assert reserved_resources is None
 
         # Resources for < min workers are available
-        frozen_time.tick(get_allocated_resources_interval_s)
-        mock_coordinator._allocated_resources = _make_reserved(
+        frozen_time.tick(get_reserved_resources_interval_s)
+        mock_coordinator._reserved_resources = _make_reserved(
             resources_per_worker, min_workers - 1
         )
-        allocated_resources = policy._get_allocated_resources()
-        assert allocated_resources == _make_reserved(
+        reserved_resources = policy._get_reserved_resources()
+        assert reserved_resources == _make_reserved(
             resources_per_worker, min_workers - 1
         )
 
-        # Resources for >= min workers are available, but get_allocated_resources interval
+        # Resources for >= min workers are available, but get_reserved_resources interval
         # has not yet passed.
-        mock_coordinator._allocated_resources = _make_reserved(
+        mock_coordinator._reserved_resources = _make_reserved(
             resources_per_worker, min_workers
         )
-        allocated_resources = policy._get_allocated_resources()
-        assert allocated_resources == _make_reserved(
+        reserved_resources = policy._get_reserved_resources()
+        assert reserved_resources == _make_reserved(
             resources_per_worker, min_workers - 1
         )
 
-        # Resources for >= min workers are available and the get_allocated_resources
+        # Resources for >= min workers are available and the get_reserved_resources
         # interval has passed.
-        frozen_time.tick(get_allocated_resources_interval_s)
-        mock_coordinator._allocated_resources = _make_reserved(
+        frozen_time.tick(get_reserved_resources_interval_s)
+        mock_coordinator._reserved_resources = _make_reserved(
             resources_per_worker, min_workers
         )
-        allocated_resources = policy._get_allocated_resources()
-        assert allocated_resources == _make_reserved(resources_per_worker, min_workers)
+        reserved_resources = policy._get_reserved_resources()
+        assert reserved_resources == _make_reserved(resources_per_worker, min_workers)
 
-        # Resources for >= max workers are available but the get_allocated_resources
+        # Resources for >= max workers are available but the get_reserved_resources
         # interval has not yet passed.
-        mock_coordinator._allocated_resources = _make_reserved(
+        mock_coordinator._reserved_resources = _make_reserved(
             resources_per_worker, max_workers
         )
-        allocated_resources = policy._get_allocated_resources()
-        assert allocated_resources == _make_reserved(resources_per_worker, min_workers)
+        reserved_resources = policy._get_reserved_resources()
+        assert reserved_resources == _make_reserved(resources_per_worker, min_workers)
 
-        # Resources for >= max workers are available and the get_allocated_resources
+        # Resources for >= max workers are available and the get_reserved_resources
         # interval has passed.
-        frozen_time.tick(get_allocated_resources_interval_s)
-        allocated_resources = policy._get_allocated_resources()
-        assert allocated_resources == _make_reserved(resources_per_worker, max_workers)
+        frozen_time.tick(get_reserved_resources_interval_s)
+        reserved_resources = policy._get_reserved_resources()
+        assert reserved_resources == _make_reserved(resources_per_worker, max_workers)
 
 
-@patch.object(ElasticScalingPolicy, "GET_ALLOCATED_RESOURCES_INTERVAL_S", 0.0)
+@patch.object(ElasticScalingPolicy, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0)
 def test_running_worker_group_decision():
     """Test decisions being made when the worker group is running.
     Ensures that the policy will resize the worker group when there is a change
@@ -237,7 +243,7 @@ def test_running_worker_group_decision():
     worker_group_status = _get_mock_worker_group_status(min_workers)
 
     # No change in resources
-    mock_coordinator._allocated_resources = _make_reserved(
+    mock_coordinator._reserved_resources = _make_reserved(
         resources_per_worker, min_workers
     )
     decision = policy.make_decision_for_running_worker_group(
@@ -247,7 +253,7 @@ def test_running_worker_group_decision():
     assert isinstance(decision, NoopDecision)
 
     # Resources for < min workers are available
-    mock_coordinator._allocated_resources = _make_reserved(
+    mock_coordinator._reserved_resources = _make_reserved(
         resources_per_worker, min_workers - 1
     )
     decision = policy.make_decision_for_running_worker_group(
@@ -257,7 +263,7 @@ def test_running_worker_group_decision():
     assert isinstance(decision, NoopDecision)
 
     # More resources are available.
-    mock_coordinator._allocated_resources = _make_reserved(
+    mock_coordinator._reserved_resources = _make_reserved(
         resources_per_worker, max_workers
     )
     decision = policy.make_decision_for_running_worker_group(
@@ -296,7 +302,7 @@ def test_monitor_recently_started_worker_group():
 
         # Even though there are new resources available, we should not resize yet
         # because the monitor interval has not passed since
-        mock_coordinator._allocated_resources = _make_reserved(
+        mock_coordinator._reserved_resources = _make_reserved(
             resources_per_worker, max_workers - 1
         )
 
@@ -340,7 +346,7 @@ def test_monitor_long_running_worker_group():
     with freeze_time() as frozen_time:
         worker_group_state = _get_mock_worker_group_state(min_workers, time_monotonic())
         worker_group_status = _get_mock_worker_group_status(min_workers)
-        mock_coordinator._allocated_resources = _make_reserved(
+        mock_coordinator._reserved_resources = _make_reserved(
             resources_per_worker, min_workers
         )
 
@@ -356,7 +362,7 @@ def test_monitor_long_running_worker_group():
 
         # We recently considered resizing, so we should wait until the next interval
         # to consider again --> no-op even if new resources are available
-        mock_coordinator._allocated_resources = _make_reserved(
+        mock_coordinator._reserved_resources = _make_reserved(
             resources_per_worker, max_workers
         )
         frozen_time.tick(monitor_interval_s / 2)
@@ -387,7 +393,7 @@ def test_count_possible_workers():
     policy = ElasticScalingPolicy(scaling_config)
 
     # No resources
-    assert policy._count_possible_workers([]) == 0
+    assert policy._count_possible_workers({}) == 0
 
     # Single node
     assert policy._count_possible_workers(_make_reserved({"CPU": 8, "GPU": 1}, 1)) == 1
@@ -415,7 +421,7 @@ def test_count_possible_workers_with_zero_resources():
     policy = ElasticScalingPolicy(scaling_config)
 
     assert (
-        policy._count_possible_workers([{"CPU": 1, "GPU": 1, "memory": 1}])
+        policy._count_possible_workers({"n0": {"CPU": 1, "GPU": 1, "memory": 1}})
         == max_workers
     )
 
@@ -515,9 +521,9 @@ def test_count_possible_workers_tpu_slice_rounding(
     policy = ElasticScalingPolicy(scaling_config)
 
     tpu_node = {"TPU": 4, "CPU": 1, "accelerator_type:TPU-V6E": 1}
-    allocated_resources = _make_reserved(tpu_node, num_autoscaler_nodes)
+    reserved_resources = _make_reserved(tpu_node, num_autoscaler_nodes)
 
-    assert policy._count_possible_workers(allocated_resources) == expected_workers
+    assert policy._count_possible_workers(reserved_resources) == expected_workers
 
 
 if __name__ == "__main__":

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Write a custom Ray Serve request router, from a uniform router to a throughput-aware one, using the request routing utility mixins."
+---
+
 (custom-request-router-guide)=
 # Use Custom Algorithm for Request Routing
 
@@ -60,8 +66,8 @@ Ray Serve provides utility mixins that can be used to extend the functionality o
 
 
 (throughput-aware-request-router)=
-## Define a complex throughput-aware request router
-A fully featured request router can be more complex and should take into account the multiplexed model, locality, the request queue length on each replica, and using custom statistics like throughput  to decide which replica to route the request to. The following class defines a throughput-aware request router that routes requests to the replica with these factors in mind. Add the following code into the `custom_request_router.py` file:
+## Define a throughput-aware request router
+The following router first prefers replicas that have the requested model loaded, then those with the fewest loaded models. Within each model rank, it prefers replicas on the same node, in the same availability zone, and elsewhere, in that order. It breaks ties using increasing reported throughput. Add this class to `custom_request_router.py`:
 
 ```{literalinclude} ../doc_code/custom_request_router.py
 :start-after: __begin_define_throughput_aware_request_router__
@@ -69,7 +75,9 @@ A fully featured request router can be more complex and should take into account
 :language: python
 ```
 
-This request router inherits from [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst), as well as [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) for FIFO request routing, [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst) for locality-aware request routing, and [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) for multiplexed model support. It implements [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) to take the highest ranked replicas from [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst) and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.LocalityMixin.rank_replicas_via_locality.rst) and uses the [`select_available_replicas`](../api/doc/ray.serve.request_router.RequestRouter.select_available_replicas.rst) helper to filter out replicas that have reached their maximum request queue length. Finally, it takes the replicas with the minimum throughput and returns the top one.
+The router keeps every rank returned by the multiplexing and locality helpers. The first rank can be empty when no replica has loaded a model or no replica shares the router's node. Keeping the remaining ranks provides a fallback to other replicas.
+
+The router returns each replica in its own rank so the base router tries them in throughput order. It doesn't call `select_available_replicas`, which skips replicas whose cached queue length has reached `max_ongoing_requests`. The cached value can be stale, so the base router probes those replicas before it moves to the next rank. If a preferred replica rejects the request, lower-ranked replicas remain available as fallbacks. This policy returns all fallback ranks in one call and sets `routing_context.should_backoff` to `True` for the next retry. If every replica is at capacity, the base router retries with backoff.
 
 (deploy-app-with-throughput-aware-request-router)=
 ## Deploy an app with the throughput-aware request router
@@ -87,7 +95,14 @@ Similar to the uniform request router, the custom request router can be defined 
 (round-robin-request-router)=
 ## Experimental: Use the round-robin request router
 
-`RoundRobinRouter` cycles through replicas in round-robin fashion, starting at an arbitrary replica so routers spun up together don't synchronize on the same first replica. If the chosen replica is at capacity, the router falls back to the next replica in order and wraps around the candidate list. Each router instance keeps its own cursor, so with multiple routers (for example, one per Ray Serve proxy) the fan-out is round-robin per router and approximately uniform across replicas in aggregate. The router mixes in [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued requests are routed in arrival order.
+`RoundRobinRouter` cycles through replicas in round-robin fashion. If the chosen replica is at capacity, the router falls back to the next replica in order and wraps around the candidate list. Each router instance keeps its own cursor, so with multiple routers (for example, one per Ray Serve proxy) the fan-out is round-robin per router and approximately uniform across replicas in aggregate.
+
+The router mixes in:
+
+- [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) to support model multiplexing.
+- [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued requests are routed in arrival order.
+
+For a multiplexed request, the router first round-robins among replicas already hosting the requested model with a cursor scoped to that model. If no host is known or those replicas have already been attempted, it falls back to the replicas with the fewest loaded models; after the matching timeout, it tries those replicas once more and then all replicas.
 
 ### When to use
 Use the round-robin router when you want a predictable, even distribution across replicas and don't need load-aware or locality-aware decisions. It fits stateless workloads with roughly uniform per-request latency. Unlike the default power-of-two-choices router, the round-robin router doesn't compare replicas by their number of ongoing requests. It only skips a replica once it reaches `max_ongoing_requests`. Therefore, requests can pile up behind a slow replica before it falls back to the next one.
@@ -113,7 +128,7 @@ Two parameters are configurable through [`request_router_kwargs`](../api/doc/ray
 * `num_fallback_replicas` (default `2`): clockwise successors tried after the primary rejects. Set to `0` for strict affinity with no fallback.
 
 ### When to use
-Use the consistent-hash router when requests carry session-scoped state worth keeping warm on a single replica, for example in-memory caches keyed by user or KV-cache reuse for LLM chat sessions. Skip it for stateless workloads, since affinity sacrifices queue-aware balancing and a hot session can saturate its assigned replica while others are idle. The router does not combine with queue-depth, locality, or multiplexed-model signals, since mixing them in would break determinism and therefore break affinity.
+Use the consistent-hash router when requests carry session-scoped state worth keeping warm on a single replica, for example in-memory caches keyed by user or KV-cache reuse for LLM chat sessions. Skip it for stateless workloads, since affinity sacrifices queue-aware balancing and a hot session can saturate its assigned replica while others are idle. It does not support model multiplexing, queue-depth, or locality signals, since mixing them in would break consistent hashing's determinism and therefore break affinity.
 
 ### Example
 Configure the router via [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) and pass tuning parameters through `request_router_kwargs`:

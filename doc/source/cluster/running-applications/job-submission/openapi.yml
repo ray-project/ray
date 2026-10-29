@@ -1,4 +1,4 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
   title: Ray Jobs API
   version: 4.0.0
@@ -10,13 +10,11 @@ info:
 paths:
   /api/version:
     get:
-      summary: |
-        Get Version
+      summary: Get Version
       description: |
         Get the Ray Jobs API version and the Ray version running on the cluster.
       responses:
         200:
-          summary: Version
           description: |
             The Ray Jobs API version and the Ray version running on the cluster.
           content:
@@ -35,8 +33,7 @@ paths:
                     type: string
   /api/jobs:
     post:
-      summary: |
-        Submit Job
+      summary: Submit Job
       description: |
         Submit a job to the cluster.
       requestBody:
@@ -49,7 +46,6 @@ paths:
               $ref: '#/components/schemas/JobSubmitRequest'
       responses:
         200:
-          summary: Job Submit Response
           description: |
             The ID of the submitted job.
           content:
@@ -57,7 +53,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobSubmitResponse'
         400:
-          summary: Job Submit Validation Error
           description: |
             A TypeError or ValueError was raised when submitting the job.
           content:
@@ -66,7 +61,6 @@ paths:
                 description: The error message.
                 type: string
         500:
-          summary: Job Submit Internal Error
           description: |
             An internal error occurred when submitting the job.
           content:
@@ -80,7 +74,6 @@ paths:
         List all submitted jobs in the cluster and their details.
       responses:
         200:
-          summary: List of Job Details
           description: |
             The details of the jobs.
           content:
@@ -104,7 +97,6 @@ paths:
             type: string
       responses:
         200:
-          summary: Job Details
           description: |
             The details of the job.
           content:
@@ -112,7 +104,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobDetails'
         404:
-          summary: Job Not Found
           description: |
             The job does not exist.
           content:
@@ -134,7 +125,6 @@ paths:
             type: string
       responses:
         200:
-          summary: Job Status
           description: |
             The status of the job.
           content:
@@ -143,7 +133,6 @@ paths:
                 description: Whether the job was successfully deleted.
                 type: boolean
         500:
-          summary: Internal Error
           description: |
             An internal error occurred when deleting the job, or the job was not in a terminal state.
           content:
@@ -152,7 +141,6 @@ paths:
                 description: The error message.
                 type: string
         404:
-          summary: Job Not Found
           description: |
             The job does not exist.
           content:
@@ -161,7 +149,6 @@ paths:
                 description: The error message.
                 type: string
         400:
-          summary: Wrong Job Type
           description: |
             The job was not submitted via the Ray Jobs API, so it cannot be deleted.
           content:
@@ -184,7 +171,6 @@ paths:
             type: string
       responses:
         200:
-          summary: Job Status
           description: |
             The status of the job.
           content:
@@ -192,7 +178,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobStatus'
         500:
-          summary: Internal Error
           description: |
             An internal error occurred when stopping the job.
           content:
@@ -201,7 +186,6 @@ paths:
                 description: The error message.
                 type: string
         404:
-          summary: Job Not Found
           description: |
             The job does not exist.
           content:
@@ -210,7 +194,6 @@ paths:
                 description: The error message.
                 type: string
         400:
-          summary: Wrong Job Type
           description: |
             The job was not submitted via the Ray Jobs API, so it cannot be stopped.
           content:
@@ -233,7 +216,6 @@ paths:
             type: string
       responses:
         200:
-          summary: Job Logs
           description: |
             The logs of the job.
           content:
@@ -245,7 +227,6 @@ paths:
                     type: string
                     description: The logs of the job.
         500:
-          summary: Job Logs Internal Error
           description: |
             An internal error occurred when getting the logs of the job.
           content:
@@ -254,7 +235,6 @@ paths:
                 description: The error message.
                 type: string
         404:
-          summary: Job Not Found
           description: |
             The job does not exist.
           content:
@@ -263,7 +243,6 @@ paths:
                 description: The error message.
                 type: string
         400:
-          summary: Wrong Job Type
           description: |
             The job was not submitted via the Ray Jobs API, so its logs cannot be retrieved.
           content:
@@ -289,7 +268,6 @@ paths:
             type: string
       responses:
         404:
-          summary: Job Not Found
           description: |
             The job does not exist.
           content:
@@ -298,7 +276,6 @@ paths:
                 description: The error message.
                 type: string
         400:
-          summary: Wrong Job Type
           description: |
             The job was not submitted via the Ray Jobs API, so its logs cannot be retrieved.
           content:

@@ -47,7 +47,31 @@ class OpenTelemetryMetricRecorder:
     _metrics_initialized_lock = threading.Lock()
 
     def __init__(self, gauge_metric_ttl_seconds: Optional[float] = None):
+        # Lock-ordering contract:
+        #   _registration_lock -> SDK meter locks (via meter.create_*)
+        #   _registration_lock -> _lock
+        #   SDK measurement-consumer lock -> _lock (the SDK holds its own lock
+        #       while invoking our observable callbacks during collect(), and the
+        #       callbacks acquire _lock)
+        # _lock must therefore never be held across an SDK call that can acquire
+        # the measurement-consumer lock — i.e. observable-instrument creation
+        # (meter.create_observable_*, which registers the instrument with the
+        # consumer). Holding _lock there deadlocks with a concurrent scrape:
+        # registration holds _lock and waits on the consumer lock inside
+        # create_*, while collect() holds the consumer lock and waits on _lock
+        # inside a callback. _registration_lock exists so that instrument
+        # registration stays serialized (no duplicate instruments on a race)
+        # without _lock being held across those SDK entry points.
+        #
+        # Note: the synchronous histogram paths (set_metric_value,
+        # record_histogram_aggregated_batch) do call instrument.record() while
+        # holding _lock. That is safe from this deadlock: record() only takes
+        # per-reader-storage locks, never the measurement-consumer lock, and
+        # reader-storage code never calls back into this recorder, so no lock
+        # cycle can form. Keep any new SDK call out of _lock unless it has the
+        # same property.
         self._lock = threading.Lock()
+        self._registration_lock = threading.Lock()
         self._registered_instruments = {}
         # Gauge observations are stored as tag_key -> (value, last_update_monotonic).
         # Unlike counters/sums, gauges are evicted once they have not been refreshed
@@ -56,6 +80,7 @@ class OpenTelemetryMetricRecorder:
         self._counter_observations_by_name = defaultdict(dict)
         self._sum_observations_by_name = defaultdict(dict)
         self._histogram_bucket_midpoints = defaultdict(list)
+        self._histogram_bucket_mismatch_warned = set()
         self._gauge_metric_ttl_s = self._resolve_gauge_ttl_seconds(
             gauge_metric_ttl_seconds
         )
@@ -191,66 +216,79 @@ class OpenTelemetryMetricRecorder:
             OpenTelemetryMetricRecorder._metrics_initialized = True
 
     def register_gauge_metric(self, name: str, description: str) -> None:
-        with self._lock:
-            if name in self._registered_instruments:
-                # Gauge with the same name is already registered.
-                return
+        with self._registration_lock:
+            with self._lock:
+                if name in self._registered_instruments:
+                    # Gauge with the same name is already registered.
+                    return
 
             callback = self._create_observable_callback(name, MetricType.GAUGE)
+            # Created without holding self._lock: create_observable_gauge acquires
+            # SDK-internal locks that are also held around our callbacks during
+            # collect() (see the lock-ordering contract in __init__).
             instrument = self.meter.create_observable_gauge(
                 name=f"{NAMESPACE}_{name}",
                 description=description,
                 unit="1",
                 callbacks=[callback],
             )
-            self._registered_instruments[name] = instrument
-            self._gauge_observations_by_name[name] = {}
+            with self._lock:
+                self._registered_instruments[name] = instrument
+                self._gauge_observations_by_name[name] = {}
 
     def register_counter_metric(self, name: str, description: str) -> None:
         """
         Register an observable counter metric with the given name and description.
         """
-        with self._lock:
-            if name in self._registered_instruments:
-                # Counter with the same name is already registered. This is a common
-                # case when metrics are exported from multiple Ray components (e.g.,
-                # raylet, worker, etc.) running in the same node. Since each component
-                # may export metrics with the same name, the same metric might be
-                # registered multiple times.
-                return
+        with self._registration_lock:
+            with self._lock:
+                if name in self._registered_instruments:
+                    # Counter with the same name is already registered. This is a
+                    # common case when metrics are exported from multiple Ray
+                    # components (e.g., raylet, worker, etc.) running in the same
+                    # node. Since each component may export metrics with the same
+                    # name, the same metric might be registered multiple times.
+                    return
 
             callback = self._create_observable_callback(name, MetricType.COUNTER)
+            # Created without holding self._lock (see __init__ lock-ordering
+            # contract).
             instrument = self.meter.create_observable_counter(
                 name=f"{NAMESPACE}_{name}",
                 description=description,
                 unit="1",
                 callbacks=[callback],
             )
-            self._registered_instruments[name] = instrument
-            self._counter_observations_by_name[name] = {}
+            with self._lock:
+                self._registered_instruments[name] = instrument
+                self._counter_observations_by_name[name] = {}
 
     def register_sum_metric(self, name: str, description: str) -> None:
         """
         Register an observable sum metric with the given name and description.
         """
-        with self._lock:
-            if name in self._registered_instruments:
-                # Sum with the same name is already registered. This is a common
-                # case when metrics are exported from multiple Ray components (e.g.,
-                # raylet, worker, etc.) running in the same node. Since each component
-                # may export metrics with the same name, the same metric might be
-                # registered multiple times.
-                return
+        with self._registration_lock:
+            with self._lock:
+                if name in self._registered_instruments:
+                    # Sum with the same name is already registered. This is a common
+                    # case when metrics are exported from multiple Ray components
+                    # (e.g., raylet, worker, etc.) running in the same node. Since
+                    # each component may export metrics with the same name, the same
+                    # metric might be registered multiple times.
+                    return
 
             callback = self._create_observable_callback(name, MetricType.SUM)
+            # Created without holding self._lock (see __init__ lock-ordering
+            # contract).
             instrument = self.meter.create_observable_up_down_counter(
                 name=f"{NAMESPACE}_{name}",
                 description=description,
                 unit="1",
                 callbacks=[callback],
             )
-            self._registered_instruments[name] = instrument
-            self._sum_observations_by_name[name] = {}
+            with self._lock:
+                self._registered_instruments[name] = instrument
+                self._sum_observations_by_name[name] = {}
 
     def register_histogram_metric(
         self, name: str, description: str, buckets: List[float]
@@ -258,40 +296,41 @@ class OpenTelemetryMetricRecorder:
         """
         Register a histogram metric with the given name and description.
         """
-        with self._lock:
-            if name in self._registered_instruments:
-                # Histogram with the same name is already registered. This is a common
-                # case when metrics are exported from multiple Ray components (e.g.,
-                # raylet, worker, etc.) running in the same node. Since each component
-                # may export metrics with the same name, the same metric might be
-                # registered multiple times.
-                return
+        with self._registration_lock:
+            with self._lock:
+                if name in self._registered_instruments:
+                    # Histogram with the same name is already registered. This is a
+                    # common case when metrics are exported from multiple Ray
+                    # components (e.g., raylet, worker, etc.) running in the same
+                    # node. Since each component may export metrics with the same
+                    # name, the same metric might be registered multiple times.
+                    return
 
+            # Created without holding self._lock (see __init__ lock-ordering
+            # contract).
             instrument = self.meter.create_histogram(
                 name=f"{NAMESPACE}_{name}",
                 description=description,
                 unit="1",
                 explicit_bucket_boundaries_advisory=buckets,
             )
-            self._registered_instruments[name] = instrument
 
             # calculate the bucket midpoints; this is used for converting histogram
             # internal representation to approximated histogram data points.
+            midpoints = []
             for i in range(len(buckets)):
                 if i == 0:
                     lower_bound = 0.0 if buckets[0] > 0 else buckets[0] * 2.0
-                    self._histogram_bucket_midpoints[name].append(
-                        (lower_bound + buckets[0]) / 2.0
-                    )
+                    midpoints.append((lower_bound + buckets[0]) / 2.0)
                 else:
-                    self._histogram_bucket_midpoints[name].append(
-                        (buckets[i] + buckets[i - 1]) / 2.0
-                    )
+                    midpoints.append((buckets[i] + buckets[i - 1]) / 2.0)
             # Approximated mid point for Inf+ bucket. Inf+ bucket is an implicit bucket
             # that is not part of buckets.
-            self._histogram_bucket_midpoints[name].append(
-                1.0 if buckets[-1] <= 0 else buckets[-1] * 2.0
-            )
+            midpoints.append(1.0 if buckets[-1] <= 0 else buckets[-1] * 2.0)
+
+            with self._lock:
+                self._registered_instruments[name] = instrument
+                self._histogram_bucket_midpoints[name] = midpoints
 
     def get_histogram_bucket_midpoints(self, name: str) -> List[float]:
         """
@@ -363,6 +402,15 @@ class OpenTelemetryMetricRecorder:
         observations using bucket midpoints. It acquires the lock once and performs
         all record() calls for ALL data points, minimizing lock contention.
 
+        A metric name is registered once per node, but several processes may emit it
+        with different bucket bounds (e.g. two vLLM engines configured with different
+        max_model_len). Data points whose bucket count disagrees with the registered
+        bounds cannot be reconstructed, so they are skipped rather than raising, which
+        would otherwise abort ingestion for the rest of the reporting component's
+        metrics. Exact pass-through of bucket_counts/sum, which would let such
+        emitters through, is tracked in
+        https://github.com/ray-project/ray/issues/64852.
+
         Note: The histogram sum value will be an approximation since we use bucket midpoints instead of actual values.
         """
         with self._lock:
@@ -381,9 +429,15 @@ class OpenTelemetryMetricRecorder:
             for dp in data_points:
                 tags = dp["tags"]
                 bucket_counts = dp["bucket_counts"]
-                assert len(bucket_counts) == len(
-                    bucket_midpoints
-                ), "Number of bucket counts and midpoints must match"
+                if len(bucket_counts) != len(bucket_midpoints):
+                    if name not in self._histogram_bucket_mismatch_warned:
+                        self._histogram_bucket_mismatch_warned.add(name)
+                        logger.warning(
+                            f"Metric {name} was reported with {len(bucket_counts)} "
+                            f"buckets but {len(bucket_midpoints)} were expected; "
+                            "skipping the data point."
+                        )
+                    continue
 
                 filtered_tags = {
                     k: v for k, v in tags.items() if k not in high_cardinality_labels

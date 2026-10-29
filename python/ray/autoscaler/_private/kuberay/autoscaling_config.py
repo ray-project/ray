@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 IDLE_SECONDS_KEY = "idleTimeoutSeconds"
+PRIORITY_KEY = "priority"
 UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 UPSCALING_VALUE_DEFAULT = "Default"
@@ -223,6 +224,10 @@ def _node_type_from_group_spec(
     if idle_timeout_s is not None:
         node_type["idle_timeout_s"] = float(idle_timeout_s)
 
+    priority = group_spec.get(PRIORITY_KEY)
+    if priority is not None:
+        node_type[PRIORITY_KEY] = int(priority)
+
     return node_type
 
 
@@ -299,7 +304,7 @@ def _get_ray_resources_from_group_spec(
         else:
             logger.error(
                 f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
-                "See https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/tpu.html#configuring-ray-pods-for-tpu-usage "
+                "See https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#configuring-kubernetes-pods-for-tpu-usage "
                 "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
             )
 

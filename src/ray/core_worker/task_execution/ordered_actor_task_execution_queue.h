@@ -42,6 +42,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
       instrumented_io_context &task_execution_service,
       ActorTaskExecutionArgWaiterInterface &waiter,
       worker::TaskEventBuffer &task_event_buffer,
+      ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       int64_t reorder_wait_seconds,
       ExecuteTaskCallback execute_task,
@@ -104,6 +105,9 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   ActorTaskExecutionArgWaiterInterface &waiter_;
 
   worker::TaskEventBuffer &task_event_buffer_;
+
+  /// Records task events to the event aggregator.
+  ray::observability::RayEventRecorderInterface &ray_task_event_recorder_;
 
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;

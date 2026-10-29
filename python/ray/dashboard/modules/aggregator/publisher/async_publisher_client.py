@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -9,19 +10,43 @@ import aiohttp
 
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private import ray_constants
 from ray._private.protobuf_compat import message_to_json
 from ray._raylet import GcsClient
 from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
 )
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.modules.aggregator.publisher.authenticated_http_client import (
+    AuthenticatedHttpClient,
+)
 from ray.dashboard.modules.aggregator.publisher.configs import (
-    GCS_EXPOSABLE_EVENT_TYPES,
     HTTP_EXPOSABLE_EVENT_TYPES,
     PUBLISHER_TIMEOUT_SECONDS,
+    TASK_EVENT_TYPES,
 )
+from ray.dashboard.runtime_env_redaction import redact_runtime_env_deep
 
 logger = logging.getLogger(__name__)
+
+# Event types with no `runtime_env` field, so no redaction is needed.
+_EVENT_TYPES_WITHOUT_RUNTIME_ENV = frozenset(
+    events_base_event_pb2.RayEvent.EventType.Value(name)
+    for name in (
+        "TASK_LIFECYCLE_EVENT",
+        "TASK_PROFILE_EVENT",
+        "DRIVER_JOB_LIFECYCLE_EVENT",
+        "NODE_DEFINITION_EVENT",
+        "NODE_LIFECYCLE_EVENT",
+        "ACTOR_LIFECYCLE_EVENT",
+        "PLACEMENT_GROUP_DEFINITION_EVENT",
+        "PLACEMENT_GROUP_LIFECYCLE_EVENT",
+        "SUBMISSION_JOB_LIFECYCLE_EVENT",
+        "WORKER_DEFINITION_EVENT",
+        "WORKER_LIFECYCLE_EVENT",
+    )
+)
 
 
 @dataclass
@@ -137,16 +162,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         # Convert protobuf objects to python dictionaries for HTTP POST. Run in executor to avoid blocking the event loop.
         filtered_json = await get_or_create_event_loop().run_in_executor(
             self._executor,
-            lambda: [
-                json.loads(
-                    message_to_json(
-                        e,
-                        always_print_fields_with_no_presence=True,
-                        preserving_proto_field_name=self._preserve_proto_field_name,
-                    )
-                )
-                for e in filtered
-            ],
+            lambda: [self._event_to_json(e) for e in filtered],
         )
 
         try:
@@ -162,6 +178,32 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
                 num_events_published=0,
                 num_events_filtered_out=0,
             )
+
+    def _event_to_json(self, event: events_base_event_pb2.RayEvent) -> dict:
+        """Convert `event` to the JSON dict sent to the external HTTP endpoint.
+
+        Args:
+            event: The event to convert. It isn't mutated, because the other
+                publishers send the same event objects with plaintext values.
+
+        Returns:
+            The event as a JSON dict. When redaction is enabled, every `env_vars`
+            value in its serialized runtime env is masked, unless the event type
+            is in `_EVENT_TYPES_WITHOUT_RUNTIME_ENV`.
+        """
+        event_json = json.loads(
+            message_to_json(
+                event,
+                always_print_fields_with_no_presence=True,
+                preserving_proto_field_name=self._preserve_proto_field_name,
+            )
+        )
+        if (
+            event.event_type not in _EVENT_TYPES_WITHOUT_RUNTIME_ENV
+            and ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV
+        ):
+            event_json = redact_runtime_env_deep(event_json)
+        return event_json
 
     async def _send_http_request(self, json_data, num_filtered_out) -> PublishStats:
         async with self._session.post(
@@ -203,7 +245,7 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
         self._executor = executor
         self._timeout_s = timeout_s
 
-        self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
+        self._exposable_event_types_list = TASK_EVENT_TYPES
 
     async def publish(
         self,
@@ -289,3 +331,142 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
 
     async def close(self) -> None:
         pass
+
+
+class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
+    """Client for publishing ray event batches to the dashboard head over HTTP.
+
+    The destination endpoint path and the set of event types this client may publish are
+    supplied by the caller, so the same client can serve any dashboard-head ingestion
+    endpoint."""
+
+    def __init__(
+        self,
+        gcs_client: GcsClient,
+        executor: ThreadPoolExecutor,
+        endpoint_path: str,
+        exposable_event_types: List[str],
+        timeout_s: float = PUBLISHER_TIMEOUT_SECONDS,
+    ) -> None:
+        super().__init__()
+        self._gcs_client = gcs_client
+        self._executor = executor
+        self._endpoint_path = endpoint_path
+        self._http_client = AuthenticatedHttpClient(timeout_s=timeout_s)
+        # Resolved lazily from InternalKV on first publish and cached.
+        self._endpoint = None
+
+        self._exposable_event_types_list = exposable_event_types
+
+    async def _get_endpoint(self) -> Optional[str]:
+        """Lazily resolve and cache the dashboard head's endpoint from InternalKV.
+        Returns None if the head has not registered its address yet, so the caller can
+        retry later."""
+        if self._endpoint:
+            return self._endpoint
+        address = await self._gcs_client.async_internal_kv_get(
+            ray_constants.DASHBOARD_ADDRESS.encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if not address:
+            return None
+        address = address.decode()
+        if not address.startswith(("http://", "https://")):
+            address = f"http://{address}"
+        self._endpoint = f"{address}{self._endpoint_path}"
+        return self._endpoint
+
+    async def publish(
+        self,
+        batch: PublishBatch,
+    ) -> PublishStats:
+        events = batch.events
+        task_events_metadata = batch.task_events_metadata
+        has_dropped_task_attempts = (
+            task_events_metadata and task_events_metadata.dropped_task_attempts
+        )
+        if not events and not has_dropped_task_attempts:
+            # Nothing to publish -> success but nothing published
+            return PublishStats(
+                is_publish_successful=True,
+                num_events_published=0,
+                num_events_filtered_out=0,
+            )
+
+        # Filter events based on exposable event types
+        filtered_events = [e for e in events if self._can_expose_event(e)]
+        num_filtered_out = len(events) - len(filtered_events)
+
+        if not filtered_events and not has_dropped_task_attempts:
+            # all events filtered out and no task events metadata -> success but nothing published
+            return PublishStats(
+                is_publish_successful=True,
+                num_events_published=0,
+                num_events_filtered_out=num_filtered_out,
+            )
+
+        try:
+            endpoint = await self._get_endpoint()
+            if endpoint is None:
+                logger.warning(
+                    "Dashboard head address not yet in InternalKV; will retry."
+                )
+                return PublishStats(
+                    is_publish_successful=False,
+                    num_events_published=0,
+                    num_events_filtered_out=0,
+                )
+            events_data = self._create_ray_events_data(
+                filtered_events, task_events_metadata
+            )
+            request = events_event_aggregator_service_pb2.AddEventsRequest(
+                events_data=events_data
+            )
+            serialized_request = await get_or_create_event_loop().run_in_executor(
+                self._executor,
+                lambda: request.SerializeToString(),
+            )
+
+            try:
+                async with self._http_client.post(endpoint, serialized_request) as resp:
+                    resp.raise_for_status()
+            except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
+                # Couldn't reach the endpoint; the dashboard head may have restarted at a
+                # new address. Drop the cached endpoint so the next publish re-resolves it
+                # from InternalKV.
+                self._endpoint = None
+                raise
+            return PublishStats(
+                is_publish_successful=True,
+                num_events_published=len(filtered_events),
+                num_events_filtered_out=num_filtered_out,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send events to the dashboard head: {e}")
+            return PublishStats(
+                is_publish_successful=False,
+                num_events_published=0,
+                num_events_filtered_out=0,
+            )
+
+    def _create_ray_events_data(
+        self,
+        event_batch: List[events_base_event_pb2.RayEvent],
+        task_events_metadata: Optional[
+            events_event_aggregator_service_pb2.TaskEventsMetadata
+        ] = None,
+    ) -> events_event_aggregator_service_pb2.RayEventsData:
+        """
+        Helper method to create RayEventsData from event batch and metadata.
+        """
+        events_data = events_event_aggregator_service_pb2.RayEventsData()
+        events_data.events.extend(event_batch)
+
+        if task_events_metadata:
+            events_data.task_events_metadata.CopyFrom(task_events_metadata)
+
+        return events_data
+
+    async def close(self) -> None:
+        await self._http_client.close()
