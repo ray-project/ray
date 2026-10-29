@@ -33,6 +33,7 @@ from ray.util.scheduling_strategies import (
 _SCHEMA_READ_BATCH_SIZE = 256
 _SCHEMA_READ_MIN_FILES = 2048
 _SCHEMA_READ_MAX_TASKS = 16
+_SCHEMA_TASK_NUM_CPUS = 0.5
 _SCHEMA_METADATA_BUDGET = 32 * 1024 * 1024
 _SCHEMA_TASK_METADATA_BUDGET = 1024 * 1024
 # Conservative fixed-record allowance; footer bytes are budgeted separately.
@@ -217,6 +218,12 @@ def _read_schema_batch(
 
 
 def _schema_task_options(remote_args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    read_num_cpus = remote_args.get("num_cpus")
+    if read_num_cpus is not None and read_num_cpus < _SCHEMA_TASK_NUM_CPUS:
+        # Do not require more CPU for planning than the requested read can use
+        # on its eligible nodes, including label-selected zero-CPU nodes.
+        logger.debug("Using driver schema reads for a low read CPU request")
+        return None
     scheduling_strategy = remote_args.get("scheduling_strategy", "DEFAULT")
     # Metadata tasks reserve 0.5 CPU independently of read tasks and may not fit
     # the placement group's bundles. Explicit None can inherit the caller's PG.
@@ -293,7 +300,10 @@ def infer_full_schema_from_files(
         window = 1
     read_remote = (
         cached_remote_fn(
-            _read_schema_batch, num_cpus=0.5, max_retries=2, num_returns=2
+            _read_schema_batch,
+            num_cpus=_SCHEMA_TASK_NUM_CPUS,
+            max_retries=2,
+            num_returns=2,
         ).options(**(options or {}))
         if distributed
         else None
@@ -306,6 +316,8 @@ def infer_full_schema_from_files(
         else 0
     )
     pending = deque()
+    inflight = set()
+    ready = set()
     originals: List[Union[ObjectRef[_EncodedSchemas], _EncodedSchemas]] = []
     metadata_chunks = []
     merged = None
@@ -314,7 +326,11 @@ def infer_full_schema_from_files(
     start = 0
     try:
         while start < len(sample) or pending:
-            while start < len(sample) and len(pending) < window:
+            while (
+                start < len(sample)
+                and (len(inflight) if read_remote is not None else len(pending))
+                < window
+            ):
                 stop = min(start + _SCHEMA_READ_BATCH_SIZE, len(sample))
                 files = [
                     FileInfo(str(paths[i]), int(sizes[i]), mtime_ns=mtimes[i])
@@ -340,29 +356,40 @@ def infer_full_schema_from_files(
                 )
                 if read_remote is not None:
                     summary, original = read_remote.remote(*args)
+                    inflight.add(summary)
                 else:
                     summary, original = _read_schema_batch(*args, io_concurrency=16)
                 pending.append((summary, footer_credit, stop - start))
                 originals.append(original)
                 start = stop
-            summary, footer_credit, count = pending[0]
-            if read_remote is not None:
-                ray.wait([summary], num_returns=1)
-                summary = ray.get(summary)
-            pending.popleft()
-            footer_available += footer_credit - summary.footer_bytes
-            metadata_chunks.append(
-                summary.metadata
-                if summary.metadata is not None
-                else pa.nulls(count, type=FILE_METADATA_TYPE)
-            )
-            if eligible:
-                if summary.schema is None:
-                    eligible = False
-                else:
-                    partial = pa.ipc.read_schema(pa.BufferReader(summary.schema))
-                    merged = _merge_same_types(merged, partial)
-                    eligible = merged is not None
+            if read_remote is not None and inflight:
+                completed, _ = ray.wait(list(inflight), num_returns=1)
+                inflight.difference_update(completed)
+                ready.update(completed)
+            # Completion releases task slots independently of schema order. Keep
+            # results as refs and reserve footer credit until ordered consumption.
+            while pending:
+                summary, footer_credit, count = pending[0]
+                if read_remote is not None:
+                    if summary not in ready:
+                        break
+                    summary_ref = summary
+                    summary = ray.get(summary_ref)
+                    ready.remove(summary_ref)
+                pending.popleft()
+                footer_available += footer_credit - summary.footer_bytes
+                metadata_chunks.append(
+                    summary.metadata
+                    if summary.metadata is not None
+                    else pa.nulls(count, type=FILE_METADATA_TYPE)
+                )
+                if eligible:
+                    if summary.schema is None:
+                        eligible = False
+                    else:
+                        partial = pa.ipc.read_schema(pa.BufferReader(summary.schema))
+                        merged = _merge_same_types(merged, partial)
+                        eligible = merged is not None
         if not eligible:
             schemas = []
             for original in originals:
@@ -390,6 +417,8 @@ def infer_full_schema_from_files(
                     logger.debug("Could not cancel schema task", exc_info=True)
         pending.clear()
         originals.clear()
+        inflight.clear()
+        ready.clear()
 
 
 def infer_schema_from_files(

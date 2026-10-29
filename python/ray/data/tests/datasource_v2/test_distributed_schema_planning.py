@@ -30,7 +30,9 @@ from ray.data.tests.schema_planning_utils import (
 from ray.exceptions import RayTaskError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import (
+    In,
     NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 
@@ -126,11 +128,16 @@ def test_full_schema_uses_driver_for_fractional_cpu_placement_group(
 
 
 @pytest.mark.parametrize("format_name,write,read", _READ_FORMATS)
-def test_full_schema_uses_driver_for_hard_node_affinity(
-    monkeypatch, tmp_path, ray_start_cluster, format_name, write, read
+@pytest.mark.parametrize("placement", ["hard_affinity", "label_selector", "node_label"])
+def test_full_schema_uses_driver_for_zero_cpu_node(
+    monkeypatch, tmp_path, ray_start_cluster, format_name, write, read, placement
 ):
     cluster = ray_start_cluster
-    target = cluster.add_node(num_cpus=0, object_store_memory=100 * 1024 * 1024)
+    target = cluster.add_node(
+        num_cpus=0,
+        object_store_memory=100 * 1024 * 1024,
+        labels={"schema-target": "zero"},
+    )
     cluster.add_node(num_cpus=2, object_store_memory=100 * 1024 * 1024)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
@@ -145,15 +152,22 @@ def test_full_schema_uses_driver_for_hard_node_affinity(
         write(table, path)
     trace = tmp_path / "opens.jsonl"
     filesystem, _ = _filesystem(trace_path=str(trace))
+    if placement == "label_selector":
+        read_options = {"label_selector": {"schema-target": "zero"}}
+    else:
+        strategy = (
+            NodeAffinitySchedulingStrategy(target_id, soft=False)
+            if placement == "hard_affinity"
+            else NodeLabelSchedulingStrategy({"schema-target": In("zero")})
+        )
+        read_options = {"ray_remote_args": {"scheduling_strategy": strategy}}
     dataset = read(
         [str(path) for path in paths],
         filesystem=filesystem,
         merge_schema=True,
         num_cpus=0,
-        ray_remote_args={
-            "scheduling_strategy": NodeAffinitySchedulingStrategy(target_id, soft=False)
-        },
         override_num_blocks=1,
+        **read_options,
     )
     records = [json.loads(line) for line in trace.read_text().splitlines()]
     assert Counter(record["path"] for record in records) == {
@@ -165,10 +179,20 @@ def test_full_schema_uses_driver_for_hard_node_affinity(
     )
     remote_args = dataset._logical_plan.dag.ray_remote_args
     assert remote_args["num_cpus"] == 0
-    strategy = remote_args["scheduling_strategy"]
-    assert isinstance(strategy, NodeAffinitySchedulingStrategy)
-    assert strategy.node_id == target_id
-    assert not strategy.soft
+    if placement == "label_selector":
+        assert remote_args["label_selector"] == {"schema-target": "zero"}
+    else:
+        strategy = remote_args["scheduling_strategy"]
+        if placement == "hard_affinity":
+            assert isinstance(strategy, NodeAffinitySchedulingStrategy)
+            assert strategy.node_id == target_id
+            assert not strategy.soft
+        else:
+            assert isinstance(strategy, NodeLabelSchedulingStrategy)
+            assert len(strategy.hard) == 1
+            assert strategy.hard[0].key == "schema-target"
+            assert isinstance(strategy.hard[0].operator, In)
+            assert strategy.hard[0].operator.values == ["zero"]
     assert dataset.count() == 3
     read_trace_offset = len(trace.read_text().splitlines())
     assert sorted(dataset.take_all(), key=lambda row: row["id"]) == [

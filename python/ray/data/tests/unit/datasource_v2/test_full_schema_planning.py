@@ -4,8 +4,8 @@ import os
 from collections import Counter
 from dataclasses import replace
 from datetime import datetime
-from types import SimpleNamespace
 from typing import Any, Dict
+from unittest.mock import Mock
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -61,7 +61,9 @@ from ray.data.expressions import col
 from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
+    In,
     NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 
@@ -539,6 +541,65 @@ def test_schema_task_options_preserve_access_constraints(scheduling_options):
     assert inference._schema_task_options({"resources": {"storage": 1}}) is None
 
 
+@pytest.mark.parametrize(
+    "remote_args,allowed",
+    [
+        pytest.param({}, True, id="default"),
+        pytest.param({"num_cpus": None}, True, id="none"),
+        pytest.param(
+            {"num_cpus": 0, "label_selector": {"pool": "zero"}},
+            False,
+            id="zero_label",
+        ),
+        pytest.param({"num_cpus": 0.1}, False, id="fractional"),
+        pytest.param(
+            {
+                "num_cpus": 0.49,
+                "label_selector": {"pool": "zero"},
+                "fallback_strategy": [{"label_selector": {"pool": "zero"}}],
+            },
+            False,
+            id="restricted_fallback",
+        ),
+        pytest.param(
+            {
+                "num_cpus": 0,
+                "scheduling_strategy": NodeLabelSchedulingStrategy(
+                    {"pool": In("zero")}
+                ),
+            },
+            False,
+            id="zero_node_label",
+        ),
+        pytest.param(
+            {"num_cpus": 0.5, "label_selector": {"pool": "worker"}},
+            True,
+            id="at_metadata_cpu",
+        ),
+        pytest.param(
+            {
+                "num_cpus": 1,
+                "scheduling_strategy": NodeLabelSchedulingStrategy(
+                    {"pool": In("worker")}
+                ),
+            },
+            True,
+            id="normal_node_label",
+        ),
+    ],
+)
+def test_schema_task_cpu_admission(remote_args, allowed):
+    original = remote_args.copy()
+    options = inference._schema_task_options(remote_args)
+    if allowed:
+        assert options == {
+            key: value for key, value in remote_args.items() if key != "num_cpus"
+        }
+    else:
+        assert options is None
+    assert remote_args == original
+
+
 @pytest.mark.parametrize("failure", [None, OSError, KeyboardInterrupt])
 def test_ordered_task_window_and_failure_cleanup(monkeypatch, tmp_path, failure):
     path = tmp_path / "file.parquet"
@@ -568,8 +629,8 @@ def test_ordered_task_window_and_failure_cleanup(monkeypatch, tmp_path, failure)
             state["pending"] += 1
             state["peak"] = max(state["peak"], state["pending"])
             return (
-                SimpleNamespace(kind="summary", value=result[0], index=index),
-                SimpleNamespace(kind="original", value=result[1], index=index),
+                Mock(kind="summary", value=result[0], index=index),
+                Mock(kind="original", value=result[1], index=index),
             )
 
     def remote_fn(fn, **kwargs):
@@ -588,7 +649,7 @@ def test_ordered_task_window_and_failure_cleanup(monkeypatch, tmp_path, failure)
 
     monkeypatch.setattr(inference, "cached_remote_fn", remote_fn)
     monkeypatch.setattr(ray, "get", get)
-    monkeypatch.setattr(ray, "wait", lambda refs, **kwargs: (refs, []))
+    monkeypatch.setattr(ray, "wait", lambda refs, **kwargs: (refs[:1], refs[1:]))
     monkeypatch.setattr(
         ray, "cancel", lambda ref, **kwargs: cancelled.append(ref.index)
     )
@@ -610,6 +671,104 @@ def test_ordered_task_window_and_failure_cleanup(monkeypatch, tmp_path, failure)
         assert not cancelled
     assert state["peak"] == 4
     assert "num_gpus" not in options and "num_cpus" not in options
+
+
+@pytest.mark.parametrize("replay", [False, True], ids=["flat", "replay"])
+def test_completed_schema_batches_refill_before_slow_head(monkeypatch, replay):
+    dtype = pa.list_(pa.int64()) if replay else pa.int64()
+    schemas = [
+        pa.schema(
+            [pa.field(f"f{i}", dtype, metadata={b"position": str(i).encode()})],
+            metadata={b"first": str(i).encode()},
+        )
+        for i in range(12)
+    ]
+    sample = FileManifest.construct_manifest(
+        paths=list(map(str, range(12))), sizes=[1] * 12, chunk_metadatas=[None] * 12
+    )
+    monkeypatch.setattr(inference, "_SCHEMA_READ_BATCH_SIZE", 2)
+    monkeypatch.setattr(inference, "_SCHEMA_READ_MIN_FILES", 0)
+    monkeypatch.setattr(inference, "_SCHEMA_READ_MAX_TASKS", 4)
+    monkeypatch.setattr(inference, "_SCHEMA_METADATA_BUDGET", 512)
+    monkeypatch.setattr(inference, "_SCHEMA_TASK_METADATA_BUDGET", 128)
+    monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
+    state = {"submitted": 0, "peak": 0, "reserved": 0, "used": 0}
+    active = {}
+    finished = set()
+    cancelled = []
+    footer_budget = 512 - 12 * inference._FILE_METADATA_RECORD_BYTES
+
+    class Remote:
+        def options(self, **kwargs):
+            return self
+
+        def remote(self, files, filesystem, format_name, row_records, credit, context):
+            index = state["submitted"]
+            state["submitted"] += 1
+            state["reserved"] += credit
+            assert state["reserved"] + state["used"] <= footer_budget
+            positions = [int(file.path) for file in files]
+            partial, encoded = inference._encode_schemas(
+                [schemas[i] for i in positions]
+            )
+            footer_size = min(8, credit // len(files))
+            metadata = pa.array(
+                [
+                    FileMetadata(
+                        i, bytes([i]) * footer_size if footer_size else None
+                    ).to_metadata()
+                    for i in positions
+                ],
+                type=FILE_METADATA_TYPE,
+            )
+            summary = inference._SchemaBatchSummary(
+                partial, metadata, footer_size * len(files)
+            )
+            ref = Mock(kind="summary", value=summary, index=index, credit=credit)
+            active[index] = ref
+            state["peak"] = max(state["peak"], len(active))
+            assert len(active) <= 4
+            return ref, Mock(kind="original", value=encoded, index=index)
+
+    def wait(refs, *, num_returns):
+        assert num_returns == 1
+        assert set(refs) == set(
+            active.values()
+        ), "Wait must include all unfinished batches"
+        candidates = [ref for ref in refs if ref.index != 0 or state["submitted"] > 4]
+        assert (
+            candidates
+        ), "Completed later batches must permit refill before the slow head"
+        ref = min(candidates, key=lambda item: item.index)
+        active.pop(ref.index)
+        finished.add(ref.index)
+        return [ref], [item for item in refs if item is not ref]
+
+    def get(ref):
+        assert ref.index in finished, "Do not consume unready batch results"
+        if ref.kind == "summary":
+            state["reserved"] -= ref.credit
+            state["used"] += ref.value.footer_bytes
+            assert state["reserved"] + state["used"] <= footer_budget
+        return ref.value
+
+    monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: Remote())
+    monkeypatch.setattr(ray, "wait", wait)
+    monkeypatch.setattr(ray, "get", get)
+    monkeypatch.setattr(
+        ray, "cancel", lambda ref, **kwargs: cancelled.append(ref.index)
+    )
+    result = _infer(sample, pafs.LocalFileSystem(), distributed=True)
+    assert result.schema.equals(
+        unify_schemas_with_validation(schemas), check_metadata=True
+    )
+    assert result.metadata is not None
+    assert [value["num_rows"] for value in result.metadata.to_pylist()] == list(
+        range(12)
+    )
+    assert state["submitted"] == 6 and state["peak"] == 4
+    assert state["reserved"] == 0 and state["used"] <= footer_budget
+    assert not active and not cancelled
 
 
 @pytest.mark.parametrize(
@@ -720,6 +879,7 @@ def test_small_or_cpu_limited_plans_keep_driver_io(monkeypatch, count, cpus):
         "inherit",
         "hard_node_affinity",
         "soft_node_affinity",
+        "low_cpu",
     ],
 )
 def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling):
@@ -732,9 +892,9 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling)
     read_paths = []
     concurrency = []
     submissions = []
-    remote_args: Dict[str, Any] = {"num_cpus": 0.1}
+    remote_args: Dict[str, Any] = {"num_cpus": 0.1 if scheduling == "low_cpu" else 1}
     if scheduling == "placement_group":
-        pg = PlacementGroup(PlacementGroupID.from_random(), bundle_cache=[{"CPU": 0.1}])
+        pg = PlacementGroup(PlacementGroupID.from_random(), bundle_cache=[{"CPU": 1}])
         remote_args["scheduling_strategy"] = PlacementGroupSchedulingStrategy(
             pg, placement_group_bundle_index=0
         )
@@ -759,7 +919,7 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling)
         def remote(self, *args):
             submissions.append(len(args[0]))
             summary, encoded = read_batch(*args)
-            return SimpleNamespace(value=summary), encoded
+            return Mock(value=summary), encoded
 
     def remote_fn(fn, **kwargs):
         assert fn is read_batch
@@ -769,7 +929,7 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling)
     monkeypatch.setattr(inference, "_read_schema_batch", read_batch)
     monkeypatch.setattr(inference, "cached_remote_fn", remote_fn)
     monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
-    monkeypatch.setattr(ray, "wait", lambda refs, **kwargs: (refs, []))
+    monkeypatch.setattr(ray, "wait", lambda refs, **kwargs: (refs[:1], refs[1:]))
     monkeypatch.setattr(ray, "get", lambda ref: ref.value)
 
     assert (
