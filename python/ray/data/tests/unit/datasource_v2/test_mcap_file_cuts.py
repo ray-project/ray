@@ -59,7 +59,9 @@ def listed_whole(path: str) -> FileManifest:
 def group(files: List[FileManifest]) -> List[Task]:
     """Feed ``files`` to a grouper one by one, as a listing task does, and
     return every task in the order it leaves."""
-    grouper = OrderedFileGrouper(OnlineBinPacker(BUDGET, requires_global_input=False))
+    grouper = OrderedFileGrouper(
+        OnlineBinPacker(BUDGET, requires_global_input=False), budget=BUDGET
+    )
     out = []
     for manifest in files:
         grouper.add_input(manifest)
@@ -107,9 +109,29 @@ def test_an_ordered_read_never_splits_a_light_file(preserve_order):
     ]
 
 
+def test_an_ordered_read_keeps_files_in_listing_order(preserve_order):
+    """With ``preserve_order``, a heavy file between light ones leaves after the
+    files listed before it, and light files share a task only with their
+    neighbours."""
+    tasks = group(
+        [
+            listed_file("a", 1),
+            listed_file("b", 1),
+            listed_file("heavy", 3),
+            listed_file("c", 1),
+        ]
+    )
+
+    assert tasks == [
+        [("a", [0]), ("b", [0])],
+        [("heavy", [0, 1, 2])],
+        [("c", [0])],
+    ]
+
+
 def test_an_ordered_read_passes_a_whole_file_row_through(preserve_order):
-    """A row that names no chunk already covers its file, so it reaches the
-    packer as listed."""
+    """A row that names no chunk already covers its file, so it goes into a
+    task as listed."""
     tasks = group([listed_whole("w")])
 
     assert tasks == [[("w", None)]]

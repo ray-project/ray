@@ -579,6 +579,31 @@ def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
         assert ds.num_blocks() == num_files
 
 
+def test_read_mcap_preserve_order_keeps_files_of_mixed_size_in_listing_order(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """With ``preserve_order``, a large file listed between two small ones in a
+    directory comes out between them, as the legacy reader returns them.
+
+    On V2 one listing task lists the directory. The large file needs a task of
+    its own, while the small ones would fit one task together.
+    """
+    # The directory lists its files in name order.
+    sizes = {"a_small.mcap": 1, "b_large.mcap": 12, "c_small.mcap": 1}
+    paths = [os.path.join(tmp_path, name) for name in sizes]
+    for path, num_messages in zip(paths, sizes.values()):
+        _write_chunked_mcap(path, num_messages)
+    ray.data.DataContext.get_current().execution_options.preserve_order = True
+    if datasource_v2:
+        budget = int(2.5 * _heaviest_chunk(paths[1], include_paths=True))
+        monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
+
+    ds = ray.data.read_mcap(str(tmp_path), include_paths=True)
+    files = [os.path.basename(row["path"]) for row in ds.take_all()]
+
+    assert files == [name for name, count in sizes.items() for _ in range(count)]
+
+
 def test_read_mcap_include_row_id(
     ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
 ):
