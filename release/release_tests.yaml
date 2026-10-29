@@ -242,6 +242,26 @@
     num_retries: 3
     script: python hello_world.py
 
+- name: "hello_world_cu133_py{{python}}"
+  python: "{{python}}"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu-cu133
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    num_retries: 3
+    script: python hello_world.py
+
 #######################
 # SSH sanity checks
 #######################
@@ -1333,6 +1353,29 @@
   run:
     timeout: 600
     script: python workloads/jobs_check_cuda_version.py --expected-cuda-version 13.0
+    wait_for_nodes:
+      num_nodes: 2
+
+- name: "jobs_check_cuda_version_torch_cu133_py{{python}}"
+  python: "{{python}}"
+  group: Jobs tests
+  team: reef
+  frequency: nightly
+  working_dir: jobs_tests
+  matrix:
+    setup:
+      python: ["3.11", "3.14"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      # 'type: torch-cu133' means: use the cu133 'ray-torch' image.
+      type: torch-cu133
+    cluster_compute: compute_tpl_gpu_node_cu130.yaml
+  run:
+    timeout: 600
+    # torch comes from the cu130 index (no cu133 wheels), so torch.version.cuda
+    # is 13.0 on the 13.3 image; check the major only.
+    script: python workloads/jobs_check_cuda_version.py --expected-cuda-version 13
     wait_for_nodes:
       num_nodes: 2
 
@@ -2882,6 +2925,28 @@
   run:
     timeout: 1800
     # NIXL currently only works on T4's for <100mb tensors so not enabling.
+    script: python experimental/rdt_single_node_microbenchmark.py
+
+# Exercises the cu133 ray-torch image on real GPUs. The NCCL tensor transport
+# goes through cupy.cuda.nccl, so this fails if the cupy-cuda13x swap is
+# broken. There is no cu133 torch wheel index, so torch comes from the cu130
+# index (CUDA 13.x minor-version compatible). One 4xT4 node, so NCCL transfers
+# stay intra-node.
+- name: rdt_single_node_T4_microbenchmark_torch_cu133
+  python: "3.11"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: torch-cu133
+    cluster_compute: experimental/compute_t4_gpu.yaml
+
+  run:
+    timeout: 1800
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark
