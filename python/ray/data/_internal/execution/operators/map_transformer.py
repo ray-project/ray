@@ -904,18 +904,13 @@ def _emit_rows_before_error(error: Exception) -> bool:
     and skips as many as were already emitted, so a last block cut short at the
     error would hide rows of the rerun's block in its place. ``_map_task``
     reruns on an error that ``retried_map_errors`` matches while it has attempts
-    left. Ray reruns a task on a ``RaySystemError`` and on an error its
-    ``retry_exceptions`` names, which for an actor task come from
-    ``actor_task_retry_on_errors``.
+    left. Ray reruns a task, while its retries allow, on an error its
+    ``retry_exceptions`` names. Ray Data adds ``RaySystemError`` to them, and
+    for an actor task they come from ``actor_task_retry_on_errors``.
     """
-    import ray.exceptions
     from ray.data.context import DataContext
 
-    may_rerun = (
-        _map_task_reruns_on(error)
-        or isinstance(error, ray.exceptions.RaySystemError)
-        or _ray_reruns_on(error)
-    )
+    may_rerun = _map_task_reruns_on(error) or _ray_reruns_on(error)
     return DataContext.get_current().max_errored_blocks != 0 and not may_rerun
 
 

@@ -23,7 +23,10 @@ from ray.data._internal.execution.operators.map_operator import (
     _map_task,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.remote_fn import (
+    _add_system_error_to_retry_exceptions,
+    cached_remote_fn,
+)
 from ray.data._internal.utils.cached_ray_internals import (
     get_local_ongoing_lineage_reconstruction_tasks,
 )
@@ -331,8 +334,13 @@ def _ray_retried_exceptions(ray_remote_args: Dict[str, Any]) -> Union[bool, List
     """The exceptions Ray reruns a task with ``ray_remote_args`` on.
 
     ``cached_remote_fn`` defaults ``max_retries`` to -1 (unlimited); with 0, Ray
-    reruns on nothing.
+    reruns on nothing. Otherwise it also reruns on ``RaySystemError``, which
+    ``cached_remote_fn`` adds to ``retry_exceptions``.
     """
     if ray_remote_args.get("max_retries", -1) == 0:
         return False
-    return ray_remote_args.get("retry_exceptions", False)
+    retried = ray_remote_args.get("retry_exceptions", False)
+    # A copy, since adding ``RaySystemError`` appends to a list in place.
+    args = {"retry_exceptions": list(retried) if isinstance(retried, list) else retried}
+    _add_system_error_to_retry_exceptions(args)
+    return args["retry_exceptions"]
