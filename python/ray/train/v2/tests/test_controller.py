@@ -1029,6 +1029,8 @@ async def test_waiting_for_a_scaling_decision_yields_the_event_loop(monkeypatch)
     assert not run_task.done()
     assert isinstance(controller.get_state(), InitializingState)
     run_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await run_task
 
 
 @pytest.mark.asyncio
@@ -1053,6 +1055,55 @@ async def test_abort_while_waiting_for_a_scaling_decision(monkeypatch):
     await asyncio.wait_for(run_task, timeout=5)
     assert mock_exit_actor.call_count == 1
     assert isinstance(controller.get_state(), AbortedState)
+
+
+@pytest.mark.asyncio
+async def test_abort_while_step_raises(monkeypatch):
+    """An error raised by `_step` after `abort()` ran isn't treated as a
+    training failure, so it can't overwrite the aborted state."""
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+
+    class FailureDecisionCallback(ControllerCallback):
+        def __init__(self):
+            self.failure_decision_called = False
+
+        def before_controller_execute_failure_decision(
+            self, failure_decision: FailureDecision
+        ):
+            self.failure_decision_called = True
+
+    class RaisingFailurePolicy(MockFailurePolicy):
+        def make_decision(self, training_failed_error):
+            raise RuntimeError("Failure policy should not be consulted.")
+
+    callback = FailureDecisionCallback()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
+        failure_policy=RaisingFailurePolicy(failure_config=None),
+        callbacks=[callback],
+    )
+
+    step_started = asyncio.Event()
+    aborted = asyncio.Event()
+
+    async def step_raises_after_abort():
+        step_started.set()
+        await aborted.wait()
+        raise RuntimeError("Worker group was aborted.")
+
+    monkeypatch.setattr(controller, "_step", step_raises_after_abort)
+
+    run_task = asyncio.create_task(controller.run())
+    await step_started.wait()
+    await controller.abort()
+    aborted.set()
+
+    await asyncio.wait_for(run_task, timeout=5)
+    assert isinstance(controller.get_state(), AbortedState)
+    assert not callback.failure_decision_called
 
 
 if __name__ == "__main__":

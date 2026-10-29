@@ -923,6 +923,10 @@ class TrainController:
         except AsyncioActorExit:
             raise
         except Exception as e:
+            if self.get_state().is_terminal():
+                # `abort()` ran while `_step` was awaiting, so this error comes
+                # from the aborted worker group and isn't a training failure.
+                return
             # Preserve the original error type if it is already a
             # TrainingFailedError (e.g. WorkerGroupError); otherwise
             # wrap it in a ControllerError.
