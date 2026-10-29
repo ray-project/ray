@@ -21,7 +21,6 @@ class RecordingLocalFileSystem(LocalFileSystem):
         self.trace_path = trace_path
         self.require_env = require_env
         self.schema_config = schema_config
-        self.opens = []
 
     def _open(self, path, mode="rb", block_size=None, **kwargs):
         if self.require_env is not None:
@@ -32,7 +31,6 @@ class RecordingLocalFileSystem(LocalFileSystem):
                 getattr(context, name) == value
                 for name, value in self.schema_config.items()
             )
-        self.opens.append(path)
         if self.trace_path is not None:
             with open(self.trace_path, "a") as output:
                 output.write(
