@@ -1640,6 +1640,7 @@ class SearchSpaceTest(unittest.TestCase):
             tune.qrandint(1, 21, 5),
             tune.qrandint(-7, 12, 4),
             tune.qrandint(0, 100, 10),
+            tune.qrandint(0, 10, 2.0),
         ):
             expected = set(domain.sample(size=2000))
             with self.subTest(expected=sorted(expected)):
