@@ -50,7 +50,7 @@ class _Members:
     def paths(self) -> List[str]:
         return ["fake://table"]
 
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema=None) -> FileIndexer:
         return NonSamplingFileIndexer(ignore_missing_paths=False)
 
     def infer_schema(self, sample) -> pa.Schema:

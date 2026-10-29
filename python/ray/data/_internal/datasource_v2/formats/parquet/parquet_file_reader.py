@@ -80,6 +80,19 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
 _READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 16)
 _READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
 
+# ``ParquetFileFormat`` options that only change the Arrow types of a read.
+_TYPE_OPTIONS = ("dictionary_columns", "binary_type", "list_type")
+
+
+def read_format_kwargs(kwargs: Dict[str, Any], casts: bool) -> Dict[str, Any]:
+    """The ``ParquetFileFormat`` kwargs a read task passes.
+
+    A read that casts to the schema drops the type options, which the cast undoes.
+    """
+    if not casts:
+        return dict(kwargs)
+    return {k: v for k, v in kwargs.items() if k not in _TYPE_OPTIONS}
+
 
 def _estimate_batch_size_from_metadata(
     fragment: pds.ParquetFileFragment,
@@ -166,28 +179,23 @@ def _estimate_batch_size_from_metadata(
 
 
 def _estimate_batch_size_from_chunk_stats(
-    uncompressed_size: int,
+    size_bytes: int,
     num_rows: int,
     target_block_size: int,
 ) -> Optional[int]:
     """Estimate batch size from footer-derived chunk stats, without any I/O.
 
     ``ListFiles`` already read each file's footer and recorded the
-    projection-scoped uncompressed byte size and row count of the row groups it
+    projection-scoped decoded Arrow size and row count of the row groups it
     assigned to this chunk (the ``size_bytes`` and ``num_rows`` of its
-    :class:`FileChunk`). Sizing from
-    those avoids the extra footer read that
-    :func:`_estimate_batch_size_from_metadata` incurs. Mirrors that function's
-    math but over the whole chunk (its row-group average) rather than the first
-    row group; the estimate is refined from real data after the first batch.
+    :class:`FileChunk`). Sizing from those avoids the extra footer read that
+    :func:`_estimate_batch_size_from_metadata` incurs. Works over the whole
+    chunk (its row-group average) rather than the first row group; the
+    estimate is refined from real data after the first batch.
     """
-    if num_rows <= 0 or uncompressed_size <= 0:
+    if num_rows <= 0 or size_bytes <= 0:
         return None
-    estimated_in_mem_row_size = (
-        uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT / num_rows
-    )
-    if estimated_in_mem_row_size == 0:
-        return None
+    estimated_in_mem_row_size = size_bytes / num_rows
     # Never request more rows than the chunk actually contains.
     return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
 
@@ -282,7 +290,12 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
     @override
     def _make_format(self) -> pds.ParquetFileFormat:
-        return pds.ParquetFileFormat(**self._parquet_format_kwargs)
+        return pds.ParquetFileFormat(
+            **read_format_kwargs(
+                kwargs=self._parquet_format_kwargs,
+                casts=self._file_dataset_schema is not None,
+            )
+        )
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:

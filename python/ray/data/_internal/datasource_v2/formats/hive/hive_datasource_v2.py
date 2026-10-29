@@ -103,7 +103,7 @@ class HiveDatasourceV2(DataSourceWithMetadata[FileManifest]):
     def paths(self) -> List[str]:
         return [_READ_UNIT]
 
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
         return _HiveIndexer()
 
     def get_file_partitioner(self, *, hints=None):
