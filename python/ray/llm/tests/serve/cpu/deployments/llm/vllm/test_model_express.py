@@ -73,6 +73,23 @@ def test_is_model_express():
     )
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        dict(placement_group_config=dict(bundles=[{"GPU": 0.49}])),
+        dict(runtime_env=dict(env_vars={"VLLM_RAY_PER_WORKER_GPUS": "0.5"})),
+    ],
+)
+def test_setup_rejects_fractional_gpus(extra):
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id="Qwen/Qwen3-0.6B"),
+        engine_kwargs=dict(load_format="modelexpress"),
+        **extra,
+    )
+    with pytest.raises(ValueError, match="fractional GPUs"):
+        asyncio.run(model_express.setup_model_express(llm_config))
+
+
 def test_setup_sets_client_env():
     env, looked_up = _setup(env={})
 

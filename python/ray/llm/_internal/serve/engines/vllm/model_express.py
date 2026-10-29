@@ -18,6 +18,7 @@ import ray
 from ray import serve
 from ray.llm._internal.common.utils.download_utils import MODEL_EXPRESS_LOAD_FORMATS
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.serving_patterns.model_express.envs import (
     get_mx_app_name,
     get_mx_metadata_port_base,
@@ -45,6 +46,24 @@ def is_model_express(llm_config: LLMConfig) -> bool:
 async def _mx_server_address(app_name: str) -> str:
     handle = serve.get_deployment_handle(MX_SERVER_DEPLOYMENT_NAME, app_name=app_name)
     return await handle.address.remote()
+
+
+def _check_whole_gpus(llm_config: LLMConfig) -> None:
+    """MX registers each worker's GPU with NIXL and transfers whole GPU state, so
+    workers can't share a GPU."""
+    env_vars = (llm_config.runtime_env or {}).get("env_vars") or {}
+    per_worker = env_vars.get("VLLM_RAY_PER_WORKER_GPUS")
+    if per_worker is not None and float(per_worker) >= 1:
+        return
+    fraction = per_worker or VLLMEngineConfig._detect_fractional_gpu_from_pg(
+        llm_config.placement_group_config
+    )
+    if fraction is not None:
+        raise ValueError(
+            f"load_format={llm_config.engine_kwargs['load_format']!r} doesn't "
+            f"support fractional GPUs (got {fraction} GPU per worker). Give each "
+            "vLLM worker a whole GPU, or use another load_format."
+        )
 
 
 def _set_default(name: str, value: str) -> None:
@@ -82,6 +101,7 @@ def _start_ready_server(host: str) -> int:
 
 async def setup_model_express(llm_config: LLMConfig) -> None:
     """Configure the MX client for this replica. Runs before the engine starts."""
+    _check_whole_gpus(llm_config)
     engine_config = llm_config.get_engine_config()
     node_ip = ray.util.get_node_ip_address()
 
