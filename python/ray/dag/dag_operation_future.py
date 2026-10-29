@@ -9,8 +9,7 @@ T = TypeVar("T")
 
 @DeveloperAPI
 class DAGOperationFuture(ABC, Generic[T]):
-    """
-    A future representing the result of a DAG operation.
+    """A future representing the result of a DAG operation.
 
     This is an abstraction that is internal to each actor,
     and is not exposed to the DAG caller.
@@ -18,22 +17,18 @@ class DAGOperationFuture(ABC, Generic[T]):
 
     @abstractmethod
     def wait(self):
-        """
-        Wait for the future and return the result of the operation.
-        """
+        """Wait for the future and return the result of the operation."""
         raise NotImplementedError
 
 
 @DeveloperAPI
 class ResolvedFuture(DAGOperationFuture):
-    """
-    A future that is already resolved. Calling `wait()` on this will
+    """A future that is already resolved. Calling `wait()` on this will
     immediately return the result without blocking.
     """
 
     def __init__(self, result: Any):
-        """
-        Initialize a resolved future.
+        """Initialize a resolved future.
 
         Args:
             result: The result of the future.
@@ -41,16 +36,13 @@ class ResolvedFuture(DAGOperationFuture):
         self._result = result
 
     def wait(self):
-        """
-        Wait and immediately return the result. This operation will not block.
-        """
+        """Wait and immediately return the result. This operation will not block."""
         return self._result
 
 
 @DeveloperAPI
 class GPUFuture(DAGOperationFuture[Any]):
-    """
-    A future for a GPU event on a CUDA stream.
+    """A future for a GPU event on a CUDA stream.
 
     This future wraps a buffer, and records an event on the given stream
     when it is created. When the future is waited on, it makes the current
@@ -77,8 +69,7 @@ class GPUFuture(DAGOperationFuture[Any]):
 
     @staticmethod
     def add_gpu_future(fut_id: int, fut: "GPUFuture") -> None:
-        """
-        Cache the GPU future.
+        """Cache the GPU future.
         Args:
             fut_id: GPU future ID.
             fut: GPU future to be cached.
@@ -90,8 +81,7 @@ class GPUFuture(DAGOperationFuture[Any]):
 
     @staticmethod
     def remove_gpu_future(fut_id: int) -> None:
-        """
-        Remove the cached GPU future and destroy its CUDA event.
+        """Remove the cached GPU future and destroy its CUDA event.
         Args:
             fut_id: GPU future ID.
         """
@@ -99,8 +89,7 @@ class GPUFuture(DAGOperationFuture[Any]):
             GPUFuture.gpu_futures.pop(fut_id).destroy_event()
 
     def __init__(self, buf: Any, fut_id: int, stream: Any = None):
-        """
-        Initialize a GPU future on the given stream.
+        """Initialize a GPU future on the given stream.
 
         Args:
             buf: The buffer to return when the future is resolved.
@@ -121,8 +110,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         GPUFuture.add_gpu_future(fut_id, self)
 
     def wait(self) -> Any:
-        """
-        Wait for the future on the current CUDA stream and return the result from
+        """Wait for the future on the current CUDA stream and return the result from
         the GPU operation. This operation does not block CPU.
         """
         current_stream = AcceleratorContext.get().current_stream()
@@ -135,9 +123,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         return self._buf
 
     def destroy_event(self) -> None:
-        """
-        Destroy the CUDA event associated with this future.
-        """
+        """Destroy the CUDA event associated with this future."""
         if self._event is None:
             return
 

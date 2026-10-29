@@ -128,8 +128,7 @@ class SharedMemoryType(ChannelOutputType):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         driver_actor_id: Optional[str] = None,
     ) -> "Channel":
-        """
-        Instantiate a ChannelInterface class that can be used
+        """Instantiate a ChannelInterface class that can be used
         to pass data of this type.
 
         Args:
@@ -153,8 +152,7 @@ class SharedMemoryType(ChannelOutputType):
 
 @PublicAPI(stability="alpha")
 class Channel(ChannelInterface):
-    """
-    A wrapper type for ray.ObjectRef. Currently supports ray.get but not
+    """A wrapper type for ray.ObjectRef. Currently supports ray.get but not
     ray.wait.
     """
 
@@ -523,8 +521,7 @@ class Channel(ChannelInterface):
         )
 
     def close(self) -> None:
-        """
-        Close this channel by setting the error bit on both the writer_ref and the
+        """Close this channel by setting the error bit on both the writer_ref and the
         reader_ref.
         """
         self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
@@ -582,16 +579,12 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_read_index = 0
 
     def ensure_registered_as_writer(self):
-        """
-        Check whether the process is a valid writer. This method must be idempotent.
-        """
+        """Check whether the process is a valid writer. This method must be idempotent."""
         for buffer in self._buffers:
             buffer.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
-        """
-        Check whether the process is a valid reader. This method must be idempotent.
-        """
+        """Check whether the process is a valid reader. This method must be idempotent."""
         for buffer in self._buffers:
             buffer.ensure_registered_as_reader()
 

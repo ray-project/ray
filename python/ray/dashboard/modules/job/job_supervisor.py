@@ -56,8 +56,7 @@ if sys.platform == "win32":
 
 
 class JobSupervisor:
-    """
-    Ray actor created by JobManager for each submitted job, responsible to
+    """Ray actor created by JobManager for each submitted job, responsible to
     setup runtime_env, execute given shell command in subprocess, update job
     status, persist job logs and manage subprocess group cleaning.
 
@@ -105,8 +104,7 @@ class JobSupervisor:
         self._configure_logger()
 
     def _configure_logger(self) -> None:
-        """
-        Configure self._logger object to write logs to file based on job
+        """Configure self._logger object to write logs to file based on job
         submission ID and to console.
         """
         supervisor_log_file_name = os.path.join(
@@ -159,8 +157,7 @@ class JobSupervisor:
         pass
 
     def _exec_entrypoint(self, env: dict, logs_path: str) -> subprocess.Popen:
-        """
-        Runs the entrypoint command as a child process, streaming stderr &
+        """Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
 
         Unix systems:
@@ -326,8 +323,7 @@ class JobSupervisor:
         _start_signal_actor: Optional[ActorHandle] = None,
         resources_specified: bool = False,
     ):
-        """
-        Stop and start both happen asynchronously, coordinated by asyncio event
+        """Stop and start both happen asynchronously, coordinated by asyncio event
         and coroutine, respectively.
 
         1) Sets job status as running

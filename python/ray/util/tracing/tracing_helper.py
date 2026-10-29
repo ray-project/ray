@@ -32,8 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class _OpenTelemetryProxy:
-    """
-    This proxy makes it possible for tracing to be disabled when opentelemetry
+    """This proxy makes it possible for tracing to be disabled when opentelemetry
     is not installed on the cluster, but is installed locally.
 
     The check for `opentelemetry`'s existence must happen where the functions
@@ -478,8 +477,7 @@ def _inject_tracing_into_class(_cls):
             _ray_trace_ctx: Optional[Dict[str, Any]] = None,
             **_kwargs: Any,
         ) -> Any:
-            """
-            Wrap the user's function with a function that
+            """Wrap the user's function with a function that
             will extract the trace context
             """
             # If tracing feature flag is not on, perform a no-op
@@ -511,8 +509,7 @@ def _inject_tracing_into_class(_cls):
             _ray_trace_ctx: Optional[Dict[str, Any]] = None,
             **_kwargs: Any,
         ) -> Any:
-            """
-            Wrap the user's function with a function that
+            """Wrap the user's function with a function that
             will extract the trace context
             """
             # If tracing feature flag is not on, perform a no-op

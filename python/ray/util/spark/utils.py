@@ -46,8 +46,7 @@ def exec_cmd(
     synchronous=True,
     **kwargs,
 ):
-    """
-    A convenience wrapper of `subprocess.Popen` for running a command from a Python
+    """A convenience wrapper of `subprocess.Popen` for running a command from a Python
     script.
     If `synchronous` is True, wait until the process terminated and if subprocess
     return code is not 0, raise error containing last 100 lines output.
@@ -123,9 +122,7 @@ def _wait_service_up(host, port, timeout):
 def get_random_unused_port(
     host, min_port=1024, max_port=65535, max_retries=100, exclude_list=None
 ):
-    """
-    Get random unused port.
-    """
+    """Get random unused port."""
     # Use true random generator
     rng = random.SystemRandom()
 
@@ -419,8 +416,7 @@ def _get_avail_mem_per_ray_worker_node(
     heap_memory_per_node,
     object_store_memory_per_node,
 ):
-    """
-    Returns tuple of (
+    """Returns tuple of (
         ray_worker_node_heap_mem_bytes,
         ray_worker_node_object_store_bytes,
         error_message, # always None
@@ -466,8 +462,7 @@ def get_avail_mem_per_ray_worker_node(
     num_cpus_per_node,
     num_gpus_per_node,
 ):
-    """
-    Return the available heap memory and object store memory for each ray worker,
+    """Return the available heap memory and object store memory for each ray worker,
     and error / warning message if it has.
     Return value is a tuple of
     (ray_worker_node_heap_mem_bytes, ray_worker_node_object_store_bytes,

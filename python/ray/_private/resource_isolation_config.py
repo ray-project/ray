@@ -40,8 +40,7 @@ class ResourceIsolationConfig:
         system_reserved_cpu: Optional[float] = None,
         system_reserved_memory: Optional[int] = None,
     ):
-        """
-        Raises:
+        """Raises:
             ValueError: On invalid inputs.
 
         Args:

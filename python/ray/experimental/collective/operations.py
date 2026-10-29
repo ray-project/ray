@@ -27,8 +27,7 @@ def _bind(
     op: _CollectiveOp,
     transport: Optional[Union[str, Communicator]] = None,
 ):
-    """
-    Bind inputs (input nodes or lists of input nodes) with a collective operation.
+    """Bind inputs (input nodes or lists of input nodes) with a collective operation.
     The collective operation is applied to each list of input nodes. The output nodes
     will have the same shape as the input nodes.
 

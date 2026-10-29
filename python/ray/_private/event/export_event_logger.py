@@ -241,8 +241,7 @@ def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Lo
 def check_export_api_enabled(
     source: ExportEvent.SourceType,
 ) -> bool:
-    """
-    Check RAY_ENABLE_EXPORT_API_WRITE and RAY_ENABLE_EXPORT_API_WRITE_CONFIG environment
+    """Check RAY_ENABLE_EXPORT_API_WRITE and RAY_ENABLE_EXPORT_API_WRITE_CONFIG environment
     variables to verify if export events should be written for the given source type.
 
     Args:

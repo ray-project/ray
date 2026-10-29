@@ -93,8 +93,7 @@ class DAGNode(DAGNodeBase):
         self.is_cgraph_output_node = False
 
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
-        """
-        Retrieve upstream nodes and update their downstream dependencies.
+        """Retrieve upstream nodes and update their downstream dependencies.
 
         Currently, the DAG assumes that all DAGNodes in `args`, `kwargs`, and
         `other_args_to_resolve` are upstream nodes. However, Ray Compiled Graphs
@@ -146,8 +145,7 @@ class DAGNode(DAGNodeBase):
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
-        """
-        Configure the torch tensor transport for this node.
+        """Configure the torch tensor transport for this node.
 
         Args:
             transport: Specifies the tensor transport mechanism.
@@ -543,8 +541,7 @@ class DAGNode(DAGNodeBase):
         )
 
     def traverse_and_apply(self, fn: "Callable[[DAGNode], T]"):
-        """
-        Traverse all nodes in the connected component of the DAG that contains
+        """Traverse all nodes in the connected component of the DAG that contains
         the `self` node, and apply the given function to each node.
         """
         visited = set()
@@ -593,8 +590,7 @@ class DAGNode(DAGNodeBase):
                         queue.append(neighbor)
 
     def _raise_nested_dag_node_error(self, args: Tuple[Any, ...]) -> None:
-        """
-        Raise an error for nested DAGNodes in Ray Compiled Graphs.
+        """Raise an error for nested DAGNodes in Ray Compiled Graphs.
 
         Args:
             args: The arguments of the DAGNode.
@@ -620,9 +616,7 @@ class DAGNode(DAGNodeBase):
         )
 
     def _find_root(self) -> "DAGNode":
-        """
-        Return the root node of the DAG. The root node must be an InputNode.
-        """
+        """Return the root node of the DAG. The root node must be an InputNode."""
         from ray.dag.input_node import InputNode
 
         node = self
@@ -641,8 +635,7 @@ class DAGNode(DAGNodeBase):
         predicate_fn: Callable,
         apply_fn: Callable,
     ):
-        """
-        Apply a given function to DAGNodes in source_input_list, and return
+        """Apply a given function to DAGNodes in source_input_list, and return
         the replaced inputs without mutating or coping any DAGNode.
 
         Args:

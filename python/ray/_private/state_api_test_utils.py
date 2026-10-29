@@ -405,8 +405,7 @@ def summarize_worker_startup_time():
 def verify_failed_task(
     name: str, error_type: str, error_message: Union[str, List[str], None] = None
 ) -> bool:
-    """
-    Check if a task with 'name' has failed with the exact error type 'error_type'
+    """Check if a task with 'name' has failed with the exact error type 'error_type'
     and 'error_message' in the error message.
     """
     tasks = list_tasks(filters=[("name", "=", name)], detail=True)
@@ -423,8 +422,7 @@ def verify_failed_task(
 
 
 def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 30) -> None:
-    """
-    Block until every task in ``name_to_state`` is observed in its expected
+    """Block until every task in ``name_to_state`` is observed in its expected
     state via the State API, or raise if the timeout expires.
     """
 
@@ -438,8 +436,7 @@ def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 30) -> 
 
 
 def _is_actor_task_running(actor_pid: int, task_name: str):
-    """
-    Check whether the actor task `task_name` is running on the actor process
+    """Check whether the actor task `task_name` is running on the actor process
     with pid `actor_pid`.
 
     Args:
@@ -508,9 +505,7 @@ def _is_actor_task_running(actor_pid: int, task_name: str):
 
 
 def verify_schema(state, result_dict: dict, detail: bool = False):
-    """
-    Verify the schema of the result_dict is the same as the state.
-    """
+    """Verify the schema of the result_dict is the same as the state."""
     state_fields_columns = set()
     if detail:
         state_fields_columns = state.columns()

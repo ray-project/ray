@@ -136,8 +136,7 @@ class GlobalState:
         self._task_events_head_client = None
 
     def _connect_and_get_accessor(self) -> GlobalStateAccessor:
-        """
-        This lazily initializes clients needed for state accessors and returns a connected global state accessor.
+        """This lazily initializes clients needed for state accessors and returns a connected global state accessor.
 
         Returns:
             GlobalStateAccessor: A connected global state accessor.

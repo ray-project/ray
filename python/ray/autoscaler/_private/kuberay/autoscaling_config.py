@@ -234,8 +234,7 @@ def _node_type_from_group_spec(
 def _get_ray_resources_from_group_spec(
     group_spec: Dict[str, Any], is_head: bool
 ) -> Dict[str, int]:
-    """
-    Infers Ray resources from group `Resources` field, rayStartCommands, or K8s limits.
+    """Infers Ray resources from group `Resources` field, rayStartCommands, or K8s limits.
     The resources extracted are used in autoscaling calculations.
     """
     # Set resources from top-level group 'Resources' field if it exists.
@@ -319,8 +318,7 @@ def _get_ray_resources_from_group_spec(
 def _get_labels_from_group_spec(
     group_spec: Dict[str, Any], group_name: str = ""
 ) -> Dict[str, str]:
-    """
-    Parses Ray node labels for the autoscaling config based on the following
+    """Parses Ray node labels for the autoscaling config based on the following
     priority:
     1. Top-level `labels` field in the group spec.
     2. `labels` field in `rayStartParams`.

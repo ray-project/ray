@@ -89,9 +89,7 @@ class PublisherClientInterface(ABC):
         return len(batch.events)
 
     def _can_expose_event(self, event) -> bool:
-        """
-        Check if an event should be allowed to be published.
-        """
+        """Check if an event should be allowed to be published."""
         if self._allow_all_event_types:
             return True
         if not self._exposable_event_types_list:
@@ -318,9 +316,7 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
             events_event_aggregator_service_pb2.TaskEventsMetadata
         ] = None,
     ) -> events_event_aggregator_service_pb2.RayEventsData:
-        """
-        Helper method to create RayEventsData from event batch and metadata.
-        """
+        """Helper method to create RayEventsData from event batch and metadata."""
         events_data = events_event_aggregator_service_pb2.RayEventsData()
         events_data.events.extend(event_batch)
 
@@ -457,9 +453,7 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
             events_event_aggregator_service_pb2.TaskEventsMetadata
         ] = None,
     ) -> events_event_aggregator_service_pb2.RayEventsData:
-        """
-        Helper method to create RayEventsData from event batch and metadata.
-        """
+        """Helper method to create RayEventsData from event batch and metadata."""
         events_data = events_event_aggregator_service_pb2.RayEventsData()
         events_data.events.extend(event_batch)
 

@@ -74,8 +74,7 @@ assert Version(boto3.__version__) >= Version(
 
 
 def key_pair(i, region, key_name):
-    """
-    If key_name is not None, key_pair will be named after key_name.
+    """If key_name is not None, key_pair will be named after key_name.
     Returns the ith default (aws_key_pair_name, key_pair_path).
     """
     if i == 0:
@@ -1201,8 +1200,7 @@ def _configure_subnets_and_groups_from_network_interfaces(
 
 
 def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
-    """
-    Returns all subnet IDs found in the given node config's network interfaces.
+    """Returns all subnet IDs found in the given node config's network interfaces.
 
     Args:
         config: node config
@@ -1216,8 +1214,7 @@ def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
 
 
 def _security_groups_in_network_config(config: Dict[str, Any]) -> List[List[str]]:
-    """
-    Returns all security group IDs found in the given node config's network
+    """Returns all security group IDs found in the given node config's network
     interfaces.
 
     Args:

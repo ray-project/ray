@@ -58,9 +58,7 @@ class RayStopper(InstanceUpdatedSubscriber):
                 fut.add_done_callback(_log_on_error)
 
     def _stop_or_drain_ray(self, event: InstanceUpdateEvent) -> None:
-        """
-        Stops or drains the ray node based on the termination request.
-        """
+        """Stops or drains the ray node based on the termination request."""
         assert event.HasField("termination_request"), "Termination request is required."
         termination_request = event.termination_request
         ray_node_id = termination_request.ray_node_id
@@ -95,8 +93,7 @@ class RayStopper(InstanceUpdatedSubscriber):
         reason: DrainNodeReason,
         reason_str: str,
     ):
-        """
-        Drains the ray node.
+        """Drains the ray node.
 
         Args:
             gcs_client: The gcs client to use.
@@ -132,8 +129,7 @@ class RayStopper(InstanceUpdatedSubscriber):
         ray_node_id: str,
         instance_id: str,
     ):
-        """
-        Stops the ray node.
+        """Stops the ray node.
 
         Args:
             gcs_client: The gcs client to use.

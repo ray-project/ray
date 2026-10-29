@@ -12,8 +12,7 @@ from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 
 
 class LazyDefaultDict(defaultdict):
-    """
-    LazyDefaultDict(default_factory[, ...]) --> dict with default factory
+    """LazyDefaultDict(default_factory[, ...]) --> dict with default factory
 
     The default factory is call with the key argument to produce
     a new value when a key is not present, in __getitem__ only.

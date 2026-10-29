@@ -27,8 +27,7 @@ class TorchTensorType(ChannelOutputType):
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):
-        """
-        A type hint that can be used to annotate DAG nodes that return a
+        """A type hint that can be used to annotate DAG nodes that return a
         torch.Tensor.
 
         NOTE: Use of this type in the DAG will register a custom serializer for
@@ -165,9 +164,7 @@ class TorchTensorType(ChannelOutputType):
         return self.transport == self.ACCELERATOR
 
     def get_custom_communicator(self) -> Optional[Communicator]:
-        """
-        Return the communicator group if one is specified.
-        """
+        """Return the communicator group if one is specified."""
         return self._communicator
 
     def set_communicator_id(self, group_id: str) -> None:
@@ -178,8 +175,7 @@ class TorchTensorType(ChannelOutputType):
         return self._communicator_id
 
     def __deepcopy__(self, memo):
-        """
-        Deep copy all the fields except for the communicator group. The communicator
+        """Deep copy all the fields except for the communicator group. The communicator
         group should not be deep copied because it can be shared across `TorchTensorType`
         instances.
         """

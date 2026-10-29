@@ -187,8 +187,7 @@ class NodeHead(SubprocessModule):
         }
 
     async def _subscribe_for_node_updates(self) -> AsyncGenerator[dict, None]:
-        """
-        Yields the initial state of all nodes, then yields the updated state of nodes.
+        """Yields the initial state of all nodes, then yields the updated state of nodes.
 
         It makes GetAllNodeInfo call only once after the subscription is done, to get
         the initial state of the nodes.
@@ -297,8 +296,7 @@ class NodeHead(SubprocessModule):
         self._stubs[node_id] = stub
 
     async def _update_nodes(self):
-        """
-        Subscribe to node updates and update the internal states. If the head node is
+        """Subscribe to node updates and update the internal states. If the head node is
         not registered after RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT, it logs a
         warning only once.
         """
@@ -522,9 +520,7 @@ class NodeHead(SubprocessModule):
             DataSource.node_stats[node_id] = new_stat
 
     async def _update_node_physical_stats(self):
-        """
-        Update DataSource.node_physical_stats by subscribing to the GCS resource usage.
-        """
+        """Update DataSource.node_physical_stats by subscribing to the GCS resource usage."""
         subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
 
@@ -550,8 +546,7 @@ class NodeHead(SubprocessModule):
                 )
 
     async def _update_actors(self):
-        """
-        Processes actor info. First gets all actors from GCS, then subscribes to
+        """Processes actor info. First gets all actors from GCS, then subscribes to
         actor updates. For each actor update, updates DataSource.node_actors and
         DataSource.actors.
         """
@@ -726,9 +721,7 @@ class NodeHead(SubprocessModule):
 
     @routes.get("/test/dump")
     async def dump(self, req) -> aiohttp.web.Response:
-        """
-        Dump all data from datacenter. This is used for testing purpose only.
-        """
+        """Dump all data from datacenter. This is used for testing purpose only."""
         key = req.query.get("key")
         if key is None:
             all_data = {

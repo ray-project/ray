@@ -99,8 +99,7 @@ class TransferMetadata(NamedTuple):
 
 @PublicAPI(stability="alpha")
 def wait_tensor_freed(tensor: Any, timeout: Optional[float] = None):
-    """
-    Wait for the tensor to be freed.
+    """Wait for the tensor to be freed.
 
     This function is useful for cases where an actor keeps a reference to a
     tensor after returning the tensor from a task annotated with
@@ -129,8 +128,7 @@ def wait_tensor_freed(tensor: Any, timeout: Optional[float] = None):
 
 @PublicAPI(stability="alpha")
 def set_target_for_ref(ref: ObjectRef, target: List[Any]):
-    """
-    Set target buffers for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
+    """Set target buffers for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
 
     This is only supported by some transports (e.g., NIXL). If the transport
     does not support this feature, an exception will be raised during ray.get.
@@ -156,8 +154,7 @@ def set_target_for_ref(ref: ObjectRef, target: List[Any]):
 
 @PublicAPI(stability="alpha")
 def set_target_device_for_ref(ref: ObjectRef, target_device: str):
-    """
-    Set the target device for an RDT ObjectRef to fetch tensors onto when
+    """Set the target device for an RDT ObjectRef to fetch tensors onto when
     `ray.get` is called.
 
     Ray allocates the receive buffers on ``target_device`` instead of the source
@@ -261,9 +258,7 @@ class RDTManager:
             return self._rdt_store
 
     def shutdown(self):
-        """
-        Interrupt and join the _monitor_failures_thread
-        """
+        """Interrupt and join the _monitor_failures_thread"""
         with self._init_lock:
             if self._monitor_failures_thread:
                 self._monitor_failures_shutdown_event.set()
@@ -281,9 +276,7 @@ class RDTManager:
                 self._monitor_failures_thread.start()
 
     def is_managed_object(self, obj_id: str) -> bool:
-        """
-        Check if the RDT object is owned or borrowed by this process.
-        """
+        """Check if the RDT object is owned or borrowed by this process."""
         with self._lock:
             return obj_id in self._managed_rdt_metadata
 
@@ -314,8 +307,7 @@ class RDTManager:
                 return None
 
     def _monitor_failures(self):
-        """
-        Monitor the refs from send and recv tasks and abort the transfers
+        """Monitor the refs from send and recv tasks and abort the transfers
         if they error out or timeout to prevent hanging.
         """
         not_done = []
@@ -365,8 +357,7 @@ class RDTManager:
         ref_info_map: Dict[str, TransferMetadata],
         exception: Exception,
     ):
-        """
-        Cleans up the ref_info_map, kill the src and dst actors, and destroy the
+        """Cleans up the ref_info_map, kill the src and dst actors, and destroy the
         collective group if necessary.
         """
         from ray.experimental.collective import destroy_collective_group
@@ -478,8 +469,7 @@ class RDTManager:
     def set_tensor_transport_metadata_and_trigger_queued_operations(
         self, obj_id: str, tensor_transport_meta: "TensorTransportMetadata"
     ):
-        """
-        Sets the tensor transport metadata for an object and triggers any queued
+        """Sets the tensor transport metadata for an object and triggers any queued
         up transfers or frees for that object.
         """
         dst_actors = None
@@ -561,8 +551,7 @@ class RDTManager:
         obj_id: str,
         use_object_store: bool,
     ) -> FetchRequest:
-        """
-        Start fetching an RDT object.
+        """Start fetching an RDT object.
 
         If the specified transport supports async fetches, this will trigger the
         fetch without blocking. Note that this always triggers a fetch, even if
@@ -675,8 +664,7 @@ class RDTManager:
     def _wait_fetch(
         self, obj_id: str, fetch_request: FetchRequest, timeout: float = -1
     ) -> List[Any]:
-        """
-        Waits for a previously triggered fetch to complete and returns the tensors.
+        """Waits for a previously triggered fetch to complete and returns the tensors.
 
         Args:
             obj_id: The object ID of the RDT object.
@@ -705,8 +693,7 @@ class RDTManager:
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
     ):
-        """
-        Triggers the transfer if the tensor metadata is available for the object. If it's
+        """Triggers the transfer if the tensor metadata is available for the object. If it's
         not available, the transfer is queued up until the metadata is available.
         """
         rdt_object_ids: Set[str] = set()
@@ -736,8 +723,7 @@ class RDTManager:
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", obj_id: str
     ):
-        """
-        Triggers tensor communication operations between actors. When a managed ObjectRef is passed
+        """Triggers tensor communication operations between actors. When a managed ObjectRef is passed
         to another actor task, CPU data will still be passed through the object store, but the in-actor
         tensors will be passed out-of-band.
 
@@ -867,8 +853,7 @@ class RDTManager:
         self,
         object_ids: List[str],
     ) -> Dict[str, List[Any]]:
-        """
-        Get RDT objects that have already been transferred (e.g. via __ray_recv__).
+        """Get RDT objects that have already been transferred (e.g. via __ray_recv__).
 
         This is used in the task argument deserialization path where the
         out-of-band tensor transfer has already been triggered by the caller.
@@ -900,8 +885,7 @@ class RDTManager:
         timeout: Optional[float] = None,
         use_object_store: bool = False,
     ) -> Dict[str, List[Any]]:
-        """
-        Fetch and get RDT objects for a list of object IDs, pipelining async fetches.
+        """Fetch and get RDT objects for a list of object IDs, pipelining async fetches.
 
         This is used in the ray.get codepath where the caller initiates the
         tensor fetch. For one-sided transports (e.g. NIXL), all transfers are
@@ -997,8 +981,7 @@ class RDTManager:
         return result
 
     def queue_or_free_object_primary_copy(self, object_id: str):
-        """
-        Free the RDT object on the primary copy holder and free metadata
+        """Free the RDT object on the primary copy holder and free metadata
         if the tensor metadata is available (the object has been created).
         Otherwise, queue up the free operation until the tensor metadata is available.
         """
@@ -1050,8 +1033,7 @@ class RDTManager:
     def actor_has_tensor_transport(
         actor: "ray.actor.ActorHandle", tensor_transport: str
     ):
-        """
-        Check if the actor has a communicator for the given tensor transport backend.
+        """Check if the actor has a communicator for the given tensor transport backend.
 
         Args:
             actor: The actor to check.
@@ -1073,8 +1055,7 @@ class RDTManager:
         tensor_transport: str,
         tensors: List[Any],
     ):
-        """
-        Put the RDT object into the RDT manager.
+        """Put the RDT object into the RDT manager.
 
         Args:
             obj_ref: The object ref of the RDT object.

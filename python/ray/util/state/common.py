@@ -1105,8 +1105,7 @@ class TaskSummaries:
     def to_summary_by_lineage(
         cls, *, tasks: List[Dict], actors: List[Dict]
     ) -> "TaskSummaries":
-        """
-        This summarizes tasks by lineage.
+        """This summarizes tasks by lineage.
         i.e. A task will be grouped with another task if they have the
         same parent.
 
@@ -1148,8 +1147,7 @@ class TaskSummaries:
         actor_dict = {actor["actor_id"]: actor for actor in actors}
 
         def get_or_create_task_group(task_id: str) -> Optional[NestedTaskSummary]:
-            """
-            Gets an already created task_group
+            """Gets an already created task_group
             OR
             Creates a task group and puts it in the right place under its parent.
             For actor tasks, the parent is the Actor that owns it. For all other
@@ -1209,8 +1207,7 @@ class TaskSummaries:
         def get_or_create_actor_task_group(
             actor_id: str,
         ) -> Optional[NestedTaskSummary]:
-            """
-            Gets an existing task group that represents an actor.
+            """Gets an existing task group that represents an actor.
             OR
             Creates a task group that represents an actor. The owner of the actor is
             the parent of the creation_task that created that actor.
@@ -1291,8 +1288,7 @@ class TaskSummaries:
         def merge_sibings_for_task_group(
             siblings: List[NestedTaskSummary],
         ) -> Tuple[List[NestedTaskSummary], Optional[int]]:
-            """
-            Merges task summaries with the same name into a group if there are more than
+            """Merges task summaries with the same name into a group if there are more than
             one child with that name.
 
             Args:
@@ -1373,8 +1369,7 @@ class TaskSummaries:
         def calc_total_for_task_group(
             task_group: NestedTaskSummary,
         ) -> NestedTaskSummary:
-            """
-            Calculates the total of a group as the sum of all children.
+            """Calculates the total of a group as the sum of all children.
             Sorts children by timestamp
             """
             if not len(task_group.children):
@@ -1623,9 +1618,7 @@ def protobuf_message_to_dict(
 
 
 def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
-    """
-    Convert a TaskEvents to a dic repr of `TaskState`
-    """
+    """Convert a TaskEvents to a dic repr of `TaskState`"""
     task_attempt = protobuf_message_to_dict(
         message=message,
         fields_to_decode=[

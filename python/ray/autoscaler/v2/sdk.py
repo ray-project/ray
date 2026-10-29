@@ -81,8 +81,7 @@ def request_cluster_resources(
 def get_cluster_status(
     gcs_address: str, timeout: int = DEFAULT_RPC_TIMEOUT_S
 ) -> ClusterStatus:
-    """
-    Get the cluster status from the autoscaler.
+    """Get the cluster status from the autoscaler.
 
     Args:
         gcs_address: The GCS address to query.
@@ -106,8 +105,7 @@ def get_cluster_status(
 
 
 def get_cluster_resource_state(gcs_client: GcsClient) -> ClusterResourceState:
-    """
-    Get the cluster resource state from GCS.
+    """Get the cluster resource state from GCS.
     Args:
         gcs_client: The GCS client to query.
     Returns:

@@ -29,9 +29,7 @@ QUEUE_JOIN_SECONDS = 10
 
 
 def _get_reconnecting_from_context(context: Any) -> bool:
-    """
-    Get `reconnecting` from gRPC metadata, or False if missing.
-    """
+    """Get `reconnecting` from gRPC metadata, or False if missing."""
     metadata = dict(context.invocation_metadata())
     val = metadata.get("reconnecting")
     if val is None or val not in ("True", "False"):
@@ -45,8 +43,7 @@ def _get_reconnecting_from_context(context: Any) -> bool:
 
 
 def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
-    """
-    Returns True if the response should to the given request should be cached,
+    """Returns True if the response should to the given request should be cached,
     false otherwise. At the moment the only requests we do not cache are:
         - asynchronous gets: These arrive out of order. Skipping caching here
             is fine, since repeating an async get is idempotent
@@ -72,9 +69,7 @@ def fill_queue(
     grpc_input_generator: Iterator[ray_client_pb2.DataRequest],
     output_queue: "Queue[Union[ray_client_pb2.DataRequest, ray_client_pb2.DataResponse]]",  # noqa: E501
 ) -> None:
-    """
-    Pushes incoming requests to a shared output_queue.
-    """
+    """Pushes incoming requests to a shared output_queue."""
     try:
         for req in grpc_input_generator:
             output_queue.put(req)
@@ -89,9 +84,7 @@ def fill_queue(
 
 
 class ChunkCollector:
-    """
-    Helper class for collecting chunks from PutObject or ClientTask messages
-    """
+    """Helper class for collecting chunks from PutObject or ClientTask messages"""
 
     def __init__(self):
         self.curr_req_id = None
@@ -373,8 +366,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         ray.shutdown()
 
     def _init(self, client_id: str, context: Any, start_time: float):
-        """
-        Checks if resources allow for another client.
+        """Checks if resources allow for another client.
         Returns a boolean indicating if initialization was successful.
         """
         with self.clients_lock:

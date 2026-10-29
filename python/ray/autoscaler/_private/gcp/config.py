@@ -312,8 +312,7 @@ def _create_tpu(gcp_credentials=None):
 
 
 def construct_clients_from_provider_config(provider_config):
-    """
-    Attempt to fetch and parse the JSON GCP credentials from the provider
+    """Attempt to fetch and parse the JSON GCP credentials from the provider
     config yaml file.
 
     tpu resource (the last element of the tuple) will be None if

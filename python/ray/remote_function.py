@@ -343,8 +343,7 @@ class RemoteFunction:
 
             @DeveloperAPI
             def bind(self, *args, **kwargs):
-                """
-                For Ray DAG building that creates static graph from decorated
+                """For Ray DAG building that creates static graph from decorated
                 class or functions.
                 """
                 from ray.dag.function_node import FunctionNode
@@ -575,8 +574,7 @@ class RemoteFunction:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        For Ray DAG building that creates static graph from decorated
+        """For Ray DAG building that creates static graph from decorated
         class or functions.
         """
 

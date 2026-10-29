@@ -33,8 +33,7 @@ debugger_port_lock = threading.Lock()
 
 
 def _override_breakpoint_hooks():
-    """
-    This method overrides the breakpoint() function to set_trace()
+    """This method overrides the breakpoint() function to set_trace()
     so that other threads can reuse the same setup logic.
     This is based on: https://github.com/microsoft/debugpy/blob/ef9a67fe150179ee4df9997f9273723c26687fab/src/debugpy/_vendored/pydevd/pydev_sitecustomize/sitecustomize.py#L87 # noqa: E501
     """
@@ -46,8 +45,7 @@ def _override_breakpoint_hooks():
 
 
 def _ensure_debugger_port_open_thread_safe():
-    """
-    This is a thread safe method that ensure that the debugger port
+    """This is a thread safe method that ensure that the debugger port
     is open, and if not, open it.
     """
 
@@ -101,18 +99,14 @@ def set_trace(breakpoint_uuid=None):
 
 
 def _debugpy_breakpoint():
-    """
-    Drop the user into the debugger on a breakpoint.
-    """
+    """Drop the user into the debugger on a breakpoint."""
     import pydevd
 
     pydevd.settrace(stop_at_frame=sys._getframe().f_back)
 
 
 def _debugpy_excepthook():
-    """
-    Drop the user into the debugger on an unhandled exception.
-    """
+    """Drop the user into the debugger on an unhandled exception."""
     import threading
 
     import pydevd

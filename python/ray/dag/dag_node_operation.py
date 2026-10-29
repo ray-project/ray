@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class _DAGNodeOperationType(Enum):
-    """
-    There are three types of operations that a DAG node can perform:
+    """There are three types of operations that a DAG node can perform:
     1. READ: Read from an input channel.
     2. COMPUTE: Execute the method corresponding to the node.
     3. WRITE: Write to an output channel.
@@ -24,8 +23,7 @@ class _DAGNodeOperationType(Enum):
     WRITE = "WRITE"
 
     def viz_str(self):
-        """
-        A string representation of the operation type to be used in visualization.
+        """A string representation of the operation type to be used in visualization.
 
         The result string is a single character because conciseness is preferred.
         """
@@ -69,9 +67,7 @@ class _DAGNodeOperation:
         )
 
     def viz_str(self):
-        """
-        A string representation of the node to be used in visualization.
-        """
+        """A string representation of the node to be used in visualization."""
         return f"[{self.exec_task_idx}] {self.method_name} {self.type.viz_str()}"
 
     def __hash__(self):
@@ -92,8 +88,7 @@ class _DAGOperationGraphNode:
         actor_handle: "ray.actor.ActorHandle",
         requires_accelerator: bool,
     ):
-        """
-        _DAGOperationGraphNode represents a node in the DAG operation graph.
+        """_DAGOperationGraphNode represents a node in the DAG operation graph.
         It contains information about the node's in-degree, out-degree, edges,
         and the operation it performs.
 
@@ -137,8 +132,7 @@ class _DAGOperationGraphNode:
         )
 
     def __lt__(self, other: "_DAGOperationGraphNode"):
-        """
-        This function defines the order of the nodes in the priority queue used in
+        """This function defines the order of the nodes in the priority queue used in
         `_select_next_nodes`. The priority queue is a min-heap, so the node with
         higher priority is considered "less than" the other node.
         """
@@ -157,8 +151,7 @@ class _DAGOperationGraphNode:
             )
 
     def __eq__(self, other: "_DAGOperationGraphNode"):
-        """
-        Two operations are equal only when they have the same `exec_task_idx` and `type`
+        """Two operations are equal only when they have the same `exec_task_idx` and `type`
         and belong to the same actor.
         """
         return (
@@ -168,9 +161,7 @@ class _DAGOperationGraphNode:
         )
 
     def __hash__(self):
-        """
-        An operation is uniquely identified by its `task_idx` and type.
-        """
+        """An operation is uniquely identified by its `task_idx` and type."""
         return hash((self.operation, self.task_idx))
 
     @property
@@ -179,8 +170,7 @@ class _DAGOperationGraphNode:
 
     @property
     def is_ready(self) -> bool:
-        """
-        If a node is not an accelerator operation, it is ready when it has a zero
+        """If a node is not an accelerator operation, it is ready when it has a zero
         in-degree.
         If it is an accelerator operation, it is ready when all the nodes in the
         operation have zero in-degrees.
@@ -195,9 +185,7 @@ class _DAGOperationGraphNode:
 
     @property
     def is_accelerator_read(self) -> bool:
-        """
-        A node is an accelerator read if it is a read node and requires accelerator.
-        """
+        """A node is an accelerator read if it is a read node and requires accelerator."""
         return (
             self.operation.type == _DAGNodeOperationType.READ
             and self.requires_accelerator
@@ -205,9 +193,7 @@ class _DAGOperationGraphNode:
 
     @property
     def is_accelerator_compute(self) -> bool:
-        """
-        A node is an accelerator compute if it is a compute node and requires accelerator.
-        """
+        """A node is an accelerator compute if it is a compute node and requires accelerator."""
         return (
             self.operation.type == _DAGNodeOperationType.COMPUTE
             and self.requires_accelerator
@@ -215,9 +201,7 @@ class _DAGOperationGraphNode:
 
     @property
     def is_accelerator_write(self) -> bool:
-        """
-        A node is an accelerator write if it is a write node and requires accelerator.
-        """
+        """A node is an accelerator write if it is a write node and requires accelerator."""
         return (
             self.operation.type == _DAGNodeOperationType.WRITE
             and self.requires_accelerator
@@ -232,9 +216,7 @@ class _DAGOperationGraphNode:
         )
 
     def viz_str(self):
-        """
-        A string representation of the node to be used in visualization.
-        """
+        """A string representation of the node to be used in visualization."""
         return self.operation.viz_str()
 
     @property
@@ -248,8 +230,7 @@ def _add_edge(
     label: str = "",
     control_dependency: bool = False,
 ):
-    """
-    Add an edge from `from_node` to `to_node`.
+    """Add an edge from `from_node` to `to_node`.
 
     Args:
         from_node: The node from which the edge originates.
@@ -273,9 +254,7 @@ def _update_pending_sync_idxs(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
     node: _DAGOperationGraphNode,
 ) -> None:
-    """
-    Update the node as pending for its synchronous nodes.
-    """
+    """Update the node as pending for its synchronous nodes."""
     idx = (node.task_idx, node.operation.type)
     for task_idx, op_type in node.sync_idxs:
         sync_node = graph[task_idx][op_type]
@@ -287,8 +266,7 @@ def _push_candidate_node_if_ready(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
     node: _DAGOperationGraphNode,
 ) -> None:
-    """
-    Push the node with a zero in-degree to the candidates if its operation is ready.
+    """Push the node with a zero in-degree to the candidates if its operation is ready.
     If it has synchronous nodes, its accelerator operation is not ready until all
     the nodes are pending, then all the nodes will be pushed to the candidates.
     """
@@ -329,8 +307,7 @@ def _select_next_nodes(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
 ) -> Optional[List[_DAGOperationGraphNode]]:
-    """
-    This function selects the next nodes for the topological sort to generate
+    """This function selects the next nodes for the topological sort to generate
     execution schedule. If there are multiple candidate _DAGOperationGraphNodes,
     select the node with the top priority. The priority is defined in
     `_DAGOperationGraphNode.__lt__`.
@@ -405,8 +382,7 @@ def _build_dag_node_operation_graph(
         "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
     ],
 ) -> Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]:
-    """
-    Generate a DAG node operation graph by adding edges based on the
+    """Generate a DAG node operation graph by adding edges based on the
     following rules:
 
     #1  Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
@@ -544,8 +520,7 @@ def _build_dag_node_operation_graph(
 
 
 def _actor_viz_label(actor: "ray.actor.ActorHandle") -> str:
-    """
-    Returns the label of an actor in the visualization of the execution schedule.
+    """Returns the label of an actor in the visualization of the execution schedule.
 
     Args:
         actor: The actor to be represented.
@@ -561,8 +536,7 @@ def _actor_viz_label(actor: "ray.actor.ActorHandle") -> str:
 def _node_viz_id_and_label(
     node: _DAGOperationGraphNode, idx: int, optimized_index: int
 ) -> Tuple[str, str]:
-    """
-    Returns the visualization id and label of a node. The visualization id is unique
+    """Returns the visualization id and label of a node. The visualization id is unique
     across all nodes.
 
     Args:
@@ -587,8 +561,7 @@ def _visualize_execution_schedule(
     ],
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
 ):
-    """
-    Visualize the execution schedule for each actor.
+    """Visualize the execution schedule for each actor.
 
     The visualization will be saved as a PNG file named `compiled_graph_schedule.png`.
     Details of the visualization: # noqa
@@ -713,8 +686,7 @@ def _visualize_execution_schedule(
 def _generate_actor_to_execution_schedule(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
 ) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
-    """
-    Generate an execution schedule for each actor. The schedule is a list of
+    """Generate an execution schedule for each actor. The schedule is a list of
     operation nodes to be executed. The function uses a topological sort
     algorithm to generate the schedule.
 
@@ -791,8 +763,7 @@ def _generate_overlapped_execution_schedule(
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
 ) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
-    """
-    From an existing execution schedule, generate a new schedule by overlapping
+    """From an existing execution schedule, generate a new schedule by overlapping
     computation and communication.
 
     Currently, the algorithm generates a new schedule for each actor as follows:
@@ -852,8 +823,7 @@ def _extract_execution_schedule(
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
 ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
-    """
-    Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
+    """Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
     and discard unnecessary information.
     """
     return {

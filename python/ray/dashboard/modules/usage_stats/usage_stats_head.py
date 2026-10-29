@@ -118,8 +118,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self._check_prometheus_running()
 
     def _report_usage_sync(self):
-        """
-        - Always write usage_stats.json regardless of report success/failure.
+        """- Always write usage_stats.json regardless of report success/failure.
         - If report fails, the error message should be written to usage_stats.json
         - If file write fails, the error will just stay at dashboard.log.
             usage_stats.json won't be written.

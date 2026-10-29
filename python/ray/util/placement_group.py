@@ -565,8 +565,7 @@ def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]])
 
 
 def _valid_resource_shape(resources, bundle_specs):
-    """
-    If the resource shape cannot fit into every
+    """If the resource shape cannot fit into every
     bundle spec, return False
     """
     for bundle in bundle_specs:

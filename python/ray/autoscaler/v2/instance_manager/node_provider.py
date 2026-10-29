@@ -43,8 +43,7 @@ CloudInstanceId = str
 
 @dataclass
 class CloudInstance:
-    """
-    A class that represents a cloud instance in the cluster, with necessary metadata
+    """A class that represents a cloud instance in the cluster, with necessary metadata
     of the cloud instance.
     """
 
@@ -67,8 +66,7 @@ class CloudInstance:
 
 
 class CloudInstanceProviderError(Exception):
-    """
-    An base error class that represents an error that happened in the cloud instance
+    """An base error class that represents an error that happened in the cloud instance
     provider.
     """
 
@@ -147,8 +145,7 @@ class TerminateNodeError(CloudInstanceProviderError):
 
 
 class ICloudInstanceProvider(ABC):
-    """
-    The interface for a cloud instance provider.
+    """The interface for a cloud instance provider.
 
     This interface is a minimal interface that should be implemented by the
     various cloud instance providers (e.g. AWS, and etc).
@@ -221,8 +218,7 @@ class ICloudInstanceProvider(ABC):
 
     @abstractmethod
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
-        """
-        Terminate the cloud instances asynchronously.
+        """Terminate the cloud instances asynchronously.
 
         This method is expected to be idempotent, i.e. if the same request id is used
         to terminate the same cloud instances, this should be a no-op if
@@ -250,8 +246,7 @@ class ICloudInstanceProvider(ABC):
 
     @abstractmethod
     def poll_errors(self) -> List[CloudInstanceProviderError]:
-        """
-        Poll the errors that happened since the last poll.
+        """Poll the errors that happened since the last poll.
 
         This method would also clear the errors that happened since the last poll.
 
@@ -263,9 +258,7 @@ class ICloudInstanceProvider(ABC):
 
 @dataclass(frozen=True)
 class CloudInstanceLaunchRequest:
-    """
-    The arguments to launch a node.
-    """
+    """The arguments to launch a node."""
 
     # The node type to launch.
     node_type: NodeType
@@ -277,9 +270,7 @@ class CloudInstanceLaunchRequest:
 
 @dataclass(frozen=True)
 class CloudInstanceTerminateRequest:
-    """
-    The arguments to terminate a node.
-    """
+    """The arguments to terminate a node."""
 
     # The cloud instance id of the node to terminate.
     cloud_instance_id: CloudInstanceId
@@ -288,8 +279,7 @@ class CloudInstanceTerminateRequest:
 
 
 class NodeProviderAdapter(ICloudInstanceProvider):
-    """
-    Warps a NodeProviderV1 to a ICloudInstanceProvider.
+    """Warps a NodeProviderV1 to a ICloudInstanceProvider.
 
     TODO(rickyx):
     The current adapter right now consists of two sets of APIs:
@@ -401,8 +391,7 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         shape: Dict[NodeType, int],
         request_id: str,
     ) -> None:
-        """
-        Launch the cloud instances by calling into the v1 base node provider.
+        """Launch the cloud instances by calling into the v1 base node provider.
 
         Args:
             shape: The requested to launch node type and number of nodes.
@@ -421,8 +410,7 @@ class NodeProviderAdapter(ICloudInstanceProvider):
                 count -= to_launch
 
     def _do_terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
-        """
-        Terminate the cloud instances by calling into the v1 base node provider.
+        """Terminate the cloud instances by calling into the v1 base node provider.
 
         If errors happen during the termination, the errors will be put into the
         errors queue.
@@ -446,8 +434,7 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         count: int,
         request_id: str,
     ) -> None:
-        """
-        Launch nodes of the given node type.
+        """Launch nodes of the given node type.
 
         Args:
             node_type: The node type to launch.

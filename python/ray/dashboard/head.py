@@ -71,8 +71,7 @@ class DashboardHead:
         modules_to_load: Optional[Set[str]] = None,
         proxy_server_url: Optional[str] = None,
     ):
-        """
-        Dashboard head
+        """Dashboard head
 
         Args:
             http_host: The host address for the Http server.
@@ -190,8 +189,7 @@ class DashboardHead:
     def _load_modules(
         self, modules_to_load: Optional[Set[str]] = None
     ) -> Tuple[List[DashboardHeadModule], List["SubprocessModuleHandle"]]:
-        """
-        If minimal, only load DashboardHeadModule.
+        """If minimal, only load DashboardHeadModule.
         If non-minimal, load both kinds of modules: DashboardHeadModule, SubprocessModule.
 
         If modules_to_load is not None, only load the modules in the set.

@@ -38,9 +38,7 @@ def select_start_method() -> str:
 def filter_hop_by_hop_headers(
     headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]],
 ) -> dict[str, str]:
-    """
-    Filter out hop-by-hop headers from the headers dict.
-    """
+    """Filter out hop-by-hop headers from the headers dict."""
     HOP_BY_HOP_HEADERS = {
         "connection",
         "keep-alive",
@@ -62,8 +60,7 @@ def filter_hop_by_hop_headers(
 
 
 class SubprocessModuleHandle:
-    """
-    A handle to a module created as a subprocess. Can send messages to the module and
+    """A handle to a module created as a subprocess. Can send messages to the module and
     receive responses. It only acts as a proxy to the aiohttp server running in the
     subprocess. On destruction, the subprocess is terminated.
 
@@ -147,9 +144,7 @@ class SubprocessModuleHandle:
         )
 
     def start_module(self):
-        """
-        Start the module. Should be non-blocking.
-        """
+        """Start the module. Should be non-blocking."""
         self.parent_conn, child_conn = self.mp_context.Pipe()
         if not os.path.exists(self.config.socket_dir):
             os.makedirs(self.config.socket_dir)
@@ -168,8 +163,7 @@ class SubprocessModuleHandle:
         child_conn.close()
 
     def wait_for_module_ready(self):
-        """
-        Wait for the module to be ready. This is called after start_module()
+        """Wait for the module to be ready. This is called after start_module()
         and can be blocking.
         """
         if self.parent_conn.poll(dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT):
@@ -196,8 +190,7 @@ class SubprocessModuleHandle:
         self.health_check_task = self.loop.create_task(self._do_periodic_health_check())
 
     async def destroy_module(self):
-        """
-        Destroy the module with complete resource cleanup.
+        """Destroy the module with complete resource cleanup.
         This is called when the module is unhealthy or being shut down.
         """
         self.incarnation += 1
@@ -261,8 +254,7 @@ class SubprocessModuleHandle:
             self.http_client_session = None
 
     async def _health_check(self) -> aiohttp.web.Response:
-        """
-        Do internal health check. The module should respond immediately with a 200 OK.
+        """Do internal health check. The module should respond immediately with a 200 OK.
         This can be used to measure module responsiveness in RTT, it also indicates
         subprocess event loop lag.
 
@@ -277,8 +269,7 @@ class SubprocessModuleHandle:
         )
 
     async def _do_once_health_check(self):
-        """
-        Do a health check once. We check for:
+        """Do a health check once. We check for:
         1. if the process exits, it's considered died.
         2. if the health check endpoint returns non-200, it's considered unhealthy.
 
@@ -290,8 +281,7 @@ class SubprocessModuleHandle:
             raise RuntimeError(f"Health check failed: status code is {resp.status}")
 
     async def _do_periodic_health_check(self):
-        """
-        Every 1s, do a health check. If the module is unhealthy:
+        """Every 1s, do a health check. If the module is unhealthy:
         1. log the exception
         2. log the last N lines of the log file
         3. restart the module
@@ -317,9 +307,7 @@ class SubprocessModuleHandle:
     async def proxy_request(
         self, request: aiohttp.web.Request, resp_type: ResponseType = ResponseType.HTTP
     ) -> aiohttp.web.StreamResponse:
-        """
-        Sends a new request to the subprocess and returns the response.
-        """
+        """Sends a new request to the subprocess and returns the response."""
         if resp_type == ResponseType.HTTP:
             return await self.proxy_http(request)
         if resp_type == ResponseType.STREAM:
@@ -329,8 +317,7 @@ class SubprocessModuleHandle:
         raise ValueError(f"Unknown response type: {resp_type}")
 
     async def proxy_http(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
-        """
-        Proxy handler for non-streaming HTTP API
+        """Proxy handler for non-streaming HTTP API
         It forwards the method, query string, headers, and body to the backend.
         """
         url = f"http://localhost{request.path_qs}"
@@ -353,8 +340,7 @@ class SubprocessModuleHandle:
     async def proxy_stream(
         self, request: aiohttp.web.Request
     ) -> aiohttp.web.StreamResponse:
-        """
-        Proxy handler for streaming HTTP API.
+        """Proxy handler for streaming HTTP API.
         It forwards the method, query string, and body to the backend.
         """
         url = f"http://localhost{request.path_qs}"
@@ -379,8 +365,7 @@ class SubprocessModuleHandle:
     async def proxy_websocket(
         self, request: aiohttp.web.Request
     ) -> aiohttp.web.StreamResponse:
-        """
-        Proxy handler for WebSocket API
+        """Proxy handler for WebSocket API
         It establishes a WebSocket connection with the client and simultaneously connects
         to the backend server's WebSocket endpoint. Messages are forwarded in single
         direction from the backend to the client.

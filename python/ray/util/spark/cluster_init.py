@@ -82,8 +82,7 @@ def _check_system_environment():
 
 
 class RayClusterOnSpark:
-    """
-    This class is the type of instance returned by the `_setup_ray_cluster` interface.
+    """This class is the type of instance returned by the `_setup_ray_cluster` interface.
     Its main functionality is to:
     Connect to, disconnect from, and shutdown the Ray cluster running on Apache Spark.
     Serve as a Python context manager for the `RayClusterOnSpark` instance.
@@ -242,9 +241,7 @@ class RayClusterOnSpark:
         self.ray_ctx = None
 
     def shutdown(self):
-        """
-        Shutdown the ray cluster created by the `setup_ray_cluster` API.
-        """
+        """Shutdown the ray cluster created by the `setup_ray_cluster` API."""
         import fcntl
 
         if not self.is_shutdown:
@@ -301,8 +298,7 @@ _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT = 120
 
 
 def _preallocate_ray_worker_port_range():
-    """
-    If we start multiple ray workers on a machine concurrently, some ray worker
+    """If we start multiple ray workers on a machine concurrently, some ray worker
     processes might fail due to ray port conflicts, this is because race condition
     on getting free port and opening the free port.
     To address the issue, this function use an exclusive file lock to delay the
@@ -497,8 +493,7 @@ def _setup_ray_cluster(
     autoscale_idle_timeout_minutes: float,
     is_global: bool,
 ) -> Type[RayClusterOnSpark]:
-    """
-    The public API `ray.util.spark.setup_ray_cluster` does some argument
+    """The public API `ray.util.spark.setup_ray_cluster` does some argument
     validation and then pass validated arguments to this interface.
     and it returns a `RayClusterOnSpark` instance.
 
@@ -1251,8 +1246,7 @@ def setup_ray_cluster(
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
     **kwargs,
 ) -> Tuple[str, str]:
-    """
-    Set up a ray cluster on the spark cluster by starting a ray head node in the
+    """Set up a ray cluster on the spark cluster by starting a ray head node in the
     spark application's driver side node.
     After creating the head node, a background spark job is created that
     generates an instance of `RayClusterOnSpark` that contains configuration for the
@@ -1423,8 +1417,7 @@ def setup_global_ray_cluster(
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
 ):
-    """
-    Set up a global mode cluster.
+    """Set up a global mode cluster.
     The global Ray on spark cluster means:
     - You can only create one active global Ray on spark cluster at a time.
     On databricks cluster, the global Ray cluster can be used by all users,
@@ -1725,9 +1718,7 @@ def _start_ray_worker_nodes(
 
 @PublicAPI
 def shutdown_ray_cluster() -> None:
-    """
-    Shut down the active ray cluster.
-    """
+    """Shut down the active ray cluster."""
     global _active_ray_cluster
 
     with _active_ray_cluster_rwlock:

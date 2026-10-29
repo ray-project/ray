@@ -2779,8 +2779,7 @@ def kuberay_autoscaler(
     help="Skip comparison of GCS version with local Ray version.",
 )
 def healthcheck(address, component, skip_version_check):
-    """
-    This is NOT a public API.
+    """This is NOT a public API.
 
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """

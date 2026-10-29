@@ -47,8 +47,7 @@ def get_raylet_pid():
 
 
 def create_check_raylet_task(log_dir, gcs_client, parent_dead_callback, loop):
-    """
-    Creates an asyncio task to periodically check if the raylet process is still
+    """Creates an asyncio task to periodically check if the raylet process is still
     running. If raylet is dead for _PARENT_DEATH_THREASHOLD (5) times, prepare to exit
     as follows:
 

@@ -68,8 +68,7 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         return super().reducer_override(obj)
 
     def find_nodes(self, obj: Any) -> List[SourceType]:
-        """
-        Serialize `obj` and store all instances of `source_type` found in `_found`.
+        """Serialize `obj` and store all instances of `source_type` found in `_found`.
 
         Args:
             obj: The object to scan for `source_type`.

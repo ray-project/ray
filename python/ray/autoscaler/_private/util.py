@@ -90,9 +90,7 @@ def base32hex(data: bytes) -> str:
 
 
 def is_placement_group_resource(resource_name: str) -> bool:
-    """
-    Check if a resource name is structured like a placement group.
-    """
+    """Check if a resource name is structured like a placement group."""
     return bool(
         PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(resource_name)
         or PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(resource_name)
@@ -240,8 +238,7 @@ def check_legacy_fields(config: Dict[str, Any]) -> None:
 
 
 def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    The returned config has the following properties:
+    """The returned config has the following properties:
     - Uses the multi-node-type autoscaler configuration.
     - Merged with the appropriate defaults.yaml
     - Has a valid Docker configuration if provided.
@@ -268,9 +265,7 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def translate_trivial_legacy_config(config: Dict[str, Any]):
-    """
-    Drop empty deprecated fields ("head_node" and "worker_node").
-    """
+    """Drop empty deprecated fields ("head_node" and "worker_node")."""
 
     REMOVABLE_FIELDS = ["head_node", "worker_nodes"]
 
@@ -411,8 +406,7 @@ def fill_node_type_min_max_workers(config):
 
 
 def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
-    """
-    Returns a list of commands with the given environment variables set.
+    """Returns a list of commands with the given environment variables set.
 
     Args:
         cmds: List of commands to set environment variables for.

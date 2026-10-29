@@ -685,24 +685,19 @@ class NixlTensorTransport(TensorTransportManager):
             return len(self._managed_meta_nixl)
 
     def _get_meta(self, object_id: str) -> Optional[NixlTransportMetadata]:
-        """
-        Get the NIXL transport metadata for the given object ID if it exists
-        """
+        """Get the NIXL transport metadata for the given object ID if it exists"""
         with self._cache_lock:
             if object_id in self._managed_meta_nixl:
                 return self._managed_meta_nixl[object_id]
             return None
 
     def _put_meta(self, object_id: str, meta: NixlTransportMetadata):
-        """
-        Store the NIXL transport metadata for the given object ID
-        """
+        """Store the NIXL transport metadata for the given object ID"""
         with self._cache_lock:
             self._managed_meta_nixl[object_id] = meta
 
     def _remove_tensor_descs(self, tensors: List["torch.Tensor"]):
-        """
-        Decrements the reference count for each tensor. If the count reaches 0,
+        """Decrements the reference count for each tensor. If the count reaches 0,
         the memory is deregistered from NIXL.
         """
         with self._cache_lock:
@@ -718,8 +713,7 @@ class NixlTensorTransport(TensorTransportManager):
                     self._nixl_agent_meta_version += 1
 
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
-        """
-        If this is the first time the tensor is being registered, we register the
+        """If this is the first time the tensor is being registered, we register the
         full underlying pytorch storage object with NIXL. Otherwise, we increment the reference count.
         """
         with self._cache_lock:

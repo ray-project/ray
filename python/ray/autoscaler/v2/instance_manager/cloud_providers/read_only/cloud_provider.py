@@ -16,8 +16,7 @@ from ray.core.generated.autoscaler_pb2 import NodeStatus
 
 
 class ReadOnlyProvider(ICloudInstanceProvider):
-    """
-    A read only provider that use the ray node states from the GCS as the
+    """A read only provider that use the ray node states from the GCS as the
     cloud instances.
 
     This is used for laptop mode / manual cluster setup modes, in order to

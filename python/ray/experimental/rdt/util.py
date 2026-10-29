@@ -50,8 +50,7 @@ def register_tensor_transport(
     transport_manager_class: type[TensorTransportManager],
     data_type: type,
 ):
-    """
-    Register a new tensor transport for use in Ray. Note that this needs to be called
+    """Register a new tensor transport for use in Ray. Note that this needs to be called
     before you create the actors that will use the transport. The actors also
     need to be created in the same process from which you call this function.
 
@@ -154,8 +153,7 @@ def get_tensor_transport_manager(
 def register_custom_tensor_transports_on_actor(
     actor: "ray.actor.ActorHandle",
 ) -> Optional[ObjectRef]:
-    """
-    If there's no custom transports to register, returns None.
+    """If there's no custom transports to register, returns None.
     Otherwise returns an ObjectRef for a task on the actor that will register the custom transports.
     """
     global transport_manager_info

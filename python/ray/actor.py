@@ -823,9 +823,7 @@ class _ActorMethodMetadata:
         self._tensor_transport = tensor_transport
 
     def bind(self, actor_handle: "ActorHandle") -> "ActorMethod":
-        """
-        Produce a bound ActorMethod that holds a strong reference to actor_handle.
-        """
+        """Produce a bound ActorMethod that holds a strong reference to actor_handle."""
         return ActorMethod(
             actor_handle,
             self._method_name,
@@ -929,8 +927,7 @@ class ActorMethod:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        Bind arguments to the actor method for Ray DAG building.
+        """Bind arguments to the actor method for Ray DAG building.
 
         This method generates and returns an intermediate representation (IR)
         node that indicates the actor method will be called with the given
@@ -1863,8 +1860,7 @@ class ActorClass(Generic[T]):
 
             @DeveloperAPI
             def bind(self, *args, **kwargs):
-                """
-                For Ray DAG building that creates static graph from decorated
+                """For Ray DAG building that creates static graph from decorated
                 class or functions.
                 """
                 from ray.dag.class_node import ClassNode
@@ -2259,8 +2255,7 @@ class ActorClass(Generic[T]):
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        For Ray DAG building that creates static graph from decorated
+        """For Ray DAG building that creates static graph from decorated
         class or functions.
         """
         from ray.dag.class_node import ClassNode

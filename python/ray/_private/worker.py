@@ -666,9 +666,7 @@ class Worker:
 
     @contextmanager
     def worker_paused_by_debugger(self):
-        """
-        Updates the worker num paused threads when the worker is paused by debugger
-        """
+        """Updates the worker num paused threads when the worker is paused by debugger"""
         try:
             worker_id = self.core_worker.get_worker_id()
             ray._private.state.update_worker_num_paused_threads(worker_id, 1)
@@ -1241,9 +1239,7 @@ def get_dashboard_url():
 
 
 def _remove_protocol_from_url(url: Optional[str]) -> str:
-    """
-    Helper function to remove protocol from URL if it exists.
-    """
+    """Helper function to remove protocol from URL if it exists."""
     if not url:
         return url
     parsed_url = urllib.parse.urlparse(url)
@@ -1255,9 +1251,7 @@ def _remove_protocol_from_url(url: Optional[str]) -> str:
 
 
 class BaseContext(metaclass=ABCMeta):
-    """
-    Base class for RayContext and ClientContext
-    """
+    """Base class for RayContext and ClientContext"""
 
     dashboard_url: Optional[str]
     python_version: str
@@ -1265,8 +1259,7 @@ class BaseContext(metaclass=ABCMeta):
 
     @abstractmethod
     def disconnect(self):
-        """
-        If this context is for directly attaching to a cluster, disconnect
+        """If this context is for directly attaching to a cluster, disconnect
         will call ray.shutdown(). Otherwise, if the context is for a ray
         client connection, the client will be disconnected.
         """
@@ -1355,9 +1348,7 @@ class BaseContext(metaclass=ABCMeta):
 
 @dataclass
 class RayContext(BaseContext, Mapping):
-    """
-    Context manager for attached drivers.
-    """
+    """Context manager for attached drivers."""
 
     dashboard_url: Optional[str]
     python_version: str
@@ -1419,8 +1410,7 @@ _global_node = None
 def _maybe_modify_runtime_env(
     runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool
 ) -> Dict[str, Any]:
-    """
-    If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
+    """If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
     this function sets up a runtime environment that replicates the driver's environment to the
     workers. Otherwise, if a runtime environment hook is present it will modify the runtime environment.
     """
@@ -1473,8 +1463,7 @@ def init(
     proxy_server_url: Optional[str] = None,
     **kwargs,
 ) -> BaseContext:
-    """
-    Connect to an existing Ray cluster or start one and connect to it.
+    """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated

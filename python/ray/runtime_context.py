@@ -575,8 +575,7 @@ class RuntimeContext(object):
         return self.get_accelerator_ids()
 
     def get_accelerator_ids(self) -> Dict[str, List[str]]:
-        """
-        Get the current worker's visible accelerator ids.
+        """Get the current worker's visible accelerator ids.
 
         Returns:
             A dictionary keyed by the accelerator resource name. The values are a list
@@ -597,8 +596,7 @@ class RuntimeContext(object):
         return ids_dict
 
     def get_node_labels(self) -> Dict[str, List[str]]:
-        """
-        Get the node labels of the current worker.
+        """Get the node labels of the current worker.
 
         Returns:
             A dictionary of label key-value pairs.

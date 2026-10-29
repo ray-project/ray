@@ -1,5 +1,4 @@
-"""
-This module is intended for implementing internal serializers for some
+"""This module is intended for implementing internal serializers for some
 site packages.
 """
 
