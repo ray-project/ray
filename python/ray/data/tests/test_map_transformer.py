@@ -447,6 +447,61 @@ def test_an_error_ray_does_not_rerun_the_task_on_emits_the_buffered_rows_first(
         next(out)
 
 
+def _failing_system_error_transformer() -> MapTransformer:
+    """A transformer that yields two one-row tables into one buffered block,
+    then raises a ``RaySystemError``."""
+    from ray.exceptions import RaySystemError
+
+    def fn(blocks, ctx):
+        yield pa.table({"x": [0]})
+        yield pa.table({"x": [1]})
+        raise RaySystemError("lost an object")
+
+    return MapTransformer(
+        [
+            BlockMapTransformFn(
+                fn,
+                output_block_size_option=OutputBlockSizeOption.of(
+                    target_max_block_size=1024 * 1024
+                ),
+            )
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "remote_args, emits_rows",
+    [
+        # Ray Data's default: unlimited retries, ``RaySystemError`` among them.
+        ({}, False),
+        # With ``max_retries=0`` Ray reruns on nothing.
+        ({"max_retries": 0}, True),
+    ],
+)
+def test_a_system_error_emits_the_buffered_rows_only_when_ray_wont_rerun(
+    skip_errors, remote_args, emits_rows
+):
+    """Ray reruns a task on a ``RaySystemError`` only while its retries allow, so
+    with ``max_retries=0`` the buffered rows come out before the error."""
+    from ray.data._internal.execution.operators.task_pool_map_operator import (
+        _ray_retried_exceptions,
+    )
+    from ray.exceptions import RaySystemError
+
+    out = _outputs(
+        _failing_system_error_transformer(),
+        ray_retried_exceptions=_ray_retried_exceptions(remote_args),
+    )
+
+    if emits_rows:
+        assert BlockAccessor.for_block(next(out)).to_arrow()["x"].to_pylist() == [
+            0,
+            1,
+        ]
+    with pytest.raises(RaySystemError, match="lost an object"):
+        next(out)
+
+
 def test_the_last_map_attempt_emits_the_buffered_rows_first(skip_errors):
     """On its last attempt ``_map_task`` won't rerun the transform even for an
     error a pattern matches, so the buffered rows come out first."""
