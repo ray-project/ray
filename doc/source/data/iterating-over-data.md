@@ -152,11 +152,13 @@ tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dty
 
 For more information on working with batches, see {ref}`Transforming batches <transforming_batches>` and {ref}`Inspect batches <inspecting-batches>`.
 
+To learn how Ray Data produces these batches, see {ref}`How does Ray Data iterate over data? <batch_iteration>`.
+
 (iterating-over-batches-with-shuffling)=
 
 ## Iterate over batches with shuffling
 
-{class}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` is slow because it shuffles all rows. If you don't need a full global shuffle, specify `local_shuffle_buffer_size` to shuffle a subset of rows, up to the buffer size, during iteration. This local shuffle isn't a true global shuffle like `random_shuffle`, but it performs better because it avoids excessive data movement. For details on these options, see {doc}`Shuffling data <shuffling-data>`.
+{meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` is slow because it shuffles all rows. If you don't need a full global shuffle, specify `local_shuffle_buffer_size` to shuffle a subset of rows, up to the buffer size, during iteration. This local shuffle isn't a true global shuffle like `random_shuffle`, but it performs better because it avoids excessive data movement. For details on these options, see {doc}`Shuffling data <shuffling-data>`.
 
 :::{tip}
 Set `local_shuffle_buffer_size` to the smallest value that achieves sufficient randomness. Higher values increase randomness but slow down iteration. To diagnose slowdowns, see {ref}`Shuffle rows with a local buffer <local_shuffle_buffer>`.

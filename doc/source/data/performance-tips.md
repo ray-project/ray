@@ -50,7 +50,7 @@ The following sections describe how to tune reads.
 
 ### Tune output blocks for reads
 
-By default, Ray Data automatically selects the number of output blocks for a read according to the following procedure:
+The number of output blocks for a read determines how many tasks Ray Data creates, as follows:
 
 - The `override_num_blocks` parameter that you pass to Ray Data's {ref}`read APIs <loading-data-api>` specifies the number of output blocks, which equals the number of read tasks to create.
 - If a {func}`~ray.data.Dataset.map` or {func}`~ray.data.Dataset.map_batches` follows the read, Ray Data usually fuses the map with the read. In that case, `override_num_blocks` also determines the number of map tasks.
@@ -215,7 +215,7 @@ By default, Ray requests 1 CPU per read task, so one read task per CPU can run c
 
 ### Prune Parquet columns with projection pushdown
 
-By default, {func}`ray.data.read_parquet` reads all columns in the Parquet files into memory. If you need only a subset of the columns, specify the list of columns explicitly when you call {func}`ray.data.read_parquet`. This technique, called projection pushdown, avoids loading unnecessary data. It's more efficient than calling {func}`~ray.data.Dataset.select_columns`, because column selection is pushed down to the file scan.
+By default, {func}`ray.data.read_parquet` reads all columns in the Parquet files into memory. If you need only a subset of the columns, call {meth}`~ray.data.Dataset.select_columns` after {func}`ray.data.read_parquet`, as the following example shows. Ray Data pushes the column selection down into the Parquet read, so it doesn't load the columns you don't select. This technique is *projection pushdown*. Passing the `columns` argument to {func}`ray.data.read_parquet` has the same effect.
 
 ```{testcode}
 import ray
@@ -330,7 +330,7 @@ The following section describes how to configure execution resources.
 
 ### Configure resources
 
-By default, Ray Data sets the CPU and GPU limits to the cluster size. It conservatively sets the object store memory limit to 1/4 of the total object store size to avoid the possibility of disk spilling.
+By default, Ray Data sets the CPU and GPU limits to the cluster size. It sets the object store memory limit to half of the total object store size.
 
 You might want to customize these limits in the following scenarios:
 

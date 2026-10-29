@@ -532,7 +532,7 @@ def _is_http_filesystem(fs: "pyarrow.fs.FileSystem") -> bool:
     )
 
 
-def _unwrap_protocol(path):
+def _unwrap_protocol(path: str) -> str:
     """
     Slice off any protocol prefixes on path.
     """
@@ -551,6 +551,9 @@ def _unwrap_protocol(path):
         netloc = parsed.netloc.split("@")[-1]
 
     parsed_path = parsed.path
+    if parsed.scheme in ("hdfs", "viewfs"):
+        return parsed_path
+
     # urlparse prepends the path with a '/'. This does not work on Windows
     # so if this is the case strip the leading slash.
     if (

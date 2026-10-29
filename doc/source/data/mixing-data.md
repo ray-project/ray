@@ -92,7 +92,7 @@ If your rows are small in bytes, repartition to a multiple of the batch size, su
 (random-mixing)=
 ### Add a shuffle for random mixing
 
-Two factors determine how closely each batch matches the target ratio under per-block mixing. The first is the size of the input blocks, which the preceding section covers. The second is the number of training workers that contribute to each global batch. A global batch aggregates `num_workers * grad_accum_steps` local batches, each drawn from a single dataset. The more local batches each global batch contains, the closer its ratio stays to the target.
+Two factors determine how closely each batch matches the target ratio under per-block mixing. The first is the size of the input blocks, which the preceding section covers. The second is the number of training workers that contribute to each global batch. A global batch aggregates `num_workers * grad_accum_steps` local batches. When you standardize block sizes to the local batch size, as the preceding section shows, each local batch comes from a single dataset. The more local batches each global batch contains, the closer its ratio stays to the target.
 
 In the extreme case, you train on a single worker with no gradient accumulation. Every global batch is then a single local batch, so every batch comes from a single dataset.
 

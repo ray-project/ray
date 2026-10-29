@@ -207,7 +207,6 @@ steps:
         --python-version 3.10 --build-name corebuild-py3.10
 
   - label: ":ray: core: docs example tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - core_python
       - core_doc
@@ -576,6 +575,7 @@ steps:
         --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
         --python-version 3.10 --build-name corebuild-py3.10
+        --test-env=RAY_TEMPDIR=/artifact-mount --test-env=RAY_HOSTDIR=/tmp/artifacts
     depends_on:
       - manylinux-x86_64
       - forge

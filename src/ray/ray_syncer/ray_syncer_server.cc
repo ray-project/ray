@@ -14,6 +14,8 @@
 
 #include "ray/ray_syncer/ray_syncer_server.h"
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <utility>
 
@@ -27,7 +29,15 @@ namespace {
 std::string GetNodeIDFromServerContext(grpc::CallbackServerContext *server_context) {
   const auto &metadata = server_context->client_metadata();
   auto iter = metadata.find("node_id");
-  RAY_CHECK(iter != metadata.end());
+  // Validate before NodeID::FromHex, which logs an error on malformed input. This runs
+  // before authentication, so client-controlled input must not reach that log. The
+  // constructor rejects the returned Nil after authentication.
+  if (iter == metadata.end() || iter->second.length() != 2 * NodeID::Size() ||
+      !std::all_of(iter->second.begin(), iter->second.end(), [](char c) {
+        return std::isxdigit(static_cast<unsigned char>(c));
+      })) {
+    return NodeID::Nil().Binary();
+  }
   return NodeID::FromHex(std::string(iter->second.begin(), iter->second.end())).Binary();
 }
 
@@ -37,7 +47,8 @@ RayServerBidiReactor::RayServerBidiReactor(
     grpc::CallbackServerContext *server_context,
     instrumented_io_context &io_context,
     const std::string &local_node_id,
-    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+    std::function<void(std::vector<std::shared_ptr<const RaySyncMessage>>)>
+        message_processor,
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
     std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token,
     ray::rpc::AuthenticationTokenValidator &auth_token_validator,
@@ -53,7 +64,7 @@ RayServerBidiReactor::RayServerBidiReactor(
       server_context_(server_context),
       auth_token_(std::move(auth_token)),
       auth_token_validator_(auth_token_validator) {
-  if ((auth_token_ && !auth_token_->empty()) || ray::rpc::IsK8sTokenAuthEnabled()) {
+  if (ray::rpc::GetAuthenticationMode() == ray::rpc::AuthenticationMode::TOKEN) {
     // Validate authentication token
     const auto &metadata = server_context->client_metadata();
     auto it = metadata.find(kAuthTokenKey);
@@ -73,6 +84,20 @@ RayServerBidiReactor::RayServerBidiReactor(
       Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Invalid bearer token"));
       return;
     }
+  } else if (server_context->client_metadata().count(kAuthTokenKey) > 0) {
+    // Auth is disabled here; reject clients that send a token so that they opt out too.
+    RAY_LOG(WARNING) << "Authorization header in syncer connection from node "
+                     << NodeID::FromBinary(GetRemoteNodeID()) << " but auth is disabled";
+    Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, kTokenAuthErrorMessage));
+    return;
+  }
+
+  if (NodeID::FromBinary(GetRemoteNodeID()).IsNil()) {
+    RAY_LOG(WARNING) << "Missing or malformed node_id in syncer connection from peer "
+                     << server_context_->peer();
+    Finish(
+        grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Missing or malformed node_id"));
+    return;
   }
 
   // Send the local node id to the remote

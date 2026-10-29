@@ -14,7 +14,7 @@ This page describes how to aggregate a {class}`~ray.data.dataset.Dataset` with t
 
 ## Use built-in aggregations
 
-Ray Data provides built-in aggregation functions such as {class}`~ray.data.Dataset.max`, {class}`~ray.data.Dataset.min`, and {class}`~ray.data.Dataset.sum`.
+Ray Data provides built-in aggregation functions such as {meth}`~ray.data.Dataset.max`, {meth}`~ray.data.Dataset.min`, and {meth}`~ray.data.Dataset.sum`.
 
 You can call these functions directly on a Dataset or on a GroupedData object, as the following example shows:
 
@@ -90,11 +90,12 @@ result = ds.groupby("group_key").aggregate(
 
 ## Create custom aggregations
 
-To create a custom aggregation, implement the {class}`~ray.data.aggregate.AggregateFnV2` interface. The interface has three key methods that you implement:
+To create a custom aggregation, implement the {class}`~ray.data.aggregate.AggregateFnV2` interface. You must implement the following two methods:
 
 1. `aggregate_block`: Processes a single block of data and returns a partial aggregation result.
 1. `combine`: Merges two partial aggregation results into a single result.
-1. `finalize`: Transforms the final accumulated result into the desired output format.
+
+You can also override `finalize`, which transforms the final accumulated result into the desired output format. By default, `finalize` returns the accumulator unchanged, which suits aggregations such as sum, count, min, and max.
 
 Ray Data runs an aggregation in the following steps:
 
@@ -162,5 +163,5 @@ class Mean(AggregateFnV2):
 ```
 
 :::{note}
-Hash-based shuffling can improve aggregation performance in some cases. For more information, see this [comparison of hash-based and range-based shuffling](https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/).
+Hash-based shuffling can improve aggregation performance in some cases. For more information, see this [comparison of hash-based and range-based shuffling](https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks).
 :::

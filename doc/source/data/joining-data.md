@@ -41,7 +41,7 @@ Ray Data supports the following join types:
 
 See {meth}`Dataset.join <ray.data.Dataset.join>` for the current list.
 
-Internally, joins use a hash-shuffle backend that joins each hash partition with Polars. By default, joins use {ref}`shuffle v2 <shuffle-v2>`, which is the `ShuffleStrategy.SHUFFLE_V2` strategy. See {ref}`Tune shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE` before you create a `Dataset`.
+Internally, joins hash-partition both datasets on the join keys and join each partition with Polars. By default, joins use {ref}`shuffle v2 <shuffle-v2>`, which is the `ShuffleStrategy.SHUFFLE_V2` strategy. See {ref}`Tune shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE` before you create a `Dataset`.
 
 (configuring-joins)=
 
@@ -49,7 +49,7 @@ Internally, joins use a hash-shuffle backend that joins each hash partition with
 
 Joins are generally memory-intensive and require accurate memory accounting and projection, so they're sensitive to skew and imbalance in the dataset.
 
-Tune join performance for your workload with the following two parameters:
+Joins accept the following two partitioning parameters. Only `num_partitions` affects join performance:
 
 - `num_partitions`: Required. The number of hash partitions to split both incoming datasets into. See {ref}`Configure the number of partitions <joins_configuring_num_partitions>` for tuning guidance.
 - `partition_size_hint`: Deprecated. A hint to the join operator about the estimated average size of an individual partition, in bytes. Ray Data ignores this parameter, and a future release removes it. Passing a value emits a `DeprecationWarning`. Instead of a hint, the join path sizes reduce-task memory from observed partition sizes.
@@ -79,4 +79,4 @@ Consider the following when you configure the number of aggregators in your pool
 As a rule of thumb, avoid setting `num_partitions` far higher than the number of aggregators, because doing so might create bottlenecks.
 :::
 
-To cap the number of aggregators, set `DataContext.max_hash_shuffle_aggregators`. Setting `max_hash_shuffle_aggregators >= num_partitions` allocates one partition per aggregator.
+To cap the number of aggregators, set `DataContext.max_hash_shuffle_aggregators`. Ray Data also caps the number of aggregators at the number of CPUs in the cluster. To allocate one partition per aggregator, set `max_hash_shuffle_aggregators >= num_partitions` and make sure the cluster has at least `num_partitions` CPUs.

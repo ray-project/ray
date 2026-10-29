@@ -297,7 +297,7 @@ You can change the spread behavior of your deployment with the `max_replicas_per
 
 The following code example shows how to set `max_replicas_per_node` deployment option:
 
-```{testcode}
+```python
 import ray
 from ray import serve
 

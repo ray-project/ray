@@ -34,7 +34,6 @@ steps:
     tags: cibase
 
   - label: "llm cpu tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-cpu-tests"
     tags:
       - llm
@@ -47,12 +46,11 @@ steps:
     depends_on: llmbuild
 
   - label: "llm gpu tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-gpu-tests"
     tags:
       - llm
       - gpu
-    instance_type: g6-large
+    instance_type: gpu-large-flex
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
         --python-version 3.12 --build-name llmgpubuild --only-tags gpu
@@ -60,7 +58,6 @@ steps:
     depends_on: llmgpubuild
 
   - label: "llm gpu tests (4 GPUs)"
-    if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-gpu-tests-4gpu"
     tags:
       - llm
@@ -80,7 +77,7 @@ steps:
     tags:
       - llm
       - gpu
-    instance_type: g6-large
+    instance_type: gpu-large-flex
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
         --python-version 3.12 --build-name custom-vllm-plugin-gpubuild

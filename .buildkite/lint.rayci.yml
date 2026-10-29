@@ -17,6 +17,7 @@ steps:
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small-prose
     tags:
+      - oss
       - lint
       - always
     depends_on:
@@ -31,6 +32,13 @@ steps:
       # its lint.sh entry are left in place, so re-enabling is a one-line revert
       # that restores this matrix value.
       - doc_no_new_rst
+      # Every library prose page with a runnable example has a per-file doctest
+      # target, and the doc_example rule routes it. A prose change can fail it
+      # by adding a runnable block to an unlisted page.
+      - doc_prose_doctest_targets
+      # Links to files on Ray's master branch. A prose change can fail it,
+      # because renaming or deleting a doc file breaks links to it elsewhere.
+      - ray_repo_links
 
   # `doc_readme` runs `setup.py check --restructuredtext --strict --metadata`,
   # which guards how Ray's PyPI long description renders. Its inputs are the
@@ -69,13 +77,28 @@ steps:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - clang_format
-      - pre_commit
       - dashboard_format
       - copyright_format
       - bazel_team
       - bazel_buildifier
       - pytest_format
       - test_coverage
+
+  # `pre_commit` sits outside the matrix above so it can carry an extra tag.
+  # Its whitespace and end-of-file hooks read every text file that
+  # .pre-commit-config.yaml doesn't exclude, so config files such as .vale.ini
+  # and doc/redirects/*.yaml can fail it even though nothing else in the lint
+  # matrix reads them. always.rules.txt emits `pre_commit` for those paths, so
+  # this step runs for them without the rest of the matrix.
+  - label: ":lint-roller: lint: pre_commit"
+    key: lint-pre-commit
+    tags:
+      - lint
+      - pre_commit
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh pre_commit
 
   - label: ":lint-roller: pre-commit pydoclint"
     key: pydoclint-small
@@ -105,18 +128,19 @@ steps:
     commands:
       - ./ci/lint/lint.sh api_param_coverage --blocking
 
-  # Scope guard for the "docs-go" label: runs only when the label is present,
-  # and fails unless the PR is content-only (changes under doc/, excluding
-  # BUILD files). This is the check the label cannot turn off, so the label
-  # can skip doc/library tests on a content PR but never on a code, CI, or
-  # build change.
-  - label: ":lint-roller: lint: validate docs-go scope"
-    key: docs-go-scope
-    if: build.pull_request.labels includes "docs-go"
+  # Scope guard for the "docstring-only" label: runs only when the label is
+  # present, and fails unless every changed file is a modified .py file whose
+  # code is unchanged once docstrings are removed (an AST comparison, see
+  # ci/ray_ci/doc/check_docstring_only.py). The label skips library test steps,
+  # so this is the check it can't turn off. Tagged `always` so it runs whatever
+  # the change routes to.
+  - label: ":lint-roller: lint: validate docstring-only scope"
+    key: docstring-only-scope
+    if: build.pull_request.labels includes "docstring-only"
     tags:
       - oss
       - always
     depends_on:
       - forge
     commands:
-      - ./ci/lint/validate_docs_go_scope.sh
+      - ./ci/lint/lint.sh docstring_only_scope

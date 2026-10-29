@@ -9,11 +9,10 @@ exclude: |
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     python/ray/data/examples/data/|
     release/release_logs/|
-    rllib/offline/tests/data|
+    python/ray/rllib/offline/tests/data|
     thirdparty/patches/|
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
-    doc/external/|
     # Excludes doc/source, except the Markdown and rST prose under doc/source/data
     # that the `vale` hook below lints and Bazel BUILD files for buildifier.
     # pre-commit ANDs this top-level `exclude` with each hook's own `files`, so
@@ -87,9 +86,9 @@ repos:
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -97,7 +96,6 @@ repos:
       - id: black
         exclude: |
           (?x)^(
-            doc/external/|
             python/build/|
             python/ray/_private/thirdparty/|
             python/ray/cloudpickle/|
@@ -149,6 +147,7 @@ repos:
           (?x)^(
             python/ray/serve/_private/.*\.py|
             python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_deployment_typing.py|
             python/ray/serve/tests/typing_files/check_handle_typing.py
           )$
         exclude: |
@@ -174,6 +173,7 @@ repos:
           (?x)^(
             python/ray/serve/_private/.*\.py|
             python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_deployment_typing.py|
             python/ray/serve/tests/typing_files/check_handle_typing.py
           )$
         exclude: |
@@ -253,6 +253,17 @@ repos:
         types: [python]
         pass_filenames: false
         args: [".", "-s", "ci", "-s", "python/ray/thirdparty_files", "-s", "python/build", "-s", "lib"]
+
+  - repo: local
+    hooks:
+      - id: check-ray-repo-links
+        name: Check that links to files on Ray's master branch resolve
+        entry: python ci/lint/check_ray_repo_links.py
+        language: python
+        # Scans the whole tree, because moving a file breaks links in files the
+        # change never touched.
+        pass_filenames: false
+        always_run: true
 
   - repo: local
     hooks:

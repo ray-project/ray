@@ -10,7 +10,7 @@ Out-of-memory errors (OOMs) are one of the most common issues you encounter with
 
 This guide describes what OOMs look like and how to mitigate them.
 
-For a lower-level explanation of how Ray Data treats memory, see {ref}`Ray Data memory model <data_memory_management>` and {doc}`Resource isolation with cgroup v2 </ray-core/resource-isolation-with-cgroupv2>`.
+For a lower-level explanation of how Ray Data treats memory, see {ref}`Ray Data memory model <data_memory_management>` and {doc}`Resource isolation with cgroup v2 </core/resource-isolation-with-cgroupv2>`.
 
 (what-ooms-look-like)=
 ## What do OOMs look like?
@@ -92,7 +92,7 @@ The "Unexpected System Level Worker Failures" chart in the Ray Core dashboard sh
 
 ### Node death
 
-On older versions of Ray without resource isolation, nodes can die under memory pressure. You might see an error similar to the following:
+Without resource isolation, nodes can die under memory pressure. You might see an error similar to the following:
 
 ```
 {"asctime":"2026-03-23 18:24:28,943","levelname":"E","message":":info_message: Attempting to recover 41 lost objects by resubmitting their tasks or setting a new primary location from existing copies. To disable object reconstruction, set @ray.remote(max_retries=0).","filename":"core_worker.cc","lineno":475}
@@ -163,9 +163,9 @@ To avoid oversubscription, set ``DataContext.get_current().default_map_logical_m
 
 ### Start Ray with resource isolation
 
-If you see kernel OOM kills or node deaths from memory pressure, enable *resource isolation*. Resource isolation protects critical system components and eliminates kernel OOMs and node deaths.
+If you see kernel OOM kills or node deaths from memory pressure, enable *resource isolation*. Resource isolation protects critical system components from memory pressure. With enough system memory reserved, as the next section describes, you shouldn't see kernel OOMs or node deaths.
 
-To enable resource isolation, see {doc}`Resource isolation with cgroup v2 </ray-core/resource-isolation-with-cgroupv2>`.
+To enable resource isolation, see {doc}`Resource isolation with cgroup v2 </core/resource-isolation-with-cgroupv2>`.
 
 :::{versionadded} 2.56
 The full implementation of resource isolation.
@@ -199,7 +199,7 @@ If you see this behavior, try setting ``DataContext.get_current().isolate_read_w
 
 ### Don't increase `RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION`
 
-Older versions of Ray Data emit a warning that suggests increasing `RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION`. Increasing it can improve performance for some workloads, such as shuffles, but it can also increase the risk of OOMs because it decreases the memory available to your UDFs.
+Ray Data versions before 2.56 emit a warning that suggests increasing `RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION`. Increasing it can improve performance for some workloads, such as shuffles, but it can also increase the risk of OOMs because it decreases the memory available to your UDFs.
 
 To improve memory safety, don't set this variable.
 
@@ -222,6 +222,6 @@ To experiment with oversubscription at the risk of OOMs, decrease `memory`.
 To learn more about how Ray handles memory, see the following guides:
 
 - {ref}`Ray Data memory model <data_memory_management>`
-- {doc}`Resource isolation with cgroup v2 </ray-core/resource-isolation-with-cgroupv2>`
+- {doc}`Resource isolation with cgroup v2 </core/resource-isolation-with-cgroupv2>`
 - {ref}`Out-of-memory prevention <ray-oom-prevention>`
 - {doc}`Debugging memory issues </ray-observability/user-guides/debug-apps/debug-memory>`

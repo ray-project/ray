@@ -89,7 +89,7 @@ Match the grammatical form of items in a series and avoid redundant conjunctions
 
 ### Use contractions
 
-Contractions read naturally: don't, doesn't, can't, won't, it's, you're, isn't, aren't, wouldn't, shouldn't. Avoid contractions in a warning or an error message, where the extra weight of the full form helps.
+Always use contractions. They read naturally: don't, doesn't, can't, won't, it's, you're, isn't, aren't, wouldn't, shouldn't.
 
 Never use "would've," "could've," "should've," "ain't," or "y'all."
 
@@ -362,11 +362,93 @@ Pick the format that makes the information easiest to extract:
 - Mapping topics to pages, or comparing options side by side, is a table.
 - Listing benefits is usually a cut. Fold the one point that matters into prose.
 
+(ray-core-docs-style)=
+
+## Writing Ray Core docs
+
+Ray Core pages live under `doc/source/core/`. They define the object vocabulary that every other Ray library builds on, such as tasks, actors, objects, and placement groups, so the forms in this section apply wherever another library's pages use those terms.
+
+The "Capitalize Ray components and product names" rule earlier in this guide covers most of it. Lowercase a generic noun even when it names a Ray concept, and keep that noun lowercase in headings past the first word, because headings are sentence case.
+
+### Ray Core terms
+
+Look up the form here rather than deriving it. The `Core.Terms` and `Core.Capitalization` Vale rules flag most of the "Not" column. To check a page by hand, run `vale doc/source/core/`.
+
+| Use | Not | Note |
+|---|---|---|
+| raylet | Raylet | The process that runs on each node. Lowercase mid-sentence, matching the source code. Capitalize it only at the start of a sentence or heading. |
+| GCS | gcs | Always uppercase in prose. |
+| Plasma store | plasma store, Plasma Store | Plasma is the name of the in-memory object store implementation, which started as part of Apache Arrow. "Store" is a generic noun. |
+| object store | Object Store | The generic concept. |
+| object ref, `ObjectRef` | Object Ref, object Ref | Write "object ref" in prose. Use `ObjectRef` in code style only when you mean the Python type. |
+| placement group | Placement Group | The class `PlacementGroup` keeps code style. |
+| head node, worker node | Head Node, Worker Node | |
+| worker process, driver | Worker Process, Driver | |
+| runtime environment | runtime env, Runtime Environment | Spell it out in prose. The `runtime_env` argument keeps code style. |
+| fault tolerance | Fault Tolerance | Hyphenate it only as a modifier before a noun, as in "fault-tolerance mechanisms." |
+| remote function, actor handle, named actor, concurrency group | Remote Function, Actor Handle, Named Actor, Concurrency Group | |
+| `asyncio` | AsyncIO, Asyncio | Python's module name, lowercase everywhere. |
+| retryable | retriable | Matches the spelling the source code uses most. |
+| Ray Compiled Graph, Ray Direct Transport (RDT) | Compiled graph, Direct transport | Feature names keep their capitals. |
+| Gloo, NCCL, NIXL, CuPy, libfabric | GLOO, gloo, cupy, LIBFABRIC | Third-party names take each project's own casing. |
+
+(ray-train-docs-style)=
+
+## Writing Ray Train docs
+
+Ray Train pages live under `doc/source/train/`. The {ref}`Ray Train overview <train-overview>` defines four concepts: the training function, the worker, the scaling configuration, and the trainer. Use those names for them everywhere else in Train docs.
+
+A Ray Train worker is a Ray Core worker process that runs the training function. Write "worker" when the Train context makes that clear, and "training worker" when a page also discusses Ray Core worker processes or cluster worker nodes.
+
+### Ray Train terms
+
+Look up the form here rather than deriving it. The `Train.Terms` and `Train.Capitalization` Vale rules flag most of the "Not" column. To check a page by hand, run `vale doc/source/train/`.
+
+| Use | Not | Note |
+|---|---|---|
+| trainer | Trainer, Ray Train Trainer | The generic concept is lowercase. Put a class name in code style, such as `TorchTrainer` or `XGBoostTrainer`. A third-party class such as the Lightning or Hugging Face Transformers `Trainer` also takes code style. |
+| training function | train function, Training Function | The user-defined function that each worker runs. `train_func` and `train_loop_per_worker` keep code style. |
+| worker, training worker | Train Worker | Capitalize "Train" only as part of "Ray Train." |
+| worker group | Worker Group | |
+| scaling configuration | scaling config | Spell it out in prose. `ScalingConfig` keeps code style. |
+| run configuration, checkpoint configuration | run config, checkpoint config | Spell them out in prose. `RunConfig` and `CheckpointConfig` keep code style. |
+| fault tolerance, local mode, elastic training | Fault Tolerance, Local Mode, Elastic Training | Generic nouns stay lowercase past the first word of a heading. |
+| fine-tune, fine-tuning | finetune, finetuning | Model and file names that contain "finetune" belong in code style. |
+| Ray Train V2 | Ray Train v2 | |
+| PyTorch, PyTorch Lightning, TensorFlow, Keras, JAX, DeepSpeed, Hugging Face, XGBoost, LightGBM, Horovod | Pytorch, Tensorflow, Jax, Deepspeed, HuggingFace | Framework names take each project's own casing. Write the package name in code style, such as `torch` or `lightgbm`. |
+| MLflow, W&B, Weights & Biases, TensorBoard | MLFlow, WandB, Tensorboard | Write `wandb` in code style when you mean the package. |
+
+(ray-tune-docs-style)=
+
+## Writing Ray Tune docs
+
+Ray Tune pages live under `doc/source/tune/`. The {ref}`Ray Tune key concepts <tune-60-seconds>` page defines the vocabulary: the trainable, the search space, the search algorithm, the scheduler, the trial, and the `Tuner` and `ResultGrid` classes. Use those names for them everywhere else in Tune docs.
+
+An experiment and a trial aren't interchangeable. An experiment is one `Tuner.fit()` call, named by `RunConfig(name=...)`, with its results in one experiment directory. A trial is one run of the trainable with one hyperparameter configuration, and an experiment runs many trials. Write "trial" when the sentence is about a single configuration, such as its checkpoints, its resources, or its status, and "experiment" when it's about the whole run, such as restoring it or naming its storage path.
+
+Write "scheduler" when the Tune context makes clear which scheduler you mean, and "trial scheduler" when a page also discusses Ray's task and actor scheduling or a Kubernetes scheduler.
+
+### Ray Tune terms
+
+Look up the form here rather than deriving it. The `Tune.Terms` and `Tune.Capitalization` Vale rules flag most of the "Not" column. To check a page by hand, run `vale doc/source/tune/`.
+
+| Use | Not | Note |
+|---|---|---|
+| trainable | Trainable, Tune Trainable | The generic concept is lowercase. Put the class in code style when you mean it, as in `Trainable`. |
+| function API, class API, function trainable, class trainable | Function API, Class API, Function Trainable | The two ways to define a trainable. Generic nouns stay lowercase. |
+| search space, search algorithm | Search Space, Search Algorithm, search alg | Searcher classes such as `OptunaSearch` keep code style, as does the `search_alg` argument. |
+| scheduler, trial scheduler | Trial Scheduler | Scheduler classes such as `ASHAScheduler` keep code style. |
+| trial, experiment | Tune Trial, Tune Experiment | See the distinction earlier in this section. |
+| configuration dictionary, trial directory, experiment directory | config dict, trial dir, experiment dir | Spell them out in prose. `config` and `logdir` keep code style. |
+| Bayesian optimization, median stopping rule | Bayesian Optimization, Median Stopping Rule | Techniques are generic nouns. The `bayesian-optimization` package keeps code style. |
+| Hyperband, ASHA, BOHB, Population Based Training, PB2 | HyperBand | Algorithm names follow the papers that introduced them. Class names such as `HyperBandScheduler` keep code style. |
+| Hyperopt, Optuna, Nevergrad, Ax, HEBO, ZOOpt | HyperOpt, hyperopt, AX | Library names take each project's own casing. Write the package name in code style, such as `hyperopt`. |
+
 (kubernetes-docs-style)=
 
 ## Writing Ray on Kubernetes and KubeRay docs
 
-Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/cluster/kubernetes/` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
+Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/kuberay/` and in `doc/source/cluster/kubernetes.md` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/kuberay-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
 
 When two rules conflict in this domain, follow this order:
 

@@ -1,4 +1,3 @@
-import errno
 import logging
 import os
 import pathlib
@@ -40,14 +39,13 @@ RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
 RUNTIME_ENV_AGENT_PIP_PACKAGES = [
-    "aiohttp==3.14.3",
+    "aiohttp==3.14.4",
     "idna==3.15",
 ]
 DEPS_ONLY_VERSION = "100.0.0.dev0"
 # In automated builds, we do a few adjustments before building. For instance,
-# the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set in our conda-forge
-# feedstock.
+# the bazel environment is set up slightly differently. This variable is set in
+# our conda-forge feedstock.
 is_conda_forge_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
@@ -258,7 +256,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.14.1",
+            "aiohttp >= 3.14.4",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0; python_version < '3.12'",
@@ -387,9 +385,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.30.0",
-                "nixl==1.4.1",
-                "nixl-cu13==1.4.1",
+                "vllm[audio]==0.32.0",
+                "nixl==1.5.0",
+                "nixl-cu13==1.5.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -464,89 +462,6 @@ def _find_bazel_bin():
             return bazel_bin
 
     raise RuntimeError("Cannot find bazel in PATH")
-
-
-def patch_isdir():
-    """
-    Python on Windows is having hard times at telling if a symlink is
-    a directory - it can "guess" wrong at times, which bites when
-    finding packages. Replace with a fixed version which unwraps links first.
-    """
-    orig_isdir = os.path.isdir
-
-    def fixed_isdir(path):
-        while os.path.islink(path):
-            try:
-                link = os.readlink(path)
-            except OSError:
-                break
-            path = os.path.abspath(os.path.join(os.path.dirname(path), link))
-        return orig_isdir(path)
-
-    os.path.isdir = fixed_isdir
-
-
-def replace_symlinks_with_junctions():
-    """
-    Per default Windows requires admin access to create symlinks, while
-    junctions (which behave similarly) can be created by users.
-
-    This function replaces symlinks (which might be broken when checked
-    out without admin rights) with junctions so Ray can be built both
-    with and without admin access.
-    """
-    assert is_native_windows_or_msys()
-
-    # Update this list if new symlinks are introduced to the source tree
-    _LINKS = {
-        r"ray\rllib": "../../rllib",
-    }
-    root_dir = os.path.dirname(__file__)
-    for link, default in _LINKS.items():
-        path = os.path.join(root_dir, link)
-        try:
-            out = subprocess.check_output(
-                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path)
-            )
-        except subprocess.CalledProcessError:
-            out = b""
-        if os.path.basename(path) in out.decode("utf8").splitlines():
-            logger.info(f"'{link}' is already converted to junction point")
-        else:
-            logger.info(f"Converting '{link}' to junction point...")
-            if os.path.isfile(path):
-                with open(path) as inp:
-                    target = inp.read()
-                os.unlink(path)
-            elif os.path.isdir(path):
-                target = default
-                try:
-                    # unlink() works on links as well as on regular files,
-                    # and links to directories are considered directories now
-                    os.unlink(path)
-                except OSError as err:
-                    # On Windows attempt to unlink a regular directory results
-                    # in a PermissionError with errno set to errno.EACCES.
-                    if err.errno != errno.EACCES:
-                        raise
-                    # For regular directories deletion is done with rmdir call.
-                    os.rmdir(path)
-            else:
-                raise ValueError(f"Unexpected type of entry: '{path}'")
-            target = os.path.abspath(os.path.join(os.path.dirname(path), target))
-            logger.info("Setting {} -> {}".format(link, target))
-            subprocess.check_call(
-                f'MKLINK /J "{os.path.basename(link)}" "{target}"',
-                shell=True,
-                cwd=os.path.dirname(path),
-            )
-
-
-if is_conda_forge_build and is_native_windows_or_msys():
-    # Automated replacements should only happen in automatic build
-    # contexts for now
-    patch_isdir()
-    replace_symlinks_with_junctions()
 
 
 def build(build_python, build_java, build_cpp, build_redis):
@@ -864,6 +779,8 @@ if __name__ == "__main__":
                 "includes/*.pxd",
                 "*.pxd",
                 "serve/_private/ingress_request_router.lua.tmpl",
+                "serve/_private/request_router_common.lua.tmpl",
+                "serve/_private/router_application.lua.tmpl",
             ],
         },
         include_package_data=True,

@@ -104,7 +104,7 @@ def batch_increase_brightness(batch: Dict[str, np.ndarray]) -> Dict:
 ds.map_batches(batch_increase_brightness, batch_size="auto")
 ```
 
-Set `batch_size="auto"` to have Ray Data pick a batch size based on the size of your data.
+Set `batch_size="auto"` to have Ray Data pick a batch size based on the size of your data. When you set `num_gpus`, `batch_size` must be an integer instead.
 
 Besides NumPy ndarrays, Ray Data also treats returned lists of NumPy ndarrays as tensor data. The same goes for returned objects that implement `__array__`, such as `torch.Tensor`.
 

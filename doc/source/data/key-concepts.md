@@ -26,6 +26,7 @@ A *block* is a set of rows that represents a single partition of the dataset. Bl
 The following figure shows a dataset with three blocks, each holding 1000 rows. Ray Data holds the {class}`~ray.data.Dataset` on the process that triggers execution. That process is usually the entrypoint of the program, called the {term}`driver`. Ray Data stores the blocks as objects in Ray's shared-memory {ref}`object store <objects-in-ray>`. Internally, Ray Data can natively handle a block as either a pandas `DataFrame` or a PyArrow `Table`.
 
 ```{image} images/dataset-arch-with-blocks.svg
+:alt: A ray.data.Dataset holds a table that maps row ranges 1-1000, 1001-2000, and 2001-3000 to object references. Each reference points to a block of 1000 rows with the columns col1 and col2.
 ```
 <!--
 https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
@@ -42,14 +43,15 @@ The following diagram shows the complete planning process.
 <!-- https://docs.google.com/drawings/d/1WrVAg3LwjPo44vjLsn17WLgc3ta2LeQGgRfE8UHrDA0/edit -->
 
 ```{image} images/get_execution_plan.svg
+:alt: The LogicalOptimizer turns a logical plan into an optimized logical plan. The Planner converts the optimized logical plan into a physical plan, and the PhysicalOptimizer turns that into an optimized physical plan.
 :width: 600
 :align: center
 ```
 
 Operators are the building blocks of these plans. Ray Data uses two kinds of operators, one for each plan:
 
-* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write `dataset = ray.data.read_parquet(...)`, Ray Data creates a `Read` logical operator to specify what data to read.
-* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, Ray Data converts the `Read` logical operator into a `TaskPoolMapOperator` physical operator that launches Ray tasks to read the data.
+* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write `dataset = ray.data.read_csv(...)`, Ray Data creates a `Read` logical operator to specify what data to read.
+* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, Ray Data converts the `Read` logical operator into two physical operators, an `InputDataBuffer` and a `TaskPoolMapOperator`. The `TaskPoolMapOperator` launches Ray tasks to read the data.
 
 The following example shows how Ray Data builds a logical plan. As you chain operations, Ray Data constructs the logical plan behind the scenes:
 
@@ -63,16 +65,13 @@ dataset = dataset.select_columns("test")
 
 You can inspect the resulting logical plan by printing the dataset:
 
-```
+```text
 Project
 +- MapBatches(add_column)
    +- Dataset(schema={...})
 ```
 
-When execution begins, Ray Data optimizes the logical plan and then translates it into a physical plan, which is a series of operators that implement the data transformations. The following happens during this translation:
-
-* A single logical operator can become multiple physical operators. For example, `Read` becomes both `InputDataBuffer` and `TaskPoolMapOperator`.
-* Both logical and physical plans go through optimization passes. For example, `FuseOperators` combines map operators to reduce serialization overhead.
+When execution begins, Ray Data optimizes the logical plan, translates it into a physical plan, and then optimizes the physical plan. The physical plan is a series of operators that implement the data transformations. A single logical operator can become multiple physical operators during translation. For example, `Read` becomes both `InputDataBuffer` and `TaskPoolMapOperator`. The physical optimization pass then applies rules such as `FuseOperators`, which combines map operators to reduce serialization overhead.
 
 Physical operators do the following:
 
@@ -104,8 +103,21 @@ The following example shows how streaming execution works in Ray Data:
 ```python
 import ray
 
+def cpu_function(row):
+    return row
+
+class GPUClass:
+    def __call__(self, row):
+        return row
+
+def cpu_function2(row):
+    return row
+
+def filter_func(row):
+    return True
+
 # Create a dataset with 1K rows
-ds = ray.data.read_parquet(...)
+ds = ray.data.range(1000)
 
 # Define a pipeline of operations
 ds = ds.map(cpu_function, num_cpus=2)
@@ -119,7 +131,7 @@ ds.show(5)
 
 This code creates a logical plan like the following:
 
-```
+```text
 Filter(filter_func)
 +- Map(cpu_function2)
    +- Map(GPUClass)
@@ -132,6 +144,7 @@ The streaming topology looks like the following:
 <!-- https://docs.google.com/drawings/d/10myFIVtpI_ZNdvTSxsaHlOhA_gHRdUde_aHRC9zlfOw/edit -->
 
 ```{image} images/streaming-topology.svg
+:alt: A streaming topology of Read, Map, Map, Map, and Filter operators. Each operator writes to a queue that feeds the next operator. A legend marks each queue as an out-queue for its operator and an in-queue for the next one.
 :width: 1000
 :align: center
 ```
