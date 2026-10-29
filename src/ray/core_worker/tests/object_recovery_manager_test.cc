@@ -618,6 +618,77 @@ TEST_F(ObjectRecoveryManagerTest, TestTaskCancelledReconstructionFails) {
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
 }
 
+TEST_F(ObjectRecoveryManagerTest, TestGetAsyncRequeuesStaleObject) {
+  // Tests the GetAsync callback requeue logic when a concurrent node failure
+  // invalidates the pinned location. Marker is pre-placed so GetAsync fires
+  // immediately and the ref counter has no pinned location. Verifies the
+  // callback requeues instead of marking recovery complete.
+
+  // Stop the background thread so we control when callbacks execute.
+  io_context_.Stop();
+
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+
+  // Stale OBJECT_IN_PLASMA marker already in the store, no pinned location.
+  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+  auto obj = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
+  memory_store_->Put(obj, object_id, /*has_reference=*/true);
+
+  ASSERT_EQ(manager_.RecoverObject(object_id), std::nullopt);
+
+  // Run the posted callback.
+  io_context_.GetIoService().restart();
+  io_context_.GetIoService().poll();
+
+  // Callback should requeue since pinned_at is nil.
+  auto requeued = ref_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(requeued.size(), 1);
+  ASSERT_EQ(requeued[0], object_id);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestGetAsyncCompletesHealthyObject) {
+  // When the ref counter has a valid pinned location,
+  // the GetAsync callback should complete recovery normally.
+  io_context_.Stop();
+
+  ObjectID object_id = ObjectID::FromRandom();
+  NodeID remote_node_id = NodeID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+
+  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+  auto obj = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
+  memory_store_->Put(obj, object_id, /*has_reference=*/true);
+
+  // Object has a valid pinned location.
+  ref_counter_->UpdateObjectPinnedAtRaylet(object_id, remote_node_id);
+
+  ASSERT_EQ(manager_.RecoverObject(object_id), std::nullopt);
+
+  io_context_.GetIoService().restart();
+  io_context_.GetIoService().poll();
+
+  // Should NOT requeue — recovery is complete.
+  auto requeued = ref_counter_->FlushObjectsToRecover();
+  ASSERT_TRUE(requeued.empty());
+}
+
 // Regression test for a stale spill report poisoning an object's location state.
 // This is the deterministic counterpart of
 // python/ray/tests/test_reconstruction_spilled_out_of_scope.py::

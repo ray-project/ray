@@ -19,8 +19,10 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "ray/asio/periodical_runner_interface.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -28,7 +30,17 @@ class FakePeriodicalRunner : public PeriodicalRunnerInterface {
  public:
   void RunFnPeriodically(std::function<void()> fn,
                          uint64_t period_ms,
-                         std::string name) override {}
+                         std::string name) override {
+    fns_[name] = std::move(fn);
+  }
+
+  /// Invoke the lambda that was registered under the given name.
+  /// Used by tests to simulate a periodic timer tick at a controlled time.
+  void Trigger(const std::string &name) {
+    auto it = fns_.find(name);
+    RAY_CHECK(it != fns_.end()) << "No function registered with name: " << name;
+    it->second();
+  }
 
  protected:
   void DoRunFnPeriodically(std::function<void()> fn,
@@ -39,6 +51,9 @@ class FakePeriodicalRunner : public PeriodicalRunnerInterface {
                                        boost::posix_time::milliseconds period,
                                        std::shared_ptr<boost::asio::deadline_timer> timer,
                                        std::string name) override {}
+
+ private:
+  std::unordered_map<std::string, std::function<void()>> fns_;
 };
 
 }  // namespace ray
