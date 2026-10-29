@@ -17,6 +17,15 @@ from pydantic import (
     model_validator,
 )
 
+from ray.llm._internal.common.accelerators import (
+    TPU_ACCELERATOR_VALUES,
+    AcceleratorType,
+    AnyAcceleratorConfig,
+    CPUConfig,
+    GPUConfig,
+    TPUConfig,
+    infer_hardware_kind_from_bundles,
+)
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.callbacks.base import (
     CallbackBase,
@@ -35,15 +44,6 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
-)
-from ray.llm._internal.serve.core.configs.accelerators import (
-    TPU_ACCELERATOR_VALUES,
-    AcceleratorType,
-    AnyAcceleratorConfig,
-    CPUConfig,
-    GPUConfig,
-    TPUConfig,
-    infer_hardware_kind_from_bundles,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
