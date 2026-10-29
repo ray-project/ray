@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class LoadCheckpointCallback(ExecutionCallback):
-    """
-    ExecutionCallback that handles checkpoints. This Callback is responsible for
+    """ExecutionCallback that handles checkpoints. This Callback is responsible for
     deleting the checkpoint directory when these conditions are met:
     1. `delete_checkpoint_on_success` is True.
     2. The job finishes successfully.

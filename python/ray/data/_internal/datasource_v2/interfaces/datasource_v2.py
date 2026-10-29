@@ -1,5 +1,4 @@
-"""
-DataSourceV2 API - Unified Abstraction for Reading Data Sources
+"""DataSourceV2 API - Unified Abstraction for Reading Data Sources
 
 This module defines a unified, extensible API for reading data from diverse sources
 in Ray Data. The API provides a common abstraction layer that enables datasources to

@@ -208,8 +208,7 @@ class Batcher(BatcherInterface):
     # readability.
 
     def __init__(self, batch_size: Optional[int], ensure_copy: bool = False):
-        """
-        Construct a batcher that yields batches of batch_sizes rows.
+        """Construct a batcher that yields batches of batch_sizes rows.
 
         Args:
             batch_size: The size of batches to yield.

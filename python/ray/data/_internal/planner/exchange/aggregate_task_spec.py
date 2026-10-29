@@ -14,8 +14,7 @@ from ray.data.block import (
 
 
 class SortAggregateTaskSpec(ExchangeTaskSpec):
-    """
-    The implementation for sort-based aggregate tasks.
+    """The implementation for sort-based aggregate tasks.
 
     Aggregate is done in 2 steps: partial aggregate of individual blocks, and
     final aggregate of sorted blocks.

@@ -69,8 +69,7 @@ def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
 
 
 def _convert_to_datetime64(dt: datetime, precision: str) -> np.datetime64:
-    """
-    Converts a datetime object to a numpy datetime64 object with the specified
+    """Converts a datetime object to a numpy datetime64 object with the specified
     precision.
 
     Args:

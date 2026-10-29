@@ -31,8 +31,7 @@ class OperatorState:
 
 
 class NoProgressGuard:
-    """
-    Raises an ExecutionTimeoutError when no operator makes progress for
+    """Raises an ExecutionTimeoutError when no operator makes progress for
     DataContext.execution_no_progress_timeout_s.
 
     Progress is defined as either an output was taken from an operator, or

@@ -1790,8 +1790,7 @@ class ApproximateQuantile(AggregateFnV2):
         quantile_precision: int = 800,
         alias_name: Optional[str] = None,
     ):
-        """
-        Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
+        """Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
         https://datasketches.apache.org/docs/KLL/KLLSketch.html
 
         The accuracy of the KLL quantile sketch is a function of the configured quantile precision, which also affects
@@ -1884,8 +1883,7 @@ class ApproximateTopK(AggregateFnV2):
         alias_name: Optional[str] = None,
         encode_lists: bool = False,
     ):
-        """
-        Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
+        """Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
         https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
 
         For an exact variant that returns a plain list of values (at the cost of

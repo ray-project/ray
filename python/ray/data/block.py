@@ -500,8 +500,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def upsert_column(self, column_name: str, column_data: BlockColumn) -> Block:
-        """
-        Upserts a column into the block. If the column already exists, it will be replaced.
+        """Upserts a column into the block. If the column already exists, it will be replaced.
 
         Args:
             column_name: The name of the column to upsert.
@@ -789,8 +788,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
-        """
-        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+        """NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
 
         Compute boundaries of the groups within a block based on provided
         key (a column or a list of columns)
@@ -822,8 +820,7 @@ class BlockAccessor:
     def _iter_groups_sorted(
         self, sort_key: "SortKey"
     ) -> Iterator[Tuple[Sequence[KeyType], Block]]:
-        """
-        NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
+        """NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
 
         Creates an iterator over (zero-copy) blocks of rows grouped by
         provided key(s).
@@ -887,8 +884,7 @@ class BlockColumnAccessor:
         raise NotImplementedError()
 
     def hash(self) -> BlockColumn:
-        """
-        Computes a 64-bit hash value for each row in the column.
+        """Computes a 64-bit hash value for each row in the column.
 
         Provides a unified hashing method across supported backends.
         Handles complex types like lists or nested structures by producing a single hash per row.
@@ -912,8 +908,7 @@ class BlockColumnAccessor:
         raise NotImplementedError()
 
     def is_composed_of_lists(self) -> bool:
-        """
-        Checks whether the column is composed of list-like elements.
+        """Checks whether the column is composed of list-like elements.
 
         Returns:
             True if the column is made up of list-like values; False otherwise.

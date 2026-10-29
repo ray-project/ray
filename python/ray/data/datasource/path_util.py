@@ -418,8 +418,7 @@ def _resolve_paths_and_filesystem(
     paths: Union[str, List[str]],
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
 ) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
-    """
-    Resolves and normalizes all provided paths, infers a filesystem from the
+    """Resolves and normalizes all provided paths, infers a filesystem from the
     paths and assumes that all paths use the same filesystem.
 
     Args:
@@ -533,9 +532,7 @@ def _is_http_filesystem(fs: "pyarrow.fs.FileSystem") -> bool:
 
 
 def _unwrap_protocol(path: str) -> str:
-    """
-    Slice off any protocol prefixes on path.
-    """
+    """Slice off any protocol prefixes on path."""
     if sys.platform == "win32" and _is_local_windows_path(path):
         # Represent as posix path such that downstream functions properly handle it.
         # This is executed when 'file://' is NOT included in the path.

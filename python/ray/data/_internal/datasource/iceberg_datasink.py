@@ -1,6 +1,4 @@
-"""
-Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
-"""
+"""Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API."""
 import logging
 from dataclasses import dataclass, field
 from typing import (
@@ -388,8 +386,7 @@ _UPSERT_COLS_ID = "join_cols"
 
 @DeveloperAPI
 class IcebergDatasink(Datasink[IcebergWriteResult]):
-    """
-    Iceberg datasink to write a Ray Dataset into an existing Iceberg table.
+    """Iceberg datasink to write a Ray Dataset into an existing Iceberg table.
     This datasink handles concurrent writes by:
     - Each worker writes Parquet files to storage and returns DataFile metadata
     - The driver collects all DataFile objects and performs a single commit
@@ -409,8 +406,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Initialize the IcebergDatasink
+        """Initialize the IcebergDatasink
 
         Args:
             table_identifier: The identifier of the table such as `default.taxi_dataset`
@@ -834,8 +830,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         data_files: List["DataFile"],
         key_bounds: Optional[Dict[str, Tuple[ColumnValue, ColumnValue]]],
     ) -> None:
-        """
-        Commit upsert transaction with copy-on-write strategy.
+        """Commit upsert transaction with copy-on-write strategy.
 
         Args:
             txn: PyIceberg transaction object
@@ -971,8 +966,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     )
 
     def write(self, blocks: Iterable[Block], ctx: TaskContext) -> IcebergWriteResult:
-        """
-        Write blocks to Parquet files in storage and return DataFile metadata with schemas.
+        """Write blocks to Parquet files in storage and return DataFile metadata with schemas.
 
         This runs on each worker in parallel. Files are written directly to storage
         (S3, HDFS, etc.) and only metadata is returned to the driver.
@@ -1196,8 +1190,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     snap.append_data_file(preserved_file)
 
     def on_write_complete(self, write_result: WriteResult) -> None:
-        """
-        Complete the write by reconciling schemas and committing all data files.
+        """Complete the write by reconciling schemas and committing all data files.
 
         This runs on the driver after all workers finish writing files.
         Collects all DataFile objects and schemas from all workers, reconciles schemas

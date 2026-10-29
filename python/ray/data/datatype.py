@@ -182,8 +182,7 @@ class DataType:
 
     # Conversion methods
     def to_arrow_dtype(self, values: Optional[List[Any]] = None) -> pa.DataType:
-        """
-        Convert the DataType to a PyArrow DataType.
+        """Convert the DataType to a PyArrow DataType.
 
         Args:
             values: Optional list of values to infer the Arrow type from. Required if the DataType is a Python type.

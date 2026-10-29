@@ -168,8 +168,7 @@ def execute_aggregate_specs(
 
 
 class StatComputationPlan:
-    """
-    Encapsulates a set of aggregators (AggregateFnV2) and legacy stat functions
+    """Encapsulates a set of aggregators (AggregateFnV2) and legacy stat functions
     to compute statistics over a Ray dataset.
 
     Supports two types of aggregations:
@@ -191,8 +190,7 @@ class StatComputationPlan:
         columns: List[str],
         batch_format: Optional[BatchFormat] = None,
     ) -> None:
-        """
-        Registers an AggregateFnV2 factory for one or more columns.
+        """Registers an AggregateFnV2 factory for one or more columns.
 
         Args:
             aggregator_fn: A callable (typically a lambda or class) that accepts a column name and returns an instance of AggregateFnV2.
@@ -223,8 +221,7 @@ class StatComputationPlan:
         post_process_fn: Callable = lambda x: x,
         columns: List[str],
     ) -> None:
-        """
-        Registers a custom stat function to be run sequentially.
+        """Registers a custom stat function to be run sequentially.
 
         This supports legacy use cases where arbitrary callables are needed
         and cannot be run via Dataset.aggregate().
@@ -247,8 +244,7 @@ class StatComputationPlan:
         )
 
     def compute(self, dataset: "Dataset") -> Dict[str, Any]:
-        """
-        Executes all registered aggregators and stat functions.
+        """Executes all registered aggregators and stat functions.
 
         AggregateFnV2-based aggregators are batched and executed via Dataset.aggregate().
         Callable-based stat functions are run sequentially.
@@ -293,15 +289,12 @@ class StatComputationPlan:
         return len(self._get_custom_stat_fn_specs()) > 0
 
     def __iter__(self):
-        """
-        Iterates over all AggregatorSpecs.
-        """
+        """Iterates over all AggregatorSpecs."""
         return iter(self._get_aggregate_specs())
 
 
 def make_post_processor(base_fn, callbacks: List[Callable]):
-    """
-    Wraps a base post-processing function with a sequence of callback functions.
+    """Wraps a base post-processing function with a sequence of callback functions.
     Useful when multiple post-processing steps need to be applied in order.
     """
 
@@ -315,8 +308,7 @@ def make_post_processor(base_fn, callbacks: List[Callable]):
 
 
 class _Computed:
-    """
-    Wraps a factory callable for defaults that must be computed from the object.
+    """Wraps a factory callable for defaults that must be computed from the object.
 
     Plain callable values (e.g. a tokenizer function stored as an attribute)
     must NOT be wrapped — they will be stored as-is.
@@ -334,8 +326,7 @@ _REQUIRED_FIELD = object()  # Sentinel for required fields with no default value
 
 @dataclass
 class _PublicField:
-    """
-    Represents a public field that may have been used in older versions of the code.
+    """Represents a public field that may have been used in older versions of the code.
     If the field's default value is not _REQUIRED_FIELD, it will be used if neither the private field nor the public field is present during unpickling.
     Otherwise, the field is required and must be present as either the private or public field during unpickling, or a ValueError will be raised.
     Used for backwards compatibility during unpickling.
@@ -350,9 +341,7 @@ def migrate_private_fields(
     *,
     fields: Dict[str, _PublicField],
 ) -> None:
-    """
-    Migrates old public field names to new private field names during unpickling for backwards compatibility.
-    """
+    """Migrates old public field names to new private field names during unpickling for backwards compatibility."""
     for private_field, public_field_obj in fields.items():
         if private_field not in obj.__dict__:
             if public_field_obj.public_field in obj.__dict__:

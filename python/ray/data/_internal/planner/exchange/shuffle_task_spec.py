@@ -21,8 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class ShuffleTaskSpec(ExchangeTaskSpec):
-    """
-    The implementation for shuffle tasks.
+    """The implementation for shuffle tasks.
 
     This is used by random_shuffle() and repartition().
     """

@@ -120,8 +120,7 @@ class PythonObjectDtype(pd.api.extensions.ExtensionDtype):
 
     @property
     def type(self):
-        """
-        The scalar type for the array, e.g. ``int``
+        """The scalar type for the array, e.g. ``int``
         It's expected ``ExtensionArray[item]`` returns an instance
         of ``ExtensionDtype.type`` for scalar ``item``, assuming
         that value is valid (not NA). NA values do not need to be
@@ -135,9 +134,7 @@ class PythonObjectDtype(pd.api.extensions.ExtensionDtype):
 
     @classmethod
     def construct_array_type(cls: type) -> type:
-        """
-        Return the array type associated with this dtype.
-        """
+        """Return the array type associated with this dtype."""
         return PythonObjectArray
 
     def __from_arrow__(

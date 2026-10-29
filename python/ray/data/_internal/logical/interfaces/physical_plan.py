@@ -28,7 +28,5 @@ class PhysicalPlan(Plan):
 
     @property
     def op_map(self) -> Dict["PhysicalOperator", LogicalOperator]:
-        """
-        Get a mapping from physical operators to their corresponding logical operator.
-        """
+        """Get a mapping from physical operators to their corresponding logical operator."""
         return self._op_map

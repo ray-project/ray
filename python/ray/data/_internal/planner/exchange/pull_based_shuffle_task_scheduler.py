@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
-    """
-    The pull-based map-reduce shuffle scheduler.
+    """The pull-based map-reduce shuffle scheduler.
 
     Map tasks are first scheduled to generate map output blocks. After all map output
     are generated, then reduce tasks are scheduled to combine map output blocks

@@ -21,8 +21,7 @@ from ray.types import ObjectRef
 
 
 class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
-    """
-    The split (non-shuffle) repartition scheduler.
+    """The split (non-shuffle) repartition scheduler.
 
     First, we calculate global splits needed to produce `output_num_blocks` blocks.
     After the split blocks are generated accordingly, reduce tasks are scheduled

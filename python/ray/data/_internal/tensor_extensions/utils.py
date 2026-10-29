@@ -122,8 +122,7 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
 def _create_possibly_ragged_ndarray(
     values: Union[np.ndarray, "ABCSeries", Sequence[Any]]
 ) -> np.ndarray:
-    """
-    Create a possibly ragged ndarray.
+    """Create a possibly ragged ndarray.
     Using the np.array() constructor will fail to construct a ragged ndarray that has a
     uniform first dimension (e.g. uniform channel dimension in imagery). This function
     catches this failure and tries a create-and-fill method to construct the ragged

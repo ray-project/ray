@@ -53,8 +53,7 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
         path: str,
         file_size: int,
     ) -> Optional[float]:
-        """
-        Estimate the encoding ratio (in-memory size / on-disk size) for a file.
+        """Estimate the encoding ratio (in-memory size / on-disk size) for a file.
 
         Args:
             path: The path to the file.

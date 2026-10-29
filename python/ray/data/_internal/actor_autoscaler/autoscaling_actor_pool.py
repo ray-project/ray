@@ -36,8 +36,7 @@ class ActorPoolScalingRequest:
 
 @dataclass(frozen=True)
 class AutoscalingActorConfig:
-    """
-    per_actor_resource_usage: The resource usage per actor.
+    """per_actor_resource_usage: The resource usage per actor.
     min_size: The minimum number of running actors to be maintained
         in the pool. Note, that this constraint could be violated when
         no new work is available for scheduling in the actor pool (ie
