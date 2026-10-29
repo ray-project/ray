@@ -3380,6 +3380,35 @@ class TestRequestRoutingTimeout:
 
     @pytest.mark.parametrize(
         "setup_router",
+        [{"request_router_cls": PowerOfTwoChoicesRequestRouter}],
+        indirect=True,
+    )
+    async def test_drops_every_copy_of_requeued_request(
+        self, setup_router: Tuple[AsyncioRouter, RequestRouter]
+    ):
+        """A rejected request is re-queued while its earlier entry is still there;
+        removing it must drop both copies."""
+        _, request_router = setup_router
+        timed_out = PendingRequest(
+            args=[], kwargs={}, metadata=dummy_request_metadata()
+        )
+        other = PendingRequest(args=[], kwargs={}, metadata=dummy_request_metadata())
+        for queue in (
+            request_router._pending_requests_to_fulfill,
+            request_router._pending_requests_to_route,
+        ):
+            queue.extend([timed_out, other, timed_out])
+
+        request_router._remove_pending_request_from_queues(timed_out)
+
+        for queue in (
+            request_router._pending_requests_to_fulfill,
+            request_router._pending_requests_to_route,
+        ):
+            assert list(queue) == [other]
+
+    @pytest.mark.parametrize(
+        "setup_router",
         [{"enable_strict_max_ongoing_requests": True}],
         indirect=True,
     )

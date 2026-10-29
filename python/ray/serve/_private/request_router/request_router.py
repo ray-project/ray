@@ -851,14 +851,16 @@ class RequestRouter(ABC):
         has no replicas. Match by identity; dataclass `==` would compare the
         request args.
         """
+        # A rejected request is re-inserted while its earlier entry may still be
+        # queued, so the same object can appear more than once; drop every copy.
         for queue in (
             self._pending_requests_to_fulfill,
             self._pending_requests_to_route,
         ):
-            for i, queued in enumerate(queue):
-                if queued is pending_request:
-                    del queue[i]
-                    break
+            kept = [queued for queued in queue if queued is not pending_request]
+            if len(kept) != len(queue):
+                queue.clear()
+                queue.extend(kept)
 
     def _insert_pending_request_sorted(
         self, queue: Deque[PendingRequest], pending_request: PendingRequest
