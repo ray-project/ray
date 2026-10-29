@@ -306,12 +306,19 @@ class Batcher(BatcherInterface):
                 # Try de-fragmenting table in case its columns
                 # have too many chunks (potentially hindering performance of
                 # subsequent slicing operation)
-                if isinstance(accessor, ArrowBlockAccessor) and not (
-                    self._ensure_copy and self._batch_format in ("numpy", "pandas")
-                ):
+                if isinstance(accessor, ArrowBlockAccessor):
+                    min_chunks_to_combine = 1
+                    if self._ensure_copy and self._batch_format in ("numpy", "pandas"):
+                        # Defer scalar copies to conversion for lightly chunked
+                        # columns, but retain compaction for fragmented columns
+                        # to avoid repeatedly slicing thousands of chunks.
+                        min_chunks_to_combine = (
+                            transform_pyarrow.MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
+                        )
                     accessor = BlockAccessor.for_block(
                         transform_pyarrow.try_combine_chunked_columns(
-                            accessor.to_block(), min_chunks_to_combine=1
+                            accessor.to_block(),
+                            min_chunks_to_combine=min_chunks_to_combine,
                         )
                     )
 

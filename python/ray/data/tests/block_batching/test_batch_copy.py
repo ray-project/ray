@@ -60,6 +60,60 @@ def test_numpy_concatenation_is_final_allocation(monkeypatch):
     assert batch["value"] is allocations[0]
 
 
+@pytest.mark.parametrize("batch_format", ["numpy", "pandas"])
+@pytest.mark.parametrize("batch_size", [None, 3, 16])
+@pytest.mark.parametrize("num_chunks", [8, 32])
+@pytest.mark.parametrize("arrow_backed", [False, True])
+def test_copy_batches_defragment_many_chunks(
+    monkeypatch, batch_format, batch_size, num_chunks, arrow_backed
+):
+    monkeypatch.setattr(
+        DataContext.get_current(), "enable_arrow_backed_pandas_conversion", arrow_backed
+    )
+    monkeypatch.setattr(
+        transform_pyarrow, "MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS", 16
+    )
+    values = np.arange(128, dtype=np.int64)
+    block = pa.table(
+        {
+            "fragmented": pa.chunked_array(
+                [pa.array(chunk) for chunk in np.split(values, num_chunks)]
+            ),
+            "few_chunks": pa.chunked_array(
+                [pa.array(chunk) for chunk in np.split(values, 2)]
+            ),
+        }
+    )
+    original_combine = transform_pyarrow.combine_chunked_array
+    combined_chunks = []
+
+    def combine(column, *args, **kwargs):
+        combined_chunks.append(column.num_chunks)
+        return original_combine(column, *args, **kwargs)
+
+    monkeypatch.setattr(transform_pyarrow, "combine_chunked_array", combine)
+    batches = list(
+        batch_blocks(
+            iter([block]),
+            batch_size=batch_size,
+            batch_format=batch_format,
+            ensure_copy=True,
+        )
+    )
+    for name in block.column_names:
+        np.testing.assert_array_equal(
+            np.concatenate([batch[name] for batch in batches]), values
+        )
+        for batch in batches:
+            batch[name] += 1
+        assert block[name].to_pylist() == values.tolist()
+
+    # Compact a fragmented column once before repeated slicing. Avoid copying
+    # lightly chunked columns, including when another column is compacted.
+    should_compact = num_chunks == 32 and batch_size is not None
+    assert combined_chunks == ([32] if should_compact else [])
+
+
 @pytest.mark.parametrize("chunks", [[], [[]], [[], [1, 2], []]])
 def test_writable_numpy_empty_chunks(chunks):
     column = pa.chunked_array(chunks, type=pa.int64())
