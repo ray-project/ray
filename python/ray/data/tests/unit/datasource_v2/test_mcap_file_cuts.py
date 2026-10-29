@@ -377,22 +377,32 @@ def listed_rows(path, run, record, size=FILE_SIZE, file_records=b""):
     return with_listing_records(manifest, file_records, [record])
 
 
-def test_rows_it_cannot_place_in_time_go_to_the_packer_unchanged():
-    """A file whose rows do not each name one chunk and carry its index record
-    reaches the packer as listed, so it gets the tasks the packer alone gives."""
+def unplaceable_files() -> List[FileManifest]:
+    """Files whose rows do not each name one chunk and carry its index record.
+
+    ::
+
+        whole  30 bytes   listed whole: no chunk index
+        bad   100 bytes   unreadable: no chunk and no records
+        empty  40 bytes   one chunk whose index record is empty
+        two    80 bytes   one row naming two chunks
+    """
     one_chunk = FileChunk(unit_ids=(0,), num_rows=1, size_bytes=WEIGHT)
     two_chunks = FileChunk(unit_ids=(0, 1), num_rows=2, size_bytes=2 * WEIGHT)
     unreadable = FileChunk(unit_ids=(), num_rows=0, size_bytes=BUDGET)
-    files = [
-        # Listed whole: no chunk index.
+    return [
         listed_rows("whole", None, None, size=30),
-        # Unreadable: no chunk and no records.
         listed_rows("bad", unreadable, None, file_records=None),
-        # A chunk row whose index record is empty, as a listing may leave it.
         listed_rows("empty", one_chunk, b""),
-        # A row naming two chunks.
         listed_rows("two", two_chunks, chunk_index_record(0, 9, 0)),
     ]
+
+
+def test_rows_it_cannot_place_in_time_go_to_the_packer_unchanged():
+    """In a read that does not keep order, a file the cutter cannot place in
+    time reaches the packer as listed, so it gets the tasks the packer alone
+    gives."""
+    files = unplaceable_files()
     packer = OnlineBinPacker(BUDGET, requires_global_input=False)
     for manifest in files:
         packer.add_input(manifest)
@@ -401,7 +411,7 @@ def test_rows_it_cannot_place_in_time_go_to_the_packer_unchanged():
     while packer.has_partition():
         alone.append(packer.next_partition())
 
-    tasks = cut(files)
+    tasks = cut(files, preserve_order=False)
 
     assert tasks == as_tasks(alone)
     assert sorted(row for task in tasks for row in task) == [
@@ -409,6 +419,41 @@ def test_rows_it_cannot_place_in_time_go_to_the_packer_unchanged():
         ("empty", [0]),
         ("two", [0, 1]),
         ("whole", None),
+    ]
+
+
+def test_rows_it_cannot_place_in_time_keep_listing_order_in_an_ordered_read():
+    """In a read that keeps order, those files are packed whole in listing
+    order. Each pair of neighbours would pass the budget, so each file gets a
+    task of its own."""
+    tasks = cut(unplaceable_files())
+
+    assert tasks == [
+        [("whole", None)],
+        [("bad", [])],
+        [("empty", [0])],
+        [("two", [0, 1])],
+    ]
+
+
+def test_ordered_read_keeps_files_in_listing_order():
+    """In a read that keeps order, a heavy file's tasks leave after the light
+    files listed before it, and light files share a task only with their
+    neighbours."""
+    files = [
+        listed_file("a", one_writer(1)),
+        listed_file("b", one_writer(1)),
+        listed_file("heavy", one_writer(3)),
+        listed_file("c", one_writer(1)),
+    ]
+
+    tasks = cut(files)
+
+    assert tasks == [
+        [("a", [0]), ("b", [0])],
+        [("heavy", [0, 1])],
+        [("heavy", [2])],
+        [("c", [0])],
     ]
 
 
