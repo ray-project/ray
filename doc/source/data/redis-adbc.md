@@ -18,20 +18,15 @@ for a source installation. Redis must run separately with Search enabled.
 ```python
 import os
 
-import ray
 from adbc_driver_redis.ray import read_query
 
-ray.init(num_cpus=2)
-try:
-    dataset = read_query(
-        uri=os.environ["REDIS_URI"],
-        query="SELECT id, amount FROM analytics.orders",
-        partition_count=4,
-        batch_rows=1024,
-    )
-    print(dataset.take(5))
-finally:
-    ray.shutdown()
+dataset = read_query(
+    uri=os.environ.get("REDIS_URI", "redis://localhost:6379"),
+    query="SELECT id, amount FROM analytics.orders",
+    partition_count=4,
+    batch_rows=1024,
+)
+print(dataset.take(5))
 ```
 
 Create, ingest or adopt `analytics.orders` through the Redis driver first; arbitrary

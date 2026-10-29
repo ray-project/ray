@@ -1309,17 +1309,10 @@ The community maintains the following connectors, which integrate Ray Data with 
 * [Apache Doris Ray Connector](https://github.com/jiangxt2/ray-doris): Reads and writes data between Ray Data and [Apache Doris](https://doris.apache.org/).
 * [Kinetica Ray Connector](https://github.com/kineticadb/kinetica-ray): Reads and writes data between Ray Data and [Kinetica](https://www.kinetica.com/).
 * [Qdrant Ray Connector](https://github.com/qdrant-labs/qdrant-ray): Writes Ray datasets to [Qdrant](https://qdrant.tech/) in parallel.
+* [Redis ADBC integration](redis-adbc.md): Reads Redis data as Arrow batches on workers through an external ADBC datasource. Requires matching Python and native builds. See the guide for live-read and retry limits.
 
 ## Performance considerations
 
 By default, Ray Data decides the number of output blocks from all read tasks dynamically, based on input data size and available resources. This default should work well in most cases. To override it, set the `override_num_blocks` argument. Ray Data decides internally how many read tasks to run concurrently to make the best use of the cluster, from 1 to `override_num_blocks` tasks. The higher the `override_num_blocks` value, the smaller the data blocks in the dataset, and the more opportunities for parallel execution.
 
 To tune the number of output blocks and find other ways to optimize read performance, see {ref}`Optimize reads <optimizing-reads>`.
-
-
-## Redis through an external ADBC reader
-
-For an external Redis datasource that reads Arrow batches on workers, see the
-[Redis ADBC integration guide](redis-adbc.md). This adapter requires its matching
-Python/native builds and has live-read and retry limits; it is separate from
-Ray's generic SQL reader and is not a built-in Ray backend.
