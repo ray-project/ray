@@ -17,6 +17,7 @@ py_test_module_list(
         "test_deprecation.py",
         "test_filters.py",
         "test_formatters.py",
+        "test_health_events.py",
         "test_logging_constants.py",
         "test_network_utils.py",
         "test_ray_option_utils.py",
