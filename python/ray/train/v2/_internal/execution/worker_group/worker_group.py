@@ -1020,8 +1020,7 @@ class WorkerGroup(ExecutionGroup):
 
     @staticmethod
     def _sort_workers_by_tpu_pod_name(workers: List[Worker]) -> List[Worker]:
-        """
-        Sort workers by their TPU Pod name to ensure deterministic
+        """Sort workers by their TPU Pod name to ensure deterministic
         topology mapping for TPU multi-slice. The TPU Pod name is based on
         TPU_NAME env var, which is unique and indexed within the Ray worker group
         requesting TPUs.
