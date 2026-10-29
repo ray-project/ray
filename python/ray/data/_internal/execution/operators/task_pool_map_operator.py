@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 from typing_extensions import override
 
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
     RebundleQueue,
@@ -277,6 +278,11 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
     def get_max_concurrency_limit(self) -> Optional[int]:
         return self._max_concurrency
+
+    @property
+    @override
+    def compute_strategy(self) -> TaskPoolStrategy:
+        return TaskPoolStrategy(size=self._max_concurrency)
 
     def min_max_resource_requirements(
         self,

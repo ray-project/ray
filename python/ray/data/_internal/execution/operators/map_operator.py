@@ -245,6 +245,9 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         if ray_remote_args is None:
             ray_remote_args = {}
 
+        self._min_rows_per_bundle = min_rows_per_bundle
+        self._can_modify_num_rows = True
+
         ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args)
 
         # Configure a default logical memory to improve memory safety when the user has
@@ -376,6 +379,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         min_rows_per_bundle: Optional[int] = None,
         ref_bundler: Optional[RebundleQueue] = None,
         supports_fusion: bool = True,
+        can_modify_num_rows: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -404,6 +408,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 The actual rows passed may be less if the dataset is small.
             ref_bundler: The ref bundler to use for this operator.
             supports_fusion: Whether this operator supports fusion with other operators.
+            can_modify_num_rows: Whether fusion treats this operator as row-changing.
             map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
                 access these kwargs through the `TaskContext.kwargs` dictionary.
             ray_remote_args_fn: A function that returns a dictionary of remote args
@@ -448,7 +453,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
 
             TaskPoolMapOperator = get_task_pool_map_operator_cls()
-            return TaskPoolMapOperator(
+            op = TaskPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -477,7 +482,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
-            return ActorPoolMapOperator(
+            op = ActorPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -495,6 +500,8 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        op._can_modify_num_rows = can_modify_num_rows
+        return op
 
     def start(
         self,
@@ -858,6 +865,27 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
 
     def supports_fusion(self) -> bool:
         return self._supports_fusion
+
+    @property
+    @abstractmethod
+    def compute_strategy(self) -> ComputeStrategy:
+        raise NotImplementedError
+
+    @property
+    def min_rows_per_bundle(self) -> Optional[int]:
+        return self._min_rows_per_bundle
+
+    @property
+    def ray_remote_args(self) -> Dict[str, Any]:
+        return self._ray_remote_args
+
+    @property
+    def ray_remote_args_fn(self) -> Optional[Callable[[], Dict[str, Any]]]:
+        return self._ray_remote_args_fn
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return self._can_modify_num_rows
 
     def num_active_tasks(self) -> int:
         # Override `num_active_tasks` to only include data tasks and exclude

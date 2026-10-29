@@ -135,6 +135,7 @@ def plan_download_op(
             data_context,
             name=f"SplitDownloadURIs({uri_column_names_str})",
             compute_strategy=TaskPoolStrategy(),
+            supports_fusion=False,  # We should look into if download should be fused with other map
         )
 
         partition_cls = AsyncPartitionActor if use_obstore_path else PartitionActor
@@ -179,6 +180,7 @@ def plan_download_op(
             #       that doesn't need custom resource requirements.
             ray_remote_args=None,
             compute_strategy=metadata_compute,
+            supports_fusion=False,
             # NOTE: Let each metadata actor stream emitted download blocks without
             #       generator-object backpressure. Downstream operator
             #       backpressure still controls the end-to-end pipeline.
@@ -229,6 +231,7 @@ def plan_download_op(
         name=f"DownloadURIBytes({uri_column_names_str})",
         compute_strategy=download_compute,
         ray_remote_args=ray_remote_args,
+        supports_fusion=False,
     )
 
     return download_map_operator

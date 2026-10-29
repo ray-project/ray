@@ -1136,6 +1136,43 @@ def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
     assert expected_optimized_plan in captured
 
 
+def test_map_fusion_is_decided_from_physical_ops(restore_data_context):
+    from ray.data._internal.logical.operators import Repartition
+    from ray.data._internal.logical.rules.operator_fusion import FuseOperators
+
+    ctx = DataContext.get_current()
+    input_op = InputDataBuffer(ctx, [])
+    read = get_parquet_read_logical_op()
+    repartition = Repartition(input_dependencies=[read], num_outputs=2, shuffle=True)
+
+    def make_pair(up_remote_args):
+        up = MapOperator.create(
+            MagicMock(), input_op, ctx, name="Up", ray_remote_args=up_remote_args
+        )
+        up.set_logical_operators(read)
+        down = MapOperator.create(
+            MagicMock(), up, ctx, name="ShuffleMap", ray_remote_args={"num_cpus": 1}
+        )
+        down.set_logical_operators(repartition)
+        rule = FuseOperators()
+        rule._op_map = {up: read, down: repartition}
+        return rule, up, down
+
+    rule, up, down = make_pair({})
+    assert rule._can_fuse(down, up)
+    fused = rule._get_fused_map_operator(down, up)
+    assert fused.name == "Up->ShuffleMap"
+    assert fused._logical_operators == [read, repartition]
+    # The synthesized logical op is a plain map that may change the row count
+    # and carries the upstream's remote args for further fusion.
+    assert rule._op_map[fused].can_modify_num_rows
+    assert rule._op_map[fused].ray_remote_args == up.ray_remote_args
+
+    # Incompatible remote args refuse as for any map.
+    rule, up, down = make_pair({"num_gpus": 1})
+    assert not rule._can_fuse(down, up)
+
+
 if __name__ == "__main__":
     import sys
 

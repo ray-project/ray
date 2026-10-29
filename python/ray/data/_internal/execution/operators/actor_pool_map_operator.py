@@ -176,20 +176,20 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             default_logical_memory_enabled,
         )
 
-        self._min_rows_per_bundle = min_rows_per_bundle
+        self._compute_strategy = compute_strategy
         self._ray_remote_args_fn = ray_remote_args_fn
-        self._ray_remote_args = self._apply_default_remote_args(
+        self._actor_remote_args = self._apply_default_remote_args(
             self._ray_remote_args, self.data_context
         )
         # Pass the actor concurrency setting to Ray Core.
         max_concurrency = compute_strategy.max_concurrent_calls_per_actor
         if max_concurrency is not None:
-            if self._ray_remote_args.get("max_concurrency") is not None:
+            if self._actor_remote_args.get("max_concurrency") is not None:
                 warnings.warn(
                     "Both `max_concurrency` and `max_concurrent_calls_per_actor` are set."
                     "`max_concurrent_calls_per_actor` takes precedence."
                 )
-            self._ray_remote_args["max_concurrency"] = max_concurrency
+            self._actor_remote_args["max_concurrency"] = max_concurrency
         self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
             ray_actor_task_remote_args, self.data_context
         )
@@ -228,6 +228,11 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
+    @property
+    @override
+    def compute_strategy(self) -> ActorPoolStrategy:
+        return self._compute_strategy
+
     def _create_actor_pool(
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorPool":
@@ -246,7 +251,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             gpu=self._ray_remote_args.get("num_gpus"),
             memory=self._ray_remote_args.get("memory"),
         )
-        max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        max_actor_concurrency = self._actor_remote_args.get("max_concurrency", 1)
         config = AutoscalingActorConfig(
             min_size=compute_strategy.min_size,
             max_size=compute_strategy.max_size,
@@ -297,7 +302,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options, block_ref_counter, lineage_tracker)
 
-        self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
+        self._actor_cls = ray.remote(**self._actor_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"
@@ -519,7 +524,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         Returns:
             The merged remote args used to create the actor class.
         """
-        remote_args = self._ray_remote_args.copy()
+        remote_args = self._actor_remote_args.copy()
         if self._ray_remote_args_fn:
             remote_args.update(self._ray_remote_args_fn())
         remote_args = merge_label_selector(

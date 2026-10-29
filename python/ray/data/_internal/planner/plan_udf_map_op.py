@@ -179,6 +179,7 @@ def plan_project_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        can_modify_num_rows=op.can_modify_num_rows,
         ray_remote_args=op.ray_remote_args,
         ray_remote_args_fn=op.ray_remote_args_fn,
     )
@@ -333,8 +334,16 @@ def plan_udf_map_op(
             zero_copy_batch=op.zero_copy_batch,
             output_block_size_option=output_block_size_option,
         )
+        # For historical consistency, we allow fusing `MapBatches` even if it
+        # can modify the number of rows. Before #60448, `MapBatches` was
+        # incorrectly marked as not modifying row counts, so it was always
+        # fused. We preserve that behavior here to avoid regressions.
+        #
+        # For the full history, see https://github.com/ray-project/ray/pull/60756.
+        can_modify_num_rows = False
 
     else:
+        can_modify_num_rows = op.can_modify_num_rows
         if isinstance(op, MapRows):
             udf_fn = _generate_transform_fn_for_map_rows(fn)
         elif isinstance(op, FlatMap):
@@ -356,6 +365,7 @@ def plan_udf_map_op(
         name=op.name,
         compute_strategy=compute,
         min_rows_per_bundle=op.min_rows_per_bundled_input,
+        can_modify_num_rows=can_modify_num_rows,
         ray_remote_args_fn=op.ray_remote_args_fn,
         ray_remote_args=op.ray_remote_args,
         per_block_limit=op.per_block_limit,
