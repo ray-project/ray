@@ -140,11 +140,12 @@ applications:
 Query each application through its route prefix:
 
 ```python
+import json
 import requests
 
 audio_file = "https://storage.googleapis.com/public-lyrebird-test/test_audio_22s.wav"
 resp = requests.post("http://localhost:8000/whisper", json={"filepath": audio_file})
-print(resp.json())
+print(json.dumps(resp.json(), indent=4))
 ```
 
 ```text
