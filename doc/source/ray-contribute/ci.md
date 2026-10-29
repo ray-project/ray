@@ -145,11 +145,17 @@ Every other test step is skipped under the label, in every library, including `m
 
 The label doesn't build the docs. Add an `@rtd-build` line to a commit message as well, as described in [The Read the Docs render gate](#the-read-the-docs-render-gate), so Read the Docs confirms that the API reference pages your docstrings render into still build.
 
+### Skipping GPU tests
+
+Some docs and CI infrastructure files select GPU test steps even though a change to them can't affect GPU behavior. For example, `doc/BUILD.bazel` defines the docs example tests for every library, so a change to it selects every library's docs example steps, including the Ray Data, Ray Serve, and Ray LLM GPU steps. The `skip-gpu-tests` label skips every step tagged `gpu`, in every library, along with the images that only those steps need. All other selected steps still run. Like the `go` label, it requires write access.
+
+Use the label only when your change can't affect what a GPU step tests. Don't use it for a change to library code, a GPU test, or a GPU test's image or launcher. The scheduled post-merge builds still run the GPU steps, so a GPU failure the label hides surfaces there, after your PR merges. A change to the label takes effect on the next commit you push, as with the other labels.
+
 ### Why some steps show as broken
 
 A Buildkite job marked `broken` never ran, so a `broken` label-gated step isn't a failure in your change.
 
-On a PR, the rules in `.buildkite/docs.labels.yaml` remove the steps a label skips before the pipeline uploads, so those steps don't appear in the build at all. Without the `docstring-only` label, `doc: docstring examples` doesn't appear, and without the `docs-example-test` label, `doc: docs example tests (opt-in)` doesn't either. Under the `docstring-only` label, the library test steps it skips don't appear. The one label-gated step the rules leave in place is `lint: validate docstring-only scope`, which shows as `broken` on a PR without the `docstring-only` label.
+On a PR, the rules in `.buildkite/docs.labels.yaml` remove the steps a label skips before the pipeline uploads, so those steps don't appear in the build at all. Without the `docstring-only` label, `doc: docstring examples` doesn't appear, and without the `docs-example-test` label, `doc: docs example tests (opt-in)` doesn't either. Under the `docstring-only` label, the library test steps it skips don't appear, and under the `skip-gpu-tests` label, the GPU steps don't appear. The one label-gated step the rules leave in place is `lint: validate docstring-only scope`, which shows as `broken` on a PR without the `docstring-only` label.
 
 Scheduled post-merge builds carry no PR labels and don't apply the label rules, so all three label-gated steps show as `broken` there when the build selects them.
 
