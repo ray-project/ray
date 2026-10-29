@@ -557,7 +557,13 @@ class StreamingExecutor(Executor, threading.Thread):
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
         if self._resource_manager is not None:
+            # Iterators report after every batch, usually with an unchanged
+            # count. Only a decrease can free output budget, so only it wakes
+            # the scheduling loop.
+            freed = num_bytes < self._resource_manager.get_external_consumer_bytes()
             self._resource_manager.set_external_consumer_bytes(num_bytes)
+            if freed:
+                self._output_node[1].consumer_activity.set()
 
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
@@ -594,6 +600,9 @@ class StreamingExecutor(Executor, threading.Thread):
         Returns:
             True if we should continue running the scheduling loop.
         """
+        # Clear before update_usages() reads the output queue and consumer state,
+        # so any consumer activity from here on wakes process_completed_tasks.
+        self._output_node[1].consumer_activity.clear()
         self._resource_manager.update_usages()
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for

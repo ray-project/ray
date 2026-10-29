@@ -1,4 +1,6 @@
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import numpy as np
@@ -6,10 +8,12 @@ import pandas as pd
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import memory_summary
 from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
@@ -374,6 +378,106 @@ def test_streaming_backpressure_e2e(
     # If backpressure is not working right, we will spill.
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
+
+
+_NUM_BLOCKS = 200
+_ROWS_PER_BLOCK = 1024
+
+
+def _make_payload_dataset():
+    """A ~200 MiB dataset of 1 MiB blocks, larger than the test object stores."""
+
+    def add_payload(batch):
+        num_rows = len(batch["id"])
+        return {"id": batch["id"], "payload": np.zeros((num_rows, 1024), np.uint8)}
+
+    return ray.data.range(
+        _NUM_BLOCKS * _ROWS_PER_BLOCK, override_num_blocks=_NUM_BLOCKS
+    ).map_batches(add_payload)
+
+
+def _iterate_until_output_backpressured():
+    """Start iterating a dataset much larger than the object store, take one
+    batch, then stop consuming until the executor has been output-backpressured
+    for several consecutive scheduling steps.
+
+    Returns the iterator, the ids consumed so far, and the scheduling-step stats.
+    """
+    ray.init(num_cpus=4, object_store_memory=100 * MiB)
+    stats = {"num_steps": 0, "backpressured_streak": 0}
+
+    class SchedulingStepCounter(ExecutionCallback):
+        def on_execution_step(self, executor):
+            stats["num_steps"] += 1
+            if any(op._in_task_output_backpressure for op in executor._topology):
+                stats["backpressured_streak"] += 1
+            else:
+                stats["backpressured_streak"] = 0
+
+    ray.data.DataContext.get_current().custom_execution_callback_classes.append(
+        SchedulingStepCounter
+    )
+
+    it = iter(_make_payload_dataset().iter_batches(batch_size=_ROWS_PER_BLOCK))
+    ids = list(next(it)["id"])
+    wait_for_condition(lambda: stats["backpressured_streak"] >= 5)
+    return it, ids, stats
+
+
+def test_output_backpressure_does_not_busy_spin(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    it, ids, stats = _iterate_until_output_backpressured()
+
+    steps_before = stats["num_steps"]
+    time.sleep(1)
+    idle_steps = stats["num_steps"] - steps_before
+    # Each blocked iteration waits WAIT_FOR_TASK_COMPLETION_TIMEOUT_S (0.1s), so
+    # one second allows ~10. Busy-spinning runs thousands.
+    assert idle_steps < 50, idle_steps
+
+    for batch in it:
+        ids.extend(batch["id"])
+    assert sorted(ids) == list(range(_NUM_BLOCKS * _ROWS_PER_BLOCK))
+
+
+def test_executor_shuts_down_while_output_backpressured(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    it, _, _ = _iterate_until_output_backpressured()
+
+    def executor_threads():
+        return [
+            thread
+            for thread in threading.enumerate()
+            if thread.name.startswith("StreamingExecutor-")
+        ]
+
+    assert executor_threads()
+    it.close()
+    assert not executor_threads()
+
+
+def test_streaming_split_consumers_get_every_row_once(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    ray.init(num_cpus=4, object_store_memory=100 * MiB)
+
+    def consume(split):
+        return [
+            row_id
+            for batch in split.iter_batches(batch_size=_ROWS_PER_BLOCK)
+            for row_id in batch["id"]
+        ]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ids_per_split = list(
+            pool.map(consume, _make_payload_dataset().streaming_split(2))
+        )
+
+    assert sorted(ids_per_split[0] + ids_per_split[1]) == list(
+        range(_NUM_BLOCKS * _ROWS_PER_BLOCK)
+    )
 
 
 if __name__ == "__main__":
