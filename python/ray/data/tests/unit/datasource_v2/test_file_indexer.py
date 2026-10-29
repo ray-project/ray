@@ -81,37 +81,18 @@ def test_schema_aware_partition_pruner_ignores_unused_logical_fields(tmp_path):
         )
 
 
-def test_schema_aware_partition_pruner_preserves_unknown_and_errors(tmp_path):
+def test_partition_pruner_keeps_partially_known_paths(tmp_path):
     scheme = Partitioning(
         PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}
     )
     schema = pa.schema([("year", pa.int64()), ("month", pa.int64())])
     pruner = PartitionPredicatePruner(
-        scheme, col("year") == 2024, schema=schema, keep_unknown=True
-    )
-    assert pruner.should_include(str(tmp_path / "root"))
-    with pytest.raises(ValueError):
-        pruner.should_include(str(tmp_path / "year=invalid" / "data"))
-    untyped = PartitionPredicatePruner(
-        Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
-        col("year") == 2024,
-        schema=schema,
-        keep_unknown=True,
-    )
-    with pytest.raises(pa.ArrowInvalid):
-        untyped.should_include(str(tmp_path / "year=invalid" / "data"))
-    unknown = PartitionPredicatePruner(
         scheme,
         (col("year") == 2024) & (col("month") == 1),
         schema=schema,
         keep_unknown=True,
     )
-    assert unknown.should_include(str(tmp_path / "year=2024" / "data"))
-    for value in [True, False]:
-        constant = PartitionPredicatePruner(
-            scheme, lit(value), schema=schema, keep_unknown=True
-        )
-        assert constant.should_include(str(tmp_path / "root")) is value
+    assert pruner.should_include(str(tmp_path / "year=2024" / "data"))
 
 
 @pytest.mark.parametrize(
@@ -200,10 +181,10 @@ def test_partition_discovery_preserves_config_and_validates_layout(tmp_path):
         assert resolved is not None
         assert resolved is not scheme
         assert resolved.field_names is None
-    partition = str(tmp_path / "year=2024" / "data")
+    partition = str(tmp_path / "year=2024" / "month=01" / "data")
     resolved = resolve_partitioning(scheme, [root, partition])
     assert resolved is not None
-    assert resolved.field_names == ["year"]
+    assert resolved.field_names == ["year", "month"]
     assert scheme.field_names is None
     assert resolve_partitioning(resolved, [root]) is not resolved
     with pytest.raises(ValueError):

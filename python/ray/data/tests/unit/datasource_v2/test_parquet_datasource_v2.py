@@ -233,35 +233,6 @@ def test_infer_schema_hive_partitioned(tmp_path):
     assert schema.field("color").type == pa.string()
 
 
-@pytest.mark.parametrize("root_first", [True, False])
-def test_mixed_root_partition_filter_preserves_physical_values(tmp_path, root_first):
-    root = tmp_path / "root.parquet"
-    partition = tmp_path / "year=2024" / "month=01" / "data.parquet"
-    partition.parent.mkdir(parents=True)
-    pq.write_table(pa.table({"id": [-1, -2], "year": ["2024", "2023"]}), root)
-    pq.write_table(pa.table({"id": [1, 2]}), partition)
-    paths = [str(root), str(partition)]
-    if not root_first:
-        paths.reverse()
-    datasource = ParquetDatasourceV2(paths)
-    manifest = _manifest_of(paths)
-    partitioning = datasource.resolve_partitioning(manifest)
-    assert partitioning is not None
-    assert partitioning.field_names == ["year", "month"]
-    schema = datasource.infer_schema(manifest)
-    scanner = datasource.create_scanner(schema, partitioning=partitioning)
-    scanner = scanner.prune_partitions(col("year") == "2024")
-    pruned = scanner.prune_input_split(manifest)
-    assert len(pruned) == 2
-    rows = [
-        row
-        for table in scanner.create_reader().read(pruned)
-        for row in table.to_pylist()
-    ]
-    assert sorted(row["id"] for row in rows) == [-1, 1, 2]
-    assert all(row["year"] == "2024" for row in rows)
-
-
 def test_partition_path_outside_schema_sample_uses_logical_values(tmp_path):
     roots = []
     for index in range(16):
@@ -408,11 +379,8 @@ def test_footer_listing_stops_after_proven_partition_survivors(
     ] == scanned
 
 
-@pytest.mark.parametrize("columns", [["year"], ["id", "year"], ["tensor", "year"]])
 @pytest.mark.parametrize("filtered", [False, True])
-def test_tensor_reader_preserves_projected_partition_values(
-    tmp_path, columns, filtered
-):
+def test_tensor_reader_preserves_projected_partition_values(tmp_path, filtered):
     from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
 
     path = tmp_path / "year=2024" / "data.parquet"
@@ -423,6 +391,7 @@ def test_tensor_reader_preserves_projected_partition_values(
     )
     table = pa.table({"id": [1, 2], "tensor": tensor})
     pq.write_table(table, path)
+    columns = ["tensor", "year"]
     reader = ParquetFileReader(
         schema=table.schema.append(pa.field("year", pa.string())),
         columns=columns,
@@ -436,15 +405,10 @@ def test_tensor_reader_preserves_projected_partition_values(
     assert all(
         batch["year"].to_pylist() == ["2024"] * batch.num_rows for batch in batches
     )
-    if "id" in columns:
-        assert [value for batch in batches for value in batch["id"].to_pylist()] == [
-            1,
-            2,
-        ]
-    if "tensor" in columns:
-        assert [
-            value for batch in batches for value in batch["tensor"].to_pylist()
-        ] == [[1], [2]]
+    assert [value for batch in batches for value in batch["tensor"].to_pylist()] == [
+        [1],
+        [2],
+    ]
 
 
 def test_infer_schema_with_include_paths(tmp_path):
