@@ -170,7 +170,8 @@ class MCAPDatasourceV2(FileDataSourceV2):
     def get_file_partitioner(self, **kwargs):
         # Each listing row is one chunk weighted by its estimated read memory,
         # so chunks are packed into read tasks by that estimate. When the read
-        # keeps order, each file is kept in one task (``mcap_file_cuts``).
+        # keeps order, each file is kept in one task, and files keep their
+        # listing order (``mcap_file_cuts``).
         #
         # Packing is per listing shard, not global, so listing can run as many
         # parallel tasks. Each chunk still lands in exactly one read task; the
@@ -184,7 +185,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
             max_shared_open_bins=_BIN_PACKING_MAX_SHARED_OPEN_BINS,
             requires_global_input=False,
         )
-        return OrderedFileGrouper(packer)
+        return OrderedFileGrouper(packer, budget=_BIN_PACKING_BYTES)
 
     @property
     @override
