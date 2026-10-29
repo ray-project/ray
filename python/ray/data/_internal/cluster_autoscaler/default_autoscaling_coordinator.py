@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Callable, Dict, FrozenSet, List, Optional, Set
 
 import ray
-import ray._private.state
 import ray.exceptions
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
@@ -43,6 +42,10 @@ DEFAULT_SUBCLUSTER: Optional[LabelValue] = None
 RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
     "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
 )
+
+# Bounds the draining-nodes GCS query, which runs under the actor's lock on
+# every view refresh.
+_GET_DRAINING_NODES_TIMEOUT_S = 3.0
 
 
 def _format_resource_value_for_log(resource_name: str, value: float) -> str:
@@ -333,8 +336,9 @@ def _default_get_draining_node_ids() -> Set[NodeIdStr]:
     # then, so nothing is draining.
     if not ray.is_initialized():
         return set()
+    gcs_client = ray._private.worker.global_worker.gcs_client
     # Maps each draining node's id to its drain deadline; only the ids matter.
-    return set(ray._private.state.state.get_draining_nodes())
+    return set(gcs_client.get_draining_nodes(timeout=_GET_DRAINING_NODES_TIMEOUT_S))
 
 
 class _AutoscalingCoordinatorActor:
@@ -369,11 +373,6 @@ class _AutoscalingCoordinatorActor:
         # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
         # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
         self._cluster_node_resources: Dict[Optional[LabelValue], NodeResources] = {}
-        # The view update in which each node in the view was first seen. Among
-        # nodes of the same shape, a node seen earlier sorts first, so a node
-        # that joins later never jumps ahead of the existing ones.
-        self._node_first_seen: Dict[NodeIdStr, int] = {}
-        self._num_view_updates = 0
         # Whether the last draining-nodes query failed. Used to warn once per
         # run of failures instead of on every tick.
         self._draining_query_failing = False
@@ -649,34 +648,19 @@ class _AutoscalingCoordinatorActor:
             return True
 
         nodes = list(filter(_is_node_eligible, self._get_cluster_nodes()))
-        # Nodes first seen in the same update get the same value, so NodeID
-        # orders them. Nodes that left the view are forgotten.
-        node_first_seen: Dict[NodeIdStr, int] = {}
-        for node in nodes:
-            node_id = node.get("NodeID", "")
-            node_first_seen[node_id] = self._node_first_seen.get(
-                node_id, self._num_view_updates
-            )
-        self._node_first_seen = node_first_seen
-        self._num_view_updates += 1
 
         def _sort_key(node):
-            # Largest node first, mirroring Ray Core's bundle ordering (scarcest
-            # resource first, most of it first). Only GPU and CPU are compared,
-            # since the node's type fixes them. `memory` and `object_store_memory`
-            # come from free memory at raylet start, so they differ slightly
-            # between nodes of the same type, and comparing them would let a newly
-            # joined node jump ahead of existing ones. Core also ranks custom
-            # resources; we skip them, since they're opaque to us. Among nodes of
-            # the same shape, the one seen first comes first, then NodeID breaks
-            # ties, so the order is stable across ticks.
+            # Mirrors Ray Core's bundle ordering in scarcest resource first, most of it first.
+            # Core also ranks custom resources (between GPU and object store
+            # memory); we skip them, since it's opaque to us. NodeID breaks ties so
+            # the order is stable across ticks.
             resources = node.get("Resources", {})
-            node_id = node.get("NodeID", "")
             return (
                 -resources.get("GPU", 0),
+                -resources.get("object_store_memory", 0),
+                -resources.get("memory", 0),
                 -resources.get("CPU", 0),
-                self._node_first_seen[node_id],
-                node_id,
+                node.get("NodeID", ""),
             )
 
         nodes = sorted(nodes, key=_sort_key)

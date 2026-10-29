@@ -5,6 +5,7 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.core.generated import autoscaler_pb2
 from ray.data._internal.cluster_autoscaler import (
     default_autoscaling_coordinator as coordinator_module,
 )
@@ -1063,11 +1064,36 @@ def test_draining_node_is_excluded_until_the_drain_clears():
     }
 
 
+def test_default_draining_query_against_a_cluster(cluster):
+    """The default query reaches the GCS and returns the draining node's id."""
+    worker_node = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+    assert coordinator_module._default_get_draining_node_ids() == set()
+
+    # A busy node drained for preemption stays alive until its deadline.
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+    is_accepted, _ = ray._private.worker.global_worker.gcs_client.drain_node(
+        worker_node.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preempted",
+        2**63 - 1,
+    )
+    assert is_accepted
+
+    assert coordinator_module._default_get_draining_node_ids() == {worker_node.node_id}
+
+
 def test_failing_draining_query_does_not_break_the_tick():
     """Losing draining info must not stop the rest of the view refreshing, and
     a query that keeps failing warns once, not on every tick."""
     nodes = _nodes(n1={"GPU": 4})
-    get_draining_node_ids = Mock(side_effect=RuntimeError("GCS unavailable"))
+    get_draining_node_ids = Mock(side_effect=ray.exceptions.RpcError("GCS unavailable"))
     with patch.object(coordinator_module.logger, "warning") as warning:
         coord = _AutoscalingCoordinatorActor(
             get_current_time=lambda: 0,
@@ -1095,7 +1121,7 @@ def test_failing_draining_query_does_not_break_the_tick():
         get_draining_node_ids.side_effect = None
         get_draining_node_ids.return_value = set()
         coord._tick()
-        get_draining_node_ids.side_effect = RuntimeError("GCS unavailable")
+        get_draining_node_ids.side_effect = ray.exceptions.RpcError("GCS unavailable")
         coord._tick()
 
         assert warning.call_count == 2
@@ -1115,24 +1141,6 @@ def _gpu_node(node_id, memory_gib, num_gpus=4):
         "Labels": {},
         "Alive": True,
     }
-
-
-def test_same_type_nodes_keep_their_order_when_a_node_joins():
-    """Nodes of the same type are ordered by when they joined, not by small
-    differences in ``memory``, so a new node can't jump ahead of them."""
-    nodes = [_gpu_node("n2", memory_gib=140.0), _gpu_node("n1", memory_gib=139.9)]
-    coord = _make_coordinator(nodes)
-    assert list(coord._cluster_node_resources[None]) == ["n1", "n2"]
-
-    # Same type, a little more memory, and a NodeID that sorts first.
-    nodes.append(_gpu_node("n0", memory_gib=140.2))
-    coord._tick()
-    assert list(coord._cluster_node_resources[None]) == ["n1", "n2", "n0"]
-
-    # A larger node still goes first.
-    nodes.append(_gpu_node("n9", memory_gib=100.0, num_gpus=8))
-    coord._tick()
-    assert list(coord._cluster_node_resources[None]) == ["n9", "n1", "n2", "n0"]
 
 
 def test_node_joining_does_not_move_existing_reservations():
