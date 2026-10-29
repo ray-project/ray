@@ -9790,6 +9790,8 @@ class TestGangRollingUpdate:
         # Move one replica to RECOVERING so its gang is incomplete.
         running = ds._replicas.pop(states=[ReplicaState.RUNNING])
         recovering_replica = running[0]
+        # Explicitly set to PENDING_ALLOCATION to match a recovering replica.
+        recovering_replica._actor.set_status(ReplicaStartupStatus.PENDING_ALLOCATION)
         for r in running[1:]:
             ds._replicas.add(ReplicaState.RUNNING, r)
         ds._replicas.add(ReplicaState.RECOVERING, recovering_replica)
