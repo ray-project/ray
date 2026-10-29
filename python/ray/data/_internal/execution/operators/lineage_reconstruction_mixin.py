@@ -35,10 +35,10 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
 
     def __init__(self, *args: Any, **kwargs: Any):
         # For lineage reconstruction:
-        # Mapping of reconstruction plan ID -> blocks withheld (expressed as a mapping of parent block output to actual RefBundle) until every parent of a reconstruction
-        # child has produced the required blocks, and the reconstruction child task(s) can be scheduled with
+        # Mapping of reconstruction plan ID -> blocks withheld (expressed as a mapping of parent block output to actual RefBundle) until every parent of a child reconstruction
+        # task has produced the required blocks, and the child reconstruction task(s) can be scheduled with
         # the complete set(s) of input blocks. For each reconstruction plan ID, whichever parent task produces its last
-        # withheld output last hands over the input set for that plan as one bundle carrying the child's `ReconstructionStamp`.
+        # withheld output last hands over the input set for that plan as one bundle carrying the child reconstruction task's `ReconstructionStamp`.
         # See `_release_reconstruction_blocks_to_child` for more details.
         self._reconstruction_outputs: Dict[
             ReconstructionPlanId, Dict[ParentBlockOutput, RefBundle]
@@ -146,7 +146,7 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
 
         While a seed task's input bundle is queued, any later reconsturction plans due to object losses that trace back to
         the same seed task are batched with the current queued attempt instead of re-injecting the seed again.
-        On submission the task serves the plans on the stamp and the batched plans, and the stamps it releases to its children carry all of them.
+        On submission the task serves the plans on the stamp and the batched plans, and the stamps it releases to its child reconstruction tasks carry all of them.
 
         Args:
             seed_task_id: The ID of the seed task to reconstruct.
@@ -202,12 +202,12 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         lineage_task_id: LineageTaskId,
         reconstruction_plan_ids: Iterable[ReconstructionPlanId],
     ) -> Optional[int]:
-        """The highest output index block that is withheld by a task for its children across all
+        """The highest output index block that is withheld by a task for its child reconstruction tasks across all
         of the reconstruction plans it serves.
 
         Withheld outputs are the ones the lineage tracker reports as ``OBJECT_REUSED``.
         Called when the task is submitted. Nothing is released yet then, so every child
-        the task withholds outputs for is still pending.
+        reconstruction task the task withholds outputs for is still pending.
 
         Args:
             lineage_task_id: The lineage task ID of the task.
@@ -221,13 +221,13 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         assert lineage_tracker is not None
         return max(
             (
-                slot.output_index
+                parent_block_dependency.output_index
                 for reconstruction_plan_id in reconstruction_plan_ids
-                for slots in lineage_tracker.get_pending_children(
+                for parent_block_dependencies in lineage_tracker.get_pending_children(
                     lineage_task_id, reconstruction_plan_id
                 ).values()
-                for slot in slots
-                if slot.parent_lineage_task_id == lineage_task_id
+                for parent_block_dependency in parent_block_dependencies
+                if parent_block_dependency.parent_lineage_task_id == lineage_task_id
             ),
             default=None,
         )
@@ -235,14 +235,14 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
     def _consumer_of(
         self, child_task_id: LineageTaskId
     ) -> "LineageReconstructionMixin":
-        """The downstream operator that owns ``child_task_id``."""
+        """The downstream operator that owns the child reconstruction task ``child_task_id``."""
         for op in self.output_dependencies:
             if isinstance(op, LineageReconstructionMixin) and op.owns_data_task(
                 child_task_id
             ):
                 return op
         raise ValueError(
-            f"No downstream operator of {self.name} owns child task {child_task_id}."
+            f"No downstream operator of {self.name} owns child reconstruction task {child_task_id}."
         )
 
     def _release_reconstruction_blocks_to_child(
@@ -255,20 +255,20 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         for the reconstruction plans the parent task serves. Called when the parent produces its last withheld output,
         and again from the parent's task completed callback as a fallback.
 
-        We 'release' blocks when the required block inputs for a downstream child task are now ready to be consumed.
-        We do this in the following steps for each pending child:
-        1. Find the plans whose withheld blocks hold the child's whole input set
-        2. Pop the child's blocks from the withheld outputs of each of those plans
-        3. Merge the blocks into a single RefBundle, stamped with the child and all of those plans
-        4. Add the bundle to the operator's output queue, so the child task can be scheduled.
+        We 'release' blocks when the required block inputs for a downstream child reconstruction task are now ready to be consumed.
+        We do this in the following steps for each pending child reconstruction task:
+        1. Find the plans whose withheld blocks hold the child reconstruction task's whole input set
+        2. Pop the child reconstruction task's blocks from the withheld outputs of each of those plans
+        3. Merge the blocks into a single RefBundle, stamped with the child reconstruction task and all of those plans
+        4. Add the bundle to the operator's output queue, so the child reconstruction task can be scheduled.
 
-        A child task is scheduled, and consumes the bundle from the operator's output queue. On discovering that it is a
-        reconstruction task (from the stamp attribute on the bundle), the child task knows the correct task ID to register
+        A child reconstruction task is scheduled, and consumes the bundle from the operator's output queue. On discovering that it is a
+        reconstruction task (from the stamp attribute on the bundle), the child reconstruction task knows the correct task ID to register
         with and which reconstruction plans it serves.
 
-        For a downstream reconstruction child task, the parent task that produces its last withheld output last for a plan
+        For a downstream child reconstruction task, the parent task that produces its last withheld output last for a plan
         holds the full input set of reconstruction blocks for that plan. Plans whose input sets complete at the same time
-        share one release, so the child runs once for all of them. A plan that is still missing blocks keeps them withheld,
+        share one release, so the child reconstruction task runs once for all of them. A plan that is still missing blocks keeps them withheld,
         and is released when its last parent produces its last withheld output.
 
         Args:
@@ -280,38 +280,50 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         """
         lineage_tracker = self._lineage_tracker
         assert lineage_tracker is not None
-        # Mapping of pending child task ID -> the child's input slots, and the plans waiting on the child.
-        # A child's slots come from its first attempt, so they are the same under every plan.
-        child_to_slots: Dict[LineageTaskId, List[ParentBlockOutput]] = {}
+        # Mapping of pending child reconstruction task ID -> its parent block dependencies, and the plans waiting on it.
+        # A child reconstruction task's parent block dependencies come from its first attempt, so they are the same under every plan.
+        child_to_parent_block_dependencies: Dict[
+            LineageTaskId, List[ParentBlockOutput]
+        ] = {}
         child_to_plans: Dict[LineageTaskId, List[ReconstructionPlanId]] = {}
         for reconstruction_plan_id in sorted(reconstruction_plan_ids):
-            for child_task_id, slots in lineage_tracker.get_pending_children(
+            for (
+                child_task_id,
+                parent_block_dependencies,
+            ) in lineage_tracker.get_pending_children(
                 lineage_task_id, reconstruction_plan_id
             ).items():
-                child_to_slots[child_task_id] = slots
+                child_to_parent_block_dependencies[
+                    child_task_id
+                ] = parent_block_dependencies
                 child_to_plans.setdefault(child_task_id, []).append(
                     reconstruction_plan_id
                 )
 
-        # Each child's blocks come back in its first attempt's input order, across all
-        # of its parents. Re-running the child on that exact order keeps every output
+        # Each child reconstruction task's blocks come back in its first attempt's input order, across all
+        # of its parents. Re-running the child reconstruction task on that exact order keeps every output
         # index holding the rows it held originally, which output reuse relies on.
-        for child_task_id in sorted(child_to_slots):
-            slots = child_to_slots[child_task_id]
+        for child_task_id in sorted(child_to_parent_block_dependencies):
+            parent_block_dependencies = child_to_parent_block_dependencies[
+                child_task_id
+            ]
             ready_plan_ids = []
             for reconstruction_plan_id in child_to_plans[child_task_id]:
                 held_blocks = self._reconstruction_outputs.get(
                     reconstruction_plan_id, {}
                 )
-                missing = [slot for slot in slots if slot not in held_blocks]
+                missing = [
+                    parent_block_dependency
+                    for parent_block_dependency in parent_block_dependencies
+                    if parent_block_dependency not in held_blocks
+                ]
                 if missing:
-                    # Some parent of this child has not re-produced its share for this plan yet. Wait:
-                    # every parent serving the plan runs this on completion, and a parent's
-                    # outputs are withheld before its own done-callback, so whichever
-                    # completes last holds the whole set. Submitting now would run the child
-                    # against part of its input and silently emit a subset of its rows.
+                    # Some parent of this child reconstruction task has not re-produced its share for this plan yet. Wait.
+                    # Every parent serving the plan runs this at its last withheld output, so
+                    # whichever parent reaches it last holds the whole set. Submitting now would
+                    # run the child reconstruction task against part of its input and silently emit a subset of its rows.
                     logger.debug(
-                        "[lineage-reconstruction] Child %s of plan %s is not ready: %d of "
+                        "[lineage-reconstruction] Child reconstruction task %s of plan %s is not ready: %d of "
                         "its input blocks are still pending (missing %s, held %s).",
                         child_task_id,
                         reconstruction_plan_id,
@@ -319,9 +331,9 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
                         missing,
                         sorted(
                             held_blocks,
-                            key=lambda slot: (
-                                slot.parent_lineage_task_id,
-                                slot.output_index,
+                            key=lambda parent_block_dependency: (
+                                parent_block_dependency.parent_lineage_task_id,
+                                parent_block_dependency.output_index,
                             ),
                         ),
                     )
@@ -330,32 +342,35 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
             if not ready_plan_ids:
                 continue
 
-            # Pop the child's blocks from every ready plan. Plans that shared a parent's
+            # Pop the child reconstruction task's blocks from every ready plan. Plans that shared a parent's
             # reconstruction task hold the same blocks. Otherwise each plan holds its own copy of
             # the same rows, so the first plan's blocks serve all of them.
             blocks_per_plan = [
-                [self._reconstruction_outputs[plan_id].pop(slot) for slot in slots]
+                [
+                    self._reconstruction_outputs[plan_id].pop(parent_block_dependency)
+                    for parent_block_dependency in parent_block_dependencies
+                ]
                 for plan_id in ready_plan_ids
             ]
             # Register with the lineage tracker that all the blocks for this task are now
             # queued for each of the plans
             for reconstruction_plan_id in ready_plan_ids:
-                for slot in slots:
+                for parent_block_dependency in parent_block_dependencies:
                     lineage_tracker.register_block_queued(
-                        slot.parent_lineage_task_id,
-                        slot.output_index,
+                        parent_block_dependency.parent_lineage_task_id,
+                        parent_block_dependency.output_index,
                         reconstruction_plan_id,
                     )
                 if not self._reconstruction_outputs[reconstruction_plan_id]:
                     del self._reconstruction_outputs[reconstruction_plan_id]
-            # If a reconstruction task for the child is already queued, batch these plans into
-            # it instead of queueing the child again. The queued input holds the same
+            # If the child reconstruction task is already queued, batch these plans into
+            # it instead of queueing it again. The queued input holds the same
             # rows, so these blocks are dropped.
             consumer = self._consumer_of(child_task_id)
             if consumer.join_queued_reconstruction_task(child_task_id, ready_plan_ids):
                 continue
-            # Create a complete RefBundle containing all reconstruction blocks withheld for a child task,
-            # stamp it with the child's lineage task ID and every plan it serves.
+            # Create a complete RefBundle containing all reconstruction blocks withheld for a child reconstruction task,
+            # stamp it with the child reconstruction task's lineage task ID and every plan it serves.
             inputs = replace(
                 RefBundle.merge_ref_bundles(blocks_per_plan[0]),
                 reconstruction_stamp=ReconstructionStamp(
@@ -368,7 +383,7 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
             self._enqueue_reconstruction_output(inputs, task_index)
 
     def _iter_reconstruction_outputs(self) -> Iterator[RefBundle]:
-        """The re-produced outputs withheld for reconstruction children not yet ready."""
+        """The re-produced outputs withheld for child reconstruction tasks not yet ready."""
         for held in self._reconstruction_outputs.values():
             yield from held.values()
 

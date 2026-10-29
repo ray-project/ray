@@ -642,7 +642,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         lineage_tracker = self._lineage_tracker
         lineage_task_id: Optional[LineageTaskId] = None
         reconstruction_plan_ids: FrozenSet[ReconstructionPlanId] = frozenset()
-        # The last output this reconstruction task withholds for its children. Read
+        # The last output this reconstruction task withholds for its child reconstruction tasks. Read
         # once at submission.
         last_withheld_output_index: Optional[int] = None
         if lineage_tracker is not None:
@@ -693,10 +693,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                         status = lineage_tracker.get_object_reuse_status(
                             lineage_task_id, output_index, reconstruction_plan_id
                         )
-                        # REUSED: withhold until the child's whole input set is
+                        # REUSED: withhold until the child reconstruction task's whole input set is
                         # re-produced, then release it as one bundle
                         # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
-                        # child against part of its input.
+                        # child reconstruction task against part of its input.
                         if status is ObjectReuseStatus.OBJECT_REUSED:
                             self._reconstruction_outputs.setdefault(
                                 reconstruction_plan_id, {}
@@ -717,8 +717,8 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                             self._enqueue_reconstruction_output(output, task_index)
                     # Outputs arrive in index order. So once the last withheld output
                     # is produced, every output this task withholds is held, and the
-                    # children whose whole input set is held are released now instead
-                    # of when the task completes. Release checks each child's input
+                    # child reconstruction tasks whose whole input set is held are released now instead
+                    # of when the task completes. Release checks each child reconstruction task's input
                     # set itself.
                     if output_index == last_withheld_output_index:
                         self._release_reconstruction_blocks_to_child(
@@ -763,7 +763,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
 
             if lineage_tracker is not None and exception is None:
-                # Children are released at the last withheld output. Releasing again
+                # Child reconstruction tasks are released at the last withheld output. Releasing again
                 # here is the fallback for withheld outputs that index did not
                 # cover, such as ones added by a plan re-traced mid-run. It runs
                 # before reporting the completion itself.
