@@ -60,6 +60,7 @@ def _append_env_prefixes_to_copy() -> None:
 
 
 class _ReadyHandler(http.server.BaseHTTPRequestHandler):
+    # http.server dispatches GET requests to a method with exactly this name.
     def do_GET(self):
         self.send_response(200 if _engine_ready.is_set() else 503)
         self.end_headers()
@@ -90,7 +91,9 @@ async def setup_model_express(llm_config: LLMConfig) -> None:
     # GPUs by physical index, so the ports are unique per node without an offset.
     _set_default("MX_METADATA_PORT", str(get_mx_metadata_port_base()))
     _set_default("MX_WORKER_GRPC_PORT", str(get_mx_worker_grpc_port_base()))
-    # MX_WORKER_HOST is set per vLLM worker by Serve LLM's worker setup hook.
+    # Leave MX_WORKER_HOST unset: vLLM copies the replica's MX_* env into every
+    # worker, and workers can span nodes, so each worker's MX client detects
+    # its own host instead.
     # Node init may rewrite hf_model_id to a local path; keep the P2P identity
     # on the model id so every replica matches.
     _set_default("MX_MODEL_NAME_OVERRIDE", engine_config.actual_hf_model_id)

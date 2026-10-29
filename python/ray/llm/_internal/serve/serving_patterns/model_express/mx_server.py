@@ -14,6 +14,7 @@ import time
 
 import ray
 from ray import serve
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.llm._internal.serve.serving_patterns.model_express.envs import (
     MX_SERVER_HEALTH_CHECK_PERIOD_S,
     get_mx_server_binary,
@@ -36,7 +37,7 @@ def _port_in_use(port: int) -> bool:
     num_replicas=1,
     # Like the Serve controller: on the head node, and schedulable when the head
     # advertises no CPUs.
-    ray_actor_options={"num_cpus": 0, "resources": {"node:__internal_head__": 0.001}},
+    ray_actor_options={"num_cpus": 0, "resources": {HEAD_NODE_RESOURCE_NAME: 0.001}},
     health_check_period_s=MX_SERVER_HEALTH_CHECK_PERIOD_S,
 )
 class ModelExpressServer:
