@@ -312,6 +312,9 @@ def cluster():
     cluster = Cluster()
     cluster.add_node(num_cpus=0)
     cluster.wait_for_nodes()
+    # Disconnect from any instance an earlier test left up (e.g. the shared
+    # one), since ``connect`` would otherwise silently stay attached to it.
+    ray.shutdown()
     cluster.connect()
     yield cluster
     ray.shutdown()
@@ -1077,7 +1080,7 @@ def test_default_draining_query_against_a_cluster(cluster):
             pass
 
     actor = Actor.remote()
-    ray.get(actor.ping.remote())
+    ray.get(actor.ping.remote(), timeout=60)
     is_accepted, _ = ray._private.worker.global_worker.gcs_client.drain_node(
         worker_node.node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
@@ -1307,7 +1310,7 @@ def test_strict_pack_stays_on_one_node_when_its_nodes_change():
 
 
 def test_leftover_shares_follow_the_current_view():
-    """Only explicit reservations are sticky. Every refresh splits the capacity
+    """Only bundle placements are sticky. Every refresh splits the capacity
     left over among ``request_remaining`` requesters node by node, including a
     node that just joined."""
     nodes = _nodes(n1={"CPU": 8}, n2={"CPU": 8})
