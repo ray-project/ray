@@ -4172,29 +4172,25 @@ def read_hive(
         guaranteed.
 
     Notes:
-        Direct reads retain Hive's declared columns and types. Signed integers
-        can widen, FLOAT can become DOUBLE, and DECIMAL precision can increase
-        at the same scale, including within supported ARRAY/MAP/STRUCT types.
-        Top-level CHAR/VARCHAR respect their lengths and CHAR padding; nested
-        CHAR/VARCHAR aren't supported. TIMESTAMP uses microseconds without an
-        inferred time zone, rounding down to microsecond precision even before
-        the Unix epoch. Filters run after these value conversions.
+        Direct reads retain Hive's schema. Widening supports only signed
+        integers, FLOAT to DOUBLE, and same-scale DECIMAL precision increases,
+        including supported ARRAY/MAP/STRUCT types. Top-level CHAR/VARCHAR
+        enforce lengths, with padding for CHAR; nested CHAR/VARCHAR is unsupported.
+        TIMESTAMP uses timezone-naive microseconds, rounded down even before
+        the Unix epoch.
+        Filters use converted values.
 
-        Parquet uses names and rejects positional access. ORC follows the
-        metadata session's settings: ``orc.force.positional.evolution=true``
-        enables top-level positional mapping. ``orc.schema.evolution.case.sensitive``
-        controls name matching. Direct ORC reads require
+        Parquet uses names. ORC uses session settings:
+        ``orc.force.positional.evolution=true`` selects top-level positions;
+        ``orc.schema.evolution.case.sensitive`` controls names. ORC requires
         ``hive.exec.schema.evolution=true`` and
-        ``orc.force.positional.evolution.level=1``. Legacy ORC files whose
-        top-level names all match ``_col[0-9]+`` follow the session's
-        missing-schema policy. Nested fields use names. Missing
-        columns become typed NULLs and extra file columns are ignored.
-        Custom SerDes and Iceberg/Delta/Hudi tables aren't supported.
+        ``orc.force.positional.evolution.level=1``. Files whose top-level names
+        all match ``_col[0-9]+`` follow the session's missing-schema policy.
+        Nested fields use names. Missing columns become typed NULLs; extras
+        are ignored.
 
-        Sampling doesn't guarantee compatibility of later files. Mixed Parquet
-        timestamp units can fail in Arrow before Hive conversion. Per-split
-        Parquet schema validation adds footer I/O, which can repeat across
-        splits and delay first output. Native read errors never replay via HS2.
+        Parquet schema checks add footer I/O that can repeat across splits
+        and delay first output.
 
     Examples:
 
@@ -4272,29 +4268,23 @@ def read_hive(
             data scanning. HS2 mode sends it as SQL; direct mode uses Ray's
             global limit. This argument isn't supported for query reads.
         read_mode: ``"hs2"`` preserves the single-query HiveServer2 path.
-            ``"direct"`` reads a supported nonpartitioned, non-ACID Parquet
-            or ORC table through native Ray Data readers. Hive metadata is
-            checked on the driver before file scanning. Query reads and
-            partitioned tables aren't supported in direct mode. Filesystem
-            credentials and client dependencies are separate from HS2.
-            See the direct-read compatibility notes above.
-        filesystem: The filesystem used by native direct reads. If omitted,
-            infer it from the table location. Driver and workers need storage
-            credentials, network access, and client dependencies independently
-            of HS2 authorization policies. HDFS requires a working Hadoop/libhdfs
-            environment; S3 uses the configured filesystem's credentials.
-            Only supported in direct mode; HS2 supplies metadata in that mode.
-        merge_schema: For direct Parquet and ORC reads, read all eligible file
-            schemas on the driver before returning the Dataset, instead of
-            sampling up to 16 files. Defaults to ``False``. This
-            retains the discovered file set without changing the Hive table's
-            declared columns or types. Native schema-evolution limits still
-            apply. Sampling doesn't prevalidate every file; later file
-            errors propagate without restarting through HiveServer2.
-            Full mode can be costly for large or remote datasets. Retained paths
-            and sizes add O(files) data to serialized lineage. The path set isn't
-            an atomic snapshot and doesn't protect against same-path replacements.
-            See https://github.com/ray-project/ray/issues/67040 for native
+            ``"direct"`` uses native Parquet/ORC readers for nonpartitioned,
+            non-ACID tables. Queries, custom SerDes, Iceberg/Delta/Hudi, and
+            Parquet positional access are unsupported. The driver validates
+            Hive metadata before file planning. See Notes for compatibility.
+        filesystem: The direct-mode filesystem, inferred from LOCATION if omitted.
+            Driver and workers need storage credentials, network access and
+            client dependencies; storage access doesn't inherit HS2 policies.
+            HDFS needs Hadoop/libhdfs; S3 uses the filesystem's credentials.
+        merge_schema: In direct mode, ``True`` reads all eligible file schemas
+            on the driver before returning the Dataset and retains their paths
+            and sizes. ``False`` (default) samples up to 16 files and may miss
+            incompatible files. Mixed Parquet timestamp units can fail in Arrow
+            before Hive conversion. Native schema-evolution and retry limits
+            apply; errors never replay through HS2. Full inference adds driver
+            I/O and O(files) serialized lineage. Retained paths aren't an atomic
+            snapshot and don't protect against same-path replacements.
+            See https://github.com/ray-project/ray/issues/67040 for
             planning optimizations.
         num_cpus: The number of CPUs to reserve for the read task.
         memory: The heap memory in bytes to reserve for the read task.
