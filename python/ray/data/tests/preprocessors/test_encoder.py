@@ -1732,6 +1732,21 @@ def test_encoder_arrow_and_inverse_label_caching(monkeypatch):
         if cls is OrdinalEncoder:
             assert out3.column("cat").to_pylist() == [1, 0]
 
+        # Same-size in-place mutations to the existing stats dict also
+        # invalidate the cache.
+        if cls is OrdinalEncoder:
+            enc.stats_["unique_values(cat)"]["x"] = 1
+            enc.stats_["unique_values(cat)"]["y"] = 0
+            out4 = enc._transform_arrow(pa.table({"cat": ["x", "y"]}))
+            assert calls == ["cat", "cat", "cat"]
+            assert out4.column("cat").to_pylist() == [1, 0]
+        else:
+            enc.stats_["unique_values(cat)"].clear()
+            enc.stats_["unique_values(cat)"].update({"u": 0, "v": 1})
+            out4 = enc._transform_arrow(pa.table({"cat": ["u", "v"]}))
+            assert calls == ["cat", "cat", "cat"]
+            assert out4.column("cat").to_pylist() == [[1, 0], [0, 1]]
+
         # Pickling excludes transient cache
         restored = pickle.loads(pickle.dumps(enc))
         assert "_arrow_arrays_cache" not in restored.__dict__
@@ -1752,9 +1767,14 @@ def test_encoder_arrow_and_inverse_label_caching(monkeypatch):
     inv3 = label_enc._inverse_transform_pandas(df.copy())
     assert inv3["label"].tolist() == ["fish", "bird", "fish"]
 
+    # Same-size in-place mutation of stats dict invalidates inverse label cache
+    label_enc.stats_["unique_values(label)"].clear()
+    label_enc.stats_["unique_values(label)"].update({"owl": 0, "hawk": 1})
+    inv4 = label_enc._inverse_transform_pandas(df.copy())
+    assert inv4["label"].tolist() == ["hawk", "owl", "hawk"]
+
     restored_label = pickle.loads(pickle.dumps(label_enc))
     assert "_inverse_label_cache" not in restored_label.__dict__
-
 
 
 @pytest.mark.parametrize(
