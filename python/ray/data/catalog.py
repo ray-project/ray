@@ -609,19 +609,27 @@ class DatabricksUnityCatalog(Catalog):
 @PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class GravitinoCatalog(Catalog):
-    """Resolve existing Gravitino Iceberg tables through Iceberg REST.
+    """Resolve Gravitino tables through their format-specific endpoints.
 
-    This adapter maps Gravitino table names to PyIceberg catalog properties.
+    This adapter maps Gravitino table names to Ray Data reader/writer
+    configuration. Iceberg uses an explicitly configured PyIceberg REST catalog.
     It performs no metadata requests and does not require the Gravitino Python
-    SDK. Ray and PyIceberg handle table access and data operations.
+    SDK.
 
     Resolving tables requires PyIceberg 0.10.0 or later for REST authentication,
     including the default anonymous ``noop`` configuration. Install it with
     ``pip install -U "pyiceberg>=0.10.0"``.
 
     Args:
-        iceberg_rest_uri: Gravitino Iceberg REST endpoint, for example
-            ``"http://gravitino:9001/iceberg/"``.
+        uri: Gravitino main API base URI, for example
+            ``"http://gravitino:8090"``. Reserved for future format-specific
+            resolution; Iceberg does not contact this endpoint.
+        metalake: Non-empty metalake name retained for future format-specific
+            resolution. The Iceberg REST endpoint must serve this metalake;
+            this adapter does not verify that binding.
+        iceberg_rest_uri: Explicit Iceberg REST endpoint, for example
+            ``"http://gravitino:9001/iceberg/"``. Required when resolving Iceberg
+            tables; endpoint discovery is not implemented.
         iceberg_rest_catalog_kwargs: Optional PyIceberg authentication and
             storage properties for the REST endpoint. Supply authentication
             explicitly here. If ``auth``, ``credential``, and ``token`` are
@@ -632,6 +640,8 @@ class GravitinoCatalog(Catalog):
     Example:
         >>> import ray
         >>> catalog = ray.data.GravitinoCatalog(  # doctest: +SKIP
+        ...     uri="http://gravitino:8090",
+        ...     metalake="lakehouse",
         ...     iceberg_rest_uri="http://gravitino:9001/iceberg/",
         ... )
         >>> ds = ray.data.read_iceberg(  # doctest: +SKIP
@@ -650,26 +660,43 @@ class GravitinoCatalog(Catalog):
         ``gravitino.authorization.enable=true``, and the dynamic catalog
         configuration provider. Standalone mode doesn't provide catalog
         authorization.
-        Catalog properties are omitted when this object is serialized; recreate
-        configured instances before resolving from a deserialized object.
+        The default representation hides authentication properties, but this
+        object is not a credential-free serialization boundary. Ray execution
+        state may carry the configuration needed by PyIceberg tasks.
     """
 
     _: KW_ONLY
-    iceberg_rest_uri: str
+    uri: str
+    metalake: str
+    iceberg_rest_uri: Optional[str] = None
     iceberg_rest_catalog_kwargs: Optional[Dict[str, Any]] = field(
         default=None, repr=False, compare=False
     )
-    _credentials_redacted: bool = field(
-        default=False, init=False, repr=False, compare=False
-    )
 
     def __post_init__(self):
-        try:
-            parsed = (
-                urlsplit(self.iceberg_rest_uri)
-                if isinstance(self.iceberg_rest_uri, str)
-                else None
+        object.__setattr__(self, "uri", self._normalize_http_uri(self.uri, "uri"))
+        if not isinstance(self.metalake, str) or not self.metalake.strip():
+            raise ValueError("metalake must be a non-empty string.")
+        if self.iceberg_rest_uri is not None:
+            object.__setattr__(
+                self,
+                "iceberg_rest_uri",
+                self._normalize_http_uri(self.iceberg_rest_uri, "iceberg_rest_uri"),
             )
+        if self.iceberg_rest_catalog_kwargs is not None and not isinstance(
+            self.iceberg_rest_catalog_kwargs, dict
+        ):
+            raise ValueError("iceberg_rest_catalog_kwargs must be a dictionary.")
+        object.__setattr__(
+            self,
+            "iceberg_rest_catalog_kwargs",
+            dict(self.iceberg_rest_catalog_kwargs or {}),
+        )
+
+    @staticmethod
+    def _normalize_http_uri(uri: str, name: str) -> str:
+        try:
+            parsed = urlsplit(uri) if isinstance(uri, str) else None
             valid = (
                 parsed is not None
                 and parsed.scheme in ("http", "https")
@@ -684,34 +711,10 @@ class GravitinoCatalog(Catalog):
             valid = False
         if not valid:
             raise ValueError(
-                "iceberg_rest_uri must be an absolute HTTP(S) URI without "
-                "credentials, query parameters, or fragments."
+                f"{name} must be an absolute HTTP(S) URI without credentials, "
+                "query parameters, or fragments."
             )
-        if self.iceberg_rest_catalog_kwargs is not None and not isinstance(
-            self.iceberg_rest_catalog_kwargs, dict
-        ):
-            raise ValueError("iceberg_rest_catalog_kwargs must be a dictionary.")
-        object.__setattr__(
-            self, "iceberg_rest_uri", self.iceberg_rest_uri.rstrip("/") + "/"
-        )
-        object.__setattr__(
-            self,
-            "iceberg_rest_catalog_kwargs",
-            dict(self.iceberg_rest_catalog_kwargs or {}),
-        )
-
-    def __getstate__(self) -> Dict[str, Any]:
-        """Omit potentially sensitive catalog properties from serialized state."""
-        state = self.__dict__.copy()
-        state["iceberg_rest_catalog_kwargs"] = {}
-        state["_credentials_redacted"] = self._credentials_redacted or bool(
-            self.iceberg_rest_catalog_kwargs
-        )
-        return state
-
-    def __setstate__(self, state: Dict[str, Any]) -> None:
-        for name, value in state.items():
-            object.__setattr__(self, name, value)
+        return uri.rstrip("/") + "/"
 
     @staticmethod
     def _split_table_identifier(table: str) -> tuple[str, str, str]:
@@ -738,11 +741,8 @@ class GravitinoCatalog(Catalog):
                 f"GravitinoCatalog does not support format={reader.value!r}."
             )
         catalog_name, schema_name, table_name = self._split_table_identifier(table)
-        if self._credentials_redacted:
-            raise RuntimeError(
-                "This GravitinoCatalog was deserialized without its authentication "
-                "configuration. Recreate it before calling resolve()."
-            )
+        if self.iceberg_rest_uri is None:
+            raise ValueError("iceberg_rest_uri is required to resolve Iceberg tables.")
         from ray.data._internal.util import _check_import
 
         _check_import(

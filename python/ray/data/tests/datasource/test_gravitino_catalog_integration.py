@@ -1,7 +1,8 @@
 """Manual acceptance tests against disposable Gravitino REST and storage.
 
-Required RAY_GRAVITINO_TEST settings: _ICEBERG_REST_URI, _ICEBERG_READ_TABLE,
-_ICEBERG_WRITE_TABLE, _STORAGE_READ_DENIED_TABLE, _STORAGE_WRITE_DENIED_TABLE,
+Required RAY_GRAVITINO_TEST settings: _GRAVITINO_URI, _METALAKE,
+_ICEBERG_REST_URI, _ICEBERG_READ_TABLE, _ICEBERG_WRITE_TABLE,
+_STORAGE_READ_DENIED_TABLE, _STORAGE_WRITE_DENIED_TABLE,
 _READ_DENIED_REST_KWARGS, _READ_ONLY_REST_KWARGS and _DENIED_REST_KWARGS.
 REST kwargs are JSON objects with PyIceberg authentication/storage properties.
 _ICEBERG_REST_KWARGS configures the allowed identity; optional
@@ -70,6 +71,8 @@ def _identity_settings(suffix: str) -> dict:
 
 def _make_catalog(*, rest_kwargs=None) -> GravitinoCatalog:
     return GravitinoCatalog(
+        uri=_required_env("GRAVITINO_URI"),
+        metalake=_required_env("METALAKE"),
         iceberg_rest_uri=_required_env("ICEBERG_REST_URI"),
         iceberg_rest_catalog_kwargs=(
             _settings("ICEBERG_REST_KWARGS") if rest_kwargs is None else rest_kwargs

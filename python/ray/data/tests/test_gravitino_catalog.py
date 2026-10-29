@@ -18,7 +18,11 @@ from ray.data.catalog import CatalogAccessMode, GravitinoCatalog, ReaderFormat
 
 @pytest.fixture
 def catalog():
-    return GravitinoCatalog(iceberg_rest_uri="http://iceberg:9001/iceberg/")
+    return GravitinoCatalog(
+        uri="http://gravitino:8090",
+        metalake="test",
+        iceberg_rest_uri="http://iceberg:9001/iceberg/",
+    )
 
 
 def test_public_export():
@@ -53,6 +57,8 @@ def test_target_properties_and_caller_settings_are_preserved():
     }
     original = properties.copy()
     catalog = GravitinoCatalog(
+        uri="http://gravitino:8090",
+        metalake="test",
         iceberg_rest_uri="https://iceberg/iceberg",
         iceberg_rest_catalog_kwargs=properties,
     )
@@ -90,6 +96,8 @@ def test_target_properties_and_caller_settings_are_preserved():
 )
 def test_explicit_iceberg_auth_is_preserved(auth):
     catalog = GravitinoCatalog(
+        uri="http://gravitino:8090",
+        metalake="test",
         iceberg_rest_uri="http://iceberg",
         iceberg_rest_catalog_kwargs=auth,
     )
@@ -98,6 +106,12 @@ def test_explicit_iceberg_auth_is_preserved(auth):
     assert catalog_kwargs is not None
     for key, value in auth.items():
         assert catalog_kwargs[key] == value
+
+
+def test_iceberg_requires_explicit_rest_uri():
+    catalog = GravitinoCatalog(uri="http://gravitino:8090", metalake="test")
+    with pytest.raises(ValueError, match="iceberg_rest_uri is required"):
+        catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
 
 
 @pytest.mark.parametrize("reader", [ReaderFormat.DELTA, ReaderFormat.PARQUET])
@@ -185,8 +199,10 @@ def test_resolution_uses_neither_network_nor_metadata_client(catalog, monkeypatc
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", without_metadata_client)
-    with mock.patch("requests.sessions.Session.request") as request:
-        request.side_effect = AssertionError("resolve must not perform network I/O")
+    with mock.patch(
+        "requests.sessions.Session.request",
+        side_effect=AssertionError("resolve must not perform network I/O"),
+    ) as request:
         assert (
             catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG).table_identifier
             == "db.tbl"
@@ -209,16 +225,42 @@ def test_resolution_uses_neither_network_nor_metadata_client(catalog, monkeypatc
         "http://iceberg#secret",
     ],
 )
-def test_invalid_uri_is_secret_safe(uri):
+def test_invalid_gravitino_uri_is_secret_safe(uri):
     with pytest.raises(ValueError) as caught:
-        GravitinoCatalog(iceberg_rest_uri=uri)
+        GravitinoCatalog(
+            uri=uri,
+            metalake="test",
+            iceberg_rest_uri="http://iceberg",
+        )
     assert "secret" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "iceberg_rest_uri",
+    ["iceberg", "file:///iceberg", "http://iceberg?token=secret"],
+)
+def test_invalid_iceberg_rest_uri_is_secret_safe(iceberg_rest_uri):
+    with pytest.raises(ValueError) as caught:
+        GravitinoCatalog(
+            uri="http://gravitino:8090",
+            metalake="test",
+            iceberg_rest_uri=iceberg_rest_uri,
+        )
+    assert "secret" not in str(caught.value)
+
+
+@pytest.mark.parametrize("metalake", [None, 1, "", "   "])
+def test_invalid_metalake(metalake):
+    with pytest.raises(ValueError, match="metalake must be a non-empty string"):
+        GravitinoCatalog(uri="http://gravitino:8090", metalake=metalake)
 
 
 @pytest.mark.parametrize("properties", [[], "secret", 1, False])
 def test_invalid_properties_are_secret_safe(properties):
     with pytest.raises(ValueError) as caught:
         GravitinoCatalog(
+            uri="http://gravitino:8090",
+            metalake="test",
             iceberg_rest_uri="http://iceberg",
             iceberg_rest_catalog_kwargs=properties,
         )
@@ -226,8 +268,10 @@ def test_invalid_properties_are_secret_safe(properties):
 
 
 @pytest.mark.parametrize("serializer", [pickle, cloudpickle])
-def test_secrets_are_not_serialized(serializer):
+def test_catalog_auth_configuration_roundtrips(serializer):
     catalog = GravitinoCatalog(
+        uri="http://gravitino:8090",
+        metalake="test",
         iceberg_rest_uri="http://iceberg",
         iceberg_rest_catalog_kwargs={
             "auth": {
@@ -239,14 +283,15 @@ def test_secrets_are_not_serialized(serializer):
     assert "user-secret" not in repr(catalog)
     assert "rest-secret" not in repr(catalog)
     payload = serializer.dumps(catalog)
-    assert b"user-secret" not in payload
-    assert b"rest-secret" not in payload
     restored = serializer.loads(payload)
-    with pytest.raises(RuntimeError, match="deserialized without"):
-        restored.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
-    restored_again = serializer.loads(serializer.dumps(restored))
-    with pytest.raises(RuntimeError, match="deserialized without"):
-        restored_again.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
+    rest_kwargs = restored.iceberg_rest_catalog_kwargs
+    expected_rest_kwargs = catalog.iceberg_rest_catalog_kwargs
+    assert rest_kwargs is not None and expected_rest_kwargs is not None
+    assert rest_kwargs == expected_rest_kwargs
+    resolved = restored.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
+    resolved_kwargs = resolved.catalog_kwargs
+    assert resolved_kwargs is not None
+    assert resolved_kwargs["auth"] == expected_rest_kwargs["auth"]
 
 
 def test_anonymous_catalog_roundtrip(catalog):
@@ -300,6 +345,8 @@ def test_actual_pyiceberg_auth_configuration(rest_auth, expected, monkeypatch):
     thread.start()
     try:
         catalog = GravitinoCatalog(
+            uri="http://gravitino:8090",
+            metalake="test",
             iceberg_rest_uri=f"http://127.0.0.1:{server.server_port}/iceberg/",
             iceberg_rest_catalog_kwargs=rest_auth,
         )
