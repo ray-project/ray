@@ -369,6 +369,61 @@ def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
     assert filled.to_pydict() == {"x": [3.0, 3.0]}
 
 
+# Arrow's cast resizes a nested null child to the number of rows, so each
+# list-like column holds more child elements than rows. A top-level struct
+# casts correctly; it checks that the new path still round-trips it.
+@pytest.mark.parametrize(
+    "input_array",
+    [
+        pa.array([[None] * 3, [None, None], [], None], type=pa.list_(pa.null())),
+        pa.array([[None] * 3, [None, None], [], None], type=pa.large_list(pa.null())),
+        pa.array([[None, None], [None, None], None], type=pa.list_(pa.null(), 2)),
+        pa.array(
+            [[[None, None], [None]], [[None], [None]], None],
+            type=pa.list_(pa.list_(pa.null())),
+        ),
+        pa.array(
+            [[{"a": None}] * 3, [{"a": None}], None],
+            type=pa.list_(pa.struct([("a", pa.null())])),
+        ),
+        pa.array(
+            [[("k", None), ("j", None), ("l", None)], [("k", None)], None],
+            type=pa.map_(pa.string(), pa.null()),
+        ),
+        pa.array(
+            [{"a": None, "b": 1}, None, {"a": None, "b": 2}],
+            type=pa.struct([("a", pa.null()), ("b", pa.int64())]),
+        ),
+    ],
+    ids=lambda array: str(array.type),
+)
+def test_arrow_block_to_pandas_keeps_nested_null_elements(input_array):
+    """A column with a null type nested inside converts to an Arrow-backed
+    pandas column that keeps every element and round-trips to the same type."""
+    table = pa.table({"x": input_array})
+
+    df = ArrowBlockAccessor(table).to_pandas()
+    roundtripped = BlockAccessor.for_block(df).to_arrow()
+
+    assert df.dtypes["x"] == pd.ArrowDtype(input_array.type)
+    assert pa.array(df["x"].array).to_pylist() == input_array.to_pylist()
+    assert roundtripped.schema.field("x").type == input_array.type
+    assert roundtripped.column("x").to_pylist() == input_array.to_pylist()
+
+
+def test_pandas_udf_reads_every_element_of_all_null_lists(ray_start_regular_shared):
+    """A pandas UDF reading a list<null> column sees each list at full length,
+    instead of the trailing lists coming back empty."""
+    lists = [[None, None], [None]]
+    ds = ray.data.from_arrow(pa.table({"x": pa.array(lists, type=pa.list_(pa.null()))}))
+
+    rows = ds.map_batches(
+        lambda df: {"x": [list(v) for v in df["x"]]}, batch_format="pandas"
+    ).take_all()
+
+    assert [row["x"] for row in rows] == lists
+
+
 def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
     # One-row blocks type a column with no values as pa.null(), so a pandas UDF
     # calling fillna used to fail with ArrowInvalid on whichever block happened
