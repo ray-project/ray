@@ -204,10 +204,9 @@ class LogMonitor:
 
     def _close_all_files(self):
         """Close all open files (so that we can open more)."""
+        keep_open = []
         while len(self.open_file_infos) > 0:
             file_info = self.open_file_infos.pop(0)
-            file_info.file_handle.close()
-            file_info.file_handle = None
 
             proc_alive = True
             # Test if the worker process that generated the log file
@@ -224,16 +223,67 @@ class LogMonitor:
                     "PID should be an int type. " f"Given PID: {file_info.worker_pid}."
                 )
                 proc_alive = self.is_proc_alive_fn(file_info.worker_pid)
-                if not proc_alive:
-                    # The process is not alive any more, so move the log file
-                    # out of the log directory so glob.glob will not be slowed
-                    # by it.
-                    self._move_to_old_dir(file_info)
 
             if proc_alive:
+                file_info.file_handle.close()
+                file_info.file_handle = None
                 self.closed_file_infos.append(file_info)
+                continue
 
+            # Liveness first: a dead worker cannot write any more, so what the
+            # handle and the path show now is final.
+            if self._open_file_is_drained(file_info):
+                file_info.file_handle.close()
+                file_info.file_handle = None
+                # The process is not alive any more, so move the log file
+                # out of the log directory so glob.glob will not be slowed
+                # by it.
+                if self._move_to_old_dir(file_info):
+                    self.log_filenames.discard(file_info.filename)
+                else:
+                    self.closed_file_infos.append(file_info)
+                continue
+
+            try:
+                size_on_disk = os.path.getsize(file_info.filename)
+            except FileNotFoundError:
+                # This handle is the only way left to read those lines.
+                keep_open.append(file_info)
+                continue
+            file_info.file_handle.close()
+            file_info.file_handle = None
+            # Publish the rest first. As in reopen_if_necessary(), a file that
+            # is smaller than our position was truncated or rotated and is read
+            # from the start. A dead worker's file never grows, so make it
+            # eligible for reopening; the sweep moves it once it is fully read.
+            if size_on_disk < file_info.file_position:
+                file_info.file_position = 0
+            file_info.size_when_last_opened = file_info.file_position
+            self.closed_file_infos.append(file_info)
+
+        self.open_file_infos = keep_open
         self.can_open_more_files = True
+
+    def _open_file_is_drained(self, file_info: LogFileInfo) -> bool:
+        """Whether an open file has been read to the end.
+
+        Judged by the file the handle has open, and only if the path still
+        names that file (or is gone), so a rotated or truncated file is never
+        mistaken for a drained one.
+
+        Args:
+            file_info: An open log file.
+
+        Returns:
+            True if nothing is left to publish from it.
+        """
+        handle_stat = os.fstat(file_info.file_handle.fileno())
+        if handle_stat.st_size != file_info.file_position:
+            return False
+        try:
+            return os.path.samestat(os.stat(file_info.filename), handle_stat)
+        except FileNotFoundError:
+            return True
 
     def _move_to_old_dir(self, file_info: LogFileInfo) -> bool:
         """Move a log file into logs/old/ so it is no longer globbed.
@@ -244,19 +294,18 @@ class LogMonitor:
         Returns:
             True if the file is no longer in the log directory.
         """
-        target = os.path.join(
-            self.logs_dir, "old", os.path.basename(file_info.filename)
-        )
+        old_dir = os.path.join(self.logs_dir, "old")
+        target = os.path.join(old_dir, os.path.basename(file_info.filename))
         try:
+            os.makedirs(old_dir, exist_ok=True)
             shutil.move(file_info.filename, target)
         except (IOError, OSError) as e:
             if e.errno == errno.ENOENT:
+                if os.path.exists(file_info.filename):
+                    return False
                 logger.warning(f"Warning: The file {file_info.filename} was not found.")
-                # ENOENT is also raised when logs/old/ is missing, in which case the
-                # file is still here.
-                return not os.path.exists(file_info.filename)
-            else:
-                raise e
+                return True
+            raise e
         return True
 
     def move_dead_worker_files(self):
@@ -291,22 +340,9 @@ class LogMonitor:
             # Check the size after the liveness check: a dead process can't
             # append any more, so if we have read up to the end, we are done.
             if file_info.file_handle is not None:
-                # Judge an open file by what its handle can still read, and only
-                # move it if the path still names that file. Otherwise leave it to
-                # reopen_if_necessary() and the next sweep.
-                handle_stat = os.fstat(file_info.file_handle.fileno())
-                try:
-                    path_stat = os.stat(file_info.filename)
-                except (IOError, OSError) as e:
-                    if e.errno == errno.ENOENT:
-                        # Gone from logs/; retire it once the handle is read.
-                        return handle_stat.st_size == file_info.file_position
-                    raise e
-                return (
-                    path_stat.st_ino == handle_stat.st_ino
-                    and path_stat.st_dev == handle_stat.st_dev
-                    and handle_stat.st_size == file_info.file_position
-                )
+                # A file that is not drained is left to reopen_if_necessary()
+                # and the next sweep.
+                return self._open_file_is_drained(file_info)
             try:
                 size = os.path.getsize(file_info.filename)
             except (IOError, OSError) as e:
