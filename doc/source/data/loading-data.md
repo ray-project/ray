@@ -1315,3 +1315,11 @@ The community maintains the following connectors, which integrate Ray Data with 
 By default, Ray Data decides the number of output blocks from all read tasks dynamically, based on input data size and available resources. This default should work well in most cases. To override it, set the `override_num_blocks` argument. Ray Data decides internally how many read tasks to run concurrently to make the best use of the cluster, from 1 to `override_num_blocks` tasks. The higher the `override_num_blocks` value, the smaller the data blocks in the dataset, and the more opportunities for parallel execution.
 
 To tune the number of output blocks and find other ways to optimize read performance, see {ref}`Optimize reads <optimizing-reads>`.
+
+
+## Redis through an external ADBC reader
+
+For an external Redis datasource that reads Arrow batches on workers, see the
+[Redis ADBC integration guide](redis-adbc.md). This adapter requires its matching
+Python/native builds and has live-read and retry limits; it is separate from
+Ray's generic SQL reader and is not a built-in Ray backend.
