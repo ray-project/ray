@@ -404,7 +404,7 @@ def test_timestamp_cast_preserves_sliced_nested_containers(chunked):
             "nested": {"groups": [None, [], [("k", value)]]},
         }
 
-    nulls = dict.fromkeys(dtype("ns").names)
+    nulls = dict.fromkeys(field.name for field in dtype("ns"))
     empty = dict(nulls, items=[], values=[], keys=[], nested={"groups": []})
     ticks = [-1001, -1000, -999, -1, 0, 1, 999, 1000, 1001]
     micros = [-2, -1, -1, -1, 0, 0, 0, 1, 1]
