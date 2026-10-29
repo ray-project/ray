@@ -82,8 +82,8 @@ inline ray::stats::Count GetObjectRecoveryAttemptsCountMetric() {
       /*name=*/"object_recovery_attempts",
       /*description=*/
       "Total number of recovery attempts for lost objects owned by this worker. A lost "
-      "object can contribute one Pin attempt per known secondary copy, followed by a "
-      "Reconstruct attempt if no copy could be pinned.",
+      "object can contribute one Pin attempt if recoverable via secondary copy. ",
+      "It can also contribute a reconstruct attempt if no copy could be found."
       /*unit=*/"",
       // Expected tags:
       // - Type: "Pin" (promote a secondary copy to primary) or "Reconstruct"
