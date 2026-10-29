@@ -75,6 +75,10 @@ def _evaluate_path_predicate(
     path: str,
 ) -> bool | None:
     """Return unknown when a predicate needs values absent from the path."""
+    from ray.data._internal.planner.plan_expression.expression_evaluator import (
+        NativeExpressionEvaluator,
+    )
+
     referenced_columns = set(get_column_references(predicate))
     if not referenced_columns.issubset(values):
         return None
@@ -83,7 +87,12 @@ def _evaluate_path_predicate(
     }
     try:
         partition_table = _partition_table(predicate_values, schema)
-        return partition_table.filter(predicate.to_pyarrow()).num_rows == 1
+        result = NativeExpressionEvaluator(partition_table).visit(predicate)
+        if isinstance(result, (pa.Array, pa.ChunkedArray)):
+            result = result[0]
+        if isinstance(result, pa.Scalar):
+            result = result.as_py()
+        return bool(result)
     except pa.ArrowInvalid as exc:
         raise pa.ArrowInvalid(
             f"Failed to evaluate predicate for partition path {path!r}: {exc}"

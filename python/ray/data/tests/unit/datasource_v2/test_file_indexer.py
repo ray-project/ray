@@ -17,6 +17,7 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    _evaluate_path_predicate,
     resolve_partitioning,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
@@ -111,6 +112,45 @@ def test_schema_aware_partition_pruner_preserves_unknown_and_errors(tmp_path):
             scheme, lit(value), schema=schema, keep_unknown=True
         )
         assert constant.should_include(str(tmp_path / "root")) is value
+
+
+@pytest.mark.parametrize(
+    "predicate,values,expected",
+    [
+        ((col("country") + "!") == "US!", {"country": "US", "year": "invalid"}, True),
+        ((col("country") + "!") == "US!", {"country": "CA"}, False),
+        (("!" + col("country")) == "!US", {"country": "US"}, True),
+        (
+            (col("country") + col("suffix")) == "US!",
+            {"country": "US", "suffix": "!"},
+            True,
+        ),
+        (col("country") == "US", {"country": None}, False),
+        (col("country").is_null(), {"country": None}, True),
+        (lit(True), {}, True),
+        (lit(False), {}, False),
+        (col("country") == "US", {}, None),
+    ],
+    ids=[
+        "suffix",
+        "nonmatching",
+        "prefix",
+        "two_columns",
+        "null",
+        "is_null",
+        "true",
+        "false",
+        "unknown",
+    ],
+)
+def test_path_predicate_preserves_native_semantics(predicate, values, expected):
+    schema = pa.schema(
+        [("country", pa.string()), ("suffix", pa.string()), ("year", pa.int64())]
+    )
+    assert (
+        _evaluate_path_predicate(predicate, values, schema, path="data.parquet")
+        is expected
+    )
 
 
 def test_partition_pruner_default_policy_is_unchanged(tmp_path):

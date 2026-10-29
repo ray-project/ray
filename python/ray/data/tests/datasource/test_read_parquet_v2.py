@@ -68,6 +68,51 @@ def test_partition_filter_ignores_unprojected_logical_partition_field(
 
 
 @pytest.mark.parametrize("merge_schema", [False, True])
+@pytest.mark.parametrize("concatenation", ["suffix", "prefix", "two_columns"])
+def test_partition_string_concatenation_matches_native_filter(
+    tmp_path, restore_ctx, merge_schema, concatenation
+):
+    source_rows = []
+    paths = []
+    for country, ids in [("US", [1, 2]), ("CA", [3, 4])]:
+        path = tmp_path / f"country={country}" / "suffix=!" / "data.parquet"
+        path.parent.mkdir(parents=True)
+        _write(path, pa.table({"id": ids}))
+        paths.append(str(path))
+        source_rows.extend(
+            {"id": identifier, "country": country, "suffix": "!"} for identifier in ids
+        )
+    if concatenation == "prefix":
+        predicate = ("!" + col("country")) == "!US"
+    elif concatenation == "two_columns":
+        predicate = (col("country") + col("suffix")) == "US!"
+    else:
+        predicate = (col("country") + "!") == "US!"
+    restore_ctx.use_datasource_v2 = True
+    expected = (
+        ray.data.from_items(source_rows)
+        .filter(expr=predicate)
+        .select_columns(["id"])
+        .take_all()
+    )
+    assert sorted(expected, key=lambda row: row["id"]) == [{"id": 1}, {"id": 2}]
+
+    def read():
+        return ray.data.read_parquet(paths, merge_schema=merge_schema).filter(
+            expr=predicate
+        )
+
+    actual = read().select_columns(["id"]).take_all()
+    assert sorted(actual, key=lambda row: row["id"]) == sorted(
+        expected, key=lambda row: row["id"]
+    )
+    assert read().select_columns([]).count() == len(expected)
+    limited = read().select_columns(["id"]).limit(1).take_all()
+    assert len(limited) == 1
+    assert limited[0] in expected
+
+
+@pytest.mark.parametrize("merge_schema", [False, True])
 @pytest.mark.parametrize("explicit_type", [False, True])
 def test_partition_conversion_error_includes_file_path(
     tmp_path, restore_ctx, merge_schema, explicit_type
