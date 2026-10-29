@@ -825,10 +825,23 @@ def test_get_registry_auth_headers_no_auth_needed():
         assert headers == {}
 
 
+# An archived file time, clearly not "now".
+_MEMBER_MTIME = 1_600_000_000
+
+
 def _add_member(
-    tar, name, data=b"", uid=0, gid=0, mode=0o644, typ=tarfile.REGTYPE, linkname=""
+    tar,
+    name,
+    data=b"",
+    uid=0,
+    gid=0,
+    mode=0o644,
+    typ=tarfile.REGTYPE,
+    linkname="",
+    mtime=0,
 ):
     ti = tarfile.TarInfo(name)
+    ti.mtime = mtime
     ti.uid = uid
     ti.gid = gid
     ti.mode = mode
@@ -925,7 +938,7 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     local_tar = tmp_path / "sample.tar"
     with tarfile.open(str(local_tar), "w") as tar:
         _add_member(tar, "opt/data", uid=38, gid=38, mode=0o750, typ=tarfile.DIRTYPE)
-        _add_member(tar, "opt/data/f.txt", b"z", uid=38, gid=38)
+        _add_member(tar, "opt/data/f.txt", b"z", uid=38, gid=38, mtime=_MEMBER_MTIME)
         _add_member(
             tar,
             "etc/passwd",
@@ -942,7 +955,8 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     marker = open(os.path.join(image_dir, ".extracted"), encoding="utf-8").read()
     assert marker == expected_extract_marker()
     # The fake image *is* the flattened tar: check the owners it carries.
-    owners = {path: (m.uid, m.gid) for path, m in _image_tree(image_dir).items()}
+    tree = _image_tree(image_dir)
+    owners = {path: (m.uid, m.gid) for path, m in tree.items()}
     assert owners["opt/data"] == (38, 38)
     assert owners["opt/data/f.txt"] == (38, 38)
     assert owners["etc/passwd"] == (0, 0)
@@ -950,6 +964,35 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     # runsc's mount points, which an immutable image cannot grow on demand.
     for mountpoint in ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp"):
         assert owners[mountpoint] == (0, 0)
+        assert tree[mountpoint].mtime == 0
+    assert tree["tmp/.ray-sandbox-keep"].mtime == 0
+    # The image's file times survive into the EROFS image: tools such as apt
+    # rely on them.
+    assert tree["opt/data/f.txt"].mtime == _MEMBER_MTIME
+    assert "-Eforce-inode-extended" in args
+    assert not any(a.startswith("-T") for a in args)
+
+
+def test_mkfs_with_mkfs_time_pins_only_the_build_time(tmp_path, fake_mkfs_erofs):
+    """erofs-utils 1.8+ fixes the superblock's build time, so every build of
+    an image is identical (gVisor restores only onto an identical superblock),
+    without resetting file mtimes."""
+    bin_dir = fake_mkfs_erofs
+    script = bin_dir / "mkfs.erofs"
+    script.write_text(
+        script.read_text().replace(
+            "build from tarball", "build from tarball\\n  --mkfs-time"
+        )
+    )
+    local_tar = tmp_path / "sample.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        _add_member(tar, "etc/f", b"z", mtime=_MEMBER_MTIME)
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(tmp_path / "images")
+    )
+    args = (bin_dir / "mkfs.args").read_text().split()
+    assert args[args.index("-T0") + 1] == "--mkfs-time"
+    assert _image_tree(image_dir)["etc/f"].mtime == _MEMBER_MTIME
 
 
 def test_erofs_superblock_fingerprint(tmp_path):

@@ -39,7 +39,7 @@ ROOTFS_IMAGE = "rootfs.erofs"
 # Cache format recorded in each image's ``.extracted`` marker. A mismatch (an
 # extracted-directory cache left by an earlier Ray, say) re-pulls the image
 # once; sandboxes already running on the old cache keep it until they exit.
-_EXTRACT_FORMAT = 3
+_EXTRACT_FORMAT = 4
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
 # How many of an image's layers download at once, as in Docker.
@@ -572,6 +572,14 @@ def extract_tar_layer(
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
                     os.symlink(member.linkname, target_path)
+                    try:
+                        os.utime(
+                            target_path,
+                            (member.mtime, member.mtime),
+                            follow_symlinks=False,
+                        )
+                    except OSError:
+                        pass
                 except OSError:
                     pass
             elif member.islnk():
@@ -623,15 +631,32 @@ def mkfs_erofs_path() -> Optional[str]:
     path = shutil.which("mkfs.erofs")
     if path is None:
         return None
+    if "--tar" not in _mkfs_erofs_help(path):
+        return None
+    return path
+
+
+@lru_cache(maxsize=4)
+def _mkfs_erofs_help(path: str) -> str:
+    """What ``mkfs.erofs --help`` prints, or "" if it can't run."""
     try:
         res = subprocess.run(
             [path, "--help"], capture_output=True, text=True, timeout=30
         )
     except (OSError, subprocess.TimeoutExpired):
-        return None
-    if "--tar" not in res.stdout + res.stderr:
-        return None
-    return path
+        return ""
+    return res.stdout + res.stderr
+
+
+def mkfs_erofs_pins_build_time() -> bool:
+    """Whether ``mkfs.erofs`` has ``--mkfs-time`` (erofs-utils 1.8+).
+
+    With it, ``-T0 --mkfs-time`` fixes only the superblock's build time and
+    leaves each file's mtime alone; without it, ``-T`` would also reset
+    every file's mtime.
+    """
+    path = mkfs_erofs_path()
+    return path is not None and "--mkfs-time" in _mkfs_erofs_help(path)
 
 
 # EROFS keeps its superblock at this offset, in this many bytes.
@@ -689,11 +714,26 @@ def expected_extract_marker() -> str:
     return json.dumps({"format": _EXTRACT_FORMAT}, sort_keys=True)
 
 
+# Files seeded after layer extraction (Docker parity for /tmp).
+_SEEDED_FILES = ("tmp/.ray-sandbox-keep",)
+
+
 def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
     """``tar.add`` filter giving members the image's recorded owners."""
 
     def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo:
-        ids = ownership.get(os.path.normpath(ti.name))
+        norm = os.path.normpath(ti.name)
+        # Normalize the build-time timestamps on directories and files seeded
+        # by Ray itself (root, mount point stubs, /tmp seed file) so that
+        # separate nodes and rebuilt image caches produce identical images.
+        if (
+            norm == "."
+            or norm in _MOUNTPOINT_DIRS
+            or norm in _MOUNTPOINT_FILES
+            or norm in _SEEDED_FILES
+        ):
+            ti.mtime = 0
+        ids = ownership.get(norm)
         ti.uid, ti.gid = ids if ids else (0, 0)
         ti.uname = ti.gname = ""
         return ti
@@ -711,9 +751,20 @@ def _seed_tmp(rootfs_dir: str) -> None:
     """
     try:
         tmp_dir, _ = _resolve_in_root(rootfs_dir, "tmp")
+        parent_mtime = None
+        if os.path.isdir(tmp_dir) and not os.path.islink(tmp_dir):
+            try:
+                parent_mtime = os.stat(tmp_dir).st_mtime_ns
+            except OSError:
+                pass
         os.makedirs(tmp_dir, exist_ok=True)
         os.chmod(tmp_dir, 0o1777)
         _create_nofollow(os.path.join(tmp_dir, ".ray-sandbox-keep"))
+        if parent_mtime is not None:
+            try:
+                os.utime(tmp_dir, ns=(parent_mtime, parent_mtime))
+            except OSError:
+                pass
     except OSError:
         pass
 
@@ -732,10 +783,18 @@ def _seed_mountpoints(rootfs_dir: str) -> None:
     image whose ``etc`` or ``dev`` is a symlink to a host directory gets its
     seeds where the sandbox will look for them, never on the host. A last
     component that already exists, as a symlink included, is left alone.
+    Parent directory timestamps are preserved so that seeding mount points
+    does not perturb the image's extracted directory mtimes.
     """
     for rel in _MOUNTPOINT_DIRS + _MOUNTPOINT_FILES:
         try:
             parent, _ = _resolve_in_root(rootfs_dir, os.path.dirname(rel))
+            parent_mtime = None
+            if os.path.isdir(parent) and not os.path.islink(parent):
+                try:
+                    parent_mtime = os.stat(parent).st_mtime_ns
+                except OSError:
+                    pass
             path = os.path.join(parent, os.path.basename(rel))
             if os.path.lexists(path):
                 continue
@@ -744,6 +803,11 @@ def _seed_mountpoints(rootfs_dir: str) -> None:
             else:
                 os.makedirs(parent, exist_ok=True)
                 _create_nofollow(path)
+            if parent_mtime is not None:
+                try:
+                    os.utime(parent, ns=(parent_mtime, parent_mtime))
+                except OSError:
+                    pass
         except OSError:
             pass
 
@@ -777,6 +841,18 @@ def build_erofs_image(
                 "--tar=f",
                 f"-b{mmap.PAGESIZE}",
                 "-E^inline_data",
+                # Build the same image byte for byte on every node and every
+                # time: a checkpointed sandbox restores only onto an
+                # identical image (gVisor rejects an EROFS root filesystem
+                # whose superblock differs at all), whether on another node
+                # or after the cached image was evicted and rebuilt.
+                # Extended inodes, which carry each file's own mtime, keep
+                # the layout independent of when mkfs runs, and a fixed UUID
+                # and build time keep the superblock the same. Files keep
+                # their mtimes.
+                "-Eforce-inode-extended",
+                "-U00000000-0000-0000-0000-000000000000",
+                *(["-T0", "--mkfs-time"] if mkfs_erofs_pins_build_time() else []),
                 out_path,
                 flat_tar,
             ],
