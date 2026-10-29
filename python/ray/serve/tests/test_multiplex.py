@@ -1,21 +1,30 @@
 import asyncio
 import os
-from typing import List
+from collections import Counter
+from typing import List, Set
 
 import httpx
 import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
+)
 from ray.serve._private.request_router import RequestRouter
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.schema import ServeInstanceDetails
 
 
 def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
@@ -71,7 +80,7 @@ class TestMultiplexWrapper:
         multiplexer = _ModelMultiplexWrapper(None, None, max_num_models_per_replica=1)
         multiplexer.models = {"1": "1", "2": "2"}
         assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == ["1", "2"]
-        multiplexer._model_load_tasks = {"3"}
+        multiplexer._model_load_tasks = Counter({"3": 1})
         assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == [
             "1",
             "2",
@@ -221,6 +230,183 @@ class TestMultiplexWrapper:
         assert "3" in multiplexer.models
         assert len(multiplexer._model_load_tasks) == 0
 
+    async def test_failed_load_drops_model_id(self, start_serve_with_context):
+        """A model that fails to load is dropped from the pushed model IDs."""
+
+        release = asyncio.Event()
+
+        async def model_load_func(model_id: str):
+            await release.wait()
+            raise RuntimeError("load failed")
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        task = get_or_create_event_loop().create_task(multiplexer.load_model("1"))
+        await asyncio.sleep(0.1)
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+        # The loading ID has been pushed.
+        multiplexer._push_multiplexed_replica_info = False
+
+        release.set()
+        with pytest.raises(RuntimeError, match="load failed"):
+            await task
+        assert multiplexer._get_loading_and_loaded_model_ids() == []
+        # Push again so the controller drops the ID pushed while loading.
+        assert multiplexer._push_multiplexed_replica_info
+
+    @pytest.mark.parametrize("cancel_while", ["loading", "waiting_for_lock"])
+    async def test_cancelled_load_drops_model_id(
+        self, start_serve_with_context, cancel_while
+    ):
+        """A model whose load is cancelled is dropped from the pushed model IDs."""
+        release = asyncio.Event()
+
+        async def model_load_func(model_id: str):
+            await release.wait()
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=2
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        loop = get_or_create_event_loop()
+        if cancel_while == "waiting_for_lock":
+            # Model "1" holds the cache lock while it loads.
+            holder = loop.create_task(multiplexer.load_model("1"))
+            await asyncio.sleep(0.1)
+        task = loop.create_task(multiplexer.load_model("2"))
+        await asyncio.sleep(0.1)
+        assert "2" in multiplexer._get_loading_and_loaded_model_ids()
+        multiplexer._push_multiplexed_replica_info = False
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert "2" not in multiplexer._get_loading_and_loaded_model_ids()
+        assert multiplexer._push_multiplexed_replica_info
+
+        if cancel_while == "waiting_for_lock":
+            release.set()
+            assert await holder == "1"
+            assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+
+    async def test_cancelled_waiter_keeps_in_flight_model_id(
+        self, start_serve_with_context
+    ):
+        """Cancelling one of two loads of the same model keeps its ID reported."""
+        release = asyncio.Event()
+
+        async def model_load_func(model_id: str):
+            await release.wait()
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        loop = get_or_create_event_loop()
+        # The first request loads "1" while the second waits for the lock.
+        loader = loop.create_task(multiplexer.load_model("1"))
+        await asyncio.sleep(0.1)
+        waiter = loop.create_task(multiplexer.load_model("1"))
+        await asyncio.sleep(0.1)
+        # The loading ID has been pushed.
+        multiplexer._push_multiplexed_replica_info = False
+
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        # The first request is still loading "1", so the pushed IDs are unchanged.
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+        assert not multiplexer._push_multiplexed_replica_info
+
+        release.set()
+        assert await loader == "1"
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["1"]
+        assert not multiplexer._push_multiplexed_replica_info
+
+    async def test_failed_eviction_pushes_with_queued_request(
+        self, start_serve_with_context
+    ):
+        """An evicted model is re-pushed even if its unload fails while another
+        request for the incoming model is queued."""
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+                self.fail_unload = model_id == "1"
+
+            def __del__(self):
+                # Fail only the eviction, not the later garbage collection.
+                if self.fail_unload:
+                    self.fail_unload = False
+                    raise RuntimeError("unload failed")
+
+        async def model_load_func(model_id: str) -> MyModel:
+            return MyModel(model_id)
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+        await multiplexer.load_model("1")
+
+        # Queue two requests for "2" behind the cache lock.
+        loop = get_or_create_event_loop()
+        await multiplexer._model_cache_lock.acquire()
+        evicting = loop.create_task(multiplexer.load_model("2"))
+        queued = loop.create_task(multiplexer.load_model("2"))
+        await asyncio.sleep(0.1)
+        # The loading ID has been pushed.
+        multiplexer._push_multiplexed_replica_info = False
+        multiplexer._model_cache_lock.release()
+
+        # The first request evicts "1", whose unload fails.
+        with pytest.raises(RuntimeError, match="unload failed"):
+            await evicting
+        assert (await queued).model_id == "2"
+        assert multiplexer._get_loading_and_loaded_model_ids() == ["2"]
+        # "1" left the cache, so it must be pushed again.
+        assert multiplexer._push_multiplexed_replica_info
+
+    async def test_shutdown_stops_pushing_model_ids(
+        self, start_serve_with_context, monkeypatch
+    ):
+        """Unloading models in shutdown doesn't push after the replica is gone."""
+        pushed = []
+
+        class FakeClient:
+            def record_request_routing_info(self, info):
+                pushed.append(info.multiplexed_model_ids)
+
+        monkeypatch.setattr(
+            "ray.serve.multiplex._get_global_client", lambda: FakeClient()
+        )
+        monkeypatch.setattr(
+            "ray.serve.multiplex.PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S", 0.01
+        )
+
+        async def model_load_func(model_id: str):
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=2
+        )
+        await multiplexer.load_model("1")
+        await multiplexer.load_model("2")
+        await async_wait_for_condition(lambda: ["1", "2"] in map(sorted, pushed))
+
+        pushed.clear()
+        await multiplexer.shutdown()
+        await asyncio.sleep(0.1)
+        assert not multiplexer.models
+        assert pushed == []
+
 
 class TestBasicAPI:
     def test_decorator_validation(self):
@@ -322,7 +508,7 @@ def test_request_routing_info(serve_instance):
     replica_id = handle.remote("model1").result()
 
     def check_replica_information(
-        model_ids: List[str],
+        model_ids: Set[str],
     ):
         if not handle.is_initialized:
             handle._init()
@@ -335,7 +521,21 @@ def test_request_routing_info(serve_instance):
             ):
                 return False
 
-        return True
+        # The controller also exposes the model IDs in the replica details
+        # returned by the REST API / `get_serve_details()`.
+        serve_details = serve_instance.get_serve_details()
+        app = serve_details["applications"][SERVE_DEFAULT_APP_NAME]
+        replicas = app["deployments"]["MyModel"]["replicas"]
+        if len(replicas) != 1 or replicas[0]["replica_id"] != replica_id.unique_id:
+            return False
+        if set(replicas[0].get("multiplexed_model_ids", [])) != model_ids:
+            return False
+
+        details = ServeInstanceDetails(**serve_details)
+        (replica_details,) = (
+            details.applications[SERVE_DEFAULT_APP_NAME].deployments["MyModel"].replicas
+        )
+        return set(replica_details.multiplexed_model_ids) == model_ids
 
     wait_for_condition(
         check_replica_information,

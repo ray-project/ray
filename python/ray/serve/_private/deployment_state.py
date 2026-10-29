@@ -2146,8 +2146,15 @@ class DeploymentReplica:
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
-        """Record the multiplexed model ids for this replica."""
+        """Record the multiplexed model ids for this replica.
+
+        The IDs are also exposed in the replica's ``ReplicaDetails`` (sorted,
+        since the replica reports them in no particular order).
+        """
         self._multiplexed_model_ids = multiplexed_model_ids
+        self.update_actor_details(
+            multiplexed_model_ids=tuple(sorted(multiplexed_model_ids))
+        )
 
     def record_routing_stats(self, routing_stats: Optional[Dict[str, Any]]):
         """Record the routing stats for this replica.
