@@ -389,8 +389,7 @@ class ParameterNoise(Exploration):
             return tf.no_op()
 
     def _remove_noise(self, *, tf_sess: Optional["tf.Session"] = None):
-        """
-        Removes the current action noise from the model parameters.
+        """Removes the current action noise from the model parameters.
 
         Args:
             tf_sess: The tf-session to use to remove the noise from the
