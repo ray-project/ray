@@ -1,0 +1,31 @@
+# ModelExpress (MX) scale-out: a new replica loads weights and compile caches
+# from a running replica instead of from storage.
+applications:
+  # Registry of serving replicas; runs on the head node.
+  - name: mx
+    route_prefix: null
+    import_path: ray.serve.llm.mx:build_mx_app
+    args:
+      metadata_backend: memory
+
+  - name: llm
+    route_prefix: /
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: Qwen/Qwen3-8B
+          deployment_config:
+            # Keep one replica up so a new replica always has a source.
+            autoscaling_config:
+              min_replicas: 1
+              max_replicas: 2
+              target_ongoing_requests: 2
+              upscale_delay_s: 5
+              downscale_delay_s: 600
+            max_ongoing_requests: 8
+          engine_kwargs:
+            load_format: modelexpress
+            # Fills one 2xH100 node, so the second replica is on the other node.
+            tensor_parallel_size: 2
+            max_model_len: 8192

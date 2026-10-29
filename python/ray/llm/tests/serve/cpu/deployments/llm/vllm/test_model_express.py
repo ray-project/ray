@@ -73,6 +73,23 @@ def test_is_model_express():
     )
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        dict(placement_group_config=dict(bundles=[{"GPU": 0.49}])),
+        dict(runtime_env=dict(env_vars={"VLLM_RAY_PER_WORKER_GPUS": "0.5"})),
+    ],
+)
+def test_setup_rejects_fractional_gpus(extra):
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id="Qwen/Qwen3-0.6B"),
+        engine_kwargs=dict(load_format="modelexpress"),
+        **extra,
+    )
+    with pytest.raises(ValueError, match="fractional GPUs"):
+        asyncio.run(model_express.setup_model_express(llm_config))
+
+
 def test_setup_sets_client_env():
     env, looked_up = _setup(env={})
 
@@ -82,7 +99,7 @@ def test_setup_sets_client_env():
     # MX adds each worker's GPU index to the bases.
     assert env["MX_METADATA_PORT"] == "15555"
     assert env["MX_WORKER_GRPC_PORT"] == "16555"
-    # Each vLLM worker sets its own host (see test_worker_hook_sets_mx_worker_host).
+    # Copied to every vLLM worker, which can be on other nodes; MX detects it.
     assert "MX_WORKER_HOST" not in env
     assert env["MX_MODEL_NAME_OVERRIDE"] == "Qwen/Qwen3-0.6B"
     assert env["MX_ARTIFACT_TRANSFER"] == "1"
@@ -148,27 +165,6 @@ def test_ready_endpoint_reports_engine_start():
 
     model_express.mark_engine_ready()
     assert urllib.request.urlopen(url, timeout=5).status == 200
-
-
-@pytest.mark.parametrize(
-    "env,expected_host",
-    [
-        # MX enabled: the worker advertises its own node, not the replica's.
-        ({"MX_SERVER_ADDRESS": MX_ADDRESS}, "10.0.0.7"),
-        # A user-set host wins.
-        ({"MX_SERVER_ADDRESS": MX_ADDRESS, "MX_WORKER_HOST": "10.9.9.9"}, "10.9.9.9"),
-        # MX not enabled: nothing is set.
-        ({}, None),
-    ],
-)
-def test_worker_hook_sets_mx_worker_host(env, expected_host):
-    from ray.llm._internal.serve import _worker_process_setup_hook
-
-    with patch.dict("os.environ", env, clear=True), patch(
-        "ray.util.get_node_ip_address", return_value="10.0.0.7"
-    ), patch("ray.llm._internal.serve.engines.vllm.patches.compile_cache_compat.apply"):
-        _worker_process_setup_hook()
-        assert os.environ.get("MX_WORKER_HOST") == expected_host
 
 
 def test_mx_server_envs():
