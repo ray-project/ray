@@ -1083,3 +1083,37 @@ def test_train_test_split_stratified_largest_remainder(ray_start_regular_shared_
     train_int, test_int = ds.train_test_split(test_size=20, stratify="label")
     assert train_int.count() == 80
     assert test_int.count() == 20
+
+
+def test_train_test_split_stratified_nan_keys(ray_start_regular_shared_2_cpus):
+    # NaN stratification keys must still hit the precomputed allocation even
+    # though ``nan != nan`` (see #66472 review).
+    items = [
+        {"id": 0, "label": 0.0},
+        {"id": 1, "label": 0.0},
+        {"id": 2, "label": 0.0},
+        {"id": 3, "label": np.nan},
+        {"id": 4, "label": np.nan},
+    ]
+    ds = ray.data.from_items(items)
+
+    train, test = ds.train_test_split(test_size=0.4, stratify="label")
+    assert train.count() == 3
+    assert test.count() == 2
+
+    test_labels = test.to_pandas()["label"]
+    assert int(test_labels.isna().sum()) == 1
+    assert int((test_labels == 0.0).sum()) == 1
+
+    # ``None`` remains a distinct group from ``NaN``.
+    mixed = [
+        {"id": 0, "label": None},
+        {"id": 1, "label": None},
+        {"id": 2, "label": np.nan},
+        {"id": 3, "label": np.nan},
+    ]
+    mixed_train, mixed_test = ray.data.from_items(mixed).train_test_split(
+        test_size=0.5, stratify="label"
+    )
+    assert mixed_train.count() == 2
+    assert mixed_test.count() == 2

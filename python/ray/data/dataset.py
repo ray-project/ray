@@ -187,6 +187,29 @@ logger = logging.getLogger(__name__)
 # Special column name for train/test split to avoid collision with user columns
 _TRAIN_TEST_SPLIT_COLUMN = "__ray_train_test_split_is_train__"
 
+
+class _MissingStratifyKey:
+    """Canonical dict key for ``NaN``/``NaT`` stratification values.
+
+    NaN never compares equal to itself, so a raw ``NaN`` used as a dict key
+    cannot be looked up again in another block. All missing values share this
+    sentinel, which still stays distinct from ``None``.
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other):
+        return isinstance(other, _MissingStratifyKey)
+
+    def __hash__(self):
+        return hash(_MissingStratifyKey)
+
+    def __repr__(self):
+        return "_MissingStratifyKey()"
+
+
+_MISSING_STRATIFY_KEY = _MissingStratifyKey()
+
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
@@ -3252,9 +3275,14 @@ class Dataset:
                     pass
             elif hasattr(key, "as_py"):
                 try:
-                    return key.as_py()
+                    key = key.as_py()
                 except (AttributeError, ValueError, TypeError):
                     pass
+            try:
+                if key != key:
+                    return _MISSING_STRATIFY_KEY
+            except (TypeError, ValueError):
+                pass
             return key
 
         # Per-class test counts via largest remainder, so flooring can't
