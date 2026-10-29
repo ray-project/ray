@@ -1,11 +1,14 @@
 # `ci/ray_ci/doc`
 
-CI code for two jobs: building the Sphinx documentation site, and guarding the
-API reference against drift from the annotated Python surface. Everything here
-runs from Buildkite; none of it is imported by Ray at runtime.
+CI code for building the Sphinx documentation site, guarding the API reference
+against drift from the annotated Python surface, and running the doc example
+and docstring tests that the `docs-example-test` and `docstring-only` PR labels
+opt into. Everything here runs from Buildkite; none of it is imported by Ray at
+runtime.
 
-The three entry points are the `cmd_*.py` modules. The rest are libraries they
-share.
+The build and API-guard entry points are the `cmd_*.py` modules in the table
+below. The label-driven scripts are described in
+[Label-driven test selection](#label-driven-test-selection).
 
 ## Entry points
 
@@ -23,6 +26,34 @@ does run as `bazel run`.
 
 The `doc: check API annotations` step is a different check that lives outside
 this package, in `ci/lint/check_api_annotations.py`.
+
+`linkcheck_report.py` runs after `make -C doc linkcheck_all` in the
+postmerge-only, soft-fail `doc: linkcheck` step. It re-checks the links Sphinx
+reported broken and writes the confirmed ones to a `linkcheck-report.json`
+build artifact. It never fails the build.
+
+## Label-driven test selection
+
+These scripts back two PR labels. Both labels need write access to apply. See
+`doc/source/ray-contribute/ci.md` for the contributor-facing behavior. Which
+steps each label keeps or skips is set in `.buildkite/docs.labels.yaml`, which
+rayci applies to PR builds before it marks step dependencies.
+
+- **`docs-example-test`.** The `doc: docs example tests (opt-in)` step in
+  `.buildkite/others.rayci.yml` runs `run_doc_example_tests.sh`. It selects
+  targets with `cmd_doc_example_targets.py`, backed by `doc_example_targets.py`,
+  which maps changed doc files to the Bazel test targets that name them
+  directly, and never falls back to a library's whole docs example suite. Run
+  the selector locally with
+  `bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- <changed files>`.
+- **`docstring-only`.** `check_docstring_only.py` is the scope guard, run as
+  `ci/lint/lint.sh docstring_only_scope` from the `lint: validate docstring-only
+  scope` step in `.buildkite/lint.rayci.yml`. It fails unless every changed file
+  is a modified `.py` file whose `ast` is unchanged once docstrings are removed.
+  The `doc: docstring examples` step in `.buildkite/others.rayci.yml` runs
+  `run_docstring_examples.sh`, which keeps the changed modules under
+  `python/ray` that a CPU `doctest()` target covers and runs
+  `run_docstring_examples.py` on them in the `docstringbuild` image.
 
 ## Libraries
 

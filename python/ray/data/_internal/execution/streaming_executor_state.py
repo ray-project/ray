@@ -753,8 +753,9 @@ def _reconstruct_lost_object(
             ) from lost_error
         resubmissions.append((seed_id, seed_op, seed_input))
 
-    # Mark the task as aborted so the operator releases every resource it reserved.
-    task.mark_aborted(lost_error)
+    # Abort the task so the operator releases every resource it reserved. It's
+    # not counted as failed since its lost output is being reconstructed.
+    task.mark_aborted(lost_error, aborted_for_reconstruction=True)
 
     for seed_id, seed_op, seed_input in resubmissions:
         # Clear the completion state of the seed op and everything downstream so a
@@ -975,6 +976,7 @@ def process_completed_tasks(
                                 f'operator "{state.op.name}"; attempting lineage '
                                 "reconstruction."
                             )
+                            lineage_tracker.num_object_reconstruction_attempts += 1
                             try:
                                 _reconstruct_lost_object(
                                     topology, lineage_tracker, state, task, e

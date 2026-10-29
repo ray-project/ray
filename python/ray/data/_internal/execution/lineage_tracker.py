@@ -127,6 +127,9 @@ class LineageTracker:
         self._lineage_task_id_to_task_node: Dict[LineageTaskId, TaskNode] = {}
         # Mapping of block ID -> the parent task output (task ID, output index) that produced it.
         self._block_id_to_parent_output: Dict[BlockId, ParentBlockOutput] = {}
+        # Lost objects Ray Data tried to rebuild, counted like Ray Core's
+        # ``object_recovery_attempts{Type="Reconstruct"}``.
+        self.num_object_reconstruction_attempts = 0
 
     def register_block_output(
         self,

@@ -141,7 +141,7 @@ def test_iter_batches_reconstruction_matches_baseline(
 
 @reconstruction_enabled
 def test_two_losses_under_one_seed_match_baseline(
-    ray_start_regular_shared, restore_data_context, lose_output  # noqa: F405
+    ray_start_regular_shared, restore_data_context, trackers, lose_output  # noqa: F405
 ):
     """Two children of one seed lose their output; the seed re-runs, every row once.
 
@@ -160,6 +160,8 @@ def test_two_losses_under_one_seed_match_baseline(
 
     assert sorted(fired) == [0, 1]
     _assert_every_row_once((row["id"] for row in rows), [i + 1 for i in range(20)])
+    # One reconstruction attempt per lost object.
+    assert [t.num_object_reconstruction_attempts for t in trackers] == [2]
 
 
 @pytest.mark.parametrize("reads_before_loss", [5, 10])
@@ -399,7 +401,9 @@ def test_mark_aborted_fires_the_done_callback_exactly_once():
     would double-release the task's resource reservations.
     """
     calls = []
-    task = _abortable_task(lambda exc, worker_stats, driver_stats: calls.append(exc))
+    task = _abortable_task(
+        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
+    )
     error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
 
     task.mark_aborted(error)
@@ -408,7 +412,9 @@ def test_mark_aborted_fires_the_done_callback_exactly_once():
     assert task.has_finished
 
     calls.clear()
-    task = _abortable_task(lambda exc, worker_stats, driver_stats: calls.append(exc))
+    task = _abortable_task(
+        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
+    )
     task.mark_done()
     task.mark_aborted(error)
     assert calls == [None]
@@ -419,7 +425,9 @@ def test_a_drained_task_aborted_before_its_done_callback_fires_it_once():
     from ray.data._internal.execution.metadata_fetcher import ThreadedMetadataFetcher
 
     calls = []
-    task = _abortable_task(lambda exc, worker_stats, driver_stats: calls.append(exc))
+    task = _abortable_task(
+        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
+    )
     fetcher = ThreadedMetadataFetcher()
     fetcher._drained_tasks.add(task)
     error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
@@ -458,7 +466,9 @@ def test_object_lost_in_task_output_raises_only_when_lineage_tracked(
         streaming_gen,
         MagicMock(),  # block_ref_counter
         "test_op",
-        task_done_callback=lambda exc, worker_stats, driver_stats: calls.append(exc),
+        task_done_callback=lambda exc, worker_stats, driver_stats, aborted: calls.append(
+            exc
+        ),
         lineage_task_id=lineage_task_id,
     )
     assert task.is_lineage_tracked is (lineage_task_id is not None)
@@ -514,9 +524,9 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
     abort_errors = []
     original_mark_aborted = DataOpTask.mark_aborted
 
-    def recording_mark_aborted(self, exception):
+    def recording_mark_aborted(self, exception, aborted_for_reconstruction=False):
         abort_errors.append(exception)
-        original_mark_aborted(self, exception)
+        original_mark_aborted(self, exception, aborted_for_reconstruction)
 
     monkeypatch.setattr(DataOpTask, "mark_aborted", recording_mark_aborted)
 
@@ -528,6 +538,21 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
     assert reconstruction_attempts == [0]
 
 
+def test_started_reconstruction_aborts_for_reconstruction():
+    """A task whose lost output is being reconstructed is aborted for
+    reconstruction, keeping the lost-object error."""
+    calls = []
+    task = _abortable_task(lambda *args: calls.append(args))
+    tracker = MagicMock()
+    tracker.register_task_failed.return_value = (set(), "plan_a")
+    lost_error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+
+    _reconstruct_lost_object({}, tracker, MagicMock(), task, lost_error)
+
+    assert task.has_finished
+    assert calls == [(lost_error, None, None, True)]
+
+
 def test_reconstruction_error_wraps_object_lost_error():
     """An ``ObjectLostError`` triggers a lineage reconstruction attempt that fails.
 
@@ -537,7 +562,9 @@ def test_reconstruction_error_wraps_object_lost_error():
     object_lost_error = ObjectLostError(
         ray.ObjectRef.nil().hex(), b"owner", "injected by test"
     )
-    lost_output_task = _abortable_task(lambda exc, worker_stats, driver_stats: None)
+    lost_output_task = _abortable_task(
+        lambda exc, worker_stats, driver_stats, aborted: None
+    )
     op_state = MagicMock()
     op_state.op.name = "test_op"
 
