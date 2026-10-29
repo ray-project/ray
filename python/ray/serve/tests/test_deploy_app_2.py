@@ -1491,7 +1491,7 @@ def test_instance_details_report_restoring_unset_options(serve_instance):
 
 
 def test_instance_details_echo_config_id_and_versions(serve_instance):
-    """The applied config id and replica versions survive a controller restart."""
+    """Config id, target version, and replica pids survive a controller restart."""
     client = serve_instance
     client.deploy_apps(
         ServeDeploySchema(
@@ -1506,7 +1506,8 @@ def test_instance_details_echo_config_id_and_versions(serve_instance):
     )
     wait_for_condition(lambda: len(_running_replica_pids(client)) == 2, timeout=60)
 
-    def check():
+    def snapshot():
+        """Return (target_version, replica pids) once every replica is RUNNING."""
         details = ServeInstanceDetails(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
@@ -1515,14 +1516,19 @@ def test_instance_details_echo_config_id_and_versions(serve_instance):
         ]
         assert details.applied_config_id == "c1"
         assert deployment.target_version
-        assert {r.version for r in deployment.replicas} == {deployment.target_version}
-        return True
+        assert len(deployment.replicas) == 2
+        assert all(
+            r.state == "RUNNING" and r.version == deployment.target_version
+            for r in deployment.replicas
+        )
+        return deployment.target_version, sorted(r.pid for r in deployment.replicas)
 
-    check()
+    before = snapshot()
     old_pid = ray.get(client._controller.get_pid.remote())
     ray.kill(client._controller, no_restart=False)
     wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != old_pid)
-    wait_for_condition(check, timeout=60)
+    wait_for_condition(lambda: snapshot() is not None, timeout=60)
+    assert snapshot() == before
 
     # A config without an id clears the echo rather than keeping a stale one.
     client.deploy_apps(_rolling_update_config())
