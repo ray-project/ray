@@ -1407,12 +1407,12 @@ def table_to_numpy_dict_chunked(
     return numpy_batch
 
 
-def is_numpy_scalar_type(data_type: "pyarrow.DataType") -> bool:
-    """Whether NumPy conversion contains only immutable scalar values.
+def is_immutable_scalar_type(data_type: "pyarrow.DataType") -> bool:
+    """Whether values cannot retain mutable objects during pandas conversion.
 
-    Unlike tensor, nested, and arbitrary extension types, these types cannot
-    retain mutable objects inside an object-dtype NumPy array. Nullable booleans
-    can produce object arrays, but their elements are immutable bools or None.
+    Tensor, nested, and arbitrary extension types need protective copying.
+    Standard numeric and temporal scalars can instead rely on NumPy-backed
+    conversion copying their data or Arrow-backed assignment replacing arrays.
     """
     return (
         pyarrow.types.is_integer(data_type)

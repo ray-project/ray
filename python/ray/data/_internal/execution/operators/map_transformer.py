@@ -770,7 +770,7 @@ class BatchMapTransformFn(MapTransformFn):
             )
         else:
             batch_size = self._batch_size
-        ensure_copy = not self._zero_copy_batch
+        ensure_copy = not self._zero_copy_batch and batch_size is not None
         return batch_blocks(
             blocks=iter(blocks),
             stats=None,

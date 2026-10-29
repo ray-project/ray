@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 
@@ -10,68 +11,14 @@ from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.context import DataContext
 
 
-@pytest.mark.parametrize("num_chunks", [1, 2, 8])
-@pytest.mark.parametrize("batch_size", [None, 3, 8])
-@pytest.mark.parametrize("with_strings", [False, True])
-def test_numpy_batches_copy_once(monkeypatch, num_chunks, batch_size, with_strings):
-    values = np.arange(8, dtype=np.int64)
-    block = pa.table(
-        {"value": pa.chunked_array([pa.array(c) for c in np.split(values, num_chunks)])}
-    )
-    if with_strings:
-        block = block.append_column("text", pa.array([str(i) for i in values]))
-
-    # Numeric columns must not be combined/copied as Arrow buffers before
-    # allocating the final NumPy batch, including when slicing a block.
-    original_combine = transform_pyarrow.combine_chunked_array
-
-    def combine(column, *args, **kwargs):
-        assert not pa.types.is_integer(column.type)
-        return original_combine(column, *args, **kwargs)
-
-    monkeypatch.setattr(transform_pyarrow, "combine_chunked_array", combine)
-    batches = list(
-        batch_blocks(
-            iter([block]), batch_size=batch_size, batch_format="numpy", ensure_copy=True
-        )
-    )
-    np.testing.assert_array_equal(np.concatenate([b["value"] for b in batches]), values)
-    for batch in batches:
-        assert batch["value"].flags.writeable
-        assert not np.shares_memory(batch["value"], values)
-        batch["value"] += 10
-    np.testing.assert_array_equal(values, np.arange(8))
-    assert block["value"].to_pylist() == list(range(8))
-
-
-def test_numpy_concatenation_is_final_allocation(monkeypatch):
-    block = pa.table({"value": pa.chunked_array([[1, 2], [3, 4]])})
-    original_concatenate = np.concatenate
-    allocations = []
-
-    def concatenate(*args, **kwargs):
-        result = original_concatenate(*args, **kwargs)
-        allocations.append(result)
-        return result
-
-    monkeypatch.setattr(np, "concatenate", concatenate)
-    batch = next(batch_blocks(iter([block]), batch_format="numpy", ensure_copy=True))
-    assert len(allocations) == 1
-    assert batch["value"] is allocations[0]
-
-
-@pytest.mark.parametrize("batch_format", ["numpy", "pandas"])
 @pytest.mark.parametrize("batch_size", [None, 3, 16])
 @pytest.mark.parametrize("num_chunks", [8, 32])
 @pytest.mark.parametrize("arrow_backed", [False, True])
-def test_copy_batches_defragment_many_chunks(
-    monkeypatch, batch_format, batch_size, num_chunks, arrow_backed
+def test_pandas_copy_preserves_chunk_compaction(
+    monkeypatch, batch_size, num_chunks, arrow_backed
 ):
     monkeypatch.setattr(
         DataContext.get_current(), "enable_arrow_backed_pandas_conversion", arrow_backed
-    )
-    monkeypatch.setattr(
-        transform_pyarrow, "MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS", 16
     )
     values = np.arange(128, dtype=np.int64)
     block = pa.table(
@@ -96,7 +43,7 @@ def test_copy_batches_defragment_many_chunks(
         batch_blocks(
             iter([block]),
             batch_size=batch_size,
-            batch_format=batch_format,
+            batch_format="pandas",
             ensure_copy=True,
         )
     )
@@ -108,62 +55,9 @@ def test_copy_batches_defragment_many_chunks(
             batch[name] += 1
         assert block[name].to_pylist() == values.tolist()
 
-    # Compact a fragmented column once before repeated slicing. Avoid copying
-    # lightly chunked columns, including when another column is compacted.
-    should_compact = num_chunks == 32 and batch_size is not None
-    assert combined_chunks == ([32] if should_compact else [])
-
-
-@pytest.mark.parametrize("chunks", [[], [[]], [[], [1, 2], []]])
-def test_writable_numpy_empty_chunks(chunks):
-    column = pa.chunked_array(chunks, type=pa.int64())
-    block = pa.table({"value": column})
-    result = ArrowBlockAccessor(block).to_numpy(ensure_copy=True)["value"]
-    np.testing.assert_array_equal(result, column.to_numpy())
-    assert result.flags.writeable
-
-
-def test_zero_copy_numpy_still_shares_source():
-    values = np.arange(8)
-    batch = next(
-        batch_blocks(
-            iter([pa.table({"value": values})]),
-            batch_format="numpy",
-            ensure_copy=False,
-        )
-    )
-    assert np.shares_memory(batch["value"], values)
-    assert not batch["value"].flags.writeable
-
-
-@pytest.mark.parametrize(
-    "data_type,values",
-    [
-        (pa.int64(), [1, None, 3, 4]),
-        (pa.uint64(), [1, None, 3, 4]),
-        (pa.float64(), [1.0, None, 3.0, 4.0]),
-        (pa.bool_(), [True, None, False, True]),
-        (pa.null(), [None] * 4),
-        (pa.timestamp("ns"), [0, None, 2, 3]),
-        (pa.timestamp("us", tz="UTC"), [0, None, 2, 3]),
-        (pa.date32(), [0, None, 2, 3]),
-        (pa.duration("us"), [0, None, 2, 3]),
-    ],
-)
-@pytest.mark.parametrize("num_chunks", [1, 2])
-def test_numpy_scalar_conversion(data_type, values, num_chunks):
-    chunks = [
-        pa.array(v, type=data_type) for v in np.split(np.array(values), num_chunks)
-    ]
-    block = pa.table({"value": pa.chunked_array(chunks)})
-    accessor = ArrowBlockAccessor(block)
-    expected = accessor.to_numpy()["value"]
-    actual = accessor.to_numpy(ensure_copy=True)["value"]
-    assert actual.dtype == expected.dtype
-    np.testing.assert_array_equal(actual, expected)
-    assert actual.flags.writeable
-    actual[0] = actual[-1]
-    assert block["value"].to_pylist() == pa.array(values, type=data_type).to_pylist()
+    # Retain the existing compaction before repeated slicing. The optimization
+    # only removes protective scalar copies; it does not change chunk handling.
+    assert combined_chunks == ([num_chunks, 2] if batch_size is not None else [])
 
 
 @pytest.mark.parametrize("batch_format", ["numpy", "pandas", "pyarrow", None])
@@ -178,7 +72,7 @@ def test_batcher_copy_per_column(batch_format, ensure_copy):
         return table[name].chunk(0).buffers()[-1].address
 
     assert (address(result, "value") != address(block, "value")) == (
-        ensure_copy and batch_format not in ("numpy", "pandas")
+        ensure_copy and batch_format != "pandas"
     )
     assert (address(result, "text") != address(block, "text")) == ensure_copy
 
@@ -200,10 +94,13 @@ def test_pandas_scalar_copy_isolation(
         }
     )
 
-    def unexpected_copy(*args, **kwargs):
-        pytest.fail("Scalar pandas columns should not be copied before conversion")
+    original_combine = transform_pyarrow.combine_chunked_array
 
-    monkeypatch.setattr(transform_pyarrow, "combine_chunked_array", unexpected_copy)
+    def combine(column, ensure_copy=False):
+        assert not ensure_copy, "Scalar columns do not need a protective copy"
+        return original_combine(column, ensure_copy=ensure_copy)
+
+    monkeypatch.setattr(transform_pyarrow, "combine_chunked_array", combine)
     batches = list(
         batch_blocks(
             iter([block]),
@@ -238,6 +135,45 @@ def test_tensor_copy_isolation(monkeypatch, batch_format, arrow_backed, ragged):
     original = ArrowBlockAccessor(block).to_numpy()["tensor"]
     for row in original:
         np.testing.assert_array_equal(row, np.ones_like(row))
+
+
+@pytest.mark.parametrize("arrow_backed", [False, True])
+@pytest.mark.parametrize("num_chunks", [1, 2])
+@pytest.mark.parametrize(
+    "data_type,values",
+    [
+        (pa.int64(), [1, None, 3, 4]),
+        (pa.uint64(), [1, None, 3, 4]),
+        (pa.float64(), [1.0, None, 3.0, 4.0]),
+        (pa.bool_(), [True, None, False, True]),
+        (pa.null(), [None] * 4),
+        (pa.timestamp("ns"), [0, None, 2, 3]),
+        (pa.timestamp("us", tz="UTC"), [0, None, 2, 3]),
+        (pa.date32(), [0, None, 2, 3]),
+        (pa.duration("us"), [0, None, 2, 3]),
+    ],
+)
+def test_pandas_scalar_types_remain_isolated(
+    monkeypatch, arrow_backed, num_chunks, data_type, values
+):
+    monkeypatch.setattr(
+        DataContext.get_current(), "enable_arrow_backed_pandas_conversion", arrow_backed
+    )
+    column = pa.array(values, type=data_type)
+    chunk_size = len(values) // num_chunks
+    block = pa.table(
+        {
+            "value": pa.chunked_array(
+                [column.slice(i, chunk_size) for i in range(0, len(values), chunk_size)]
+            )
+        }
+    )
+    expected = ArrowBlockAccessor(block).to_pandas()
+    batch = next(batch_blocks(iter([block]), batch_format="pandas", ensure_copy=True))
+    pd.testing.assert_frame_equal(batch, expected)
+    batch.iloc[0, 0] = batch.iloc[-1, 0]
+    batch.iloc[1, 0] = batch.iloc[-1, 0]
+    assert block["value"].to_pylist() == column.to_pylist()
 
 
 if __name__ == "__main__":

@@ -219,9 +219,8 @@ class Batcher(BatcherInterface):
         Args:
             batch_size: The size of batches to yield.
             ensure_copy: Whether batches must be isolated from the underlying base
-                blocks. Scalar copies may be deferred to the specified conversion.
-            batch_format: The subsequent batch conversion, if any. NumPy callers
-                must request a writable copy during conversion.
+                blocks. Scalar copies may be deferred to pandas conversion.
+            batch_format: The subsequent batch conversion, if any.
         """
         self._batch_size = batch_size
         self._buffer = []
@@ -231,14 +230,14 @@ class Batcher(BatcherInterface):
         self._batch_format = batch_format
 
     def _copy_block(self, block: Block) -> Block:
-        if isinstance(block, pa.Table) and self._batch_format in ("numpy", "pandas"):
-            # Scalar NumPy columns are copied during conversion. For pandas,
-            # NumPy-backed conversion copies them and Arrow-backed assignment
-            # replaces their immutable arrays. Preserve the protective block
+        if isinstance(block, pa.Table) and self._batch_format == "pandas":
+            # NumPy-backed pandas conversion copies scalar columns, while
+            # Arrow-backed assignment replaces their immutable arrays.
+            # Preserve the protective block
             # copy for tensors, nested objects, and unrecognized extension types.
             columns = [
                 column
-                if transform_pyarrow.is_numpy_scalar_type(column.type)
+                if transform_pyarrow.is_immutable_scalar_type(column.type)
                 else transform_pyarrow.combine_chunked_array(column, ensure_copy=True)
                 for column in block.columns
             ]
@@ -307,18 +306,9 @@ class Batcher(BatcherInterface):
                 # have too many chunks (potentially hindering performance of
                 # subsequent slicing operation)
                 if isinstance(accessor, ArrowBlockAccessor):
-                    min_chunks_to_combine = 1
-                    if self._ensure_copy and self._batch_format in ("numpy", "pandas"):
-                        # Defer scalar copies to conversion for lightly chunked
-                        # columns, but retain compaction for fragmented columns
-                        # to avoid repeatedly slicing thousands of chunks.
-                        min_chunks_to_combine = (
-                            transform_pyarrow.MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
-                        )
                     accessor = BlockAccessor.for_block(
                         transform_pyarrow.try_combine_chunked_columns(
-                            accessor.to_block(),
-                            min_chunks_to_combine=min_chunks_to_combine,
+                            accessor.to_block(), min_chunks_to_combine=1
                         )
                     )
 

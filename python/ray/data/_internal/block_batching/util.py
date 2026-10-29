@@ -18,7 +18,6 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
@@ -382,17 +381,11 @@ def _format_batch(
     ensure_copy: bool = False,
 ) -> Batch:
     with _maybe_time(stats.iter_format_batch_s if stats else None) as span:
-        accessor = BlockAccessor.for_block(batch.data)
-        if (
-            ensure_copy
-            and batch_format == "numpy"
-            and isinstance(accessor, ArrowBlockAccessor)
-        ):
-            formatted_data = accessor.to_numpy(ensure_copy=True)
-        else:
-            formatted_data = accessor.to_batch_format(batch_format)
-            if ensure_copy:
-                formatted_data = _copy_batch(formatted_data)
+        formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
+            batch_format
+        )
+        if ensure_copy:
+            formatted_data = _copy_batch(formatted_data)
     batch.metadata.stage_timings.format = span
     return dataclasses.replace(batch, data=formatted_data)
 

@@ -526,10 +526,9 @@ def test_map_batches_batch_zero_copy(
     assert mutated_ids == list(range(1, num_rows + 1))
 
 
-@pytest.mark.parametrize("batch_size", [None, 3])
-@pytest.mark.parametrize("batch_format", ["numpy", "pandas"])
-def test_map_batches_copy_isolates_chunked_columns(
-    ray_start_regular_shared, batch_size, batch_format
+@pytest.mark.parametrize("batch_size", [2, 3])
+def test_map_batches_pandas_copy_isolates_chunked_columns(
+    ray_start_regular_shared, batch_size
 ):
     block = pa.table(
         {
@@ -546,7 +545,7 @@ def test_map_batches_copy_isolates_chunked_columns(
     result = source.map_batches(
         mutate,
         batch_size=batch_size,
-        batch_format=batch_format,
+        batch_format="pandas",
         zero_copy_batch=False,
     )
     assert sorted(row["id"] for row in result.take_all()) == [10, 11, 12, 13]

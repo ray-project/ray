@@ -321,10 +321,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return df
 
     def to_numpy(
-        self,
-        columns: Optional[Union[str, List[str]]] = None,
-        *,
-        ensure_copy: bool = False,
+        self, columns: Optional[Union[str, List[str]]] = None
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         if columns is None:
             columns = self._table.column_names
@@ -348,35 +345,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         for col_name in columns:
             col = self._table[col_name]
 
-            if ensure_copy and transform_pyarrow.is_numpy_scalar_type(col.type):
-                # Concatenate NumPy views directly into the final writable array.
-                # Combining Arrow chunks first would allocate a buffer that the
-                # subsequent writable NumPy conversion would copy again.
-                if pyarrow.types.is_null(col.type):
-                    values = transform_pyarrow.to_numpy(col, zero_copy_only=False)
-                elif col.num_chunks > 1:
-                    values = np.concatenate(
-                        [
-                            transform_pyarrow.to_numpy(chunk, zero_copy_only=False)
-                            for chunk in col.chunks
-                        ]
-                    )
-                else:
-                    array = (
-                        col.chunk(0)
-                        if col.num_chunks
-                        else pyarrow.array([], type=col.type)
-                    )
-                    values = array.to_numpy(zero_copy_only=False, writable=True)
-                column_values_ndarrays.append(values)
-                continue
-
             # Combine columnar values arrays to make these contiguous
             # (making them compatible with numpy format)
             combined_array = transform_pyarrow.combine_chunked_array(col)
 
-            values = transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
-            column_values_ndarrays.append(values.copy() if ensure_copy else values)
+            column_values_ndarrays.append(
+                transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
+            )
 
         if should_be_single_ndarray:
             assert len(columns) == 1
