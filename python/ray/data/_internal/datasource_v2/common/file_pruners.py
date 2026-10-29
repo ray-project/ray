@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
-    _parse_partition_values,
+    _PartitionValueParser,
 )
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data.datasource import PathPartitionFilter, PathPartitionParser
@@ -71,7 +71,11 @@ class PartitionPredicatePruner(FilePruner):
         schema: Optional["pyarrow.Schema"] = None,
         keep_unknown: bool = False,
     ):
-        self._parser = PathPartitionParser(partitioning)
+        self._parser = (
+            _PartitionValueParser(partitioning)
+            if keep_unknown
+            else PathPartitionParser(partitioning)
+        )
         self.partitioning = partitioning
         self.predicate = predicate
         self.schema = schema
@@ -81,7 +85,7 @@ class PartitionPredicatePruner(FilePruner):
 
     def should_include(self, path: str) -> bool:
         if self._keep_unknown:
-            values = _parse_partition_values(path, self.partitioning)
+            values = self._parser(path)
             return (
                 _evaluate_path_predicate(self.predicate, values, self.schema, path=path)
                 is not False

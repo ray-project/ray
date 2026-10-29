@@ -267,6 +267,14 @@ def test_mixed_root_reader_uses_logical_types_before_filtering(
 ):
     from ray.data._internal.datasource_v2.formats.parquet import parquet_file_reader
 
+    normalizations = []
+    normalize = Partitioning._normalize_base_dir
+
+    def track_normalization(scheme):
+        normalizations.append(scheme.base_dir)
+        normalize(scheme)
+
+    monkeypatch.setattr(Partitioning, "_normalize_base_dir", track_normalization)
     root = tmp_path / "root.parquet"
     partition = tmp_path / "year=2024" / "data.parquet"
     partition.parent.mkdir()
@@ -297,6 +305,7 @@ def test_mixed_root_reader_uses_logical_types_before_filtering(
     assert sorted(row["id"] for row in rows) == expected
     assert all(isinstance(row["year"], int) for row in rows)
     assert {row["year"] for row in rows if row["id"] > 0} == {2024}
+    assert len(normalizations) == 1
 
 
 @pytest.mark.parametrize("prelisted", [False, True])

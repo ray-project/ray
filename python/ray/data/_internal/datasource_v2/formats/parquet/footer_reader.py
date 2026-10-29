@@ -23,7 +23,7 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
-    _parse_partition_values,
+    _PartitionValueParser,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
@@ -160,6 +160,11 @@ class FooterReader:
             filter_expr,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
+        self._partition_value_parser = (
+            _PartitionValueParser(self.partitioning)
+            if self.partitioning is not None and self._predicate is not None
+            else None
+        )
         filter_expr = self._predicate
         self.pool = ThreadPoolExecutor(max_workers=io_concurrency)
         # Match Arrow's process-wide pools to the actor's IO concurrency so
@@ -267,8 +272,8 @@ class FooterReader:
         ):
             return self.filter, self.filter_columns, True
         values = (
-            _parse_partition_values(path, self.partitioning)
-            if self.partitioning is not None
+            self._partition_value_parser(path)
+            if self._partition_value_parser is not None
             else {}
         )
         split = _split_predicate_by_columns(self._predicate, set(values))

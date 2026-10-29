@@ -81,6 +81,45 @@ def test_schema_aware_partition_pruner_ignores_unused_logical_fields(tmp_path):
         )
 
 
+def test_partition_parsers_reuse_base_dir_resolution(tmp_path, monkeypatch):
+    normalizations = []
+    normalize = Partitioning._normalize_base_dir
+
+    def track_normalization(scheme):
+        normalizations.append(scheme.base_dir)
+        normalize(scheme)
+
+    monkeypatch.setattr(Partitioning, "_normalize_base_dir", track_normalization)
+    scheme = Partitioning(
+        PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}
+    )
+    paths = [
+        str(tmp_path / "root"),
+        str(tmp_path / "year=2024" / "data"),
+        str(tmp_path / "year=2023" / "data"),
+    ]
+    pruner = PartitionPredicatePruner(
+        scheme,
+        col("year") == 2024,
+        schema=pa.schema([("year", pa.int64())]),
+        keep_unknown=True,
+    )
+    assert [pruner.should_include(path) for path in paths * 3] == [
+        True,
+        True,
+        False,
+    ] * 3
+    assert normalizations == [str(tmp_path)]
+
+    normalizations.clear()
+    resolved = resolve_partitioning(scheme, paths * 3)
+    assert resolved is not None
+    assert resolved.field_names == ["year"]
+    # Discovery and layout validation each reuse one parser across all paths.
+    assert normalizations == [str(tmp_path)] * 2
+    assert scheme.field_names is None
+
+
 def test_partition_pruner_keeps_partially_known_paths(tmp_path):
     scheme = Partitioning(
         PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}

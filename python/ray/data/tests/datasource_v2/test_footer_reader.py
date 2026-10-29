@@ -54,6 +54,35 @@ def _rg_can_fully_match(reader, metadata, rg_idx=0):
     return reader._rg_can_fully_match(row_group, _filter_leaves(reader, metadata))
 
 
+def test_partition_parser_is_reused_by_concurrent_footer_reads(tmp_path, monkeypatch):
+    normalizations = []
+    normalize = Partitioning._normalize_base_dir
+
+    def track_normalization(scheme):
+        normalizations.append(scheme.base_dir)
+        normalize(scheme)
+
+    monkeypatch.setattr(Partitioning, "_normalize_base_dir", track_normalization)
+    table = pa.table({"id": [1], "year": [2024]})
+    files = []
+    for name in ["root.parquet", "year=2024/a.parquet", "year=2024/b.parquet"]:
+        path = tmp_path / name
+        path.parent.mkdir(exist_ok=True)
+        files.append(FileInfo(*_write(path, table, row_group_size=1)))
+    reader = _reader(
+        filter_expr=col("year") == 2024,
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        logical_schema=table.schema,
+    )
+    assert normalizations == [str(tmp_path)]
+    with reader.pool as pool:
+        chunks = list(pool.map(reader._read_and_chunk, files))
+    assert [chunk.file for chunk in chunks] == files
+    assert all(len(chunk.row_groups) == 1 for chunk in chunks)
+    assert all(chunk.row_groups[0].fully_matched for chunk in chunks)
+    assert normalizations == [str(tmp_path)]
+
+
 @pytest.mark.parametrize("coalesce_bytes", [0, 1 << 20])
 def test_partition_filter_root_survivor_counts_are_not_file_counts(
     tmp_path, coalesce_bytes

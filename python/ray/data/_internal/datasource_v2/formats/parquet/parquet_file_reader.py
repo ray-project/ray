@@ -29,7 +29,7 @@ from ray.data._internal.datasource_v2.common.file_reader import (
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
-    _parse_partition_values,
+    _PartitionValueParser,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
@@ -275,9 +275,14 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
-        self._partitioning = partitioning
+        self._partition_value_parser = (
+            _PartitionValueParser(partitioning) if partitioning is not None else None
+        )
         # Parquet supplies path values before its row filter. The shared
         # post-read parser would both overwrite them and reject typed root files.
+        # Disabling it also keeps partition keys in _file_dataset_schema so root
+        # files retain their physical columns. _iter_fragment_tables removes only
+        # the keys supplied by that fragment's path before scanning it.
         self._partition_parser = None
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
@@ -445,8 +450,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         )
 
         values = (
-            _parse_partition_values(fragment.path, self._partitioning)
-            if self._partitioning is not None
+            self._partition_value_parser(fragment.path)
+            if self._partition_value_parser is not None
             else {}
         )
         schema = (

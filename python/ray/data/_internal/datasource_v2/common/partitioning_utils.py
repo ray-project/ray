@@ -18,40 +18,51 @@ from ray.data.datasource.partitioning import (
 from ray.data.expressions import Expr
 
 
-def _parse_partition_values(path: str, partitioning: Partitioning) -> dict[str, Any]:
-    """Apply declared conversions only to keys actually present in the path."""
-    parser = PathPartitionParser(replace(partitioning, field_types={}))
-    values: dict[str, Any] = parser(path)
-    for name, data_type in (partitioning.field_types or {}).items():
-        if name in values:
-            try:
-                values[name] = _cast_value(values[name], data_type)
-            except ValueError as exc:
-                raise ValueError(
-                    f"Failed to parse partition path {path!r}: {exc}"
-                ) from exc
-    return values
+class _PartitionValueParser(PathPartitionParser):
+    """Reuse path normalization and convert only fields present in each path."""
+
+    def __init__(self, partitioning: Partitioning):
+        super().__init__(replace(partitioning, field_types={}))
+        self._field_types = partitioning.field_types or {}
+        # Resolve once before callers share the parser with footer/fragment threads.
+        _ = self.scheme.normalized_base_dir
+
+    def __call__(self, path: str) -> dict[str, Any]:
+        values: dict[str, Any] = super().__call__(path)
+        for name, data_type in self._field_types.items():
+            if name in values:
+                try:
+                    values[name] = _cast_value(values[name], data_type)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Failed to parse partition path {path!r}: {exc}"
+                    ) from exc
+        return values
 
 
 def resolve_partitioning(
     partitioning: Optional[Partitioning], paths: Sequence[str]
 ) -> Optional[Partitioning]:
-    """Discover keys from a nonempty path and validate the sampled layout."""
-    if partitioning is None or partitioning.field_names:
+    """Discover keys and validate layout within the supplied schema sample.
+
+    Default reads supply at most 16 files; full-schema reads supply all eligible
+    files. A key absent from both the sample paths and its physical schemas is
+    not added to the inferred schema, even if a later fragment supplies it.
+    Explicit field names bypass discovery. No additional files are listed here.
+    """
+    if partitioning is None or partitioning.field_names or not paths:
         return copy.deepcopy(partitioning)
+    parser = _PartitionValueParser(partitioning)
     partition_kv = next(
-        (
-            values
-            for path in paths
-            if (values := _parse_partition_values(path, partitioning))
-        ),
+        (values for path in paths if (values := parser(path))),
         {},
     )
     if not partition_kv:
         return copy.deepcopy(partitioning)
     resolved = replace(partitioning, field_names=list(partition_kv))
+    parser = _PartitionValueParser(resolved)
     for path in paths:
-        _parse_partition_values(path, resolved)
+        parser(path)
     return resolved
 
 
