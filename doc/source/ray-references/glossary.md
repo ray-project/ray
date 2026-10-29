@@ -85,7 +85,7 @@ Batch format
     ```{testcode}
     import ray
 
-    dataset = ray.data.range(15)
+    dataset = ray.data.range(15, override_num_blocks=1)
     print(next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5))))
     print(next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5))))
     print(next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5))))
@@ -102,7 +102,7 @@ Batch format
     pyarrow.Table
     id: int64
     ----
-    id: [[0],[1],...,[3],[4]]
+    id: [[0,1,2,3,4]]
     ```
 
     To learn more about batch formats, read
