@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""Examples using MLfowLoggerCallback and setup_mlflow.
-"""
+"""Examples using MLfowLoggerCallback and setup_mlflow."""
 import os
 import tempfile
 import time

@@ -1,5 +1,4 @@
-"""
-This example is uses the official
+"""This example is uses the official
 huggingface transformers `hyperparameter_search` API.
 """
 
