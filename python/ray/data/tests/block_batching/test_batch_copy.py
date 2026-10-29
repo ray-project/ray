@@ -184,3 +184,9 @@ def test_tensor_copy_isolation(monkeypatch, batch_format, arrow_backed, ragged):
     original = ArrowBlockAccessor(block).to_numpy()["tensor"]
     for row in original:
         np.testing.assert_array_equal(row, np.ones_like(row))
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
