@@ -9,7 +9,7 @@ uses:
   groups before they are listed (``EXCLUDED_READ_UNIT_IDS_KWARG_NAME``).
 - Right after ``ReadFiles``, a ``DropCommittedRows`` step drops the committed
   rows of partly done row groups by looking up each row's generated ID in the
-  row group's mask. It fuses into the read task.
+  row group's mask. It runs in the read task.
 
 Both read the checkpoint loaded once, when execution starts, through
 ``load_checkpoint``; it is passed as a task kwarg lazily because it isn't
@@ -92,7 +92,7 @@ def plan_read_files_op_with_done_rows(
     partly done row groups.
 
     The step runs right after the read, so the generated ID column is still
-    there, and it fuses into the read task. A limit pushed into the read
+    there, and it runs in the read task. A limit pushed into the read
     counts rows before they are dropped, as with the ``id_column`` path's
     filter.
     """
@@ -100,25 +100,22 @@ def plan_read_files_op_with_done_rows(
     assert checkpoint_config is not None
     read_op = plan_read_files_op(op, physical_children, data_context)
     id_column = checkpoint_config.id_column
-    drop_op = MapOperator.create(
-        MapTransformer(
-            [
-                BlockMapTransformFn(
-                    partial(_drop_committed_rows_in_blocks, id_column=id_column),
-                    # This step runs last in the fused read task, so it shapes
-                    # the task's output. Without a target size, the buffer
-                    # would merge all of the read's blocks into one.
-                    output_block_size_option=OutputBlockSizeOption.of(
-                        target_max_block_size=data_context.target_max_block_size
-                    ),
-                )
-            ]
-        ),
-        read_op,
-        data_context,
-        name="DropCommittedRows",
+    drop_transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                partial(_drop_committed_rows_in_blocks, id_column=id_column),
+                # This step runs last in the read task, so it shapes the task's
+                # output. Without a target size, the buffer would merge all of
+                # the read's blocks into one.
+                output_block_size_option=OutputBlockSizeOption.of(
+                    target_max_block_size=data_context.target_max_block_size
+                ),
+            )
+        ]
     )
-    drop_op.add_map_task_kwargs_fn(
+    read_op._map_transformer = read_op.get_map_transformer().fuse(drop_transformer)
+    read_op._name = f"{read_op.name}->DropCommittedRows"
+    read_op.add_map_task_kwargs_fn(
         lambda: {_PARTIAL_MASKS_KWARG_NAME: load_checkpoint().partial_masks}
     )
-    return drop_op
+    return read_op

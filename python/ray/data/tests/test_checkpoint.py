@@ -25,6 +25,9 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators import Read, Write
 from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.planner.checkpoint.plan_generated_id_ops import (
+    _drop_committed_rows_in_blocks,
+)
 from ray.data._internal.planner.checkpoint.plan_read_op import (
     _get_checkpoint_map_transformer,
     plan_read_op_with_checkpoint_filter,
@@ -513,8 +516,8 @@ def test_generated_id_plans_skip_at_the_source(
     ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
 ):
     """Generated IDs never go through the actor-pool ``CheckpointFilter``:
-    ``ListFiles`` skips done files and row groups, and a step fused into the
-    read task drops done rows of partly done row groups."""
+    ``ListFiles`` skips done files and row groups, and a step in the read
+    task drops done rows of partly done row groups."""
     ctx = ray.data.DataContext.get_current()
     ctx.checkpoint_config = CheckpointConfig(
         checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
@@ -530,10 +533,15 @@ def test_generated_id_plans_skip_at_the_source(
     names = _physical_op_names(physical_plan)
     assert not any("CheckpointFilter" in name for name in names)
     assert "ListFiles" in names
-    # The step dropping committed rows of partly done row groups is fused
-    # into the read task.
+    # The step dropping committed rows of partly done row groups runs in the
+    # read task.
+    read_op = physical_plan.dag
+    while "ReadFiles" not in read_op.name:
+        read_op = read_op.input_dependencies[0]
+    assert "DropCommittedRows" in read_op.name, names
     assert any(
-        "ReadFiles" in name and "DropCommittedRows" in name for name in names
+        getattr(fn._fn, "func", None) is _drop_committed_rows_in_blocks
+        for fn in read_op.get_map_transformer().get_transform_fns()
     ), names
 
 
@@ -859,7 +867,7 @@ class _BlockCountingDatasink(Datasink):
 
 
 def test_generated_id_read_keeps_block_size(ray_start_10_cpus_shared, tmp_path):
-    """``DropCommittedRows`` runs last in the fused read task, so it must keep
+    """``DropCommittedRows`` runs last in the read task, so it must keep
     the read's block sizing instead of merging every block into one."""
     data_dir = tmp_path / "in"
     data_dir.mkdir()
