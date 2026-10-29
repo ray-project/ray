@@ -3463,6 +3463,7 @@ class Dataset:
             >>> ds2 = ray.data.range(4, override_num_blocks=2)
             >>> [row["id"] for row in ds1.union(ds2).take_all()]
             [0, 1, 0, 1, 2, 3, 2, 3]
+            >>> ctx.execution_options.preserve_order = False
 
         Args:
             *other: The datasets to combine with this one. The datasets
