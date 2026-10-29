@@ -77,7 +77,10 @@ def _get_cached_unique_value_arrow_arrays(
     stat_value = preprocessor.stats_[f"unique_values({input_col})"]
     if not isinstance(stat_value, dict):
         return stat_value
-    cache = preprocessor.__dict__.setdefault("_arrow_arrays_cache", {})
+    cache = getattr(preprocessor, "_arrow_arrays_cache", None)
+    if cache is None:
+        cache = {}
+        preprocessor._arrow_arrays_cache = cache
     cached = cache.get(input_col)
     if cached is None or cached[0] is not stat_value or cached[1] != len(stat_value):
         keys_array, values_array = _get_unique_value_arrow_arrays(
@@ -988,7 +991,7 @@ class LabelEncoder(SerializablePreprocessorBase):
 
     def _inverse_transform_pandas(self, df: pd.DataFrame):
         stat_value = self.stats_[f"unique_values({self._label_column})"]
-        cached = self.__dict__.get("_inverse_label_cache")
+        cached = getattr(self, "_inverse_label_cache", None)
         if (
             cached is None
             or cached[0] is not stat_value
