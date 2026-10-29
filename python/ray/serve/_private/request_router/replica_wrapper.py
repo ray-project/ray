@@ -323,8 +323,9 @@ class RunningReplica:
         `deadline_s` is passed to verify backoff for testing.
 
         This is the queue length probe the request router calls. The router
-        cancels it at the response deadline or with its routing task; the RPC is
-        cancelled and `CancelledError` re-raised without awaiting the replica.
+        cancels it at the response deadline or with its routing task; it then
+        requests cancellation of the RPC and re-raises `CancelledError` without
+        awaiting the replica.
         """
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to

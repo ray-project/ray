@@ -475,7 +475,7 @@ def _dummy_request_metadata() -> RequestMetadata:
 
 @pytest.mark.asyncio
 async def test_get_queue_len_cancellation_cancels_rpc(ray_instance):
-    """Cancelling `get_queue_len` cancels the RPC on the replica and finishes
+    """Cancelling `get_queue_len` requests cancellation of the RPC and finishes
     without waiting for the replica to finish handling the cancellation.
     """
     executing_signal = SignalActor.remote()
@@ -496,11 +496,11 @@ async def test_get_queue_len_cancellation_cancels_rpc(ray_instance):
     assert not task.done()
 
     task.cancel()
-    # The call was cancelled on the replica.
+    # The probe finishes on the next event loop turn, without awaiting the replica.
+    await asyncio.sleep(0)
+    assert task.cancelled()
+    # The cancellation request reached the replica, which is still handling it.
     await asyncio.wait_for(cancelled_signal.wait.remote(), timeout=10)
-    # The replica is still handling the cancellation, but the probe is done.
-    with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(task, timeout=5)
 
     await release_signal.send.remote()
 
