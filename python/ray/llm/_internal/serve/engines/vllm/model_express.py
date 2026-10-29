@@ -44,7 +44,16 @@ def is_model_express(llm_config: LLMConfig) -> bool:
 
 
 async def _mx_server_address(app_name: str) -> str:
-    handle = serve.get_deployment_handle(MX_SERVER_DEPLOYMENT_NAME, app_name=app_name)
+    try:
+        handle = serve.get_deployment_handle(
+            MX_SERVER_DEPLOYMENT_NAME, app_name=app_name
+        )
+    except KeyError as e:
+        raise RuntimeError(
+            f"load_format='modelexpress' needs the MX server app {app_name!r}, which "
+            "isn't deployed. Deploy ray.serve.llm.mx:build_mx_app under that name, "
+            "or set RAY_MX_APP_NAME to its name."
+        ) from e
     return await handle.address.remote()
 
 
