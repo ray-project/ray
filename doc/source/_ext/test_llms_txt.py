@@ -542,6 +542,20 @@ def test_splice_literalincludes():
         "RST splice didn't end at the directive's options or keep its indent",
     )
 
+    # Docutils reads a tab as 8 columns, so a line indented 4 spaces ends a
+    # directive indented with one.
+    tabbed = (
+        ".. note::\n\n"
+        "\t.. literalinclude:: a.py\n"
+        "\t   :language: python\n\n"
+        "    Still in the note.\n"
+    )
+    out, _, _ = splice(tabbed, (3, "x = 1\n", "python", "a.py"))
+    _check(
+        out == ".. note::\n\n\t~~~python\n\tx = 1\n\t~~~\n\n    Still in the note.\n",
+        "a directive indented with a tab swallowed the line after it",
+    )
+
     eval_rst = (
         "```{eval-rst}\n"
         ".. literalinclude:: a.py\n"

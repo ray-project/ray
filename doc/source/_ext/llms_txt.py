@@ -462,13 +462,15 @@ def _directive_span(lines, start):
     if rst:
         # The directive takes options but no content, so it ends at the last
         # line indented past it before the first non-blank line that isn't.
-        depth = len(rst["indent"])
+        # Indentation counts tabs as 8 columns, as docutils reads them.
+        depth = len(rst["indent"].expandtabs())
         end = start
         for i in range(start + 1, len(lines)):
-            stripped = lines[i].lstrip()
+            line = lines[i].expandtabs()
+            stripped = line.lstrip()
             if not stripped:
                 continue
-            if len(lines[i]) - len(stripped) <= depth:
+            if len(line) - len(stripped) <= depth:
                 break
             end = i
         return start, end, rst["indent"], rst["arg"].strip()
