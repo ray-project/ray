@@ -17,6 +17,7 @@ steps:
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small-prose
     tags:
+      - oss
       - lint
       - always
     depends_on:

@@ -3,13 +3,23 @@
 import asyncio
 import os
 from dataclasses import fields
+from typing import Protocol, cast
+from unittest.mock import patch
 
 import ray
+from ray.actor import ActorHandle
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
     OrcStripeIndexer,
     _OrcMetadataReader,
 )
+
+
+class _IntermediateFooterWriter(Protocol):
+    """The native writer exposes this method, but its stubs omit it."""
+
+    def write_intermediate_footer(self) -> object:
+        ...
 
 
 @ray.remote(num_cpus=0)
@@ -102,7 +112,10 @@ def traced_indexer(
             return ActorFactory(options)
 
         def remote(self, *args):
-            actor = actor_class.options(**self._options).remote(*args)
+            actor = cast(
+                "ActorHandle[MetadataReader]",
+                actor_class.options(**self._options).remote(*args),
+            )
             # Record handles at submission, including actors killed before their
             # constructor finishes, so cleanup assertions cover the entire pool.
             ray.get(
@@ -114,14 +127,10 @@ def traced_indexer(
         def _iter_layouts(self, files, filesystem):
             import ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer as module
 
-            original = module.OrcMetadataActor
-            module.OrcMetadataActor = ActorFactory()
-            try:
+            with patch.object(module, "OrcMetadataActor", ActorFactory()):
                 for file, layout in super()._iter_layouts(files, filesystem):
                     ray.get(trace.record.remote("delivered", file.path))
                     yield file, layout
-            finally:
-                module.OrcMetadataActor = original
 
     return TracedIndexer(
         ignore_missing_paths=indexer._ignore_missing_paths,
@@ -141,7 +150,7 @@ def traced_scanner(scanner, trace, parallel_barrier=False):
             reader = super().create_reader()
             original = reader._scan_stripe
 
-            def scan(orc_file, path, index, kwargs, num_rows):
+            def scan(reader, path, stripe_index, scanner_kwargs, num_rows):
                 if parallel_barrier:
                     ray.get(
                         trace.enter_read.remote(
@@ -149,7 +158,7 @@ def traced_scanner(scanner, trace, parallel_barrier=False):
                         )
                     )
                 for i, table in enumerate(
-                    original(orc_file, path, index, kwargs, num_rows)
+                    original(reader, path, stripe_index, scanner_kwargs, num_rows)
                 ):
                     if i == 0:
                         ray.get(
@@ -157,7 +166,7 @@ def traced_scanner(scanner, trace, parallel_barrier=False):
                                 "decoded",
                                 path,
                                 (
-                                    int(index),
+                                    int(stripe_index),
                                     os.getpid(),
                                     str(ray.get_runtime_context().get_task_id()),
                                 ),
@@ -199,7 +208,7 @@ def write_stripe_pipeline_files(directory, file_count=40):
                     (file_index * 8 + stripe * 2 + i, generator.randbytes(1024))
                     for i in range(2)
                 )
-                writer.write_intermediate_footer()
+                cast(_IntermediateFooterWriter, writer).write_intermediate_footer()
             writer.close()
         with path.open("rb") as stream:
             assert [len(stripe) for stripe in pyorc.Reader(stream).iter_stripes()] == [

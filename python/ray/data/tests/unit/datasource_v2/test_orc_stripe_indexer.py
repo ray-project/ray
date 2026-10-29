@@ -7,6 +7,7 @@ from dataclasses import replace
 from functools import reduce
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Generator, NoReturn, Protocol, cast
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -31,19 +32,30 @@ from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
     OrcStripeIndexer,
     OrcStripePartitioner,
 )
-from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data._internal.datasource_v2.interfaces.file_indexer import (
+    FileIndexer,
+    FileInfo,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    ReadUnitPosition,
     SynthesizedColumn,
 )
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
-from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
+
+
+class _IntermediateFooterWriter(Protocol):
+    """The native writer exposes this method, but its stubs omit it."""
+
+    def write_intermediate_footer(self) -> object:
+        ...
 
 
 def _write(path, counts=(5, 7, 4)):
@@ -59,7 +71,7 @@ def _write(path, counts=(5, 7, 4)):
         for count in counts:
             writer.writerows((i, f"row-{i}") for i in range(row, row + count))
             row += count
-            writer.write_intermediate_footer()
+            cast(_IntermediateFooterWriter, writer).write_intermediate_footer()
         writer.close()
     # Independent fixture acceptance, not the adapter's own output as oracle.
     with path.open("rb") as stream:
@@ -125,7 +137,7 @@ def test_metadata_layout_without_data_iteration(tmp_path, monkeypatch):
     _write(path)
 
     class MetadataOnlyReader(pyorc.Reader):
-        def read(self, *args):
+        def read(self, num: int = -1) -> NoReturn:
             raise AssertionError("row decoding")
 
         def __next__(self):
@@ -230,6 +242,9 @@ def test_prepare_read_isolated_and_seeded_without_execution_io(tmp_path, monkeyp
     _, second, _ = datasource.prepare_read(
         sample, datasource._get_file_indexer(), hints
     )
+    first = cast(OrcStripeIndexer, first)
+    second = cast(OrcStripeIndexer, second)
+    partitioner = cast(OrcStripePartitioner, partitioner)
     assert schema == table.schema
     assert vars(datasource) == before
     assert first is not second and first._seeds is not second._seeds
@@ -264,8 +279,8 @@ def test_indexer_entrances_exclusions_dedup_and_limit(tmp_path, ordered):
             files, filesystem=LocalFileSystem(), preserve_order=ordered
         )
     )
-    assert [m.as_block().to_pylist() for m in normal] == [
-        m.as_block().to_pylist() for m in prelisted
+    assert [cast(pa.Table, m.as_block()).to_pylist() for m in normal] == [
+        cast(pa.Table, m.as_block()).to_pylist() for m in prelisted
     ]
     assert _chunks(normal)[0].unit_ids == (0, 1, 2)
     selected = _list(path, excluded_read_unit_ids={orc_read_unit_id(str(path), 1)})
@@ -338,17 +353,9 @@ def test_online_packing_preserves_positions_and_budget(tmp_path, monkeypatch, or
 
 
 class _PositionColumn(SynthesizedColumn):
-    @property
-    def name(self):
-        return "position"
-
-    @property
-    def type(self):
-        return pa.string()
-
-    @property
-    def requires_read_unit_boundaries(self):
-        return True
+    name = "position"
+    type = pa.string()
+    requires_read_unit_boundaries = True
 
     def compute(self, position, num_rows):
         unit = position.unit
@@ -596,8 +603,8 @@ def test_prelisted_shuffle_and_replay_are_repeatable(tmp_path):
             files, filesystem=LocalFileSystem(), shuffle_config=config, execution_idx=2
         )
     )
-    assert [m.as_block().to_pylist() for m in first] == [
-        m.as_block().to_pylist() for m in second
+    assert [cast(pa.Table, m.as_block()).to_pylist() for m in first] == [
+        cast(pa.Table, m.as_block()).to_pylist() for m in second
     ]
     assert len(first) == 3
 
@@ -620,6 +627,8 @@ def test_budget_sampling_boundary_and_seed_cap(tmp_path, monkeypatch):
         _, indexer, partitioner = source.prepare_read(
             sample, source._get_file_indexer(), hints
         )
+        indexer = cast(OrcStripeIndexer, indexer)
+        partitioner = cast(OrcStripePartitioner, partitioner)
         assert len(indexer._seeds) == n
         budgets.append(partitioner._budget)
     assert budgets[0] < budgets[1] == 128 * 1024 * 1024
@@ -632,6 +641,8 @@ def test_budget_sampling_boundary_and_seed_cap(tmp_path, monkeypatch):
     _, indexer, partitioner = source.prepare_read(
         sample, source._get_file_indexer(), hints
     )
+    indexer = cast(OrcStripeIndexer, indexer)
+    partitioner = cast(OrcStripePartitioner, partitioner)
     assert indexer._seeds == () and partitioner._budget == budgets[1]
     monkeypatch.setenv("RAY_DATA_ORC_BIN_PACKING_BYTES", "0")
     with pytest.raises(ValueError, match="positive"):
@@ -648,8 +659,12 @@ def test_default_preparation_preserves_existing_order():
         infer_schema=lambda sample: calls.append(sample) or pa.schema([])
     )
     indexer = object()
+    # The unbound default only calls infer_schema and returns the opaque indexer.
     assert FileDataSourceV2.prepare_read(
-        source, None, indexer, PartitionHints(0, 100, 1)
+        cast(FileDataSourceV2, source),
+        None,
+        cast(FileIndexer, indexer),
+        PartitionHints(0, 100, 1),
     ) == (pa.schema([]), indexer, None)
     assert calls == [None]
 
@@ -672,7 +687,7 @@ def test_stripe_schema_projection_partition_filter_and_empty_columns(tmp_path, c
         for count in (5, 7, 4):
             writer.writerows((i, f"row-{i}", "wrong") for i in range(row, row + count))
             row += count
-            writer.write_intermediate_footer()
+            cast(_IntermediateFooterWriter, writer).write_intermediate_footer()
         writer.close()
     schema = pa.schema(
         [
@@ -686,7 +701,7 @@ def test_stripe_schema_projection_partition_filter_and_empty_columns(tmp_path, c
         schema=schema,
         columns=tuple(columns) if columns is not None else None,
         batch_size=2,
-        partitioning=Partitioning("hive", base_dir=str(tmp_path)),
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
         synthesized_columns=(),
     )
     from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
@@ -748,8 +763,11 @@ def test_stripe_session_reuse_and_close(tmp_path, monkeypatch, mode):
         )
     dataset = pds.dataset(str(path), format="orc")
     fragments = reader._get_fragments_to_read(dataset, manifest)
-    iterator = reader._read_fragments_sequential(
-        iter(fragments), {"columns": None, "filter": None, "batch_size": 2}
+    iterator = cast(
+        Generator[tuple[pa.Table, ReadUnitPosition], None, None],
+        reader._read_fragments_sequential(
+            iter(fragments), {"columns": None, "filter": None, "batch_size": 2}
+        ),
     )
     if mode == "error":
         with pytest.raises(ValueError, match="decode probe"):
@@ -788,7 +806,7 @@ def test_stripe_complex_types_and_cast_errors(tmp_path):
         for count in (5, 7, 4):
             writer.writerows(values[start : start + count])
             start += count
-            writer.write_intermediate_footer()
+            cast(_IntermediateFooterWriter, writer).write_intermediate_footer()
         writer.close()
     schema = orc.ORCFile(str(path)).schema
     expected = pa.Table.from_pylist(
@@ -839,7 +857,7 @@ def test_stripe_pickle_guard_precedes_empty_filter(tmp_path, monkeypatch):
             self.reader = original(source)
 
         def read_stripe(self, index, columns=None):
-            assert "label" not in columns
+            assert "label" not in cast(list[str], columns)
             return self.reader.read_stripe(index, columns=columns)
 
     monkeypatch.setattr(orc, "ORCFile", UnsafeORC)
@@ -937,6 +955,8 @@ def test_full_schema_keeps_driver_layout_bootstrap_bounded(tmp_path, monkeypatch
     schema, indexer, partitioner = source.prepare_read(
         sample, source._get_file_indexer(), PartitionHints(0, 1 << 30, 4)
     )
+    indexer = cast(OrcStripeIndexer, indexer)
+    partitioner = cast(OrcStripePartitioner, partitioner)
     assert "late" in schema.names
     assert set(shared_paths) == {str(p) for p in paths[:16]}
     assert set(schema_paths) == {str(p) for p in paths[16:]}

@@ -2,13 +2,20 @@ import json
 import os
 from dataclasses import fields
 from decimal import Decimal
+from typing import Dict, Literal, Protocol, cast
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.fs as pafs
 import pytest
 from pyarrow import orc
 
 import ray
+import ray._private.state
+import ray.exceptions
+from ray import ObjectRefGenerator
+from ray._private.worker import RemoteDecorator
+from ray.actor import ActorClass, ActorHandle
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.orc_datasource import ORCDatasource
@@ -17,6 +24,19 @@ from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.expressions import col
 from ray.data.tests.datasource.orc_decode_trace import write_stripe_pipeline_files
+
+
+class _StreamingRemote(Protocol):
+    """Include the supported backpressure option missing from remote's overloads."""
+
+    def __call__(
+        self,
+        *,
+        num_returns: Literal["streaming"],
+        max_retries: int,
+        _generator_backpressure_num_objects: int,
+    ) -> RemoteDecorator:
+        ...
 
 
 @pytest.fixture(params=[False, True], ids=["v1", "v2"])
@@ -891,6 +911,139 @@ def test_read_orc_v2_stored_partition_logical_types(
         ]
 
 
+def _trace_orc_batch_sizing(monkeypatch, trace_path):
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+
+    original_create_scanner = OrcDatasourceV2.create_scanner
+
+    class TracingScanner(OrcScanner):
+        def create_reader(self):
+            import uuid
+
+            reader = super().create_reader()
+            reader_id = uuid.uuid4().hex
+            read_count = 0
+            original_read = reader.read
+            original_iter = reader._iter_fragment_tables
+
+            def traced_read(input_split):
+                nonlocal read_count
+                read_count += 1
+                yield from original_read(input_split)
+
+            def traced_iter(fragment, scanner_kwargs):
+                with open(trace_path, "a") as trace:
+                    trace.write(
+                        json.dumps(
+                            {
+                                "event": "scan",
+                                "reader": reader_id,
+                                "read_count": read_count,
+                                "path": fragment.path,
+                                "target": reader._target_block_size,
+                                "batch_size": scanner_kwargs["batch_size"],
+                            }
+                        )
+                        + "\n"
+                    )
+                for table in original_iter(fragment, scanner_kwargs):
+                    with open(trace_path, "a") as trace:
+                        trace.write(
+                            json.dumps(
+                                {
+                                    "event": "batch",
+                                    "rows": table.num_rows,
+                                    "nbytes": table.nbytes,
+                                }
+                            )
+                            + "\n"
+                        )
+                    yield table
+
+            reader.read = traced_read
+            reader._iter_fragment_tables = traced_iter
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return TracingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(OrcDatasourceV2, "create_scanner", create_scanner)
+
+
+@pytest.mark.parametrize("file_count", [1, 2])
+def test_read_orc_v2_batch_sizing_fallback(
+    ray_start_regular_shared, tmp_path, monkeypatch, file_count
+):
+    from ray.data._internal.datasource_v2.common.file_reader import (
+        _ARROW_DEFAULT_BATCH_SIZE,
+    )
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(DataContext.get_current(), "target_max_block_size", 128)
+    trace_path = str(tmp_path / "batch-sizing.jsonl")
+    _trace_orc_batch_sizing(monkeypatch, trace_path)
+    for index in range(file_count):
+        _write_orc(
+            str(tmp_path / f"part-{index}.orc"),
+            pa.table({"id": [index], "payload": [[None, "x" * 512]]}),
+        )
+    rows = ray.data.read_orc(str(tmp_path), override_num_blocks=file_count).take_all()
+    assert sorted(rows, key=lambda row: row["id"]) == [
+        {"id": index, "payload": [None, "x" * 512]} for index in range(file_count)
+    ]
+    with open(trace_path) as trace:
+        records = [json.loads(line) for line in trace]
+    requests = [record for record in records if record["event"] == "scan"]
+    assert len(requests) == file_count
+    assert all(request["read_count"] == 1 for request in requests)
+    assert all(request["target"] == 128 for request in requests)
+    assert all(
+        request["batch_size"] == _ARROW_DEFAULT_BATCH_SIZE for request in requests
+    )
+
+
+@pytest.mark.parametrize("target", [65536, 131072])
+@pytest.mark.parametrize("project_narrow", [False, True])
+def test_read_orc_v2_initial_batch_sizing(
+    ray_start_regular_shared, tmp_path, monkeypatch, target, project_narrow
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(DataContext.get_current(), "target_max_block_size", target)
+    trace_path = str(tmp_path / "initial-batch-sizing.jsonl")
+    _trace_orc_batch_sizing(monkeypatch, trace_path)
+    table = pa.table({"id": range(256), "payload": ["x" * 4096] * 256})
+    path = str(tmp_path / "data.orc")
+    _write_orc(path, table)
+    dataset = ray.data.read_orc(path, override_num_blocks=1)
+    if project_narrow:
+        dataset = dataset.select_columns(["id"])
+    rows = sorted(dataset.take_all(), key=lambda row: row["id"])
+    assert rows == (table.select(["id"]) if project_narrow else table).to_pylist()
+    with open(trace_path) as trace:
+        records = [json.loads(line) for line in trace]
+    scans = [record for record in records if record["event"] == "scan"]
+    batches = [record for record in records if record["event"] == "batch"]
+    expected_size = 256 if project_narrow else target // 4096
+    assert len(scans) == 1
+    assert scans[0]["read_count"] == 1
+    assert scans[0]["target"] == target
+    assert scans[0]["batch_size"] == expected_size
+    assert batches[0]["rows"] == expected_size
+    assert sum(batch["rows"] for batch in batches) == 256
+    assert all(batch["rows"] <= expected_size for batch in batches)
+    if not project_narrow:
+        assert batches[0]["nbytes"] < table.nbytes
+
+
 def test_read_orc_v1_fallback_preserves_columns_outside_v2_sample(
     ray_start_regular_shared, tmp_path, monkeypatch
 ):
@@ -1131,7 +1284,9 @@ def test_orc_stripe_metadata_pipeline_streams_before_all_footers(
     monkeypatch.setattr(context, "target_max_block_size", 4096)
     monkeypatch.setattr(context.execution_options, "preserve_order", ordered)
     monkeypatch.setenv("RAY_DATA_ORC_BIN_PACKING_BYTES", "4096")
-    trace = OrcTrace.remote()
+    trace = cast(
+        "ActorHandle[OrcTrace]", cast("ActorClass[OrcTrace]", OrcTrace).remote()
+    )
     _trace_orc_pipeline(monkeypatch, trace, "f0018.orc")
     dataset = ray.data.read_orc(
         [str(path) for path in paths], concurrency=4, ray_remote_args={"num_cpus": 1}
@@ -1195,9 +1350,11 @@ def test_orc_listing_retry_replays_consumed_manifest_prefix(
     schema, indexer, partitioner = source.prepare_read(
         sample, indexer, PartitionHints(0, 4096, 4)
     )
-    trace = OrcTrace.remote()
+    trace = cast(
+        "ActorHandle[OrcTrace]", cast("ActorClass[OrcTrace]", OrcTrace).remote()
+    )
 
-    @ray.remote(
+    @cast(_StreamingRemote, ray.remote)(
         num_returns="streaming", max_retries=1, _generator_backpressure_num_objects=1
     )
     def listing(indexer, partitioner, trace, fail):
@@ -1226,8 +1383,10 @@ def test_orc_listing_retry_replays_consumed_manifest_prefix(
 
     try:
         expected = [
-            ray.get(ref).to_pylist()
-            for ref in listing.remote(indexer, partitioner, trace, False)
+            cast(pa.Table, ray.get(ref)).to_pylist()
+            for ref in cast(
+                ObjectRefGenerator, listing.remote(indexer, partitioner, trace, False)
+            )
         ]
         expected_events = ray.get(trace.snapshot.remote())
         expected_finished = [
@@ -1238,8 +1397,10 @@ def test_orc_listing_retry_replays_consumed_manifest_prefix(
         )
         ray.get(trace.clear_events.remote())
         actual = []
-        for ref in listing.remote(indexer, partitioner, trace, True):
-            actual.append(ray.get(ref).to_pylist())
+        for ref in cast(
+            ObjectRefGenerator, listing.remote(indexer, partitioner, trace, True)
+        ):
+            actual.append(cast(pa.Table, ray.get(ref)).to_pylist())
             ray.get(trace.acknowledge.remote())
         assert actual == expected
         finished = [
@@ -1280,7 +1441,7 @@ def orc_stripe_s3_fs(aws_credentials, s3_path, tmp_path):
     logger.addHandler(handler)
     server.start()
     _, port = server.get_host_and_port()
-    filesystem = pa.fs.S3FileSystem(
+    filesystem = pafs.S3FileSystem(
         region="us-west-2",
         endpoint_override=f"127.0.0.1:{port}",
         scheme="http",
@@ -1321,7 +1482,9 @@ def test_orc_stripe_metadata_pool_remote(
     monkeypatch.setattr(context, "target_min_block_size", 0)
     monkeypatch.setattr(context, "target_max_block_size", 4096)
     monkeypatch.setenv("RAY_DATA_ORC_BIN_PACKING_BYTES", "4096")
-    trace = OrcTrace.remote()
+    trace = cast(
+        "ActorHandle[OrcTrace]", cast("ActorClass[OrcTrace]", OrcTrace).remote()
+    )
     _trace_orc_pipeline(monkeypatch, trace)
     try:
         materialized = ray.data.read_orc(
@@ -1339,7 +1502,7 @@ def test_orc_stripe_metadata_pool_remote(
         from ray._common.test_utils import wait_for_condition
 
         def actors_stopped():
-            states = ray._private.state.actors()
+            states = cast(Dict[str, Dict[str, object]], ray._private.state.actors())
             return bool(actor_ids) and all(
                 states.get(actor_id, {}).get("State") == "DEAD"
                 for actor_id in actor_ids
@@ -1372,7 +1535,9 @@ def test_orc_one_file_uses_parallel_read_tasks(
     monkeypatch.setattr(context, "target_min_block_size", 0)
     monkeypatch.setattr(context, "target_max_block_size", 4096)
     monkeypatch.setenv("RAY_DATA_ORC_BIN_PACKING_BYTES", "4096")
-    trace = OrcTrace.remote()
+    trace = cast(
+        "ActorHandle[OrcTrace]", cast("ActorClass[OrcTrace]", OrcTrace).remote()
+    )
     _trace_orc_pipeline(monkeypatch, trace, parallel_barrier=True)
     try:
         materialized = ray.data.read_orc(
@@ -1417,7 +1582,9 @@ def test_orc_metadata_pool_stops_on_limit_error_and_cancel(
     indexer = source._get_file_indexer()
     sample = sample_files(indexer, source.paths, source.filesystem)
     _, indexer, _ = source.prepare_read(sample, indexer, PartitionHints(0, 4096, 4))
-    trace = OrcTrace.remote()
+    trace = cast(
+        "ActorHandle[OrcTrace]", cast("ActorClass[OrcTrace]", OrcTrace).remote()
+    )
     indexer = traced_indexer(
         indexer,
         trace,
@@ -1426,7 +1593,7 @@ def test_orc_metadata_pool_stops_on_limit_error_and_cancel(
         gate_first_miss=True,
     )
 
-    @ray.remote(
+    @cast(_StreamingRemote, ray.remote)(
         num_returns="streaming", max_retries=0, _generator_backpressure_num_objects=1
     )
     def listing(indexer, limit):
@@ -1437,7 +1604,9 @@ def test_orc_metadata_pool_stops_on_limit_error_and_cancel(
         ):
             yield manifest.as_block()
 
-    generator = listing.remote(indexer, 136 if stop == "limit" else None)
+    generator = cast(
+        ObjectRefGenerator, listing.remote(indexer, 136 if stop == "limit" else None)
+    )
     try:
         if stop == "error":
             with pytest.raises(ray.exceptions.RayTaskError, match="f0018.orc"):
@@ -1449,7 +1618,7 @@ def test_orc_metadata_pool_stops_on_limit_error_and_cancel(
             ray.get(trace.wait.remote("started", "f0018.orc"), timeout=35)
             ray.cancel(generator, force=False)
         else:
-            output = [ray.get(ref) for ref in generator]
+            output = [cast(pa.Table, ray.get(ref)) for ref in generator]
             assert len(output) == 17
             assert (
                 sum(
@@ -1464,7 +1633,7 @@ def test_orc_metadata_pool_stops_on_limit_error_and_cancel(
         assert len(actors) == 4
 
         def stopped():
-            states = ray._private.state.actors()
+            states = cast(Dict[str, Dict[str, object]], ray._private.state.actors())
             return all(
                 states.get(actor_id, {}).get("State") == "DEAD" for actor_id in actors
             )

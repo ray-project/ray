@@ -1,9 +1,13 @@
 """Real manifest lineage recovery, isolated from the shared ORC test cluster."""
 
+from typing import cast
+
 import pyarrow as pa
 import pytest
 
 import ray
+from ray import ObjectRefGenerator
+from ray.actor import ActorClass, ActorHandle
 from ray.data._internal.datasource_v2.common.listing_utils import sample_files
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
@@ -55,11 +59,16 @@ def test_orc_prelisted_manifest_lineage_reconstruction(
         num_cpus=4, object_store_memory=256 * 1024**2, resources={"orc_worker": 1}
     )
     cluster.wait_for_nodes()
-    trace = OrcTrace.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(), soft=False
+    trace = cast(
+        "ActorHandle[OrcTrace]",
+        cast("ActorClass[OrcTrace]", OrcTrace)
+        .options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(), soft=False
+            )
         )
-    ).remote()
+        .remote(),
+    )
     infos = [FileInfo(str(path), path.stat().st_size) for path in paths]
 
     @ray.remote(
@@ -87,10 +96,12 @@ def test_orc_prelisted_manifest_lineage_reconstruction(
     def consume(refs):
         # Fetch only on the worker that will be lost, keeping the head from
         # retaining a plasma copy of the original manifest objects.
-        return [ray.get(ref).to_pylist() for ref in refs]
+        return [cast(pa.Table, ray.get(ref)).to_pylist() for ref in refs]
 
     try:
-        generator = listing.remote(indexer, partitioner, infos, trace)
+        generator = cast(
+            ObjectRefGenerator, listing.remote(indexer, partitioner, infos, trace)
+        )
         refs = list(generator)
         expected = ray.get(consume.remote(refs), timeout=60)
         from ray.experimental import get_object_locations
@@ -106,9 +117,10 @@ def test_orc_prelisted_manifest_lineage_reconstruction(
             num_cpus=4, object_store_memory=256 * 1024**2, resources={"orc_worker": 1}
         )
         cluster.wait_for_nodes()
-        actual = [ray.get(ref, timeout=60).to_pylist() for ref in refs]
+        actual = [cast(pa.Table, ray.get(ref, timeout=60)).to_pylist() for ref in refs]
         assert actual == expected
-        assert ray.get(trace.begin.remote()) >= 3  # original + actual reconstruction
+        # The counter covers the original producer and actual reconstruction.
+        assert cast(int, ray.get(trace.begin.remote())) >= 3
         rows = []
         for group in actual:
             manifest = FileManifest(pa.Table.from_pylist(group))
