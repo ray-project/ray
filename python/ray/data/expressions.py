@@ -2441,8 +2441,9 @@ def monotonically_increasing_id() -> MonotonicallyIncreasingIdExpr:
     Create an expression that generates monotonically increasing IDs.
 
     The generated IDs are guaranteed to be monotonically increasing and unique,
-    but not consecutive. The current implementation puts the task ID in the upper
-    31 bits, and the record number within each task in the lower 33 bits. Records
+    but not consecutive. The current implementation puts the record number within
+    each task in the lower 33 bits, and the task ID in the 30 bits above them. The
+    sign bit of the 64-bit ID is unused. Records
     within the block(s) assigned to a task receive consecutive IDs. Note that IDs
     are not globally ordered across tasks.
 
