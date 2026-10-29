@@ -179,7 +179,8 @@ class MCAPDatasourceV2(FileDataSourceV2):
     def get_file_partitioner(self, **kwargs):
         # Each listing row is one chunk weighted by its estimated read memory,
         # so read tasks are sized by that estimate. A large file is cut into
-        # tasks that leave in order, and small files are packed whole
+        # tasks that leave in order, and small files are packed whole. When the
+        # read keeps order, files also keep their listing order
         # (``mcap_file_cuts`` says where a file may be cut).
         #
         # Packing is per listing shard, not global, so listing can run as many

@@ -14,6 +14,12 @@ before ``OnlineBinPacker`` packs anything:
   file listed whole, an unreadable file and rows without such a record pass
   through as listed.
 
+When the read keeps its blocks in order
+(``DataContext.execution_options.preserve_order``), the cutter packs light
+files itself instead of the packer, in listing order, and a heavy file's tasks
+leave only after the files listed before it. Files then come out in the order
+they were listed.
+
 With ``log_time_order``, a heavy file's chunks are taken in order of their
 first log time. When the read keeps its blocks in order
 (``DataContext.execution_options.preserve_order``), a cut is allowed only where
@@ -39,6 +45,7 @@ from typing import Deque, Dict, Iterator, List, Optional, Sequence
 
 import pyarrow as pa
 
+from ray.data._internal.datasource_v2.common.online_bin_packer import _bin_items
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
     CHUNK_INDEX_COLUMN,
     chunk_log_times,
@@ -84,8 +91,9 @@ class OrderedFileCutter(FilePartitioner):
     """Cuts heavy files into ordered read tasks and packs light files whole.
 
     ``packer`` is an ``OnlineBinPacker`` with bins of ``budget`` bytes. It packs
-    light files and whole-file rows, and heavy files' tasks bypass it. See the
-    module docstring for where a heavy file is cut. ``reserved_memory`` is the
+    light files and whole-file rows of a read that does not keep order, and
+    heavy files' tasks bypass it. See the module docstring for where a heavy
+    file is cut. ``reserved_memory`` is the
     memory each read task reserves (``read_mcap(memory=...)``), if the read sets it.
     """
 
@@ -101,47 +109,60 @@ class OrderedFileCutter(FilePartitioner):
         self._budget = budget
         self._log_time_order = log_time_order
         self._reserved_memory = reserved_memory
-        # Whether a cut must keep log-time order; set per input from the read.
+        # Whether the read keeps its blocks in order, and whether a cut must
+        # keep log-time order; set per input from the read.
+        self._keeps_order = False
         self._safe_cuts_only = log_time_order
-        # Heavy files' tasks, in order, handed out ahead of the packer's bins.
-        self._tasks: Deque[FileManifest] = deque()
+        # Heavy files' tasks, and light files when the read keeps order, in
+        # order, handed out ahead of the packer's bins.
+        self._ordered = _TasksInListingOrder(budget)
 
     @property
     def requires_global_input(self) -> bool:
         return self._packer.requires_global_input
 
     def add_input(self, input_manifest: FileManifest) -> None:
-        self._safe_cuts_only = self._log_time_order and _read_keeps_order()
+        self._keeps_order = _read_keeps_order()
+        self._safe_cuts_only = self._log_time_order and self._keeps_order
         for file_rows in _rows_by_file(input_manifest):
             self._place(file_rows)
 
     def has_partition(self) -> bool:
-        return bool(self._tasks) or self._packer.has_partition()
+        return bool(self._ordered.tasks) or self._packer.has_partition()
 
     def next_partition(self) -> FileManifest:
-        if self._tasks:
-            return self._tasks.popleft()
+        if self._ordered.tasks:
+            return self._ordered.tasks.popleft()
         return self._packer.next_partition()
 
     def finalize(self) -> None:
+        self._ordered.seal()
         self._packer.finalize()
 
     def _place(self, file_rows: _FileRows) -> None:
-        """Hand one file to the packer, or cut it into tasks of its own."""
+        """Pack one file with others, or cut it into tasks of its own."""
         if not file_rows.chunks:
-            self._packer.add_input(file_rows.rows)
+            self._pack(file_rows.rows)
             return
         chunks = self._in_read_order(file_rows.chunks)
         if sum(chunk.run.size_bytes for chunk in chunks) <= self._budget:
-            self._packer.add_input(_task_manifest(file_rows, chunks))
+            self._pack(_task_manifest(file_rows, chunks))
             return
         tasks = list(self._cut(chunks))
         if self._safe_cuts_only:
             _warn_if_merge_holds_much(
                 file_rows.path, tasks, self._budget, self._reserved_memory
             )
+        self._ordered.seal()
         for task in tasks:
-            self._tasks.append(_task_manifest(file_rows, task))
+            self._ordered.tasks.append(_task_manifest(file_rows, task))
+
+    def _pack(self, rows: FileManifest) -> None:
+        """Pack ``rows`` with other files, in listing order if the read keeps order."""
+        if self._keeps_order:
+            self._ordered.add(rows)
+        else:
+            self._packer.add_input(rows)
 
     def _in_read_order(self, chunks: List[_Chunk]) -> List[_Chunk]:
         """``chunks`` in the order the reader yields their messages."""
@@ -202,6 +223,50 @@ class OrderedFileCutter(FilePartitioner):
         if latest_end != next_chunk.start_time:
             return latest_end < next_chunk.start_time
         return tied_offset < next_chunk.offset
+
+
+class _TasksInListingOrder:
+    """Packs files into read tasks without reordering them.
+
+    A file joins the open task while the task stays within ``budget``.
+    Otherwise the open task leaves first. A file of at least ``budget`` bytes
+    leaves in a task of its own. Rows weigh what ``OnlineBinPacker`` budgets.
+    """
+
+    def __init__(self, budget: int):
+        self._budget = budget
+        self._open: List[FileManifest] = []
+        self._open_bytes = 0
+        # Sealed tasks, in listing order.
+        self.tasks: Deque[FileManifest] = deque()
+
+    def add(self, file_rows: FileManifest) -> None:
+        """Add one file's rows, in listing order."""
+        weight = sum(item.size_bytes for item in _bin_items(file_rows))
+        if self._open_bytes + weight > self._budget:
+            self.seal()
+        self._open.append(file_rows)
+        self._open_bytes += weight
+        if self._open_bytes >= self._budget:
+            self.seal()
+
+    def seal(self) -> None:
+        """Close the open task, if it holds a file.
+
+        The task keeps only each row's path, size and chunks, as the packer's
+        tasks do.
+        """
+        if self._open:
+            self.tasks.append(
+                FileManifest.construct_manifest(
+                    paths=[str(p) for rows in self._open for p in rows.paths],
+                    sizes=[int(s) for rows in self._open for s in rows.file_sizes],
+                    chunk_metadatas=[
+                        md for rows in self._open for md in rows.file_chunk_metadatas
+                    ],
+                )
+            )
+            self._open, self._open_bytes = [], 0
 
 
 def _read_keeps_order() -> bool:
