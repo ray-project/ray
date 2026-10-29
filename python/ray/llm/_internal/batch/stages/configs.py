@@ -39,6 +39,13 @@ class TokenizerStageConfig(_StageConfigBase):
     model_source: Optional[str] = Field(
         default=None, description="Model source/identifier for this stage."
     )
+    add_special_tokens: Optional[bool] = Field(
+        default=None,
+        description="Whether the tokenizer adds special tokens such as BOS. "
+        "If None, the processor sets it to False when the chat template stage "
+        "is enabled, because chat templates already render these tokens, and "
+        "to True otherwise.",
+    )
 
 
 class DetokenizeStageConfig(_StageConfigBase):

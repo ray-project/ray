@@ -493,6 +493,12 @@ class TokenizerStageConfig(_TokenizerStageConfig):
         enabled: Whether this stage is enabled. Defaults to True.
         model_source: Model source/identifier for this stage. If not specified,
             will use the processor-level model_source.
+        add_special_tokens: Whether the tokenizer adds special tokens such as
+            BOS to the prompt. If not specified, it's False when the chat
+            template stage is enabled, because chat templates already render
+            these tokens, and True when the chat template stage is disabled.
+            Set it to True if your chat template doesn't render the BOS token
+            your model expects.
         batch_size: Rows per batch. If not specified, will use the processor-level
             batch_size.
         concurrency: Actor pool size or range for this stage. If not specified,

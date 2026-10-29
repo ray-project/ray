@@ -3,12 +3,40 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ray.data import ActorPoolStrategy
-from ray.llm._internal.batch.stages.configs import _StageConfigBase
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig,
+    TokenizerStageConfig,
+    _StageConfigBase,
+)
 
 
 def get_value_or_fallback(value: Any, fallback: Any) -> Any:
     """Return value if not None, otherwise return fallback."""
     return value if value is not None else fallback
+
+
+def resolve_tokenize_add_special_tokens(
+    tokenize_stage_cfg: TokenizerStageConfig,
+    chat_template_stage_cfg: ChatTemplateStageConfig,
+) -> bool:
+    """Resolve whether the tokenize stage adds special tokens such as BOS.
+
+    Chat templates render special tokens such as BOS into the prompt text, so
+    tokenizing that text again with special tokens would duplicate them. An
+    explicit value on the tokenize stage config always wins.
+
+    Args:
+        tokenize_stage_cfg: The resolved tokenize stage config.
+        chat_template_stage_cfg: The resolved chat template stage config.
+
+    Returns:
+        The explicit ``add_special_tokens`` value if set, otherwise False when
+        the chat template stage is enabled and True when it is disabled.
+    """
+    return get_value_or_fallback(
+        tokenize_stage_cfg.add_special_tokens,
+        not chat_template_stage_cfg.enabled,
+    )
 
 
 def extract_resource_kwargs(
