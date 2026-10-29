@@ -1,5 +1,4 @@
-"""
-TQC Learner base class.
+"""TQC Learner base class.
 
 Extends SAC Learner with quantile-specific loss computation.
 """

@@ -537,6 +537,7 @@ class AutoscalingTest(unittest.TestCase):
             config,
             MockProvider(),
             no_restart=False,
+            map_head_auth_token=False,
         )
 
         try:

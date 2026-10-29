@@ -1,5 +1,4 @@
-"""
-PyTorch implementation of the TQC Learner.
+"""PyTorch implementation of the TQC Learner.
 
 Implements the TQC loss computation with quantile Huber loss.
 """

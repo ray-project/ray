@@ -40,12 +40,18 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
 * **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
+* **Overlayfs root filesystems**: Ray boots some sandboxes from a kernel overlayfs over their cached EROFS image, based on each sandbox's final OCI spec. Every worker needs `unshare`, `mount`, `mountpoint`, `flock`, and `setpriv` from util-linux for this. Workers without mount privileges also need `erofsfuse`, and so do workers with them whose kernel lacks the `erofs` driver or free loop devices. Workers without mount privileges that run as a user other than root need the `uidmap` package too. For details, see [Overlayfs root filesystems](#overlayfs-root-filesystems).
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node. The `nsenter` and `setpriv` commands from util-linux 2.33 or later, which Ubuntu 20.04 and later include, must also be on the `$PATH`.
 * **nftables (`network="public"` only)**: The `nft` binary on the `$PATH`. The node's kernel also needs `nf_tables` built in or loaded as a module. Ray filters each `public` sandbox's outbound traffic with an nftables ruleset, so creating a `public` sandbox fails without them. To check a node, see [Troubleshooting](#troubleshooting).
 
-To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. Distributions package `nft` as `nftables`, so on Debian and Ubuntu, run `apt-get install nftables`. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
+To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. Distributions package `nft` as `nftables`, so on Debian and Ubuntu, run `apt-get install nftables`. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` and `erofsfuse` packages from the distribution's repositories. On Ubuntu 22.04, the `erofs-utils` package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, `uuid-dev`, and `libfuse3-dev`, then run `./autogen.sh && ./configure --enable-fuse && make && make install`. The resulting `erofsfuse` also needs the FUSE runtime library, `libfuse3-3` on Ubuntu 22.04. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks. Workers that run as a user other than root without mount privileges also need the `uidmap` package, as [Overlayfs root filesystems](#overlayfs-root-filesystems) describes.
 
-For example, the following Dockerfile adds these tools to a Ray image for nodes with 4 KiB pages. Ray's images are based on Ubuntu 22.04, whose `erofs-utils` is too old, so it builds erofs-utils from source. It does so in a separate stage, so the build tools stay out of the final image. On an Ubuntu 24.04 or Debian 13 base image, `apt-get install erofs-utils` instead:
+The following Dockerfiles add everything sandboxes need to a Ray image, including the tools that overlayfs root filesystems need. Pick the tab that matches your nodes' kernel page size. To check it, run `getconf PAGESIZE` on a node, which prints `4096` for 4 KiB pages and `65536` for 64 KiB pages. Each Dockerfile builds its tools in a separate stage, so the build tools stay out of the final image.
+
+::::{tab-set}
+
+:::{tab-item} 4 KiB pages
+This Dockerfile downloads gVisor's prebuilt `runsc`, which supports 4 KiB pages, and builds erofs-utils from source. Ray's images are based on Ubuntu 22.04, whose packaged `erofs-utils` is too old. On an Ubuntu 24.04 or Debian 13 base image, drop the erofs-utils step and its build dependencies from the build stage, and change the final stage's package list to `erofs-utils erofsfuse nftables uidmap`. The `erofsfuse` package pulls in the libfuse3 runtime library.
 
 ```dockerfile
 ARG GVISOR_VERSION=20260921.0
@@ -60,7 +66,8 @@ ARG EROFS_UTILS_VERSION
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends autoconf automake bzip2 \
-        ca-certificates curl gcc libtool liblz4-dev make pkg-config uuid-dev
+        ca-certificates curl gcc libfuse3-dev libtool liblz4-dev make pkg-config \
+        uuid-dev
 
 # gVisor, with the gvisor-bin/ helpers that must stay next to runsc
 RUN mkdir -p /out/bin \
@@ -77,22 +84,26 @@ RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_
         | tar -xz -C /tmp \
     && cd "/tmp/erofs-utils-${EROFS_UTILS_VERSION}" \
     && ./autogen.sh \
-    && ./configure --disable-fuse --prefix=/out \
+    && ./configure --enable-fuse --prefix=/out \
     && make -j"$(nproc)" \
     && make install
 
 FROM rayproject/ray:latest
 COPY --from=build /out/bin/ /usr/local/bin/
 
-# nftables, for network="public"
+# Install libfuse3 for erofsfuse, newuidmap and newgidmap from uidmap to map
+# the Ray user's subordinate ids on workers without mount privileges, and
+# nftables for network="public".
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nftables \
+    && apt-get install -y --no-install-recommends libfuse3-3 nftables uidmap \
     && rm -rf /var/lib/apt/lists/*
 USER ray
 ```
+:::
 
-For nodes with 64 KiB pages, the following Dockerfile builds both `runsc` and erofs-utils from source. As before, it builds them in a separate stage, so the build tools stay out of the final image. `PAGE_SIZE` is the page size of the nodes the image runs on, and defaults to 65536. To set it explicitly, pass it as a build argument, for example `--build-arg PAGE_SIZE=4096`:
+:::{tab-item} 64 KiB pages
+This Dockerfile builds both `runsc` and erofs-utils from source. gVisor's prebuilt `runsc` only supports 4 KiB pages, so this Dockerfile builds `runsc` with `--define=pagesize`. `runsc` also only accepts EROFS images whose block size is a multiple of the node's page size, and distribution packages build erofs-utils with 4 KiB blocks, so it passes `MAX_BLOCK_SIZE` to erofs-utils' `./configure` too. Both come from `PAGE_SIZE`, the page size of the nodes the image runs on, which defaults to 65536. To change it, pass `--build-arg PAGE_SIZE=<bytes>`.
 
 ```dockerfile
 ARG GVISOR_VERSION=20260921.0
@@ -111,8 +122,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends autoconf automake \
         build-essential bzip2 ca-certificates clang curl git \
         g++-aarch64-linux-gnu g++-x86-64-linux-gnu gcc-aarch64-linux-gnu \
-        gcc-x86-64-linux-gnu libbpf-dev liblz4-dev libtool pkg-config python3 \
-        uuid-dev
+        gcc-x86-64-linux-gnu libbpf-dev libfuse3-dev liblz4-dev libtool pkg-config \
+        python3 uuid-dev
 
 # gVisor, with the gvisor-bin/ helpers that must stay next to runsc
 RUN curl -fsSL -o /usr/local/bin/bazelisk \
@@ -136,20 +147,37 @@ RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_
         | tar -xz -C /tmp \
     && cd "/tmp/erofs-utils-${EROFS_UTILS_VERSION}" \
     && ./autogen.sh \
-    && ./configure --disable-fuse --prefix=/out MAX_BLOCK_SIZE="$PAGE_SIZE" \
+    && ./configure --enable-fuse --prefix=/out MAX_BLOCK_SIZE="$PAGE_SIZE" \
     && make -j"$(nproc)" \
     && make install
 
 FROM rayproject/ray:latest
 COPY --from=build /out/bin/ /usr/local/bin/
 
-# nftables, for network="public"
+# Install libfuse3 for erofsfuse, newuidmap and newgidmap from uidmap to map
+# the Ray user's subordinate ids on workers without mount privileges, and
+# nftables for network="public".
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nftables \
+    && apt-get install -y --no-install-recommends libfuse3-3 nftables uidmap \
     && rm -rf /var/lib/apt/lists/*
 USER ray
 ```
+:::
+
+::::
+
+### Overlayfs root filesystems
+
+By default, a sandbox boots straight from its cached EROFS image, which gVisor mounts inside its own kernel. Nothing on the host can write to that root filesystem before the sandbox starts. If the sandbox is read-only, runsc also can't create the mount points its mounts need but the image lacks, because the EROFS image is immutable and runsc doesn't layer a writable overlay over a read-only root. To compensate for this, Ray may decide to boot the sandbox from an overlayfs root filesystem instead. Ray mounts the cached EROFS image on the host and layers a kernel overlayfs on top of it, which becomes the sandbox's root filesystem. Ray does this in either of two cases, both decided from the sandbox's final OCI spec.
+
+The first case is a spec with `prestart`, `createRuntime`, or `createContainer` hooks. A Container Device Interface (CDI) spec for a GPU, for example, adds such hooks. They run on the host because they need access to it, but they modify files in the sandbox's root filesystem. On an overlayfs root filesystem, those changes stay private to the sandbox and never reach the cached EROFS image that other sandboxes share.
+
+The second case is a read-only sandbox whose mounts need mount points the image might lack, such as an explicit `workdir` or the libraries a CDI spec mounts. runsc creates those mount points in the overlayfs root filesystem, and the sandbox still sees a read-only root.
+
+Any sandbox can end up in one of these cases, so every node that runs sandboxes needs to install the necessary tools to support overlayfs root filesystems. A worker with mount privileges mounts them directly, with the kernel's `erofs` driver on a loop device, or with `erofsfuse` if that fails. A worker without them mounts them with `erofsfuse` in a new user namespace for each sandbox, which needs Linux 5.11 or later. A worker running as root maps every id to itself in that namespace, so files keep their owners from the image. A worker running as any other user needs subordinate uids and gids for the Ray user to keep them, at least 65536 of each. Ray maps them with `newuidmap` and `newgidmap` from the `uidmap` package.
+
+On a worker that can't mount an overlayfs root filesystem, a sandbox with such hooks fails to start, and a read-only sandbox with missing mount points runs on gVisor's private writable overlay instead, with a warning. For how to fix this, see [Troubleshooting](#troubleshooting).
 
 ## Usage patterns and examples
 
@@ -240,7 +268,7 @@ sb = sandbox.create(image="python:3.12-slim", readonly=False, disk="10Gi")
 
 Writes past the cap fail inside the sandbox with `ENOSPC` ("No space left on device"), and the sandbox keeps running. Deleting files frees space again. `disk` takes the units that `memory` takes and also counts `/tmp`. In-memory mounts such as `/dev/shm` count toward the sandbox's memory instead.
 
-A `readonly=True` sandbox with a `workdir` also runs on a private overlay (see [Container images](#container-images)), so `disk` caps it too, and its `workdir` then lives in the overlay instead of a directory on the node. A read-only sandbox without a `workdir` has no overlay to cap, so `disk` requires `readonly=False` or a `workdir`.
+A `readonly=True` sandbox keeps its root filesystem read-only, so `disk` caps its `workdir` instead. The `workdir`'s writes then go to a file on the node's disk that the cap bounds, rather than straight to the `workdir`'s directory on the node. A read-only sandbox without a `workdir` has nothing writable to cap, so `disk` requires `readonly=False` or a `workdir`.
 
 ### Schedule a Sandbox actor with custom resources
 
@@ -309,6 +337,78 @@ ray.get(pool.close.remote())
 
 A sandbox doesn't outlive the Ray worker that creates it. When the worker exits or crashes, Ray stops the processes the worker started, and the sandbox with them, so an actor that dies without deleting its sandboxes doesn't leak their CPU and memory. Sandbox creation on the node then deletes what they left on disk, in the background and at most once a minute per process: runsc's state, the writable overlay, and the image cache's record that the sandbox uses the image. A sandbox created outside a Ray worker, such as by a driver script, keeps running after its creator exits until that cleanup stops it, so delete those explicitly.
 
+### Checkpoint and restore sandboxes
+
+Ray Sandboxes support checkpointing and restoration, which enables two distinct use cases in agentic AI and reinforcement learning:
+
+1. **Parallel branching for tree search**: Algorithms such as Monte Carlo Tree Search (MCTS) or Search-over-Thoughts explore multiple diverging execution paths from a common prefix. Instead of running expensive warmup steps (installing dependencies, compiling, or loading data) repeatedly from scratch for each branch, you can warm up a base sandbox once, take a snapshot checkpoint, and restore multiple isolated child sandboxes with low latency (< 10ms) to explore different branches in parallel without cross-branch pollution.
+2. **Suspend and resume for multi-turn rollouts**: In long-running conversational agent interactions or multi-turn agent evaluations, an environment often remains idle while waiting for an external LLM generation or human response. You can suspend the sandbox state to local disk or NVMe SSD (freeing node memory and CPU resources), and resume the environment on demand when the next turn's action arrives.
+
+#### Branching for tree search
+
+The following example demonstrates checkpointing a warmed environment and branching into isolated parallel sandboxes:
+
+```python
+import ray
+from ray.experimental import sandbox
+
+ray.init()
+
+# 1. Start a base sandbox (must run with rootless=False)
+base_sb = sandbox.create(
+    image="python:3.10-slim",
+    rootless=False,
+    workdir="/workspace",
+)
+
+# 2. Warm up environment (e.g. install dependencies, clone repo, compile)
+ray.get(base_sb.exec.remote("python3 -c 'import math; print(\"Environment warmed!\")'"))
+
+# 3. Take a snapshot checkpoint of the sandbox state to local disk or SSD
+# (checkpoint_path is optional; defaults to /tmp/ray/sandbox/checkpoints/<sandbox_id>-<uuid>)
+checkpoint_path = ray.get(base_sb.checkpoint.remote())
+
+# 4. Restore multiple branching child sandboxes with low latency from the checkpoint
+branch_1 = sandbox.restore(checkpoint_path)
+branch_2 = sandbox.restore(checkpoint_path)
+
+# 5. Execute separate actions in isolated child environments
+res1 = ray.get(branch_1.exec.remote("echo 'branch 1' > /workspace/branch.txt && cat /workspace/branch.txt"))
+res2 = ray.get(branch_2.exec.remote("echo 'branch 2' > /workspace/branch.txt && cat /workspace/branch.txt"))
+
+print("Branch 1:", res1.stdout.strip())
+print("Branch 2:", res2.stdout.strip())
+
+# Clean up
+ray.get(branch_1.delete.remote())
+ray.get(branch_2.delete.remote())
+ray.get(base_sb.delete.remote())
+```
+
+#### Suspend and resume for multi-turn rollouts
+
+To free memory during idle multi-turn rollouts (such as between LLM reasoning turns), you can checkpoint a sandbox and stop it with `leave_running=False`. The `Sandbox` actor keeps its CPU and memory reservation until it exits, so kill it too. When the next turn arrives, restore the sandbox from the saved checkpoint to continue execution:
+
+```python
+# Checkpoint and stop the running sandbox, then release the actor's resources
+checkpoint_path = ray.get(sb.checkpoint.remote(leave_running=False))
+ray.kill(sb)
+
+# Later, resume execution for the next turn
+resumed_sb = sandbox.restore(checkpoint_path)
+res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
+```
+
+:::{note}
+* **Rootless mode:** gVisor's checkpoint and restore mechanism requires `rootless=False` and `SYS_PTRACE` capabilities inside worker containers to dump process memory maps and namespaces.
+* **Node-local storage:** A checkpoint only resides on the worker node that took it, such as under `/tmp/ray` or on a local NVMe SSD. `sandbox.restore()` pins the restored actor to that node with Ray's `NodeAffinitySchedulingStrategy`, and reserves the checkpointed sandbox's CPU and memory unless you override them.
+* **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, and `cidr_allowlist` overrides. The saved state depends on `image`, `network`, `readonly`, `capabilities`, `disk`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them. A sandbox created with an `_oci_spec_transform_fn` must be restored with the same function, because the checkpoint can't save it.
+* **Egress allowlist:** a checkpoint saves the allowlist in force when it's taken, including changes from `set_egress_allowlist()`.
+* **Checkpoint path:** `checkpoint()` replaces an earlier checkpoint at the same path, but refuses a non-empty directory that doesn't hold one.
+* **Image builds:** gVisor restores only onto the same build of the sandbox's image. If the image was evicted from the cache and rebuilt, or its tag moved, since the checkpoint, restore fails with an error that says so.
+* **Compression:** `checkpoint(compression="flate-best-speed")` writes a smaller checkpoint. gVisor loads guest memory in the background only from uncompressed checkpoints, so a sandbox restored from a compressed one starts after all of its memory is loaded.
+:::
+
 ### Pass custom OCI configurations to gVisor
 
 For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [Open Container Initiative (OCI) runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
@@ -366,7 +466,7 @@ ray.get(sb.delete.remote())
 
 ## Container images
 
-Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API, with no Docker daemon, flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. As a result, a `readonly=True` sandbox with an explicit `workdir` runs on a private writable overlay, because runsc drops the rootfs overlay for read-only roots and can't create the workdir mount point in an immutable image. The overlay's writes are discarded with the sandbox. A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API, with no Docker daemon, flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. A `readonly=True` sandbox whose mounts need mount points the image might lack, such as an explicit `workdir`, boots from an overlayfs root filesystem instead, because runsc can't create mount points in a read-only image. On a worker that can't mount one, the sandbox gets a writable root filesystem, and Ray discards its writes with the sandbox. For details, see [Overlayfs root filesystems](#overlayfs-root-filesystems). A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
 
 ### Pull from private registries
 
@@ -645,10 +745,10 @@ The Ray Sandboxes subsystem has the following layers:
 
 ### Core components
 
-* **High-level helper ({func}`~ray.experimental.sandbox.create`)**: Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an `ActorHandle`.
-* **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
-* **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
-* **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands and isolates processes through gVisor's OCI runtime (`runsc`).
+* **High-level helpers ({func}`~ray.experimental.sandbox.create`, {func}`~ray.experimental.sandbox.restore`)**: Spawns a Ray actor that encapsulates the sandbox lifecycle (or restores a snapshot) and returns an `ActorHandle`.
+* **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution, file I/O, and snapshot checkpointing to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
+* **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle, checkpointing, and restoration of local sandboxes, image pulling and caching, and interactions with the execution backend.
+* **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands, manages snapshots (`runsc checkpoint` / `runsc restore`), and isolates processes through gVisor's OCI runtime (`runsc`).
 * **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
 ## Security and isolation model
@@ -849,7 +949,7 @@ Keep these limits in mind:
 
 * **Images**: The facade runs prebuilt registry images only. It rejects image definitions that need a server-side build step. Nodes pull images with their own registry credentials, so the facade ignores registry secrets that clients attach to images. See [Pull from private registries](#pull-from-private-registries).
 * **Names**: Sandbox names are scoped to the client app. Creating a sandbox under a live name returns the existing sandbox.
-* **State**: The facade keeps exec state in memory, so run one facade process per cluster.
+* **State**: The facade keeps no exec state of its own: each exec lives with its sandbox, so several facade processes can serve the same sandboxes.
 * **Network**: The facade maps the client SDK's network settings onto network modes and egress allowlists.
 
 The facade handles each of the client SDK's network settings as follows:
@@ -877,7 +977,7 @@ applications:
     import_path: ray.experimental.sandbox.http.grpc_app:build_app
 ```
 
-The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where other Pods and processes on the cluster's network can reach them. The application runs one replica, because the facade keeps exec state in memory. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
+The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where other Pods and processes on the cluster's network can reach them. To run more than one replica, set `num_replicas` in the application's `args`. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
 
 Clients use the address of Serve's gRPC proxy as their server URL. By default, the facade gives each client `https://` plus the host it dialed as its command-router URL, which suits a TLS endpoint on port 443 in front of the proxy. For any other setup, set `advertise_url` in the application's `args`, such as `http://127.0.0.1:9000` for clients of a local proxy.
 
@@ -953,6 +1053,12 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **`Failed to write the egress ruleset`**: Ray couldn't build a `public` sandbox's ruleset, so it didn't start the sandbox. The message names the cause, which is an entry in `RAY_SANDBOX_EGRESS_DENY` that isn't an IP address or network, a `dns` entry that isn't an IP address, or a failed lookup of the cluster's nodes in GCS.
 * **A `public` sandbox can't reach a service on your network**: The default allowlist blocks private networks. Add the service's address and port to `cidr_allowlist`, such as `10.0.0.84:8000`. On Kubernetes clusters that translate Service IPs, list the addresses of the Service's Pods. See [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist).
 * **Connections from a `public` sandbox hang or fail**: The egress filter blocked them. A blocked TCP connection times out, and a blocked UDP packet fails at once with `Operation not permitted`. `public` sandboxes have no IPv6 route, so IPv6 connections fail with `Network is unreachable`.
+* **Warning `readonly=True, but this worker can't mount an overlayfs rootfs`**: The sandbox's mounts need mount points its image might lack, such as an explicit `workdir`, and the worker can't mount an overlayfs root filesystem to create them. The sandbox still runs, but on a writable root whose writes Ray discards with the sandbox. For the cause, see the `Can't mount an overlayfs sandbox's rootfs on this node` entry.
+* **`Can't mount an overlayfs sandbox's rootfs on this node`**: The error lists each way Ray tried to mount the image and why it failed. On a worker without mount privileges, the usual causes are an `erofsfuse` that's missing or built without FUSE support, no read-write `/dev/fuse`, or a host or seccomp profile that blocks user namespaces. To check the last one, run `unshare --user --map-root-user --mount true` as the Ray user. On Ubuntu 23.10 and later, AppArmor also blocks mounting inside unprivileged user namespaces by default. Allow it with an AppArmor profile that grants `userns` to the worker's binaries, or with `sysctl kernel.apparmor_restrict_unprivileged_userns=0`. On a worker with mount privileges, check for the `erofs` driver, a free loop device, and a working `erofsfuse`. Each worker process checks only once, so restart Ray on the node after a fix.
+* **`gVisor container failed to start: ... rootfs overlay mount failed`**: The worker's test mount worked, but this sandbox's mount failed. With the kernel `erofs` driver, the usual cause is running out of loop devices, which `losetup -f` checks.
+* **`mapping ids failed`**: The worker couldn't write the id maps of a sandbox's user namespace. A worker running as root writes them itself, which needs `CAP_SETUID` and `CAP_SETGID`. For a worker running as any other user, `newuidmap` or `newgidmap` refused to map the Ray user's subordinate ids. Both need to be setuid root or have the equivalent file capabilities, which container image builds, `nosuid` mounts, and `allowPrivilegeEscalation: false` in Kubernetes can each remove. They also need to accept the Ray user's ranges. Check them with `getsubids $USER` and `getsubids -g $USER`, or with `grep "^$USER:" /etc/subuid /etc/subgid` where the node doesn't have `getsubids`.
+* **Warning `Overlayfs sandboxes on this worker run in a new user namespace`**: Workers running as a user other than root without mount privileges or subordinate ids log this. Only uid 0 and gid 0 map inside their user namespace, so files owned by any other id show up as owned by `nobody`. To keep their owners, give the Ray user subordinate uids and gids, as [Overlayfs root filesystems](#overlayfs-root-filesystems) describes.
+* **Overlayfs sandbox fails to start with `Permission denied` for `runsc`, `slirp4netns`, or `nsenter`**: Inside the sandbox's user namespace, a worker running as a user other than root can use a file only as the Ray user, through its primary group, or through the permission bits for other users. Install the tool where every user can execute it, such as `/usr/local/bin`, or run `chmod o+rx` on the tool and each directory on its path.
 
 ## Next steps
 

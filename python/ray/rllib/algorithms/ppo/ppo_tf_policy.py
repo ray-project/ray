@@ -1,6 +1,4 @@
-"""
-TensorFlow policy class used for PPO.
-"""
+"""TensorFlow policy class used for PPO."""
 
 import logging
 from typing import Dict, List, Type, Union
