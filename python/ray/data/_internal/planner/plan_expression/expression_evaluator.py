@@ -41,6 +41,11 @@ logger = logging.getLogger(__name__)
 def _pa_is_in(left: Any, right: Any) -> Any:
     if not isinstance(right, (pa.Array, pa.ChunkedArray)):
         right = pa.array(right.as_py() if isinstance(right, pa.Scalar) else right)
+    if isinstance(left, (pa.Array, pa.ChunkedArray)) and pa.types.is_null(left.type):
+        # An all-null column (for example, from an all-None pandas column) is
+        # null-typed, and `pc.is_in` rejects a null-typed input against a string
+        # value set. Casting nulls to the value set's type doesn't change the result.
+        left = left.cast(right.type)
     return pc.is_in(left, right)
 
 

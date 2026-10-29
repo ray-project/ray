@@ -1115,6 +1115,23 @@ def test_read_csv_hive_null_partition_column_in_data(
     assert ds.take_all() == [{"number": 0, "year": None}]
 
 
+def test_read_json_hive_null_partition(ray_start_regular_shared, tmp_path):
+    for year in ["1970", "__HIVE_DEFAULT_PARTITION__"]:
+        path = os.path.join(tmp_path, f"year={year}", "data.jsonl")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as f:
+            f.write(json.dumps({"number": 0}))
+
+    # `lines=True` reads with pandas.
+    ds = ray.data.read_json(tmp_path, lines=True, partitioning=Partitioning("hive"))
+    # Each block converted to Arrow on its own: the null partition's `year`
+    # column is null-typed there.
+    ds = ds.map_batches(lambda batch: batch, batch_format="pyarrow")
+
+    assert ds.filter(expr=col("year").is_null()).count() == 1
+    assert ds.filter(expr=col("year").is_in(["1970"])).count() == 1
+
+
 def test_read_json_hive_null_partition_column_in_data(
     ray_start_regular_shared, tmp_path
 ):
