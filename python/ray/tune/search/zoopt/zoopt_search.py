@@ -353,6 +353,15 @@ class ZOOptSearch(Searcher):
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, Uniform):
+                    if quantize and quantize > 1:
+                        # ZOOpt cannot step through a range, so list the
+                        # multiples of `q` that Tune samples. The upper bound
+                        # is inclusive for `q > 1`.
+                        lower = -(-domain.lower // quantize) * quantize
+                        return (
+                            ValueType.GRID,
+                            list(range(lower, domain.upper + 1, quantize)),
+                        )
                     return (ValueType.DISCRETE, [domain.lower, domain.upper - 1], True)
 
             elif isinstance(domain, Categorical):
