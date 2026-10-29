@@ -440,6 +440,14 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         return fragments
 
     @override
+    def _get_partition_values(self, path: str) -> Dict[str, Any]:
+        return (
+            self._partition_value_parser(path)
+            if self._partition_value_parser is not None
+            else {}
+        )
+
+    @override
     def _iter_fragment_tables(
         self,
         fragment: pds.Fragment,
@@ -449,11 +457,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             get_column_references,
         )
 
-        values = (
-            self._partition_value_parser(fragment.path)
-            if self._partition_value_parser is not None
-            else {}
-        )
+        values = self._get_partition_values(fragment.path)
         schema = (
             self._file_dataset_schema
             if self._file_dataset_schema is not None
@@ -517,14 +521,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             # code. To avoid exposing our users, raise unless the user has
             # explicitly opted in.
             raise_on_pickle_object_columns(table)
-            for name, value in values.items():
-                if needed is not None and name not in needed:
-                    continue
-                if name in table.column_names:
-                    table = table.drop([name])
-                table = table.append_column(
-                    name, self._broadcast_partition_value(name, value, table.num_rows)
-                )
+            table = self._apply_partition_values(table, values, required_columns=needed)
             if residual_predicate is not None:
                 table = table.filter(residual_predicate.to_pyarrow())
             yield table

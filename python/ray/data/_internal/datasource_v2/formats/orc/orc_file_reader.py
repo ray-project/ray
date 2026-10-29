@@ -146,7 +146,7 @@ class OrcFileReader(FileReader):
             yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
             return
 
-        partitions = self._partition_parser(fragment.path)
+        partitions = self._get_partition_values(fragment.path)
         physical_schema = fragment.physical_schema
         schema = self._schema
         if schema is None:
@@ -233,12 +233,9 @@ class OrcFileReader(FileReader):
         )
         for tagged in scanner.scan_batches():
             table = pa.Table.from_batches([tagged.record_batch])
-            for name, value in partitions.items():
-                if name in required_names:
-                    table = table.append_column(
-                        name,
-                        self._broadcast_partition_value(name, value, table.num_rows),
-                    )
+            table = self._apply_partition_values(
+                table, partitions, required_columns=required_names
+            )
             if residual_filter is not None:
                 table = table.filter(residual_filter)
             yield table
