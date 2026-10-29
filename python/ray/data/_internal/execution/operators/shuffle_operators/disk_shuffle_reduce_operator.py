@@ -18,7 +18,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     OpTask,
     TaskExecDriverStats,
-    estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
     DiskHashShuffleMapOp,
@@ -39,8 +38,13 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
+from ray.data._internal.execution.operators.shuffle_phase_metrics import (
+    PhaseSpec,
+    ShuffleOperatorMetrics,
+)
 from ray.data._internal.execution.util import merge_label_selector
-from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
+from ray.data._internal.stats import StatsDict
+from ray.data.block import BlockAccessor, TaskExecWorkerStats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
@@ -131,7 +135,19 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._output_queue: deque = deque()
 
         # -- Stats -----------------------------------------------------------
-        self._output_blocks_stats: List[BlockStats] = []
+        self._phase_metrics = ShuffleOperatorMetrics(
+            self,
+            self._metrics,
+            [
+                PhaseSpec(
+                    "reduce",
+                    "Reduce",
+                    is_output_phase=True,
+                    total_num_tasks=num_partitions,
+                )
+            ],
+        )
+        self._reduce_metrics = self._phase_metrics.phases["reduce"]
 
         # =====================================================================
         # Disk-shuffle-specific state below.
@@ -276,7 +292,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
         # Synthetic empty bundle for metrics: the wrapper's only ref is
         # the shared handle list, not partition-specific data.
-        self._metrics.on_task_submitted(
+        self._reduce_metrics.on_task_submitted(
             partition_id,
             RefBundle((), schema=None, owns_blocks=False),
             task_id=data_task.get_task_id(),
@@ -311,23 +327,15 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         )
         self._num_reduce_tasks_submitted += 1
         self._output_queue.append(out_bundle)
-        self._metrics.on_output_queued(out_bundle)
-        _, num_outputs, num_rows = estimate_total_num_of_blocks(
-            self._num_reduce_tasks_submitted,
-            self.upstream_op_num_outputs(),
-            self._metrics,
-            total_num_tasks=self._num_partitions,
-        )
-        self._estimated_num_output_bundles = num_outputs
-        self._estimated_output_num_rows = num_rows
+        self._reduce_metrics.on_output_queued(out_bundle)
 
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
 
     def _get_next_inner(self) -> RefBundle:
         bundle: RefBundle = self._output_queue.popleft()
-        self._metrics.on_output_dequeued(bundle)
-        self._output_blocks_stats.extend(to_stats(bundle.metadata))
+        self._reduce_metrics.on_output_dequeued(bundle)
+        self._reduce_metrics.record_block_stats(*bundle.metadata)
         return bundle
 
     def get_active_tasks(self) -> List[OpTask]:
@@ -335,16 +343,8 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
         self._output_queue.append(bundle)
-        self._metrics.on_output_queued(bundle)
-        self._metrics.on_task_output_generated(task_index=partition_id, output=bundle)
-        _, num_outputs, num_rows = estimate_total_num_of_blocks(
-            self._num_reduce_tasks_submitted,
-            self.upstream_op_num_outputs(),
-            self._metrics,
-            total_num_tasks=self._num_partitions,
-        )
-        self._estimated_num_output_bundles = num_outputs
-        self._estimated_output_num_rows = num_rows
+        self._reduce_metrics.on_output_queued(bundle)
+        self._reduce_metrics.on_task_output(partition_id, bundle)
 
     def _handle_reduce_done(
         self,
@@ -360,11 +360,12 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         if partition_id not in self._shuffle_reduce_tasks:
             return
         self._shuffle_reduce_tasks.pop(partition_id)
-        self._metrics.on_task_finished(
-            task_index=partition_id,
-            exception=exc,
-            task_exec_stats=task_exec_stats,
-            task_exec_driver_stats=task_exec_driver_stats,
+        self._reduce_metrics.on_task_finished(
+            partition_id, exc, task_exec_stats, task_exec_driver_stats
+        )
+        # The per-task output average only exists once a task has finished.
+        self._phase_metrics.update_output_estimates(
+            self._reduce_metrics, self._num_reduce_tasks_submitted
         )
         if exc:
             logger.error(
@@ -393,15 +394,21 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
                 bundle.destroy_if_owned()
         self._pending_inputs.clear()
 
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
-        return {self._name: self._output_blocks_stats}
+    def _extra_metrics(self) -> Dict[str, Any]:
+        return self._phase_metrics.extra_metrics()
+
+    def get_stats(self) -> StatsDict:
+        return self._phase_metrics.stats()
+
+    def num_outputs_total(self) -> Optional[int]:
+        return self._phase_metrics.estimated_num_output_bundles
 
     def num_output_rows_total(self) -> Optional[int]:
         # Multi-input reduces (e.g. join) and non-row-preserving reduces
         # (aggregation, fused map) can grow or shrink the row count, so it is
-        # unknown until the reducers run.
+        # estimated from finished reducers instead of borrowed from the map op.
         if self._num_inputs > 1 or not self._preserves_row_count:
-            return None
+            return self._phase_metrics.estimated_output_num_rows
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, DiskHashShuffleMapOp)
         return upstream.num_output_rows_total()
