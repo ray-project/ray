@@ -166,7 +166,14 @@ INCLUDE_FILES = {
         "```{literalinclude} /inc/doc_code/sample.py\n"
         ":start-after: __quoted_example__\n"
         "```\n"
-        "````\n"
+        "````\n\n"
+        "RST syntax in an eval-rst block:\n\n"
+        "```{eval-rst}\n"
+        ".. literalinclude:: /inc/doc_code/sample.py\n"
+        "   :language: python\n"
+        "   :start-after: __sample_start__\n"
+        "   :end-before: __sample_end__\n"
+        "```\n"
     ),
     "inc/b/page.rst": (
         ":orphan:\n\n"
@@ -407,9 +414,10 @@ def test_literalinclude_expansion():
 
     Sphinx never publishes the included file, so the directive alone leaves the
     code unreachable. The expansion honors the directive's options, reaches an
-    RST directive nested in another, leaves a directive quoted inside a code
-    block alone, and counts toward the shard budget. The budget here keeps the
-    pages' source under it and their expanded text over it, so inc/ splits into
+    RST directive nested in another or in a MyST ``{eval-rst}`` block without
+    breaking the block's fence, leaves a directive quoted inside a code block
+    alone, and counts toward the shard budget. The budget here keeps the pages'
+    source under it and their expanded text over it, so inc/ splits into
     sub-shards only when the expansion is on.
     """
     budget = "\nllms_txt_full_max_shard_tokens = 1000\n"
@@ -432,10 +440,15 @@ def test_literalinclude_expansion():
             ":start-after: __quoted_example__" in page_a,
             "a directive quoted inside a code block was rewritten",
         )
+        _check(
+            "```{eval-rst}\n~~~python\ndef included():\n    return 42\n~~~\n```"
+            in page_a,
+            "an include in an {eval-rst} block got a fence that closes the block",
+        )
         page_b = (out / "inc" / "b" / "llms-full.txt").read_text(encoding="utf-8")
         _check(
-            "   ```python\n   VALUE_0 = 0\n" in page_b
-            and "   VALUE_599 = 599\n   ```\n\n   Text after the include" in page_b,
+            "   ~~~python\n   VALUE_0 = 0\n" in page_b
+            and "   VALUE_599 = 599\n   ~~~\n\n   Text after the include" in page_b,
             "nested RST include not spliced at the directive's indent",
         )
         _check(".. literalinclude::" not in page_b, "RST directive left in the shard")
@@ -465,7 +478,8 @@ def test_literalinclude_expansion():
 
 def test_splice_literalincludes():
     """The splice replaces only directives that open on a reported line, ends an
-    RST directive where its options do, and picks a fence the code can't close."""
+    RST directive where its options do, and picks a fence the code can't close
+    and that can't close a fence around the directive."""
     import sys
 
     sys.path.insert(0, _EXT_DIR)
@@ -489,8 +503,21 @@ def test_splice_literalincludes():
     )
     out, _, _ = llms_txt._splice_literalincludes(rst, [(3, "x = 1\n", "python")])
     _check(
-        out == ".. note::\n\n   ```python\n   x = 1\n   ```\n\n   Still in the note.\n",
+        out == ".. note::\n\n   ~~~python\n   x = 1\n   ~~~\n\n   Still in the note.\n",
         "RST splice didn't end at the directive's options or keep its indent",
+    )
+
+    eval_rst = (
+        "```{eval-rst}\n"
+        ".. literalinclude:: a.py\n"
+        "   :language: python\n"
+        "```\n\n"
+        "After the block.\n"
+    )
+    out, _, _ = llms_txt._splice_literalincludes(eval_rst, [(2, "x = 1\n", "python")])
+    _check(
+        out == "```{eval-rst}\n~~~python\nx = 1\n~~~\n```\n\nAfter the block.\n",
+        "an include in an {eval-rst} block got a fence that closes the block",
     )
 
     out, _, _ = llms_txt._splice_literalincludes(

@@ -474,14 +474,16 @@ def _directive_span(lines, start):
     return None
 
 
-def _code_fence(code, language, indent):
+def _code_fence(code, language, indent, tildes=False):
     """Return the lines of a fenced code block holding ``code``, indented by
     ``indent``.
 
     The fence is backticks unless the code contains a backtick fence of its own,
     in which case it's tildes, so the code can't close the block early.
+    ``tildes`` asks for tildes regardless, for a block spliced where a backtick
+    fence would close an enclosing one.
     """
-    char = "~" if "```" in code else "`"
+    char = "~" if tildes or "```" in code else "`"
     longest = max(
         (len(run) for run in re.findall(f"{re.escape(char)}+", code)), default=0
     )
@@ -514,7 +516,11 @@ def _splice_literalincludes(text, blocks):
     for (start, end, indent), code, language in sorted(
         spans, key=lambda item: item[0][0], reverse=True
     ):
-        lines[start : end + 1] = _code_fence(code, language, indent)
+        # A directive that doesn't open with backticks, like RST in a MyST
+        # {eval-rst} block, can sit inside a backtick fence, which a backtick
+        # fence spliced in its place would close early. So it gets tildes.
+        tildes = not lines[start].lstrip().startswith("`")
+        lines[start : end + 1] = _code_fence(code, language, indent, tildes)
     return "\n".join(lines), len(spans), missed
 
 
