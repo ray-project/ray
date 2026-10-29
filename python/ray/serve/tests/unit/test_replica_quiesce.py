@@ -424,10 +424,12 @@ class TestDrainOngoingRequests:
             yield logger
 
     @pytest.mark.asyncio
-    async def test_zero_wait_loop_sleeps_between_checks(self):
+    @pytest.mark.parametrize("wait_loop_period_s", [0, 0.001])
+    async def test_short_wait_loop_sleeps_the_floor(self, wait_loop_period_s):
         """`graceful_shutdown_wait_loop_s=0` is allowed, but must not make the
-        drain loop spin with `asyncio.sleep(0)`."""
-        fake, events = self._make_fake(wait_loop_period_s=0)
+        drain loop spin with `asyncio.sleep(0)`; values below the floor are
+        raised to it too."""
+        fake, events = self._make_fake(wait_loop_period_s=wait_loop_period_s)
 
         with _record_sleeps(events):
             await Replica._drain_ongoing_requests(fake)
@@ -438,7 +440,9 @@ class TestDrainOngoingRequests:
     @pytest.mark.parametrize(
         "wait_loop_period_s,expected_checks,expected_logs",
         [
-            # Checks every 10ms for 5s, but logs once per second.
+            # Checks every 10ms for 5s, but logs once per second. 501, not 500:
+            # summing 0.01s sleeps in `_fake_clock` drifts just below 5.0, so
+            # the request still looks ongoing at the 500th check.
             (0, 501, 5),
             # The default wait loop is longer than the log interval, so every
             # check that is still waiting logs, as before.
