@@ -90,6 +90,17 @@ def test_setup_rejects_fractional_gpus(extra):
         asyncio.run(model_express.setup_model_express(llm_config))
 
 
+def test_setup_without_mx_app():
+    def get_deployment_handle(deployment_name, app_name):
+        raise KeyError(f"{deployment_name} in {app_name} does not exist.")
+
+    with patch.dict("os.environ", {}, clear=True), patch(
+        "ray.serve.get_deployment_handle", get_deployment_handle
+    ), patch("ray.util.get_node_ip_address", return_value="127.0.0.1"):
+        with pytest.raises(RuntimeError, match="build_mx_app"):
+            asyncio.run(model_express.setup_model_express(_llm_config()))
+
+
 def test_setup_sets_client_env():
     env, looked_up = _setup(env={})
 
