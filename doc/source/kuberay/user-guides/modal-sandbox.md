@@ -13,7 +13,7 @@ This guide shows how to deploy the Modal-compatible Ray Sandbox gRPC API on Goog
 Ray Sandboxes run untrusted code inside lightweight [gVisor](https://gvisor.dev/docs/) `runsc` containers directly on worker Pods. The `ray.experimental.sandbox.http.grpc_app` gRPC facade runs behind Ray Serve's gRPC proxy and implements the `ModalClient` control-plane and `TaskCommandRouter` command-router services that the Modal client SDK uses for its Sandbox API. You can point an unmodified Modal Python client at a KubeRay RayService to create sandboxes, execute commands, and read or write files on your own Ray cluster.
 
 :::{warning}
-Ray Sandboxes, provided in the `ray.experimental.sandbox` package, is an {ref}`alpha <api-stability-alpha>` library. The API can change or disappear in any release before it graduates to stable.
+Ray Sandboxes is an {ref}`alpha <api-stability-alpha>` library in the `ray.experimental.sandbox` package. The API can change or disappear in any release before it graduates to stable.
 :::
 
 ## How the service works
@@ -62,7 +62,7 @@ gcloud container clusters get-credentials "$CLUSTER_NAME" \
 
 ## Step 2: Install the KubeRay operator
 
-Follow {ref}`Deploy a KubeRay operator <kuberay-operator-deploy>` to install the latest stable KubeRay operator from the Helm repository:
+Follow {ref}`Deploy a KubeRay operator <kuberay-operator-deploy>` to install the KubeRay operator from the Helm repository:
 
 ```bash
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
@@ -162,7 +162,7 @@ kubectl create secret generic ray-sandbox-token \
     --from-literal=api-token="$RAY_SANDBOX_API_TOKEN"
 ```
 
-Create a `ray-service.modal-sandbox.yaml` file with the following manifest. Replace `<your-image-uri>` with the `$IMAGE_URI` you built in Step 3:
+Create a `ray-service.modal-sandbox.yaml` file with the following manifest. The apply command at the end of this step replaces the `<your-image-uri>` placeholder with the `$IMAGE_URI` you built in Step 3:
 
 ```yaml
 apiVersion: ray.io/v1
@@ -375,7 +375,7 @@ Run the script:
 python3 run_modal_sandbox.py
 ```
 
-The output shows the gVisor kernel version inside the sandbox:
+The output is similar to the following. The `Platform` line shows the gVisor kernel inside the sandbox:
 
 ```text
 Exit code: 0
@@ -502,7 +502,7 @@ Keep the following constraints in mind when using the Modal-compatible gRPC faca
 
 ## Clean up
 
-Delete the RayService, Secret, and GKE cluster when you finish:
+Delete the RayService, Secret, KubeRay operator, and GKE cluster when you finish:
 
 ```bash
 kubectl delete rayservice rayservice-modal-sandbox
