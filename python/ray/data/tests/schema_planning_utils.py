@@ -2,23 +2,11 @@
 
 import json
 import os
-from typing import List
 
-import pyarrow as pa
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators import ListFiles
 from ray.data.context import DataContext
-
-
-def get_prelisted_blocks(read_op: LogicalOperator) -> List[pa.Table]:
-    listing = read_op.input_dependencies[0]
-    assert isinstance(listing, ListFiles)
-    blocks = listing.prelisted_file_infos
-    assert blocks is not None
-    return blocks
 
 
 class RecordingLocalFileSystem(LocalFileSystem):

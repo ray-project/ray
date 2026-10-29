@@ -356,6 +356,8 @@ class ParquetDatasourceV2(FileDataSourceV2):
             ray_remote_args=ray_remote_args,
             supports_distributed_reads=self.supports_distributed_reads,
         )
+        if schema is None:
+            return self.infer_schema(sample)
         return self._augment_schema(schema, sample)
 
     def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:

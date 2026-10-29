@@ -43,7 +43,6 @@ from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
-from ray.data.tests.schema_planning_utils import get_prelisted_blocks
 
 
 def _write(path, table):
@@ -1355,85 +1354,6 @@ def test_merge_schema_lineage_retains_candidates(tmp_path, restore_ctx):
     _write(tmp_path / "b.parquet", pa.table({"id": [2]}))
 
     assert [row["id"] for row in restored.take_all()] == [1]
-
-
-def test_merge_schema_generated_id_binds_after_read(
-    tmp_path, restore_ctx, monkeypatch, ray_start_2_cpus
-):
-    from ray.data._internal.logical.rules.bind_generated_id_column import (
-        BindGeneratedIdColumn,
-    )
-    from ray.data.checkpoint import CheckpointConfig
-    from ray.data.checkpoint.generated_id import GENERATED_ID_COLUMN_TYPE
-
-    first, last = tmp_path / "a.parquet", tmp_path / "z.parquet"
-    _write(first, pa.table({"id": [0, 1]}))
-    _write(last, pa.table({"id": [2, 3], "late": [20, 30]}))
-    restore_ctx.use_datasource_v2 = True
-    monkeypatch.setattr(restore_ctx, "checkpoint_config", None)
-    dataset = ray.data.read_parquet(
-        [str(first), str(last)], merge_schema=True, override_num_blocks=1
-    )
-    assert dataset.schema(fetch_if_missing=False).names == ["id", "late"]
-    blocks = get_prelisted_blocks(dataset._logical_plan.dag)
-    assert all(block.column_names == ["__path", "__file_size"] for block in blocks)
-
-    projected = dataset.select_columns(["id", "late"])
-    monkeypatch.setattr(
-        projected.context,
-        "checkpoint_config",
-        CheckpointConfig(
-            checkpoint_path=str(tmp_path / "checkpoints"),
-            generated_id_column="generated_id",
-        ),
-    )
-    schema = projected.schema(fetch_if_missing=False).base_schema
-    assert schema.names == ["id", "late", "generated_id"]
-    assert schema.field("generated_id").type == GENERATED_ID_COLUMN_TYPE
-    bound = BindGeneratedIdColumn().apply(projected._logical_plan)
-    (bound_read,) = [
-        op for op in bound.dag.post_order_iter() if isinstance(op, ReadFiles)
-    ]
-    bound_blocks = get_prelisted_blocks(bound_read)
-    assert len(bound_blocks) == len(blocks)
-    assert all(before.equals(after) for before, after in zip(blocks, bound_blocks))
-    assert projected.count() == 4
-    rows = sorted(projected.take_all(), key=lambda row: row["id"])
-    assert [(row["id"], row["late"]) for row in rows] == [
-        (0, None),
-        (1, None),
-        (2, 20),
-        (3, 30),
-    ]
-    assert len({tuple(sorted(row["generated_id"].items())) for row in rows}) == 4
-
-
-def test_merge_schema_generated_id_rejects_late_column_collision(
-    tmp_path, restore_ctx, monkeypatch, ray_start_2_cpus
-):
-    from ray.data.checkpoint import CheckpointConfig
-    from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
-
-    first, last = tmp_path / "a.parquet", tmp_path / "z.parquet"
-    _write(first, pa.table({"id": [0]}))
-    _write(last, pa.table({"id": [1], "generated_id": [42]}))
-    restore_ctx.use_datasource_v2 = True
-    monkeypatch.setattr(restore_ctx, "checkpoint_config", None)
-    dataset = ray.data.read_parquet([str(first), str(last)], merge_schema=True)
-    assert (
-        dataset.schema(fetch_if_missing=False).base_schema.field("generated_id").type
-        == pa.int64()
-    )
-    monkeypatch.setattr(
-        dataset.context,
-        "checkpoint_config",
-        CheckpointConfig(
-            checkpoint_path=str(tmp_path / "checkpoints"),
-            generated_id_column="generated_id",
-        ),
-    )
-    with pytest.raises(InvalidCheckpointingConfig, match="already exists"):
-        dataset.take_all()
 
 
 def test_merge_schema_rejects_schema_override_and_v1(tmp_path, restore_ctx):

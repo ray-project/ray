@@ -1871,14 +1871,14 @@ def read_parquet(
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
         planning, which can be expensive for large or remote datasets. Larger
-        eligible reads distribute this work across bounded Ray tasks. Schemas
-        requiring type promotion or nested/extension reconciliation retain the
-        existing one-shot merge behavior and its driver memory cost.
+        eligible reads distribute schema I/O across bounded Ray tasks. The driver
+        retains every candidate schema and applies the existing one-shot unifier;
+        this does not reduce driver schema storage, which remains O(files).
         Configure eligibility, task resources, batching and I/O concurrency through
         :class:`~ray.data.DataContext`. Execution reads footer metadata again.
         With more than 10,000 candidate files, the reader warns before schema
         merging. Retained path and size metadata adds O(files) data to serialized
-        lineage. Completed planning results can also grow with the file count.
+        lineage.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
@@ -3071,14 +3071,13 @@ def read_orc(
 
         ``merge_schema=True`` lists all eligible files and reads their schemas
         during planning, which can be expensive for large or remote datasets.
-        Larger eligible reads distribute this work across bounded Ray tasks.
-        Schemas requiring type promotion or nested/extension reconciliation retain
-        the existing one-shot merge behavior and its driver memory cost.
+        Larger eligible reads distribute schema I/O across bounded Ray tasks.
+        The driver retains every candidate schema and applies the existing
+        one-shot unifier; driver schema storage remains O(files).
         Configure eligibility, task resources, batching and I/O concurrency through
         :class:`~ray.data.DataContext`. Execution reads ORC metadata again.
         With more than 10,000 candidate files, Ray warns before schema merging.
         Retained path and size metadata adds O(files) data to serialized lineage.
-        Completed planning results can also grow with the file count.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an

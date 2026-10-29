@@ -842,7 +842,7 @@ def test_read_orc_v2_partitioned_scan_optimizations(
                         path=self._fragment.path,
                         columns=kwargs["columns"],
                         filter=str(kwargs["filter"]),
-                        source=os.path.realpath(inspect.getfile(OrcFileReader)),
+                        source=inspect.getfile(OrcFileReader),
                     )
                     return self._fragment.scanner(**kwargs)
 
@@ -1232,14 +1232,8 @@ def test_read_orc_v2_batch_sizing_fallback(
 
 @pytest.mark.parametrize("target", [65536, 131072])
 @pytest.mark.parametrize("project_narrow", [False, True])
-@pytest.mark.parametrize("merge_schema", [False, True], ids=["sampled", "full"])
 def test_read_orc_v2_initial_batch_sizing(
-    ray_start_regular_shared,
-    tmp_path,
-    monkeypatch,
-    target,
-    project_narrow,
-    merge_schema,
+    ray_start_regular_shared, tmp_path, monkeypatch, target, project_narrow
 ):
     from ray.data.context import DataContext
 
@@ -1250,7 +1244,7 @@ def test_read_orc_v2_initial_batch_sizing(
     table = pa.table({"id": range(256), "payload": ["x" * 4096] * 256})
     path = str(tmp_path / "data.orc")
     _write_orc(path, table)
-    dataset = ray.data.read_orc(path, override_num_blocks=1, merge_schema=merge_schema)
+    dataset = ray.data.read_orc(path, override_num_blocks=1)
     if project_narrow:
         dataset = dataset.select_columns(["id"])
     rows = sorted(dataset.take_all(), key=lambda row: row["id"])

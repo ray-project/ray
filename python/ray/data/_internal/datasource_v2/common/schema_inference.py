@@ -2,18 +2,14 @@
 
 import logging
 import math
-from array import array
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, cast
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
 
 import ray
 from ray import ObjectRef
-from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -24,118 +20,42 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 
-# Bound submitted reads, not just executing threads, for full inference.
 _SCHEMA_READ_BATCH_SIZE = 256
-
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class _EncodedSchemas:
-    schemas: List[bytes]
-    indices: array
-
-    def decode(self) -> List[pa.Schema]:
-        schemas = [pa.ipc.read_schema(pa.BufferReader(value)) for value in self.schemas]
-        return [schemas[index] for index in self.indices]
-
-
-def _is_flat_schema(schema: pa.Schema) -> bool:
-    if len(set(schema.names)) != len(schema):
-        return False
-    for field in schema:
-        metadata = field.metadata or {}
-        if any(key.startswith(b"ARROW:extension:") for key in metadata):
-            return False
-        dtype = field.type
-        if not any(
-            predicate(dtype)
-            for predicate in (
-                pa.types.is_null,
-                pa.types.is_boolean,
-                pa.types.is_integer,
-                pa.types.is_floating,
-                pa.types.is_decimal,
-                pa.types.is_string,
-                pa.types.is_large_string,
-                pa.types.is_binary,
-                pa.types.is_large_binary,
-                pa.types.is_fixed_size_binary,
-                pa.types.is_temporal,
-            )
-        ):
-            return False
-    return True
-
-
-def _merge_same_types(
-    left: Optional[pa.Schema], right: pa.Schema
-) -> Optional[pa.Schema]:
-    """Merge only flat fields whose types stay unchanged across all inputs."""
-    if not _is_flat_schema(right):
-        return None
-    if left is None:
-        return right
-    types = {field.name: field.type for field in left}
-    if any(field.name in types and types[field.name] != field.type for field in right):
-        return None
-    return unify_schemas_with_validation([left, right]) or left
-
-
-def _encode_schemas(
-    schemas: List[pa.Schema],
-) -> Tuple[Optional[bytes], _EncodedSchemas]:
-    unique: List[bytes] = []
-    positions: Dict[bytes, int] = {}
-    indices = array("I")
-    merged = None
-    eligible = True
-    for schema in schemas:
-        value = schema.serialize().to_pybytes()
-        if value not in positions:
-            positions[value] = len(unique)
-            unique.append(value)
-        indices.append(positions[value])
-        if eligible:
-            merged = _merge_same_types(merged, schema)
-            eligible = merged is not None
-    partial = merged.serialize().to_pybytes() if merged is not None else None
-    return partial, _EncodedSchemas(unique, indices)
-
-
 def _read_schema_batch(
-    files: List[FileInfo],
-    filesystem: FileSystem,
-    format_name: str,
-    context: DataContext,
-    *,
-    io_concurrency: int,
-) -> Tuple[Optional[bytes], _EncodedSchemas]:
+    paths: List[str], filesystem: FileSystem, format_name: str, context: DataContext
+) -> List[bytes]:
     DataContext._set_current(context)
+    read_schema: Callable[[Any], pa.Schema]
+    if format_name == "Parquet":
+        import pyarrow.parquet as pq
 
-    def read_file(file: FileInfo) -> pa.Schema:
+        read_schema = pq.read_schema
+    elif format_name == "ORC":
+        import pyarrow.orc as orc
+
+        def read_orc_schema(source: Any) -> pa.Schema:
+            return orc.ORCFile(source).schema
+
+        read_schema = read_orc_schema
+    else:
+        raise ValueError(f"Unsupported schema format: {format_name}")
+
+    def read_file(path: str) -> bytes:
         try:
-            with filesystem.open_input_file(file.path) as source:
-                if format_name == "Parquet":
-                    import pyarrow.parquet as pq
-
-                    reader = pq.ParquetFile(source)
-                    # This is pq.read_schema's conversion, not schema_arrow.
-                    return reader.schema.to_arrow_schema()
-                elif format_name == "ORC":
-                    import pyarrow.orc as orc
-
-                    return orc.ORCFile(source).schema
-                else:
-                    raise ValueError(f"Unsupported schema format: {format_name}")
+            with filesystem.open_input_file(path) as source:
+                return read_schema(source).serialize().to_pybytes()
         except (OSError, pa.ArrowInvalid, pa.ArrowTypeError) as error:
             raise type(error)(
-                f"Failed to read {format_name} schema from {file.path!r}: {error}"
+                f"Failed to read {format_name} schema from {path!r}: {error}"
             ) from error
 
-    with ThreadPoolExecutor(max_workers=min(io_concurrency, len(files))) as executor:
-        schemas = list(executor.map(read_file, files))
-    return _encode_schemas(schemas)
+    with ThreadPoolExecutor(
+        max_workers=min(context.full_schema_inference_io_concurrency, len(paths))
+    ) as executor:
+        return list(executor.map(read_file, paths))
 
 
 def _schema_task_options(
@@ -209,130 +129,72 @@ def infer_full_schema_from_files(
     format_name: str,
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
-) -> pa.Schema:
-    """Read all candidates, using safe partials or exact ordered schema replay.
+) -> Optional[pa.Schema]:
+    """Read schemas on workers and merge once in candidate order on the driver.
 
-    The task window bounds unfinished reads. Completed results and lossless
-    schemas can grow with the number of batches until the final merge.
+    Return None when the caller should use its existing driver inference.
+    The task window bounds submitted batches; driver schema storage is O(files).
     """
     context = DataContext.get_current()
     _validate_full_schema_config(context)
-    if not len(sample):
+    paths: List[str] = sample.paths.tolist()
+    if not paths:
         return pa.schema([])
-    paths = sample.paths
-    sizes = sample.file_sizes
-    num_cpus = context.full_schema_inference_num_cpus
-    read_remote_args = merge_label_selector(
-        ray_remote_args, context.execution_options.label_selector
+    if (
+        not supports_distributed_reads
+        or len(paths) <= context.full_schema_inference_min_files
+    ):
+        return None
+    options = _schema_task_options(
+        merge_label_selector(ray_remote_args, context.execution_options.label_selector),
+        context.full_schema_inference_num_cpus,
     )
-    options = _schema_task_options(read_remote_args, num_cpus)
+    if options is None:
+        return None
     batch_size = context.full_schema_inference_batch_size
-    io_concurrency = context.full_schema_inference_io_concurrency
-    distributed = (
-        supports_distributed_reads
-        and options is not None
-        and len(sample) > context.full_schema_inference_min_files
+    window = min(
+        context.full_schema_inference_max_tasks,
+        max(
+            1,
+            math.ceil(
+                ray.cluster_resources().get("CPU", 1)
+                / context.full_schema_inference_num_cpus
+            ),
+        ),
     )
-    window = (
-        min(
-            context.full_schema_inference_max_tasks,
-            max(1, math.ceil(ray.cluster_resources().get("CPU", 1) / num_cpus)),
-        )
-        if distributed
-        else 1
-    )
-    # Keep at least the driver's 16-way I/O when selecting the worker path.
-    distributed = distributed and window * min(io_concurrency, batch_size) >= min(
+    if window * min(context.full_schema_inference_io_concurrency, batch_size) < min(
         16, batch_size
+    ):
+        return None
+    read_remote = cached_remote_fn(_read_schema_batch, max_retries=2).options(
+        num_cpus=context.full_schema_inference_num_cpus, **options
     )
-    if not distributed:
-        window = 1
-    read_remote = (
-        cached_remote_fn(
-            _read_schema_batch,
-            num_cpus=num_cpus,
-            max_retries=2,
-            num_returns=2,
-        ).options(**(options or {}))
-        if distributed
-        else None
-    )
-    pending = deque()
-    inflight = set()
-    ready = set()
-    originals: List[Union[ObjectRef[_EncodedSchemas], _EncodedSchemas]] = []
-    merged = None
-    eligible = True
-    succeeded = False
+    schemas: List[Optional[pa.Schema]] = [None] * len(paths)
+    pending: Dict[ObjectRef[List[bytes]], int] = {}
     start = 0
     try:
-        while start < len(sample) or pending:
-            while (
-                start < len(sample)
-                and (len(inflight) if read_remote is not None else len(pending))
-                < window
-            ):
-                stop = min(start + batch_size, len(sample))
-                files = [
-                    FileInfo(str(paths[i]), int(sizes[i])) for i in range(start, stop)
-                ]
-                args = (files, filesystem, format_name, context)
-                if read_remote is not None:
-                    partial, original = read_remote.remote(
-                        *args, io_concurrency=io_concurrency
-                    )
-                    inflight.add(partial)
-                else:
-                    partial, original = _read_schema_batch(*args, io_concurrency=16)
-                pending.append(partial)
-                originals.append(original)
-                start = stop
-            if read_remote is not None and inflight:
-                completed, _ = ray.wait(list(inflight), num_returns=1)
-                inflight.difference_update(completed)
-                ready.update(completed)
-            # Completion frees submission slots; consume only the ready prefix
-            # so field order and metadata still follow candidate order.
-            while pending:
-                partial = pending[0]
-                if read_remote is not None:
-                    if partial not in ready:
-                        break
-                    partial_ref = partial
-                    partial = ray.get(partial_ref)
-                    ready.remove(partial_ref)
-                pending.popleft()
-                if eligible:
-                    if partial is None:
-                        eligible = False
-                    else:
-                        schema = pa.ipc.read_schema(pa.BufferReader(partial))
-                        merged = _merge_same_types(merged, schema)
-                        eligible = merged is not None
-        if not eligible:
-            schemas = []
-            for original in originals:
-                encoded = (
-                    original
-                    if isinstance(original, _EncodedSchemas)
-                    else ray.get(original)
+        while start < len(paths) or pending:
+            while start < len(paths) and len(pending) < window:
+                stop = min(start + batch_size, len(paths))
+                ref = read_remote.remote(
+                    paths[start:stop], filesystem, format_name, context
                 )
-                schemas.extend(encoded.decode())
-            merged = _merge_file_schemas(list(map(str, paths)), schemas, format_name)
-        assert merged is not None
-        succeeded = True
-        return merged
+                pending[ref] = start
+                start = stop
+            ready, _ = ray.wait(list(pending), num_returns=1)
+            ref = ready[0]
+            offset = pending.pop(ref)
+            for index, value in enumerate(ray.get(ref)):
+                schemas[offset + index] = pa.ipc.read_schema(pa.BufferReader(value))
+        assert all(schema is not None for schema in schemas)
+        return _merge_file_schemas(paths, cast(List[pa.Schema], schemas), format_name)
     finally:
-        if not succeeded and read_remote is not None:
-            for partial in pending:
-                try:
-                    ray.cancel(partial, force=False)
-                except Exception:
-                    logger.debug("Could not cancel schema task", exc_info=True)
+        for ref in pending:
+            try:
+                ray.cancel(ref, force=False)
+            except Exception:
+                logger.debug("Could not cancel schema task", exc_info=True)
         pending.clear()
-        originals.clear()
-        inflight.clear()
-        ready.clear()
 
 
 def infer_schema_from_files(
