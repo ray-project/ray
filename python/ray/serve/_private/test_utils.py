@@ -529,6 +529,7 @@ class MockReplicaActorWrapper:
         # Will be set when `check_health()` is called.
         self.health_check_called = False
         self._push_stands_in_for_probe = False
+        self.last_ingest_lagging = False
         # Returned by the health check.
         self.healthy = True
         self._is_cross_language = False
@@ -805,7 +806,8 @@ class MockReplicaActorWrapper:
         self.killed = True
         self.force_stopped_counter += 1
 
-    def check_health(self):
+    def check_health(self, ingest_lagging: bool = False):
+        self.last_ingest_lagging = ingest_lagging
         if self._push_stands_in_for_probe:
             # A fresh push means the real wrapper would not arm a probe.
             self._push_stands_in_for_probe = False
