@@ -384,8 +384,7 @@ class ServerStats:
 
     @property
     def can_drain_safely(self) -> bool:
-        """
-        Return True if the server can be drained safely based on the current load.
+        """Return True if the server can be drained safely based on the current load.
         Safe to drain when:
         - No current active sessions (0)
         - No queued requests waiting
@@ -976,8 +975,7 @@ class HAProxyApi(ProxyApi):
         self._initialize_directories_and_error_files()
 
     def _initialize_directories_and_error_files(self) -> None:
-        """
-        Ensures all required directories exist, creates a unified 500 error file,
+        """Ensures all required directories exist, creates a unified 500 error file,
         and assigns its path to self.cfg.error_file_path. Called once during initialization.
         """
         # Create a config file directory
@@ -1560,8 +1558,7 @@ class HAProxyApi(ProxyApi):
             raise
 
     async def start(self) -> None:
-        """
-        Generate HAProxy configuration files and start the HAProxy server process.
+        """Generate HAProxy configuration files and start the HAProxy server process.
 
         This method creates the necessary configuration files and launches the HAProxy
         process in foreground mode, ensuring that the proxy is running with the latest

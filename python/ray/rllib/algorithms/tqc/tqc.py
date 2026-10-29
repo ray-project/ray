@@ -1,5 +1,4 @@
-"""
-TQC (Truncated Quantile Critics) Algorithm.
+"""TQC (Truncated Quantile Critics) Algorithm.
 
 Paper: https://arxiv.org/abs/2005.04269
 "Controlling Overestimation Bias with Truncated Mixture of Continuous

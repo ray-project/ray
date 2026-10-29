@@ -114,8 +114,17 @@ class TaskExecDriverStats:
     task_output_backpressure_s: float
 
 
+# Called as (exception, worker_stats, driver_stats, aborted). ``aborted`` is True
+# only for a task torn down because lineage reconstruction is rebuilding its lost
+# output; ``exception`` is then the lost-object error (see
+# ``DataOpTask.mark_aborted``).
 TaskDoneCallbackType = Callable[
-    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]],
+    [
+        Optional[Exception],
+        Optional[TaskExecWorkerStats],
+        Optional[TaskExecDriverStats],
+        bool,
+    ],
     None,
 ]
 
@@ -159,7 +168,7 @@ class DataOpTask(OpTask):
         block_ref_counter: BlockRefCounter,
         producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
-        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
+        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats, aborted: None,
         block_ready_callback: Callable[
             [ray.ObjectRef[Block]], None
         ] = lambda block_ref: None,
@@ -403,18 +412,19 @@ class DataOpTask(OpTask):
         return bytes_read
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
-        if max_bytes_to_read == 0:
-            # Whenever provided `max_bytes_to_read == 0` we treat as task
-            # being in output backpressure, therefore correspondingly starting
-            # the timer (if necessary)
+        has_unread_output = (
+            not self._pending_block_ref.is_nil()
+            or not self._pending_meta_ref.is_nil()
+            or not self._streaming_gen._stream_exhausted()
+        )
+
+        if max_bytes_to_read == 0 and has_unread_output:
+            # A zero read budget counts as output backpressure only while the
+            # task still has output to consume.
             if self._start_output_backpressure_s is None:
                 self._start_output_backpressure_s = time.perf_counter()
 
-        elif (
-            max_bytes_to_read is None or max_bytes_to_read > 0
-        ) and self._start_output_backpressure_s is not None:
-            # Increment cumulative duration of task being in output
-            # backpressure
+        elif self._start_output_backpressure_s is not None:
             self._total_output_backpressure_s += (
                 time.perf_counter() - self._start_output_backpressure_s
             )
@@ -514,6 +524,7 @@ class DataOpTask(OpTask):
                 self._task_error,
                 None,  # TaskExecStats
                 None,  # TaskExecDriverStats
+                False,  # aborted
             )
         else:
             self._task_done_callback(
@@ -524,14 +535,22 @@ class DataOpTask(OpTask):
                 TaskExecDriverStats(
                     task_output_backpressure_s=self._total_output_backpressure_s,
                 ),
+                False,  # aborted
             )
         self._state = TaskGeneratorState.FINISHED
 
-    def mark_aborted(self, exception: Exception) -> None:
+    def mark_aborted(
+        self, exception: Exception, aborted_for_reconstruction: bool = False
+    ) -> None:
         """Tear down a task whose output was lost, without reading its stream.
 
-        Transitions the task to FINISHED and runs the normal done-callback with
-        ``exception`` set (the same path ``on_data_ready`` takes on a task error)
+        ``exception`` is why the task is torn down. With
+        ``aborted_for_reconstruction``, lineage reconstruction is re-running the
+        task to rebuild its lost output, so the done-callback gets
+        ``aborted=True`` and the operator doesn't count the task as finished or
+        failed: the re-run task is counted instead.
+
+        Transitions the task to FINISHED and runs the normal done-callback
         so the owning operator releases every resource the task reserved --
         running-task metrics, logical CPU/GPU/memory usage, actor-pool slot, and
         pending input refs -- and pops it from ``_data_tasks``. Callers must use
@@ -544,10 +563,14 @@ class DataOpTask(OpTask):
             # earlier abort); firing it twice would double-release the task's
             # resource reservations.
             return
+        # Only lineage reconstruction re-runs a task, so only a lineage-tracked
+        # task can be aborted for it.
+        assert not aborted_for_reconstruction or self.is_lineage_tracked
         self._task_done_callback(
             exception,
             None,  # TaskExecStats
             None,  # TaskExecDriverStats
+            aborted_for_reconstruction,  # aborted
         )
         self._state = TaskGeneratorState.FINISHED
 
@@ -1204,6 +1227,16 @@ class PhysicalOperator(Operator):
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
         self._task_output_backpressure_policy = policy_name
+
+    @property
+    def in_task_output_backpressure(self) -> bool:
+        """Whether reading this operator's task outputs is currently blocked."""
+        return self._in_task_output_backpressure
+
+    @property
+    def in_task_submission_backpressure(self) -> bool:
+        """Whether submitting new tasks for this operator is currently blocked."""
+        return self._in_task_submission_backpressure
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""

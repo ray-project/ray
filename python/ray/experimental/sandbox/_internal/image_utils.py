@@ -11,6 +11,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -634,6 +635,35 @@ def mkfs_erofs_path() -> Optional[str]:
     return path
 
 
+# EROFS keeps its superblock at this offset, in this many bytes.
+_EROFS_SUPERBLOCK_OFFSET = 1024
+_EROFS_SUPERBLOCK_SIZE = 128
+
+
+def erofs_superblock_fingerprint(image_path: str) -> Optional[str]:
+    """SHA-256 of an EROFS image's superblock, or None if it can't be read.
+
+    gVisor refuses to restore a checkpoint over an EROFS root filesystem
+    whose superblock differs in any field from the one it was saved with
+    (it panics with "superblock mismatch detected on restore"), so two
+    builds of an image are interchangeable for restore exactly when their
+    fingerprints match.
+
+    Args:
+        image_path: Path of the EROFS image.
+
+    Returns:
+        The hex digest, or None if the image can't be read.
+    """
+    try:
+        with open(image_path, "rb") as f:
+            f.seek(_EROFS_SUPERBLOCK_OFFSET)
+            superblock = f.read(_EROFS_SUPERBLOCK_SIZE)
+    except OSError:
+        return None
+    return hashlib.sha256(superblock).hexdigest()
+
+
 def require_mkfs_erofs() -> str:
     """``mkfs_erofs_path()``, or a ``SandboxCreationError`` naming what to install."""
     path = mkfs_erofs_path()
@@ -719,6 +749,37 @@ def _seed_mountpoints(rootfs_dir: str) -> None:
             pass
 
 
+def _stream_tree(tar: tarfile.TarFile, path: str, arcname: str, owner_filter) -> None:
+    """Add ``path`` and everything under it to ``tar`` and delete each file
+    once its bytes are in the stream.
+
+    Members go in the order ``tar.add`` uses (a directory before its
+    entries, names sorted), so the image is the same as before. A file with
+    other hard links stays: deleting it would drop the others' link count
+    to one, and tar would then store them as copies instead of links.
+    """
+    st = os.lstat(path)
+    tar.add(path, arcname, recursive=False, filter=owner_filter)
+    if stat.S_ISDIR(st.st_mode):
+        if not st.st_mode & stat.S_IWUSR:
+            # Images ship read-only directories (0555, say). The stream
+            # already has this one's mode, so making it writable only lets a
+            # worker that isn't root delete its files.
+            try:
+                os.chmod(path, stat.S_IMODE(st.st_mode) | stat.S_IWUSR)
+            except OSError:
+                pass
+        for name in sorted(os.listdir(path)):
+            _stream_tree(
+                tar, os.path.join(path, name), os.path.join(arcname, name), owner_filter
+            )
+    elif stat.S_ISREG(st.st_mode) and st.st_nlink == 1:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass  # It stays for the caller to remove, as before.
+
+
 def build_erofs_image(
     rootfs_dir: str, ownership: Dict[str, Tuple[int, int]], out_path: str
 ) -> None:
@@ -732,37 +793,53 @@ def build_erofs_image(
     size, so we use the page size itself (4 KiB on most hosts, 64 KiB on
     64K-page kernels).
 
+    The tar streams into mkfs.erofs's stdin, which it reads when given no
+    source (erofs-utils 1.7+), and each file leaves the tree once it's in
+    the stream. A build no longer holds the whole tree and a flat tar of it
+    next to the image, two full copies, so concurrent cold pulls are much
+    less likely to fill the node's disk. mkfs.erofs still spools file data
+    under ``$TMPDIR`` (its default ``--sort=path``).
+
     Args:
-        rootfs_dir: Extracted root filesystem.
+        rootfs_dir: Extracted root filesystem. Its files are deleted as
+            they're read; the caller removes what's left.
         ownership: {path: (uid, gid)} recorded during extraction.
         out_path: Destination image file.
     """
     mkfs = require_mkfs_erofs()
-    flat_tar = f"{out_path}.tar"
-    try:
-        with tarfile.open(flat_tar, "w") as tar:
-            tar.add(rootfs_dir, arcname=".", filter=_owner_filter(ownership))
-        res = subprocess.run(
-            [
-                mkfs,
-                "--tar=f",
-                f"-b{mmap.PAGESIZE}",
-                "-E^inline_data",
-                out_path,
-                flat_tar,
-            ],
-            capture_output=True,
-            text=True,
+    # mkfs.erofs's output goes to a file: with a pipe, it could block on a
+    # full pipe while this side blocks on a full stdin.
+    with tempfile.TemporaryFile() as output:
+        proc = subprocess.Popen(
+            [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", out_path],
+            stdin=subprocess.PIPE,
+            stdout=output,
+            stderr=subprocess.STDOUT,
         )
-    finally:
         try:
-            os.remove(flat_tar)
-        except OSError:
-            pass
-    if res.returncode != 0:
-        raise SandboxCreationError(
-            f"mkfs.erofs failed: {(res.stderr or res.stdout).strip()[-500:]}"
-        )
+            try:
+                with tarfile.open(
+                    fileobj=proc.stdin, mode="w|", bufsize=1 << 20
+                ) as tar:
+                    _stream_tree(tar, rootfs_dir, ".", _owner_filter(ownership))
+                proc.stdin.close()
+            except BrokenPipeError:
+                # mkfs.erofs stopped reading; its exit status and output say why.
+                pass
+            returncode = proc.wait()
+        except BaseException:
+            proc.kill()
+            proc.wait()
+            raise
+        finally:
+            try:
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+        if returncode != 0:
+            output.seek(0)
+            message = output.read().decode(errors="replace").strip()[-500:]
+            raise SandboxCreationError(f"mkfs.erofs failed: {message}")
 
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
@@ -903,6 +980,29 @@ def _file_size_bytes(path: str) -> int:
         return 0
 
 
+def _rename_for_deletion(image_dir: str) -> str:
+    """Atomically rename a cached image's directory to
+    ``.deleting.<random>``, and return the new path to delete.
+
+    A crash midway through deleting it then never leaves a partly deleted
+    image under the image's own name, and the next pull sweeps up what such a
+    crash leaves behind (see ``_remove_stale_deletions``). The new name
+    leaves out the image's, so it stays short whatever the image's name.
+    """
+    images_dir = os.path.dirname(image_dir)
+    renamed = os.path.join(images_dir, f".deleting.{uuid.uuid4().hex}")
+    os.replace(image_dir, renamed)
+    return renamed
+
+
+def _remove_stale_deletions(images_dir: str) -> None:
+    """Finish deleting image directories whose deletion was interrupted (see
+    ``_rename_for_deletion``)."""
+    for name in os.listdir(images_dir):
+        if name.startswith(".deleting."):
+            shutil.rmtree(os.path.join(images_dir, name), ignore_errors=True)
+
+
 def evict_least_recently_used_images(
     images_dir: str,
     max_bytes: Optional[int],
@@ -951,6 +1051,11 @@ def evict_least_recently_used_images(
                 except OSError:
                     pass
             continue
+        # sanitize_image_name strips leading dots, so no cached image's name
+        # starts with one. Skip image directories renamed for deletion,
+        # whose names do (see _rename_for_deletion).
+        if name.startswith("."):
+            continue
         marker = os.path.join(path, ".extracted")
         try:
             if not (os.path.isdir(path) and os.path.exists(marker)):
@@ -978,14 +1083,18 @@ def evict_least_recently_used_images(
                 # A pull may have registered a user since the scan.
                 if img_dir is not None and _has_users(img_dir):
                     continue
-                if img_dir is not None:
-                    shutil.rmtree(img_dir, ignore_errors=True)
+                # Another pull may have evicted it since the scan.
+                if img_dir is not None and os.path.isdir(img_dir):
+                    _rename_for_deletion(img_dir)
                 try:
                     os.remove(tar_path)
                 except OSError:
                     pass
         except OSError:
             continue  # Locked by an in-progress pull; try the next one.
+        # Delete the image once its lock is free, so a pull of it doesn't wait
+        # for the delete.
+        _remove_stale_deletions(images_dir)
         total -= size
         free = _free_bytes(images_dir)
         logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
@@ -1022,6 +1131,7 @@ def pull_and_extract_container_image(
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
+    _remove_stale_deletions(images_dir)
     max_cache = image_cache_max_bytes(images_dir)
     min_free = image_cache_min_free_bytes(images_dir)
     if max_cache > 0 or min_free > 0:
@@ -1093,7 +1203,9 @@ def pull_and_extract_container_image(
             # format; sandboxes already running on it keep their pins, and an
             # extracted ``rootfs/`` tree their gofer still serves moves over
             # intact (a rename leaves its open root fd alone) and goes once no
-            # sandbox uses the image.
+            # sandbox uses the image. The old image moves aside and the new one
+            # takes its name before the old one is deleted, so a crash during
+            # the delete leaves the new image in place.
             try:
                 users = os.listdir(os.path.join(target_dir, _USERS_SUBDIR))
             except OSError:
@@ -1102,7 +1214,7 @@ def pull_and_extract_container_image(
             if users and os.path.isdir(old_tree):
                 os.replace(old_tree, tmp_rootfs_dir)
             if os.path.exists(target_dir):
-                shutil.rmtree(target_dir, ignore_errors=True)
+                _rename_for_deletion(target_dir)
             os.replace(tmp_extract_dir, target_dir)
             for user in users:
                 _mark_image_in_use(target_dir, user)
@@ -1113,6 +1225,9 @@ def pull_and_extract_container_image(
                 fcntl.flock(f_lock, fcntl.LOCK_UN)
             except Exception:
                 pass
+            # Delete an image the pull moved aside once the lock is free, so
+            # other pulls of this image don't wait for it.
+            _remove_stale_deletions(images_dir)
 
 
 def _download_blob(
