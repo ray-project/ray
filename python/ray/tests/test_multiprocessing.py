@@ -487,5 +487,40 @@ def test_imap_unordered_timeout(pool_4_processes):
     assert results != list(range(10)), results
 
 
+@pytest.mark.parametrize("unordered", [False, True])
+@pytest.mark.parametrize("num_items,chunksize", [(0, 2), (3, 1), (4, 2), (5, 2)])
+def test_imap_iterator_result_thread_terminates(
+    pool_4_processes, unordered, num_items, chunksize
+):
+    """Ensure ResultThread exits cleanly after consuming iterator inputs."""
+
+    def f(x):
+        return x * 2
+
+    imap_fn = (
+        pool_4_processes.imap_unordered if unordered else pool_4_processes.imap
+    )
+    result_iter = imap_fn(f, (i for i in range(num_items)), chunksize=chunksize)
+    results = list(result_iter)
+    assert sorted(results) == [i * 2 for i in range(num_items)]
+    result_iter._result_thread.join(timeout=5.0)
+    assert not result_iter._result_thread.is_alive()
+
+
+def test_imap_chunksize_none_with_sequence(pool_4_processes):
+    """Ensure explicit chunksize=None works with sized sequences, including empty ones."""
+
+    def f(x):
+        return x + 1
+
+    assert list(pool_4_processes.imap(f, [1, 2, 3], chunksize=None)) == [2, 3, 4]
+    assert sorted(
+        pool_4_processes.imap_unordered(f, [1, 2, 3], chunksize=None)
+    ) == [2, 3, 4]
+    assert list(pool_4_processes.imap(f, [], chunksize=None)) == []
+    assert list(pool_4_processes.imap_unordered(f, [], chunksize=None)) == []
+
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
