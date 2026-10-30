@@ -2,7 +2,7 @@ import logging
 import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Iterator, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Type, Union
 
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
@@ -23,6 +23,9 @@ try:
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
     TrainerCallback = object
+
+if TYPE_CHECKING:
+    from transformers import TrainerControl, TrainerState, TrainingArguments
 
 
 @PublicAPI(stability="beta")
@@ -67,8 +70,24 @@ class RayTrainReportCallback(TrainerCallback):
         super().__init__(*args, **kwargs)
         record_extra_usage_tag(TagKey.TRAIN_TRANSFORMERS_RAYTRAINREPORTCALLBACK, "1")
 
-    def on_save(self, args, state, control, **kwargs):
-        """Event called after a checkpoint save."""
+    def on_save(
+        self,
+        args: "TrainingArguments",
+        state: "TrainerState",
+        control: "TrainerControl",
+        **kwargs: Any,
+    ) -> None:
+        """Event called after a checkpoint save.
+
+        Args:
+            args: The trainer's training arguments. The callback reads the latest
+                checkpoint from ``args.output_dir``.
+            state: The trainer's state. The callback merges the entries of
+                ``state.log_history`` into the metrics it reports.
+            control: The trainer's control object. Unused.
+            **kwargs: Other keyword arguments from the Transformers callback
+                handler. Unused.
+        """
         with TemporaryDirectory() as tmpdir:
             # Aggregate all the logged metrics
             metrics = {}
