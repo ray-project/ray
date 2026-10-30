@@ -406,6 +406,16 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
   return dependencies;
 }
 
+std::vector<bool> TaskSpecification::GetDependencyIsMove() const {
+  std::vector<bool> is_move;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    if (ArgByRef(i)) {
+      is_move.push_back(ArgIsMove(i));
+    }
+  }
+  return is_move;
+}
+
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }

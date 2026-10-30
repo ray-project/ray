@@ -448,8 +448,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
+  /// \param is_move Parallel to `object_refs`, or empty: whether the requesting
+  /// actor task consumes the object (TaskArg.is_move).
   void AsyncWait(const std::shared_ptr<ClientConnection> &client,
-                 const std::vector<rpc::ObjectReference> &object_refs);
+                 const std::vector<rpc::ObjectReference> &object_refs,
+                 const std::vector<bool> &is_move);
 
   /// Start a get request for the requested objects.
   ///

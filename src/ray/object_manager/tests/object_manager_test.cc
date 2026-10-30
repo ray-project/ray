@@ -286,4 +286,26 @@ TEST_F(StaleMirrorPushTest, DropsPushWhenObjectIsDeleted) {
   EXPECT_FALSE(HasQueuedPush(object_id_));
 }
 
+/// A move record lives as long as some pull needs the object: cancelling one of
+/// two pulls keeps it, cancelling the last one drops it.
+TEST_F(ObjectManagerTest, MovePullRecordFollowsTheLastPull) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  rpc::ObjectReference ref;
+  ref.set_object_id(object_id.Binary());
+  const uint64_t first =
+      object_manager_->Pull({ref}, BundlePriority::WAIT_REQUEST, {"", false});
+  const uint64_t second =
+      object_manager_->Pull({ref}, BundlePriority::GET_REQUEST, {"", false});
+
+  EXPECT_FALSE(object_manager_->IsMovePull(object_id));
+  object_manager_->MarkMovePull(object_id);
+  object_manager_->MarkMovePull(object_id);
+  EXPECT_TRUE(object_manager_->IsMovePull(object_id));
+
+  object_manager_->CancelPull(first);
+  EXPECT_TRUE(object_manager_->IsMovePull(object_id));
+  object_manager_->CancelPull(second);
+  EXPECT_FALSE(object_manager_->IsMovePull(object_id));
+}
+
 }  // namespace ray

@@ -23,6 +23,7 @@ ray_cc_library(
     ],
     deps = [
         ":object_manager_interface",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -68,6 +69,8 @@ ray_cc_library(
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/rpc:object_manager_server",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

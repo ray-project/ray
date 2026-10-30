@@ -22,6 +22,8 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -198,6 +200,13 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
+
+  void MarkMovePull(const ObjectID &object_id) override
+      ABSL_LOCKS_EXCLUDED(move_pull_mutex_);
+
+  /// Safe to call from any thread.
+  bool IsMovePull(const ObjectID &object_id) const override
+      ABSL_LOCKS_EXCLUDED(move_pull_mutex_);
 
   void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) override;
 
@@ -412,6 +421,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// add/delete notifications, so an entry may briefly remain after the object
   /// has already left plasma (eviction or spill).
   absl::flat_hash_map<ObjectID, LocalObjectInfo> local_plasma_objects_;
+
+  /// Objects whose in-flight pull consumes the object (the requesting actor task's
+  /// TaskArg.is_move). Written on the main service (MarkMovePull, CancelPull), read
+  /// on the rpc service through IsMovePull from ReceiveObjectChunk, once per received
+  /// chunk.
+  mutable absl::Mutex move_pull_mutex_;
+  absl::flat_hash_set<ObjectID> move_pull_object_ids_ ABSL_GUARDED_BY(move_pull_mutex_);
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to

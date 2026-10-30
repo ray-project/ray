@@ -102,9 +102,12 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
-  void StartOrUpdateWaitRequest(
-      const WorkerID &worker_id,
-      const std::vector<rpc::ObjectReference> &required_objects);
+  /// \param is_move Parallel to `required_objects`, or empty: whether the
+  /// requesting actor task consumes the object (TaskArg.is_move). A consumed
+  /// object that needs a pull is recorded with ObjectManager::MarkMovePull.
+  void StartOrUpdateWaitRequest(const WorkerID &worker_id,
+                                const std::vector<rpc::ObjectReference> &required_objects,
+                                const std::vector<bool> &is_move = {});
 
   /// Cancel a worker's `ray.wait` request. We will no longer attempt to fetch
   /// any objects that this worker requested previously, if no other task or
