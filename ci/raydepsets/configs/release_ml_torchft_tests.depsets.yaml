@@ -21,7 +21,7 @@ depsets:
       - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
       - python/requirements/ml/torchft.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     output: release/ray_release/byod/ml_torchft_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cu128

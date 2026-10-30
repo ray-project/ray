@@ -25,7 +25,7 @@ tf-keras==2.20.0; python_version >= '3.12' and python_version < '3.14'
 
 torch==2.10.0
 torchmetrics==0.10.3
-torchtext==0.18.0; python_version < '3.14'
+torchtext==0.18.0; python_version < '3.13'  # no cp313+ wheels
 torchvision==0.25.0
 # xgboost pulls nvidia-nccl-cu12 transitively even in CPU context. Align the
 # pin with what cu128 torch requires so the compiled lock doesn't clash with
@@ -52,7 +52,7 @@ cupy-cuda12x==13.6.0; sys_platform != 'darwin' and python_version < '3.14'
 cupy-cuda12x==14.0.1; sys_platform != 'darwin' and python_version >= '3.14'
 
 # Keep JAX version consistent with dl-gpu-requirements.txt
-jax==0.4.33; sys_platform != 'darwin' and python_version < '3.14'
-jax==0.11.2; sys_platform != 'darwin' and python_version >= '3.14'
-jaxlib==0.4.33; sys_platform != 'darwin' and python_version < '3.14'
-jaxlib==0.11.2; sys_platform != 'darwin' and python_version >= '3.14'
+jax==0.4.33; sys_platform != 'darwin' and python_version < '3.13'
+jax==0.11.2; sys_platform != 'darwin' and python_version >= '3.13'
+jaxlib==0.4.33; sys_platform != 'darwin' and python_version < '3.13'  # no cp313+ wheels
+jaxlib==0.11.2; sys_platform != 'darwin' and python_version >= '3.13'

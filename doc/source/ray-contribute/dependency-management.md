@@ -30,19 +30,20 @@ The locks are consumed directly by Ray's Docker and Wanda image builds.
 
 ### Layer 2 — compiled requirements
 
-`ci/ci.sh compile_pip_dependencies` feeds all the Layer 1 files to `pip-compile` at once and solves for a single consistent version of every package, direct and transitive. The output is the compiled lockfile, which CI passes as a `-c` constraint everywhere Ray is installed. Each track is for a different Python version supported by Ray.
+`ci/ci.sh compile_pip_dependencies` feeds all the Layer 1 files to `uv pip compile` once per supported Python version and solves, for each one, a single consistent version of every package, direct and transitive. The outputs are the compiled lockfiles, which CI passes as a `-c` constraint everywhere Ray is installed; each depset reads the file for its own Python version.
 
 | File | Covers |
 |---|---|
-| `python/requirements_compiled.txt` | The real lockfile for Python 3.10–3.13 |
-| `python/requirements_compiled_py3.10.txt` | Symlink → `requirements_compiled.txt` |
+| `python/requirements_compiled_py3.10.txt` | Python 3.10 |
+| `python/requirements_compiled.txt` | Python 3.11 |
 | `python/requirements_compiled_py3.11.txt` | Symlink → `requirements_compiled.txt` |
-| `python/requirements_compiled_py3.12.txt` | Symlink → `requirements_compiled.txt` |
-| `python/requirements_compiled_py3.13.txt` | Symlink → `requirements_compiled.txt` |
+| `python/requirements_compiled_py3.12.txt` | Python 3.12 |
+| `python/requirements_compiled_py3.13.txt` | Python 3.13 |
+| `python/requirements_compiled_py3.14.txt` | Python 3.14 (wheels only: every pin has a cp314 wheel) |
 
 Don't hand-edit these files because they're generated artifacts. Use the `ci/ci.sh` commands described below to regenerate them.
 
-`compile_pip_dependencies` runs in a Python 3.11 environment (CI uses the `oss-ci-base_test-py3.11` job); that works because `pip-compile` resolves based on what the requirement files declare, not on the Python it's currently running.
+Each file is resolved for Linux x86_64 (`--python-platform x86_64-manylinux_2_35`), whatever Python and platform the compile itself runs on. CI uses the `oss-ci-base_test-py3.11` job. A pin that has no installable release for one of the Python versions fails that version's compile; gate it with a `python_version` marker in the source file.
 
 ### Layer 3 — lock files
 
@@ -115,7 +116,7 @@ The `dependencies` Buildkite pipeline runs `compile_pip_dependencies`, then **di
 
 Follow that message: push your Layer 1 change, let the `build: pip-compile dependencies` job run, download the regenerated `requirements_compiled*.txt` from the Buildkite **Artifacts** tab, commit it, and push again.
 
-By default the compile reuses existing pins as much as possible, so a small change stays small. To force every package to its newest compatible version, a Ray maintainer uncomments the `rm ./python/requirements_compiled.txt` line in `.buildkite/dependencies.rayci.yml` for a refresh run. Community contributors typically don't have the Buildkite permissions to trigger this themselves; ask in your PR if you think a full refresh is needed.
+By default the compile reuses existing pins as much as possible, so a small change stays small. To force every package to its newest compatible version, a Ray maintainer uncomments the `rm` line in `.buildkite/dependencies.rayci.yml` for a refresh run. Community contributors typically don't have the Buildkite permissions to trigger this themselves; ask in your PR if you think a full refresh is needed.
 
 ### 3. Regenerate the Layer 3 locks
 
@@ -136,24 +137,16 @@ bazelisk run //ci/raydepsets:raydepsets -- build --all-configs --check
 
 ### Compiling locally
 
-You can compile locally instead of waiting on CI, but **the compile scripts refuse to run on ARM**. `ci/ci.sh` skips `aarch64` and `arm64` outright:
-
-```text
-Skipping for aarch64
-```
-
-So an Apple Silicon Mac or any ARM box can't produce a valid lockfile. The GPU and platform-pinned wheels (CUDA `torch`, `jaxlib`, the PyTorch Geometric family) don't resolve there. Compile on an **x86_64 / AMD64** Linux machine, in a **Python 3.11** environment (the CI compile jobs run under py3.11):
+You can compile locally instead of waiting on CI. Because the compile targets Linux x86_64 explicitly, it works from any machine, including ARM:
 
 ```bash
-# x86_64 Linux, Python 3.11
-ci/ci.sh compile_pip_dependencies            # -> requirements_compiled.txt
-ci/ci.sh compile_pip_dependencies_py314      # -> requirements_compiled_py3.14.txt
+ci/ci.sh compile_pip_dependencies            # -> requirements_compiled*.txt, one per Python
 bazelisk run //ci/raydepsets:raydepsets -- build --all-configs
 ```
 
-### Python 3.14
+### Version-specific pins
 
-`requirements_compiled_py3.14.txt` is compiled separately with uv (`--python-version 3.14`, wheels only) from the same source files. Where a shared pin has no cp314 wheel, gate it with a `python_version` marker and leave the 3.14 line unpinned:
+Where a pin has no release for some Python version, gate it with a `python_version` marker in the source file and give the other versions their own line:
 
 ```text
 numba==0.61.2; python_version < '3.14'
@@ -161,11 +154,11 @@ numba; python_version >= '3.14'
 pygame==2.5.2; python_version < '3.14'    # no cp314 release: not installed on 3.14
 ```
 
-When a package appears on several source lines, pip-compile writes the marker of the **last line, in compile order, that has a marker** matching Python 3.11. Lines without a marker don't count. If you gate an unpinned line that comes after the pinned one, split it at the pinned line's boundary so the written marker doesn't change; `tf-keras` in `ml-requirements.txt` is an example.
+Python 3.14 compiles from wheels only, so a pin without a cp314 wheel fails the 3.14 compile even if it would build from source.
 
 ## Diagnosing dependency conflicts
 
-**When a compile or install fails, use uv** to find out why, even though the compile script itself uses pip-compile. uv reports the real incompatibility; pip often hides it behind a generic error.
+**When an install fails, use uv** to find out why. The compile script already uses uv; uv reports the real incompatibility; pip often hides it behind a generic error.
 
 ### `resolution-too-deep` almost never means "too deep"
 

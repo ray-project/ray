@@ -16,7 +16,7 @@ depsets:
       - python/requirements/test-requirements.txt
       - python/requirements/ml/dl-cpu-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     output: python/deplocks/ci/core-build-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
@@ -28,7 +28,7 @@ depsets:
       - py310
       - py312
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   - name: core_gpu_ci_depset_${PYTHON_SHORT}
     operation: expand
@@ -39,7 +39,7 @@ depsets:
       - python/requirements/test-requirements.txt
       - python/requirements/ml/dl-gpu-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     output: python/deplocks/ci/core-gpubuild-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cu128
@@ -60,7 +60,7 @@ depsets:
       - python/requirements/test-requirements.txt
       - python/requirements/ml/dl-gpu-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     output: python/deplocks/ci/core-gpu-cu130-build-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       # TODO(elliot): dl-gpu-requirements.txt pins torch==2.10.0+cu128, which forces
@@ -76,4 +76,4 @@ depsets:
       - py310
       - py312
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}

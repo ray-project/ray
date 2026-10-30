@@ -38,7 +38,7 @@ jobs:
         # bazel-provisioned uv does the lock compilation; this one is only for
         # raydepsets pre-hooks (placeholder wheel build) that call uv from PATH.
         run: |
-          curl -LsSf https://astral.sh/uv/0.9.26/install.sh | sh
+          curl -LsSf https://astral.sh/uv/0.13.4/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install bazelisk
