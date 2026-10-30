@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import numpy as np
 import pytest
+from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
     _leaf_layout,
@@ -24,10 +25,18 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     read_dictionary_page,
     read_size_statistics,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 pa = pytest.importorskip("pyarrow")
 pds = pytest.importorskip("pyarrow.dataset")
 pq = pytest.importorskip("pyarrow.parquet")
+
+# PyArrow 17 writes no SizeStatistics or view types and lacks ``binary_type`` and
+# ``list_type``; 23 has all of them (18 to 22 unchecked).
+requires_pyarrow_23 = pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("23.0.0"),
+    reason="PyArrow 17 writes no SizeStatistics or view types",
+)
 
 N = 5000
 
@@ -264,6 +273,7 @@ def _estimate(
 # ---------------------------------------------------------------------------
 
 
+@requires_pyarrow_23
 @pytest.mark.parametrize("label", list(_cases()))
 def test_exact_with_size_statistics(tmp_path, label):
     path = _write(_cases()[label], tmp_path / "f.parquet")
@@ -271,6 +281,7 @@ def test_exact_with_size_statistics(tmp_path, label):
     assert _estimate(path) == _allocated(path)
 
 
+@requires_pyarrow_23
 def test_projection_sizes_only_its_leaves(tmp_path):
     """A projection sizes only its leaves, counting a shared list's offsets once."""
     mixed = _write(_cases()["mixed-int-string"], tmp_path / "mixed.parquet")
@@ -283,6 +294,7 @@ def test_projection_sizes_only_its_leaves(tmp_path):
     assert _estimate(nested, [0]) + _estimate(nested, [1]) - shared == _estimate(nested)
 
 
+@requires_pyarrow_23
 def test_row_groups_sum_to_the_file(tmp_path):
     table = _cases()["mixed-int-string"]
     path = _write(table, tmp_path / "f.parquet", row_group_size=len(table) // 4)
@@ -299,9 +311,15 @@ def test_row_groups_sum_to_the_file(tmp_path):
         (pa.timestamp("ns"), [1, 2], {}, True),
         (pa.int8(), [1, 2], {}, False),
         (pa.date32(), [datetime.date(2020, 1, 1)] * 2, {}, False),
-        (pa.string(), ["a", "b"], {}, False),
+        pytest.param(pa.string(), ["a", "b"], {}, False, marks=requires_pyarrow_23),
         # INT96 timestamps are converted, not zero-copied, so they drop it.
-        (pa.timestamp("ns"), [1, 2], {"use_deprecated_int96_timestamps": True}, False),
+        pytest.param(
+            pa.timestamp("ns"),
+            [1, 2],
+            {"use_deprecated_int96_timestamps": True},
+            False,
+            marks=requires_pyarrow_23,
+        ),
     ],
 )
 def test_null_free_bitmap_follows_pyarrow(
@@ -328,6 +346,7 @@ def _with(stats_for_leaf_0):
     return size_statistics
 
 
+@requires_pyarrow_23
 @pytest.mark.parametrize(
     "label, exact",
     [("list-int64", True), ("list-empty-and-null", True), ("list-of-list", False)],
@@ -343,6 +362,7 @@ def test_list_leaf_without_repetition_histogram(tmp_path, label, exact):
         assert _estimate(path, size_statistics=stripped) > _allocated(path)
 
 
+@requires_pyarrow_23
 def test_partial_size_statistics(tmp_path):
     """Histograms that disagree with the footer's counts are dropped."""
     ints = _write(_cases()["int64-plain"], tmp_path / "ints.parquet")
@@ -376,6 +396,7 @@ def test_unmodeled_arrow_type_is_rejected():
 # bound's floor is 0.95 times the bytes held.
 
 
+@requires_pyarrow_23
 @pytest.mark.parametrize("arrow_type", [pa.string_view(), pa.binary_view()])
 @pytest.mark.parametrize(
     "length, high", [(0, 1), (1, 1.0625), (12, 1.75), (13, 1), (60, 1)]
@@ -478,6 +499,7 @@ def test_arrow_dictionary_is_bounded_not_hydrated(tmp_path, table, write_kwargs,
     assert 0.95 <= _estimate(path) / _allocated(path) <= high
 
 
+@requires_pyarrow_23
 @pytest.mark.parametrize(
     "column, expected",
     [
@@ -593,3 +615,9 @@ def test_delta_byte_array_is_a_guess(tmp_path):
 
     assert _estimate(path) == expected
     assert _estimate(path, size_statistics=_no_size_statistics) == expected
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
