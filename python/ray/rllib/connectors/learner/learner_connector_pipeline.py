@@ -16,6 +16,13 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class LearnerConnectorPipeline(ConnectorPipelineV2):
+    """The connector pipeline that builds a Learner's train batch from episodes.
+
+    Runs its connector pieces in order. If a `MetricsLogger` is passed, it also
+    logs the sum of the episode lengths before and after the pipeline runs, and
+    times the pipeline under the Learner connector metrics keys.
+    """
+
     @override(ConnectorPipelineV2)
     def __call__(
         self,
