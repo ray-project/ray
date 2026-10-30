@@ -898,6 +898,20 @@ class OptunaNestedPointsToEvaluateTest(unittest.TestCase):
         )
         self.assertEqual(searcher.suggest("t0"), point)
 
+    def testDictValuedChoiceIsKept(self):
+        """A dict that is a choice of a categorical parameter is not flattened."""
+        point = {"model": {"n": 1}}
+        searcher = self._make({"model": tune.choice([{"n": 1}, {"n": 2}])}, [point])
+        self.assertEqual(searcher.suggest("t0"), point)
+
+    def testFlattenPointKeepsDictsNamedInSpace(self):
+        from ray.tune.search.optuna.optuna_search import _flatten_point
+
+        self.assertEqual(
+            _flatten_point({"a": {"b": 1}, "m": {"n": 2}}, {"a/b": 0, "m": 0}),
+            {"a/b": 1, "m": {"n": 2}},
+        )
+
 
 if __name__ == "__main__":
     import sys
