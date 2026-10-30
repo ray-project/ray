@@ -42,7 +42,7 @@ def resample(item):
     audio = item.pop("audio")
     audio_bytes = audio["bytes"]
     # torchaudio>=2.9 routes `torchaudio.load` through torchcodec, which the image
-    # doesn't ship, so decode the FLAC bytes with soundfile instead.
+    # doesn't ship, so decode the audio bytes (MP3) with soundfile instead.
     data, sampling_rate = sf.read(
         io.BytesIO(audio_bytes), dtype="float32", always_2d=True
     )
@@ -94,7 +94,11 @@ def decoder(batch):
     # NOTE: Remove the `token_ids` column since we don't need it anymore. This is done by
     # the system automatically on Ray Data 2.51+ with the `with_column` API.
     token_ids = batch.pop("token_ids")
-    transcription = processor.batch_decode(token_ids, skip_special_tokens=True)
+    # transformers 5 fails on rows that are numpy arrays (Ray hands over ragged
+    # batches as an object array), so pass plain lists of ints.
+    transcription = processor.batch_decode(
+        [ids.tolist() for ids in token_ids], skip_special_tokens=True
+    )
     batch["transcription"] = transcription
     batch["transcription_length"] = np.array([len(t) for t in transcription])
     return batch
