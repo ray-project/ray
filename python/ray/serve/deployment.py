@@ -211,11 +211,18 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
-    def bind(self, *args, **kwargs) -> Application:
+    def bind(self, *args: Any, **kwargs: Any) -> Application:
         """Bind the arguments to the deployment and return an Application.
 
         The returned Application can be deployed using `serve.run` (or via
         config file) or bound to another deployment for composition.
+
+        Args:
+            *args: Positional arguments to pass to the deployment's constructor.
+            **kwargs: Keyword arguments to pass to the deployment's constructor.
+
+        Returns:
+            An application that contains this deployment with the given arguments.
         """
         return Application(self.options(_init_args=args, _init_kwargs=kwargs))
 
