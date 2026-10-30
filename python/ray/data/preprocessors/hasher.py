@@ -110,14 +110,11 @@ class FeatureHasher(SerializablePreprocessorBase):
 
     def _transform_pandas(self, df: pd.DataFrame):
         if df.empty:
-            df.loc[:, self._output_column] = pd.Series(
-                [], index=df.index, dtype=object
-            )
+            df.loc[:, self._output_column] = pd.Series([], index=df.index, dtype=object)
             return df
 
         column_hashes = {
-            column: simple_hash(column, self._num_features)
-            for column in self._columns
+            column: simple_hash(column, self._num_features) for column in self._columns
         }
 
         # TODO(matt): Use sparse matrix for efficiency.
@@ -147,9 +144,7 @@ class FeatureHasher(SerializablePreprocessorBase):
         concatenated = feature_columns[hash_columns].to_numpy()
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
-        df.loc[:, self._output_column] = pd.Series(
-            list(concatenated), index=df.index
-        )
+        df.loc[:, self._output_column] = pd.Series(list(concatenated), index=df.index)
 
         return df
 
