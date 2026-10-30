@@ -40,8 +40,10 @@ class FakeMutableObjectProvider : public MutableObjectProviderInterface {
                                    int64_t num_readers,
                                    const ObjectID &reader_object_id) override {}
 
-  void HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
-                               rpc::PushMutableObjectReply *reply) override {}
+  Status HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
+                                 rpc::PushMutableObjectReply *reply) override {
+    return Status::OK();
+  }
 
   Status WriteAcquire(const ObjectID &object_id,
                       int64_t data_size,

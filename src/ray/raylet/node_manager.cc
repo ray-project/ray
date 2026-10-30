@@ -803,8 +803,8 @@ void NodeManager::HandleRegisterMutableObject(
 void NodeManager::HandlePushMutableObject(rpc::PushMutableObjectRequest request,
                                           rpc::PushMutableObjectReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  mutable_object_provider_->HandlePushMutableObject(request, reply);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  Status status = mutable_object_provider_->HandlePushMutableObject(request, reply);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void NodeManager::QueryAllWorkerStates(
