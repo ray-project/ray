@@ -10,7 +10,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.tune import Stopper
 
-# Might need `gymnasium[atari, other]` to be installed.
+# Might need `ale-py` and `gymnasium[other]` to be installed.
 
 # See the following links for becnhmark results of other libraries:
 #   Original paper: https://arxiv.org/abs/1812.05905
