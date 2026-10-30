@@ -33,6 +33,7 @@ pre_commit() {
     docstyle
     check-import-order
     data-tests-location
+    check-setup-dev-packages
     check-cpp-files-inclusion
     end-of-file-fixer
     check-json
