@@ -219,6 +219,7 @@ class TaskManagerTest : public ::testing::Test {
               return Status::OK();
             },
             [this](TaskSpecification &spec, uint32_t delay_ms) {
+              spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
               num_retries_++;
               last_delay_ms_ = delay_ms;
             },
@@ -838,7 +839,7 @@ TEST_F(TaskManagerTest, TestTaskOomKillWithFiniteOomRetryDecrementsCounter) {
     ASSERT_EQ(num_retries_, i);
     manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
     ASSERT_EQ(num_retries_, i + 1);
-    ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
+    ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms() << i);
   }
 
   ASSERT_EQ(num_retries_, kOomRetries);
@@ -2525,6 +2526,60 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCancellationOutOfOrderReports) {
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamRejectsReportsFromRetriedAttempt) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/1);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  auto first_attempt_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ first_attempt_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  req.set_attempt_number(0);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  ASSERT_TRUE(
+      manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED));
+  ASSERT_EQ(num_retries_, 1);
+
+  auto stale_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ stale_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  req.set_attempt_number(0);
+  bool signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status callback_status) {
+        signal_called = true;
+        ASSERT_TRUE(callback_status.IsNotFound()) << callback_status;
+      }));
+  ASSERT_TRUE(signal_called);
+  ASSERT_FALSE(reference_counter_->HasReference(stale_id));
+
+  manager_.MarkTaskCanceled(spec.TaskId());
+  ASSERT_FALSE(
+      manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::TASK_CANCELLED));
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+}
+
 TEST_F(TaskManagerTest, TestPeekObjectReady) {
   auto spec =
       CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
@@ -2750,6 +2805,7 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplayFewerObjectsFailsLoudly) {
                                          /*dynamic_return_id=*/obj_id,
                                          data,
                                          /*set_in_plasma=*/true);
+    req.set_attempt_number(1);
     manager_.HandleReportGeneratorItemReturns(
         req, /*execution_signal_callback=*/[](Status) {});
   }
@@ -2835,6 +2891,7 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplayMoreObjectsFailsLoudly) {
                                          /*dynamic_return_id=*/obj_id,
                                          data,
                                          /*set_in_plasma=*/true);
+    req.set_attempt_number(1);
     manager_.HandleReportGeneratorItemReturns(
         req, /*execution_signal_callback=*/[](Status) {});
   }
@@ -2951,6 +3008,7 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplayDoesNotFillNone) {
                                   /*dynamic_return_id=*/obj_id,
                                   data,
                                   /*set_in_plasma=*/true);
+    req.set_attempt_number(1);
     manager_.HandleReportGeneratorItemReturns(
         req, /*execution_signal_callback=*/[](Status) {});
   }
@@ -3085,6 +3143,7 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplaySameObjectsSucceeds) {
                                          /*dynamic_return_id=*/obj_id,
                                          data,
                                          /*set_in_plasma=*/true);
+    req.set_attempt_number(1);
     manager_.HandleReportGeneratorItemReturns(
         req, /*execution_signal_callback=*/[](Status) {});
   }
@@ -4190,6 +4249,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedReconstructionRetryNotFr
       /*data*/ data,
       /*set_in_plasma*/ true,
       /*node_id*/ executor_node_id);
+  req.set_attempt_number(1);
   manager_.HandleReportGeneratorItemReturns(req,
                                             /*execution_signal_callback*/ [](Status) {});
   ASSERT_TRUE(freed_objects_.empty());
@@ -4206,6 +4266,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedReconstructionRetryNotFr
       /*data*/ data,
       /*set_in_plasma*/ true,
       /*node_id*/ executor_node_id);
+  req.set_attempt_number(1);
   manager_.HandleReportGeneratorItemReturns(req,
                                             /*execution_signal_callback*/ [](Status) {});
   ASSERT_EQ(freed_objects_.size(), 1);
@@ -4570,6 +4631,7 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
+  req.set_attempt_number(1);
   bool retry_signal_called = false;
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req,
@@ -4592,6 +4654,7 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
+  req.set_attempt_number(1);
   retry_signal_called = false;
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req,
@@ -5019,6 +5082,7 @@ TEST_F(TaskManagerTest, TestActorWideBackpressureSeparatesReportAckAndConsumptio
       dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
+  req.set_attempt_number(1);
   ASSERT_FALSE(
       manager_.HandleReportGeneratorItemReturns(req, bump_ack, bump_consumption));
   ASSERT_EQ(ack_count, 3);
@@ -5033,6 +5097,7 @@ TEST_F(TaskManagerTest, TestActorWideBackpressureSeparatesReportAckAndConsumptio
       dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
+  req.set_attempt_number(1);
   ASSERT_FALSE(
       manager_.HandleReportGeneratorItemReturns(req, bump_ack, bump_consumption));
   ASSERT_EQ(ack_count, 4);
@@ -5188,6 +5253,7 @@ TEST_F(TaskManagerLineageTest, TestStreamingGeneratorReconstructableWhileLineage
       /*dynamic_return_id*/ return_id,
       /*data*/ data,
       /*set_in_plasma*/ true);
+  req.set_attempt_number(1);
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status) {}));
   ASSERT_TRUE(reference_counter_->HasReference(return_id));
