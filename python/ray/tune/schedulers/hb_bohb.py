@@ -35,6 +35,10 @@ class HyperBandForBOHB(HyperBandScheduler):
         bracket. Else, if current band is not filled, create new bracket, add
         to current bracket. Else, create new iteration, create new bracket,
         add to bracket.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that was added.
         """
         if not self._metric or not self._metric_op:
             raise ValueError(
@@ -83,7 +87,18 @@ class HyperBandForBOHB(HyperBandScheduler):
 
         This scheduler will not start trials but will stop trials.
         The current running trial will not be handled,
-        as the trialrunner will be given control to handle it."""
+        as the trialrunner will be given control to handle it.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that reported the result.
+            result: The result the trial reported. This method adds a
+                ``hyperband_info`` entry to it.
+
+        Returns:
+            The scheduling decision for the trial: ``TrialScheduler.CONTINUE``,
+            ``TrialScheduler.PAUSE``, or ``TrialScheduler.STOP``.
+        """
 
         result["hyperband_info"] = {}
         bracket, _ = self._trial_info[trial]
@@ -132,6 +147,19 @@ class HyperBandForBOHB(HyperBandScheduler):
         List of trials not used since all trials are tracked as state
         of scheduler. If iteration is occupied (ie, no trials to run),
         then look into next iteration.
+
+        If no trial is running and no bracket has a trial to run, this method
+        processes the brackets that have a paused trial, which can make trials
+        ready to run.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            allow_recurse: Whether to call this method once more after
+                processing a bracket makes a trial ready to run.
+
+        Returns:
+            A ``PENDING`` trial, or a ``PAUSED`` trial that its bracket marked
+            to unpause, or ``None`` if there's no such trial.
         """
 
         for hyperband in self._hyperbands:
