@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
-from typing import TYPE_CHECKING, Deque, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Deque, Iterator, Optional
 
 import ray
 from ray.exceptions import GetTimeoutError, ObjectRefStreamEndOfStreamError
@@ -86,10 +86,20 @@ class ObjectRefGenerator:
         """
         return self._next_sync()
 
-    def send(self, value):
+    def send(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.send` is not supported.")
 
-    def throw(self, value):
+    def throw(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.throw` is not supported.")
 
     def close(self):
@@ -102,10 +112,20 @@ class ObjectRefGenerator:
     async def __anext__(self):
         return await self._next_async()
 
-    async def asend(self, value):
+    async def asend(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.asend` is not supported.")
 
-    async def athrow(self, value):
+    async def athrow(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.athrow` is not supported.")
 
     async def aclose(self):
