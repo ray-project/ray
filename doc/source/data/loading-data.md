@@ -883,7 +883,15 @@ The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` int
 
 Pass a zero-argument `connection_factory` that Ray can serialize and that returns a new connection from `impala.dbapi.connect()` on each call. Ray calls the factory on the driver for table metadata and on the read worker for data. Query reads with an explicit schema only call it on the read worker. Ray closes each returned connection. Install the factory's dependencies and make its credentials and certificate files available wherever it runs.
 
-Configure authentication, transport, TLS certificate verification, and client retries in the factory. Choose `auth_mechanism` explicitly when calling `impala.dbapi.connect()`. Use `NOSASL` only with a HiveServer2 configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple Authentication and Security Layer (SASL) mechanism. Use a non-sensitive placeholder password because that server mode doesn't check it. `PLAIN` doesn't encrypt the password without TLS. For TLS connections, set `verify_cert=True` or provide a trusted `ca_cert`. For `GSSAPI`, install `impyla[kerberos]`, set `kerberos_service_name="hive"`, and configure authentication credentials on the driver and read worker.
+Configure authentication, transport, TLS certificate verification, and client retries in the factory. Choose `auth_mechanism` explicitly when calling `impala.dbapi.connect()`. Supported profiles include:
+- `PLAIN`: Uses SASL PLAIN authentication with a username and password. For Hive server mode `NONE`, use a placeholder password because the server does not verify passwords. Without TLS, `PLAIN` sends credentials in cleartext.
+- `GSSAPI`: Uses Kerberos/SPNEGO authentication. Requires `impyla[kerberos]` (or `gssapi`/`kerberos` libraries) and an active Kerberos ticket cache (via `kinit`) or keytab configured on the driver (for table schema inference) and on all Ray workers (for data reads). Specify `kerberos_service_name="hive"` (or your cluster's Hive Kerberos principal name).
+- `NOSASL`: Use only with HiveServer2 instances configured without SASL (`hive.server2.authentication=NOSASL`).
+- `LDAP`: Uses LDAP over TLS (`auth_mechanism="LDAP"`).
+
+For TLS connections, set `use_ssl=True` and configure certificate verification with `verify_cert=True` and a trusted `ca_cert` path. Certificate files must be accessible at the specified path on both the driver and all Ray worker nodes (e.g. distributed via `runtime_env`). The certificate Subject Alternative Name (SAN) or Common Name (CN) must match the configured server `host`.
+
+Ray validates connections on both the driver (for table metadata) and Ray worker tasks (for data reads). Connections fail closed with descriptive error messages when certificates are untrusted or expired, hostnames mismatch, Kerberos tickets are missing or expired, Kerberos dependencies are absent, or credentials are invalid. Failed reads are not retried or replayed.
 
 The real-server integration test verifies the `PLAIN` mechanism with HiveServer2 in server mode `NONE`. It doesn't cover `NOSASL` or `GSSAPI`.
 
