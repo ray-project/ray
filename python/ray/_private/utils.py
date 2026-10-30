@@ -269,6 +269,15 @@ def set_omp_num_threads_if_unset() -> bool:
     # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
     omp_num_threads = max(math.floor(num_assigned_cpus), 1)
     os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    # If modules like torch were pre-imported before fork(), their internal thread
+    # pool is already initialized and ignores subsequent os.environ["OMP_NUM_THREADS"]
+    # updates.
+    for module_name in ray_constants.THREAD_POOL_MODULES:
+        if module_name in sys.modules:
+            try:
+                sys.modules[module_name].set_num_threads(int(omp_num_threads))
+            except Exception:
+                pass
     return True
 
 

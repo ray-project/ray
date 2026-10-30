@@ -64,6 +64,7 @@ class RuntimeEnvContext:
         override_worker_entrypoint: Optional[str] = None,
         java_jars: List[str] = None,
         container: Optional[Dict[str, Any]] = None,
+        fork_server_socket_path: Optional[str] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
@@ -71,6 +72,7 @@ class RuntimeEnvContext:
         self.override_worker_entrypoint: Optional[str] = override_worker_entrypoint
         self.java_jars = java_jars or []
         self.container = container or {}
+        self.fork_server_socket_path: Optional[str] = fork_server_socket_path
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)

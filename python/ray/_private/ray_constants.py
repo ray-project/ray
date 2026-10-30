@@ -799,3 +799,7 @@ NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer(
 
 # Name of the environment variable for the Redis password.
 RAY_REDIS_PASSWORD_ENV = "RAY_REDIS_PASSWORD"
+
+# Modules that initialize an internal thread pool at import time and require an
+# explicit .set_num_threads() call if imported before fork().
+THREAD_POOL_MODULES = ["torch"]
