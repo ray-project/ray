@@ -163,8 +163,15 @@ class RLModuleSpec:
         }
 
     @classmethod
-    def from_dict(cls, d):
-        """Returns a single agent RLModule spec from a serialized representation."""
+    def from_dict(cls, d: Dict[str, Any]) -> "RLModuleSpec":
+        """Returns a single agent RLModule spec from a serialized representation.
+
+        Args:
+            d: The serialized spec, as `to_dict()` returns it.
+
+        Returns:
+            The RLModuleSpec rebuilt from `d`.
+        """
         module_class = deserialize_type(d["module_class"])
         try:
             spec = RLModuleSpec(

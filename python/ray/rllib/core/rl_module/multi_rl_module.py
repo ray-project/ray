@@ -403,8 +403,12 @@ class MultiRLModule(RLModule):
         """Returns a KeysView over the module IDs in this MultiRLModule."""
         return self._rl_modules.keys()
 
-    def values(self) -> ValuesView[ModuleID]:
-        """Returns a ValuesView over the module IDs in this MultiRLModule."""
+    def values(self) -> ValuesView[RLModule]:
+        """Returns a ValuesView over the RLModules in this MultiRLModule.
+
+        Returns:
+            A view of the RLModules in this MultiRLModule.
+        """
         return self._rl_modules.values()
 
     def __len__(self) -> int:
@@ -718,8 +722,16 @@ class MultiRLModuleSpec:
         }
 
     @classmethod
-    def from_dict(cls, d) -> "MultiRLModuleSpec":
-        """Creates a MultiRLModuleSpec from a dictionary."""
+    def from_dict(cls, d: Dict[str, Any]) -> "MultiRLModuleSpec":
+        """Creates a MultiRLModuleSpec from a dictionary.
+
+        Args:
+            d: The serialized spec, as `to_dict()` returns it.
+
+        Returns:
+            The MultiRLModuleSpec rebuilt from `d`, with each sub-spec rebuilt with
+            `RLModuleSpec.from_dict()`.
+        """
         return MultiRLModuleSpec(
             multi_rl_module_class=deserialize_type(d["multi_rl_module_class"]),
             observation_space=gym_space_from_dict(d.get("observation_space")),

@@ -941,8 +941,16 @@ class SampleBatch(dict):
             for v in tree.flatten(self)
         )
 
-    def get(self, key, default=None):
-        """Returns one column (by key) from the data or a default value."""
+    def get(self, key: str, default: Any = None) -> Any:
+        """Returns one column (by key) from the data or a default value.
+
+        Args:
+            key: The column to return.
+            default: The value to return if the column doesn't exist.
+
+        Returns:
+            The column under `key`, or `default` if there's none.
+        """
         try:
             return self.__getitem__(key)
         except KeyError:
