@@ -871,6 +871,34 @@ class BayesOptConvergenceWarningTest(unittest.TestCase):
         )
 
 
+class OptunaNestedPointsToEvaluateTest(unittest.TestCase):
+    def _make(self, space, points):
+        pytest.importorskip("optuna")
+        from ray.tune.search.optuna import OptunaSearch
+
+        searcher = OptunaSearch(
+            metric="loss", mode="min", seed=1, points_to_evaluate=points
+        )
+        searcher.set_search_properties(None, None, space)
+        return searcher
+
+    def testNestedPointToEvaluateIsSuggested(self):
+        """The first suggestion must be the nested ``points_to_evaluate`` entry."""
+        point = {"a": {"b": 0.123}, "c": 0.456}
+        searcher = self._make(
+            {"a": {"b": tune.uniform(0, 1)}, "c": tune.uniform(0, 1)}, [point]
+        )
+        self.assertEqual(searcher.suggest("t0"), point)
+
+    def testNestedPointWithMoreLeavesThanKeys(self):
+        """A nested point must not be rejected for having fewer top-level keys."""
+        point = {"a": {"x": 0.1, "y": 0.2}}
+        searcher = self._make(
+            {"a": {"x": tune.uniform(0, 1), "y": tune.uniform(0, 1)}}, [point]
+        )
+        self.assertEqual(searcher.suggest("t0"), point)
+
+
 if __name__ == "__main__":
     import sys
 

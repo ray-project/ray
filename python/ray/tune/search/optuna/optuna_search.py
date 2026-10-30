@@ -353,7 +353,11 @@ class OptunaSearch(Searcher):
 
         self._space = space
 
-        self._points_to_evaluate = points_to_evaluate or []
+        # The space is flattened with "/", so flatten nested points the same way.
+        self._points_to_evaluate = [
+            flatten_dict(point, "/") if isinstance(point, dict) else point
+            for point in points_to_evaluate or []
+        ]
         self._evaluated_rewards = evaluated_rewards
         if study_name:
             self._study_name = study_name
