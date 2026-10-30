@@ -976,10 +976,17 @@ def _get_progress_table_data(
 
     # Sort terminated trials by metric and mode, descending if mode is "max"
     if sort_by_metric:
+        # A trial can finish without the metric (or report NaN). Rank it last.
+        worst = float("-inf") if mode == "max" else float("inf")
+
+        def _metric_sort_key(t: Trial):
+            value = unflattened_lookup(metric, t.last_result, default=None)
+            return worst if pd.isnull(value) else value
+
         trials_by_state[Trial.TERMINATED] = sorted(
             trials_by_state[Trial.TERMINATED],
             reverse=(mode == "max"),
-            key=lambda t: unflattened_lookup(metric, t.last_result, default=None),
+            key=_metric_sort_key,
         )
 
     state_tbl_order = [
