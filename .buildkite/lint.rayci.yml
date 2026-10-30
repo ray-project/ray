@@ -39,6 +39,11 @@ steps:
       # Links to files on Ray's master branch. A prose change can fail it,
       # because renaming or deleting a doc file breaks links to it elsewhere.
       - ray_repo_links
+      # A rename, move, or .rst-to-.md conversion of a doc page can leave a
+      # BUILD exclude, CODEOWNERS entry, or rules entry naming a path that no
+      # longer exists, and each of those fails silently. A prose-only diff can
+      # fail this, so it belongs in this matrix.
+      - doc_literal_paths
 
   # `doc_readme` runs `setup.py check --restructuredtext --strict --metadata`,
   # which guards how Ray's PyPI long description renders. Its inputs are the
