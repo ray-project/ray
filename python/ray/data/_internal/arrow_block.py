@@ -87,9 +87,7 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
 
 
 class ArrowRow(Mapping):
-    """
-    Row of a tabular Dataset backed by a pyarrow RecordBatch or Table and a row index.
-    """
+    """Row of a tabular Dataset backed by a pyarrow RecordBatch or Table and a row index."""
 
     def __init__(
         self, batch: Union["pyarrow.Table", "pyarrow.RecordBatch"], row_idx: int
@@ -202,8 +200,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
 def _get_max_chunk_size(
     table: "pyarrow.Table", max_chunk_size_bytes: int
 ) -> Optional[int]:
-    """
-    Calculate the max chunk size in rows for Arrow to Batches conversion in
+    """Calculate the max chunk size in rows for Arrow to Batches conversion in
     ArrowBlockAccessor.iter_rows().
     Args:
         table: The pyarrow table to calculate the max chunk size for.

@@ -260,6 +260,23 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_checkpointing",
+    size = "large",
+    srcs = ["tests/test_dataset_checkpointing.py"],
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "data_integration",
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_data_integration",
     size = "large",
     srcs = ["tests/test_data_integration.py"],

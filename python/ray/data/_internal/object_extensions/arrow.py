@@ -159,6 +159,16 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
     def to_numpy(
         self, zero_copy_only: bool = False, writable: bool = False
     ) -> np.ndarray:
+        """Convert this array to a NumPy array of Python objects.
+
+        Args:
+            zero_copy_only: Unused. The objects are always unpickled into a new
+                array.
+            writable: Unused.
+
+        Returns:
+            A NumPy array with ``dtype=object`` that holds the unpickled objects.
+        """
         arr = np.empty(len(self), dtype=object)
         arr[:] = self.to_pylist()
         return arr
