@@ -207,20 +207,43 @@ class Batcher(BatcherInterface):
     # zero-copy views, we sacrifice what should be a small performance hit for better
     # readability.
 
-    def __init__(self, batch_size: Optional[int], ensure_copy: bool = False):
+    def __init__(
+        self,
+        batch_size: Optional[int],
+        ensure_copy: bool = False,
+        batch_format: Optional[str] = None,
+    ):
         """
         Construct a batcher that yields batches of batch_sizes rows.
 
         Args:
             batch_size: The size of batches to yield.
-            ensure_copy: Whether batches are always copied from the underlying base
-                blocks (not zero-copy views).
+            ensure_copy: Whether batches must be isolated from the underlying base
+                blocks. Scalar copies may be deferred to pandas conversion.
+            batch_format: The subsequent batch conversion, if any.
         """
         self._batch_size = batch_size
         self._buffer = []
         self._buffer_size = 0
         self._done_adding = False
         self._ensure_copy = ensure_copy
+        self._batch_format = batch_format
+
+    def _copy_block(self, block: Block) -> Block:
+        if isinstance(block, pa.Table) and self._batch_format == "pandas":
+            # NumPy-backed pandas conversion copies scalar columns, while
+            # Arrow-backed assignment replaces their immutable arrays.
+            # Preserve the protective block
+            # copy for tensors, nested objects, and unrecognized extension types.
+            columns = [
+                column
+                if transform_pyarrow.is_immutable_scalar_type(column.type)
+                else transform_pyarrow.combine_chunked_array(column, ensure_copy=True)
+                for column in block.columns
+            ]
+            return pa.Table.from_arrays(columns, schema=block.schema)
+        accessor = BlockAccessor.for_block(block)
+        return accessor.slice(0, accessor.num_rows(), copy=True)
 
     def add(self, block: Block):
         """Add a block to the block buffer.
@@ -262,8 +285,7 @@ class Batcher(BatcherInterface):
             block = self._buffer[0]
             if needs_copy:
                 # Copy block if needing to ensure fresh batch copy.
-                block = BlockAccessor.for_block(block)
-                block = block.slice(0, block.num_rows(), copy=True)
+                block = self._copy_block(block)
             self._buffer = []
             self._buffer_size = 0
             return block
@@ -304,8 +326,7 @@ class Batcher(BatcherInterface):
         batch = output.build()
         if needs_copy:
             # Need to ensure that the batch is a fresh copy.
-            batch = BlockAccessor.for_block(batch)
-            batch = batch.slice(0, batch.num_rows(), copy=True)
+            batch = self._copy_block(batch)
         return batch
 
 

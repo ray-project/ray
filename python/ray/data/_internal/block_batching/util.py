@@ -268,6 +268,7 @@ def blocks_to_batches(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
+    batch_format: Optional[str] = None,
 ) -> Iterator[Batch]:
     """Given an iterator over blocks, returns an iterator over batches."""
     return _BatchingIterator(
@@ -278,6 +279,7 @@ def blocks_to_batches(
         shuffle_buffer_min_size=shuffle_buffer_min_size,
         shuffle_seed=shuffle_seed,
         ensure_copy=ensure_copy,
+        batch_format=batch_format,
     )
 
 
@@ -297,6 +299,7 @@ class _BatchingIterator(Iterator[Batch]):
         shuffle_buffer_min_size: Optional[int] = None,
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
+        batch_format: Optional[str] = None,
     ):
         self._block_iter = block_iter
         self._stats = stats
@@ -313,7 +316,11 @@ class _BatchingIterator(Iterator[Batch]):
                 shuffle_seed=shuffle_seed,
             )
         else:
-            self._batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
+            self._batcher = Batcher(
+                batch_size=batch_size,
+                ensure_copy=ensure_copy,
+                batch_format=batch_format,
+            )
 
     def __iter__(self) -> "_BatchingIterator":
         return self

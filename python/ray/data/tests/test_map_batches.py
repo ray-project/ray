@@ -526,6 +526,32 @@ def test_map_batches_batch_zero_copy(
     assert mutated_ids == list(range(1, num_rows + 1))
 
 
+@pytest.mark.parametrize("batch_size", [2, 3])
+def test_map_batches_pandas_copy_isolates_chunked_columns(
+    ray_start_regular_shared, batch_size
+):
+    block = pa.table(
+        {
+            "id": pa.chunked_array([[0, 1], [2, 3]]),
+            "text": ["a", "b", "c", "d"],
+        }
+    )
+    source = ray.data.from_arrow(block).materialize()
+
+    def mutate(batch):
+        batch["id"] += 10
+        return batch
+
+    result = source.map_batches(
+        mutate,
+        batch_size=batch_size,
+        batch_format="pandas",
+        zero_copy_batch=False,
+    )
+    assert sorted(row["id"] for row in result.take_all()) == [10, 11, 12, 13]
+    assert sorted(row["id"] for row in source.take_all()) == [0, 1, 2, 3]
+
+
 BLOCK_BUNDLING_TEST_CASES = [
     (block_size, batch_size)
     for batch_size in range(1, 8)

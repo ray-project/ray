@@ -1426,6 +1426,24 @@ def table_to_numpy_dict_chunked(
     return numpy_batch
 
 
+def is_immutable_scalar_type(data_type: "pyarrow.DataType") -> bool:
+    """Whether values cannot retain mutable objects during pandas conversion.
+
+    Tensor, nested, and arbitrary extension types need protective copying.
+    Standard numeric and temporal scalars can instead rely on NumPy-backed
+    conversion copying their data or Arrow-backed assignment replacing arrays.
+    """
+    return (
+        pyarrow.types.is_integer(data_type)
+        or pyarrow.types.is_floating(data_type)
+        or pyarrow.types.is_boolean(data_type)
+        or pyarrow.types.is_null(data_type)
+        or pyarrow.types.is_timestamp(data_type)
+        or pyarrow.types.is_date(data_type)
+        or pyarrow.types.is_duration(data_type)
+    )
+
+
 def to_numpy(
     array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
     *,
