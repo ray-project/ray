@@ -1136,6 +1136,35 @@ class TestModelMultiplexing:
             replica.replica_id for replica in replicas
         }
 
+    async def test_cold_model_reservations_drop_removed_replicas(self, pow_2_router):
+        s = pow_2_router
+        replicas = [FakeRunningReplica(f"r{i}", model_ids=set()) for i in range(2)]
+        s.update_replicas(replicas)
+
+        reserved_replica_id = next(iter(s._reserve_replica_for_cold_model("cold")))
+        remaining_replica = next(
+            replica for replica in replicas if replica.replica_id != reserved_replica_id
+        )
+        s.update_replicas([remaining_replica])
+
+        assert "cold" not in s._multiplexed_model_id_reserved_replica_ids
+
+    async def test_busy_warm_model_falls_back_to_all_least_loaded_replicas(
+        self, pow_2_router
+    ):
+        s = pow_2_router
+        warm_replica = FakeRunningReplica("warm", model_ids={"m1"})
+        cold_replicas = [
+            FakeRunningReplica(f"cold-{i}", model_ids=set()) for i in range(2)
+        ]
+        s.update_replicas([warm_replica, *cold_replicas])
+        request = fake_pending_request(model_id="m1")
+
+        assert s.apply_multiplex_routing(request) == {warm_replica.replica_id}
+        assert s.apply_multiplex_routing(request) == {
+            replica.replica_id for replica in cold_replicas
+        }
+
     async def test_fall_back_to_replica_without_model_id(self, pow_2_router):
         """
         Verify that we'll fall back to a replica that doesn't have the model ID if
