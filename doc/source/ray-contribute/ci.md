@@ -137,9 +137,11 @@ The `docstringbuild` image leaves out heavy libraries such as torch and TensorFl
 The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
 ```bash
-python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
+python ci/ray_ci/doc/check_docstring_only.py --base upstream/master
 python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
 ```
+
+Both scripts diff from the merge base of `--base` and your branch, so commits that land on master after you branch don't count as your changes.
 
 Every other test step is skipped under the label, in every library, including `ml: data integration tests`. The rule that does this lives in `.buildkite/docs.labels.yaml`, and the pipeline upload log names it, next to the selected tags. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
 

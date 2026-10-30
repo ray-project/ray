@@ -20,7 +20,13 @@ passes when it raises an exception whose type and message match.
 
 Examples marked `# doctest: +SKIP` are skipped, and a docstring with
 `# doctest: +SKIP_EXAMPLE` on any example is skipped whole, matching the
-render-only convention in bazel/default_doctest_pytest_plugin.py.
+render-only convention in bazel/default_doctest_pytest_plugin.py. When a
+skipped docstring holds an example that shows expected output, the skip line
+counts those examples, since that output is never checked.
+
+Ray Data modules run with the DataContext settings that Ray Data's doctest
+plugin, python/ray/data/tests/doctest_pytest_plugin.py, applies to each
+docstring, so an order-dependent example behaves as it does in its target.
 
 The examples image leaves out heavy libraries such as torch and TensorFlow
 (see OMITTED_LIBRARIES). A docstring that fails only because one of them isn't
@@ -91,6 +97,22 @@ OMITTED_LIBRARIES = {
     "transformers": (),
     "lightning": (),
     "pytorch_lightning": (),
+    # Dataset.join needs it. It's about 195 MB installed, larger than pyarrow,
+    # for one docstring, and Ray Data's own doctest image installs it through
+    # test-requirements.txt.
+    "polars": (),
+    # Dataset.write_lance needs it, from the pylance distribution. It's about
+    # 138 MB installed on Linux aarch64, for one docstring, and Ray Data's own
+    # doctest image installs pylance through data-test-requirements.txt.
+    "lance": (),
+    # The LightGBM and XGBoost integrations in Ray Train and Ray Tune import
+    # these at module level, but none of their examples runs here: Tune's are
+    # render-only (+SKIP_EXAMPLE), and Train's are still testcode blocks. The
+    # ML images install both through
+    # python/requirements/ml/core-requirements.txt, and xgboost pulls
+    # nvidia-nccl-cu12 on Linux x86_64.
+    "lightgbm": (),
+    "xgboost": (),
     # The Azure node provider needs azure-cli-core to import, and its only
     # runnable example is a single private import. "azure" is a namespace
     # package, so if any azure-* distribution reaches the image, _installed
@@ -189,6 +211,36 @@ def extract(source: str, filename: str) -> List[DocstringExamples]:
 
 def is_skipped(docstring: DocstringExamples) -> bool:
     return any(example.options.get(SKIP_EXAMPLE) for example in docstring.examples)
+
+
+def hidden_outputs(docstring: DocstringExamples) -> int:
+    """Count the examples with expected output that +SKIP_EXAMPLE leaves unchecked."""
+    return sum(1 for example in docstring.examples if example.want.strip())
+
+
+@contextlib.contextmanager
+def library_settings(module: str):
+    """Apply the per-docstring settings a module's doctest target applies.
+
+    Mirrors python/ray/data/tests/doctest_pytest_plugin.py for ray.data
+    modules. Keep the two in sync. Other modules run as they are.
+    """
+    if module != "ray.data" and not module.startswith("ray.data."):
+        yield
+        return
+    from ray.data.context import DataContext
+
+    os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
+    context = DataContext.get_current()
+    preserve_order = context.execution_options.preserve_order
+    print_on_execution_start = context.print_on_execution_start
+    context.execution_options.preserve_order = True
+    context.print_on_execution_start = False
+    try:
+        yield
+    finally:
+        context.execution_options.preserve_order = preserve_order
+        context.print_on_execution_start = print_on_execution_start
 
 
 def _optionflags(example: doctest.Example) -> int:
@@ -389,10 +441,17 @@ def main() -> int:
         for docstring in docstrings:
             if is_skipped(docstring):
                 skipped += 1
-                print(f"SKIP {path}:{docstring.qualname} (+SKIP_EXAMPLE)")
+                hidden = hidden_outputs(docstring)
+                note = (
+                    f", leaves {hidden} example(s) with expected output unchecked"
+                    if hidden
+                    else ""
+                )
+                print(f"SKIP {path}:{docstring.qualname} (+SKIP_EXAMPLE{note})")
                 continue
             try:
-                failure = run_docstring(docstring, vars(module), path)
+                with library_settings(module_name(path)):
+                    failure = run_docstring(docstring, vars(module), path)
             except MissingLibrary as e:
                 needs[e.library] += 1
                 print(f"SKIP {path}:{docstring.qualname} (needs {e.library})")

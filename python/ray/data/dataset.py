@@ -3635,7 +3635,7 @@ class Dataset:
 
         Examples:
 
-            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import ray
             >>> doubles_ds = ray.data.range(4).map(
             ...     lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
             ... )
