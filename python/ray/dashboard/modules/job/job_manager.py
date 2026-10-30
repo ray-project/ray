@@ -619,6 +619,34 @@ class JobManager:
             run_background_task(
                 self._monitor_job(submission_id, job_supervisor=supervisor)
             )
+        except asyncio.CancelledError:
+            # The submission was cancelled before the supervisor actor was
+            # created, e.g. aiohttp cancels the request handler task when the
+            # HTTP client disconnects or times out. The job has already been
+            # persisted as PENDING and nothing will ever monitor it, so mark it
+            # FAILED instead of leaving it PENDING forever. CancelledError is
+            # not a subclass of Exception, so it is handled separately and
+            # re-raised to preserve the caller's cancellation semantics.
+            message = (
+                f"Failed to start supervisor actor for job {submission_id}: "
+                "the job submission was cancelled before the supervisor actor "
+                "was created. This can happen if the HTTP client disconnected "
+                "or timed out during submission."
+            )
+            driver_logger.warning(message)
+            try:
+                await self._job_info_client.put_status(
+                    submission_id,
+                    JobStatus.FAILED,
+                    message=message,
+                    error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
+                )
+            except Exception as e:
+                # Don't let a failed status update replace the CancelledError.
+                driver_logger.warning(
+                    f"Failed to mark cancelled job {submission_id} as FAILED: '{e}'"
+                )
+            raise
         except Exception as e:
             tb_str = traceback.format_exc()
             driver_logger.warning(

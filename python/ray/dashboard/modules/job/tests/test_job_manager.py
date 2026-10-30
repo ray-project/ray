@@ -1637,6 +1637,77 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_submit_job_cancelled_before_supervisor_start(job_manager, monkeypatch):
+    """Test that a submission cancelled before the supervisor actor is created
+    marks the job as FAILED instead of leaving it PENDING forever.
+
+    See https://github.com/ray-project/ray/issues/62766.
+    """
+    submission_id = "raysubmit_cancelled_before_supervisor_start"
+    label_selector_called = asyncio.Event()
+
+    async def _block_get_label_selector(resources_specified):
+        label_selector_called.set()
+        # Block until the submission task is cancelled.
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(job_manager, "_get_label_selector", _block_get_label_selector)
+
+    submit_task = asyncio.create_task(
+        job_manager.submit_job(
+            entrypoint="echo 'hello world'", submission_id=submission_id
+        )
+    )
+    # The job has been persisted as PENDING at this point.
+    await asyncio.wait_for(label_selector_called.wait(), timeout=10)
+    assert await job_manager.get_job_status(submission_id) == JobStatus.PENDING
+
+    submit_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await submit_task
+
+    job_info = await job_manager.get_job_info(submission_id)
+    assert job_info.status == JobStatus.FAILED
+    assert job_info.error_type == JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE
+    assert "job submission was cancelled" in job_info.message
+    assert job_info.driver_exit_code is None
+    assert job_manager._get_actor_for_job(submission_id) is None
+
+
+@pytest.mark.asyncio
+async def test_submit_job_cancelled_status_update_failure_keeps_cancellation(
+    job_manager, monkeypatch
+):
+    """Test that a failure to mark a cancelled submission as FAILED doesn't
+    replace the CancelledError raised to the caller.
+    """
+    submission_id = "raysubmit_cancelled_status_update_fails"
+    label_selector_called = asyncio.Event()
+
+    async def _block_get_label_selector(resources_specified):
+        label_selector_called.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(job_manager, "_get_label_selector", _block_get_label_selector)
+
+    submit_task = asyncio.create_task(
+        job_manager.submit_job(
+            entrypoint="echo 'hello world'", submission_id=submission_id
+        )
+    )
+    await asyncio.wait_for(label_selector_called.wait(), timeout=10)
+
+    async def _failing_put_status(*args, **kwargs):
+        raise RuntimeError("GCS unavailable")
+
+    monkeypatch.setattr(job_manager._job_info_client, "put_status", _failing_put_status)
+
+    submit_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await submit_task
+
+
+@pytest.mark.asyncio
 async def test_failed_driver_exit_code(job_manager):
     """Test driver exit code from finished task that failed"""
     EXIT_CODE = 10
