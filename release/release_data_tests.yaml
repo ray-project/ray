@@ -1147,6 +1147,51 @@
     timeout: 3600
     script: python image_embedding_from_uris/main.py {{args}}
 
+# Ray Data lineage reconstruction under chaos, with output correctness checked. The
+# driver starts with JobConfig(_disable_job_level_lineage_reconstruction=True), so
+# Ray Data reconstructs lost objects and Ray Core does not. The run fails if
+# lineage reconstruction never ran.
+#
+# Chaos kills two worker raylets at once every minute for the whole pipeline, so
+# several reconstructions overlap and later kills land on reconstructions still in
+# flight. It never takes the cluster below 12 of 20 workers, and resumes as
+# replacement nodes join. The result records `nodes_killed` and
+# `lineage_reconstructions`.
+#
+# `--verify-output` checks the sink against the analytic
+# `(row_serial, patch_x, patch_y)` key set (69,000 images x 36 patches = 2,484,000
+# rows), so it catches a dropped row, a duplicated row, and a reconstructed block
+# carrying the wrong rows.
+#
+# Fake GPU on 20 CPU nodes, since lineage reconstruction doesn't depend on real
+# GPUs and 100 GPU nodes are costly and hard to provision.
+- name: image_embedding_from_uris_fake_gpu_lineage_reconstruction_chaos
+  python: "3.10"
+  frequency: manual
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: image_embedding_from_uris/fake_gpu_small_cluster_compute.yaml
+    byod:
+      runtime_env:
+        # Merged over the DEFAULTS. Chaos kills nodes on purpose, so dead nodes
+        # and the workers that die with them are expected.
+        RAYTEST_FAIL_ON_DEAD_NODES: "0"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "0"
+        # Lost objects and their re-produced copies coexist during lineage
+        # reconstruction, so the object store utilization bound doesn't apply.
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+
+  run:
+    # About 20 minutes without chaos. Churn and re-executed work add to that.
+    timeout: 5400
+    script: >
+      python image_embedding_from_uris/main.py
+      --inference-concurrency 20 20 --fake-gpu --chaos --lineage-reconstruction
+      --chaos-kill-interval-s 60 --chaos-kill-batch-size 2
+      --chaos-min-alive-workers 12 --verify-output
+
 
 - name: image_embedding_from_jsonl_{{case}}
   python: "3.10"
