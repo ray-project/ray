@@ -1022,8 +1022,7 @@ class Dataset:
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """
-        Add or overwrite multiple columns via expressions in a single projection.
+        """Add or overwrite multiple columns via expressions in a single projection.
 
         This is the multi-column counterpart of :meth:`with_column`. All
         expressions are evaluated within one projection over the existing
@@ -1153,8 +1152,7 @@ class Dataset:
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """
-        Add a new column to the dataset via an expression.
+        """Add a new column to the dataset via an expression.
 
         This method allows you to add a new column to a dataset by applying an
         expression. The expression can be composed of existing columns, literals,
@@ -3372,8 +3370,7 @@ class Dataset:
             raise ValueError("hash_column is not supported for random split")
 
         def random_split(batch: pa.Table):
-            """
-            Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
+            """Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
             or to test otherwise.
 
             This version ensures that the random choices are **stable per Ray task execution** by seeding
@@ -6689,8 +6686,7 @@ class Dataset:
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
-        """
-        Convenience method to write Ray Dataset to Kafka.
+        """Convenience method to write Ray Dataset to Kafka.
 
         Examples:
             >>> import ray  # doctest: +SKIP_EXAMPLE
@@ -8089,8 +8085,7 @@ class Dataset:
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:
-        """
-        Serialize this dataset's lineage, not the actual data or the existing data
+        """Serialize this dataset's lineage, not the actual data or the existing data
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
@@ -8162,8 +8157,7 @@ class Dataset:
     @staticmethod
     @DeveloperAPI
     def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
-        """
-        Deserialize the provided lineage-serialized Dataset.
+        """Deserialize the provided lineage-serialized Dataset.
 
         This uses pickle, and assumes that the provided serialized bytes were
         serialized using :py:meth:`Dataset.serialize_lineage`.
@@ -8703,8 +8697,7 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
-        """
-        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
+        """Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
 
         Args:
             base_schema: The underlying Arrow or Pandas schema.

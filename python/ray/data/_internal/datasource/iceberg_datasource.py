@@ -1,6 +1,4 @@
-"""
-Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource API.
-"""
+"""Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource API."""
 
 import heapq
 import itertools
@@ -183,8 +181,7 @@ def _resolve_shared_read_state(
 class _IcebergExpressionVisitor(
     _ExprVisitor["BooleanExpression | UnboundTerm | Literal"]
 ):
-    """
-    Visitor that converts Ray Data expressions to PyIceberg expressions.
+    """Visitor that converts Ray Data expressions to PyIceberg expressions.
 
     This enables Ray Data users to write filters using the familiar col() syntax
     while leveraging Iceberg's native filtering capabilities.
@@ -404,8 +401,7 @@ def _get_read_task_from_shared_state(
 
 @DeveloperAPI
 class IcebergDatasource(Datasource):
-    """
-    Iceberg datasource to read Iceberg tables into a Ray Dataset. This module heavily
+    """Iceberg datasource to read Iceberg tables into a Ray Dataset. This module heavily
     uses PyIceberg to read iceberg tables. All the routines in this class override
     `ray.data.Datasource`.
     """
@@ -419,8 +415,7 @@ class IcebergDatasource(Datasource):
         scan_kwargs: Optional[Dict[str, Any]] = None,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Initialize an IcebergDatasource.
+        """Initialize an IcebergDatasource.
 
         Args:
             table_identifier: Fully qualified table identifier (i.e.,
@@ -477,9 +472,7 @@ class IcebergDatasource(Datasource):
 
     @property
     def table(self) -> "Table":
-        """
-        Return the table reference from the catalog
-        """
+        """Return the table reference from the catalog"""
         if self._table is None:
             catalog = self._get_catalog()
             self._table = catalog.load_table(self.table_identifier)
@@ -487,9 +480,7 @@ class IcebergDatasource(Datasource):
 
     @property
     def plan_files(self) -> List["FileScanTask"]:
-        """
-        Return the plan files specified by this query
-        """
+        """Return the plan files specified by this query"""
         # Calculate and cache the plan_files if they don't already exist
         if self._plan_files is None:
             data_scan = self._get_data_scan()
@@ -598,8 +589,7 @@ class IcebergDatasource(Datasource):
     def _distribute_tasks_into_equal_chunks(
         plan_files: Iterable["FileScanTask"], n_chunks: int
     ) -> List[List["FileScanTask"]]:
-        """
-        Implement a greedy knapsack algorithm to distribute the files in the scan
+        """Implement a greedy knapsack algorithm to distribute the files in the scan
         across tasks, based on their file size, as evenly as possible
         """
         chunks = [list() for _ in range(n_chunks)]

@@ -1231,8 +1231,7 @@ def _is_null(value: Any) -> bool:
 def unique_post_fn(
     drop_na_values: bool = False, batch_format: BatchFormat = None
 ) -> Callable:
-    """
-    Returns a post-processing function that generates an encoding map by
+    """Returns a post-processing function that generates an encoding map by
     sorting the unique values produced during aggregation or stats computation.
 
     Args:
@@ -1251,8 +1250,7 @@ def unique_post_fn(
     """
 
     def gen_value_index(values: List) -> Dict[Any, int]:
-        """
-        Generate an encoding map from a list of unique values using Python sorting.
+        """Generate an encoding map from a list of unique values using Python sorting.
 
         Args:
             values: List of unique values to encode (can include lists/tuples).
