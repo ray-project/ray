@@ -1958,6 +1958,20 @@ py_test(
 )
 
 py_test(
+    name = "test_shuffle_phase_metrics",
+    size = "small",
+    srcs = ["tests/test_shuffle_phase_metrics.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_push_split_coordinator",
     size = "large",
     srcs = ["tests/test_push_split_coordinator.py"],

@@ -642,11 +642,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def as_dict(
         self,
         skip_internal_metrics: bool = False,
+        include_resource_usage: bool = True,
     ) -> Dict[str, Any]:
         """Return a dict representation of the metrics.
 
         Args:
             skip_internal_metrics: Whether to skip internal metrics.
+            include_resource_usage: Whether to include the owning operator's
+                current CPU, GPU and memory usage.
 
         Returns:
             A dict representation of the metrics.
@@ -663,16 +666,17 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 value = value.as_dict()
             result.append((metric.name, value))
 
-        # TODO: record resource usage in OpRuntimeMetrics,
-        # avoid calling self._op.current_logical_usage()
-        resource_usage = self._op.current_logical_usage()
-        result.extend(
-            [
-                ("cpu_usage", resource_usage.cpu or 0),
-                ("gpu_usage", resource_usage.gpu or 0),
-                ("memory_usage", resource_usage.memory or 0),
-            ]
-        )
+        if include_resource_usage:
+            # TODO: record resource usage in OpRuntimeMetrics,
+            # avoid calling self._op.current_logical_usage()
+            resource_usage = self._op.current_logical_usage()
+            result.extend(
+                [
+                    ("cpu_usage", resource_usage.cpu or 0),
+                    ("gpu_usage", resource_usage.gpu or 0),
+                    ("memory_usage", resource_usage.memory or 0),
+                ]
+            )
         result.extend(self._extra_metrics.items())
         return dict(result)
 

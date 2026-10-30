@@ -905,6 +905,15 @@ class PhysicalOperator(Operator):
         that are specific to them."""
         return {}
 
+    def get_phase_metrics(self) -> Dict[str, OpRuntimeMetrics]:
+        """Returns runtime metrics for each internal phase of this operator.
+
+        Operators that run several phases behind one operator (e.g. a GPU
+        shuffle's shuffle and finalize stages) override this so each phase is
+        exported alongside ``metrics`` under its own tag. Keys are phase names.
+        """
+        return {}
+
     def _get_logical_args(self) -> Dict[str, Dict[str, Any]]:
         """Return the logical arguments that were translated to create this
         PhysicalOperator."""
