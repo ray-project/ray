@@ -5,8 +5,8 @@ import uuid
 
 import numpy as np
 import ray
+import soundfile as sf
 import torch
-import torchaudio
 import torchaudio.transforms as T
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 from benchmark import Benchmark
@@ -41,7 +41,12 @@ def resample(item):
     # the system automatically on Ray Data 2.51+ with the `with_column` API.
     audio = item.pop("audio")
     audio_bytes = audio["bytes"]
-    waveform, sampling_rate = torchaudio.load(io.BytesIO(audio_bytes), format="flac")
+    # torchaudio>=2.9 routes `torchaudio.load` through torchcodec, which the image
+    # doesn't ship, so decode the FLAC bytes with soundfile instead.
+    data, sampling_rate = sf.read(
+        io.BytesIO(audio_bytes), dtype="float32", always_2d=True
+    )
+    waveform = torch.from_numpy(data.T)
     waveform = T.Resample(sampling_rate, SAMPLING_RATE)(waveform).squeeze()
     item["arr"] = np.array(waveform)
     return item
