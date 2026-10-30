@@ -257,6 +257,8 @@ def _has_nested_null_type(t: "pyarrow.DataType") -> bool:
     return False
 
 
+# TODO: Remove this class and the nested-null branch of _arrow_backed_pandas_dtype
+# once Ray requires pandas >= 3.1, whose pd.ArrowDtype skips the identity cast.
 class _ArrowDtypeWithoutIdentityCast(pd.ArrowDtype):
     """``pd.ArrowDtype`` that skips the cast of a column to its own type, as
     pandas 3.1 does. It compares equal to the plain ``pd.ArrowDtype`` of the
