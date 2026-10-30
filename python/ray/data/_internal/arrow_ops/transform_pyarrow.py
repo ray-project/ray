@@ -522,6 +522,14 @@ def _reconcile_diverging_fields(
             flags["has_null"] |= pyarrow.types.is_null(field_type)
             flags["has_struct"] |= pyarrow.types.is_struct(field_type)
 
+            # A column cannot hold tensors in one block and pickled objects in
+            # another: make every row the same kind, for example nested lists
+            # for ragged arrays.
+            if flags["has_object"] and flags["has_tensor"]:
+                raise ValueError(
+                    f"Found columns with both objects and tensors: {field_name}"
+                )
+
     # Reconcile only after all schemas have been inspected. This prevents a
     # null arm or an intermediate special type from masking later types.
     for field_name, types in field_types.items():
@@ -564,16 +572,16 @@ def _reconcile_field(
 
     # Handle special cases in priority order
 
-    # 1. Object fields. A tensor arm joins the objects as one ndarray per row.
-    if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
-        return ArrowPythonObjectType()
-
-    # 2. Tensor fields. A null arm becomes null rows of the tensor type.
+    # 1. Tensor fields. A null arm becomes null rows of the tensor type.
     tensor_types = get_arrow_extension_tensor_types()
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
 
     if tensor_field_types:
         return unify_tensor_types(tensor_field_types)
+
+    # 2. Object fields
+    if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
+        return ArrowPythonObjectType()
 
     # 3. Struct fields (recursive unification). Reconcile only when every
     # arm is a struct; otherwise return None so PyArrow reports the conflict.

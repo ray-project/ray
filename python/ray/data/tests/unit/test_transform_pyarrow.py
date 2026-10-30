@@ -827,20 +827,12 @@ def test_struct_with_diverging_primitive_types():
     assert result.column("data").to_pylist() == expected_data
 
 
-def test_arrow_concat_object_with_tensor_becomes_objects(object_with_tensor_blocks):
+def test_arrow_concat_object_with_tensor_fails(object_with_tensor_fails_blocks):
     """A column that holds Python objects in one block and tensors in another
-    concatenates to an object column, with one ndarray per tensor row."""
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
-    result = concat(object_with_tensor_blocks)
-
-    rows = result.column("a").to_pylist()
-    assert result.schema.field("a").type == ArrowPythonObjectType()
-    assert [type(row).__name__ for row in rows] == ["SimpleNamespace"] * 2 + [
-        "ndarray"
-    ] * 2
-    np.testing.assert_array_equal(rows[2], [1, 2])
-    np.testing.assert_array_equal(rows[3], [3, 4])
+    cannot be concatenated, and the error names the column."""
+    with pytest.raises(ArrowConversionError) as exc_info:
+        concat(object_with_tensor_fails_blocks)
+    assert "objects and tensors: a" in str(exc_info.value.__cause__)
 
 
 @pytest.mark.parametrize("last_shape", [(2,), (3,)])
@@ -986,21 +978,24 @@ def test_unify_schemas_incompatible_tensor_dtypes(
         unify_schemas(unify_schemas_incompatible_tensor_schemas)
 
 
-@pytest.mark.parametrize(
-    "other_type",
-    [ArrowTensorType((2, 2), pa.int32()), pa.null()],
-    ids=["tensor", "null"],
-)
-def test_unify_schemas_objects_win_over_tensors_and_nulls(other_type):
-    """A column that is an object type in one schema unifies to the object type
-    whatever the other schemas hold, in either order."""
+def test_unify_schemas_objects_and_tensors(unify_schemas_objects_and_tensors_schemas):
+    """A column that is an object type in one schema and a tensor type in
+    another does not unify, in either order."""
+    with pytest.raises(ValueError, match="Found columns with both objects and tensors"):
+        unify_schemas(unify_schemas_objects_and_tensors_schemas)
+    with pytest.raises(ValueError, match="Found columns with both objects and tensors"):
+        unify_schemas(unify_schemas_objects_and_tensors_schemas[::-1])
+
+
+def test_unify_schemas_objects_with_null_stay_objects():
+    """A null arm next to an object column leaves the column an object column."""
     from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     objects = pa.schema([("col", ArrowPythonObjectType())])
-    other = pa.schema([("col", other_type)])
+    nulls = pa.schema([("col", pa.null())])
 
-    assert unify_schemas([objects, other]) == objects
-    assert unify_schemas([other, objects]) == objects
+    assert unify_schemas([objects, nulls]) == objects
+    assert unify_schemas([nulls, objects]) == objects
 
 
 @pytest.mark.parametrize("other_shape", [(2, 2), (3, 3)])
@@ -3421,7 +3416,17 @@ def unify_schemas_nested_struct_tensors_schemas():
 
 
 @pytest.fixture
-def object_with_tensor_blocks():
+def unify_schemas_objects_and_tensors_schemas():
+    """An object schema and a tensor schema for the same column ``col``."""
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    schema1 = pa.schema([("col", ArrowPythonObjectType())])
+    schema2 = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])
+    return [schema1, schema2]
+
+
+@pytest.fixture
+def object_with_tensor_fails_blocks():
     """An object block followed by a tensor block, for the same column ``a``.
 
     block 1: a = [obj, obj]            (ArrowPythonObjectType)

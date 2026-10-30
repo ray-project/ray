@@ -563,33 +563,6 @@ def test_arrow_row_unwraps_scalars_but_not_tensors():
     np.testing.assert_array_equal(row["emb"], np.array([1]))
 
 
-def test_batches_merge_blocks_holding_tensor_object_and_null_rows(
-    ray_start_regular_shared,
-):
-    """One-row blocks from a pandas UDF type the same column as a tensor, a
-    pickled object or null, depending on the row. A batch spanning those blocks
-    comes back with every row intact: the stacked rows as arrays, the ragged
-    rows as lists, the missing rows as None."""
-    stacked = np.ones((2, 4, 3))
-    ragged = [np.zeros((4, 3)), np.ones((5, 3))]
-    values = [stacked, ragged, None]
-
-    def one_row(df):
-        cell = np.empty(1, dtype=object)
-        cell[0] = values[int(df["id"].iloc[0])]
-        return pd.DataFrame({"id": df["id"].values, "pts": cell})
-
-    ds = ray.data.range(3, override_num_blocks=3).map_batches(
-        one_row, batch_size=1, batch_format="pandas"
-    )
-    batch = next(iter(ds.iter_batches(batch_size=3)))
-
-    rows = sorted(zip(batch["id"], batch["pts"]), key=lambda row: row[0])
-    np.testing.assert_array_equal(rows[0][1], stacked)
-    assert [arr.shape for arr in rows[1][1]] == [(4, 3), (5, 3)]
-    assert rows[2][1] is None
-
-
 def test_batches_keep_tensor_column_with_missing_rows(ray_start_regular_shared):
     """A UDF that returns None for some rows of a tensor column keeps the column
     a tensor column. A batch without a missing row is one stacked array, a batch
