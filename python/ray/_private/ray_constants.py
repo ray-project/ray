@@ -51,6 +51,12 @@ RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S = max(
     env_float("RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S", 0.5), 0.001
 )
 
+# How long (seconds) a starting node waits for its raylet to register with the
+# GCS before giving up with "The current node timed out during startup".
+# This was made configurable to eliminate flaky tests on Windows CI, where the
+# raylet sometimes takes longer than the default to start and register.
+RAY_RAYLET_START_WAIT_TIME_S = env_float("RAY_RAYLET_START_WAIT_TIME_S", 30.0)
+
 # Internal kv keys for storing monitor debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
