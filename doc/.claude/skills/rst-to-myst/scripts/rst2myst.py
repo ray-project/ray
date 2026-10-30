@@ -614,6 +614,8 @@ class Converter:
             # Likewise `>` opens a block quote, even mid-paragraph. A `>>>` line
             # is an RST doctest block, which this converter doesn't model.
             text = re.sub(r"^(\s*)>(?!>>)", r"\1\\>", text)
+            # And `%` opens a MyST comment, which drops the line from the page.
+            text = re.sub(r"^(\s*)%", r"\1\\%", text)
             if re.search(r"(^|[^:]|\s)::$", text) and not DIRECTIVE_RE.match(text):
                 literal_next = True
                 if text.strip() == "::":
@@ -711,7 +713,10 @@ class Converter:
                 0,
             )
         if kind == "backtick":
-            head = "```{%s}%s" % (name, (" " + arg) if arg else "")
+            # CommonMark forbids a backtick in a backtick fence's info string, so
+            # a caption holding inline code needs a tilde fence to stay a directive.
+            fence = "~~~" if "`" in arg else "```"
+            head = fence + "{%s}%s" % (name, (" " + arg) if arg else "")
             content = rest
             if name not in RAW_BODY_DIRECTIVES and content:
                 content = self.convert(content)[0]
@@ -722,7 +727,7 @@ class Converter:
                 + opts
                 + ([""] if opts and content else [])
                 + self.fence_body(content)
-                + ["```"],
+                + [fence],
                 0,
             )
         if kind == "colon":
@@ -773,7 +778,7 @@ class Converter:
             return None
 
         def esc(c):
-            return re.sub(r"^(#{1,6})(\s|$)", r"\\\1\2", self.inline(c))
+            return re.sub(r"^(#{1,6}(?=\s|$)|%)", r"\\\1", self.inline(c))
 
         # No :widths:. A grid table renders no <colgroup>, and :widths: adds one.
         out = ["```{list-table}"] + ([f":header-rows: {header}"] if header else [])
@@ -792,9 +797,10 @@ class Converter:
             m = re.match(r"^(\s*(?:\* )?- )\| (.*)$", lines[i])
             if not m:
                 # A cell is parsed as its own block, so a cell opening with `# `
-                # (`# of trials`) becomes a heading. RST renders it as text.
+                # (`# of trials`) becomes a heading, and one opening with `%`
+                # becomes a comment. RST renders both as text.
                 out.append(
-                    re.sub(r"^(\s*(?:\* )?- )(#{1,6})(\s|$)", r"\1\\\2\3", lines[i])
+                    re.sub(r"^(\s*(?:\* )?- )(#{1,6}(?=\s|$)|%)", r"\1\\\2", lines[i])
                 )
                 i += 1
                 continue
@@ -1056,6 +1062,17 @@ CASES = [
         "```{list-table}\n* - \\# of trials\n  - \\# Nodes\n```\n",
     ),
     (
+        "list-table percent cell",
+        ".. list-table::\n\n   * - % of runs\n     - b\n",
+        "```{list-table}\n* - \\% of runs\n  - b\n```\n",
+    ),
+    (
+        "list-table caption with code",
+        ".. list-table:: Use ``x``\n\n   * - a\n",
+        "~~~{list-table} Use ``x``\n* - a\n~~~\n",
+    ),
+    ("percent paragraph", "% of runs fail.\n", "\\% of runs fail.\n"),
+    (
         "list-table empty cell",
         ".. list-table::\n\n   * -\n     - A\n     - B\n",
         "```{list-table}\n* -\n  - A\n  - B\n```\n",
@@ -1248,7 +1265,7 @@ def main(argv):
     if len(argv) != 2:
         sys.exit(__doc__)
     c = Converter()
-    sys.stdout.write(c.document(open(argv[1]).read()))
+    sys.stdout.write(c.document(open(argv[1], encoding="utf-8").read()))
     for f in c.flags:
         print(f"FLAG {argv[1]}: {f}", file=sys.stderr)
 

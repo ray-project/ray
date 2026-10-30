@@ -86,7 +86,7 @@ def census(root):
     total = files = 0
     for p in sorted(q for ext in ("md", "rst") for q in Path(root).rglob(f"*.{ext}")):
         try:
-            secs, ex = parse(p.read_text(), p.suffix)
+            secs, ex = parse(p.read_text(encoding="utf-8"), p.suffix)
         except Exception as e:  # a collection error fails the whole target
             print(f"ERROR  {p}: {type(e).__name__}: {e}")
             continue
@@ -100,10 +100,16 @@ def census(root):
 
 
 def parity(paths, base):
+    # Without this, a missing ref makes every file SKIP and the check passes.
+    if subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"],
+        capture_output=True,
+    ).returncode:
+        sys.exit(f"no git ref {base}. Pass --base, such as --base origin/master")
     bad = 0
     for md in map(Path, paths):
         try:
-            n, leaks = stock_fence_leaks(md.read_text())
+            n, leaks = stock_fence_leaks(md.read_text(encoding="utf-8"))
         except ValueError as e:  # the stock collector errors on the whole file too
             n, leaks = 0, None
             print(f"ERROR {md}: stock doctest parser: {e}")
@@ -125,12 +131,14 @@ def parity(paths, base):
                 ["git", "show", f"{base}:{rst}"],
                 check=True,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             ).stdout
         except subprocess.CalledProcessError:
             print(f"SKIP  {md}: no {rst} at {base}")
             continue
-        (sa, ea), (sb, eb) = parse(before, ".rst"), parse(md.read_text(), ".md")
+        (sa, ea), (sb, eb) = parse(before, ".rst"), parse(
+            md.read_text(encoding="utf-8"), ".md"
+        )
         ok = sa == sb and ea == eb
         bad += not ok
         print(
