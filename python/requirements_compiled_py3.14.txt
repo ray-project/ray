@@ -1092,7 +1092,7 @@ msal-extensions==1.2.0
     # via
     #   azure-cli-core
     #   azure-identity
-msgpack==1.1.2
+msgpack==1.2.1
     # via
     #   -r python/requirements/ml/rllib-requirements.txt
     #   -r python/requirements/test-requirements.txt
