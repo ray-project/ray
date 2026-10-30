@@ -8,7 +8,8 @@ genrule(
     name = "auth_token_file",
     testonly = True,
     outs = ["auth_token"],
-    cmd = "python3 -c \"import secrets; print(secrets.token_hex(32), end='')\" > $@",
+    # No python3 here: Windows CI agents lack it on the genrule's PATH.
+    cmd = "head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > $@",
     visibility = [
         "//cpp:__pkg__",
         "//src/ray/core_worker/tests:__pkg__",

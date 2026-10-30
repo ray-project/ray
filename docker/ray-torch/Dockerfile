@@ -33,3 +33,17 @@ sudo apt-get update \
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
 EOF
+
+# Ray defaults to token auth. The Anyscale platform starts Ray on each node of a
+# release test cluster without shipping a token. Every node runs this image, so a
+# token generated at build time is shared across the cluster. This image is only
+# for release tests. Never put a token into a published Ray image.
+RUN <<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+mkdir -p "$HOME/.ray"
+(umask 077 && python3 -c "import secrets; print(secrets.token_hex(32))" > "$HOME/.ray/auth_token")
+
+EOF
