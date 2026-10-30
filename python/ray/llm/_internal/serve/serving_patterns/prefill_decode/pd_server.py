@@ -32,6 +32,7 @@ from ray.llm._internal.serve.core.ingress.utils import (
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
+from ray.llm._internal.serve.observability.genai_tracing import traced_generator
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.serve._private.http_util import session_id_from_headers
@@ -244,6 +245,7 @@ class PDOrchestratorMixin:
 
     # ---- Orchestrated Request Flow ----
 
+    @traced_generator("ray.llm.pd_orchestration")
     async def _pd_handle_request(
         self,
         request: RequestType,
