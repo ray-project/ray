@@ -236,7 +236,7 @@ def test_dict_and_none_use_arrow_block(ray_start_regular_shared, restore_data_co
         ("Int64", pa.int64()),
         ("UInt64", pa.uint64()),
         ("boolean", pa.bool_()),
-        ("string", pa.string()),
+        (pd.StringDtype(storage="python"), pa.string()),
     ],
 )
 def test_to_arrow_preserves_all_null_extension_dtype(dtype, expected_type):
