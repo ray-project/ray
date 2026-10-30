@@ -37,6 +37,7 @@ class FakePlasmaClient : public PlasmaClientInterface {
 
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                 const ray::rpc::Address &owner_address,
+                                const WorkerID &producer_worker_id,
                                 bool is_mutable,
                                 int64_t data_size,
                                 const uint8_t *metadata,
@@ -51,6 +52,7 @@ class FakePlasmaClient : public PlasmaClientInterface {
     if (!inserted) {
       return Status::ObjectExists("Object already exists in plasma");
     }
+    producer_worker_ids[object_id] = producer_worker_id;
     if (data != nullptr) {
       *data = std::make_shared<SharedMemoryBuffer>(it->second.first.data(), data_size);
     }
@@ -156,6 +158,8 @@ class FakePlasmaClient : public PlasmaClientInterface {
   std::vector<ObjectID> sealed_objects;
   std::vector<ObjectID> released_objects;
   std::vector<ObjectID> aborted_objects;
+  // The producer worker each CreateAndSpillIfNeeded call carried, by object.
+  absl::flat_hash_map<ObjectID, WorkerID> producer_worker_ids;
 
   void ClearCallRecords() {
     sealed_objects.clear();

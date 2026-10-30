@@ -100,6 +100,7 @@ CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id,
                                           const rpc::Address &owner_address,
+                                          const WorkerID &producer_worker_id,
                                           bool *object_exists) {
   RAY_CHECK(!object.IsInPlasmaError()) << object_id;
   std::shared_ptr<Buffer> data;
@@ -107,6 +108,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                            object.HasData() ? object.GetData()->Size() : 0,
                            object_id,
                            owner_address,
+                           producer_worker_id,
                            &data,
                            /*created_by_worker=*/true));
   // data could be a nullptr if the ObjectID already existed, but this does
@@ -129,6 +131,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
+                                             const WorkerID &producer_worker_id,
                                              std::shared_ptr<Buffer> *data,
                                              bool created_by_worker,
                                              bool is_mutable) {
@@ -138,6 +141,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   Status status =
       store_client_->CreateAndSpillIfNeeded(object_id,
                                             owner_address,
+                                            producer_worker_id,
                                             is_mutable,
                                             data_size,
                                             metadata ? metadata->Data() : nullptr,
@@ -460,6 +464,7 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
                            8,
                            object_id,
                            rpc::Address(),
+                           /*producer_worker_id=*/WorkerID::Nil(),
                            &data,
                            /*created_by_worker=*/true));
   RAY_RETURN_NOT_OK(Seal(object_id));

@@ -43,6 +43,7 @@ inline constexpr std::string_view kObjectIds = "object_ids";
 inline constexpr std::string_view kOwnerNodeId = "owner_node_id";
 inline constexpr std::string_view kOwnerIpAddress = "owner_ip_address";
 inline constexpr std::string_view kOnwerWorkerId = "owner_worker_id";
+inline constexpr std::string_view kProducerWorkerId = "producer_worker_id";
 
 /// \brief Returns maybe_null if not null or a non-null pointer to an arbitrary memory
 /// that shouldn't be dereferenced.
@@ -213,6 +214,7 @@ Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn,
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                          ObjectID object_id,
                          const ray::rpc::Address &owner_address,
+                         const WorkerID &producer_worker_id,
                          bool is_experimental_mutable_object,
                          int64_t data_size,
                          int64_t metadata_size,
@@ -232,7 +234,8 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                                     metadata_size,
                                     source,
                                     device_num,
-                                    try_immediately);
+                                    try_immediately,
+                                    fbb.CreateString(producer_worker_id.Binary()));
   return PlasmaSend(store_conn, MessageType::PlasmaCreateRequest, &fbb, message);
 }
 
@@ -259,6 +262,10 @@ void ReadCreateRequest(const uint8_t *data,
   VerifyNotNullPtr(
       message->owner_worker_id(), kOnwerWorkerId, MessageType::PlasmaCreateRequest);
   object_info->owner_worker_id = WorkerID::FromBinary(message->owner_worker_id()->str());
+  VerifyNotNullPtr(
+      message->producer_worker_id(), kProducerWorkerId, MessageType::PlasmaCreateRequest);
+  object_info->producer_worker_id =
+      WorkerID::FromBinary(message->producer_worker_id()->str());
   *source = message->source();
   *device_num = message->device_num();
 }

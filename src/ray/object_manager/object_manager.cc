@@ -797,6 +797,12 @@ std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedByOwnersOn(
                                    });
 }
 
+WorkerID ObjectManager::GetLocalObjectProducerWorkerId(const ObjectID &object_id) const {
+  auto it = local_plasma_objects_.find(object_id);
+  return it == local_plasma_objects_.end() ? WorkerID::Nil()
+                                           : it->second.object_info.producer_worker_id;
+}
+
 std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";

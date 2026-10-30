@@ -122,6 +122,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
           rpc_address_,
           {object_id},
           /*generator_id=*/ObjectID::Nil(),
+          /*producer_worker_id=*/WorkerID::Nil(),
           [this, object_id, other_locations = std::move(other_locations), node_id](
               const Status &status, const rpc::PinObjectIDsReply &reply) mutable {
             if (status.ok() && reply.successes(0)) {

@@ -2800,8 +2800,14 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
     ObjectID generator_id = request.has_generator_id()
                                 ? ObjectID::FromBinary(request.generator_id())
                                 : ObjectID::Nil();
-    local_object_manager_.PinObjectsAndWaitForFree(
-        object_ids, std::move(results), request.owner_address(), generator_id);
+    WorkerID producer_worker_id = request.has_producer_worker_id()
+                                      ? WorkerID::FromBinary(request.producer_worker_id())
+                                      : WorkerID::Nil();
+    local_object_manager_.PinObjectsAndWaitForFree(object_ids,
+                                                   std::move(results),
+                                                   request.owner_address(),
+                                                   generator_id,
+                                                   producer_worker_id);
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2841,8 +2847,11 @@ NodeManager::MovedObjectPinResult NodeManager::PinAndReportMovedObject(
     num_moved_objects_pin_failed_++;
     return MovedObjectPinResult::kNotPinnable;
   }
-  local_object_manager_.PinObjectsAndWaitForFree(
-      object_ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
+  local_object_manager_.PinObjectsAndWaitForFree(object_ids,
+                                                 std::move(results),
+                                                 owner_address,
+                                                 /*generator_id=*/ObjectID::Nil(),
+                                                 /*producer_worker_id=*/WorkerID::Nil());
   object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
   num_moved_objects_pinned_++;
   return MovedObjectPinResult::kPinned;

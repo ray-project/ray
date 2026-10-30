@@ -263,6 +263,15 @@ class ObjectManager : public ObjectManagerInterface,
   std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
       const NodeID &node_id) const override;
 
+  /**
+   * @brief The producer worker recorded when the object was created in local plasma.
+   *
+   * @param object_id The object to look up.
+   * @return The producer's ID, or Nil if the object isn't in local plasma or was created
+   * without one.
+   */
+  WorkerID GetLocalObjectProducerWorkerId(const ObjectID &object_id) const override;
+
   /// Returns debug string for class.
   ///
   /// \return string.
