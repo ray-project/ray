@@ -520,7 +520,9 @@ def _reconcile_diverging_fields(
             flags["has_null"] |= pyarrow.types.is_null(field_type)
             flags["has_struct"] |= pyarrow.types.is_struct(field_type)
 
-            # Check for object-tensor conflict after every type is collected.
+            # A column cannot hold tensors in one block and pickled objects in
+            # another: make every row the same kind, for example nested lists
+            # for ragged arrays.
             if flags["has_object"] and flags["has_tensor"]:
                 raise ValueError(
                     f"Found columns with both objects and tensors: {field_name}"
@@ -567,7 +569,7 @@ def _reconcile_field(
 
     # Handle special cases in priority order
 
-    # 1. Tensor fields
+    # 1. Tensor fields. A null arm becomes null rows of the tensor type.
     tensor_types = get_arrow_extension_tensor_types()
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
 
@@ -669,12 +671,13 @@ def unify_schemas(
 
     # Try PyArrow's unification first, only reconcile for tensor fields
     try:
-        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+        unified = _unify_schemas_pyarrow(schemas_to_unify, promote_types)
     except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid) as e:
         # If we raise only on non tensor errors, it fails to unify PythonObjectType and pyarrow primitives.
         # Look at test_pyarrow_conversion_error_handling for an example.
         pyarrow_exception = e
-        pass
+    else:
+        return unified
 
     # Reconcile diverging fields
     overrides = _reconcile_diverging_fields(schemas_to_unify, promote_types)
@@ -694,13 +697,12 @@ def unify_schemas(
             for field in schema
         ]
         updated_schemas.append(pyarrow.schema(fields, metadata=schema.metadata))
-    schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied
     try:
-        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+        return _unify_schemas_pyarrow(updated_schemas, promote_types)
     except Exception as e:
-        schemas_str = "\n-----\n".join(str(s) for s in schemas_to_unify)
+        schemas_str = "\n-----\n".join(str(s) for s in updated_schemas)
         logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
         raise
 
