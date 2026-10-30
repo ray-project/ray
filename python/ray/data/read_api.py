@@ -1881,9 +1881,11 @@ def read_parquet(
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
         planning, which can be expensive for large or remote datasets. Larger
-        eligible reads distribute schema I/O across bounded Ray tasks. The driver
-        retains every candidate schema and applies the existing one-shot unifier;
-        this does not reduce driver schema storage, which remains O(files).
+        eligible reads distribute schema I/O across bounded Ray tasks. When decoding
+        IPC batches, the driver shares a decoded schema for consecutive identical
+        payloads within the planning call. It keeps every candidate position for the
+        existing one-shot unifier; candidate references and schemas with different IPC
+        payloads still require O(files) storage.
         Configure eligibility, task resources, batching and I/O concurrency through
         :class:`~ray.data.DataContext`. Within the configured metadata payload
         budgets, planning retains exact file counts and metadata-only Parquet
@@ -3087,8 +3089,10 @@ def read_orc(
         ``merge_schema=True`` lists all eligible files and reads their schemas
         during planning, which can be expensive for large or remote datasets.
         Larger eligible reads distribute schema I/O across bounded Ray tasks.
-        The driver retains every candidate schema and applies the existing
-        one-shot unifier; driver schema storage remains O(files).
+        When decoding IPC batches, the driver shares a decoded schema for consecutive
+        identical payloads within the planning call. It keeps every candidate position
+        for the existing one-shot unifier; candidate references and schemas with
+        different IPC payloads still require O(files) storage.
         Configure eligibility, task resources, batching and I/O concurrency through
         :class:`~ray.data.DataContext`. Within the configured metadata payload
         budgets, planning retains exact file counts for metadata count queries.

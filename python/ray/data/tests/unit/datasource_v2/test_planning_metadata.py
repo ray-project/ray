@@ -262,6 +262,7 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
     )
     remote = Mock()
     remote.options.return_value = remote
+    decode = Mock(wraps=pa.ipc.read_schema)
     state = dict(submitted=0, reserved=0, used=0)
     values = {}
 
@@ -272,8 +273,9 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
         ref = Mock(index=state["submitted"], credit=credit)
         state["submitted"] += 1
         size = min(8, credit // max(1, rows))
+        name = "head" if ref.index == 0 else "tail"
         values[ref] = inference._SchemaBatchResult(
-            [pa.schema([(p, pa.int64())]).serialize().to_pybytes() for p in batch],
+            [pa.schema([(name, pa.int64())]).serialize().to_pybytes() for _ in batch],
             pa.array(
                 [
                     FileMetadata(int(p), b"x" * size if size else None).to_metadata()
@@ -306,6 +308,7 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
     monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
     monkeypatch.setattr(ray, "wait", wait)
     monkeypatch.setattr(ray, "get", get)
+    monkeypatch.setattr(pa.ipc, "read_schema", decode)
     result = inference.infer_full_schema_with_metadata_from_files(
         sample,
         pafs.LocalFileSystem(),
@@ -314,9 +317,9 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
         supports_distributed_reads=True,
     )
     assert result is not None and result.metadata is not None
-    assert result.schema.names == list(dict.fromkeys(paths))
+    assert result.schema.names == ["head", "tail"]
     assert [v["num_rows"] for v in result.metadata.to_pylist()] == list(map(int, paths))
-    assert state["submitted"] == 6 and state["reserved"] == 0
+    assert (state["submitted"], state["reserved"], decode.call_count) == (6, 0, 2)
 
 
 if __name__ == "__main__":

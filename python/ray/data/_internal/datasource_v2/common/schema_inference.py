@@ -245,7 +245,11 @@ def infer_full_schema_with_metadata_from_files(
     supports_distributed_reads: bool,
     reuse_metadata: bool = True,
 ) -> Optional[FullSchemaInferenceResult]:
-    """Read every schema once and optionally retain budgeted file metadata."""
+    """Read every schema once and optionally retain budgeted file metadata.
+
+    Consecutive identical IPC payloads share a decoded schema within this call;
+    metadata remains file-specific and candidate references remain O(files).
+    """
     context = DataContext.get_current()
     _validate_full_schema_config(context)
     budget = task_budget = 0
@@ -325,6 +329,8 @@ def infer_full_schema_with_metadata_from_files(
     schemas: List[Optional[pa.Schema]] = [None] * len(paths)
     metadata_chunks: Dict[int, pa.Array] = {}
     pending: Dict[ObjectRef[Any], Tuple[int, int, int]] = {}
+    last_payload: Optional[bytes] = None
+    last_schema: Optional[pa.Schema] = None
 
     def consume(
         result: Union[List[bytes], _SchemaBatchResult],
@@ -332,7 +338,7 @@ def infer_full_schema_with_metadata_from_files(
         count: int,
         credit: int,
     ) -> None:
-        nonlocal footer_available
+        nonlocal footer_available, last_payload, last_schema
         if isinstance(result, _SchemaBatchResult):
             footer_available += credit - result.footer_bytes
             metadata_chunks[offset] = (
@@ -344,7 +350,11 @@ def infer_full_schema_with_metadata_from_files(
         else:
             values = result
         for index, value in enumerate(values):
-            schemas[offset + index] = pa.ipc.read_schema(pa.BufferReader(value))
+            if value != last_payload:
+                last_schema = pa.ipc.read_schema(pa.BufferReader(value))
+                last_payload = value
+            assert last_schema is not None
+            schemas[offset + index] = last_schema
 
     start = 0
     try:
