@@ -53,7 +53,6 @@ py_test_module_list(
         "test_autoscaler_drain_node_api.py",
         "test_component_failures_2.py",
         "test_component_failures_3.py",
-        "test_consume_once_cross_node.py",
         "test_dashboard_profiler.py",
         "test_dataclient_disconnect.py",
         "test_debug_tools.py",
@@ -929,6 +928,9 @@ py_test_module_list(
         "test_actor.py",
         "test_actor_failures.py",
         "test_cancel.py",
+        # In the large shard for its timeout: CI runs go past the moderate (300s)
+        # limit.
+        "test_consume_once_cross_node.py",
         "test_core_worker_fault_tolerance.py",
         "test_failure.py",
         "test_failure_2.py",

@@ -2141,5 +2141,87 @@ TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
   EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
 }
 
+// Tests that when the primary copy moves to the consumer's node, the owner frees
+// the copy on the previous primary's node once, and a repeated update frees
+// nothing.
+TEST_F(CoreWorkerTest, PrimaryMovedFreesPreviousPrimaryCopy) {
+  const NodeID producer = core_worker_->GetCurrentNodeId();
+  const NodeID consumer = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::ELIGIBLE,
+                                     /*add_local_ref=*/true,
+                                     std::optional<NodeID>(producer));
+  auto report_primary_moved = [&]() {
+    rpc::UpdateObjectLocationBatchRequest request;
+    request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+    request.set_node_id(consumer.Binary());
+    auto *update = request.add_object_location_updates();
+    update->set_object_id(object_id.Binary());
+    update->set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::ADDED);
+    update->set_primary_moved_to_node_id(consumer.Binary());
+    rpc::UpdateObjectLocationBatchReply reply;
+    core_worker_->HandleUpdateObjectLocationBatch(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+  };
+
+  report_primary_moved();
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
+  ASSERT_TRUE(local_raylet_client_->ReplyFreeLocalObjects());
+
+  report_primary_moved();
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
+  EXPECT_FALSE(local_raylet_client_->ReplyFreeLocalObjects());
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+}
+
+// Tests that when the consumer's node spills a moved object before its
+// primary-moved update leaves, so both arrive in one update, the owner keeps the
+// consumer's spill and frees the producer's copy.
+TEST_F(CoreWorkerTest, PrimaryMovedWithConsumerSpillKeepsConsumerSpill) {
+  const NodeID producer = core_worker_->GetCurrentNodeId();
+  const NodeID consumer = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::ELIGIBLE,
+                                     /*add_local_ref=*/true,
+                                     std::optional<NodeID>(producer),
+                                     /*tensor_transport=*/std::nullopt,
+                                     MoveState::MOVABLE);
+  ASSERT_TRUE(reference_counter_->TryCommitMoves({object_id}).ok());
+
+  rpc::UpdateObjectLocationBatchRequest request;
+  request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+  request.set_node_id(consumer.Binary());
+  auto *update = request.add_object_location_updates();
+  update->set_object_id(object_id.Binary());
+  update->mutable_spilled_location_update()->set_spilled_url("s3://consumer");
+  update->mutable_spilled_location_update()->set_spilled_to_local_storage(false);
+  update->set_primary_moved_to_node_id(consumer.Binary());
+  rpc::UpdateObjectLocationBatchReply reply;
+  core_worker_->HandleUpdateObjectLocationBatch(
+      request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  reference_counter_->FillObjectInformation(object_id, &object_info);
+  EXPECT_EQ(object_info.spilled_url(), "s3://consumer");
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+}
+
 }  // namespace core
 }  // namespace ray

@@ -4299,6 +4299,22 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
   for (const auto &object_location_update : object_location_updates) {
     const auto &object_id = ObjectID::FromBinary(object_location_update.object_id());
 
+    // Handle the primary moved update before the spill update if they are in the same
+    // message, since the owner records a spill only from the node that holds its primary
+    // copy. If promotion to primary and spilling both happen and are reported in the same
+    // message, we need to honor both.
+    if (object_location_update.has_primary_moved_to_node_id()) {
+      // The object was moved: the consumer's node now pins the primary copy,
+      // so the copy on the previous primary's node is freed.
+      const std::optional<NodeID> node_to_free =
+          reference_counter_->UpdateObjectPrimaryMoved(
+              object_id,
+              NodeID::FromBinary(object_location_update.primary_moved_to_node_id()));
+      if (node_to_free.has_value()) {
+        FreeObjectOnNodesAsync(object_id, {*node_to_free});
+      }
+    }
+
     if (object_location_update.has_spilled_location_update()) {
       AddSpilledObjectLocationOwner(
           object_id,
@@ -4306,6 +4322,7 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
           object_location_update.spilled_location_update().spilled_to_local_storage()
               ? node_id
               : NodeID::Nil(),
+          node_id,
           object_location_update.has_generator_id()
               ? std::optional<ObjectID>(
                     ObjectID::FromBinary(object_location_update.generator_id()))
@@ -4325,12 +4342,6 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                        << " has been received.";
       }
     }
-
-    if (object_location_update.has_primary_moved_to_node_id()) {
-      reference_counter_->UpdateObjectPinnedAtRaylet(
-          object_id,
-          NodeID::FromBinary(object_location_update.primary_moved_to_node_id()));
-    }
   }
 
   send_reply_callback(Status::OK(),
@@ -4342,6 +4353,7 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     const ObjectID &object_id,
     const std::string &spilled_url,
     const NodeID &spilled_node_id,
+    const NodeID &reporter_node_id,
     const std::optional<ObjectID> &generator_id) {
   RAY_LOG(DEBUG).WithField(object_id).WithField(spilled_node_id)
       << "Received object spilled location update for object, which has been spilled "
@@ -4362,8 +4374,8 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     }
   }
 
-  auto reference_exists =
-      reference_counter_->HandleObjectSpilled(object_id, spilled_url, spilled_node_id);
+  auto reference_exists = reference_counter_->HandleObjectSpilled(
+      object_id, spilled_url, spilled_node_id, reporter_node_id);
   if (!reference_exists) {
     RAY_LOG(DEBUG).WithField(object_id) << "Object not found";
   }
