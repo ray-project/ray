@@ -7,6 +7,7 @@ predicate ``ListFiles`` prunes by but the reader never evaluates drops rows
 with no error. These tests pin that invariant, including for plan shapes no
 current rule produces but a future one could.
 """
+
 from dataclasses import replace
 from pathlib import Path
 from typing import List
@@ -29,13 +30,21 @@ from ray.data._internal.logical.interfaces import (
     Plan,
     Rule,
 )
-from ray.data._internal.logical.operators import ListFiles, ReadFiles
+from ray.data._internal.logical.operators import (
+    Filter,
+    Limit,
+    ListFiles,
+    Project,
+    ReadFiles,
+)
 from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.optimizers import LogicalOptimizer, get_logical_ruleset
 from ray.data._internal.logical.rules.derive_list_files_pushdown import (
     DeriveListFilesPushdown,
 )
 from ray.data.context import DataContext
+from ray.data.datasource import FileShuffleConfig
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
 
@@ -110,6 +119,50 @@ def test_derives_state_the_scanner_accepted(tmp_path):
     assert list_files.predicate is predicate
     assert list_files.projected_columns == ["a"]
     assert list_files.limit == 5
+
+
+@pytest.mark.parametrize(
+    "shuffle_config, expected_limit",
+    [
+        (None, 5),
+        (FileShuffleConfig(seed=1), 5),
+        (FileShuffleConfig(seed=1, small_chunks_shuffle=True), None),
+    ],
+    ids=["no_shuffle", "file_shuffle", "small_chunks_shuffle"],
+)
+def test_limit_is_not_derived_onto_row_group_shuffle(
+    tmp_path, shuffle_config, expected_limit
+):
+    """Listing stops early before the row-group shuffle runs.
+
+    A listing limit would shrink the pool the shuffle permutes to the first
+    files listed, so only the scanner keeps the limit.
+    """
+    read_files = _mk_read_files(tmp_path)
+    predicate = col("a") > 2
+    scanner, _residual = _scanner_of(read_files).push_filters(predicate)
+    read_files = replace(
+        read_files,
+        scanner=scanner.push_limit(5),
+        input_dependencies=[
+            replace(
+                _source_list_files(read_files),
+                shuffle_config_factory=lambda: shuffle_config,
+            )
+        ],
+    )
+
+    plan = _apply(read_files)
+
+    list_files = _list_files_of(plan)
+    assert list_files.limit == expected_limit
+    assert list_files.predicate is predicate
+    (scanner_limit,) = [
+        _scanner_of(op).pushed_limit()
+        for op in plan.dag.post_order_iter()
+        if isinstance(op, ReadFiles)
+    ]
+    assert scanner_limit == 5
 
 
 def test_no_pushdown_leaves_list_files_unconstrained(tmp_path):
@@ -238,6 +291,67 @@ def test_optimizer_keeps_list_files_in_sync_with_the_scanner(tmp_path):
     ]
     assert scanner_predicate is not None
     assert _list_files_of(optimized).predicate is scanner_predicate
+
+
+def test_listing_partition_pruner_retains_full_schema_after_optimization(tmp_path):
+    from ray.data._internal.logical.operators import Filter
+
+    read_files = _mk_read_files(tmp_path)
+    scanner = (
+        replace(
+            _scanner_of(read_files),
+            schema=pa.schema([("a", pa.int64()), ("year", pa.int32())]),
+            partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+        )
+        .prune_columns(["a"])
+        .push_limit(1)
+    )
+    read_files = replace(read_files, scanner=scanner)
+    dag = Filter(predicate_expr=col("year") == 2024, input_dependencies=[read_files])
+
+    optimized = LogicalOptimizer().optimize(
+        LogicalPlan(dag=dag, context=DataContext.get_current())
+    )
+    list_files = _list_files_of(optimized)
+    pruner = list_files.partition_pruner
+
+    assert pruner is not None
+    assert pruner.should_include("/root/year=2024/a.parquet")
+    assert not pruner.should_include("/root/year=2023/b.parquet")
+    assert list_files.projected_columns == ["a"]
+    assert list_files.limit == 1
+
+
+@pytest.mark.parametrize("columns", [["b"], []])
+def test_block_udf_filter_keeps_listing_and_read_limit_unset(tmp_path, columns):
+    read_files = replace(_mk_read_files(tmp_path), block_udf=lambda table: table)
+    predicate = col("a") > 1
+    filtered = Filter(predicate_expr=predicate, input_dependencies=[read_files])
+    projected = Project(
+        exprs=[col(name) for name in columns], input_dependencies=[filtered]
+    )
+    dag = Limit(limit=1, input_dependencies=[projected])
+
+    optimized = LogicalOptimizer().optimize(
+        LogicalPlan(dag=dag, context=DataContext.get_current())
+    )
+    (read,) = [
+        op for op in optimized.dag.post_order_iter() if isinstance(op, ReadFiles)
+    ]
+    (remaining_filter,) = [
+        op for op in optimized.dag.post_order_iter() if isinstance(op, Filter)
+    ]
+    assert remaining_filter.predicate_expr is not None
+    assert remaining_filter.predicate_expr.structurally_equals(predicate)
+    assert "a" in read.infer_schema().names
+    scanner = _scanner_of(read)
+    assert scanner.predicate is None
+    assert scanner.partition_predicate is None
+    assert scanner.limit is None
+    listing = _list_files_of(optimized)
+    assert listing.predicate is None
+    assert listing.partition_pruner is None
+    assert listing.limit is None
 
 
 if __name__ == "__main__":

@@ -250,8 +250,7 @@ def download_model_files(
     download_extra_files: bool = True,
     callback: Optional[CallbackBase] = None,
 ) -> Optional[str]:
-    """
-    Download the model files from the cloud storage. We support two ways to specify
+    """Download the model files from the cloud storage. We support two ways to specify
     the remote model path in the cloud storage:
     Approach 1:
     - model_id: The vanilla model id such as "meta-llama/Llama-3.1-8B-Instruct".

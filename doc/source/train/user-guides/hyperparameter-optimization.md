@@ -148,9 +148,7 @@ If you depend on the behavior of built-in or custom Ray Tune callbacks, run Ray 
 If any callback depends on reported metrics, pass {class}`ray.tune.integration.ray_train.TuneReportCallback` to the trainer callbacks. This callback propagates results to the Tuner.
 
 
-```{testcode}
-:skipif: True
-
+```python
 import ray.tune
 from ray.tune.integration.ray_train import TuneReportCallback
 from ray.tune.logger import TBXLoggerCallback

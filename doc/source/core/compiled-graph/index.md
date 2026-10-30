@@ -24,9 +24,7 @@ Ray Compiled Graph gives you an API similar to Ray Core, with the following adva
 
 For example, consider the following Ray Core code, which sends data to an actor and gets the result:
 
-```{testcode}
-:skipif: True
-
+```python
 # Ray Core API for remote execution.
 # ~1ms overhead to invoke `recv`.
 ref = receiver.recv.remote(data)
@@ -36,9 +34,7 @@ ray.get(ref)
 
 The following code compiles and executes the same example as a Compiled Graph:
 
-```{testcode}
-:skipif: True
-
+```python
 # Compiled Graph for remote execution.
 # less than 50us overhead to invoke `recv` (during `graph.execute(data)`).
 with InputNode() as inp:
