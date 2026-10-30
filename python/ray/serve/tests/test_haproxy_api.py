@@ -5,12 +5,14 @@ import json
 import logging
 import os
 import signal
+import socketserver
+import stat
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Optional, Tuple
 from unittest import mock
 
 import httpx
@@ -1096,6 +1098,7 @@ def test_ingress_request_router_forward_body_gate_renders(
             "http-request del-header serve-multiplexed-model-id "
             "if has_ingress_request_router_app"
         ) in cfg
+        assert "x-serve-router-original-method" not in lua
         assert "extract_json_string" not in lua
 
 
@@ -1903,6 +1906,116 @@ async def test_start(haproxy_api_cleanup):
         await api.stop()
         assert api._proc is None
         assert not api._is_running()
+
+
+def _call_wsgi(app, path: str, method: str = "GET") -> Tuple[str, bytes]:
+    """Call a WSGI app directly and return (status line, body)."""
+    path, _, query = path.partition("?")
+    captured = {}
+
+    def start_response(status, headers):
+        captured["status"] = status
+
+    environ = {"REQUEST_METHOD": method, "PATH_INFO": path, "QUERY_STRING": query}
+    body = b"".join(app(environ, start_response))
+    return captured["status"], body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enable_hap_optimization", [True, False])
+async def test_metrics_auth_required_moves_exporter_to_unix_socket(
+    haproxy_api_cleanup, enable_hap_optimization
+):
+    """With metrics_auth_required, HAProxy binds neither the metrics nor the
+    stats port. The exporter and stats page answer only on a 0600 unix socket,
+    which make_exporter_proxy_app forwards to, and keep answering after a
+    reload hands the socket to a new HAProxy process: with -x when
+    enable_hap_optimization is on, with a plain -sf when it is off."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        metrics_port = find_free_port()
+        stats_port = find_free_port()
+        exporter_socket_path = os.path.join(temp_dir, "exporter.sock")
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=find_free_port()),
+            metrics_port=metrics_port,
+            stats_port=stats_port,
+            socket_path=os.path.join(temp_dir, "admin.sock"),
+            enable_hap_optimization=enable_hap_optimization,
+            server_state_base=temp_dir,
+            server_state_file=os.path.join(temp_dir, "server-state"),
+            metrics_auth_required=True,
+            exporter_socket_path=exporter_socket_path,
+            has_received_routes=True,
+            has_received_servers=True,
+        )
+        api = HAProxyApi(
+            cfg=config, config_file_path=os.path.join(temp_dir, "haproxy.cfg")
+        )
+        haproxy_api_cleanup(api)
+        await api.start()
+
+        with open(api.config_file_path) as f:
+            config_content = f.read()
+        assert f"bind unix@{exporter_socket_path} mode 600" in config_content
+        assert "frontend prometheus" not in config_content
+        assert "listen stats" not in config_content
+        assert stat.S_IMODE(os.stat(exporter_socket_path).st_mode) == 0o600
+        for port in (metrics_port, stats_port):
+            with pytest.raises(requests.ConnectionError):
+                requests.get(f"http://127.0.0.1:{port}/", timeout=2)
+
+        app = haproxy.make_exporter_proxy_app(config)
+
+        def assert_both_pages_answer():
+            status, body = _call_wsgi(app, "/metrics")
+            assert status.startswith("200")
+            assert b"haproxy_process_" in body
+            status, body = _call_wsgi(app, "/stats;csv")
+            assert status.startswith("200")
+            assert body.startswith(b"# pxname")
+
+        assert_both_pages_answer()
+        assert _call_wsgi(app, "/other")[0].startswith("404")
+        assert _call_wsgi(app, "/metrics", method="POST")[0].startswith("404")
+
+        old_pid = api._proc.pid
+        await api.reload()
+        assert api._proc.pid != old_pid
+        assert_both_pages_answer()
+
+        await api.stop()
+        assert _call_wsgi(app, "/metrics")[0].startswith("503")
+
+
+def test_exporter_proxy_app_retries_after_dropped_connection():
+    """An -sf reload can reset a connection still queued on the old HAProxy
+    worker. The proxy app retries once and gets the new worker's answer."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        socket_path = os.path.join(temp_dir, "exporter.sock")
+        connections = []
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                connections.append(1)
+                if len(connections) == 1:
+                    return  # Close without answering, like a reset listener.
+                self.rfile.readline()
+                self.wfile.write(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"
+                    b"Content-Length: 2\r\nConnection: close\r\n\r\nok"
+                )
+
+        server = socketserver.ThreadingUnixStreamServer(socket_path, Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            app = haproxy.make_exporter_proxy_app(
+                HAProxyConfig(exporter_socket_path=socket_path)
+            )
+            assert _call_wsgi(app, "/metrics") == ("200 OK", b"ok")
+        finally:
+            server.shutdown()
+            server.server_close()
+        assert len(connections) == 2
 
 
 @pytest.mark.asyncio

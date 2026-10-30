@@ -11,6 +11,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -23,6 +24,7 @@ from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
+from ray.experimental.sandbox._internal import docker_config
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -48,13 +50,14 @@ _LAYER_DOWNLOADS = 3
 def _registry_request(
     url: str, headers: Dict[str, str], auth_header: Optional[str] = None
 ) -> urllib.request.Request:
-    """Build a registry request, keeping the bearer token off redirects.
+    """Build a registry request, keeping its credentials off redirects.
 
     Registries answer blob GETs with a redirect to presigned object storage.
     urllib does not copy unredirected headers onto a redirected request, so
-    marking the token this way drops it at the hop. Sending it onward would
-    trip S3's ``400 InvalidArgument: Only one auth mechanism allowed``, since
-    the presigned URL already carries its own signature.
+    marking the credentials this way drops them at the hop. Sending them
+    onward would hand them to the storage host and trip S3's ``400
+    InvalidArgument: Only one auth mechanism allowed``, since the presigned
+    URL already carries its own signature.
     """
     req = urllib.request.Request(url, headers=headers)
     if auth_header:
@@ -115,8 +118,8 @@ def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
     avoids Docker Hub's anonymous rate limits and pulls over the local
     network instead of the WAN. Only Docker Hub pulls are rewritten; other
     registries pass through untouched. When set, the mirror is
-    authoritative (no fallback to the upstream), and it is used with the
-    same anonymous token flow as any registry.
+    authoritative (no fallback to the upstream), and it authenticates like
+    any registry (see ``get_registry_auth_headers``).
 
     Args:
         registry: Registry host chosen by ``parse_image_ref``.
@@ -241,7 +244,31 @@ def get_registry_auth_headers(
     reference: str = "latest",
     timeout: float = 30.0,
 ) -> Dict[str, str]:
-    """Retrieve bearer authentication token headers for registry repository."""
+    """Answer a registry's authentication challenge for pulling ``repo``.
+
+    An anonymous manifest request shows whether, and how, the registry wants
+    callers to authenticate. Only a challenge sends Ray to the node's Docker
+    config for the registry's credentials (see
+    ``docker_config.registry_credentials``), so a pull that draws no
+    challenge runs no credential helper. Docker Hub and GHCR challenge every
+    pull, even of a public image. A ``Basic`` challenge, Amazon ECR's, takes
+    the credentials on every request; a ``Bearer`` challenge trades them, or
+    nothing for a public repository, for a token from the realm it names.
+
+    Args:
+        registry: Registry host, optionally with a scheme.
+        repo: Repository path within the registry.
+        reference: Tag or digest whose manifest is requested.
+        timeout: Network and credential helper timeout in seconds.
+
+    Returns:
+        The ``Authorization`` header for the pull's registry requests, or no
+        headers when the registry asks for none.
+
+    Raises:
+        SandboxCreationError: If the registry demands credentials that the
+            node's Docker config lacks, or turns down the ones it has.
+    """
     url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
@@ -251,8 +278,21 @@ def get_registry_auth_headers(
         if err.code != 401:
             return {}
         auth_hdr = err.headers.get("Www-Authenticate", "")
-        if not re.match(r"^\s*Bearer\b", auth_hdr, re.IGNORECASE):
+        scheme = auth_hdr.split(None, 1)[0].lower() if auth_hdr.strip() else ""
+        if scheme not in ("basic", "bearer"):
             return {}
+
+        creds = docker_config.registry_credentials(registry, timeout)
+        if creds is not None and creds.registry_token:
+            return {"Authorization": f"Bearer {creds.registry_token}"}
+        if scheme == "basic":
+            if creds is None or not creds.username:
+                raise SandboxCreationError(
+                    f"Registry '{registry}' requires credentials to pull "
+                    f"'{repo}', and the Docker config "
+                    f"{docker_config.config_path()} provides none for it."
+                )
+            return {"Authorization": creds.basic_authorization()}
 
         realm_m = re.search(r'realm=["\']?([^"\',\s]+)["\']?', auth_hdr, re.IGNORECASE)
         if not realm_m:
@@ -273,9 +313,29 @@ def get_registry_auth_headers(
         if scope:
             params["scope"] = scope
 
-        sep = "&" if "?" in realm else "?"
-        auth_url = f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
-        auth_req = urllib.request.Request(auth_url, headers={"User-Agent": _USER_AGENT})
+        if creds is not None and creds.identity_token:
+            # The token spec's OAuth2 refresh-token grant.
+            auth_url = realm
+            form = dict(
+                params,
+                grant_type="refresh_token",
+                refresh_token=creds.identity_token,
+                client_id="ray-sandbox",
+            )
+            auth_req = urllib.request.Request(
+                auth_url,
+                data=urllib.parse.urlencode(form).encode("utf-8"),
+                headers={"User-Agent": _USER_AGENT},
+            )
+        else:
+            sep = "&" if "?" in realm else "?"
+            auth_url = (
+                f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
+            )
+            basic = None
+            if creds is not None and creds.username:
+                basic = creds.basic_authorization()
+            auth_req = _registry_request(auth_url, {"User-Agent": _USER_AGENT}, basic)
         try:
             with urllib.request.urlopen(auth_req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -283,6 +343,13 @@ def get_registry_auth_headers(
                 if token:
                     return {"Authorization": f"Bearer {token}"}
         except Exception as auth_err:
+            if creds is not None:
+                raise SandboxCreationError(
+                    f"Failed to get a pull token for '{registry}' from "
+                    f"'{realm}' with the credentials in "
+                    f"{docker_config.config_path()}: "
+                    f"{_describe_pull_error(auth_err)}"
+                ) from auth_err
             logger.warning(
                 f"Failed to obtain registry auth token from '{auth_url}': {auth_err}"
             )
@@ -568,6 +635,35 @@ def mkfs_erofs_path() -> Optional[str]:
     return path
 
 
+# EROFS keeps its superblock at this offset, in this many bytes.
+_EROFS_SUPERBLOCK_OFFSET = 1024
+_EROFS_SUPERBLOCK_SIZE = 128
+
+
+def erofs_superblock_fingerprint(image_path: str) -> Optional[str]:
+    """SHA-256 of an EROFS image's superblock, or None if it can't be read.
+
+    gVisor refuses to restore a checkpoint over an EROFS root filesystem
+    whose superblock differs in any field from the one it was saved with
+    (it panics with "superblock mismatch detected on restore"), so two
+    builds of an image are interchangeable for restore exactly when their
+    fingerprints match.
+
+    Args:
+        image_path: Path of the EROFS image.
+
+    Returns:
+        The hex digest, or None if the image can't be read.
+    """
+    try:
+        with open(image_path, "rb") as f:
+            f.seek(_EROFS_SUPERBLOCK_OFFSET)
+            superblock = f.read(_EROFS_SUPERBLOCK_SIZE)
+    except OSError:
+        return None
+    return hashlib.sha256(superblock).hexdigest()
+
+
 def require_mkfs_erofs() -> str:
     """``mkfs_erofs_path()``, or a ``SandboxCreationError`` naming what to install."""
     path = mkfs_erofs_path()
@@ -653,6 +749,37 @@ def _seed_mountpoints(rootfs_dir: str) -> None:
             pass
 
 
+def _stream_tree(tar: tarfile.TarFile, path: str, arcname: str, owner_filter) -> None:
+    """Add ``path`` and everything under it to ``tar`` and delete each file
+    once its bytes are in the stream.
+
+    Members go in the order ``tar.add`` uses (a directory before its
+    entries, names sorted), so the image is the same as before. A file with
+    other hard links stays: deleting it would drop the others' link count
+    to one, and tar would then store them as copies instead of links.
+    """
+    st = os.lstat(path)
+    tar.add(path, arcname, recursive=False, filter=owner_filter)
+    if stat.S_ISDIR(st.st_mode):
+        if not st.st_mode & stat.S_IWUSR:
+            # Images ship read-only directories (0555, say). The stream
+            # already has this one's mode, so making it writable only lets a
+            # worker that isn't root delete its files.
+            try:
+                os.chmod(path, stat.S_IMODE(st.st_mode) | stat.S_IWUSR)
+            except OSError:
+                pass
+        for name in sorted(os.listdir(path)):
+            _stream_tree(
+                tar, os.path.join(path, name), os.path.join(arcname, name), owner_filter
+            )
+    elif stat.S_ISREG(st.st_mode) and st.st_nlink == 1:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass  # It stays for the caller to remove, as before.
+
+
 def build_erofs_image(
     rootfs_dir: str, ownership: Dict[str, Tuple[int, int]], out_path: str
 ) -> None:
@@ -666,37 +793,53 @@ def build_erofs_image(
     size, so we use the page size itself (4 KiB on most hosts, 64 KiB on
     64K-page kernels).
 
+    The tar streams into mkfs.erofs's stdin, which it reads when given no
+    source (erofs-utils 1.7+), and each file leaves the tree once it's in
+    the stream. A build no longer holds the whole tree and a flat tar of it
+    next to the image, two full copies, so concurrent cold pulls are much
+    less likely to fill the node's disk. mkfs.erofs still spools file data
+    under ``$TMPDIR`` (its default ``--sort=path``).
+
     Args:
-        rootfs_dir: Extracted root filesystem.
+        rootfs_dir: Extracted root filesystem. Its files are deleted as
+            they're read; the caller removes what's left.
         ownership: {path: (uid, gid)} recorded during extraction.
         out_path: Destination image file.
     """
     mkfs = require_mkfs_erofs()
-    flat_tar = f"{out_path}.tar"
-    try:
-        with tarfile.open(flat_tar, "w") as tar:
-            tar.add(rootfs_dir, arcname=".", filter=_owner_filter(ownership))
-        res = subprocess.run(
-            [
-                mkfs,
-                "--tar=f",
-                f"-b{mmap.PAGESIZE}",
-                "-E^inline_data",
-                out_path,
-                flat_tar,
-            ],
-            capture_output=True,
-            text=True,
+    # mkfs.erofs's output goes to a file: with a pipe, it could block on a
+    # full pipe while this side blocks on a full stdin.
+    with tempfile.TemporaryFile() as output:
+        proc = subprocess.Popen(
+            [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", out_path],
+            stdin=subprocess.PIPE,
+            stdout=output,
+            stderr=subprocess.STDOUT,
         )
-    finally:
         try:
-            os.remove(flat_tar)
-        except OSError:
-            pass
-    if res.returncode != 0:
-        raise SandboxCreationError(
-            f"mkfs.erofs failed: {(res.stderr or res.stdout).strip()[-500:]}"
-        )
+            try:
+                with tarfile.open(
+                    fileobj=proc.stdin, mode="w|", bufsize=1 << 20
+                ) as tar:
+                    _stream_tree(tar, rootfs_dir, ".", _owner_filter(ownership))
+                proc.stdin.close()
+            except BrokenPipeError:
+                # mkfs.erofs stopped reading; its exit status and output say why.
+                pass
+            returncode = proc.wait()
+        except BaseException:
+            proc.kill()
+            proc.wait()
+            raise
+        finally:
+            try:
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+        if returncode != 0:
+            output.seek(0)
+            message = output.read().decode(errors="replace").strip()[-500:]
+            raise SandboxCreationError(f"mkfs.erofs failed: {message}")
 
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
@@ -837,6 +980,29 @@ def _file_size_bytes(path: str) -> int:
         return 0
 
 
+def _rename_for_deletion(image_dir: str) -> str:
+    """Atomically rename a cached image's directory to
+    ``.deleting.<random>``, and return the new path to delete.
+
+    A crash midway through deleting it then never leaves a partly deleted
+    image under the image's own name, and the next pull sweeps up what such a
+    crash leaves behind (see ``_remove_stale_deletions``). The new name
+    leaves out the image's, so it stays short whatever the image's name.
+    """
+    images_dir = os.path.dirname(image_dir)
+    renamed = os.path.join(images_dir, f".deleting.{uuid.uuid4().hex}")
+    os.replace(image_dir, renamed)
+    return renamed
+
+
+def _remove_stale_deletions(images_dir: str) -> None:
+    """Finish deleting image directories whose deletion was interrupted (see
+    ``_rename_for_deletion``)."""
+    for name in os.listdir(images_dir):
+        if name.startswith(".deleting."):
+            shutil.rmtree(os.path.join(images_dir, name), ignore_errors=True)
+
+
 def evict_least_recently_used_images(
     images_dir: str,
     max_bytes: Optional[int],
@@ -885,6 +1051,11 @@ def evict_least_recently_used_images(
                 except OSError:
                     pass
             continue
+        # sanitize_image_name strips leading dots, so no cached image's name
+        # starts with one. Skip image directories renamed for deletion,
+        # whose names do (see _rename_for_deletion).
+        if name.startswith("."):
+            continue
         marker = os.path.join(path, ".extracted")
         try:
             if not (os.path.isdir(path) and os.path.exists(marker)):
@@ -912,14 +1083,18 @@ def evict_least_recently_used_images(
                 # A pull may have registered a user since the scan.
                 if img_dir is not None and _has_users(img_dir):
                     continue
-                if img_dir is not None:
-                    shutil.rmtree(img_dir, ignore_errors=True)
+                # Another pull may have evicted it since the scan.
+                if img_dir is not None and os.path.isdir(img_dir):
+                    _rename_for_deletion(img_dir)
                 try:
                     os.remove(tar_path)
                 except OSError:
                     pass
         except OSError:
             continue  # Locked by an in-progress pull; try the next one.
+        # Delete the image once its lock is free, so a pull of it doesn't wait
+        # for the delete.
+        _remove_stale_deletions(images_dir)
         total -= size
         free = _free_bytes(images_dir)
         logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
@@ -956,6 +1131,7 @@ def pull_and_extract_container_image(
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
+    _remove_stale_deletions(images_dir)
     max_cache = image_cache_max_bytes(images_dir)
     min_free = image_cache_min_free_bytes(images_dir)
     if max_cache > 0 or min_free > 0:
@@ -1027,7 +1203,9 @@ def pull_and_extract_container_image(
             # format; sandboxes already running on it keep their pins, and an
             # extracted ``rootfs/`` tree their gofer still serves moves over
             # intact (a rename leaves its open root fd alone) and goes once no
-            # sandbox uses the image.
+            # sandbox uses the image. The old image moves aside and the new one
+            # takes its name before the old one is deleted, so a crash during
+            # the delete leaves the new image in place.
             try:
                 users = os.listdir(os.path.join(target_dir, _USERS_SUBDIR))
             except OSError:
@@ -1036,7 +1214,7 @@ def pull_and_extract_container_image(
             if users and os.path.isdir(old_tree):
                 os.replace(old_tree, tmp_rootfs_dir)
             if os.path.exists(target_dir):
-                shutil.rmtree(target_dir, ignore_errors=True)
+                _rename_for_deletion(target_dir)
             os.replace(tmp_extract_dir, target_dir)
             for user in users:
                 _mark_image_in_use(target_dir, user)
@@ -1047,6 +1225,9 @@ def pull_and_extract_container_image(
                 fcntl.flock(f_lock, fcntl.LOCK_UN)
             except Exception:
                 pass
+            # Delete an image the pull moved aside once the lock is free, so
+            # other pulls of this image don't wait for it.
+            _remove_stale_deletions(images_dir)
 
 
 def _download_blob(
@@ -1275,6 +1456,23 @@ def _extract_image_layers(
         if isinstance(err, SandboxCreationError):
             raise
         raise SandboxCreationError(
-            f"Failed to pull and extract container image '{image}': {err}"
+            f"Failed to pull and extract container image '{image}': "
+            f"{_describe_pull_error(err)}"
         ) from err
     return ownership
+
+
+def _describe_pull_error(err: Exception) -> str:
+    """Describe a failed pull, with the registry's own reasons for an HTTP error.
+
+    A registry's error body says why it refused a request: Amazon ECR's
+    ``DENIED``, for one, names the IAM action that the node's role lacks.
+    """
+    if not isinstance(err, urllib.error.HTTPError):
+        return str(err)
+    try:
+        errors = json.loads(err.read(65536)).get("errors") or []
+        reasons = "; ".join(f"{e['code']}: {e['message']}" for e in errors)
+    except Exception:
+        reasons = ""
+    return f"{err}: {reasons}" if reasons else str(err)

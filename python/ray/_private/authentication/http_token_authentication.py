@@ -1,13 +1,30 @@
 import logging
+import socket
+import threading
+from http.cookies import CookieError, SimpleCookie
+from socketserver import ThreadingMixIn
 from types import ModuleType
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
 from ray._private.authentication import (
     authentication_constants,
     authentication_utils as auth_utils,
 )
 
+if TYPE_CHECKING:
+    from multidict import CIMultiDictProxy
+
 logger = logging.getLogger(__name__)
+
+
+def _carries_auth_header(headers: "CIMultiDictProxy[str]") -> bool:
+    """Whether a request carries a non-empty Authorization header, of any scheme, or
+    X-Ray-Authorization header. The token cookie doesn't count: a browser can keep it
+    from an earlier token-mode cluster at the same address."""
+    return any(
+        headers.getall(authentication_constants.AUTHORIZATION_HEADER_NAME, [])
+    ) or bool(headers.get(authentication_constants.RAY_AUTHORIZATION_HEADER_NAME))
 
 
 def get_token_auth_middleware(
@@ -29,11 +46,20 @@ def get_token_auth_middleware(
     async def token_auth_middleware(request, handler):
         """Middleware to validate bearer tokens when token authentication is enabled.
 
-        In minimal Ray installations (without ray._raylet), this middleware is a no-op
-        and passes all requests through without authentication.
+        With auth disabled, or without ray._raylet (doc builds), it authenticates
+        nothing and only rejects requests that carry an auth header, so token-mode
+        clients opt out too.
         """
-        # No-op if token auth is not enabled or raylet is not available
         if not auth_utils.is_token_auth_enabled():
+            if _carries_auth_header(request.headers):
+                logger.debug(
+                    f"Rejecting {request.method} {request.path} with an auth header "
+                    "because auth is disabled"
+                )
+                return aiohttp_module.web.Response(
+                    status=401,
+                    text=authentication_constants.TOKEN_AUTH_ERROR_MESSAGE,
+                )
             return await handler(request)
 
         # skip authentication for whitelisted paths
@@ -82,6 +108,104 @@ def get_token_auth_middleware(
     return token_auth_middleware
 
 
+def get_token_auth_wsgi_app(app):
+    """Wrap a metrics WSGI app so it requires the token when token auth is on,
+    unless RAY_AUTH_SKIP_METRICS is set.
+
+    Accepts the same token sources as the dashboard. A missing token gets 401
+    with ``WWW-Authenticate: Bearer``, a wrong one 403.
+    """
+
+    def token_auth_app(environ, start_response):
+        if (
+            not auth_utils.is_token_auth_enabled()
+            or auth_utils.is_metrics_auth_skipped()
+        ):
+            return app(environ, start_response)
+
+        auth_header = environ.get("HTTP_AUTHORIZATION") or environ.get(
+            "HTTP_X_RAY_AUTHORIZATION"
+        )
+        if not auth_header:
+            try:
+                cookie = SimpleCookie(environ.get("HTTP_COOKIE", "")).get(
+                    authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
+                )
+            except CookieError:
+                cookie = None
+            if cookie and cookie.value:
+                auth_header = (
+                    authentication_constants.AUTHORIZATION_BEARER_PREFIX + cookie.value
+                )
+
+        if not auth_header:
+            start_response(
+                "401 Unauthorized",
+                [("Content-Type", "text/plain"), ("WWW-Authenticate", "Bearer")],
+            )
+            return [b"Unauthorized: Missing authentication token"]
+
+        if not auth_utils.validate_request_token(auth_header):
+            start_response("403 Forbidden", [("Content-Type", "text/plain")])
+            return [b"Forbidden: Invalid authentication token"]
+
+        return app(environ, start_response)
+
+    return token_auth_app
+
+
+# prometheus_client.exposition.ThreadingWSGIServer doesn't exist in the
+# declared minimum prometheus_client 0.7.1.
+class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True
+
+
+class _ReusePortThreadingWSGIServer(_ThreadingWSGIServer):
+    """Sets SO_REUSEPORT so several processes on one host can share the port.
+    Set by hand: socketserver's allow_reuse_port only exists from Python 3.11."""
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        super().server_bind()
+
+
+class _SilentHandler(WSGIRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+
+def start_metrics_http_server(port: int, registry, addr: str = "0.0.0.0") -> None:
+    """Serve ``registry`` on ``addr:port`` from a daemon thread, like
+    ``prometheus_client.start_http_server``, but requiring the token when token
+    auth is on."""
+    from prometheus_client import make_wsgi_app
+
+    start_metrics_wsgi_server(port, make_wsgi_app(registry), addr)
+
+
+def start_metrics_wsgi_server(
+    port: int, app, addr: str = "0.0.0.0", reuse_port: bool = False
+) -> WSGIServer:
+    """Serve the WSGI metrics ``app`` on ``addr:port`` from a daemon thread,
+    behind the same token check as start_metrics_http_server. With
+    ``reuse_port``, other processes that set SO_REUSEPORT can bind the same
+    port. Returns the server so the caller can shut it down."""
+    family, _, _, _, sockaddr = socket.getaddrinfo(
+        addr, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
+    )[0]
+    base_class = _ReusePortThreadingWSGIServer if reuse_port else _ThreadingWSGIServer
+    server_class = type("_MetricsWSGIServer", (base_class,), {"address_family": family})
+    httpd = make_server(
+        sockaddr[0],
+        port,
+        get_token_auth_wsgi_app(app),
+        server_class,
+        _SilentHandler,
+    )
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:
 
     if not auth_utils.is_token_auth_enabled():
@@ -102,11 +226,9 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
     auth_headers = token_loader.get_token_for_http_header()
 
     if not auth_headers:
-        # Token auth enabled but no token found
-        logger.warning(
-            "Token authentication is enabled but no token was found. "
-            "Requests to authenticated clusters will fail."
-        )
+        from ray.exceptions import AuthenticationError
+
+        raise AuthenticationError(authentication_constants.TOKEN_AUTH_ERROR_MESSAGE)
 
     return auth_headers
 
@@ -114,11 +236,10 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
 def format_authentication_http_error(status: int, body: str) -> Optional[str]:
     """Return a user-friendly authentication error message, if applicable."""
 
+    # A 401 means a missing token or a token sent to a cluster with auth disabled,
+    # which the one message covers, so the body would only repeat it.
     if status == 401:
-        return "Authentication required: {body}\n\n{details}".format(
-            body=body,
-            details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
-        )
+        return authentication_constants.TOKEN_AUTH_ERROR_MESSAGE
 
     if status == 403:
         return "Authentication failed: {body}\n\n{details}".format(

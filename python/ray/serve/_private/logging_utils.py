@@ -256,8 +256,7 @@ def get_component_logger_file_path() -> Optional[str]:  # type: ignore[return]
 
 
 class StreamToLogger(object):
-    """
-    Fake file-like stream object that redirects writes to a logger instance.
+    """Fake file-like stream object that redirects writes to a logger instance.
 
     This comes from https://stackoverflow.com/a/36296215 directly.
     """
@@ -533,8 +532,7 @@ def get_serve_logs_dir() -> str:
 
 
 class LoggingContext:
-    """
-    Context manager to manage logging behaviors within a particular block, such as:
+    """Context manager to manage logging behaviors within a particular block, such as:
     1) Overriding logging level
 
     Source (python3 official documentation)
