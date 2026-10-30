@@ -654,6 +654,7 @@ TEST_F(GcsActorSchedulerTest, TestActorKilledWhilePersistingLeasedWorker) {
   io_context_->GetIoService().post([&]() { put_callback_ran.set_value(); },
                                    "GcsActorSchedulerTest.WaitForPutCallback");
   put_callback_ran.get_future().wait();
+  // Verify a lease free request is sent
   ASSERT_EQ(1, raylet_client_->killed_actors.size());
   ASSERT_EQ(ActorID::Nil(), raylet_client_->killed_actors.front());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());

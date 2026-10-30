@@ -396,9 +396,8 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
            RAY_CHECK_OK(status);
            if (actor->GetState() == rpc::ActorTableData::DEAD) {
              // The actor was killed while its table entry was being persisted, so the
-             // creation task was never pushed. The kill sent by DestroyActor is
-             // rejected by the worker because it has no actor ID yet, so kill the
-             // leased worker here, otherwise its lease is leaked.
+             // creation task was never pushed. Free the lease here to avoid resource
+             // leak.
              KillLeasedWorkerForActor(
                  actor_local_raylet_address, leased_worker->GetAddress(), ActorID::Nil());
              return;

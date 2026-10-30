@@ -1995,8 +1995,12 @@ void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &a
       [node_id = actor->GetNodeID(), actor_id = actor->GetActorID()](
           const ray::Status &status, rpc::KillLocalActorReply &&reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO).WithField(actor_id).WithField(node_id)
-              << "Node with actor is already dead, return status: " << status.ToString();
+          RAY_LOG(INFO).WithField(actor_id).WithField(node_id) << absl::StrFormat(
+              "Failed to kill actor due to return status: %s. "
+              "Was the actor's node already dead? "
+              "Was the actor already killed? "
+              "Was the actor successfully created?",
+              status.ToString());
         } else {
           RAY_LOG(INFO).WithField(actor_id) << "Killed actor successfully.";
         }
