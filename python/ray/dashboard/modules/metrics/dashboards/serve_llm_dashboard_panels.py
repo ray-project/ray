@@ -54,17 +54,23 @@ def _mean_with_join(metric_base: str) -> str:
     )
 
 
-def _percentile_with_join(metric_base: str, quantile: float) -> str:
-    """histogram_quantile with NaN guard + WorkerId join."""
+def _percentile_with_join(
+    metric_base: str, quantile: float, *, label_filter: str = ""
+) -> str:
+    """histogram_quantile with NaN guard + WorkerId join.
+
+    label_filter: extra label matchers ending in ', ', e.g. _DISK_TIER.
+    """
+    vllm_filter = label_filter + _VLLM_FILTER
     return (
         "(\n"
         "  histogram_quantile(\n"
         f"    {quantile},\n"
-        f"    sum by (le, WorkerId) (rate({metric_base}_bucket{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        f"    sum by (le, WorkerId) (rate({metric_base}_bucket{{{{{vllm_filter}}}}}[$interval]))\n"
         "  )\n"
         "  and on(WorkerId)\n"
         "  (\n"
-        f"    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
+        f"    sum by(WorkerId) (rate({metric_base}_count{{{{{vllm_filter}}}}}[$interval])) > 0\n"
         "  )\n"
         ")" + _WORKER_JOIN
     )
@@ -89,23 +95,26 @@ def _ratio_with_join_and_guard(
     *,
     scale: str = "",
     guard_metric: str | None = None,
+    label_filter: str = "",
 ) -> str:
     """Ratio of two rate metrics with NaN guard + WorkerId join.
 
     Optionally applies a scale factor (e.g. '* 1000' or '/ 1024 / 1024 / 1024').
+    label_filter: extra label matchers ending in ', ', e.g. _DISK_TIER.
     """
     guard = guard_metric or denominator_metric
+    vllm_filter = label_filter + _VLLM_FILTER
     return (
         "(\n"
         "  (\n"
-        f"    sum by(WorkerId) (rate({numerator_metric}{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        f"    sum by(WorkerId) (rate({numerator_metric}{{{{{vllm_filter}}}}}[$interval]))\n"
         "    /\n"
-        f"    sum by(WorkerId) (rate({denominator_metric}{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        f"    sum by(WorkerId) (rate({denominator_metric}{{{{{vllm_filter}}}}}[$interval]))\n"
         + (f"    {scale}\n" if scale else "")
         + "  )\n"
         "  and on(WorkerId)\n"
         "  (\n"
-        f"    sum by(WorkerId) (rate({guard}{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
+        f"    sum by(WorkerId) (rate({guard}{{{{{vllm_filter}}}}}[$interval])) > 0\n"
         "  )\n"
         ")" + _WORKER_JOIN
     )
@@ -793,7 +802,140 @@ _kv_offload_panels = [
 ]
 
 # ===================================================================
-# Row 8: Token Distribution (collapsed)
+# Row 8: Native KV Offload Disk Tier (collapsed)
+# ===================================================================
+# vLLM's TieringOffloadingSpec labels each tier "<index>:<type>": "0:primary" is
+# the CPU tier, and secondary tiers such as "1:fs" sit behind it.
+_DISK_TIER = 'tier!="0:primary", '
+
+_kv_disk_tier_panels = [
+    Panel(
+        id=61,
+        title="KV Disk Tier: Store Throughput",
+        description="CPU-to-disk KV data/s, written as blocks cascade out of the CPU tier.",
+        unit="GBs",
+        targets=[
+            Target(
+                expr=(
+                    "("
+                    + _rate_with_join("ray_vllm_kv_offload_tiering_write_bytes_total")
+                    + ") / 1024 / 1024 / 1024"
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(0, 128, 8, 8),
+    ),
+    Panel(
+        id=62,
+        title="KV Disk Tier: Reload Throughput",
+        description="Disk-to-CPU KV data/s, read back on the way to the GPU.",
+        unit="GBs",
+        targets=[
+            Target(
+                expr=(
+                    "("
+                    + _rate_with_join("ray_vllm_kv_offload_tiering_read_bytes_total")
+                    + ") / 1024 / 1024 / 1024"
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(8, 128, 8, 8),
+    ),
+    Panel(
+        id=63,
+        title="KV Disk Tier: Prefix Hit Rate",
+        description="Share of the chunks looked up on disk that were found there.",
+        unit="percent",
+        targets=[
+            Target(
+                expr=(
+                    "100 * "
+                    + _ratio_with_join_and_guard(
+                        "ray_vllm_kv_offload_tiering_chunk_hits_total",
+                        "ray_vllm_kv_offload_tiering_chunk_queries_total",
+                        label_filter=_DISK_TIER,
+                    )
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(16, 128, 8, 8),
+    ),
+    Panel(
+        id=64,
+        title="KV Disk Tier: Store Bandwidth",
+        description="CPU-to-disk KV transfer bandwidth.",
+        unit="GBs",
+        targets=[
+            Target(
+                expr=_ratio_with_join_and_guard(
+                    "ray_vllm_kv_offload_tiering_write_bytes_total",
+                    "ray_vllm_kv_offload_tiering_write_time_total",
+                    scale="/ 1024 / 1024 / 1024",
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(0, 136, 8, 8),
+    ),
+    Panel(
+        id=65,
+        title="KV Disk Tier: Reload Bandwidth",
+        description="Disk-to-CPU KV transfer bandwidth.",
+        unit="GBs",
+        targets=[
+            Target(
+                expr=_ratio_with_join_and_guard(
+                    "ray_vllm_kv_offload_tiering_read_bytes_total",
+                    "ray_vllm_kv_offload_tiering_read_time_total",
+                    scale="/ 1024 / 1024 / 1024",
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(8, 136, 8, 8),
+    ),
+    Panel(
+        id=66,
+        title="KV Disk Tier: Lookup Delay -- P90",
+        description="P90 latency of looking a prefix up on disk.",
+        unit="s",
+        targets=[
+            Target(
+                expr=_percentile_with_join(
+                    "ray_vllm_kv_offload_tiering_lookup_sync_delay_seconds",
+                    0.9,
+                    label_filter=_DISK_TIER,
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(16, 136, 8, 8),
+    ),
+]
+
+# ===================================================================
+# Row 9: Token Distribution (collapsed)
 # ===================================================================
 _WORKERID_FILTER = 'WorkerId=~"$workerid", {global_filters}'
 
@@ -1025,6 +1167,12 @@ _ALL_ROWS = [
         title="KV Cache Offload / Reload",
         id=508,
         panels=_kv_offload_panels,
+        collapsed=True,
+    ),
+    Row(
+        title="KV Cache Disk Tier",
+        id=509,
+        panels=_kv_disk_tier_panels,
         collapsed=True,
     ),
     Row(

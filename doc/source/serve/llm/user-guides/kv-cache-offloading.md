@@ -104,6 +104,33 @@ serve run config.yaml
 :::
 ::::
 
+(native-kv-cache-disk-tier)=
+### Add a local disk tier
+
+The native backend can add a filesystem tier behind the CPU tier with vLLM's `TieringOffloadingSpec`. Blocks offloaded to CPU memory are also written under `root_dir`, so a replica can reload a prefix from local disk after it leaves CPU memory. Keep `kv_offloading_backend` and `kv_offloading_size` for the CPU tier, and add a `kv_transfer_config` that selects the tiering spec:
+
+```python
+llm_config = LLMConfig(
+    # ...
+    engine_kwargs={
+        "enable_prefix_caching": True,
+        "kv_offloading_backend": "native",
+        "kv_offloading_size": 8,  # GiB of CPU KV cache per replica
+        "kv_transfer_config": {
+            "kv_connector": "OffloadingConnector",
+            "kv_connector_extra_config": {
+                "spec_name": "TieringOffloadingSpec",
+                "secondary_tiers": [
+                    {"type": "fs", "root_dir": "/mnt/local-nvme/kv-cache"}
+                ],
+            },
+        },
+    },
+)
+```
+
+Ray Serve LLM sets `kv_role` to `kv_both` when `kv_transfer_config` names `OffloadingConnector` without a role. vLLM's filesystem tier doesn't limit its disk usage yet, so watch the space under `root_dir`. For the other tier options, see the vLLM [KV offloading usage guide](https://docs.vllm.ai/en/stable/features/kv_offloading_usage/).
+
 ### Combine offloading with a request router
 
 KV cache offloading benefits any routing policy. When a request reaches a replica, the replica can reload a matching prefix from its CPU cache instead of recomputing the prefill. Routers that already tend to send related requests to the same replica can therefore benefit from a larger effective KV cache.
@@ -133,6 +160,15 @@ The KV Cache Offload / Reload row expanded. Every panel breaks down by `LLMServe
 | External Prefix Hit Rate | `ray_vllm_external_prefix_cache_hits_total` over `..._queries_total` | Percentage of prefix lookups served from the offloaded cache tier. |
 | Overall Prefix Hit Rate | GPU and external hits over `ray_vllm_prefix_cache_queries_total` | Combined prefix cache hit rate across GPU and external tiers. |
 | Lookup Delay P90 | `ray_vllm_kv_offload_lookup_sync_delay_seconds` | P90 latency added by cache lookup before prefill. |
+
+With a {ref}`local disk tier <native-kv-cache-disk-tier>`, the **KV Cache Disk Tier** row, also collapsed by default, shows the traffic between the CPU and disk tiers. vLLM labels each tier `<index>:<type>`, for example `0:primary` for the CPU tier and `1:fs` for a file system tier. The panels exclude `0:primary`.
+
+| Panel | Metric | What to look for |
+| --- | --- | --- |
+| Store / Reload Throughput | `ray_vllm_kv_offload_tiering_write_bytes_total`, `ray_vllm_kv_offload_tiering_read_bytes_total` | CPU-to-disk and disk-to-CPU data rates. Writes without reads suggest the disk tier holds prefixes that no request asks for again. |
+| Store / Reload Bandwidth | Bytes over `..._write_time_total` and `..._read_time_total` | Effective disk bandwidth. Compare it with what the device sustains to tell a slow disk from low volume. |
+| Prefix Hit Rate | `ray_vllm_kv_offload_tiering_chunk_hits_total` over `..._chunk_queries_total` | Percentage of the chunks looked up on disk that were found there. |
+| Lookup Delay P90 | `ray_vllm_kv_offload_tiering_lookup_sync_delay_seconds` | P90 latency of the disk lookup. |
 
 (lmcache-kv-offloading)=
 ## Deploy with LMCache

@@ -143,6 +143,22 @@ def _get_vllm_config_type(annotation: Any) -> Optional[type]:
     return None
 
 
+def _default_offloading_kv_role(kv_transfer_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Default ``kv_role`` for vLLM's native ``OffloadingConnector``.
+
+    Offloading stores and reloads KV blocks on the same engine, so its role is
+    always ``kv_both``. vLLM sets that role itself when offloading is enabled
+    through ``kv_offloading_size`` alone, but rejects a ``kv_transfer_config``
+    that names the connector without one, which tiered offloading requires.
+    """
+    if (
+        kv_transfer_config.get("kv_connector") == "OffloadingConnector"
+        and kv_transfer_config.get("kv_role") is None
+    ):
+        return {**kv_transfer_config, "kv_role": "kv_both"}
+    return kv_transfer_config
+
+
 def _normalize_vllm_engine_kwargs(engine_kwargs: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize structured config dictionaries as vLLM's CLI parser does."""
     fields_by_name = {
@@ -154,6 +170,9 @@ def _normalize_vllm_engine_kwargs(engine_kwargs: Dict[str, Any]) -> Dict[str, An
         field = fields_by_name.get(key)
         if field is None or not isinstance(value, dict):
             continue
+        if key == "kv_transfer_config":
+            value = _default_offloading_kv_role(value)
+            normalized_kwargs[key] = value
 
         config_type = _get_vllm_config_type(field.type)
         if config_type is None:
