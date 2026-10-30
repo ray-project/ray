@@ -132,6 +132,16 @@ class _DeploymentHandleBase(Generic[T]):
 
         return self._router.running_replicas_populated()
 
+    def _set_router_autoscaling_metrics(
+        self, metrics_dict: Dict[str, Union[int, float]]
+    ) -> None:
+        """Set router-owned autoscaling metrics for this handle.
+
+        This is an internal API used by Serve integrations whose workload signal is
+        owned by the request router rather than a backend replica.
+        """
+        self._init_router().set_router_autoscaling_metrics(metrics_dict)
+
     @property
     def deployment_name(self) -> str:
         return self.deployment_id.name

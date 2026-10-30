@@ -616,6 +616,15 @@ class VLLMEngine(LLMEngine):
         from vllm.v1.executor.abstract import Executor
 
         vllm_engine_config.parallel_config.placement_group = placement_group
+        from ray.llm._internal.serve.engines.vllm.scheduler_trace import (
+            configure_scheduler_trace,
+        )
+
+        if configure_scheduler_trace(vllm_engine_config):
+            logger.info(
+                "Enabled vLLM scheduler tracing with %s",
+                vllm_engine_config.scheduler_config.scheduler_cls,
+            )
         if is_kv_aware(self.llm_config):
             enable_native_kv_offload_events(vllm_engine_config)
 

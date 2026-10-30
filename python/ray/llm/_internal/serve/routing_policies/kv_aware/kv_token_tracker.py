@@ -5,7 +5,7 @@ import math
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypedDict
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, TypedDict
 
 import ray
 from ray import serve
@@ -23,6 +23,10 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.exceptions import RayServeException
+from ray.serve.experimental.llm_token_autoscaling_policy import (
+    ACTIVE_DECODE_REQUESTS,
+    OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
+)
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -59,6 +63,9 @@ class RequestLifecycle:
 
     worker_id: int
     prompt_tokens: int = 0
+    # Prompt tokens that were not credited as a cache hit when this request
+    # was selected. This is the prefill work used by token autoscaling.
+    effective_prefill_tokens: int = 0
     # Client-provided output-length estimate (``sampling_params.max_tokens``);
     # weights each decode block's load by how much generation remains.
     expected_output_tokens: Optional[int] = None
@@ -219,6 +226,16 @@ class KVTokenTracker:
         #   3. In-flight request set: Free reservation exactly once.
         # Ordered oldest-first so the TTL sweep pops stale entries off the front.
         self._requests: "OrderedDict[str, RequestLifecycle]" = OrderedDict()
+        # Global work snapshots exported to the LLM deployment autoscaler.
+        # Keep these incrementally rather than scanning every live request on
+        # each metrics collection interval.
+        self._outstanding_effective_prefill_tokens = 0
+        self._active_decode_requests = 0
+        self._autoscaling_metrics_sink: Optional[
+            Callable[[Dict[str, int]], None]
+        ] = None
+        self._autoscaling_publish_defer_depth = 0
+        self._autoscaling_publish_dirty = False
         # Reverse index of in-flight request ids per worker, kept in lockstep with
         # _requests, so remove_worker is O(k) in the worker's requests, not O(N).
         self._request_ids_by_worker: Dict[int, Set[str]] = {}
@@ -240,6 +257,42 @@ class KVTokenTracker:
     def start_reservation_broadcast(self, handle: Any) -> None:
         """Configure background reservation replication to this deployment."""
         self._reservation_forwarder = ReservationBroadcastForwarder(handle)
+
+    def set_autoscaling_metrics_sink(
+        self, sink: Callable[[Dict[str, int]], None]
+    ) -> None:
+        """Set the local sink for router-owned autoscaling metrics."""
+        self._autoscaling_metrics_sink = sink
+        self._publish_autoscaling_snapshot()
+
+    def _get_autoscaling_snapshot(self) -> Dict[str, int]:
+        return {
+            OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: (
+                self._outstanding_effective_prefill_tokens
+            ),
+            ACTIVE_DECODE_REQUESTS: self._active_decode_requests,
+        }
+
+    def _publish_autoscaling_snapshot(self) -> None:
+        if getattr(self, "_autoscaling_publish_defer_depth", 0) > 0:
+            self._autoscaling_publish_dirty = True
+            return
+        sink = getattr(self, "_autoscaling_metrics_sink", None)
+        if sink is not None:
+            sink(self._get_autoscaling_snapshot())
+
+    def _defer_autoscaling_snapshot(self) -> None:
+        self._autoscaling_publish_defer_depth = (
+            getattr(self, "_autoscaling_publish_defer_depth", 0) + 1
+        )
+
+    def _flush_autoscaling_snapshot(self) -> None:
+        self._autoscaling_publish_defer_depth -= 1
+        if self._autoscaling_publish_defer_depth == 0 and getattr(
+            self, "_autoscaling_publish_dirty", False
+        ):
+            self._autoscaling_publish_dirty = False
+            self._publish_autoscaling_snapshot()
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -363,7 +416,10 @@ class KVTokenTracker:
         # never arrive, so they would otherwise leak. delete_worker below frees
         # their load in the service, so no per-request free_reservation is needed.
         for request_id in self._request_ids_by_worker.pop(worker_id, set()):
-            self._requests.pop(request_id, None)
+            state = self._requests.pop(request_id, None)
+            if state is not None:
+                self._remove_autoscaling_load(state)
+        self._publish_autoscaling_snapshot()
         if self._svc is None:
             return
         self._schedule(self._svc.delete_worker(worker_id))
@@ -461,7 +517,9 @@ class KVTokenTracker:
             selection["worker_id"],
             len(token_ids),
             expected_output_tokens,
+            selection["effective_prefill_tokens"],
         )
+        self._publish_autoscaling_snapshot()
         if self._reservation_forwarder is not None:
             self._reservation_forwarder.report(
                 {
@@ -489,9 +547,11 @@ class KVTokenTracker:
         worker_id: int,
         prompt_tokens: int,
         expected_output_tokens: Optional[int],
+        effective_prefill_tokens: int,
     ) -> None:
         old = self._requests.pop(request_id, None)
         if old is not None:
+            self._remove_autoscaling_load(old)
             self._untrack_worker_request(request_id, old.worker_id)
         self._completed_request_ids.pop(request_id, None)
         if self._block_size is None:
@@ -502,9 +562,11 @@ class KVTokenTracker:
         self._requests[request_id] = RequestLifecycle(
             worker_id=worker_id,
             prompt_tokens=prompt_tokens,
+            effective_prefill_tokens=effective_prefill_tokens,
             expected_output_tokens=expected_output_tokens,
             total_blocks=math.ceil(prompt_tokens / block_size),
         )
+        self._outstanding_effective_prefill_tokens += effective_prefill_tokens
         self._request_ids_by_worker.setdefault(worker_id, set()).add(request_id)
 
     async def on_reservations_created(
@@ -578,7 +640,9 @@ class KVTokenTracker:
                 reservation["worker_id"],
                 reservation["isl_tokens"],
                 reservation["expected_output_tokens"],
+                reservation["effective_prefill_tokens"],
             )
+        self._publish_autoscaling_snapshot()
 
     async def on_lifecycle_events(self, events: List[tuple]) -> None:
         """Apply a replica's ``(hook_name, args)`` lifecycle events in order.
@@ -590,26 +654,33 @@ class KVTokenTracker:
         if self._svc is None or self._block_size is None:
             return
 
-        for hook_name, args in events:
-            if hook_name not in LIFECYCLE_HOOKS:
-                logger.warning("Ignoring unknown lifecycle hook %s", hook_name)
-                continue
-            try:
-                await getattr(self, hook_name)(*args)
-            except Exception:
-                # One hook raising must not abort the batch and drop other events.
-                logger.exception(
-                    "KV lifecycle hook %s failed; skipping it and continuing.",
-                    hook_name,
-                )
+        self._defer_autoscaling_snapshot()
+        try:
+            for hook_name, args in events:
+                if hook_name not in LIFECYCLE_HOOKS:
+                    logger.warning("Ignoring unknown lifecycle hook %s", hook_name)
+                    continue
+                try:
+                    await getattr(self, hook_name)(*args)
+                except Exception:
+                    # One hook raising must not abort the batch and drop other events.
+                    logger.exception(
+                        "KV lifecycle hook %s failed; skipping it and continuing.",
+                        hook_name,
+                    )
+        finally:
+            self._flush_autoscaling_snapshot()
 
     async def on_prefill_complete(self, request_id: str) -> None:
         """Record a request's prefill -> decode transition, dropping its prefill
         load in the selection service."""
         state = self._requests.get(request_id)
-        if state is None:
+        if state is None or state.prefill_completed:
             return
         state.prefill_completed = True
+        self._outstanding_effective_prefill_tokens -= state.effective_prefill_tokens
+        self._active_decode_requests += 1
+        self._publish_autoscaling_snapshot()
         await self._svc.prefill_complete(request_id)
 
     async def on_decode_progress(
@@ -637,8 +708,23 @@ class KVTokenTracker:
         self._mark_request_completed(request_id)
         if state is None:
             return
+        self._remove_autoscaling_load(state)
         self._untrack_worker_request(request_id, state.worker_id)
+        self._publish_autoscaling_snapshot()
         await self._svc.free_reservation(request_id)
+
+    # TODO: could change this name to not be autoscaling specific
+    def _remove_autoscaling_load(self, state: RequestLifecycle) -> None:
+        """Remove one request's contribution from its current lifecycle phase."""
+        if state.prefill_completed:
+            self._active_decode_requests -= 1
+        else:
+            self._outstanding_effective_prefill_tokens -= state.effective_prefill_tokens
+
+    async def get_autoscaling_snapshot(self) -> Dict[str, int]:
+        """Return this router replica's latest global LLM work estimate."""
+        await self._evict_stale_requests()
+        return self._get_autoscaling_snapshot()
 
     def _mark_request_completed(self, request_id: str) -> None:
         """Remember completions that beat reservation admission on this ingress."""
@@ -664,11 +750,14 @@ class KVTokenTracker:
             if completed_at > cutoff:
                 break
             self._completed_request_ids.pop(request_id, None)
+        autoscaling_load_changed = False
         while self._requests:
             request_id, state = next(iter(self._requests.items()))
             if state.created_at > cutoff:
                 break
             self._requests.popitem(last=False)
+            self._remove_autoscaling_load(state)
+            autoscaling_load_changed = True
             self._untrack_worker_request(request_id, state.worker_id)
             logger.warning(
                 "Evicting stale KV request %s (tracked > %ds without completion); "
@@ -677,6 +766,8 @@ class KVTokenTracker:
                 REQUEST_TRACKING_TTL_S,
             )
             await self._svc.free_reservation(request_id)
+        if autoscaling_load_changed:
+            self._publish_autoscaling_snapshot()
 
     def _get_decay_fraction(self, state: RequestLifecycle) -> Optional[float]:
         """Fraction of output still expected, or ``None`` without an estimate;
