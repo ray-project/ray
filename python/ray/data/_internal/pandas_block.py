@@ -215,7 +215,7 @@ def _with_parsable_pandas_metadata(table: "pyarrow.Table") -> "pyarrow.Table":
     if pandas_metadata is None:
         return table
     parsable = _parsable_pandas_metadata(pandas_metadata)
-    if parsable is pandas_metadata:
+    if parsable == pandas_metadata:
         return table
     return table.replace_schema_metadata({**metadata, b"pandas": parsable})
 
@@ -236,7 +236,8 @@ def _parsable_pandas_metadata(pandas_metadata: bytes) -> bytes:
             continue
         try:
             pandas_dtype(dtype_name)
-        except Exception:
+        except (TypeError, ValueError, NotImplementedError):
+            # What pandas raises for a dtype name it cannot parse.
             column["numpy_type"] = "object"
             changed = True
     return json.dumps(document).encode() if changed else pandas_metadata
