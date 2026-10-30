@@ -6,10 +6,14 @@ import pytest
 
 from ci.ray_ci.doc import cmd_check_api_param_coverage as cmd
 from ci.ray_ci.doc.api_param_coverage import (
+    MISSING_DOCSTRING,
+    MISSING_RETURNS,
     ClassIndex,
     Violation,
     build_class_index,
     documented_params,
+    has_returns_section,
+    new_presence_violations_for_file,
     new_violations_for_file,
     public_callables,
     signature_params,
@@ -537,6 +541,393 @@ def test_property_setter_ignored():
         '''
     )
     assert _check(base=None, head=head) == []
+
+
+# --- docstring and Returns: presence ------------------------------------------
+
+
+def _check_presence(base, head, extra_files=()):
+    """New presence violations as ``{qualname: missing}`` for one changed file."""
+    files = list(extra_files) + [("python/ray/mod.py", head)]
+    index = build_class_index(files)
+    return {
+        v.qualname: v.missing
+        for v in new_presence_violations_for_file(
+            "python/ray/mod.py", base, head, index, index
+        )
+    }
+
+
+DOC = MISSING_DOCSTRING
+RET = MISSING_RETURNS
+
+
+def test_has_returns_section_forms():
+    assert has_returns_section("Summary.\n\nReturns:\n    The value.")
+    assert has_returns_section("Summary.\n\nYields:\n    Each value.")
+    assert has_returns_section("Summary.\n\nReturns\n-------\nint")
+    assert has_returns_section("Summary.\n\n:returns: The value.")
+    assert not has_returns_section("Summary that returns the value.")
+    assert not has_returns_section(None)
+
+
+def test_new_zero_arg_method_without_docstring_flagged():
+    # The parameter check passes a method with no parameters, whatever its
+    # docstring. PopulationBasedTraining.reset_stats is the real-world case.
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            def reset_stats(self):
+                pass
+        '''
+    )
+    assert _check_presence(base=None, head=head) == {"C.reset_stats": [DOC]}
+
+
+def test_new_public_function_and_class_without_docstring_flagged():
+    head = _src(
+        """
+        @PublicAPI
+        def f(a) -> int:
+            return a
+
+        @PublicAPI
+        class C:
+            def __init__(self, a):
+                pass
+        """
+    )
+    # __init__ is out of scope: the class docstring documents its parameters.
+    assert _check_presence(base=None, head=head) == {"f": [DOC, RET], "C": [DOC]}
+
+
+def test_return_annotation_without_returns_section_flagged():
+    head = _src(
+        '''
+        @PublicAPI
+        def f() -> int:
+            """Summary."""
+            return 1
+        '''
+    )
+    assert _check_presence(base=None, head=head) == {"f": [RET]}
+
+
+@pytest.mark.parametrize(
+    "annotation", ["", " -> None", " -> 'None'", " -> NoReturn", " -> typing.NoReturn"]
+)
+def test_no_return_value_needs_no_returns_section(annotation):
+    head = _src(
+        f'''
+        @PublicAPI
+        def f(){annotation}:
+            """Summary."""
+        '''
+    )
+    assert _check_presence(base=None, head=head) == {}
+
+
+def test_yields_section_satisfies_returns():
+    head = _src(
+        '''
+        @PublicAPI
+        def f() -> Iterator[int]:
+            """Summary.
+
+            Yields:
+                Each value.
+            """
+        '''
+    )
+    assert _check_presence(base=None, head=head) == {}
+
+
+@pytest.mark.parametrize("decorator", ["@property", "@functools.cached_property"])
+def test_property_needs_docstring_but_not_returns(decorator):
+    # Autodoc renders a property's type from its annotation.
+    head = _src(
+        f'''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            {decorator}
+            def documented(self) -> int:
+                """The value."""
+
+            {decorator}
+            def undocumented(self) -> int:
+                pass
+        '''
+    )
+    assert _check_presence(base=None, head=head) == {"C.undocumented": [DOC]}
+
+
+def test_preexisting_missing_docstring_grandfathered():
+    src = _src(
+        """
+        @PublicAPI
+        def f() -> int:
+            return 1
+        """
+    )
+    assert _check_presence(base=src, head=src) == {}
+
+
+def test_adding_docstring_without_returns_to_grandfathered_callable_passes():
+    # A docstring-only PR that documents an old callable mustn't be blocked for
+    # also leaving its pre-existing Returns: gap.
+    base = _src(
+        """
+        @PublicAPI
+        def f() -> int:
+            return 1
+        """
+    )
+    head = _src(
+        '''
+        @PublicAPI
+        def f() -> int:
+            """Summary."""
+            return 1
+        '''
+    )
+    assert _check_presence(base=base, head=head) == {}
+
+
+def test_removed_docstring_flagged():
+    base = _src(
+        '''
+        @PublicAPI
+        def f():
+            """Summary."""
+        '''
+    )
+    head = _src(
+        """
+        @PublicAPI
+        def f():
+            pass
+        """
+    )
+    assert _check_presence(base=base, head=head) == {"f": [DOC]}
+
+
+def test_added_return_annotation_flagged():
+    base = _src(
+        '''
+        @PublicAPI
+        def f():
+            """Summary."""
+        '''
+    )
+    head = _src(
+        '''
+        @PublicAPI
+        def f() -> int:
+            """Summary."""
+        '''
+    )
+    assert _check_presence(base=base, head=head) == {"f": [RET]}
+
+
+def test_presence_out_of_scope_callables_ignored():
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            def _private(self) -> int:
+                pass
+
+            @DeveloperAPI
+            def dev(self) -> int:
+                pass
+
+            @field_validator("x")
+            def check_x(cls, v) -> int:
+                return v
+
+            @overload
+            def f(self, a: int) -> int: ...
+
+            def f(self, a) -> int:
+                """Summary.
+
+                Returns:
+                    The value.
+                """
+
+            @property
+            def x(self) -> int:
+                """The x."""
+
+            @x.setter
+            def x(self, value) -> None:
+                pass
+
+        @DeveloperAPI
+        def g() -> int:
+            pass
+        '''
+    )
+    assert _check_presence(base=None, head=head) == {}
+
+
+def test_inherited_docstring_counts_for_presence_and_returns():
+    base_file = (
+        "python/ray/base.py",
+        _src(
+            '''
+            class Base:
+                """Base."""
+
+                def f(self) -> int:
+                    """Summary.
+
+                    Returns:
+                        The value.
+                    """
+
+                def g(self) -> int:
+                    """Summary without a Returns section."""
+            '''
+        ),
+    )
+    head = _src(
+        """
+        @PublicAPI
+        class C(Base):
+            def f(self) -> int:
+                return 1
+
+            def g(self) -> int:
+                return 1
+        """
+    )
+    # C inherits Base's class docstring, f inherits a Returns: section, and g
+    # inherits a docstring without one.
+    assert _check_presence(base=None, head=head, extra_files=[base_file]) == {
+        "C.g": [RET]
+    }
+
+
+_SESSION_FILE = (
+    "python/ray/train/_internal/session.py",
+    _src(
+        '''
+        def get_trial_name() -> str:
+            """Trial name for the corresponding trial.
+
+            Returns:
+                The trial name.
+            """
+
+        def get_world_size() -> int:
+            """Get the current world size."""
+        '''
+    ),
+)
+_TRAIN_CONTEXT_FILE = (
+    "python/ray/train/context.py",
+    _src(
+        '''
+        from ray.train._internal import session
+        from ray.train.utils import _copy_doc
+
+        class TrainContext:
+            """Context for Ray training executions."""
+
+            @_copy_doc(session.get_world_size)
+            def get_world_size(self) -> int:
+                return session.get_world_size()
+        '''
+    ),
+)
+
+
+def test_copy_doc_resolves_module_function():
+    # TuneContext.get_trial_name copies its docstring from a function in an
+    # imported module at runtime.
+    head = _src(
+        """
+        from ray.train._internal import session
+        from ray.train.utils import _copy_doc
+
+        @PublicAPI
+        class TuneContext:
+            \"\"\"Context.\"\"\"
+
+            @_copy_doc(session.get_trial_name)
+            def get_trial_name(self) -> str:
+                return session.get_trial_name()
+        """
+    )
+    assert _check_presence(base=None, head=head, extra_files=[_SESSION_FILE]) == {}
+
+
+def test_copy_doc_resolves_aliased_class_method_through_a_chain():
+    # TuneContext.get_world_size copies from TrainV1Context.get_world_size, an
+    # import alias of TrainContext, whose method copies from the session module.
+    # The final docstring has no Returns: section.
+    head = _src(
+        """
+        from ray.train.context import TrainContext as TrainV1Context
+        from ray.train.utils import _copy_doc
+
+        @PublicAPI
+        class TuneContext(TrainV1Context):
+            \"\"\"Context.\"\"\"
+
+            @_copy_doc(TrainV1Context.get_world_size)
+            def get_world_size(self) -> int:
+                return 1
+        """
+    )
+    assert _check_presence(
+        base=None, head=head, extra_files=[_SESSION_FILE, _TRAIN_CONTEXT_FILE]
+    ) == {"TuneContext.get_world_size": [RET]}
+
+
+def test_copy_doc_unresolved_target_fails_open():
+    head = _src(
+        """
+        @PublicAPI
+        class C:
+            \"\"\"Summary.\"\"\"
+
+            @_copy_doc(somewhere.unknown)
+            def f(self) -> int:
+                return 1
+        """
+    )
+    assert _check_presence(base=None, head=head) == {}
+
+
+def test_copy_doc_on_class():
+    head = _src(
+        """
+        from ray.train import CheckpointConfig as _CheckpointConfig
+
+        @PublicAPI
+        @_copy_doc(_CheckpointConfig)
+        class CheckpointConfig(_CheckpointConfig):
+            pass
+        """
+    )
+    other = ("python/ray/train/config.py", 'class CheckpointConfig:\n    """Doc."""\n')
+    assert _check_presence(base=None, head=head, extra_files=[other]) == {}
+
+
+def test_parse_args_check_option():
+    assert cmd._parse_args(["/ray"]).check == cmd.CHECK_PARAMS
+    assert cmd._parse_args(["/ray", "--check", "presence"]).check == cmd.CHECK_PRESENCE
+    with pytest.raises(SystemExit):
+        cmd._parse_args(["/ray", "--check", "bogus"])
 
 
 # --- changed-file listing (rename detection) ----------------------------------

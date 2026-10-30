@@ -125,6 +125,22 @@ steps:
     commands:
       - ./ci/lint/lint.sh api_param_coverage --blocking
 
+  # Same diff and scope as the step above, checking that a new or changed
+  # @PublicAPI class or callable has a docstring, and a Returns: section when it
+  # annotates a return value. Warn phase: remove soft_fail once the step's
+  # false-positive rate is confirmed low.
+  - label: ":lint-roller: lint: API docstring presence"
+    key: api-docstring-presence
+    tags:
+      - oss
+      - lint
+      - always
+    depends_on:
+      - forge
+    soft_fail: true
+    commands:
+      - ./ci/lint/lint.sh api_param_coverage --check presence --blocking
+
   # Scope guard for the "docstring-only" label: runs only when the label is
   # present, and fails unless every changed file is a modified .py file whose
   # code is unchanged once docstrings are removed (an AST comparison, see
