@@ -397,6 +397,8 @@ if setup_spec.type == SetupType.RAY:
                 "meson",
                 "pybind11",
                 "hf_transfer",
+                "ai-dynamo-runtime==1.5.1",
+                "fastokens",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
