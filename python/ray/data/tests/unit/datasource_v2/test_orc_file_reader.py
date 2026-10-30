@@ -844,6 +844,101 @@ def test_orc_partition_pruning_uses_output_types(tmp_path, orc_read_requests):
     assert orc_read_requests["scans"][0]["columns"] == []
 
 
+@pytest.mark.parametrize(
+    "logical_type,path_value,field_types,expected",
+    [
+        (pa.float32(), "16777217", {}, 16777216.0),
+        (pa.string(), "02024", {"year": int}, "2024"),
+    ],
+    ids=["float32_rounding", "parsed_int_to_string"],
+)
+@pytest.mark.parametrize("columns", [["id"], ["year"]])
+def test_orc_typed_partition_pruning_matches_reader(
+    tmp_path, logical_type, path_value, field_types, expected, columns
+):
+    directory = tmp_path / f"year={path_value}"
+    directory.mkdir()
+    path = directory / "data.orc"
+    _write_orc(path, pa.table({"id": [1, 2]}))
+    scanner = (
+        OrcScanner(
+            schema=pa.schema([("id", pa.int64()), ("year", logical_type)]),
+            partitioning=Partitioning(
+                PartitionStyle.HIVE, field_names=["year"], field_types=field_types
+            ),
+        )
+        .prune_partitions(col("year") == expected)
+        .prune_columns(columns)
+    )
+    pruner = scanner.pushed_partition_pruner()
+    assert pruner is not None
+    assert pruner.should_include(str(path))
+    assert not pruner.should_include(str(tmp_path / "year=0" / "data.orc"))
+    manifest = scanner.prune_input_split(_manifest(path))
+    result = pa.concat_tables(list(scanner.create_reader().read(manifest)))
+    assert result.to_pylist() == (
+        [{"id": 1}, {"id": 2}] if columns == ["id"] else [{"year": expected}] * 2
+    )
+    if columns == ["year"]:
+        assert result.schema.field("year").type == logical_type
+
+
+def test_orc_partition_predicate_does_not_cast_unused_fields(tmp_path):
+    directory = tmp_path / "year=invalid" / "country=US"
+    directory.mkdir(parents=True)
+    path = directory / "data.orc"
+    _write_orc(path, pa.table({"id": [1]}))
+    scanner = (
+        OrcScanner(
+            schema=pa.schema(
+                [("id", pa.int64()), ("year", pa.int32()), ("country", pa.string())]
+            ),
+            partitioning=Partitioning(
+                PartitionStyle.HIVE, field_names=["year", "country"]
+            ),
+        )
+        .prune_partitions(col("country") == "US")
+        .prune_columns(["id"])
+    )
+    pruner = scanner.pushed_partition_pruner()
+    assert pruner is not None and pruner.should_include(str(path))
+    assert pa.concat_tables(
+        list(scanner.create_reader().read(scanner.prune_input_split(_manifest(path))))
+    ).to_pylist() == [{"id": 1}]
+    explicit = OrcScanner(
+        schema=scanner.schema,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_types={"year": int}),
+    ).prune_partitions(col("country") == "US")
+    explicit_pruner = explicit.pushed_partition_pruner()
+    assert explicit_pruner is not None
+    with pytest.raises(ValueError):
+        explicit_pruner.should_include(str(path))
+
+
+@pytest.mark.parametrize("value", ["invalid", "2147483648"])
+@pytest.mark.parametrize("stage", ["listing", "manifest", "reader_filter", "output"])
+def test_orc_partition_cast_errors_remain_visible(tmp_path, value, stage):
+    directory = tmp_path / f"year={value}"
+    directory.mkdir()
+    path = directory / "data.orc"
+    _write_orc(path, pa.table({"id": [1]}))
+    scanner = OrcScanner(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.int32())]),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+    )
+    if stage != "output":
+        scanner = scanner.prune_partitions(col("year") > 0).prune_columns(["id"])
+    with pytest.raises(pa.ArrowInvalid):
+        if stage == "listing":
+            pruner = scanner.pushed_partition_pruner()
+            assert pruner is not None
+            pruner.should_include(str(path))
+        elif stage == "manifest":
+            scanner.prune_input_split(_manifest(path))
+        else:
+            list(scanner.create_reader().read(_manifest(path)))
+
+
 @pytest.mark.parametrize("field_names", [None, ["key"]])
 @pytest.mark.parametrize(
     "operation", ["full", "project", "filter", "filter_only", "empty"]

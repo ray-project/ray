@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExchangeTaskSpec:
-    """
-    An interface to specify the exchange map and reduce tasks.
+    """An interface to specify the exchange map and reduce tasks.
 
     Subclasses should implement the `map` and `reduce` static methods.
     `map` method is to transform one input block into multiple output blocks.
@@ -48,8 +47,7 @@ class ExchangeTaskSpec:
         block: Block,
         output_num_blocks: int,
     ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
-        """
-        Map function to be run on each input block.
+        """Map function to be run on each input block.
 
         Returns list of [BlockMetadata, Block1, Block2, ..., BlockN].
         """
@@ -60,8 +58,7 @@ class ExchangeTaskSpec:
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, "BlockMetadataWithSchema"]:
-        """
-        Reduce function to be run for each output block.
+        """Reduce function to be run for each output block.
 
         Args:
             *mapper_outputs: List of map output blocks to reduce.
@@ -74,8 +71,7 @@ class ExchangeTaskSpec:
 
 
 class ExchangeTaskScheduler:
-    """
-    An interface to schedule exchange tasks (`exchange_spec`) for multi-nodes
+    """An interface to schedule exchange tasks (`exchange_spec`) for multi-nodes
     execution.
     """
 
@@ -101,9 +97,7 @@ class ExchangeTaskScheduler:
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         warn_on_driver_memory_usage: Optional[int] = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        """
-        Execute the exchange tasks on input `refs`.
-        """
+        """Execute the exchange tasks on input `refs`."""
         raise NotImplementedError
 
     def warn_on_high_local_memory_store_usage(self) -> None:

@@ -187,10 +187,13 @@ class DataIterator(abc.ABC):
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -202,11 +205,14 @@ class DataIterator(abc.ABC):
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -501,10 +507,14 @@ class DataIterator(abc.ABC):
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches
+                and applies ``collate_fn``. The pool has ``prefetch_batches`` threads,
+                up to a limit of 4. To change the limit, set the
+                ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS`` environment variable. If
+                0, Ray Data doesn't prefetch blocks and formats and collates each batch
+                without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -543,14 +553,14 @@ class DataIterator(abc.ABC):
                 Note: This function is called in a multi-threaded context; avoid using
                 thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
                 `TensorBatchType`. It is recommended to use this flag to pin
@@ -675,10 +685,13 @@ class DataIterator(abc.ABC):
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -686,14 +699,14 @@ class DataIterator(abc.ABC):
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if None, the
                 dtype will be inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -757,7 +770,14 @@ class DataIterator(abc.ABC):
             by `jax.experimental.mesh_utils.create_device_mesh`.
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches
+                and applies ``collate_fn``. The pool has ``prefetch_batches`` threads,
+                up to a limit of 4. To change the limit, set the
+                ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS`` environment variable. If
+                0, Ray Data doesn't prefetch blocks and formats and collates each batch
+                without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch for each host. Must be divisible
                 by the number of local devices. Defaults to 256.
             dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
@@ -779,7 +799,14 @@ class DataIterator(abc.ABC):
                 Note: This function is called in a multi-threaded context; avoid using
                 thread-unsafe code.
             drop_last: Whether to drop the last batch if incomplete.
-            local_shuffle_buffer_size: Minimum rows for local in-memory shuffle.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: Seed for local random shuffle.
             synchronize_batches: Whether to synchronize batch shapes across all hosts.
                 Setting this to False can improve performance if you guarantee that all
@@ -920,22 +947,25 @@ class DataIterator(abc.ABC):
                 all tensors. If None, then automatically infer the dtype.
             batch_size: How many samples per batch to yield at a time.
                 Defaults to 1.
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
@@ -1138,23 +1168,26 @@ class DataIterator(abc.ABC):
             additional_columns: Columns that correspond to sample weights or other metadata.
                 If this is a string, the weight data is a tensor. If this is a list, the
                 weight data is a ``dict`` that maps column names to their tensor representation.
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,

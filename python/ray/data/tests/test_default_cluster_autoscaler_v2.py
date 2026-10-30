@@ -26,14 +26,20 @@ from ray.data._internal.util import GiB
 
 
 class StubUtilizationGauge(ResourceUtilizationGauge):
-    def __init__(self, utilization: ExecutionResources):
+    def __init__(
+        self, utilization: ExecutionResources, blocked_on_consumer: bool = False
+    ):
         self._utilization = utilization
+        self._blocked_on_consumer = blocked_on_consumer
 
     def observe(self):
         pass
 
     def get(self):
         return self._utilization
+
+    def is_blocked_on_consumer(self):
+        return self._blocked_on_consumer
 
 
 _IS_AUTOSCALING_ENABLED_PATH = (
@@ -353,6 +359,28 @@ class TestClusterAutoscaling:
         utilization = ExecutionResources(cpu=0)
         autoscaler.try_trigger_scaling()
         assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
+
+    @pytest.mark.parametrize("blocked", [False, True])
+    def test_no_scale_up_while_blocked_on_consumer(self, blocked):
+        node_resource_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=0)
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_execution_id",
+            resource_utilization_calculator=StubUtilizationGauge(
+                ExecutionResources(cpu=1), blocked_on_consumer=blocked
+            ),
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=FakeAutoscalingCoordinator(),
+            get_node_counts=lambda: {node_resource_spec: 0},
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        # Utilization is high, so it adds a node unless the consumer is the
+        # bottleneck.
+        expected = ExecutionResources.zero() if blocked else ExecutionResources(cpu=1)
+        assert autoscaler.get_total_resources() == expected
 
     def test_low_utilization_grace_period_keeps_explicit_request(self):
         """Below the scale-up threshold, the last explicit request is resent briefly.

@@ -1,6 +1,5 @@
 # @OldAPIStack
-"""
-Example showing how you can use your trained policy for inference
+"""Example showing how you can use your trained policy for inference
 (computing actions) in an environment.
 
 Includes options for LSTM-based models (--use-lstm), attention-net models

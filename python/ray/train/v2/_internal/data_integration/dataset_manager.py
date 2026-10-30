@@ -153,8 +153,7 @@ class DatasetManager:
             return self._get_unsharded_dataset_iterator(dataset_info)
 
     def shutdown_data_executors(self) -> None:
-        """
-        Attempts to shut down the data executors of each sharded dataset,
+        """Attempts to shut down the data executors of each sharded dataset,
         freeing resources allocated to data execution.
 
         Note: The data executors for unsharded datasets are not managed by

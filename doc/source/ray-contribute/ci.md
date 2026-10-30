@@ -72,13 +72,13 @@ Both run when you change library code, and also when you change an API reference
 
 Each library runs the executable examples in its own documentation in a step named `<library>: docs example tests`. These execute the `doctest`, `testcode`, and `literalinclude` snippets described in [How to write code snippets](writing-code-snippets.md).
 
-These steps run when library code changes, not when docs change. A change under `python/ray/data/`, for example, runs `data: docs example tests`, so a library change that breaks a documented example still fails the PR. They also run when a `BUILD.bazel` file that defines doc test targets changes. `doc/BUILD.bazel` runs every library's step, and an example `BUILD.bazel` under a library's doc directory runs that library's step. The post-merge build runs every docs example suite.
+These steps run when library code changes, not when docs change. A change under `python/ray/data/`, for example, runs `data: docs example tests`, so a library change that breaks a documented example still fails the PR. They also run when a `BUILD.bazel` file that defines doc test targets changes. `doc/BUILD.bazel` runs every library's step, and an example `BUILD.bazel` under a library's doc directory runs that library's step. The scheduled post-merge builds run every docs example suite.
 
 An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/source/`, runs no docs example tests by default. To run the tests for the files you changed, see [Running the tests for your doc changes](#running-the-tests-for-your-doc-changes).
 
 ### What a prose-only change runs
 
-Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. A prose change under `doc/source/` does build the images that the `docs-example-test` step needs, from cache, even when the label isn't applied. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for any page with a runnable example, because each such page has its own test target. API reference pages under a library's `api/` directory are the exception. They trigger the API consistency checks instead, so the label doesn't run their doctests, and the post-merge build covers them.
+Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Prose can still carry doctests. The scheduled post-merge builds cover them, and the `docs-example-test` label runs them for any page with a runnable example, because each such page has its own test target. API reference pages under a library's `api/` directory are the exception. They trigger the API consistency checks instead, so the label doesn't run their doctests, and the scheduled post-merge builds cover them.
 
 A prose-only change also skips most of the lint group. The following lint steps still run:
 
@@ -93,7 +93,7 @@ The code-oriented lint steps don't run, because a Markdown change can't fail the
 
 Skipping `pre_commit` costs prose nothing, which is worth knowing if you're wondering where whitespace linting went. `.pre-commit-config.yaml` excludes `doc/source/` globally, so its trailing-whitespace and end-of-file hooks never inspected your prose in the first place, on any PR.
 
-The split lives in `.buildkite/always.rules.txt`, which emits the `lint` tag for every file except prose and images. One non-prose file anywhere in your diff brings the whole lint group back, so a mixed PR loses no coverage. Post-merge builds run everything regardless, since rayci skips rule evaluation outside pull requests.
+The split lives in `.buildkite/always.rules.txt`, which emits the `lint` tag for every file except prose and images. One non-prose file anywhere in your diff brings the whole lint group back, so a mixed PR loses no coverage. Rayci evaluates these rules only on pull requests, and the scheduled post-merge builds run the whole lint group.
 
 ### Running the tests for your doc changes
 
@@ -111,7 +111,7 @@ With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel 
 The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
 
 * **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
-* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The post-merge build runs the GPU examples.
+* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The scheduled post-merge builds run the GPU examples.
 * **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
 
 To see what the label would run before you push, run the selector locally:
@@ -124,13 +124,15 @@ The opt-in step runs only on premerge builds, which the `go` label starts. Micro
 
 ### Docstring-only changes
 
-A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. For Ray Data, the `docstring-only` label skips those suites on a PR that changes nothing but docstrings and comments. Instead, it runs the `>>>` examples in the docstrings of only the modules the PR changed. Like the `go` label, it requires write access.
+A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. The `docstring-only` label is for a PR that changes nothing but docstrings and comments. It skips the test suites of every library the change selects, and instead runs the `>>>` examples in the docstrings of only the modules the PR changed. Like the `go` label, it requires write access.
 
-With the label, a Data PR runs the following:
+With the label, a PR runs the following:
 
-* `data: docstring examples`, which runs each changed module's `>>>` examples in the Data CI image, with this PR's Ray installed. An example that shows output must print it, with `...` matching any text. An example that shows no output only has to run without raising. It skips examples marked `# doctest: +SKIP`, and whole docstrings marked `+SKIP_EXAMPLE`.
+* `doc: docstring examples`, which runs the `>>>` examples in each changed module under `python/ray/` that a CPU doctest target covers, in any library. It runs them in the light `docstringbuild` image, with this PR's Ray installed. An example that shows output must print it, with `...` matching any text. An example that shows no output only has to run without raising. It skips examples marked `# doctest: +SKIP`, and whole docstrings marked `+SKIP_EXAMPLE`.
 * The two API surface checks and lint.
 * `lint: validate docstring-only scope`, the guard the label can't turn off.
+
+The `docstringbuild` image leaves out heavy libraries such as torch and TensorFlow. The step reports a docstring that fails only because one of those libraries is missing as skipped, names the library, and repeats the skipped examples at the end of its log. The label also skips each library's doctest target with the rest of its suites, so those examples run only in the scheduled post-merge builds. See [What doesn't run on your PR](#what-doesnt-run-on-your-pr) for which post-merge builds those are.
 
 The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
@@ -139,7 +141,23 @@ python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/m
 python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
 ```
 
-The label covers Ray Data only. Other libraries' test steps still run in full, and so does `ml: data integration tests`. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
+Every other test step is skipped under the label, in every library, including `ml: data integration tests`. The rule that does this lives in `.buildkite/docs.labels.yaml`, and the pipeline upload log names it, next to the selected tags. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
+
+The label doesn't build the docs. Add an `@rtd-build` line to a commit message as well, as described in [The Read the Docs render gate](#the-read-the-docs-render-gate), so Read the Docs confirms that the API reference pages your docstrings render into still build.
+
+### Skipping GPU tests
+
+Some docs and CI infrastructure files select GPU test steps even though a change to them can't affect GPU behavior. For example, `doc/BUILD.bazel` defines the docs example tests for every library, so a change to it selects every library's docs example steps, including the Ray Data, Ray Serve, and Ray LLM GPU steps. The `skip-gpu-tests` label skips every step tagged `gpu`, in every library, along with the images that only those steps need. All other selected steps still run. Like the `go` label, it requires write access.
+
+Use the label only when your change can't affect what a GPU step tests. Don't use it for a change to library code, a GPU test, or a GPU test's image or launcher. The scheduled post-merge builds still run the GPU steps, so a GPU failure the label hides surfaces there, after your PR merges. A change to the label takes effect on the next commit you push, as with the other labels.
+
+### Why some steps show as broken
+
+A Buildkite job marked `broken` never ran, so a `broken` label-gated step isn't a failure in your change.
+
+On a PR, the rules in `.buildkite/docs.labels.yaml` remove the steps a label skips before the pipeline uploads, so those steps don't appear in the build at all. Without the `docstring-only` label, `doc: docstring examples` doesn't appear, and without the `docs-example-test` label, `doc: docs example tests (opt-in)` doesn't either. Under the `docstring-only` label, the library test steps it skips don't appear, and under the `skip-gpu-tests` label, the GPU steps don't appear. The one label-gated step the rules leave in place is `lint: validate docstring-only scope`, which shows as `broken` on a PR without the `docstring-only` label.
+
+Scheduled post-merge builds carry no PR labels and don't apply the label rules, so all three label-gated steps show as `broken` there when the build selects them.
 
 ### What doesn't run on your PR
 
@@ -147,6 +165,8 @@ Two heavier steps are post-merge only, and both carry `skip-on-premerge`:
 
 * `doc: build` renders the site with `make html` and uploads the build artifacts to S3, which it does only on `master`.
 * `doc: linkcheck` validates links and is soft-fail, so it reports without blocking.
+
+Ray runs two kinds of post-merge build on `master`. Each merge starts one, but that build mostly builds images and reruns the flaky-test steps. It doesn't run the docs example tests. The full suite, including every library's docs example tests, runs in the scheduled post-merge builds that Ray's release automation triggers several times a day. Their build message starts with "Triggered by release-automation build." To confirm that a merged change passes its docs example tests, find the first scheduled build whose commit includes your merge.
 
 For building and previewing the docs on your own machine, see [Contributing to the Ray documentation](docs.md).
 

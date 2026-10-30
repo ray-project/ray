@@ -19,7 +19,7 @@ When two rules conflict, follow this order:
 1. This guide.
 1. The [Google developer documentation style guide](https://developers.google.com/style), as the general fallback for anything this guide doesn't cover.
 
-Vale enforces an automated subset of the Google style guide in CI, currently on the Ray Data docs and the example gallery. Passing Vale is the baseline, not the whole standard. This guide is broader than what Vale checks, so a page can pass Vale and still need edits to meet the standard here. For how to run Vale, see {ref}`vale`.
+Vale checks an automated subset of the Google style guide. Its CI check, which covers the Ray Data docs and the example gallery, is temporarily off. Passing Vale is the baseline, not the whole standard. This guide is broader than what Vale checks, so a page can pass Vale and still need edits to meet the standard here. For how to run Vale, see {ref}`vale`.
 
 New pages are MyST Markdown (`.md`). A lint check rejects newly added reStructuredText (`.rst`) files, though edits to existing `.rst` files are fine. The examples in this guide use MyST. The prose rules apply to both formats. Only the formatting and cross-reference syntax differs.
 

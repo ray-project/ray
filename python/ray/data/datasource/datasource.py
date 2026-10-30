@@ -195,16 +195,14 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
 
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":
-        """
-        Deprecated: Implement :meth:`~ray.data.Datasource.get_read_tasks` and
+        """Deprecated: Implement :meth:`~ray.data.Datasource.get_read_tasks` and
         :meth:`~ray.data.Datasource.estimate_inmemory_data_size` instead.
         """
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
     def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
-        """
-        Deprecated: Implement :meth:`~ray.data.Datasource.get_read_tasks` and
+        """Deprecated: Implement :meth:`~ray.data.Datasource.get_read_tasks` and
         :meth:`~ray.data.Datasource.estimate_inmemory_data_size` instead.
         """
         raise NotImplementedError

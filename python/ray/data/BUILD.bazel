@@ -1215,7 +1215,7 @@ py_test(
 
 py_test(
     name = "test_read_parquet_v2",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_read_parquet_v2.py"],
     tags = [
         "exclusive",
@@ -2492,7 +2492,7 @@ py_test(
 
 py_test(
     name = "test_download_expression",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_download_expression.py"],
     tags = [
         "exclusive",

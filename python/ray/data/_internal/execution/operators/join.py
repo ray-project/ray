@@ -520,8 +520,7 @@ def _should_index_side(
     unsupported_table: "pa.Table",
     join_type: JoinType,
 ) -> bool:
-    """
-    Determine whether to create an index column for a given side of the join.
+    """Determine whether to create an index column for a given side of the join.
 
     A column is "supported" if it is "joinable", and "unsupported" otherwise.
     A supported_table is a table with only "supported" columns. Index columns are
@@ -556,8 +555,7 @@ def _should_index_side(
 def _split_unsupported_columns(
     table: "pa.Table",
 ) -> Tuple["pa.Table", "pa.Table"]:
-    """
-    Split a PyArrow table into two tables based on column joinability.
+    """Split a PyArrow table into two tables based on column joinability.
 
     Separates columns into supported types and unsupported types that cannot be
     directly joined on but should be preserved in results.
@@ -663,8 +661,7 @@ class JoinOperator(HashShufflingOperatorBase):
 
     @staticmethod
     def _is_pa_join_not_supported(dtype: "pa.DataType") -> bool:
-        """
-        The latest pyarrow versions do not support joins where the
+        """The latest pyarrow versions do not support joins where the
         tables contain the following types below (lists,
         structs, maps, unions, extension types, etc.)
 

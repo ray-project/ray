@@ -636,7 +636,7 @@ class LearnerGroup(Checkpointable):
 
     def foreach_learner(
         self,
-        func: Callable[[Learner, Optional[Any]], T],
+        func: Callable[[Learner], T],
         *,
         healthy_only: bool = True,
         remote_actor_ids: List[int] = None,
@@ -648,7 +648,9 @@ class LearnerGroup(Checkpointable):
         r"""Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
-            func: The function to call on each Learner L with args: (L, \*\*kwargs).
+            func: The function to call on each Learner L. `func` receives L as its
+                only positional argument, plus any `**kwargs` passed to
+                this method as keyword arguments.
             healthy_only: If True, applies `func` only to Learner actors currently
                 tagged "healthy", otherwise to all actors. If `healthy_only=False` and
                 `mark_healthy=True`, will send `func` to all actors and mark those
@@ -673,7 +675,11 @@ class LearnerGroup(Checkpointable):
                 Learner itself.
 
         Returns:
-            A list of size len(Learners) with the return values of all calls to `func`.
+            A `RemoteCallResults` object with one result or error for each Learner
+            whose call to `func` finished. It can hold fewer entries than there are
+            Learners: a Learner whose call doesn't finish within `timeout_seconds`
+            has no entry, and with `healthy_only=True`, neither does a Learner
+            currently tagged "unhealthy".
         """
         if self.is_local:
             results = RemoteCallResults()

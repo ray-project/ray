@@ -29,6 +29,7 @@ steps:
       cuda:
         - "12.3.2-cudnn9"
         - "13.0.0-cudnn"
+        - "13.3.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -77,10 +78,22 @@ steps:
         - "12.8.1-cudnn"
       image_type:
         - "ray-torch-cu128"
+      # Each CUDA version pairs with exactly one image type (its own lock), so
+      # cu133 is added per combination rather than as a cartesian dimension.
+      adjustments:
+        - with:
+            python: "3.11"
+            cuda: "13.3.1-cudnn"
+            image_type: "ray-torch-cu133"
+        - with:
+            python: "3.14"
+            cuda: "13.3.1-cudnn"
+            image_type: "ray-torch-cu133"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "{{array.image_type}}"
+      PYTHON_DEPSET: "python/deplocks/ray-torch/{{array.image_type}}_base_py{{array.python}}.lock"
     depends_on:
       - raycudabaseextra($)
 
@@ -114,6 +127,7 @@ steps:
       gpu:
         - "cu12.3.2-cudnn9"
         - "cu13.0.0-cudnn"
+        - "cu13.3.1-cudnn"
       python:
         # This list should be kept in sync with the list of supported Python in
         # release test suite
@@ -174,6 +188,7 @@ steps:
       gpu:
         - cu12.3.2-cudnn9
         - cu13.0.0-cudnn
+        - cu13.3.1-cudnn
       python:
         - "3.10"
         - "3.11"
@@ -252,6 +267,7 @@ steps:
         - "3.14"
       gpu:
         - "cu12.8.1-cudnn"
+        - "cu13.3.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -283,6 +299,7 @@ steps:
         - "3.14"
       gpu:
         - cu12.8.1-cudnn
+        - cu13.3.1-cudnn
 
   - label: ":crane: publish: ray-ml-anyscale py{{array.python}} cu12.1.1-cudnn8"
     key: anyscalemlbuild

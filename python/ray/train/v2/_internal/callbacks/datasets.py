@@ -71,9 +71,7 @@ class RayDatasetShardProvider:
         return self._cached_dataset_shards[dataset_name]
 
     def shutdown_data_executors(self) -> None:
-        """
-        Attempts to eagerly shutdown the data executors for datasets, freeing resources allocated to data execution.
-        """
+        """Attempts to eagerly shutdown the data executors for datasets, freeing resources allocated to data execution."""
         try:
             self._dataset_manager.shutdown_data_executors.remote()
         except Exception:
