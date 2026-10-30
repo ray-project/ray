@@ -569,9 +569,8 @@ class DataClient:
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None
     ) -> ray_client_pb2.PutResponse:
-        datareq = ray_client_pb2.DataRequest(
-            put=request,
-        )
+        datareq = ray_client_pb2.DataRequest()
+        datareq.put.CopyFrom(request)  # put=request would serialize; fails >2 GiB.
         resp = self._blocking_send(datareq)
         return resp.put
 
@@ -584,7 +583,8 @@ class DataClient:
         self._async_send(datareq)
 
     def Schedule(self, request: ray_client_pb2.ClientTask, callback: ResponseCallable):
-        datareq = ray_client_pb2.DataRequest(task=request)
+        datareq = ray_client_pb2.DataRequest()
+        datareq.task.CopyFrom(request)  # See PutObject.
         self._async_send(datareq, callback)
 
     def Terminate(

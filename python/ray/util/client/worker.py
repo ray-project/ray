@@ -719,7 +719,8 @@ class Worker:
 
         self.data_client.Schedule(task, populate_ids)
 
-        self.total_outbound_message_size_bytes += task.ByteSize()
+        # Not task.ByteSize(), which serializes and fails over 2 GiB.
+        self.total_outbound_message_size_bytes += len(task.data)
         if (
             self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD
             and log_once("client_communication_overhead_warning")
