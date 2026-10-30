@@ -314,6 +314,7 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
 
 def test_push_based_shuffle_stage_iterators_and_map_partition():
     from types import SimpleNamespace
+
     from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
         _MapStageIterator,
         _MergeStageIterator,
@@ -321,7 +322,7 @@ def test_push_based_shuffle_stage_iterators_and_map_partition():
         _PushBasedShuffleStage,
         _ReduceStageIterator,
     )
-    from ray.data.block import BlockMetadata, BlockMetadataWithSchema
+    from ray.data.block import BlockMetadataWithSchema
 
     node_id = NodeID.from_random().hex()
     stage = _PushBasedShuffleStage(
@@ -333,7 +334,11 @@ def test_push_based_shuffle_stage_iterators_and_map_partition():
 
     input_blocks = ["b0", "b1", "b2", "b3"]
     shuffle_map = SimpleNamespace(
-        remote=lambda idx, blk, *args: [f"m{idx}_0_{blk}", f"m{idx}_1_{blk}", f"meta_{idx}"]
+        remote=lambda idx, blk, *args: [
+            f"m{idx}_0_{blk}",
+            f"m{idx}_1_{blk}",
+            f"meta_{idx}",
+        ]
     )
     map_iter = _MapStageIterator(input_blocks, shuffle_map, ["arg"])
     assert input_blocks == []

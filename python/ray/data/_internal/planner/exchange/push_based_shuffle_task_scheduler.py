@@ -1,7 +1,17 @@
-from collections import deque
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple, TypeVar, Union
+from collections import deque
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import ray
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
@@ -376,7 +386,8 @@ class _ReduceStageIterator:
                 reduce_idx
             )
             reduce_arg_blocks = [
-                merge_results.popleft() for merge_results in all_merge_results[merge_idx]
+                merge_results.popleft()
+                for merge_results in all_merge_results[merge_idx]
             ]
             reduce_arg_blocks_list.append((reduce_idx, reduce_arg_blocks))
 
