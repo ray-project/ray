@@ -157,3 +157,61 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,
                          GcsKVManagerTest,
                          ::testing::Values("redis", "memory"));
+
+namespace {
+
+// Minimal InternalKVInterface whose Exists answers immediately; every other
+// operation is a no-op. Only Exists is exercised by the reply-count test below.
+class FakeExistsOnlyKV : public ray::gcs::InternalKVInterface {
+ public:
+  void Get(const std::string &,
+           const std::string &,
+           ray::Postable<void(std::optional<std::string>)>) override {}
+  void MultiGet(
+      const std::string &,
+      const std::vector<std::string> &,
+      ray::Postable<void(absl::flat_hash_map<std::string, std::string>)>) override {}
+  void Put(const std::string &,
+           const std::string &,
+           std::string,
+           bool,
+           ray::Postable<void(bool)>) override {}
+  void Del(const std::string &,
+           const std::string &,
+           bool,
+           ray::Postable<void(int64_t)>) override {}
+  void Exists(const std::string &,
+              const std::string &,
+              ray::Postable<void(bool)> callback) override {
+    std::move(callback).Post("FakeExistsOnlyKV.Exists", false);
+  }
+  void Keys(const std::string &,
+            const std::string &,
+            ray::Postable<void(std::vector<std::string>)>) override {}
+};
+
+}  // namespace
+
+// HandleInternalKVExists must reply exactly once for an invalid key: the
+// KeyError reply must not fall through into the lookup, whose callback would
+// send a second reply on an already-finished server call.
+TEST(GcsInternalKVManagerInvalidKeyTest, InvalidKeyRepliesExactlyOnce) {
+  instrumented_io_context io_context;
+  ray::gcs::GcsInternalKVManager manager(
+      std::make_unique<FakeExistsOnlyKV>(), "", io_context);
+  ray::rpc::InternalKVExistsRequest request;
+  request.set_key("@namespace_invalid");
+  ray::rpc::InternalKVExistsReply reply;
+  int reply_count = 0;
+  auto send_reply_callback = [&reply_count](const ray::Status &,
+                                            std::function<void()>,
+                                            std::function<void()>) { reply_count++; };
+
+  manager.HandleInternalKVExists(request, &reply, send_reply_callback);
+  // The KeyError reply is sent synchronously by the handler.
+  ASSERT_EQ(reply_count, 1);
+  ASSERT_NE(reply.status().code(), 0);
+  // Drain any posted work: the lookup's callback must never send a second reply.
+  io_context.poll();
+  ASSERT_EQ(reply_count, 1);
+}
