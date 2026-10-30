@@ -20,7 +20,10 @@ from ray._private.utils import (
 )
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
-from ray.dashboard.modules.job.cli_utils import add_common_job_options
+from ray.dashboard.modules.job.cli_utils import (
+    add_common_job_options,
+    extract_concise_error_message,
+)
 from ray.dashboard.modules.job.utils import redact_url_password
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
@@ -309,21 +312,27 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
-    job_id = client.submit_job(
-        entrypoint=(
-            list2cmdline(entrypoint)
-            if sys.platform == "win32"
-            else shlex.join(entrypoint)
-        ),
-        submission_id=submission_id,
-        runtime_env=final_runtime_env,
-        metadata=metadata_json,
-        entrypoint_num_cpus=entrypoint_num_cpus,
-        entrypoint_num_gpus=entrypoint_num_gpus,
-        entrypoint_memory=entrypoint_memory,
-        entrypoint_resources=entrypoint_resources,
-        entrypoint_label_selector=entrypoint_label_selector,
-    )
+    try:
+        job_id = client.submit_job(
+            entrypoint=(
+                list2cmdline(entrypoint)
+                if sys.platform == "win32"
+                else shlex.join(entrypoint)
+            ),
+            submission_id=submission_id,
+            runtime_env=final_runtime_env,
+            metadata=metadata_json,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
+            entrypoint_resources=entrypoint_resources,
+            entrypoint_label_selector=entrypoint_label_selector,
+        )
+    except RuntimeError as e:
+        # no_format=True: the extracted message is server-provided and may
+        # contain literal "{...}" (e.g. a dict/set repr), which would
+        # otherwise be passed through str.format() and crash.
+        cli_logger.abort(extract_concise_error_message(str(e)), no_format=True)
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")
 
