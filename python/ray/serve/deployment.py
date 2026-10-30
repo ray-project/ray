@@ -54,6 +54,10 @@ class Application:
                 my_app:
                     import_path: python_file:app
 
+    Args:
+        bound_deployment: The deployment, with its arguments bound. Use
+            ``Deployment.bind()`` to create an application rather than
+            constructing one directly.
     """
 
     def __init__(self, bound_deployment: "Deployment"):
@@ -153,6 +157,7 @@ class Deployment:
 
     @property
     def version(self) -> Optional[str]:
+        """Opaque version that determines whether replicas restart on update."""
         return self._version
 
     @property
@@ -192,20 +197,33 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
+        """Positional arguments passed to the deployment's constructor."""
         return self._replica_config.init_args
 
     @property
     def init_kwargs(self) -> Tuple[Any]:
+        """Keyword arguments passed to the deployment's constructor."""
         return self._replica_config.init_kwargs
 
     @property
     def logging_config(self) -> Dict:
+        """Logging configuration of the deployment."""
         return self._deployment_config.logging_config
 
     def set_logging_config(self, logging_config: Dict):
+        """Set the logging configuration of the deployment.
+
+        Args:
+            logging_config: The logging configuration.
+        """
         self._deployment_config.logging_config = logging_config
 
     def __call__(self):
+        """Not supported. Deployments can't be called or constructed directly.
+
+        Raises:
+            RuntimeError: Always.
+        """
         raise RuntimeError(
             "Deployments cannot be constructed directly. "
             "Use `deployment.deploy() instead.`"
