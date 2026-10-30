@@ -322,5 +322,13 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         cls,
         checkpoint: Checkpoint,
     ) -> lightgbm.Booster:
-        """Retrieve the LightGBM model stored in this checkpoint."""
+        """Retrieve the LightGBM model stored in this checkpoint.
+
+        Args:
+            checkpoint: A checkpoint that ``RayTrainReportCallback`` saved with
+                its default filename.
+
+        Returns:
+            The ``lightgbm.Booster`` loaded from the checkpoint.
+        """
         return RayTrainReportCallback.get_model(checkpoint)
