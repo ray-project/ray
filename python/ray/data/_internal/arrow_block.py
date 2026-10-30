@@ -406,7 +406,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def take(
         self,
-        indices: Union[List[int], "pyarrow.Array", "pyarrow.ChunkedArray"],
+        indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
     ) -> "pyarrow.Table":
         """Select rows from the underlying table.
 

@@ -22,6 +22,7 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
     Expr,
@@ -44,6 +45,7 @@ __all__ = [
     "MapRows",
     "Project",
     "StreamingRepartition",
+    "ShuffleBatches",
     "CSE_TEMP_COLUMN_PREFIX",
 ]
 
@@ -293,6 +295,38 @@ class MapBatches(AbstractUDFMap):
         )
 
         object.__setattr__(self, "fn", make_torch_inference_callable(self.fn))
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class ShuffleBatches(AbstractMap, LogicalOperatorPreservesSchema):
+    """Shuffle rows within target-sized batches or whole input blocks.
+
+    Although this operation preserves rows and schema, it changes row order.
+    Limit pushdown must stop here, and fusion must not rebundle its batches.
+    """
+
+    batch_size: Optional[int]
+    seed_config: RandomSeedConfig
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    compute: Optional[ComputeStrategy] = None
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if self.batch_size is not None and self.batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(
+            self,
+            "min_rows_per_bundled_input",
+            self.batch_size,
+        )
+        object.__setattr__(self, "_name", "ShuffleBatches")
 
 
 @dataclass(frozen=True, repr=False, eq=False)

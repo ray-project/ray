@@ -807,6 +807,22 @@
           runtime_env:
             RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "0"
 
+- name: "shuffle_batches.fastpath_{{take_enabled}}"
+  python: "3.10"
+  frequency: manual
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_1_cpu_compute.yaml
+    byod:
+      runtime_env:
+        RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "{{take_enabled}}"
+  matrix:
+    setup:
+      take_enabled: ["1", "0"]
+  run:
+    timeout: 7200
+    script: python benchmark_shuffle_batches.py --repeats=3
+
 - name: "iter_batches_{{format}}"
   python: "3.11"
   cluster:
