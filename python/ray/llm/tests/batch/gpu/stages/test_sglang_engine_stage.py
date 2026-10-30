@@ -2,15 +2,19 @@
 
 import asyncio
 import sys
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
 import pytest
 
 from ray.data import ActorPoolStrategy
 from ray.llm._internal.batch.stages.sglang_engine_stage import (
+    SGLangEngineRequest,
     SGLangEngineStage,
     SGLangEngineStageUDF,
     SGLangEngineWrapper,
+    SGLangOutputData,
     SGLangTaskType,
 )
 
@@ -274,6 +278,168 @@ async def test_sglang_invalid_task_type(model_llama_3_2_216M, mock_sgl_engine):
                 "__idx_in_batch": 0,
             }
         )
+
+
+# ---------------------------------------------------------------------------
+# Embed
+# ---------------------------------------------------------------------------
+
+
+async def _async_encode_with_input_ids(
+    self, prompt=None, dimensions=None, input_ids=None
+):
+    pass
+
+
+async def _async_encode_text_only(self, prompt, dimensions=None):
+    pass
+
+
+def _make_embed_wrapper(skip_tokenizer_init=True):
+    """A wrapper with a mocked engine, bypassing engine construction."""
+    wrapper = SGLangEngineWrapper.__new__(SGLangEngineWrapper)
+    wrapper.request_id = 0
+    wrapper.idx_in_batch_column = "__idx_in_batch"
+    wrapper.task_type = SGLangTaskType.EMBED
+    wrapper.skip_tokenizer_init = skip_tokenizer_init
+    wrapper.semaphore = nullcontext()
+    wrapper.engine = MagicMock()
+    wrapper.engine.async_encode = AsyncMock(
+        return_value={"embedding": [0.5, -0.5, 1.0], "meta_info": {"prompt_tokens": 3}}
+    )
+    return wrapper
+
+
+def _embed_row(**overrides):
+    row = {
+        "prompt": "hello",
+        "tokenized_prompt": np.array([1, 2, 3]),
+        "__idx_in_batch": 0,
+    }
+    row.update(overrides)
+    return row
+
+
+@pytest.mark.parametrize("requested", [None, False, True])
+def test_embed_wrapper_enables_embedding_mode(mock_sgl_engine, requested):
+    kwargs = dict(
+        model="model", idx_in_batch_column="__idx_in_batch", task=SGLangTaskType.EMBED
+    )
+    if requested is not None:
+        kwargs["is_embedding"] = requested
+    with patch("sglang.Engine") as mock_engine:
+        mock_engine.async_encode = _async_encode_with_input_ids
+        SGLangEngineWrapper(**kwargs)
+    assert mock_engine.call_args.kwargs["is_embedding"] is True
+
+
+def test_embed_wrapper_rejects_sglang_without_token_id_encode(mock_sgl_engine):
+    """Token-in embedding needs `async_encode(input_ids=...)`; fail before the
+    engine is built rather than on the first row."""
+    with patch("sglang.Engine") as mock_engine:
+        mock_engine.async_encode = _async_encode_text_only
+        with pytest.raises(ValueError, match="does not accept token IDs"):
+            SGLangEngineWrapper(
+                model="model",
+                idx_in_batch_column="__idx_in_batch",
+                task=SGLangTaskType.EMBED,
+            )
+        mock_engine.assert_not_called()
+
+
+def test_embed_wrapper_text_mode_works_with_older_sglang(mock_sgl_engine):
+    with patch("sglang.Engine") as mock_engine:
+        mock_engine.async_encode = _async_encode_text_only
+        SGLangEngineWrapper(
+            model="model",
+            idx_in_batch_column="__idx_in_batch",
+            task=SGLangTaskType.EMBED,
+            skip_tokenizer_init=False,
+        )
+    mock_engine.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_embed_sends_token_ids_and_returns_float32_array():
+    wrapper = _make_embed_wrapper()
+    request, output, _ = await wrapper.generate_async(
+        _embed_row(embed_params={"dimensions": np.int64(2)})
+    )
+
+    wrapper.engine.async_encode.assert_awaited_once_with(
+        input_ids=[1, 2, 3], dimensions=2
+    )
+    assert request.prompt_token_ids == [1, 2, 3]
+    assert output["embeddings"].dtype == np.float32
+    np.testing.assert_array_equal(output["embeddings"], [0.5, -0.5, 1.0])
+    assert output["num_input_tokens"] == 3
+    assert output["num_generated_tokens"] == 0
+    assert output["prompt"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_embed_text_mode_sends_the_prompt():
+    wrapper = _make_embed_wrapper(skip_tokenizer_init=False)
+    row = _embed_row()
+    del row["tokenized_prompt"]
+    await wrapper.generate_async(row)
+    wrapper.engine.async_encode.assert_awaited_once_with(prompt="hello")
+
+
+@pytest.mark.asyncio
+async def test_embed_converts_tensor_embeddings():
+    torch = pytest.importorskip("torch")
+    wrapper = _make_embed_wrapper()
+    wrapper.engine.async_encode.return_value = {
+        "embedding": torch.tensor([1.0, 2.0], dtype=torch.bfloat16),
+        "meta_info": {"prompt_tokens": 3},
+    }
+    _, output, _ = await wrapper.generate_async(_embed_row())
+    assert output["embeddings"].dtype == np.float32
+    np.testing.assert_array_equal(output["embeddings"], [1.0, 2.0])
+
+
+@pytest.mark.asyncio
+async def test_embed_ignores_unset_embed_params():
+    """Arrow struct columns fill keys other rows set with None."""
+    wrapper = _make_embed_wrapper()
+    await wrapper.generate_async(_embed_row(embed_params={"dimensions": None}))
+    wrapper.engine.async_encode.assert_awaited_once_with(input_ids=[1, 2, 3])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "embed_params,match",
+    [
+        ({"normalize": True}, "Unsupported embed_params"),
+        ({"dimensions": 0}, "positive integer"),
+        ({"dimensions": True}, "positive integer"),
+        ({"dimensions": 2.5}, "positive integer"),
+    ],
+)
+async def test_embed_rejects_invalid_embed_params(embed_params, match):
+    wrapper = _make_embed_wrapper()
+    with pytest.raises(ValueError, match=match):
+        await wrapper._prepare_llm_request(_embed_row(embed_params=embed_params))
+
+
+def test_embed_output_without_embedding_is_rejected():
+    request = SGLangEngineRequest(
+        request_id=0, idx_in_batch=0, prompt="p", prompt_token_ids=None, params={}
+    )
+    with pytest.raises(ValueError, match="no embedding"):
+        SGLangOutputData.from_embedding_output({"meta_info": {}}, request)
+
+
+def test_sglang_stage_embed_input_keys():
+    stage = SGLangEngineStage(
+        fn_constructor_kwargs=dict(
+            model="model", task_type=SGLangTaskType.EMBED, engine_kwargs={}
+        ),
+        map_batches_kwargs=dict(),
+    )
+    assert set(stage.get_required_input_keys()) == {"prompt"}
+    assert set(stage.get_optional_input_keys()) == {"embed_params"}
 
 
 if __name__ == "__main__":

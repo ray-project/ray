@@ -74,6 +74,69 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
         return values
 
 
+def _stage_explicitly_enabled(
+    config: SGLangEngineProcessorConfig, field: str, config_cls: type
+) -> bool:
+    """Whether the user set a stage field and left the stage enabled."""
+    return (
+        field in config.model_fields_set
+        and resolve_stage_config(getattr(config, field), config_cls).enabled
+    )
+
+
+def _configure_embed_stages(
+    config: SGLangEngineProcessorConfig,
+) -> SGLangEngineProcessorConfig:
+    """Pick the stages and input mode for the embed task.
+
+    The detokenize stage is dropped: embedding returns vectors, not tokens.
+
+    Embed rows carry a ``prompt``, so the chat template stage, which needs
+    ``messages``, is turned off unless ``chat_template_stage`` is set
+    explicitly.
+
+    Prompts are sent to SGLang as text by default, so the tokenize stage is
+    turned off and ``skip_tokenizer_init`` defaults to False. Setting
+    ``tokenize_stage`` explicitly sends token IDs instead, which needs an
+    SGLang whose ``Engine.async_encode`` accepts ``input_ids``.
+
+    Returns a copy; the caller's config is left untouched.
+    """
+    task = SGLangTaskType.EMBED
+    if _stage_explicitly_enabled(config, "detokenize_stage", DetokenizeStageConfig):
+        raise ValueError(
+            f"detokenize_stage cannot be used with task_type='{task}': "
+            "embedding returns vectors rather than tokens to detokenize. Drop "
+            "this setting or set it to False."
+        )
+    updates: Dict[str, Any] = {"detokenize_stage": False}
+    if "chat_template_stage" not in config.model_fields_set:
+        updates["chat_template_stage"] = False
+
+    skip_tokenizer_init = config.engine_kwargs.get("skip_tokenizer_init")
+    if _stage_explicitly_enabled(config, "tokenize_stage", TokenizerStageConfig):
+        if skip_tokenizer_init is False:
+            raise ValueError(
+                f"tokenize_stage with task_type='{task}' sends token IDs, which "
+                "requires engine_kwargs['skip_tokenizer_init']=True. Drop one "
+                "of the two settings."
+            )
+    else:
+        if skip_tokenizer_init:
+            raise ValueError(
+                f"engine_kwargs['skip_tokenizer_init']=True with "
+                f"task_type='{task}' needs token IDs from the tokenize stage. "
+                "Set tokenize_stage=True, or drop skip_tokenizer_init to send "
+                "prompts as text."
+            )
+        updates["tokenize_stage"] = False
+        updates["engine_kwargs"] = {
+            **config.engine_kwargs,
+            "skip_tokenizer_init": False,
+        }
+    return config.model_copy(update=updates)
+
+
 def build_sglang_engine_processor(
     config: SGLangEngineProcessorConfig,
     chat_template_kwargs: Optional[Dict[str, Any]] = None,
@@ -119,6 +182,9 @@ def build_sglang_engine_processor(
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
+
+    if config.task_type == SGLangTaskType.EMBED:
+        config = _configure_embed_stages(config)
 
     # Prepare processor defaults for merging into stage configs
     trust_remote_code = config.engine_kwargs.get("trust_remote_code", False)

@@ -1,6 +1,7 @@
 """This test suite does not need sglang to be installed."""
 
 import sys
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -117,6 +118,105 @@ class TestSGLangEngineProcessorConfig:
             processor = build_sglang_engine_processor(config)
 
         assert processor is not None
+
+
+class TestEmbedTaskStages:
+    """Embedding returns vectors, so the detokenize stage is dropped. Prompts
+    go to SGLang as text unless the tokenize stage is requested explicitly."""
+
+    @staticmethod
+    def _patch_hf_config():
+        return patch(
+            "transformers.AutoConfig.from_pretrained",
+            return_value=SimpleNamespace(architectures=["Qwen3ForCausalLM"]),
+        )
+
+    def _build(self, **kwargs):
+        config = SGLangEngineProcessorConfig(
+            model_source="Qwen/Qwen3-Embedding-0.6B",
+            task_type=SGLangTaskType.EMBED,
+            **kwargs,
+        )
+        with self._patch_hf_config():
+            return ProcessorBuilder.build(config)
+
+    def test_embed_defaults_to_text_input(self):
+        processor = self._build()
+
+        assert processor.list_stage_names() == ["SGLangEngineStage"]
+        stage = processor.get_stage_by_name("SGLangEngineStage")
+        assert stage.fn_constructor_kwargs["task_type"] == SGLangTaskType.EMBED
+        engine_kwargs = stage.fn_constructor_kwargs["engine_kwargs"]
+        assert engine_kwargs["task"] == SGLangTaskType.EMBED
+        assert engine_kwargs["skip_tokenizer_init"] is False
+
+    def test_embed_explicit_chat_template_stage_is_kept(self):
+        processor = self._build(chat_template_stage=True)
+        assert processor.list_stage_names() == [
+            "ChatTemplateStage",
+            "SGLangEngineStage",
+        ]
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"tokenize_stage": True},
+            {"tokenize_stage": True, "engine_kwargs": {"skip_tokenizer_init": True}},
+        ],
+    )
+    def test_embed_explicit_tokenize_stage_sends_token_ids(self, kwargs):
+        processor = self._build(**kwargs)
+
+        assert processor.list_stage_names() == ["TokenizeStage", "SGLangEngineStage"]
+        stage = processor.get_stage_by_name("SGLangEngineStage")
+        engine_kwargs = stage.fn_constructor_kwargs["engine_kwargs"]
+        # Left unset or True; the engine stage defaults it to True.
+        assert engine_kwargs.get("skip_tokenizer_init", True) is True
+
+    @pytest.mark.parametrize(
+        "kwargs,match",
+        [
+            ({"detokenize_stage": True}, "detokenize_stage cannot be used"),
+            ({"detokenize_stage": {"enabled": True}}, "detokenize_stage cannot"),
+            (
+                {
+                    "tokenize_stage": True,
+                    "engine_kwargs": {"skip_tokenizer_init": False},
+                },
+                "requires engine_kwargs\\['skip_tokenizer_init'\\]=True",
+            ),
+            (
+                {"engine_kwargs": {"skip_tokenizer_init": True}},
+                "needs token IDs from the tokenize stage",
+            ),
+            (
+                {
+                    "tokenize_stage": False,
+                    "engine_kwargs": {"skip_tokenizer_init": True},
+                },
+                "needs token IDs from the tokenize stage",
+            ),
+        ],
+    )
+    def test_embed_rejects_conflicting_settings(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            self._build(**kwargs)
+
+    def test_embed_accepts_explicitly_disabled_stages(self):
+        processor = self._build(tokenize_stage=False, detokenize_stage=False)
+        assert processor.list_stage_names() == ["SGLangEngineStage"]
+
+    def test_embed_does_not_mutate_caller_config(self):
+        config = SGLangEngineProcessorConfig(
+            model_source="Qwen/Qwen3-Embedding-0.6B",
+            task_type=SGLangTaskType.EMBED,
+        )
+        with self._patch_hf_config():
+            ProcessorBuilder.build(config)
+        assert "skip_tokenizer_init" not in config.engine_kwargs
+        assert config.chat_template_stage is True
+        assert config.tokenize_stage is True
+        assert config.detokenize_stage is True
 
 
 if __name__ == "__main__":
