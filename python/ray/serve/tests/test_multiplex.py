@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import List
+from typing import List, Optional
 
 import httpx
 import pytest
@@ -13,9 +13,16 @@ from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
+from ray.serve.config import RequestRouterConfig
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.request_router import (
+    FIFOMixin,
+    MultiplexMixin,
+    PendingRequest,
+    RunningReplica,
+)
 
 
 def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
@@ -800,6 +807,88 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
         f"This indicates context isolation failure - multiple sub-batches "
         f"read the same model_id because they share context. "
         f"Full readings: {readings}"
+    )
+
+
+class CandidateAwareRouter(FIFOMixin, MultiplexMixin, RequestRouter):
+    """Routes to a replica holding the most-preferred candidate model that's loaded.
+
+    Mirrors what a user writes on top of `candidate_multiplexed_model_ids`: rank the
+    replicas by the caller's ordered candidates, then record which candidate the
+    chosen rank matched on so the replica serves that model rather than the first
+    entry in the list.
+    """
+
+    async def choose_replicas(
+        self,
+        candidate_replicas: List[RunningReplica],
+        pending_request: Optional[PendingRequest] = None,
+    ) -> List[List[RunningReplica]]:
+        if pending_request is None:
+            return [candidate_replicas]
+
+        candidates = pending_request.metadata.candidate_multiplexed_model_ids
+        if not candidates:
+            return [candidate_replicas]
+
+        ranked_replicas = self.rank_replicas_via_multiplex_candidates(
+            replicas=candidate_replicas,
+            candidate_multiplexed_model_ids=candidates,
+        )
+        # Return only the best non-empty rank so the model ID written back below is
+        # exactly the one the routed replica already has loaded.
+        for rank, replicas in enumerate(ranked_replicas):
+            if not replicas:
+                continue
+            if rank < len(candidates):
+                pending_request.metadata.multiplexed_model_id = candidates[rank]
+            return [replicas]
+
+        return []
+
+
+def test_multiplexed_candidate_model_ids_e2e(serve_instance):
+    """A warm later candidate is served instead of cold-loading the first one."""
+
+    @serve.deployment(
+        num_replicas=2,
+        request_router_config=RequestRouterConfig(
+            request_router_class=CandidateAwareRouter,
+        ),
+    )
+    class Model:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def get_model(self, model_id: str):
+            return model_id
+
+        async def __call__(self):
+            model_id = serve.get_multiplexed_model_id()
+            await self.get_model(model_id)
+            return model_id, os.getpid()
+
+    handle = serve.run(Model.bind())
+
+    # Warm "v6" somewhere, and wait until the routers observe it.
+    _, warm_pid = handle.options(multiplexed_model_id="v6").remote().result()
+    wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="v6")
+
+    # "v7" is the preferred candidate but isn't loaded anywhere, so the request
+    # should be served by the replica that already has "v6" rather than paying a
+    # cold load for "v7".
+    for _ in range(5):
+        model_id, pid = (
+            handle.options(candidate_multiplexed_model_ids=["v7", "v6"])
+            .remote()
+            .result()
+        )
+        assert model_id == "v6"
+        assert pid == warm_pid
+
+    # "v7" was never requested of any replica.
+    request_router = _get_request_router(handle)
+    assert all(
+        "v7" not in replica.multiplexed_model_ids
+        for replica in request_router.curr_replicas.values()
     )
 
 

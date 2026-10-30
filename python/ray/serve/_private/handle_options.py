@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
+from typing import Tuple
 
 import ray
 from ray.serve._private.common import DeploymentHandleSource
@@ -56,6 +57,7 @@ class DynamicHandleOptionsBase(ABC):
 
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
+    candidate_multiplexed_model_ids: Tuple[str, ...] = ()
     session_id: str = ""
     stream: bool = False
 

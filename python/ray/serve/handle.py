@@ -65,6 +65,46 @@ T = TypeVar("T")
 R = TypeVar("R")
 
 
+def _normalize_candidate_multiplexed_model_ids(
+    candidate_multiplexed_model_ids: List[str],
+) -> Tuple[str, ...]:
+    """Validate a caller-supplied candidate model ID list and freeze it to a tuple.
+
+    Args:
+        candidate_multiplexed_model_ids: The caller-supplied list of acceptable
+            multiplexed model IDs, in descending order of preference.
+
+    Returns:
+        The same IDs as a tuple, preserving the caller's ordering.
+    """
+    if isinstance(candidate_multiplexed_model_ids, str) or not isinstance(
+        candidate_multiplexed_model_ids, (list, tuple)
+    ):
+        raise TypeError(
+            "candidate_multiplexed_model_ids must be a list of strings, got "
+            f"{type(candidate_multiplexed_model_ids)}."
+        )
+
+    normalized = tuple(candidate_multiplexed_model_ids)
+    for model_id in normalized:
+        if not isinstance(model_id, str):
+            raise TypeError(
+                "candidate_multiplexed_model_ids must contain only strings, got "
+                f"{type(model_id)}."
+            )
+        if not model_id:
+            raise ValueError(
+                "candidate_multiplexed_model_ids must not contain empty strings."
+            )
+    if len(set(normalized)) != len(normalized):
+        raise ValueError(
+            "candidate_multiplexed_model_ids must not contain duplicates, got "
+            f"{list(normalized)}."
+        )
+
+    return normalized
+
+
 class _DeploymentHandleBase(Generic[T]):
     def __init__(
         self,
@@ -294,6 +334,7 @@ class _DeploymentHandleBase(Generic[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        candidate_multiplexed_model_ids: Union[List[str], DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1077,6 +1118,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        candidate_multiplexed_model_ids: Union[List[str], DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1089,6 +1131,11 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         Args:
             method_name: The method name to call on the deployment.
             multiplexed_model_id: The model ID to use for multiplexed model requests.
+            candidate_multiplexed_model_ids: Multiplexed model IDs that are all
+                acceptable for this request, ordered from most to least preferred.
+                A custom request router chooses among them; the default router
+                routes on the first entry. Setting this clears
+                ``multiplexed_model_id``, and setting that clears this.
             session_id: Session identifier used for honoring session stickiness.
             stream: Whether to use streaming for the request.
             _prefer_local_routing: Whether to prefer local routing.
@@ -1111,6 +1158,11 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 method_name="other_method",
                 multiplexed_model_id="model:v1",
             ).remote()
+
+            # A custom request router picks whichever of these is already loaded.
+            response: DeploymentResponse = handle.options(
+                candidate_multiplexed_model_ids=["model:v3", "model:v2"],
+            ).remote()
         """
         if _prefer_local_routing is not DEFAULT.VALUE:
             warnings.warn(
@@ -1118,9 +1170,26 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 "deprecated. Please use `init()` instead."
             )
 
+        candidate_model_ids: Union[Tuple[str, ...], DEFAULT] = DEFAULT.VALUE
+        if candidate_multiplexed_model_ids is not DEFAULT.VALUE:
+            if multiplexed_model_id is not DEFAULT.VALUE:
+                raise ValueError(
+                    "Only one of `multiplexed_model_id` and "
+                    "`candidate_multiplexed_model_ids` may be set. Pass the ordered "
+                    "list alone to let a custom request router choose among them."
+                )
+            candidate_model_ids = _normalize_candidate_multiplexed_model_ids(
+                candidate_multiplexed_model_ids
+            )
+            if candidate_model_ids:
+                multiplexed_model_id = ""
+        elif multiplexed_model_id is not DEFAULT.VALUE and multiplexed_model_id:
+            candidate_model_ids = ()
+
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
+            candidate_multiplexed_model_ids=candidate_model_ids,
             session_id=session_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
