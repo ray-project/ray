@@ -314,6 +314,8 @@ class TestGPUHashAggregatePlanning:
         mock_default_pool.assert_not_called()
         assert op._aggregation_plan is aggregation_plan
         assert op._rank_pool.nranks == 4
+        assert op.get_sub_progress_bar_names() == ["GPU Shuffle", "GPU Aggregation"]
+        assert list(op.get_stats()) == ["shuffle", "finalize"]
 
     def test_gpu_shuffle_unsupported_aggregate_falls_back_to_cpu_hash_aggregate(self):
         from ray.data._internal.execution.operators.hash_aggregate import (

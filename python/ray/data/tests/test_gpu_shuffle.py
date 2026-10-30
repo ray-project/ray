@@ -29,7 +29,7 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import Repartition
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.util import explain_plan
-from ray.data.block import BlockMetadata
+from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import noop_counter
 
@@ -64,6 +64,13 @@ def _make_bundle(num_blocks: int = 1) -> RefBundle:
         for i in range(num_blocks)
     ]
     return RefBundle(blocks, schema=None, owns_blocks=False)
+
+
+def _enqueue_output(op: GPUShuffleOperator, bundle: RefBundle, partition_id: int):
+    """Queue an output the way ``_on_bundle_ready`` does, so dequeue accounting matches."""
+    op._output_queue.add(bundle, key=partition_id)
+    op._output_queue.finalize(key=partition_id)
+    op._phase_metrics.output_phase_metrics.on_output_queued(bundle)
 
 
 def _make_data_context(
@@ -333,17 +340,15 @@ class TestGPUShuffleOperatorConstructor:
         names = op.get_sub_progress_bar_names()
         assert names == ["GPU Shuffle", "GPU Reduce"]
 
-    def test_set_sub_progress_bar_shuffle(self):
+    @pytest.mark.parametrize(
+        "bar_name, phase", [("GPU Shuffle", "shuffle"), ("GPU Reduce", "finalize")]
+    )
+    def test_set_sub_progress_bar(self, bar_name, phase):
         op = self._make_op()
         mock_bar = MagicMock()
-        op.set_sub_progress_bar("GPU Shuffle", mock_bar)
-        assert op._shuffle_bar is mock_bar
-
-    def test_set_sub_progress_bar_reduce(self):
-        op = self._make_op()
-        mock_bar = MagicMock()
-        op.set_sub_progress_bar("GPU Reduce", mock_bar)
-        assert op._reduce_bar is mock_bar
+        op.set_sub_progress_bar(bar_name, mock_bar)
+        op._phase_metrics.phase_metrics[phase].update_progress(increment=3)
+        mock_bar.update.assert_called_once_with(increment=3, total=None)
 
     def test_initial_state(self):
         op = self._make_op()
@@ -455,8 +460,7 @@ class TestGPUShuffleOperatorFinalization:
         op._inputs_complete = True
         # No pending inserts
 
-        with patch.object(op._reduce_metrics, "on_task_submitted"):
-            op._try_finalize()
+        op._try_finalize()
 
         assert op._finalization_started
 
@@ -464,8 +468,7 @@ class TestGPUShuffleOperatorFinalization:
         op, mock_actors = self._make_op(nranks=2)
         op._inputs_complete = True
 
-        with patch.object(op._reduce_metrics, "on_task_submitted"):
-            op._try_finalize()
+        op._try_finalize()
 
         for actor in mock_actors:
             actor.finish_and_extract.options.assert_called_once()
@@ -474,9 +477,8 @@ class TestGPUShuffleOperatorFinalization:
         op, mock_actors = self._make_op(nranks=2)
         op._inputs_complete = True
 
-        with patch.object(op._reduce_metrics, "on_task_submitted"):
-            op._try_finalize()
-            op._try_finalize()  # second call should be no-op
+        op._try_finalize()
+        op._try_finalize()  # second call should be no-op
 
         # finish_and_extract should only be called once per actor
         for actor in mock_actors:
@@ -499,15 +501,10 @@ class TestGPUShuffleOperatorFinalization:
         op, _ = self._make_op()
         b1 = _make_bundle(1)
         b2 = _make_bundle(1)
-        op._output_queue.add(b1, key=0)
-        op._output_queue.finalize(key=0)
-        op._output_queue.add(b2, key=1)
-        op._output_queue.finalize(key=1)
+        _enqueue_output(op, b1, partition_id=0)
+        _enqueue_output(op, b2, partition_id=1)
 
-        with patch.object(op._reduce_metrics, "on_output_dequeued"), patch.object(
-            op._reduce_metrics, "on_output_taken"
-        ):
-            result = op._get_next_inner()
+        result = op._get_next_inner()
 
         assert result is b1
         assert op._output_queue.has_next()
@@ -535,13 +532,9 @@ class TestGPUShuffleOperatorFinalization:
                 owns_blocks=False,
             )
             bundles[partition_id] = bundle
-            op._output_queue.add(bundle, key=partition_id)
-            op._output_queue.finalize(key=partition_id)
+            _enqueue_output(op, bundle, partition_id=partition_id)
 
-        with patch.object(op._reduce_metrics, "on_output_dequeued"), patch.object(
-            op._reduce_metrics, "on_output_taken"
-        ):
-            results = [op._get_next_inner() for _ in range(4)]
+        results = [op._get_next_inner() for _ in range(4)]
 
         # Output must be in partition order 0, 1, 2, 3 — not insertion order 3, 2, 1, 0
         assert results == [bundles[i] for i in range(4)]
@@ -574,6 +567,188 @@ class TestGPUShuffleOperatorFinalization:
         assert op._insert_tasks == {}
         assert op._extraction_tasks == {}
         assert mock_kill.call_count == expected_kill_count
+
+
+# ---------------------------------------------------------------------------
+# GPUShuffleOperator: metrics, progress bars and stats
+# ---------------------------------------------------------------------------
+
+
+def _make_output_bundle(partition_id: int, num_rows: int) -> RefBundle:
+    """An extraction output as ``finish_and_extract`` yields it."""
+    meta = BlockMetadata(
+        num_rows=num_rows,
+        size_bytes=8 * num_rows,
+        exec_stats=BlockExecStats(wall_time_s=0, block_ser_time_s=0, node_id="n0"),
+        input_files=None,
+    )
+    schema = pa.schema([("k", pa.int64())]).with_metadata(
+        {hash_shuffle._GPU_PARTITION_ID_KEY: str(partition_id).encode()}
+    )
+    return RefBundle(
+        [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
+        schema=schema,
+        owns_blocks=True,
+    )
+
+
+class TestGPUShuffleOperatorMetrics:
+    NRANKS = 2
+    NUM_PARTITIONS = 4
+    NUM_BLOCKS = 3
+    ROWS_PER_PARTITION = 5
+
+    def _make_op(self):
+        ctx = _make_data_context(gpu_shuffle_num_actors=self.NRANKS)
+        op = GPUShuffleOperator(
+            _make_input_op_mock(),
+            ctx,
+            key_columns=("k",),
+            num_partitions=self.NUM_PARTITIONS,
+        )
+        mock_actors = [MagicMock(name=f"actor_{i}") for i in range(self.NRANKS)]
+        for actor in mock_actors:
+            actor.insert_batch.remote.return_value = MagicMock()
+            actor.finish_and_extract.options.return_value.remote.return_value = (
+                MagicMock()
+            )
+        op._rank_pool._actors = mock_actors
+        op._rank_pool._nranks = self.NRANKS
+        op._block_ref_counter = noop_counter()
+        return op
+
+    def _run_insert_phase(self, op):
+        for _ in range(self.NUM_BLOCKS):
+            op.add_input(_make_bundle(1), 0)
+        for task in list(op._insert_tasks.values()):
+            task.on_task_finished()
+        op.all_inputs_done()
+
+    def _run_extraction_phase(self, op):
+        """Each rank streams its partitions then finishes, as the executor drives it."""
+        op._try_finalize()
+        for rank in range(self.NRANKS):
+            task = op._extraction_tasks[rank]
+            for partition_id in range(rank, self.NUM_PARTITIONS, self.NRANKS):
+                task._output_ready_callback(
+                    _make_output_bundle(partition_id, self.ROWS_PER_PARTITION)
+                )
+            task._task_done_callback(
+                None, TaskExecWorkerStats(task_wall_time_s=1.0), None
+            )
+
+    def test_insert_tasks_stay_phase_local(self):
+        op = self._make_op()
+        for _ in range(self.NUM_BLOCKS):
+            op.add_input(_make_bundle(1), 0)
+
+        shuffle = op.get_phase_metrics()["shuffle"]
+        assert shuffle.num_tasks_running == self.NUM_BLOCKS
+        assert op.metrics.num_tasks_running == 0
+
+        for task in list(op._insert_tasks.values()):
+            task.on_task_finished()
+        assert shuffle.num_tasks_running == 0
+        assert shuffle.num_tasks_finished == self.NUM_BLOCKS
+
+    def test_extraction_tasks_forward_to_operator(self):
+        op = self._make_op()
+        self._run_insert_phase(op)
+        op._try_finalize()
+        assert sorted(op.metrics._running_tasks) == list(range(self.NRANKS))
+
+        self._run_extraction_phase(op)
+        while op.has_next():
+            op.get_next()
+
+        total_rows = self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
+        d = op.metrics.as_dict()
+        assert d["num_tasks_submitted"] == d["num_tasks_finished"] == self.NRANKS
+        assert d["num_tasks_running"] == 0
+        assert d["row_outputs_taken"] == total_rows
+        assert d["num_inputs_received"] == self.NUM_BLOCKS
+        assert d["shuffle"]["num_inputs_received"] == self.NUM_BLOCKS
+        assert d["shuffle"]["num_tasks_finished"] == self.NUM_BLOCKS
+        assert d["finalize"]["num_tasks_finished"] == self.NRANKS
+        assert d["finalize"]["row_outputs_taken"] == total_rows
+        assert op.metrics.op_task_duration_stats.num_samples == self.NRANKS
+
+    def test_output_estimates_from_finished_ranks(self):
+        op = self._make_op()
+        self._run_insert_phase(op)
+        self._run_extraction_phase(op)
+        assert op.num_outputs_total() == self.NUM_PARTITIONS
+        assert op.num_output_rows_total() == (
+            self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
+        )
+
+    def test_output_estimates_when_all_bundles_arrive_before_any_rank_finishes(
+        self,
+    ):
+        """The executor emits ready outputs before firing done callbacks, so
+        every bundle can land before any rank finishes (always, with one rank)."""
+        op = self._make_op()
+        self._run_insert_phase(op)
+        op._try_finalize()
+        for partition_id in range(self.NUM_PARTITIONS):
+            rank = partition_id % self.NRANKS
+            op._extraction_tasks[rank]._output_ready_callback(
+                _make_output_bundle(partition_id, self.ROWS_PER_PARTITION)
+            )
+        assert op.num_outputs_total() is None
+
+        tasks = list(op._extraction_tasks.values())
+        tasks[0]._task_done_callback(
+            None, TaskExecWorkerStats(task_wall_time_s=1.0), None
+        )
+        assert op.num_outputs_total() == self.NUM_PARTITIONS
+        for task in tasks[1:]:
+            task._task_done_callback(
+                None, TaskExecWorkerStats(task_wall_time_s=1.0), None
+            )
+        assert op.num_outputs_total() == self.NUM_PARTITIONS
+        assert op.num_output_rows_total() == (
+            self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
+        )
+
+    def test_progress_bars_advance_by_rows(self):
+        op = self._make_op()
+        shuffle_bar, reduce_bar = MagicMock(), MagicMock()
+        op.set_sub_progress_bar("GPU Shuffle", shuffle_bar)
+        op.set_sub_progress_bar("GPU Reduce", reduce_bar)
+
+        self._run_insert_phase(op)
+        self._run_extraction_phase(op)
+
+        input_rows = self.NUM_BLOCKS * 10
+        assert (
+            sum(c.kwargs["increment"] for c in shuffle_bar.update.call_args_list)
+            == input_rows
+        )
+        totals = [c.kwargs["total"] for c in shuffle_bar.update.call_args_list]
+        assert [t for t in totals if t is not None][-1] == input_rows
+        assert (
+            sum(c.kwargs["increment"] for c in reduce_bar.update.call_args_list)
+            == self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
+        )
+        # Input rows seed the total at finalize start; finished ranks replace it.
+        totals = [c.kwargs["total"] for c in reduce_bar.update.call_args_list]
+        assert [t for t in totals if t is not None][0] == input_rows
+        assert [t for t in totals if t is not None][-1] == (
+            self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
+        )
+
+    def test_stats_keyed_by_phase(self):
+        op = self._make_op()
+        self._run_insert_phase(op)
+        self._run_extraction_phase(op)
+        while op.has_next():
+            op.get_next()
+
+        stats = op.get_stats()
+        assert list(stats) == ["shuffle", "finalize"]
+        assert len(stats["shuffle"]) == self.NUM_BLOCKS
+        assert len(stats["finalize"]) == self.NUM_PARTITIONS
 
 
 # ---------------------------------------------------------------------------
