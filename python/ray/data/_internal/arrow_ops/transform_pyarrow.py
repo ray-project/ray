@@ -694,15 +694,15 @@ def unify_schemas(
             for field in schema
         ]
         updated_schemas.append(pyarrow.schema(fields, metadata=schema.metadata))
-    schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied
     try:
-        unified = _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+        unified = _unify_schemas_pyarrow(updated_schemas, promote_types)
     except Exception as e:
-        schemas_str = "\n-----\n".join(str(s) for s in schemas_to_unify)
+        schemas_str = "\n-----\n".join(str(s) for s in updated_schemas)
         logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
         raise
+    # The overrides replaced the null arms, so demote against the original schemas.
     return _demote_tensor_fields_with_null_arm(unified, schemas_to_unify)
 
 

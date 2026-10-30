@@ -843,16 +843,21 @@ def test_arrow_concat_object_with_tensor_becomes_objects(object_with_tensor_bloc
     np.testing.assert_array_equal(rows[3], [3, 4])
 
 
-def test_arrow_concat_tensor_with_null_becomes_objects():
+@pytest.mark.parametrize("last_shape", [(2,), (3,)])
+def test_arrow_concat_tensor_with_null_becomes_objects(last_shape):
     """A column that is a tensor in one block and null in another concatenates
     to an object column that keeps the None rows, since a tensor array cannot
-    hold null rows."""
+    hold null rows. Holds whether or not the tensor blocks share a shape."""
     from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     tensors = pa.table({"a": ArrowTensorArray.from_numpy(np.array([[1, 2], [3, 4]]))})
     nulls = pa.table({"a": pa.nulls(2)})
+    # A second shape makes PyArrow's own unification fail, so the override path runs.
+    last = pa.table(
+        {"a": ArrowTensorArray.from_numpy(np.ones((1,) + last_shape, dtype=np.int64))}
+    )
 
-    result = concat([tensors, nulls, tensors])
+    result = concat([tensors, nulls, last])
 
     rows = result.column("a").to_pylist()
     assert result.schema.field("a").type == ArrowPythonObjectType()
@@ -861,8 +866,7 @@ def test_arrow_concat_tensor_with_null_becomes_objects():
         [3, 4],
         None,
         None,
-        [1, 2],
-        [3, 4],
+        [1] * last_shape[0],
     ]
 
 
@@ -997,20 +1001,21 @@ def test_unify_schemas_objects_win_over_tensors_and_nulls(other_type):
     assert unify_schemas([other, objects]) == objects
 
 
-def test_unify_schemas_tensor_with_null_becomes_objects():
+@pytest.mark.parametrize("other_shape", [(2, 2), (3, 3)])
+def test_unify_schemas_tensor_with_null_becomes_objects(other_shape):
     """A column that is a tensor in one schema and null in another unifies to
-    the object type, because a tensor array cannot hold null rows."""
+    the object type, because a tensor array cannot hold null rows. Holds whether
+    the tensor schemas share a shape or need reconciling first."""
     from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     tensor = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])
+    # A second shape makes PyArrow's own unification fail, so the override path runs.
+    other = pa.schema([("col", ArrowTensorType(other_shape, pa.int32()))])
     nulls = pa.schema([("col", pa.null())])
+    objects = pa.schema([("col", ArrowPythonObjectType())])
 
-    assert unify_schemas([tensor, nulls]) == pa.schema(
-        [("col", ArrowPythonObjectType())]
-    )
-    assert unify_schemas([nulls, tensor]) == pa.schema(
-        [("col", ArrowPythonObjectType())]
-    )
+    assert unify_schemas([tensor, nulls, other]) == objects
+    assert unify_schemas([nulls, tensor, other]) == objects
 
 
 def test_unify_schemas_missing_tensor_fields(
