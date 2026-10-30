@@ -16,6 +16,7 @@
 
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -48,6 +49,9 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
       ExecuteTaskCallback execute_task,
       CancelTaskCallback cancel_task);
 
+  /// NOT THREAD-SAFE: cancels each group's reorder timer and mutates group_states_, both
+  /// of which the task execution service also touches, so it must not run concurrently
+  /// with that service. Production posts it there from CoreWorkerShutdownExecutor.
   void Stop() override;
 
   void EnqueueTask(int64_t seq_no,
@@ -78,6 +82,12 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
     explicit ConcurrencyGroupOrderingState(instrumented_io_context &io_context)
         : wait_timer_(io_context) {}
 
+    /// Clears the deadline together with the seq_no it was counting down for.
+    void DisarmTimer() {
+      wait_timer_seq_no.reset();
+      wait_timer_.cancel();
+    }
+
     /// Sorted map of task callbacks keyed by their per-group sequence number.
     absl::btree_map<int64_t, TaskToExecute> pending_tasks;
     /// List of task retry requests (unordered within the group).
@@ -86,6 +96,9 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
     absl::flat_hash_set<int64_t> seq_no_to_skip;
     /// The next sequence number we are waiting for to arrive in this group.
     int64_t next_seq_no = 0;
+    /// The seq_no `wait_timer_` is counting down for, or nullopt when it is not
+    /// armed. Used to keep later arrivals from restarting the deadline.
+    std::optional<int64_t> wait_timer_seq_no;
     /// Waiting for an earlier seq no to arrive for this group. If this times out
     /// for any group, we will cancel all tasks across ALL groups for this client.
     boost::asio::deadline_timer wait_timer_;
