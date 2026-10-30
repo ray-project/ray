@@ -4339,9 +4339,19 @@ def read_sql(
         that the database needs to support all of the following operations:
         ``MOD``, ``ABS``, and ``CONCAT``.
 
-        You can use ``shard_hash_fn`` to specify the hash function to use for sharding.
-        The default is ``MD5``, but other common alternatives include ``hash``,
-        ``unicode``, and ``SHA``.
+        You can use ``shard_hash_fn`` to specify the hash function to use for
+        sharding. The default is ``MD5``; the available functions are
+        database-specific (for example, Snowflake uses ``hash``). Choose a
+        function that hashes the *whole* key and spreads keys evenly across
+        shards: a weak hash silently skews the shards and defeats parallelism
+        (the results stay correct, but one task ends up doing most of the work).
+
+        For example, SQLite's built-in ``unicode()`` returns the code point of
+        only the *first* character of a value, so keys that share a leading
+        character (such as ``"user_1"``, ``"user_2"``, ``"user_3"``) all map to
+        the same shard. Stock SQLite does not provide ``MD5`` or ``SHA`` (they
+        require an extension or a custom SQL function), so on SQLite it is
+        better to register a real hash function than to rely on ``unicode()``.
 
         If the database does not support sharding, the read operation will be
         executed in a single task.
@@ -4394,9 +4404,12 @@ def read_sql(
         sql_params: Parameters to bind to the SQL query. Use the placeholder style
             required by your database connector (per Python DB API2).
         shard_keys: The keys to shard the data by.
-        shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
-            For other databases, common alternatives include "hash" and "SHA".
-            This is applied to the shard keys.
+        shard_hash_fn: The hash function string to use for sharding. Defaults to
+            "MD5". The available functions are database-specific (e.g. Snowflake
+            uses "hash"). The function is applied to the shard keys to assign
+            each row to a shard, so it should hash the whole key and distribute
+            keys evenly; see the note above for weak-hash pitfalls such as
+            SQLite's "unicode()".
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
