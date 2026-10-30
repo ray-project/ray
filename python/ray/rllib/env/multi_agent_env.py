@@ -167,6 +167,18 @@ class MultiAgentEnv(gym.Env):
         pass
 
     def get_observation_space(self, agent_id: AgentID) -> gym.Space:
+        """Returns the observation space of the given agent.
+
+        Looks up `agent_id` in `self.observation_spaces`. If that's None, falls back
+        to the old API stack's `self.observation_space`: its entry for `agent_id` if
+        it's a `gym.spaces.Dict` that contains `agent_id`, otherwise the whole space.
+
+        Args:
+            agent_id: The ID of the agent whose observation space to return.
+
+        Returns:
+            The observation space of the agent with ID `agent_id`.
+        """
         if self.observation_spaces is not None:
             return self.observation_spaces[agent_id]
 
@@ -184,6 +196,18 @@ class MultiAgentEnv(gym.Env):
             return self.observation_space
 
     def get_action_space(self, agent_id: AgentID) -> gym.Space:
+        """Returns the action space of the given agent.
+
+        Looks up `agent_id` in `self.action_spaces`. If that's None, falls back to
+        the old API stack's `self.action_space`: its entry for `agent_id` if it's a
+        `gym.spaces.Dict` that contains `agent_id`, otherwise the whole space.
+
+        Args:
+            agent_id: The ID of the agent whose action space to return.
+
+        Returns:
+            The action space of the agent with ID `agent_id`.
+        """
         if self.action_spaces is not None:
             return self.action_spaces[agent_id]
 
@@ -202,10 +226,15 @@ class MultiAgentEnv(gym.Env):
 
     @property
     def num_agents(self) -> int:
+        """The number of agents currently active in the env, `len(self.agents)`."""
         return len(self.agents)
 
     @property
     def max_num_agents(self) -> int:
+        """The number of agents that can ever appear in the env.
+
+        This is `len(self.possible_agents)`.
+        """
         return len(self.possible_agents)
 
     # fmt: off
