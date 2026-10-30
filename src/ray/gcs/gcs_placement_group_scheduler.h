@@ -386,15 +386,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param placement_group_id The placement group whose bundles are being removed.
   /// \param bundle_specs Bundles to remove on the node.
-  /// \param node The node that the bundles are being removed from.
-  /// \param max_retry The maximum times the remove request can be retried.
-  /// \param current_retry_count The number of times the remove request has been retried.
+  /// \param node_id The node that the bundles are being removed from.
+  /// \param remaining_retries How many more times transient RPC failures are retried.
+  /// std::nullopt retries for as long as the node stays alive.
   void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
-      int max_retry,
-      int current_retry_count);
+      const NodeID &node_id,
+      std::optional<int> remaining_retries);
 
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
@@ -427,8 +426,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param placement_group_id The id of a placement group to destroy all prepared
   /// bundles.
+  /// \param max_retries Retry budget for transient RPC failures; std::nullopt retries
+  /// for as long as the node stays alive.
   void DestroyPlacementGroupPreparedBundleResources(
-      const PlacementGroupID &placement_group_id);
+      const PlacementGroupID &placement_group_id, std::optional<int> max_retries);
 
   /// Destroy the committed bundle resources with this placement group.
   /// The method is idempotent, meaning if all bundles are already cancelled,
