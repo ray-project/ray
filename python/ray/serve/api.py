@@ -1358,6 +1358,84 @@ def get_app_handle(name: str) -> DeploymentHandle:
     return client.get_handle(ingress, name, check_exists=False)
 
 
+@PublicAPI(stability="alpha")
+async def get_app_handle_async(name: str) -> DeploymentHandle:
+    """Get a handle to the application's ingress deployment by name asynchronously.
+
+    Same as `serve.get_app_handle`, but awaits the Serve controller instead of
+    blocking the calling thread, so it doesn't stall the event loop when called
+    from async code such as an async deployment method. The first Serve call in
+    a process still blocks briefly to look up the controller and record usage
+    telemetry.
+
+    Args:
+        name: Name of application to get a handle to.
+
+    Returns:
+        A ``DeploymentHandle`` pointing at the application's ingress deployment.
+
+    Raises:
+        RayServeException: If no Serve controller is running, or if the
+            application does not exist.
+
+    .. code-block:: python
+
+            from ray import serve
+
+            @serve.deployment
+            class Caller:
+                async def __call__(self, val: int) -> int:
+                    handle = await serve.get_app_handle_async("my_app")
+                    return await handle.remote(val)
+    """
+
+    client = _get_global_client()
+    ingress = await client._controller.get_ingress_deployment_name.remote(name)
+    if ingress is None:
+        raise RayServeException(f"Application '{name}' does not exist.")
+
+    ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
+    # There is no need to check if the deployment exists since the
+    # deployment name was just fetched from the controller, so this
+    # makes no controller call and doesn't block.
+    return client.get_handle(ingress, name, check_exists=False)
+
+
+def _resolve_deployment_handle_app_name(
+    app_name: Optional[str], internal_replica_context: Optional[ReplicaContext]
+) -> str:
+    """Default `app_name` to the calling replica's application.
+
+    Shared by `get_deployment_handle` and `get_deployment_handle_async` so the
+    two resolve an omitted application name identically.
+    """
+    if app_name is not None:
+        return app_name
+
+    if internal_replica_context is None:
+        raise RayServeException(
+            "Please specify an application name when getting a deployment handle "
+            "outside of a Serve application."
+        )
+
+    return internal_replica_context.app_name
+
+
+def _register_handle_with_replica(
+    handle: DeploymentHandle, internal_replica_context: Optional[ReplicaContext]
+) -> None:
+    """Report a handle created inside a replica so the controller tracks it.
+
+    Shared by `get_deployment_handle` and `get_deployment_handle_async` so
+    handles from either are reflected in the deployment topology.
+    """
+    if (
+        internal_replica_context is not None
+        and internal_replica_context._handle_registration_callback is not None
+    ):
+        internal_replica_context._handle_registration_callback(handle.deployment_id)
+
+
 @DeveloperAPI
 def get_deployment_handle(
     deployment_name: str,
@@ -1448,14 +1526,7 @@ def get_deployment_handle(
     client = _get_global_client()
 
     internal_replica_context = _get_internal_replica_context()
-    if app_name is None:
-        if internal_replica_context is None:
-            raise RayServeException(
-                "Please specify an application name when getting a deployment handle "
-                "outside of a Serve application."
-            )
-        else:
-            app_name = internal_replica_context.app_name
+    app_name = _resolve_deployment_handle_app_name(app_name, internal_replica_context)
 
     if _record_telemetry:
         ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
@@ -1464,11 +1535,64 @@ def get_deployment_handle(
         deployment_name, app_name, check_exists=_check_exists
     )
 
-    # Track handle creation if called from within a replica
-    if (
-        internal_replica_context is not None
-        and internal_replica_context._handle_registration_callback is not None
-    ):
-        internal_replica_context._handle_registration_callback(handle.deployment_id)
+    _register_handle_with_replica(handle, internal_replica_context)
+
+    return handle
+
+
+@DeveloperAPI
+async def get_deployment_handle_async(
+    deployment_name: str,
+    app_name: Optional[str] = None,
+) -> DeploymentHandle:
+    """Get a handle to a deployment by name asynchronously.
+
+    This is a developer API and is for advanced Ray users and library developers.
+
+    Same as `serve.get_deployment_handle`, but awaits the Serve controller
+    instead of blocking the calling thread, so it doesn't stall the event loop
+    when called from async code such as an async deployment method. The first
+    Serve call in a process still blocks briefly to look up the controller and
+    record usage telemetry.
+
+    Args:
+        deployment_name: Name of deployment to get a handle to.
+        app_name: Application in which deployment resides. If calling
+            from inside a Serve application and `app_name` is not
+            specified, this will default to the application from which
+            this API is called.
+
+    Returns:
+        A ``DeploymentHandle`` pointing at the requested deployment.
+
+    Raises:
+        RayServeException: If no Serve controller is running, or if
+            calling from outside a Serve application and no application
+            name is specified.
+        KeyError: If the deployment does not exist.
+
+    .. code-block:: python
+
+            from ray import serve
+
+            @serve.deployment
+            class Caller:
+                async def __call__(self, val: int) -> int:
+                    handle = await serve.get_deployment_handle_async(
+                        "Multiplier", app_name="math_app"
+                    )
+                    return await handle.remote(val)
+    """
+
+    client = _get_global_client()
+
+    internal_replica_context = _get_internal_replica_context()
+    app_name = _resolve_deployment_handle_app_name(app_name, internal_replica_context)
+
+    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
+
+    handle: DeploymentHandle = await client.get_handle_async(deployment_name, app_name)
+
+    _register_handle_with_replica(handle, internal_replica_context)
 
     return handle
