@@ -495,7 +495,7 @@ class SACConfig(AlgorithmConfig):
                 "behavior for this algorithm. If you don't want to use the new API "
                 "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
                 "enable_env_runner_and_connector_v2=False)`. For a detailed "
-                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+                "migration guide, see here: https://docs.ray.io/en/latest/rllib/new-api-stack-migration-guide.html"  # noqa
             )
 
     @override(AlgorithmConfig)
@@ -568,7 +568,7 @@ class SAC(DQN):
     See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
 
     Detailed documentation:
-    https://docs.ray.io/en/master/rllib-algorithms.html#sac
+    https://docs.ray.io/en/latest/rllib/algorithms.html#sac
     """
 
     def __init__(self, *args, **kwargs):

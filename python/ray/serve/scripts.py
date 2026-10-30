@@ -63,8 +63,7 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
 
 # See https://stackoverflow.com/a/33300001/11162437
 def str_presenter(dumper: yaml.Dumper, data):
-    """
-    A custom representer to write multi-line strings in block notation using a literal
+    """A custom representer to write multi-line strings in block notation using a literal
     style.
 
     Ensures strings with newline characters print correctly.
@@ -97,8 +96,7 @@ def remove_ansi_escape_sequences(input: str):
 
 
 def process_dict_for_yaml_dump(data):
-    """
-    Removes ANSI escape sequences recursively for all strings in dict.
+    """Removes ANSI escape sequences recursively for all strings in dict.
 
     We often need to use yaml.dump() to print dictionaries that contain exception
     tracebacks, which can contain ANSI escape sequences that color printed text. However

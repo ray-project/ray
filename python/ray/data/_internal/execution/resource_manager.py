@@ -277,6 +277,35 @@ class ResourceManager:
         """Return the global pending resource usage at the current time."""
         return self._global_pending_usage
 
+    def is_blocked_on_consumer(self) -> bool:
+        """Whether the last op is waiting for the consumer to read its outputs.
+
+        More nodes won't help then, since they won't speed up the consumer.
+        """
+        for op in reversed(self._topology):
+            # Skip finished ops and pass-through ops, e.g., OutputSplitter.
+            if not self.is_op_eligible(op) and op.num_active_tasks() == 0:
+                continue
+            return self._is_blocked_on_object_store_memory(op)
+        # Every op has finished, so only outputs are left.
+        return True
+
+    def _is_blocked_on_object_store_memory(self, op: PhysicalOperator) -> bool:
+        """Whether the op is held back by its unread outputs in the object store,
+        rather than by CPU, GPU, or memory."""
+        if op.in_task_output_backpressure:
+            return True
+        if op.num_active_tasks() > 0:
+            return False
+        # An idle op short on CPU, GPU, or memory for its next task needs more nodes.
+        budget = self.get_budget(op)
+        if budget is not None and not op.incremental_resource_usage().satisfies_limit(
+            budget, ignore_object_store_memory=True
+        ):
+            return False
+        # Otherwise, if it can't submit tasks, it's waiting on object store memory.
+        return op.in_task_submission_backpressure
+
     def get_global_limits(self) -> ExecutionResources:
         """Return the global resource limits at the current time.
 
@@ -477,8 +506,7 @@ class ResourceManager:
         return None
 
     def _get_completed_ops_usage(self) -> ExecutionResources:
-        """
-        Resource reservation is based on the number of eligible operators.
+        """Resource reservation is based on the number of eligible operators.
         However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
         And we also need to exclude the downstream ineligible operators.
 

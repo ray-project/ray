@@ -330,6 +330,7 @@ class ServeController:
         # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._applied_config_id: Optional[str] = None
         self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
@@ -981,6 +982,8 @@ class ServeController:
                 target_capacity,
                 target_capacity_direction,
                 config_checkpoints_dict,
+                # Checkpoints written before `config_id` existed have four fields.
+                *extra,
             ) = pickle.loads(checkpoint)
 
             return (
@@ -988,6 +991,7 @@ class ServeController:
                 ServeDeploySchema(
                     applications=list(config_checkpoints_dict.values()),
                     target_capacity=target_capacity,
+                    config_id=extra[0] if extra else None,
                 ),
                 target_capacity_direction,
             )
@@ -1218,8 +1222,7 @@ class ServeController:
         name_to_deployment_args_list: Dict[str, List[bytes]],
         name_to_application_args: Dict[str, bytes],
     ) -> None:
-        """
-        Takes in a list of dictionaries that contain deployment arguments.
+        """Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwritten.
 
         Args:
@@ -1279,8 +1282,7 @@ class ServeController:
         deployment_args_list: List[bytes],
         application_args: bytes,
     ) -> None:
-        """
-        Deploy a single application
+        """Deploy a single application
         (as deploy_applications(), but it only takes a single name and deployment args).
         This primarily exists as a shim to avoid
         changing Java code in https://github.com/ray-project/ray/pull/49168,
@@ -1329,6 +1331,7 @@ class ServeController:
             self._target_capacity_direction,
         )
         self._target_capacity = config.target_capacity
+        self._applied_config_id = config.config_id
 
         # If a global tracing config is provided in the declarative config,
         # store it so replicas and proxies started for this config pick it up
@@ -1353,6 +1356,7 @@ class ServeController:
                     self._target_capacity,
                     self._target_capacity_direction,
                     new_config_checkpoint,
+                    config.config_id,
                 )
             ),
         )
@@ -1546,6 +1550,7 @@ class ServeController:
             controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
             # Set this explicitly so exclude_unset includes it in the response.
             restores_unset_config_options=True,
+            applied_config_id=self._applied_config_id,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1700,8 +1705,7 @@ class ServeController:
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
-        """
-        Create HTTP and gRPC target groups for a specific application.
+        """Create HTTP and gRPC target groups for a specific application.
 
         This function can return empty list if there are no running replicas.
         Or replicas have not fully initialized yet, where their ports are not
@@ -1788,8 +1792,7 @@ class ServeController:
     def _get_target_groups_for_app_with_no_running_replicas(
         self, route_prefix: str, app_name: str
     ) -> List[TargetGroup]:
-        """
-        For applications that have no running replicas, we return target groups
+        """For applications that have no running replicas, we return target groups
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """
@@ -1938,7 +1941,7 @@ class ServeController:
         if checkpoint is None:
             return {}
 
-        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        _, _, _, config_checkpoints_dict, *_ = pickle.loads(checkpoint)
         return {
             app: ServeApplicationSchema.model_validate(config)
             for app, config in config_checkpoints_dict.items()

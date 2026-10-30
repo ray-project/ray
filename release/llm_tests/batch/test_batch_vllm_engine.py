@@ -197,6 +197,58 @@ async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
     wrapper.shutdown()
 
 
+@pytest.mark.parametrize("truncation_side", ["left", "right"])
+@pytest.mark.asyncio
+async def test_vllm_wrapper_generate_long_prompt(truncation_side):
+    """A generate row's tokenization_kwargs must reach the engine.
+
+    Without it the over-length prompt is rejected ("maximum context length")
+    and the row fails. `max_length` leaves room for `max_tokens`, which is the
+    caller's job: vLLM reserves no output budget when truncating to max_length.
+    """
+    max_model_len = 2048
+    max_tokens = 16
+    max_length = max_model_len - max_tokens
+    wrapper = vLLMEngineWrapper(
+        model="Qwen/Qwen3.5-0.8B",
+        model_source="Qwen/Qwen3.5-0.8B",
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        max_model_len=max_model_len,
+        task_type=vLLMTaskType.GENERATE,
+    )
+
+    # Distinct token IDs, so the surviving slice shows which end was cut.
+    prompt_token_ids = list(range(100, 100 + 2 * max_model_len))
+    row = {
+        "__idx_in_batch": 0,
+        "tokenized_prompt": prompt_token_ids,
+        "sampling_params": {"max_tokens": max_tokens, "ignore_eos": True},
+        "tokenization_kwargs": {
+            "truncation": True,
+            "max_length": max_length,
+            "truncation_side": truncation_side,
+        },
+    }
+
+    _, output, _ = await wrapper.generate_async(row)
+    expected = (
+        prompt_token_ids[-max_length:]
+        if truncation_side == "left"
+        else prompt_token_ids[:max_length]
+    )
+    assert output["prompt_token_ids"] == expected
+    assert output["num_input_tokens"] == max_length
+    assert output["num_generated_tokens"] == max_tokens
+
+    # Clean up GPU memory
+    wrapper.shutdown()
+
+
 @pytest.mark.asyncio
 async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora):
     wrapper = vLLMEngineWrapper(

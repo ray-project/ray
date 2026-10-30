@@ -977,6 +977,75 @@ class TestPipFreezeArtifact:
         # ...and image copying still happened.
         mock_copy.assert_called()
 
+    @pytest.mark.parametrize(
+        ("branch", "rayci_schedule", "expect_cu133"),
+        [
+            ("releases/2.56.0", "", False),
+            ("master", "nightly", True),
+        ],
+    )
+    @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_main_nightly_only_platform_skipped_on_release_branch(
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_export,
+        branch,
+        rayci_schedule,
+        expect_cu133,
+    ):
+        from click.testing import CliRunner
+
+        from ci.ray_ci.automation.push_ray_image import main
+
+        pipeline_id = "test-postmerge-pipeline-id"
+        work_repo = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
+        mock_config.return_value = {"ci_pipeline_postmerge": [pipeline_id]}
+        mock_exists.return_value = True
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "--python-version",
+                "3.10",
+                "--platform",
+                "cu13.0.0-cudnn",
+                "--platform",
+                "cu13.3.1-cudnn",
+                "--image-type",
+                "ray",
+                "--architecture",
+                "x86_64",
+                "--rayci-work-repo",
+                work_repo,
+                "--rayci-build-id",
+                "build123",
+                "--pipeline-id",
+                pipeline_id,
+                "--branch",
+                branch,
+                "--commit",
+                "d7951f63abcd",
+                "--rayci-schedule",
+                rayci_schedule,
+            ],
+        )
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        dests = [call.args[1] for call in mock_copy.call_args_list]
+        assert any("-cu130" in d for d in dests)
+        assert any("-cu133" in d for d in dests) == expect_cu133
+        # Real pushes, not a dry run, in both cases.
+        assert not any(call.kwargs.get("dry_run") for call in mock_copy.call_args_list)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

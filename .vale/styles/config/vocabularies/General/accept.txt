@@ -206,3 +206,8 @@ Filestore
 [Ii]terables?
 [Ss]erializable
 [Cc]olocated
+[Dd]ocstrings?
+[Tt]racebacks?
+[Rr]untimes
+[Ee]rrored
+[Uu]nderperforming

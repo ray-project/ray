@@ -79,29 +79,22 @@ class DeploymentProtocol(Protocol):
 
 
 class LLMServerProtocol(DeploymentProtocol):
-    """
-    This is the common interface between all the llm deployment. All llm deployments
+    """This is the common interface between all the llm deployment. All llm deployments
     need to implement a sync constructor, an async start method, and check_health method.
     """
 
     def __init__(self):
-        """
-        Constructor takes basic setup that doesn't require async operations.
-        """
+        """Constructor takes basic setup that doesn't require async operations."""
 
     async def start(self) -> None:
-        """
-        Start the underlying engine. This handles async initialization.
-        """
+        """Start the underlying engine. This handles async initialization."""
 
     async def chat(
         self,
         request: "ChatCompletionRequest",
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
-        """
-        Inferencing to the engine for chat, and return the response.
-        """
+        """Inferencing to the engine for chat, and return the response."""
 
     async def completions(
         self,
@@ -110,13 +103,10 @@ class LLMServerProtocol(DeploymentProtocol):
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
     ]:
-        """
-        Inferencing to the engine for completion api, and return the response.
-        """
+        """Inferencing to the engine for completion api, and return the response."""
 
     async def check_health(self) -> None:
-        """
-        Check the health of the replica. Does not return anything.
+        """Check the health of the replica. Does not return anything.
         Raise error when the engine is dead and needs to be restarted.
         """
 

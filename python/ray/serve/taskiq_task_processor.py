@@ -150,8 +150,7 @@ def _create_broker(
 
 @PublicAPI(stability="beta")
 class TaskiqAdapterConfig(BaseModel):
-    """
-    Taskiq adapter config for async task processing in Ray Serve.
+    """Taskiq adapter config for async task processing in Ray Serve.
 
     Supports multiple brokers via ``broker_type``. Connection URLs and
     broker-specific constructor arguments are passed through ``broker_kwargs``.
@@ -231,12 +230,17 @@ class TaskiqAdapterConfig(BaseModel):
 
 @PublicAPI(stability="beta")
 class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
-    """
-    Taskiq-based task processor adapter for Ray Serve.
+    """Taskiq-based task processor adapter for Ray Serve.
 
     Supports multiple brokers (Redis Streams, RabbitMQ, NATS, Kafka) via
     the ``broker_type`` field in ``TaskiqAdapterConfig``. Broker-specific
     options are passed through ``broker_kwargs``.
+
+    Args:
+        config: The task processor configuration. Its ``adapter_config`` must
+            be a ``TaskiqAdapterConfig``.
+        *args: Passed to ``TaskProcessorAdapter.__init__``.
+        **kwargs: Passed to ``TaskProcessorAdapter.__init__``.
     """
 
     def __init__(self, config: TaskProcessorConfig, *args, **kwargs):
@@ -253,7 +257,12 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
         self._result_backend = None
 
     def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
-        """Initialize the taskiq broker and result backend."""
+        """Initialize the taskiq broker and result backend.
+
+        Args:
+            consumer_concurrency: Number of tasks to process concurrently. This
+                adapter stores the value but doesn't use it.
+        """
         self._consumer_concurrency = consumer_concurrency
         adapter_config: TaskiqAdapterConfig = self._config.adapter_config
 

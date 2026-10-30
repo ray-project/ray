@@ -7,11 +7,19 @@ TOKEN_AUTH_FIX_MESSAGE = (
     "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information."
 )
 
-# Keep in sync with kNoTokenErrorMessage in
+# For a client with no token and for a token sent to a cluster with auth disabled.
+# Keep in sync with kTokenAuthErrorMessage in src/ray/common/constants.h.
+TOKEN_AUTH_ERROR_MESSAGE = (
+    "Token authentication is enabled on this client, but it has no token or the "
+    "cluster has token authentication disabled. " + TOKEN_AUTH_FIX_MESSAGE
+)
+
+# Keep in sync with kK8sTokenAuthRequiresTokenModeErrorMessage in
 # src/ray/rpc/authentication/authentication_token_loader.cc.
-TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE = (
-    "Token authentication is enabled but no authentication token was found. "
-    + TOKEN_AUTH_FIX_MESSAGE
+K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE = (
+    "Kubernetes token authentication (ENABLE_K8S_TOKEN_AUTH) requires "
+    "RAY_AUTH_MODE=token. Set RAY_AUTH_MODE=token, or turn off "
+    "ENABLE_K8S_TOKEN_AUTH to run with auth disabled."
 )
 
 TOKEN_INVALID_ERROR_MESSAGE = "Token authentication is enabled but the authentication token is invalid or incorrect."  # noqa: E501

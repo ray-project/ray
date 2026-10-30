@@ -88,8 +88,9 @@ class GetRequestQueue {
   /// \param timeout_ms timeout in millisecond, -1 is used to indicate that no timer
   /// should be set.
   /// \param object_callback the callback function called once any object has been
-  /// satisfied. \param all_objects_callback the callback function called when all objects
-  /// has been satisfied.
+  /// satisfied.
+  /// \param all_objects_callback the callback function called when all objects have been
+  /// satisfied.
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids,
                   int64_t timeout_ms);

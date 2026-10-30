@@ -215,6 +215,16 @@ def test_malformed_payload_falls_back():
     assert request.kv_transfer_params is None
 
 
+def test_empty_payload_falls_back():
+    store = TokenStore()
+    store.put("empty", payload=_payload([]))
+    request = SimpleNamespace(kv_transfer_params=None)
+
+    inject_prompt_token_ids(request, _raw_request("empty"), store)
+
+    assert request.kv_transfer_params is None
+
+
 def test_token_store_skips_chat_tokenization():
     """The token-store handoff reaches vLLM's native reuse interface."""
     store = TokenStore()
@@ -230,6 +240,9 @@ def test_token_store_skips_chat_tokenization():
 
         async def render_chat_async(self, *args, **kwargs):
             raise AssertionError("vLLM should skip chat rendering and tokenization")
+
+        def validate_token_ids(self, token_ids, *, parameter=None):
+            pass
 
     class ChatParams:
         def with_defaults(self, *args, **kwargs):

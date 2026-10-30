@@ -350,6 +350,10 @@ Ray implements `uv run` support with a low-level runtime environment plugin call
 
 - **Customizing the command the worker runs in**: You might want to pass uv special arguments on the workers that the driver doesn't use. Or you might want to run processes with `poetry run`, a build system such as Bazel, a profiler, or a debugger. In these cases, specify the executable the worker runs in through `py_executable`. The executable can even be a shell script stored in `working_dir`, if you want to wrap multiple processes in more complex ways.
 
+:::{caution}
+Don't set `py_executable` to a bare `uv run` to enable the uv integration. When you launch the driver with `uv run`, Ray sets `py_executable` for you. A bare `uv run` makes uv resolve the worker's environment from whatever directory the worker starts in. If that environment doesn't include Ray, workers crash on startup. Tasks and jobs then hang without a clear error, and their logs might not load.
+:::
+
 :::{note}
 All child tasks and actors inherit the uv environment. To mix environments, for example `pip` runtime environments with `uv run`, set the Python executable back to one that doesn't run in the isolated uv environment, as in the following example:
 

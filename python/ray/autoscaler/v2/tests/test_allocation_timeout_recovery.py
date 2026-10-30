@@ -83,6 +83,9 @@ class MockAutoscalingConfig:
     def get_idle_timeout_s(self):
         return self._configs.get("idle_timeout_s", 999)
 
+    def get_pending_idle_timeout_s(self):
+        return self._configs.get("pending_idle_timeout_s", 999)
+
     def get_provider_instance_type(self, ray_node_type):
         return ""
 

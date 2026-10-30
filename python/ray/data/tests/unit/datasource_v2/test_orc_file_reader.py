@@ -1,8 +1,11 @@
 """Unit tests for DSV2 ORC scanning and file reading."""
 
+import math
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import GeneratorType
+from unittest.mock import Mock
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -10,7 +13,10 @@ import pytest
 from pyarrow import orc
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
-from ray.data._internal.datasource_v2.common.file_reader import FileFormat
+from ray.data._internal.datasource_v2.common.file_reader import (
+    _ARROW_DEFAULT_BATCH_SIZE,
+    FileFormat,
+)
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
@@ -23,6 +29,7 @@ from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
@@ -603,7 +610,7 @@ def test_orc_partial_partition_pruning_defers_unknown_logical_types():
 @pytest.fixture
 def orc_read_requests(monkeypatch):
     """Record real Arrow scanner and ORC stripe requests without replacing I/O."""
-    requests = {"datasets": [], "scans": [], "stripes": []}
+    requests = {"datasets": [], "scans": [], "stripes": [], "dataset_scans": []}
     native_dataset = pds.dataset
     native_orc_file = orc.ORCFile
 
@@ -620,6 +627,7 @@ def orc_read_requests(monkeypatch):
                     "path": getattr(self._fragment, "path", None),
                     "columns": kwargs.get("columns"),
                     "filter": kwargs.get("filter"),
+                    "batch_size": kwargs.get("batch_size"),
                 }
             )
             return self._fragment.scanner(**kwargs)
@@ -630,6 +638,10 @@ def orc_read_requests(monkeypatch):
 
         def __getattr__(self, name):
             return getattr(self._dataset, name)
+
+        def scanner(self, **kwargs):
+            requests["dataset_scans"].append(kwargs)
+            return self._dataset.scanner(**kwargs)
 
         def get_fragments(self, *args, **kwargs):
             return (
@@ -830,6 +842,101 @@ def test_orc_partition_pruning_uses_output_types(tmp_path, orc_read_requests):
     result = pa.concat_tables(list(scanner.create_reader().read(_manifest(path))))
     assert result.to_pylist() == [{"year": 2024}, {"year": 2024}]
     assert orc_read_requests["scans"][0]["columns"] == []
+
+
+@pytest.mark.parametrize(
+    "logical_type,path_value,field_types,expected",
+    [
+        (pa.float32(), "16777217", {}, 16777216.0),
+        (pa.string(), "02024", {"year": int}, "2024"),
+    ],
+    ids=["float32_rounding", "parsed_int_to_string"],
+)
+@pytest.mark.parametrize("columns", [["id"], ["year"]])
+def test_orc_typed_partition_pruning_matches_reader(
+    tmp_path, logical_type, path_value, field_types, expected, columns
+):
+    directory = tmp_path / f"year={path_value}"
+    directory.mkdir()
+    path = directory / "data.orc"
+    _write_orc(path, pa.table({"id": [1, 2]}))
+    scanner = (
+        OrcScanner(
+            schema=pa.schema([("id", pa.int64()), ("year", logical_type)]),
+            partitioning=Partitioning(
+                PartitionStyle.HIVE, field_names=["year"], field_types=field_types
+            ),
+        )
+        .prune_partitions(col("year") == expected)
+        .prune_columns(columns)
+    )
+    pruner = scanner.pushed_partition_pruner()
+    assert pruner is not None
+    assert pruner.should_include(str(path))
+    assert not pruner.should_include(str(tmp_path / "year=0" / "data.orc"))
+    manifest = scanner.prune_input_split(_manifest(path))
+    result = pa.concat_tables(list(scanner.create_reader().read(manifest)))
+    assert result.to_pylist() == (
+        [{"id": 1}, {"id": 2}] if columns == ["id"] else [{"year": expected}] * 2
+    )
+    if columns == ["year"]:
+        assert result.schema.field("year").type == logical_type
+
+
+def test_orc_partition_predicate_does_not_cast_unused_fields(tmp_path):
+    directory = tmp_path / "year=invalid" / "country=US"
+    directory.mkdir(parents=True)
+    path = directory / "data.orc"
+    _write_orc(path, pa.table({"id": [1]}))
+    scanner = (
+        OrcScanner(
+            schema=pa.schema(
+                [("id", pa.int64()), ("year", pa.int32()), ("country", pa.string())]
+            ),
+            partitioning=Partitioning(
+                PartitionStyle.HIVE, field_names=["year", "country"]
+            ),
+        )
+        .prune_partitions(col("country") == "US")
+        .prune_columns(["id"])
+    )
+    pruner = scanner.pushed_partition_pruner()
+    assert pruner is not None and pruner.should_include(str(path))
+    assert pa.concat_tables(
+        list(scanner.create_reader().read(scanner.prune_input_split(_manifest(path))))
+    ).to_pylist() == [{"id": 1}]
+    explicit = OrcScanner(
+        schema=scanner.schema,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_types={"year": int}),
+    ).prune_partitions(col("country") == "US")
+    explicit_pruner = explicit.pushed_partition_pruner()
+    assert explicit_pruner is not None
+    with pytest.raises(ValueError):
+        explicit_pruner.should_include(str(path))
+
+
+@pytest.mark.parametrize("value", ["invalid", "2147483648"])
+@pytest.mark.parametrize("stage", ["listing", "manifest", "reader_filter", "output"])
+def test_orc_partition_cast_errors_remain_visible(tmp_path, value, stage):
+    directory = tmp_path / f"year={value}"
+    directory.mkdir()
+    path = directory / "data.orc"
+    _write_orc(path, pa.table({"id": [1]}))
+    scanner = OrcScanner(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.int32())]),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+    )
+    if stage != "output":
+        scanner = scanner.prune_partitions(col("year") > 0).prune_columns(["id"])
+    with pytest.raises(pa.ArrowInvalid):
+        if stage == "listing":
+            pruner = scanner.pushed_partition_pruner()
+            assert pruner is not None
+            pruner.should_include(str(path))
+        elif stage == "manifest":
+            scanner.prune_input_split(_manifest(path))
+        else:
+            list(scanner.create_reader().read(_manifest(path)))
 
 
 @pytest.mark.parametrize("field_names", [None, ["key"]])
@@ -1259,6 +1366,338 @@ def test_orc_partitioned_empty_file_with_stored_partition_column(tmp_path):
         partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
     )
     assert list(scanner.create_reader().read(_manifest(path))) == []
+
+
+@pytest.mark.parametrize("kind", ["narrow", "wide", "nested"])
+def test_orc_reader_batch_sizing_feedback(
+    tmp_path, monkeypatch, orc_read_requests, kind
+):
+    path = tmp_path / "data.orc"
+    payload = {
+        "narrow": list(range(19)),
+        "wide": ["x" * 512] * 19,
+        "nested": [["x" * 32, "y" * 32]] * 19,
+    }[kind]
+    table = pa.table({"id": list(range(19)), "payload": payload})
+    _write_orc(path, table)
+    # Isolate feedback from metadata sizing: every layout must change this value.
+    initial_size = 3
+    estimate = Mock(return_value=initial_size)
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_file_reader.estimate_batch_size",
+        estimate,
+    )
+    scanner = OrcScanner(schema=table.schema, target_block_size=128)
+    reader = scanner.create_reader()
+
+    first = list(reader.read(_manifest(path)))
+    assert first[0].num_rows == initial_size
+    last = first[-1]
+    expected_size = max(math.ceil(128 / (last.nbytes / last.num_rows)), 1)
+    assert expected_size != initial_size
+    assert reader._sampled_batch_size == expected_size
+    second = list(reader.read(_manifest(path)))
+    estimate.assert_called_once()
+
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
+        initial_size,
+        expected_size,
+    ]
+    assert second[0].num_rows == expected_size
+    assert all(batch.num_rows <= expected_size for batch in second)
+    assert pa.concat_tables(first).equals(table)
+    assert pa.concat_tables(second).equals(table)
+    assert orc_read_requests["dataset_scans"] == []
+    assert len(orc_read_requests["datasets"]) == 2
+
+    # A different reader starts with its own initial estimate.
+    fresh = list(scanner.create_reader().read(_manifest(path)))
+    assert pa.concat_tables(fresh).equals(table)
+    assert orc_read_requests["scans"][-1]["batch_size"] == initial_size
+    assert estimate.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "batch_size,target_block_size", [(None, None), (3, None), (3, 64)]
+)
+def test_orc_reader_batch_sizing_explicit_and_disabled(
+    tmp_path, orc_read_requests, batch_size, target_block_size
+):
+    path = tmp_path / "data.orc"
+    table = pa.table({"id": list(range(7)), "payload": ["x" * 512] * 7})
+    _write_orc(path, table)
+    reader = OrcScanner(
+        schema=table.schema,
+        batch_size=batch_size,
+        target_block_size=target_block_size,
+    ).create_reader()
+    expected_size = batch_size if batch_size is not None else _ARROW_DEFAULT_BATCH_SIZE
+    for _ in range(2):
+        batches = list(reader.read(_manifest(path)))
+        assert pa.concat_tables(batches).equals(table)
+        assert all(batch.num_rows <= expected_size for batch in batches)
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
+        expected_size,
+        expected_size,
+    ]
+    assert orc_read_requests["dataset_scans"] == []
+    if target_block_size is None:
+        assert reader._sampled_batch_size is None
+    else:
+        assert reader._sampled_batch_size == 1
+
+
+@pytest.mark.parametrize("observation", ["empty", "zero_bytes"])
+def test_orc_reader_batch_sizing_ignores_invalid_observation(
+    tmp_path, monkeypatch, orc_read_requests, observation
+):
+    path = tmp_path / "data.orc"
+    table = pa.table({"id": list(range(7))})
+    _write_orc(path, table)
+    estimate = Mock(return_value=1)
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_file_reader.estimate_batch_size",
+        estimate,
+    )
+    reader = OrcScanner(schema=table.schema, target_block_size=16).create_reader()
+    invalid = (
+        pa.table({"empty": pa.array([], type=pa.int64())})
+        if observation == "empty"
+        else pa.table({"nulls": pa.nulls(3)})
+    )
+    reader._on_batch_read(invalid)
+    assert reader._sampled_batch_size is None
+    first = list(reader.read(_manifest(path)))
+    expected_size = math.ceil(16 / (first[0].nbytes / first[0].num_rows))
+    assert expected_size != 1
+    assert reader._sampled_batch_size == expected_size
+    reader._on_batch_read(invalid)
+    assert reader._sampled_batch_size == expected_size
+    second = list(reader.read(_manifest(path)))
+    assert orc_read_requests["scans"][-1]["batch_size"] == expected_size
+    assert second[0].num_rows == expected_size
+    assert pa.concat_tables(second).equals(table)
+    estimate.assert_called_once()
+
+
+def test_orc_reader_batch_sizing_has_no_default_row_cap(tmp_path, orc_read_requests):
+    small_path = tmp_path / "small.orc"
+    large_path = tmp_path / "large.orc"
+    small = pa.table({"flag": [True] * 9})
+    large = pa.table({"flag": [True] * (_ARROW_DEFAULT_BATCH_SIZE + 1)})
+    _write_orc(small_path, small)
+    _write_orc(large_path, large)
+    reader = OrcScanner(
+        schema=small.schema, target_block_size=_ARROW_DEFAULT_BATCH_SIZE
+    ).create_reader()
+    list(reader.read(_manifest(small_path)))
+    batches = list(reader.read(_manifest(large_path)))
+    assert orc_read_requests["scans"][-1]["batch_size"] > _ARROW_DEFAULT_BATCH_SIZE
+    assert batches[0].num_rows > _ARROW_DEFAULT_BATCH_SIZE
+    assert pa.concat_tables(batches).equals(large)
+
+
+def test_orc_reader_batch_sizing_single_scan_is_fixed(tmp_path, orc_read_requests):
+    path = tmp_path / "large.orc"
+    table = pa.table(
+        {
+            "id": list(range(_ARROW_DEFAULT_BATCH_SIZE + 11)),
+            "payload": ["x" * 64] * (_ARROW_DEFAULT_BATCH_SIZE + 11),
+        }
+    )
+    _write_orc(path, table)
+    reader = OrcScanner(schema=table.schema, target_block_size=65536).create_reader()
+    batches = list(reader.read(_manifest(path)))
+    initial_size = orc_read_requests["scans"][0]["batch_size"]
+    assert 1 < initial_size < _ARROW_DEFAULT_BATCH_SIZE
+    assert len(batches) > 1
+    assert all(batch.num_rows == initial_size for batch in batches[:-1])
+    assert batches[-1].num_rows <= initial_size
+    assert pa.concat_tables(batches).equals(table)
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
+        initial_size
+    ]
+    assert orc_read_requests["dataset_scans"] == []
+
+
+@pytest.mark.parametrize("preserve_order", [False, True])
+def test_orc_reader_batch_sizing_fragments_are_fixed(
+    tmp_path, monkeypatch, orc_read_requests, preserve_order
+):
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", preserve_order
+    )
+    paths = [tmp_path / "first.orc", tmp_path / "second.orc"]
+    tables = [
+        pa.table({"id": [i] * 7, "payload": ["x" * width] * 7})
+        for i, width in enumerate([1, 512])
+    ]
+    for path, table in zip(paths, tables):
+        _write_orc(path, table)
+    reader = OrcScanner(schema=tables[0].schema, target_block_size=128).create_reader()
+    batches = list(reader.read(_manifest(*paths)))
+    result = pa.concat_tables(batches)
+    expected = pa.concat_tables(tables)
+    if preserve_order:
+        assert result.equals(expected)
+    else:
+        assert result.sort_by("id").equals(expected.sort_by("id"))
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
+        7,
+        7,
+    ]
+    observed_sizes = {
+        max(math.ceil(128 / (batch.nbytes / batch.num_rows)), 1) for batch in batches
+    }
+    assert 7 not in observed_sizes
+    assert reader._sampled_batch_size in observed_sizes
+
+
+@pytest.mark.parametrize("available", [False, True])
+def test_orc_reader_initial_estimate_is_cached(
+    tmp_path, monkeypatch, orc_read_requests, available
+):
+    from ray.data._internal.datasource_v2.formats.orc import orc_file_reader
+
+    path = tmp_path / "data.orc"
+    table = pa.table({"payload": ["x" * 4096] * 256})
+    _write_orc(path, table)
+    original = orc_file_reader.estimate_batch_size
+    estimate = Mock(wraps=original) if available else Mock(return_value=None)
+    monkeypatch.setattr(orc_file_reader, "estimate_batch_size", estimate)
+    reader = OrcScanner(
+        schema=table.schema, target_block_size=65536, limit=0
+    ).create_reader()
+    for _ in range(2):
+        assert list(reader.read(_manifest(path))) == []
+    estimate.assert_called_once()
+    expected = 16 if available else _ARROW_DEFAULT_BATCH_SIZE
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
+        expected,
+        expected,
+    ]
+
+
+@pytest.mark.parametrize("batch_size,target", [(7, 65536), (None, None)])
+def test_orc_reader_overrides_do_not_open_estimation_metadata(
+    tmp_path, monkeypatch, batch_size, target
+):
+    path = tmp_path / "data.orc"
+    table = pa.table({"payload": ["x" * 4096] * 32})
+    _write_orc(path, table)
+    estimate = Mock(side_effect=AssertionError("Unnecessary metadata estimation"))
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_file_reader.estimate_batch_size",
+        estimate,
+    )
+    reader = OrcScanner(
+        schema=table.schema, batch_size=batch_size, target_block_size=target
+    ).create_reader()
+    assert pa.concat_tables(list(reader.read(_manifest(path)))).equals(table)
+    estimate.assert_not_called()
+
+
+def test_orc_reader_initial_estimate_excludes_replaced_columns(
+    tmp_path, orc_read_requests
+):
+    directory = tmp_path / "year=2024"
+    directory.mkdir()
+    path = directory / "data.orc"
+    table = pa.table(
+        {"id": range(256), "year": ["x" * 4096] * 256, "path": ["y" * 4096] * 256}
+    )
+    _write_orc(path, table)
+    reader = OrcScanner(
+        schema=table.schema,
+        target_block_size=65536,
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        synthesized_columns=(PathColumn(),),
+    ).create_reader()
+    result = pa.concat_tables(list(reader.read(_manifest(path))))
+    assert orc_read_requests["scans"][0]["batch_size"] == 256
+    assert result.column("year").to_pylist() == ["2024"] * 256
+    assert result.column("path").to_pylist() == [str(path)] * 256
+
+
+@pytest.mark.parametrize("limit", [None, 1])
+def test_orc_reader_early_stop_releases_estimation_input(tmp_path, monkeypatch, limit):
+    path = tmp_path / "data.orc"
+    table = pa.table({"payload": ["x" * 4096] * 256})
+    _write_orc(path, table)
+    sources = []
+    original = orc.ORCFile
+
+    def tracked_file(source):
+        sources.append(source)
+        return original(source)
+
+    monkeypatch.setattr(orc, "ORCFile", tracked_file)
+    reader = OrcScanner(
+        schema=table.schema, target_block_size=65536, limit=limit
+    ).create_reader()
+    batches = reader.read(_manifest(path))
+    assert isinstance(batches, GeneratorType)
+    try:
+        first = next(batches)
+        assert first.num_rows == (16 if limit is None else 1)
+        assert len(sources) == 1
+        assert all(source.closed for source in sources)
+    finally:
+        batches.close()
+
+
+def test_orc_reader_batch_sizing_retry_keeps_scan_parameters(
+    tmp_path, monkeypatch, orc_read_requests
+):
+    warm_path = tmp_path / "warm.orc"
+    path = tmp_path / "data.orc"
+    warm = pa.table({"id": list(range(7)), "payload": ["x"] * 7})
+    table = pa.table({"id": list(range(29)), "payload": ["x" * 512] * 29})
+    _write_orc(warm_path, warm)
+    _write_orc(path, table)
+    reader = OrcScanner(schema=table.schema, target_block_size=128).create_reader()
+    list(reader.read(_manifest(warm_path)))
+    observed_sizes = []
+    original_iter = reader._iter_fragment_tables
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["transient"])
+    retry_sleep = Mock()
+    monkeypatch.setattr("ray.data._internal.util.time.sleep", retry_sleep)
+
+    def flaky_iter(fragment, scanner_kwargs):
+        observed_sizes.append(scanner_kwargs["batch_size"])
+        for index, batch in enumerate(original_iter(fragment, scanner_kwargs)):
+            yield batch
+            if len(observed_sizes) == 1 and index == 0:
+                raise OSError("transient ORC read failure")
+
+    monkeypatch.setattr(reader, "_iter_fragment_tables", flaky_iter)
+    batches = list(reader.read(_manifest(path)))
+    assert len(observed_sizes) == 2
+    retry_sleep.assert_called_once()
+    assert observed_sizes[0] == observed_sizes[1] > 1
+    assert reader._sampled_batch_size == 1
+    assert pa.concat_tables(batches).equals(table)
+
+
+def test_orc_reader_local_width_changes_keep_scan_fixed(tmp_path, orc_read_requests):
+    path = tmp_path / "varying-width.orc"
+    payload = [
+        f"{index:08d}" + "x" * (4088 if index < 1024 else 56) for index in range(2048)
+    ]
+    table = pa.table({"id": range(2048), "payload": payload})
+    _write_orc(
+        path, table, compression="uncompressed", dictionary_key_size_threshold=0.0
+    )
+    target = 65536
+    reader = OrcScanner(schema=table.schema, target_block_size=target).create_reader()
+    batches = list(reader.read(_manifest(path)))
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [32]
+    assert all(batch.num_rows == 32 for batch in batches)
+    assert batches[0].nbytes > target
+    assert batches[-1].nbytes < target
+    last_width = batches[-1].nbytes / batches[-1].num_rows
+    assert reader._sampled_batch_size == math.ceil(target / last_width) > 32
+    assert pa.concat_tables(batches).equals(table)
 
 
 if __name__ == "__main__":

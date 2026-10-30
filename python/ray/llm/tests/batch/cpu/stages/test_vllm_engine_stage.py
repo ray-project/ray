@@ -348,6 +348,57 @@ async def test_vllm_wrapper_uses_explicit_multimodal_data():
     assert request.multimodal_data == {"image": [sentinel_image]}
 
 
+@pytest.mark.parametrize(
+    "tokenization_kwargs",
+    [{"truncation": True, "max_length": 8, "truncation_side": "left"}, None],
+)
+@pytest.mark.asyncio
+async def test_vllm_generate_forwards_tokenization_kwargs(tokenization_kwargs):
+    """The generate call carries the row's tokenization_kwargs, and None when absent."""
+    from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMEngineRequest
+
+    finished = MagicMock(finished=True)
+
+    async def stream():
+        yield finished
+
+    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
+    wrapper.task_type = vLLMTaskType.GENERATE
+    wrapper.engine = MagicMock()
+    wrapper.engine.generate = MagicMock(side_effect=lambda **_: stream())
+
+    request = vLLMEngineRequest(
+        request_id=0,
+        idx_in_batch=0,
+        prompt_token_ids=list(range(32)),
+        params=MagicMock(),
+        tokenization_kwargs=tokenization_kwargs,
+    )
+    with (
+        patch.dict(sys.modules, {"vllm": MagicMock()}),
+        patch(
+            "ray.llm._internal.batch.stages.vllm_engine_stage._get_vllm_prompt_classes",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+    ):
+        assert await wrapper._generate_async(request) is finished
+
+    assert (
+        wrapper.engine.generate.call_args.kwargs["tokenization_kwargs"]
+        == tokenization_kwargs
+    )
+
+
+def test_vllm_stage_generate_declares_tokenization_kwargs():
+    stage = vLLMEngineStage(
+        fn_constructor_kwargs=dict(
+            model="model", task_type=vLLMTaskType.GENERATE, engine_kwargs={}
+        ),
+        map_batches_kwargs=dict(),
+    )
+    assert "tokenization_kwargs" in stage.get_optional_input_keys()
+
+
 def test_vllm_output_data_logprobs():
     """Test that logprobs and prompt_logprobs are correctly extracted."""
     from vllm.logprobs import Logprob

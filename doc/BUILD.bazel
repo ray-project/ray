@@ -19,6 +19,10 @@ filegroup(
     visibility = ["//ci/pipeline:__pkg__"],
 )
 
+# Consumed by //python/ray/dashboard:test_http_job_server, which checks the
+# Ray Jobs API spec against the JobHead routes and responses.
+exports_files(["source/cluster/running-applications/job-submission/openapi.yml"])
+
 # --------------------------------------------------------------------
 # Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
@@ -502,8 +506,6 @@ doctest_each(
 # needs no edit.
 doctest_each(
     size = "large",
-    # Not listed: tasks/nested-tasks.md, whose `doc_code/` snippet is tested
-    # instead.
     files = [
         "source/core/actors/async-api.md",
         "source/core/actors/concurrency-group-api.md",
@@ -590,15 +592,6 @@ doctest_each(
         "source/rllib/single-agent-episode.md",
     ],
     tags = ["team:rllib"],
-)
-
-doctest_each(
-    # Not listed: advanced-guides/inplace-updates.md and
-    # production-guide/fault-tolerance.md.
-    files = [
-        "source/serve/advanced-guides/multi-app-container.md",
-    ],
-    tags = ["team:serve"],
 )
 
 doctest_each(

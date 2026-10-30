@@ -66,7 +66,14 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     conda create -y -n "$CONDA_ENV_NAME"
     conda activate "$CONDA_ENV_NAME"
     conda remove -y python || true
-    conda install -y python="${PY_MM}" pip=25.2
+    # pip 26.2.2 is the eMudhra CA fix. conda-forge only builds it for
+    # python>=3.11, so 3.10 upgrades from PyPI instead.
+    if [[ "${PY_MM}" == "3.10" ]]; then
+      conda install -y python="${PY_MM}" pip=25.2
+      python -m pip install pip==26.2.2
+    else
+      conda install -y python="${PY_MM}" pip=26.2.2
+    fi
 
     PYTHON_EXE="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/python"
     PIP_CMD="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/pip"

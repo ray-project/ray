@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.data._internal.cluster_autoscaler import (
     CLUSTER_AUTOSCALER_ENV_KEY,
     RateBasedClusterAutoscaler,
@@ -221,6 +222,68 @@ def test_pads_request_with_cpu_bundles_when_object_store_is_full(
     assert any(
         count > 0 for count in padded
     ), f"Padding ran but added no CPU bundles: {padded}"
+
+
+def _one_map():
+    # Tasks wait in output backpressure.
+    return ray.data.range(200, override_num_blocks=40).map_batches(
+        lambda batch: {"data": [b"x" * (2 * MiB) for _ in batch["id"]]},
+        batch_size=1,
+    )
+
+
+def _two_maps():
+    # One task at a time, so tasks finish and both maps sit idle with queued outputs.
+    return (
+        ray.data.from_items(list(range(200)), override_num_blocks=200).map_batches(
+            lambda batch: {"data": [b"x" * MiB for _ in batch["item"]]},
+            num_cpus=0.5,
+            concurrency=1,
+        )
+        # A different `num_cpus` keeps the two maps from being fused.
+        .map_batches(lambda batch: batch, num_cpus=1, concurrency=1)
+    )
+
+
+def _map_after_shuffle():
+    # The finished shuffle's outputs wait in front of a map blocked on the consumer.
+    return (
+        ray.data.range(16, override_num_blocks=16)
+        .map_batches(
+            lambda batch: {"data": [b"x" * (2 * MiB) for _ in batch["id"]]},
+            batch_size=1,
+            num_cpus=0.5,
+        )
+        .random_shuffle()
+        .map_batches(lambda batch: batch, num_cpus=1, concurrency=1)
+    )
+
+
+@pytest.mark.parametrize("make_dataset", [_one_map, _two_maps, _map_after_shuffle])
+def test_blocked_on_consumer_when_consumer_is_slow(
+    ray_start_10_cpus_shared, restore_data_context, make_dataset
+):
+    """The autoscalers' gauge reports the dataset as blocked on its consumer, so
+    they don't scale up."""
+    restore_data_context.execution_options.resource_limits = (
+        ExecutionResources.for_limits(object_store_memory=20 * MiB)
+    )
+    ds = make_dataset()
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
+    next(it)
+
+    # The consumer has pulled a single output and now pauses, like a slow consumer.
+    gauge = RollingLogicalUtilizationGauge(
+        ds._current_executor._resource_manager, cluster_util_avg_window_s=3
+    )
+    start = time.time()
+
+    def blocked_on_consumer():
+        gauge.observe()
+        # Look at a full window, not just the first readings.
+        return time.time() - start >= 3 and gauge.is_blocked_on_consumer()
+
+    wait_for_condition(blocked_on_consumer, timeout=30)
 
 
 if __name__ == "__main__":

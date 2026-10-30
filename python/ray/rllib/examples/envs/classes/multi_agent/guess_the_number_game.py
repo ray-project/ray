@@ -4,8 +4,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
 class GuessTheNumberGame(MultiAgentEnv):
-    """
-    We have two players, 0 and 1. Agent 0 has to pick a number between 0, MAX-1
+    """We have two players, 0 and 1. Agent 0 has to pick a number between 0, MAX-1
     at reset. Agent 1 has to guess the number by asking N questions of whether
     of the form of "a <number> is higher|lower|equal to the picked number. The
     action space is MultiDiscrete [3, MAX]. For the first index 0 means lower,

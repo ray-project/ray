@@ -14,6 +14,11 @@ HIGH_CARDINALITY_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = 
     "tasks": sum,
     "actors": sum,
 }
+# High-cardinality counter metrics. Counters always aggregate with sum().
+HIGH_CARDINALITY_COUNTER_METRICS: List[str] = [
+    "task_retry_submissions",
+    "object_recovery_attempts",
+]
 
 _CARDINALITY_LEVEL = None
 _HIGH_CARDINALITY_LABELS: Dict[str, List[str]] = {}
@@ -29,7 +34,8 @@ class MetricCardinality(str, Enum):
     - RECOMMENDED: Drop high cardinality labels. The set of high cardinality labels
     is determined internally by Ray and not exposed to users. This is the default
     behavior. Currently, this includes the following labels: WorkerId
-    - LOW: Same as RECOMMENDED, but also drop the Name label for tasks and actors.
+    - LOW: Same as RECOMMENDED, but also drop the Name label for tasks, actors and
+    task retries.
     """
 
     LEGACY = "legacy"
@@ -74,7 +80,10 @@ class MetricCardinality(str, Enum):
 
     @staticmethod
     def get_high_cardinality_metrics() -> List[str]:
-        return list(HIGH_CARDINALITY_GAUGE_AGGREGATION.keys())
+        return (
+            list(HIGH_CARDINALITY_GAUGE_AGGREGATION.keys())
+            + HIGH_CARDINALITY_COUNTER_METRICS
+        )
 
     @staticmethod
     def get_high_cardinality_labels_to_drop(metric_name: str) -> List[str]:
@@ -96,6 +105,7 @@ class MetricCardinality(str, Enum):
         if cardinality_level == MetricCardinality.LOW and metric_name in [
             "tasks",
             "actors",
+            "task_retry_submissions",
         ]:
             _HIGH_CARDINALITY_LABELS[metric_name].append(TASK_OR_ACTOR_NAME_TAG_KEY)
         return _HIGH_CARDINALITY_LABELS[metric_name]

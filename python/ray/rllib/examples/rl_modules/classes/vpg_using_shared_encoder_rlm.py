@@ -201,8 +201,7 @@ class SharedEncoder(TorchRLModule):
 # __sphinx_doc_ns_encoder_begin__
 class VPGIndividualEncoder(torch.nn.Module):
     def __init__(self, observation_space, embedding_dim):
-        """
-        An individual version of SharedEncoder, supporting direct comparison between
+        """An individual version of SharedEncoder, supporting direct comparison between
         the two architectures.
         """
         super().__init__()
@@ -224,8 +223,7 @@ class VPGIndividualEncoder(torch.nn.Module):
 
 # __sphinx_doc_ns_policy_begin__
 class VPGPolicyNoSharedEncoder(TorchRLModule):
-    """
-    A VPG (vanilla pol. gradient)-style RLModule that doesn't use a shared encoder.
+    """A VPG (vanilla pol. gradient)-style RLModule that doesn't use a shared encoder.
     Facilitates experiments comparing shared and individual encoder architectures.
     """
 

@@ -63,7 +63,7 @@ class PullManager {
   /// \param cancel_pull_request A callback which should
   /// cancel pulling an object.
   /// \param restore_spilled_object A callback which should
-  /// retrieve an spilled object from the external store.
+  /// retrieve a spilled object from the external store.
   PullManager(
       NodeID self_node_id,
       std::function<bool(const ObjectID &)> object_is_local,

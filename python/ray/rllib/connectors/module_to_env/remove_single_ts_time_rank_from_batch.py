@@ -13,8 +13,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class RemoveSingleTsTimeRankFromBatch(ConnectorV2):
-    """
-    Note: This is one of the default module-to-env ConnectorV2 pieces that
+    """Note: This is one of the default module-to-env ConnectorV2 pieces that
     are added automatically by RLlib into every module-to-env connector pipeline,
     unless `config.add_default_connectors_to_module_to_env_pipeline` is set to
     False.

@@ -15,8 +15,10 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <thread>
 
@@ -285,8 +287,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
         auto &loader = AuthenticationTokenLoader::instance();
         loader.GetToken();
       },
-      "no authentication token was found.*run `ray get-auth-token` on the head "
-      "node.*set RAY_AUTH_MODE=disabled");
+      "it has no token or the cluster has token authentication disabled.*run `ray "
+      "get-auth-token` on the head node.*set RAY_AUTH_MODE=disabled");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestCaching) {
@@ -319,6 +321,72 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   // Whitespace should be trimmed
   ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("token-with-spaces");
+  EXPECT_TRUE(token_opt->Equals(expected));
+}
+
+std::string ReadWholeFile(const std::string &path) {
+  std::ifstream file(path);
+  return std::string(std::istreambuf_iterator<char>(file),
+                     std::istreambuf_iterator<char>());
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingWritesOwnerOnlyToken) {
+  ensure_ray_dir_exists();
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  std::string token = ReadWholeFile(default_token_path_);
+  EXPECT_EQ(token.size(), 64);
+  EXPECT_TRUE(std::all_of(token.begin(), token.end(), [](char c) {
+    return std::isdigit(static_cast<unsigned char>(c)) || (c >= 'a' && c <= 'f');
+  }));
+#ifndef _WIN32
+  struct stat file_stat;
+  ASSERT_EQ(stat(default_token_path_.c_str(), &file_stat), 0);
+  EXPECT_EQ(file_stat.st_mode & 0777, 0600);
+#endif
+  auto loaded = AuthenticationTokenLoader::instance().GetToken(/*ignore_auth_mode=*/true);
+  ASSERT_TRUE(loaded != nullptr);
+  EXPECT_TRUE(loaded->Equals(AuthenticationToken(token)));
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingKeepsExistingToken) {
+  ensure_ray_dir_exists();
+  const std::string content = "\n  \nexisting-token\n";
+  write_token_file(default_token_path_, content);
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  EXPECT_EQ(ReadWholeFile(default_token_path_), content);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReplacesBlankFile) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, " \n\t\n");
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  EXPECT_EQ(ReadWholeFile(default_token_path_).size(), 64);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReportsBadTokenPath) {
+  set_env_var("RAY_AUTH_TOKEN_PATH", "/nonexistent/ray_test_token");
+
+  EXPECT_NE(AuthenticationTokenLoader::instance().CreateTokenIfMissing().find(
+                "/nonexistent/ray_test_token"),
+            std::string::npos);
+  EXPECT_FALSE(std::ifstream(default_token_path_).good());
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestFirstNonBlankLine) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, "\n  \n token-after-blank-lines \nsecond-line\n");
+
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
+
+  ASSERT_TRUE(token_opt != nullptr);
+  AuthenticationToken expected("token-after-blank-lines");
   EXPECT_TRUE(token_opt->Equals(expected));
 }
 
@@ -388,6 +456,19 @@ TEST_F(AuthenticationTokenLoaderTest, TestJWTExpiration) {
   EXPECT_EQ(token2->GetRawValue(), "new-token");
 
   // Re-enable auth for other tests
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestK8sTokenAuthWithAuthDisabledFails) {
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "disabled", "ENABLE_K8S_TOKEN_AUTH": true})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  EXPECT_DEATH(AuthenticationTokenLoader::instance().GetToken(),
+               "Kubernetes token authentication \\(ENABLE_K8S_TOKEN_AUTH\\) requires "
+               "RAY_AUTH_MODE=token");
+
   RayConfig::instance().initialize(
       R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
 }

@@ -1832,7 +1832,11 @@ class LeRobotDatasource(Datasource):
         extra split re-opens a file and re-inits a decoder, a cost a small
         dataset cannot amortize. This mirrors how file-based readers cap at the
         file count; an explicit ``override_num_blocks`` still splits or merges
-        from this base."""
+        from this base.
+
+        Returns:
+            The number of base read tasks.
+        """
         return len(self._slice())
 
     def get_read_tasks(
@@ -1975,6 +1979,28 @@ class LeRobotPerDatasetDatasource(Datasource):
     ``image_keys`` / ``fps`` / non-camera features); unlike the ``"file"`` and
     ``"episode"`` granularities this is *not* pre-checked on the driver -- a
     divergent dataset surfaces as a schema-inconsistent block at read time.
+
+    Args:
+        root: Path or URI to the dataset root (local, ``gs://``, ``s3://``), or a
+            list of such paths to read multiple datasets as one. Every root must
+            have the same ``video_keys``, ``image_keys``, ``fps``, and non-camera
+            features as the first one.
+        episodes: If given, read only these ``episode_index`` values from each
+            root. ``None`` (the default) reads all episodes.
+        filesystem: Filesystem for reading metadata and parquet files. A pyarrow
+            ``FileSystem`` or an fsspec ``AbstractFileSystem``. When omitted, it's
+            selected from the URI scheme. Applied to every root.
+        storage_options: Extra options forwarded to ``fsspec``, such as
+            credentials or a custom ``endpoint_url``. Applied to every root.
+        frame_tolerance_s: Max seconds a decoded video frame's timestamp may
+            differ from a row's timestamp before it's rejected. ``None`` (the
+            default) uses half a frame interval, ``0.5 / fps``.
+        delta_timestamps: Optional ``{feature_key: [offsets_in_seconds]}``. For
+            each frame, the listed feature is returned stacked over the offsets,
+            plus a boolean ``{key}_is_pad`` column.
+        delta_tolerance_s: Frame-grid tolerance, in seconds, for
+            ``delta_timestamps`` offsets. An offset must be a multiple of
+            ``1 / fps`` within this tolerance. Defaults to ``1e-4``.
     """
 
     def __init__(

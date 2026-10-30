@@ -130,8 +130,7 @@ class PortAllocator:
         raise NoAvailablePortError(self._protocol, self._node_id)
 
     def release(self, replica_id: str, port: int, block_port: bool = False):
-        """
-        Releases a port for a replica.
+        """Releases a port for a replica.
 
         Args:
             replica_id: The ID of the replica to release the port for.
@@ -195,8 +194,7 @@ class PortAllocator:
 
 
 class NodePortManager:
-    """
-    This class is responsible for managing replica-specific port allocations on a node,
+    """This class is responsible for managing replica-specific port allocations on a node,
     and is only used in direct ingress mode, where each Serve replica is exposed individually
     via a Kubernetes or GCP or AWS Ingress.
 

@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
@@ -146,6 +146,28 @@ class InstanceManager:
         reply.status.code = StatusCode.OK
 
         return reply
+
+    def delete_instances(
+        self, instance_ids: List[str], expected_storage_version: Optional[int] = None
+    ) -> Tuple[bool, int]:
+        """Delete instance records from the storage.
+
+        Used to reclaim terminal (TERMINATED) records that no status transition
+        removes. Subscribers are intentionally not notified: these records carry
+        no outgoing transition, so there is no InstanceUpdateEvent to emit.
+
+        Args:
+            instance_ids: The instance ids to delete.
+            expected_storage_version: If set, the delete is applied only when the
+                storage is still at this version (optimistic concurrency).
+
+        Returns:
+            A (success, version) tuple. success is False on a version mismatch.
+        """
+        return self._instance_storage.batch_delete_instances(
+            instance_ids=instance_ids,
+            expected_storage_version=expected_storage_version,
+        )
 
     #########################################
     # Private methods

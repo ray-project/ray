@@ -35,6 +35,7 @@ cdef extern from "ray/rpc/authentication/authentication_token_loader.h" namespac
         void ResetCache()
         shared_ptr[const CAuthenticationToken] GetToken(c_bool ignore_auth_mode)
         CTokenLoadResult TryLoadToken(c_bool ignore_auth_mode)
+        string CreateTokenIfMissing()
 
 cdef extern from "ray/rpc/authentication/authentication_token_validator.h" namespace "ray::rpc" nogil:
     cdef cppclass CAuthenticationTokenValidator "ray::rpc::AuthenticationTokenValidator":
