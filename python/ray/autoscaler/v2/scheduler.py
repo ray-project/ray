@@ -1,4 +1,5 @@
 import copy
+import itertools
 import logging
 import time
 import uuid
@@ -6,10 +7,15 @@ from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
+from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.protobuf_compat import message_to_dict
-from ray._raylet import IMPLICIT_RESOURCE_PREFIX
+from ray._raylet import (
+    IMPLICIT_RESOURCE_PREFIX,
+    RAY_NODE_TPU_SLICE_NAME_KEY,
+    RAY_NODE_TPU_WORKER_ID_KEY,
+)
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.resource_demand_scheduler import (
     UtilizationScore,
@@ -33,7 +39,11 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.common_pb2 import LabelSelectorOperator
+from ray.core.generated.common_pb2 import (
+    LabelSelectorConstraint,
+    LabelSelectorOperator,
+    PlacementStrategy,
+)
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     LaunchRequest,
@@ -53,6 +63,14 @@ logger = logging.getLogger(__name__)
 # Protobuf enum attribute lookups are slow, so hoist the ones used per label check.
 _LABEL_OPERATOR_IN = LabelSelectorOperator.LABEL_OPERATOR_IN
 _LABEL_OPERATOR_NOT_IN = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+
+# Locality domain names assigned to unregistered nodes within one scheduling
+# pass. They never leave the scheduler: nodes report their real domain labels
+# when they register.
+_PENDING_DOMAIN_PREFIX = "__pending_domain_"
+# Sentinel domain for running nodes that registered without the locality label,
+# so a `NOT_IN` constraint over existing domains also excludes them.
+_EXCLUDED_DOMAIN = "__excluded_domain__"
 
 
 @dataclass
@@ -1166,6 +1184,16 @@ class ResourceDemandScheduler(IResourceScheduler):
                 self._nodes, self._node_type_configs
             )
 
+        def restricted_to(
+            self, nodes: List[SchedulingNode]
+        ) -> "ResourceDemandScheduler.ScheduleContext":
+            """Return a shallow copy of this context restricted to `nodes` with
+            node launches disabled."""
+            ctx = copy.copy(self)
+            ctx._nodes = nodes
+            ctx._node_type_available = {}
+            return ctx
+
         def get_max_num_nodes(self) -> Optional[int]:
             """
             Get the max number of nodes for the entire cluster.
@@ -1566,14 +1594,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                     f"node type: {node_type}."
                 )
                 new_nodes.extend(
-                    [
-                        SchedulingNode.from_node_config(
-                            copy.deepcopy(node_type_config),
-                            status=SchedulingNodeStatus.TO_LAUNCH,
-                            node_kind=NodeKind.WORKER,
-                        )
-                    ]
-                    * (min_count - cur_count)
+                    SchedulingNode.from_node_config(
+                        copy.deepcopy(node_type_config),
+                        status=SchedulingNodeStatus.TO_LAUNCH,
+                        node_kind=NodeKind.WORKER,
+                    )
+                    for _ in range(min_count - cur_count)
                 )
         # NOTE: we assume the aggregated number of min workers across all node types
         # should not exceed any globally enforced max_num_nodes
@@ -1672,6 +1698,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             If there are requests from rescheduling placement groups due to node
             failures, these requests should not be scheduled on nodes with requests
             from the same placement group.
+        - For placement groups with a `topology_strategy`, all bundles are
+            scheduled within one value of the topology label.
 
 
         Args:
@@ -1685,34 +1713,41 @@ class ResourceDemandScheduler(IResourceScheduler):
         def _sort_gang_resource_requests(req: GangResourceRequest) -> Tuple:
             """
             Key function for sorting the gang resource request by:
-                1. the number of placement constraints in the gang request.
-                2. the number of resource requests in the gang request.
+                1. whether the gang is pinned to a specific locality domain.
+                2. the number of placement and locality constraints in the gang request.
+                3. the number of resource requests in the gang request.
             """
-            total_placement_constraints = 0
-            for resource_request in req.requests:
-                total_placement_constraints += len(
-                    resource_request.placement_constraints
+            requests = (
+                req.bundle_selectors[0].resource_requests
+                if req.bundle_selectors
+                else req.requests
+            )
+            total_placement_constraints = sum(
+                len(r.placement_constraints) for r in requests
+            )
+            pinned_domain_constraints = 0
+            if req.bundle_selectors and req.bundle_selectors[0].HasField(
+                "locality_requirement"
+            ):
+                locality_req = req.bundle_selectors[0].locality_requirement
+                total_placement_constraints += 1
+                pinned_domain_constraints = len(
+                    locality_req.label_selector.label_constraints
                 )
 
-            return (total_placement_constraints, len(req.requests))
+            return (
+                pinned_domain_constraints,
+                total_placement_constraints,
+                len(requests),
+            )
 
         infeasible_gang_requests = []
         # Try fulfilling the gang requests one by one.
         for gang_req in sorted(
             gang_requests, key=_sort_gang_resource_requests, reverse=True
         ):
-            if gang_req.bundle_selectors:
-                # TODO: @ryanaoleary multiple `bundle_selectors` will be supported
-                # for `fallback_strategy`.
-                requests = gang_req.bundle_selectors[0].resource_requests
-            else:
-                # Use legacy field if `bundle_selectors` not provided.
-                requests = gang_req.requests
-            # Try to combine requests with affinity constraints into the same request.
-            requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
-
-            nodes, infeasible = ResourceDemandScheduler._try_schedule(
-                ctx, requests, ResourceRequestSource.PENDING_DEMAND
+            nodes, infeasible = ResourceDemandScheduler._try_schedule_gang(
+                ctx, gang_req
             )
 
             if infeasible:
@@ -1725,6 +1760,454 @@ class ResourceDemandScheduler(IResourceScheduler):
             ctx.update(nodes)
 
         return infeasible_gang_requests
+
+    @staticmethod
+    def _is_domain_idle(
+        domain_nodes: List[SchedulingNode], shapes: List[Dict[str, float]]
+    ) -> bool:
+        """Return whether every node in `domain_nodes` has its full capacity for
+        each request shape in `shapes`."""
+
+        def _capacity(resources: Dict[str, float]) -> List[float]:
+            return [
+                min(
+                    resources.get(k, 0) // v
+                    for k, v in shape.items()
+                    if not k.startswith(IMPLICIT_RESOURCE_PREFIX)
+                )
+                for shape in shapes
+                if any(not k.startswith(IMPLICIT_RESOURCE_PREFIX) for k in shape)
+            ]
+
+        return bool(domain_nodes) and all(
+            _can_fit_any_request(n.total_resources, shapes)
+            and _capacity(
+                n.get_available_resources(ResourceRequestSource.PENDING_DEMAND)
+            )
+            == _capacity(n.total_resources)
+            for n in domain_nodes
+        )
+
+    @staticmethod
+    def _materialize_pending_replicas(
+        replica_sizes: Dict[NodeType, int],
+        all_nodes: List[SchedulingNode],
+        nodes_by_domain: Dict[str, List[SchedulingNode]],
+        locality_label: str,
+        shapes: List[Dict[str, float]],
+        new_domain: Callable[[], str],
+    ) -> None:
+        """Assign domain and worker ID labels to unregistered replica hosts in
+        place.
+
+        KubeRay creates a new replica as `size` pods at once and replaces failed
+        hosts one pod at a time, so pending hosts first complete idle registering
+        slices, then form whole new replicas, and any remainder completes busy
+        slices.
+        """
+        for node_type, size in replica_sizes.items():
+            pending = sorted(
+                (
+                    n
+                    for n in all_nodes
+                    if n.node_type == node_type
+                    and n.status != SchedulingNodeStatus.TO_TERMINATE
+                    and not n.ray_node_id
+                    and not n.labels.get(locality_label)
+                ),
+                key=lambda n: len(
+                    n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+                ),
+            )
+
+            def _fill(domain_val: str) -> None:
+                domain_nodes = nodes_by_domain[domain_val]
+                present = {
+                    n.labels.get(RAY_NODE_TPU_WORKER_ID_KEY) for n in domain_nodes
+                }
+                for host_index in range(size):
+                    if not pending:
+                        return
+                    if str(host_index) in present:
+                        continue
+                    node = pending.pop(0)
+                    node.labels[locality_label] = domain_val
+                    node.labels[RAY_NODE_TPU_WORKER_ID_KEY] = str(host_index)
+                    domain_nodes.append(node)
+
+            # Registering slices closest to completion first.
+            registering = sorted(
+                (
+                    d
+                    for d, nodes in nodes_by_domain.items()
+                    if nodes[0].node_type == node_type
+                    and len(nodes) < size
+                    and any(n.ray_node_id for n in nodes)
+                ),
+                key=lambda d: (size - len(nodes_by_domain[d]), d),
+            )
+            idle = [
+                d
+                for d in registering
+                if ResourceDemandScheduler._is_domain_idle(nodes_by_domain[d], shapes)
+            ]
+            for d in idle:
+                _fill(d)
+            while len(pending) >= size:
+                _fill(new_domain())
+            for d in registering:
+                if d not in idle:
+                    _fill(d)
+
+    @staticmethod
+    def _add_label_constraints_to_requests(
+        requests: List[ResourceRequest],
+        constraints: List[LabelSelectorConstraint],
+    ) -> List[ResourceRequest]:
+        """Return copies of `requests` with `constraints` added to each request's
+        label selectors."""
+        updated_requests = []
+        for req in requests:
+            req_copy = copy.deepcopy(req)
+            if req_copy.label_selectors:
+                for selector in req_copy.label_selectors:
+                    selector.label_constraints.extend(constraints)
+            else:
+                req_copy.label_selectors.add(label_constraints=constraints)
+            updated_requests.append(req_copy)
+        return updated_requests
+
+    @staticmethod
+    def _schedule_in_domain(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+        all_nodes: List[SchedulingNode],
+        domain_nodes: List[SchedulingNode],
+        pending_siblings: List[SchedulingNode],
+        requests: List[ResourceRequest],
+        locality_label: str,
+        domain_val: str,
+    ) -> Optional[List[SchedulingNode]]:
+        """Schedule `requests` within a single dynamic domain and any booting
+        `pending_siblings` without launching new nodes. Returns the updated node
+        list, or None if the gang does not fit."""
+        scheduled, infeasible = ResourceDemandScheduler._try_schedule(
+            ctx.restricted_to(domain_nodes),
+            requests,
+            ResourceRequestSource.PENDING_DEMAND,
+        )
+        replaced = domain_nodes
+        if infeasible and pending_siblings and len(infeasible) < len(requests):
+            siblings = copy.deepcopy(pending_siblings)
+            for n in siblings:
+                n.labels[locality_label] = domain_val
+            scheduled, infeasible = ResourceDemandScheduler._try_schedule(
+                ctx.restricted_to(scheduled + siblings),
+                infeasible,
+                ResourceRequestSource.PENDING_DEMAND,
+            )
+            for n in scheduled:
+                if not n.ray_node_id and not n.get_sched_requests(
+                    ResourceRequestSource.PENDING_DEMAND
+                ):
+                    n.labels.pop(locality_label, None)
+            replaced = domain_nodes + pending_siblings
+        if infeasible:
+            return None
+        replaced_ids = {id(n) for n in replaced}
+        return [n for n in all_nodes if id(n) not in replaced_ids] + scheduled
+
+    @staticmethod
+    def _try_schedule_gang(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+        gang_req: GangResourceRequest,
+    ) -> Tuple[List[SchedulingNode], List[ResourceRequest]]:
+        """Schedule all bundles of `gang_req` atomically.
+
+        When `gang_req` specifies a `STRICT_PACK` locality requirement, all
+        bundles are placed within a single value of the locality label,
+        preferring the domain that requires launching the fewest nodes.
+
+        Args:
+            ctx: The schedule context.
+            gang_req: The gang resource request.
+
+        Returns:
+            The updated nodes and any unschedulable requests.
+        """
+        locality_req = None
+        if gang_req.bundle_selectors:
+            # TODO: @ryanaoleary multiple `bundle_selectors` will be supported
+            # for `fallback_strategy`.
+            bundle_selector = gang_req.bundle_selectors[0]
+            requests = bundle_selector.resource_requests
+            if bundle_selector.HasField("locality_requirement"):
+                locality_req = bundle_selector.locality_requirement
+        else:
+            # Use legacy field if `bundle_selectors` not provided.
+            requests = gang_req.requests
+
+        # Try to combine requests with affinity constraints into the same request.
+        requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
+
+        if (
+            locality_req is None
+            or locality_req.locality_constraint.placement_strategy
+            != PlacementStrategy.STRICT_PACK
+        ):
+            return ResourceDemandScheduler._try_schedule(
+                ctx, requests, ResourceRequestSource.PENDING_DEMAND
+            )
+
+        locality_label = locality_req.locality_constraint.label_name
+        # A rescheduling gang is pinned to the domain it was placed in, so only
+        # those domains are candidates.
+        pinned_domains = {
+            v
+            for c in locality_req.label_selector.label_constraints
+            if c.label_key == locality_label and c.operator == _LABEL_OPERATOR_IN
+            for v in c.label_values
+        }
+        if locality_req.label_selector.label_constraints:
+            requests = ResourceDemandScheduler._add_label_constraints_to_requests(
+                requests, locality_req.label_selector.label_constraints
+            )
+
+        all_nodes = ctx.get_nodes()
+        node_type_configs = ctx.get_node_type_configs()
+        shapes = _collect_unique_resource_shapes(requests)
+        # TPU slices are provisioned as whole replicas of `size` hosts. Only node
+        # types whose hosts fit a bundle take part, so idleness and pending host
+        # grouping are judged against shapes their hosts can run.
+        replica_sizes: Dict[NodeType, int] = {}
+        if locality_label == RAY_NODE_TPU_SLICE_NAME_KEY:
+            for node_type, cfg in node_type_configs.items():
+                size = TPUAcceleratorManager.get_node_group_num_hosts(
+                    cfg.labels, cfg.resources
+                )
+                if size is not None and _can_fit_any_request(
+                    dict(cfg.resources), shapes
+                ):
+                    replica_sizes[node_type] = size
+        nodes_by_domain: Dict[str, List[SchedulingNode]] = defaultdict(list)
+        for node in all_nodes:
+            domain_val = node.labels.get(locality_label)
+            if domain_val and node.status != SchedulingNodeStatus.TO_TERMINATE:
+                nodes_by_domain[domain_val].append(node)
+        static_domains = {
+            cfg.labels[locality_label]
+            for cfg in node_type_configs.values()
+            if cfg.labels.get(locality_label)
+        }
+        # Pending domains created by earlier gangs in this pass are numbered
+        # contiguously, so the next free index is their count.
+        pending_domain_ids = itertools.count(
+            sum(d.startswith(_PENDING_DOMAIN_PREFIX) for d in nodes_by_domain)
+        )
+
+        def _new_pending_domain() -> str:
+            return f"{_PENDING_DOMAIN_PREFIX}{next(pending_domain_ids)}"
+
+        total_demand: Dict[str, float] = defaultdict(float)
+        for r in requests:
+            for k, v in r.resources_bundle.items():
+                if not k.startswith(IMPLICIT_RESOURCE_PREFIX):
+                    total_demand[k] += v
+
+        def _can_domain_host_gang(candidate_nodes: List[SchedulingNode]) -> bool:
+            """Cheap aggregate capacity check; `_try_schedule` decides precisely."""
+            # `_try_schedule` may resize an IPPR node beyond its current capacity.
+            if any(n.ippr_status is not None for n in candidate_nodes):
+                return True
+            domain_available: Dict[str, float] = defaultdict(float)
+            for n in candidate_nodes:
+                for k, v in n.get_available_resources(
+                    ResourceRequestSource.PENDING_DEMAND
+                ).items():
+                    domain_available[k] += v
+            return _fits(domain_available, total_demand)
+
+        # Label unregistered replica hosts and build one candidate new replica
+        # per launchable TPU node type.
+        ResourceDemandScheduler._materialize_pending_replicas(
+            replica_sizes,
+            all_nodes,
+            nodes_by_domain,
+            locality_label,
+            shapes,
+            _new_pending_domain,
+        )
+        gang_ctx = copy.copy(ctx)
+        gang_ctx.update(all_nodes)
+        candidate_domains = nodes_by_domain.keys() | static_domains
+        if pinned_domains:
+            candidate_domains &= pinned_domains
+        node_type_available = gang_ctx.get_node_type_available()
+        max_num_nodes = gang_ctx.get_max_num_nodes()
+        recoverable = gang_ctx.get_recoverable_resource_availabilities()
+        availabilities = gang_ctx.get_cloud_resource_availabilities()
+
+        def _node_type_rank(node_type: NodeType) -> Tuple[float, int, float]:
+            """Node type preference, as in `_sched_best_node`."""
+            cfg = node_type_configs.get(node_type)
+            return (
+                recoverable.get(node_type, 1.0),
+                cfg.priority if cfg else 0,
+                availabilities.get(node_type, 1.0),
+            )
+
+        def _domain_rank(domain_val: str) -> Tuple:
+            """Domains with running nodes first, then by their best node type."""
+            node_types = {n.node_type for n in nodes_by_domain.get(domain_val, [])} | {
+                nt
+                for nt, cfg in node_type_configs.items()
+                if cfg.labels.get(locality_label) == domain_val
+            }
+            return (
+                not any(n.ray_node_id for n in nodes_by_domain.get(domain_val, [])),
+                tuple(-x for x in max(map(_node_type_rank, node_types))),
+                domain_val,
+            )
+
+        existing_domains = sorted(candidate_domains, key=_domain_rank)
+        unlabeled_pending_by_type: Dict[NodeType, List[SchedulingNode]] = defaultdict(
+            list
+        )
+        for n in all_nodes:
+            if (
+                n.node_type not in replica_sizes
+                and n.status == SchedulingNodeStatus.SCHEDULABLE
+                and not n.ray_node_id
+                and not n.labels.get(locality_label)
+                and not n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+            ):
+                unlabeled_pending_by_type[n.node_type].append(n)
+        # A pinned gang cannot land in a new domain.
+        new_replicas: List[Tuple[str, List[SchedulingNode]]] = []
+        for node_type in sorted(
+            replica_sizes if not pinned_domains else [],
+            key=_node_type_rank,
+            reverse=True,
+        ):
+            size = replica_sizes[node_type]
+            if node_type_available.get(node_type, 0) < size or (
+                max_num_nodes is not None and len(all_nodes) + size > max_num_nodes
+            ):
+                continue
+            cfg = node_type_configs[node_type]
+            domain_val = _new_pending_domain()
+            replica_nodes = []
+            for host_index in range(size):
+                node = SchedulingNode.from_node_config(
+                    cfg,
+                    status=SchedulingNodeStatus.TO_LAUNCH,
+                    node_kind=NodeKind.WORKER,
+                )
+                node.labels[locality_label] = domain_val
+                node.labels[RAY_NODE_TPU_WORKER_ID_KEY] = str(host_index)
+                replica_nodes.append(node)
+            new_replicas.append((domain_val, replica_nodes))
+
+        # Try existing or static domains first, then candidate new replicas.
+        best_with_launch: Optional[Tuple[int, List[SchedulingNode]]] = None
+        for domain_val, replica in [(d, []) for d in existing_domains] + new_replicas:
+            domain_nodes = replica or nodes_by_domain.get(domain_val, [])
+            is_dynamic = bool(replica) or domain_val not in static_domains
+            pending_siblings = (
+                unlabeled_pending_by_type.get(domain_nodes[0].node_type, [])
+                if not replica
+                and domain_nodes
+                and ResourceDemandScheduler._is_domain_idle(domain_nodes, shapes)
+                else []
+            )
+            if is_dynamic:
+                # Skip domains that lack capacity before running bin-packing. Every
+                # candidate node already carries `locality_label == domain_val` and
+                # `_schedule_in_domain` cannot launch, so no constraint is needed.
+                if not _can_domain_host_gang(domain_nodes + pending_siblings):
+                    continue
+                nodes = ResourceDemandScheduler._schedule_in_domain(
+                    gang_ctx,
+                    all_nodes,
+                    domain_nodes,
+                    pending_siblings,
+                    requests,
+                    locality_label,
+                    domain_val,
+                )
+            else:
+                domain_requests = (
+                    ResourceDemandScheduler._add_label_constraints_to_requests(
+                        requests,
+                        [
+                            LabelSelectorConstraint(
+                                label_key=locality_label,
+                                operator=LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                label_values=[domain_val],
+                            )
+                        ],
+                    )
+                )
+                nodes, infeasible = ResourceDemandScheduler._try_schedule(
+                    gang_ctx, domain_requests, ResourceRequestSource.PENDING_DEMAND
+                )
+                if infeasible:
+                    nodes = None
+
+            if nodes is not None:
+                num_to_launch = len(nodes) - len(all_nodes)
+                if num_to_launch == 0:
+                    return nodes, []
+                if best_with_launch is None or num_to_launch < best_with_launch[0]:
+                    best_with_launch = (num_to_launch, nodes)
+
+        # TPU slices are always provisioned as whole replicas above, and a pinned
+        # gang cannot land in a new domain.
+        if locality_label == RAY_NODE_TPU_SLICE_NAME_KEY or pinned_domains:
+            if best_with_launch is not None:
+                return best_with_launch[1], []
+            return all_nodes, requests
+
+        # Otherwise schedule onto pending or new nodes outside existing domains,
+        # excluding running nodes that registered without `locality_label`.
+        pending_domain = _new_pending_domain()
+        for n in all_nodes:
+            if not n.labels.get(locality_label) and n.ray_node_id:
+                n.labels[locality_label] = _EXCLUDED_DOMAIN
+        new_domain_requests = (
+            ResourceDemandScheduler._add_label_constraints_to_requests(
+                requests,
+                [
+                    LabelSelectorConstraint(
+                        label_key=locality_label,
+                        operator=LabelSelectorOperator.LABEL_OPERATOR_NOT_IN,
+                        label_values=existing_domains + [_EXCLUDED_DOMAIN],
+                    )
+                ],
+            )
+        )
+        scheduled_req_ids = {id(r) for r in new_domain_requests}
+        nodes, infeasible = ResourceDemandScheduler._try_schedule(
+            gang_ctx, new_domain_requests, ResourceRequestSource.PENDING_DEMAND
+        )
+        for n in nodes:
+            if n.labels.get(locality_label) == _EXCLUDED_DOMAIN:
+                del n.labels[locality_label]
+            elif (
+                not infeasible
+                and not n.ray_node_id
+                and any(
+                    id(r) in scheduled_req_ids
+                    for r in n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+                )
+            ):
+                n.labels[locality_label] = pending_domain
+        if not infeasible:
+            num_to_launch = len(nodes) - len(all_nodes)
+            if best_with_launch is None or num_to_launch < best_with_launch[0]:
+                return nodes, []
+        if best_with_launch is not None:
+            return best_with_launch[1], []
+        return nodes, infeasible
 
     @staticmethod
     def _try_schedule(
