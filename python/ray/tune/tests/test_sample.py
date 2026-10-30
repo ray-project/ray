@@ -1643,22 +1643,20 @@ class SearchSpaceTest(unittest.TestCase):
             tune.qrandint(0, 10, 2.0),
         ):
             expected = set(domain.sample(size=2000))
-            with self.subTest(expected=sorted(expected)):
+            values = set()
+            for _ in range(5):
                 searcher = ZOOptSearch(
                     budget=50, metric="a", mode="max", parallel_num=4
                 )
                 searcher.set_search_properties(None, None, {"a": domain})
-                values = set()
+                # Stay within ZOOpt's random initial round. Past it, zoopt
+                # 0.4.1 raises `high <= 0` once a space this small is
+                # exhausted.
                 n = 0
-                for _ in range(8):
-                    # ZOOpt returns None once `parallel_num` trials are live
-                    live = {}
-                    while isinstance(config := searcher.suggest(str(n)), dict):
-                        live[str(n)] = config
-                        n += 1
-                    for trial_id, config in live.items():
-                        values.add(config["a"])
-                        searcher.on_trial_complete(trial_id, result=dict(a=config["a"]))
+                while isinstance(config := searcher.suggest(str(n)), dict):
+                    values.add(config["a"])
+                    n += 1
+            with self.subTest(expected=sorted(expected)):
                 self.assertTrue(values)
                 self.assertLessEqual(values, expected)
 
