@@ -79,6 +79,53 @@ class RuntimeContext(object):
         job_id = self.worker.current_job_id
         return job_id.hex()
 
+    def get_job_submission_id(self) -> Optional[str]:
+        """Get the submission ID associated with the current Ray job.
+
+        A submission ID identifies a job submitted through the Ray Jobs API.
+        It is distinct from the Ray Core job ID returned by get_job_id().
+
+        This method can be called from a driver, task, or actor. Jobs submitted
+        through the Ray Jobs API have their submission ID stored in JobConfig
+        metadata, which is propagated to the driver, tasks, and actors.
+
+        Ray Client sessions do not normally have a submission ID because they
+        are not managed by the Ray Jobs API.
+
+        Returns:
+            The job submission ID as a string, or None if the current job
+            does not have a submission ID, including Ray Client sessions
+            and jobs not submitted through the Ray Jobs API.
+
+        Raises:
+            RuntimeError: If Ray has not been initialized.
+        """
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Job submission ID is not available because Ray has not "
+                "been initialized."
+            )
+
+        # RuntimeContext is internally constructed with one of two worker types:
+        # 1. ray._private.worker.Worker: Native Ray drivers, tasks, and actors.
+        # 2. _ClientWorkerPropertyAPI: Ray Client drivers.
+        #
+        # Ray Client uses a proxy worker without a local CoreWorker. Since
+        # Ray Client sessions are not managed by the Ray Jobs API, they
+        # normally have no submission ID. Return None in this case.
+        # We add this instance check here because _ClientWorkerPropertyAPI
+        # has no core_worker
+        if not isinstance(self.worker, ray._private.worker.Worker):
+            return None
+
+        # The Ray Jobs API stores the submission ID in JobConfig metadata.
+        # The configuration is propagated to the driver, tasks, and actors.
+        job_config = self.worker.core_worker.get_job_config()
+
+        # Jobs not submitted through the Ray Jobs API typically do not have
+        # a "job_submission_id" entry in their metadata.
+        return job_config.metadata.get("job_submission_id")
+
     @property
     @Deprecated(message="Use get_node_id() instead", warning=True)
     def node_id(self):
