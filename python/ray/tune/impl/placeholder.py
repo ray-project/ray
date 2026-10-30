@@ -211,15 +211,20 @@ def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
 
 
 @DeveloperAPI
-def resolve_placeholders(config: Any, replaced: defaultdict):
+def resolve_placeholders(config: Any, replaced: defaultdict) -> Dict[Tuple, Any]:
     """Replaces placeholders contained by a config dict with the original values.
 
     Args:
         config: The config to replace placeholders in.
         replaced: A dict from path to replaced objects.
+
+    Returns:
+        A dict from path to the value sampled for each resolved function
+        placeholder (``tune.sample_from``).
     """
 
     def __resolve(resolver_type, args):
+        resolved = {}
         for path, resolvers in replaced.items():
             assert resolvers
 
@@ -235,10 +240,13 @@ def resolve_placeholders(config: Any, replaced: defaultdict):
                 if resolver.hash != ph[1]:
                     continue
                 # Found the matching resolver.
-                assign_value(config, prefix, resolver.resolve(*args))
+                value = resolver.resolve(*args)
+                assign_value(config, prefix, value)
+                resolved[prefix] = value
+        return resolved
 
     # RefResolvers first.
     __resolve(_RefResolver, args=())
     # Functions need to be resolved after RefResolvers, in case they are
     # referencing values from the RefResolvers.
-    __resolve(_FunctionResolver, args=(config,))
+    return __resolve(_FunctionResolver, args=(config,))

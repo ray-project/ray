@@ -478,7 +478,11 @@ class Trial:
 
         # Make a copy of the unresolved config before resolve it.
         self.config = copy.deepcopy(self.__unresolved_config)
-        resolve_placeholders(self.config, placeholder_resolvers)
+        sampled = resolve_placeholders(self.config, placeholder_resolvers)
+        # `tune.sample_from` values are only drawn here, after the search
+        # algorithm built `evaluated_params`, so record them as well.
+        for path, value in sampled.items():
+            self.evaluated_params["/".join(str(p) for p in path)] = value
 
     @property
     def last_result(self) -> dict:

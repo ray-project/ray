@@ -6,8 +6,11 @@ from ray.tune import (
     CheckpointConfig,
     Trainable,
     TuneError,
+    grid_search,
     register_trainable,
+    run,
     run_experiments,
+    sample_from,
 )
 from ray.tune.experiment import Experiment
 from ray.tune.experiment.trial import ExportFormat, Trial
@@ -228,6 +231,17 @@ class RunExperimentTest(unittest.TestCase):
         self.assertEqual(
             str(trial), "{}_{}_321".format(trial.trainable_name, trial.trial_id)
         )
+
+    def testSampleFromInEvaluatedParams(self):
+        analysis = run(
+            "f1",
+            config={"x": sample_from(lambda _: 0.5), "y": grid_search([1, 2])},
+            stop={"training_iteration": 1},
+        )
+        self.assertEqual(len(analysis.trials), 2)
+        for trial in analysis.trials:
+            self.assertEqual(trial.config["x"], 0.5)
+            self.assertEqual(trial.evaluated_params, {"x": 0.5, "y": trial.config["y"]})
 
 
 if __name__ == "__main__":

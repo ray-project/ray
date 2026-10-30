@@ -9,8 +9,9 @@ from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.train.tests.util import mock_storage_context
-from ray.tune import Checkpoint
+from ray.tune import Checkpoint, grid_search, sample_from
 from ray.tune.experiment import Trial
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 
 
 @pytest.fixture
@@ -192,6 +193,37 @@ def test_should_stop(caplog, propagate_logs):  # noqa
     assert (
         "Stopping criterion 'a' not found in result dict! Available keys are ['b/c']."
     ) in caplog.text
+
+
+def test_resolve_config_placeholders_records_sample_from_in_evaluated_params(
+    tmp_path,
+):
+    """`tune.sample_from` values are drawn when placeholders are resolved, after
+    the search algorithm built `evaluated_params`, so they must be added then."""
+    resolvers = create_resolvers_map()
+    config = inject_placeholders(
+        {
+            "x": sample_from(lambda _: 0.5),
+            "nested": {"y": sample_from(lambda spec: spec["config"]["z"] + 1)},
+            "z": 1,
+            "g": grid_search([1, 2]),
+        },
+        resolvers,
+    )
+    config["g"] = 2  # As picked by the variant generator.
+    trial = Trial(
+        "mock",
+        stub=True,
+        config=config,
+        evaluated_params={"g": 2},
+        storage=mock_storage_context(storage_path=str(tmp_path)),
+    )
+
+    trial.resolve_config_placeholders(resolvers)
+
+    assert trial.config["x"] == 0.5
+    assert trial.config["nested"]["y"] == 2
+    assert trial.evaluated_params == {"g": 2, "x": 0.5, "nested/y": 2}
 
 
 if __name__ == "__main__":
