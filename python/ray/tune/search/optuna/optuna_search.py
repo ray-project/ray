@@ -48,6 +48,22 @@ logger = logging.getLogger(__name__)
 DEFINE_BY_RUN_WARN_THRESHOLD_S = 1  # 1 is arbitrary
 
 
+def _flatten_point(point: Dict, space: Dict, prefix: str = "") -> Dict:
+    """Flatten a nested point to the "/"-joined names used in ``space``.
+
+    A dict is kept as a value when its own name is in ``space``, e.g. when it is
+    a choice of a categorical parameter.
+    """
+    flat = {}
+    for key, value in point.items():
+        name = f"{prefix}{key}"
+        if isinstance(value, dict) and name not in space:
+            flat.update(_flatten_point(value, space, f"{name}/"))
+        else:
+            flat[name] = value
+    return flat
+
+
 class _OptunaTrialSuggestCaptor:
     """Utility to capture returned values from Optuna's suggest_ methods.
 
@@ -427,6 +443,12 @@ class OptunaSearch(Searcher):
             load_if_exists=True,
             **study_direction_args,
         )
+
+        if not callable(self._space):
+            self._points_to_evaluate = [
+                _flatten_point(point, self._space) if isinstance(point, dict) else point
+                for point in self._points_to_evaluate
+            ]
 
         if self._points_to_evaluate:
             validate_warmstart(
