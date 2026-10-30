@@ -336,6 +336,9 @@ def _chained(outer: ImportError, inner: BaseException) -> ImportError:
 def test_missing_library_from_module_not_found(nothing_installed):
     assert missing_library(ModuleNotFoundError("x", name="torch")) == "torch"
     assert missing_library(ModuleNotFoundError("x", name="torch.nn")) == "torch"
+    # ray.tune.integration.lightgbm and .xgboost import these at module level.
+    assert missing_library(ModuleNotFoundError("x", name="lightgbm")) == "lightgbm"
+    assert missing_library(ModuleNotFoundError("x", name="xgboost")) == "xgboost"
 
 
 def test_missing_library_follows_the_exception_chain(nothing_installed):
