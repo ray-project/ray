@@ -30,6 +30,19 @@ _STATEMENT_EXEC_POLL_TIME_S = 1
 
 @PublicAPI(stability="alpha")
 class DatabricksUCDatasource(Datasource):
+    """Datasource that runs a SQL query on a Databricks warehouse and reads the result.
+
+    Constructing the datasource submits the query and waits for it to finish.
+
+    Args:
+        warehouse_id: The ID of the Databricks SQL warehouse that runs the query.
+        catalog: The default catalog name used by the query.
+        schema: The default schema used by the query.
+        query: The SQL query to run.
+        credential_provider: The credential provider that supplies the workspace
+            host and the authentication token.
+    """
+
     def __init__(
         self,
         warehouse_id: str,
