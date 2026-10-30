@@ -132,7 +132,8 @@ def _owns_docstring(line: List[tokenize.TokenInfo]) -> bool:
     words = [tok.string for tok in line]
     if words[-1] != ":":
         return False
-    if words[0] in ("def", "class", "async"):
+    # `async def` owns a docstring. `async with` and `async for` don't.
+    if words[0] in ("def", "class") or words[:2] == ["async", "def"]:
         return True
     # A cdef or cpdef function has a parameter list and a cdef class has the
     # class keyword. A `cdef:` block and a `cdef extern from` block have

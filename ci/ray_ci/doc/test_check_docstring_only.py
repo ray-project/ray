@@ -243,6 +243,17 @@ def test_cython_code_edits_fail(old, new):
     assert reason == "changes code, not only docstrings or comments"
 
 
+@pytest.mark.parametrize("header", ["async with lock:", "async for item in items:"])
+def test_cython_async_block_string_is_code(header):
+    # Only `async def` owns a docstring, so the first string in an `async with`
+    # or `async for` body is code.
+    old = f'async def run():\n    """Run."""\n    {header}\n        "a"\n'
+    new = old.replace('"a"', '"b"')
+    assert check_file("m.pyx", old, new) is not None
+    async_def = old.replace('"""Run."""', '"""Run it."""')
+    assert check_file("m.pyx", old, async_def) is None
+
+
 def test_cython_indentation_is_code():
     old = "        return <int64_t>len(node_ids)\n"
     assert old in _CYTHON_BEFORE
