@@ -28,7 +28,7 @@ Configure gang scheduling by passing a `GangSchedulingConfig` to the `@serve.dep
 :language: python
 ```
 
-This creates 2 gangs of 4 replicas each resulting in a total of 8 replicas. Partial gang isn't allowed, and therefore `num_replicas` must be a multiple of `gang_size`.
+This creates 2 gangs of 4 replicas each resulting in a total of 8 replicas. Partial gang isn't allowed, and therefore `num_replicas` must be a multiple of `gang_size`. With autoscaling, the autoscaling bounds (`min_replicas`, `max_replicas`, and `initial_replicas`) must also be multiples of `gang_size`; see [Autoscaling](#autoscaling).
 
 ### How resources are reserved within a gang
 
