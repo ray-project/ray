@@ -1848,10 +1848,8 @@ class ApproximateQuantile(AggregateFnV2):
         table = block_acc.to_arrow()
         column = table.column(self.get_target_column())
         sketch = self.zero(self._quantile_precision)
-        for value in column:
-            # we ignore nulls here
-            if value.as_py() is not None:
-                sketch.update(float(value.as_py()))
+        values = pc.drop_null(column).to_numpy(zero_copy_only=False)
+        sketch.update(values.astype(np.float32))
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
