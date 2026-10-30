@@ -5,6 +5,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import request_with_auth_token
+from ray.dashboard.modules.data.data_head import PrometheusQuery, _format_query
 from ray.job_submission import JobSubmissionClient
 from ray.tests.conftest import *  # noqa
 
@@ -73,6 +74,20 @@ def test_unique_operator_id(ray_start_regular_shared):
 
     operators = dataset["operators"]
     assert len(operators) == 3  # Should be 3 because of limiter operator fusion.
+
+
+def test_dataset_level_query_excludes_phase_series():
+    """Phase series ("<operator>/<phase>") repeat their operator's values and
+    must not be summed into the dataset totals."""
+    _, template = PrometheusQuery.VALUE.value
+    assert (
+        _format_query(template, "ray_data_output_rows", "s1", "dataset")
+        == "sum(ray_data_output_rows{SessionName='s1', operator!~'.*/.*'}) by (dataset)"
+    )
+    assert (
+        _format_query(template, "ray_data_output_rows", "s1", "dataset, operator")
+        == "sum(ray_data_output_rows{SessionName='s1'}) by (dataset, operator)"
+    )
 
 
 @pytest.mark.skipif(
