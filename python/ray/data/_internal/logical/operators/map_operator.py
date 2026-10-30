@@ -1,6 +1,8 @@
+import dataclasses
 import functools
 import inspect
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
@@ -14,6 +16,11 @@ from typing import (
     Union,
 )
 
+from ray.data._internal.cbo_stats.operator_statistics import (
+    ConfidenceLevel,
+    OperatorStatistics,
+)
+from ray.data._internal.cbo_stats.selectivity import filter_statistics
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -24,6 +31,8 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
+    AliasExpr,
+    ColumnExpr,
     Expr,
     StarExpr,
     expand_projection_exprs,
@@ -51,6 +60,15 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 CSE_TEMP_COLUMN_PREFIX = "__ray_data_cse_"
+
+
+def _source_column(expr: Expr) -> Optional[str]:
+    """Returns the input column that a projection expression copies, if any."""
+    if isinstance(expr, ColumnExpr):
+        return expr.name
+    if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr):
+        return expr.expr.name
+    return None
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
@@ -227,6 +245,31 @@ class AbstractUDFMap(AbstractMap):
             logger.error("Failed to get name of UDF %s: %s", fn, e)
             return "<unknown>"
 
+    def infer_statistics(self) -> Optional[OperatorStatistics]:
+        """UDF outputs keep a size prior but never a proven size bound.
+
+        The output row count is only known when the UDF contractually preserves
+        it (``udf_modifying_row_count=False``); otherwise it stays unknown and
+        only the input size is kept as a prior. Column statistics are dropped
+        and ``size_bytes_upper`` is cleared, because a UDF can widen rows or
+        amplify the row count without bound. Estimates are capped at ``LOW``.
+        """
+        if not self.input_dependencies:
+            return None
+        input_stats = self.input_dependencies[0].infer_statistics()
+        if input_stats is None:
+            return None
+        changes: Dict[str, Any] = {
+            "column_stats": {},
+            # The input size is a proxy for the output size, never a bound.
+            "size_bytes_upper": None,
+        }
+        if self.can_modify_num_rows:
+            changes.update(num_rows=None, num_blocks=None)
+        return input_stats.passthrough(**changes).with_confidence_at_most(
+            ConfidenceLevel.LOW.value
+        )
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class MapBatches(AbstractUDFMap):
@@ -373,6 +416,15 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
             return f"{op_name}({expr_str})"
         return super()._get_operator_name(op_name, fn)
 
+    def infer_statistics(self) -> Optional[OperatorStatistics]:
+        """Returns input statistics scaled by the estimated selectivity."""
+        if not self.input_dependencies:
+            return None
+        input_stats = self.input_dependencies[0].infer_statistics()
+        if input_stats is None:
+            return None
+        return filter_statistics(input_stats, self.predicate_expr)
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
@@ -503,6 +555,58 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
 
+    def infer_statistics(self) -> Optional[OperatorStatistics]:
+        """Keeps the row count and remaps column statistics of copied columns.
+
+        Pure column selections scale the size by the in-memory column sizes, if
+        known. Otherwise the input size is an upper bound. Computed columns make
+        the size a guess, so the confidence is capped.
+        """
+        if not self.input_dependencies:
+            return None
+        input_stats = self.input_dependencies[0].infer_statistics()
+        if input_stats is None:
+            return None
+        column_stats = dict(input_stats.column_stats) if self.has_star_expr() else {}
+        computes_columns = False
+        source_columns = []
+        for expr in self.exprs:
+            if isinstance(expr, StarExpr):
+                continue
+            source = _source_column(expr)
+            if source is None:
+                computes_columns = True
+            else:
+                source_columns.append(source)
+                if isinstance(expr, AliasExpr) and expr._is_rename:
+                    column_stats.pop(source, None)
+            source_stat = input_stats.column_stats.get(source) if source else None
+            if source_stat is not None:
+                column_stats[expr.name] = dataclasses.replace(
+                    source_stat, name=expr.name
+                )
+            else:
+                column_stats.pop(expr.name, None)
+        changes: Dict[str, Any] = {"column_stats": column_stats}
+        size_upper = None if computes_columns else input_stats.size_bytes_upper
+        if not computes_columns and not self.has_star_expr():
+            projected_size = input_stats.projected_size_bytes(source_columns)
+            if projected_size is not None:
+                changes["size_bytes"] = projected_size
+                changes["avg_row_bytes"] = (
+                    projected_size / input_stats.num_rows
+                    if input_stats.num_rows
+                    else None
+                )
+            projected_upper = input_stats.projected_size_upper_bytes(source_columns)
+            if projected_upper is not None:
+                size_upper = projected_upper
+        changes["size_bytes_upper"] = size_upper
+        stats = input_stats.passthrough(**changes)
+        if computes_columns:
+            stats = stats.with_confidence_at_most(ConfidenceLevel.LOW.value)
+        return stats
+
     def infer_schema(self) -> Optional["Schema"]:
         import pyarrow as pa
 
@@ -598,6 +702,17 @@ class StreamingRepartition(
             "_name",
             f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
         )
+
+    def infer_statistics(self) -> Optional[OperatorStatistics]:
+        stats = super().infer_statistics()
+        if stats is None:
+            return None
+        num_blocks = (
+            math.ceil(stats.num_rows / self.target_num_rows_per_block)
+            if stats.num_rows is not None
+            else None
+        )
+        return dataclasses.replace(stats, num_blocks=num_blocks)
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # StreamingRepartition only re-bundles rows into different block sizes.

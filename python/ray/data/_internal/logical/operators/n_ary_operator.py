@@ -209,3 +209,19 @@ class Union(
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Union allows pushing filter into each branch
         return PredicatePassThroughBehavior.PUSH_INTO_BRANCHES
+
+    # ---- CBO: merge statistics from all branches ----
+
+    def infer_statistics(self):
+        """Merge statistics from all input branches via
+        :meth:`OperatorStatistics.merge`.
+
+        Returns ``None`` if *any* branch has unavailable statistics.
+        """
+        merged = None
+        for dep in self.input_dependencies:
+            dep_stats = dep.infer_statistics()
+            if dep_stats is None:
+                return None  # one unknown branch -> whole union unknown
+            merged = dep_stats if merged is None else merged.merge(dep_stats)
+        return merged

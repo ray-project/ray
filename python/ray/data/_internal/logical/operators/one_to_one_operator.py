@@ -10,6 +10,7 @@ from ray.data.block import BlockMetadata
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data._internal.cbo_stats.operator_statistics import OperatorStatistics
     from ray.data.block import Schema
 
 __all__ = [
@@ -82,6 +83,19 @@ class AbstractOneToOne(LogicalOperator):
             exec_stats=None,
         )
 
+    def infer_statistics(self) -> Optional["OperatorStatistics"]:
+        """Pass input statistics through row-preserving operators.
+
+        Operators that can change the row count return ``None`` unless they
+        override this method with a better estimate.
+        """
+        if not self.input_dependencies or self.can_modify_num_rows:
+            return None
+        input_stats = self.input_dependencies[0].infer_statistics()
+        if input_stats is None:
+            return None
+        return input_stats.passthrough()
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Limit(
@@ -123,6 +137,18 @@ class Limit(
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         return self.input_dependencies[0].infer_metadata().input_files
+
+    def infer_statistics(self) -> Optional["OperatorStatistics"]:
+        """Scales input statistics by ``min(1, limit / input_rows)``."""
+        if not self.input_dependencies:
+            return None
+        input_stats = self.input_dependencies[0].infer_statistics()
+        if input_stats is None:
+            return None
+        if input_stats.num_rows:
+            return input_stats.scale(min(1.0, self.limit / input_stats.num_rows))
+        # Unknown (or zero) input rows: input statistics are an upper bound.
+        return input_stats.passthrough()
 
 
 @dataclass(frozen=True, repr=False, eq=False)

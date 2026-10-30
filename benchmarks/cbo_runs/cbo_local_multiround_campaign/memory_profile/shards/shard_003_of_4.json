@@ -1,0 +1,481 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_name": "ray_data_cbo",
+  "experiment_type": "memory_profile",
+  "generated_at": "2026-05-30T02:26:30.819685+00:00",
+  "mode": "memory-profile",
+  "config": {
+    "row_scales": [
+      10000000
+    ],
+    "operator_counts": [
+      2,
+      4,
+      8,
+      12
+    ],
+    "payload_bytes_per_row": 1066,
+    "memory_poll_interval_s": 0.1,
+    "repetitions": 3,
+    "profile_preset": "10gb_10m",
+    "target_total_bytes": 10737418240,
+    "target_rows": 10000000,
+    "subtask_index": 3,
+    "subtask_count": 4,
+    "selected_run_ids": [
+      "chain_rows10000000_ops12-rep1-cbo-off",
+      "chain_rows10000000_ops12-rep1-cbo-on",
+      "chain_rows10000000_ops12-rep2-cbo-off",
+      "chain_rows10000000_ops12-rep2-cbo-on",
+      "chain_rows10000000_ops12-rep3-cbo-off",
+      "chain_rows10000000_ops12-rep3-cbo-on"
+    ]
+  },
+  "runs": [
+    {
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_description": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+      "mode": "batch",
+      "enable_cbo": false,
+      "duration_s": 671.9992,
+      "reservation_ratio": 0.5,
+      "operator_count": 2,
+      "operators": [
+        {
+          "operator": "SortMap",
+          "time_total_s": 2.019,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 1650993.98
+        },
+        {
+          "operator": "SortReduce",
+          "time_total_s": 16.4905,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 202136.22
+        }
+      ],
+      "global_bytes_spilled": 0,
+      "dataset_bytes_spilled": 0,
+      "streaming_schedule_s": 671.3778,
+      "total_input_rows": 10000000,
+      "latency_p50_ms": 0.0,
+      "latency_p95_ms": 0.0,
+      "latency_p99_ms": 0.0,
+      "latency_mean_ms": 0.0,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750747,
+      "peak_heap_bytes": null,
+      "metadata": {
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "run_id": "chain_rows10000000_ops12-rep1-cbo-off",
+        "repetition": 1,
+        "run_group_id": "chain_rows10000000_ops12:rep1",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_description": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+      "mode": "batch",
+      "enable_cbo": true,
+      "duration_s": 24.7089,
+      "reservation_ratio": 0.5,
+      "operator_count": 2,
+      "operators": [
+        {
+          "operator": "SortMap",
+          "time_total_s": 2.5524,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 1305979.72
+        },
+        {
+          "operator": "SortReduce",
+          "time_total_s": 7.1773,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 464428.15
+        }
+      ],
+      "global_bytes_spilled": 0,
+      "dataset_bytes_spilled": 0,
+      "streaming_schedule_s": 24.6174,
+      "total_input_rows": 10000000,
+      "latency_p50_ms": 0.0,
+      "latency_p95_ms": 0.0,
+      "latency_p99_ms": 0.0,
+      "latency_mean_ms": 0.0,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750751,
+      "peak_heap_bytes": null,
+      "metadata": {
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "run_id": "chain_rows10000000_ops12-rep1-cbo-on",
+        "repetition": 1,
+        "run_group_id": "chain_rows10000000_ops12:rep1",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_description": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+      "mode": "batch",
+      "enable_cbo": false,
+      "duration_s": 351.5911,
+      "reservation_ratio": 0.5,
+      "operator_count": 2,
+      "operators": [
+        {
+          "operator": "SortMap",
+          "time_total_s": 2.8066,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 1187676.38
+        },
+        {
+          "operator": "SortReduce",
+          "time_total_s": 325.6616,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 10235.58
+        }
+      ],
+      "global_bytes_spilled": 0,
+      "dataset_bytes_spilled": 0,
+      "streaming_schedule_s": 351.4544,
+      "total_input_rows": 10000000,
+      "latency_p50_ms": 0.0,
+      "latency_p95_ms": 0.0,
+      "latency_p99_ms": 0.0,
+      "latency_mean_ms": 0.0,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750745,
+      "peak_heap_bytes": null,
+      "metadata": {
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "run_id": "chain_rows10000000_ops12-rep2-cbo-off",
+        "repetition": 2,
+        "run_group_id": "chain_rows10000000_ops12:rep2",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_description": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+      "mode": "batch",
+      "enable_cbo": true,
+      "duration_s": 106.9475,
+      "reservation_ratio": 0.5,
+      "operator_count": 2,
+      "operators": [
+        {
+          "operator": "SortMap",
+          "time_total_s": 4.8425,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 688356.18
+        },
+        {
+          "operator": "SortReduce",
+          "time_total_s": 89.5537,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 37221.64
+        }
+      ],
+      "global_bytes_spilled": 0,
+      "dataset_bytes_spilled": 0,
+      "streaming_schedule_s": 106.8799,
+      "total_input_rows": 10000000,
+      "latency_p50_ms": 0.0,
+      "latency_p95_ms": 0.0,
+      "latency_p99_ms": 0.0,
+      "latency_mean_ms": 0.0,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750748,
+      "peak_heap_bytes": null,
+      "metadata": {
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "run_id": "chain_rows10000000_ops12-rep2-cbo-on",
+        "repetition": 2,
+        "run_group_id": "chain_rows10000000_ops12:rep2",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_description": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+      "mode": "batch",
+      "enable_cbo": false,
+      "duration_s": 64.8301,
+      "reservation_ratio": 0.5,
+      "operator_count": 2,
+      "operators": [
+        {
+          "operator": "SortMap",
+          "time_total_s": 12.3972,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 268876.91
+        },
+        {
+          "operator": "SortReduce",
+          "time_total_s": 22.0065,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 151470.36
+        }
+      ],
+      "global_bytes_spilled": 0,
+      "dataset_bytes_spilled": 0,
+      "streaming_schedule_s": 64.4081,
+      "total_input_rows": 10000000,
+      "latency_p50_ms": 0.0,
+      "latency_p95_ms": 0.0,
+      "latency_p99_ms": 0.0,
+      "latency_mean_ms": 0.0,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750741,
+      "peak_heap_bytes": null,
+      "metadata": {
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "run_id": "chain_rows10000000_ops12-rep3-cbo-off",
+        "repetition": 3,
+        "run_group_id": "chain_rows10000000_ops12:rep3",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_description": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+      "mode": "batch",
+      "enable_cbo": true,
+      "duration_s": 32.3813,
+      "reservation_ratio": 0.5,
+      "operator_count": 2,
+      "operators": [
+        {
+          "operator": "SortMap",
+          "time_total_s": 5.1711,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 644611.88
+        },
+        {
+          "operator": "SortReduce",
+          "time_total_s": 9.9682,
+          "output_rows": 3333334,
+          "throughput_rows_per_s": 334396.48
+        }
+      ],
+      "global_bytes_spilled": 0,
+      "dataset_bytes_spilled": 0,
+      "streaming_schedule_s": 27.9332,
+      "total_input_rows": 10000000,
+      "latency_p50_ms": 0.0,
+      "latency_p95_ms": 0.0,
+      "latency_p99_ms": 0.0,
+      "latency_mean_ms": 0.0,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750749,
+      "peak_heap_bytes": null,
+      "metadata": {
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "run_id": "chain_rows10000000_ops12-rep3-cbo-on",
+        "repetition": 3,
+        "run_group_id": "chain_rows10000000_ops12:rep3",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    }
+  ],
+  "records": [
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_id": "plan_651701ebc656",
+      "cbo_enabled": false,
+      "duration_s": 671.9992,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750747,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": null,
+      "best_r_from_sweep": null,
+      "r_error": null,
+      "metadata": {
+        "mode": "batch",
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "run_id": "chain_rows10000000_ops12-rep1-cbo-off",
+        "repetition": 1,
+        "run_group_id": "chain_rows10000000_ops12:rep1",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_id": "plan_651701ebc656",
+      "cbo_enabled": true,
+      "duration_s": 24.7089,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750751,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": null,
+      "r_error": null,
+      "metadata": {
+        "mode": "batch",
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "run_id": "chain_rows10000000_ops12-rep1-cbo-on",
+        "repetition": 1,
+        "run_group_id": "chain_rows10000000_ops12:rep1",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_id": "plan_651701ebc656",
+      "cbo_enabled": false,
+      "duration_s": 351.5911,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750745,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": null,
+      "best_r_from_sweep": null,
+      "r_error": null,
+      "metadata": {
+        "mode": "batch",
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "run_id": "chain_rows10000000_ops12-rep2-cbo-off",
+        "repetition": 2,
+        "run_group_id": "chain_rows10000000_ops12:rep2",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_id": "plan_651701ebc656",
+      "cbo_enabled": true,
+      "duration_s": 106.9475,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750748,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": null,
+      "r_error": null,
+      "metadata": {
+        "mode": "batch",
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "run_id": "chain_rows10000000_ops12-rep2-cbo-on",
+        "repetition": 2,
+        "run_group_id": "chain_rows10000000_ops12:rep2",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_id": "plan_651701ebc656",
+      "cbo_enabled": false,
+      "duration_s": 64.8301,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750741,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": null,
+      "best_r_from_sweep": null,
+      "r_error": null,
+      "metadata": {
+        "mode": "batch",
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "run_id": "chain_rows10000000_ops12-rep3-cbo-off",
+        "repetition": 3,
+        "run_group_id": "chain_rows10000000_ops12:rep3",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_id": "plan_651701ebc656",
+      "cbo_enabled": true,
+      "duration_s": 32.3813,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 10740000000,
+      "peak_object_store_bytes": 3593750749,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": null,
+      "r_error": null,
+      "metadata": {
+        "mode": "batch",
+        "pipeline_desc": "range->filter->payload(1066B)->map_batches*x12->repartition->sort",
+        "transform_ops": 12,
+        "payload_bytes_per_row": 1066,
+        "run_id": "chain_rows10000000_ops12-rep3-cbo-on",
+        "repetition": 3,
+        "run_group_id": "chain_rows10000000_ops12:rep3",
+        "subtask_index": 3,
+        "subtask_count": 4,
+        "preset_name": "10gb_10m"
+      }
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "errors": [],
+    "record_count": 6
+  }
+}

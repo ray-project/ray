@@ -19,6 +19,7 @@ from ray.data._internal.logical.rules import (
     CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
     DeriveListFilesPushdown,
+    DeriveReservationRatioRule,
     FuseOperators,
     InheritTargetMaxBlockSizeRule,
     LimitPushdownRule,
@@ -46,6 +47,10 @@ _PHYSICAL_RULESET = Ruleset(
         SetReadParallelismRule,
         FuseOperators,
         ConfigureMapTaskMemoryUsingOutputSize,
+        # Must run after fusion so it sees the final operator topology. It
+        # never mutates the plan; it only records an advisory reservation
+        # ratio on the DataContext (opt-in, see `enable_cost_based_optimization`).
+        DeriveReservationRatioRule,
     ]
 )
 

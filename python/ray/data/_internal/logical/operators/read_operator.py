@@ -1,8 +1,16 @@
+import dataclasses
 import functools
+import logging
 import math
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
+from ray.data._internal.cbo_stats.operator_statistics import (
+    ColumnStatistics,
+    ConfidenceLevel,
+    OperatorStatistics,
+)
+from ray.data._internal.cbo_stats.selectivity import filter_statistics
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -19,6 +27,8 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader
 from ray.data.expressions import Expr
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -99,6 +109,101 @@ class Read(
         execution.
         """
         return self._cached_output_metadata.metadata
+
+    def infer_statistics(self) -> Optional[OperatorStatistics]:
+        """Infers output statistics from the datasource metadata.
+
+        For Parquet, row counts and column statistics come from the footers that
+        were already fetched while sampling files, so no extra I/O is done.
+        """
+        metadata = self.infer_metadata()
+        num_rows, size_bytes = metadata.num_rows, metadata.size_bytes
+        column_stats, footer_rows, complete = self._parquet_footer_statistics()
+        if num_rows is None and footer_rows is not None:
+            num_rows = footer_rows
+        if num_rows is None and size_bytes is None:
+            return None
+
+        if metadata.num_rows is not None or complete:
+            confidence = ConfidenceLevel.HIGH.value
+        else:
+            # Extrapolated from a sample of files, or a size-only estimate.
+            confidence = ConfidenceLevel.MEDIUM.value
+        stats = OperatorStatistics(
+            num_rows=num_rows,
+            size_bytes=size_bytes,
+            # A complete footer scan measures the read; an extrapolation from a
+            # sample of files is a point estimate without a proven bound.
+            size_bytes_upper=(
+                size_bytes if confidence >= ConfidenceLevel.HIGH.value else None
+            ),
+            num_blocks=self.estimated_num_outputs(),
+            column_stats=column_stats,
+            confidence=confidence,
+        )
+
+        # Metadata describes the data before the pushed-down predicate.
+        predicate = (
+            self.get_current_predicate() if self.supports_predicate_pushdown() else None
+        )
+        if predicate is not None:
+            stats = filter_statistics(stats, predicate)
+
+        if not self.supports_projection_pushdown():
+            return stats
+
+        # The size estimate of the datasource includes the pruned columns.
+        projection = self.get_projection_map()
+        if projection is not None:
+            changes = {
+                "column_stats": {
+                    name: col
+                    for name, col in stats.column_stats.items()
+                    if name in projection
+                }
+            }
+            projected_size = stats.projected_size_bytes(projection)
+            if projected_size is not None:
+                changes["size_bytes"] = projected_size
+                changes["avg_row_bytes"] = (
+                    projected_size / stats.num_rows if stats.num_rows else None
+                )
+            # A projection keeps a subset of the columns, so the input bound is
+            # still valid even when the projected share isn't known.
+            projected_upper = stats.projected_size_upper_bytes(projection)
+            changes["size_bytes_upper"] = (
+                projected_upper
+                if projected_upper is not None
+                else stats.size_bytes_upper
+            )
+            stats = dataclasses.replace(stats, **changes)
+
+        # Upstream removed read-stage column renames (renaming is a ``Project``
+        # above the read now), so there is nothing to remap here.
+        return stats
+
+    def _parquet_footer_statistics(
+        self,
+    ) -> Tuple[Dict[str, ColumnStatistics], Optional[int], bool]:
+        """Returns ``(column_stats, num_rows, complete)`` from Parquet footers.
+
+        ``complete`` is True if the footers of all files to read were sampled.
+        Otherwise the row and null counts are extrapolated from the sample and
+        the column statistics have ``MEDIUM`` confidence.
+        """
+        cache = self.__dict__.get("_footer_statistics_cache")
+        if cache is not None and cache[0] is self.datasource:
+            return cache[1]
+        try:
+            result = _parquet_footer_statistics(self.datasource)
+        except Exception as e:
+            logger.debug(f"Failed to extract Parquet footer statistics: {e}")
+            result = ({}, None, False)
+        # Keyed by datasource since projection and predicate pushdown clone this
+        # operator with a new datasource. ``Read`` is a frozen dataclass, so the
+        # cache is written straight into ``__dict__`` (as ``cached_property`` does).
+        self.__dict__["_footer_statistics_cache"] = (self.datasource, result)
+        return result
 
     def infer_schema(self):
         return self._cached_output_metadata.schema
@@ -233,6 +338,87 @@ class Read(
             datasource_or_legacy_reader=predicated_datasource,
             num_outputs=self.num_outputs,
         )
+
+
+def _parquet_footer_statistics(
+    datasource: Datasource,
+) -> Tuple[Dict[str, ColumnStatistics], Optional[int], bool]:
+    from ray.data._internal.datasource.parquet_stat_extractor import (
+        extract_column_stats_from_parquet_metadata,
+    )
+
+    fragments = getattr(datasource, "_pq_fragments", None)
+    sampled_fragments = getattr(datasource, "_sampled_fragments", None)
+    file_infos = getattr(datasource, "_sampled_file_infos", None)
+    if not fragments or not sampled_fragments or not file_infos:
+        return {}, None, False
+
+    # Partition pruning may have removed some of the sampled files.
+    remaining = {id(fragment) for fragment in fragments}
+    sampled = [
+        file_info
+        for fragment, file_info in zip(sampled_fragments, file_infos)
+        if id(fragment) in remaining
+        and file_info is not None
+        and file_info.metadata is not None
+    ]
+    if not sampled:
+        return {}, None, False
+    footers = [file_info.metadata for file_info in sampled]
+
+    complete = len(footers) == len(fragments)
+    extrapolation = len(fragments) / len(footers)
+    confidence = (
+        ConfidenceLevel.HIGH.value if complete else ConfidenceLevel.MEDIUM.value
+    )
+    num_rows = round(sum(footer.num_rows for footer in footers) * extrapolation)
+
+    per_file = [extract_column_stats_from_parquet_metadata(f) for f in footers]
+    # Columns missing from some files (schema evolution) have no valid bounds.
+    common_columns = set.intersection(*(set(stats) for stats in per_file))
+    column_stats = {}
+    for name in common_columns:
+        merged = None
+        for file_stats in per_file:
+            stat = file_stats[name]
+            column = ColumnStatistics(
+                name=name,
+                min_value=stat["min"],
+                max_value=stat["max"],
+                null_count=stat["null_count"],
+                distinct_count=stat["distinct_count"],
+                confidence=confidence,
+            )
+            merged = column if merged is None else merged.merge(column)
+        if merged.null_count is not None:
+            merged.null_count = round(merged.null_count * extrapolation)
+        column_stats[name] = merged
+
+    # In-memory column sizes, used to estimate the size of projections.
+    for name, size in _avg_column_sizes(sampled).items():
+        if name in column_stats:
+            column_stats[name].avg_size_bytes = size
+        else:
+            column_stats[name] = ColumnStatistics(
+                name=name, avg_size_bytes=size, confidence=confidence
+            )
+    return column_stats, num_rows, complete
+
+
+def _avg_column_sizes(file_infos) -> Dict[str, float]:
+    """Row-weighted average in-memory size of the columns of all sampled files."""
+    per_file = [getattr(fi, "avg_column_in_mem_bytes", None) for fi in file_infos]
+    if any(sizes is None for sizes in per_file):
+        return {}
+    weights = [fi.metadata.num_rows for fi in file_infos]
+    total_rows = sum(weights)
+    if total_rows <= 0:
+        return {}
+    common_columns = set.intersection(*(set(sizes) for sizes in per_file))
+    return {
+        name: sum(w * sizes[name] for w, sizes in zip(weights, per_file)) / total_rows
+        for name in common_columns
+    }
 
 
 @dataclass(frozen=True, repr=False, eq=False)

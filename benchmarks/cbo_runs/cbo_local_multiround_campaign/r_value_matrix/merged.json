@@ -1,0 +1,2221 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_name": "ray_data_cbo",
+  "experiment_type": "r_value_matrix",
+  "generated_at": "2026-05-30T01:41:15.904751+00:00",
+  "mode": "r-value-matrix",
+  "config": {
+    "row_scales": [
+      1000000,
+      5000000,
+      10000000
+    ],
+    "operator_counts": [
+      2,
+      4,
+      8,
+      12
+    ],
+    "sweep_ratios": [
+      0.1,
+      0.2,
+      0.3,
+      0.5,
+      0.7,
+      0.9
+    ],
+    "repetitions": 3,
+    "subtask_count": 4,
+    "selected_workload_ids": [
+      "chain_rows10000000_ops12",
+      "chain_rows10000000_ops2",
+      "chain_rows10000000_ops4",
+      "chain_rows10000000_ops8",
+      "chain_rows1000000_ops12",
+      "chain_rows1000000_ops2",
+      "chain_rows1000000_ops4",
+      "chain_rows1000000_ops8",
+      "chain_rows5000000_ops12",
+      "chain_rows5000000_ops2",
+      "chain_rows5000000_ops4",
+      "chain_rows5000000_ops8"
+    ]
+  },
+  "results": [
+    {
+      "workload_id": "chain_rows1000000_ops2",
+      "num_rows": 1000000,
+      "transform_ops": 2,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 1.864,
+      "best_ratio": 0.7,
+      "best_duration_s": 0.7382,
+      "default_ratio": 0.5,
+      "default_duration_s": 0.785,
+      "r_error": 0.2,
+      "operator_count": 2,
+      "data_scale_bytes": 8000000,
+      "peak_object_store_bytes": 2666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 0.8911,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 0.9386,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 0.7707,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 0.785,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 0.7382,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 0.7845,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 0,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows1000000_ops4",
+      "num_rows": 1000000,
+      "transform_ops": 4,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 1.845,
+      "best_ratio": 0.2,
+      "best_duration_s": 0.828,
+      "default_ratio": 0.5,
+      "default_duration_s": 0.838,
+      "r_error": 0.3,
+      "operator_count": 2,
+      "data_scale_bytes": 8000000,
+      "peak_object_store_bytes": 2666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 0.9123,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 0.828,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 0.8567,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 0.838,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 0.8684,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 0.9997,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 1,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows1000000_ops8",
+      "num_rows": 1000000,
+      "transform_ops": 8,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 1.7768,
+      "best_ratio": 0.1,
+      "best_duration_s": 0.8196,
+      "default_ratio": 0.5,
+      "default_duration_s": 1.2396,
+      "r_error": 0.4,
+      "operator_count": 2,
+      "data_scale_bytes": 8000000,
+      "peak_object_store_bytes": 2666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 0.8196,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 0.9781,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 1.4873,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 1.2396,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 1.1884,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 1.2089,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 2,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows1000000_ops12",
+      "num_rows": 1000000,
+      "transform_ops": 12,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 2.0568,
+      "best_ratio": 0.2,
+      "best_duration_s": 1.1709,
+      "default_ratio": 0.5,
+      "default_duration_s": 1.6708,
+      "r_error": 0.3,
+      "operator_count": 2,
+      "data_scale_bytes": 8000000,
+      "peak_object_store_bytes": 2666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 1.2065,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 1.1709,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 1.1867,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 1.6708,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 1.7813,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 1.5527,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 2666672,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 3,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows5000000_ops2",
+      "num_rows": 5000000,
+      "transform_ops": 2,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 2.3275,
+      "best_ratio": 0.3,
+      "best_duration_s": 2.178,
+      "default_ratio": 0.5,
+      "default_duration_s": 2.4129,
+      "r_error": 0.2,
+      "operator_count": 2,
+      "data_scale_bytes": 40000000,
+      "peak_object_store_bytes": 13333336,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 2.8012,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 2.6182,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 2.178,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 2.4129,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 2.5027,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 2.3955,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 0,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows5000000_ops4",
+      "num_rows": 5000000,
+      "transform_ops": 4,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 2.8021,
+      "best_ratio": 0.5,
+      "best_duration_s": 2.502,
+      "default_ratio": 0.5,
+      "default_duration_s": 2.502,
+      "r_error": 0.0,
+      "operator_count": 2,
+      "data_scale_bytes": 40000000,
+      "peak_object_store_bytes": 13333336,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 3.0571,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 2.6211,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 2.5312,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 2.502,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 2.5087,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 2.9139,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 1,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows5000000_ops8",
+      "num_rows": 5000000,
+      "transform_ops": 8,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 2.7237,
+      "best_ratio": 0.1,
+      "best_duration_s": 3.1668,
+      "default_ratio": 0.5,
+      "default_duration_s": 3.4806,
+      "r_error": 0.4,
+      "operator_count": 2,
+      "data_scale_bytes": 40000000,
+      "peak_object_store_bytes": 13333336,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 3.1668,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 3.7948,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 3.4063,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 3.4806,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 3.4743,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 3.407,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 2,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows5000000_ops12",
+      "num_rows": 5000000,
+      "transform_ops": 12,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 3.2389,
+      "best_ratio": 0.3,
+      "best_duration_s": 3.3498,
+      "default_ratio": 0.5,
+      "default_duration_s": 3.4382,
+      "r_error": 0.2,
+      "operator_count": 2,
+      "data_scale_bytes": 40000000,
+      "peak_object_store_bytes": 13333336,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 3.604,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 3.4543,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 3.3498,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 3.4382,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 3.4319,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 3.9745,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 13333336,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 3,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows10000000_ops2",
+      "num_rows": 10000000,
+      "transform_ops": 2,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 4.1455,
+      "best_ratio": 0.9,
+      "best_duration_s": 4.0956,
+      "default_ratio": 0.5,
+      "default_duration_s": 4.1286,
+      "r_error": 0.4,
+      "operator_count": 2,
+      "data_scale_bytes": 80000000,
+      "peak_object_store_bytes": 26666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 4.1614,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 4.3394,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 4.2773,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 4.1286,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 4.4831,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 4.0956,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 0,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows10000000_ops4",
+      "num_rows": 10000000,
+      "transform_ops": 4,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 4.6292,
+      "best_ratio": 0.9,
+      "best_duration_s": 3.7433,
+      "default_ratio": 0.5,
+      "default_duration_s": 4.361,
+      "r_error": 0.4,
+      "operator_count": 2,
+      "data_scale_bytes": 80000000,
+      "peak_object_store_bytes": 26666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 4.3321,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 4.4972,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 4.3199,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 4.361,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 4.4493,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 3.7433,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 1,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows10000000_ops8",
+      "num_rows": 10000000,
+      "transform_ops": 8,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 5.1135,
+      "best_ratio": 0.1,
+      "best_duration_s": 5.2462,
+      "default_ratio": 0.5,
+      "default_duration_s": 5.6852,
+      "r_error": 0.4,
+      "operator_count": 2,
+      "data_scale_bytes": 80000000,
+      "peak_object_store_bytes": 26666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 5.2462,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 5.5733,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 5.6915,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 5.6852,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 5.7919,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 5.4954,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 2,
+      "subtask_count": 4
+    },
+    {
+      "workload_id": "chain_rows10000000_ops12",
+      "num_rows": 10000000,
+      "transform_ops": 12,
+      "derived_ratio": 0.5,
+      "derived_duration_s": 5.6913,
+      "best_ratio": 0.7,
+      "best_duration_s": 4.9085,
+      "default_ratio": 0.5,
+      "default_duration_s": 5.6694,
+      "r_error": 0.2,
+      "operator_count": 2,
+      "data_scale_bytes": 80000000,
+      "peak_object_store_bytes": 26666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+      "sweep_detail": [
+        {
+          "ratio": 0.1,
+          "time_s": 5.7591,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.2,
+          "time_s": 5.6824,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.3,
+          "time_s": 5.6467,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.5,
+          "time_s": 5.6694,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": true
+        },
+        {
+          "ratio": 0.7,
+          "time_s": 4.9085,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        },
+        {
+          "ratio": 0.9,
+          "time_s": 5.1869,
+          "spill_bytes": 0,
+          "peak_heap_bytes": null,
+          "peak_object_store_bytes": 26666672,
+          "is_default": false
+        }
+      ],
+      "subtask_index": 3,
+      "subtask_count": 4
+    }
+  ],
+  "records": [
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows1000000_ops2",
+      "plan_id": "plan_dbad67655edb",
+      "cbo_enabled": true,
+      "duration_s": 1.864,
+      "operator_count": 2,
+      "data_scale_rows": 1000000,
+      "data_scale_bytes": 8000000,
+      "peak_object_store_bytes": 2666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.7,
+      "r_error": 0.2,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 2,
+        "default_ratio": 0.5,
+        "default_duration_s": 0.785,
+        "best_duration_s": 0.7382,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 0.8911,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 0.9386,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 0.7707,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 0.785,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 0.7382,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 0.7845,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 0,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows1000000_ops4",
+      "plan_id": "plan_d4f103b6b470",
+      "cbo_enabled": true,
+      "duration_s": 1.845,
+      "operator_count": 2,
+      "data_scale_rows": 1000000,
+      "data_scale_bytes": 8000000,
+      "peak_object_store_bytes": 2666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.2,
+      "r_error": 0.3,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 4,
+        "default_ratio": 0.5,
+        "default_duration_s": 0.838,
+        "best_duration_s": 0.828,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 0.9123,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 0.828,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 0.8567,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 0.838,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 0.8684,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 0.9997,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 1,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows1000000_ops8",
+      "plan_id": "plan_d4f12dcff0d4",
+      "cbo_enabled": true,
+      "duration_s": 1.7768,
+      "operator_count": 2,
+      "data_scale_rows": 1000000,
+      "data_scale_bytes": 8000000,
+      "peak_object_store_bytes": 2666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.1,
+      "r_error": 0.4,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 8,
+        "default_ratio": 0.5,
+        "default_duration_s": 1.2396,
+        "best_duration_s": 0.8196,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 0.8196,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 0.9781,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 1.4873,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 1.2396,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 1.1884,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 1.2089,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 2,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows1000000_ops12",
+      "plan_id": "plan_b8d7a04cac90",
+      "cbo_enabled": true,
+      "duration_s": 2.0568,
+      "operator_count": 2,
+      "data_scale_rows": 1000000,
+      "data_scale_bytes": 8000000,
+      "peak_object_store_bytes": 2666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.2,
+      "r_error": 0.3,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 12,
+        "default_ratio": 0.5,
+        "default_duration_s": 1.6708,
+        "best_duration_s": 1.1709,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 1.2065,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 1.1709,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 1.1867,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 1.6708,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 1.7813,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 1.5527,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 2666672,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 3,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows5000000_ops2",
+      "plan_id": "plan_dbad67655edb",
+      "cbo_enabled": true,
+      "duration_s": 2.3275,
+      "operator_count": 2,
+      "data_scale_rows": 5000000,
+      "data_scale_bytes": 40000000,
+      "peak_object_store_bytes": 13333336,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.3,
+      "r_error": 0.2,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 2,
+        "default_ratio": 0.5,
+        "default_duration_s": 2.4129,
+        "best_duration_s": 2.178,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 2.8012,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 2.6182,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 2.178,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 2.4129,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 2.5027,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 2.3955,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 0,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows5000000_ops4",
+      "plan_id": "plan_d4f103b6b470",
+      "cbo_enabled": true,
+      "duration_s": 2.8021,
+      "operator_count": 2,
+      "data_scale_rows": 5000000,
+      "data_scale_bytes": 40000000,
+      "peak_object_store_bytes": 13333336,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.5,
+      "r_error": 0.0,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 4,
+        "default_ratio": 0.5,
+        "default_duration_s": 2.502,
+        "best_duration_s": 2.502,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 3.0571,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 2.6211,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 2.5312,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 2.502,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 2.5087,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 2.9139,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 1,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows5000000_ops8",
+      "plan_id": "plan_d4f12dcff0d4",
+      "cbo_enabled": true,
+      "duration_s": 2.7237,
+      "operator_count": 2,
+      "data_scale_rows": 5000000,
+      "data_scale_bytes": 40000000,
+      "peak_object_store_bytes": 13333336,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.1,
+      "r_error": 0.4,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 8,
+        "default_ratio": 0.5,
+        "default_duration_s": 3.4806,
+        "best_duration_s": 3.1668,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 3.1668,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 3.7948,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 3.4063,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 3.4806,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 3.4743,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 3.407,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 2,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows5000000_ops12",
+      "plan_id": "plan_b8d7a04cac90",
+      "cbo_enabled": true,
+      "duration_s": 3.2389,
+      "operator_count": 2,
+      "data_scale_rows": 5000000,
+      "data_scale_bytes": 40000000,
+      "peak_object_store_bytes": 13333336,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.3,
+      "r_error": 0.2,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 12,
+        "default_ratio": 0.5,
+        "default_duration_s": 3.4382,
+        "best_duration_s": 3.3498,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 3.604,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 3.4543,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 3.3498,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 3.4382,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 3.4319,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 3.9745,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 13333336,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 3,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops2",
+      "plan_id": "plan_dbad67655edb",
+      "cbo_enabled": true,
+      "duration_s": 4.1455,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 80000000,
+      "peak_object_store_bytes": 26666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.9,
+      "r_error": 0.4,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 2,
+        "default_ratio": 0.5,
+        "default_duration_s": 4.1286,
+        "best_duration_s": 4.0956,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 4.1614,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 4.3394,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 4.2773,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 4.1286,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 4.4831,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 4.0956,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 0,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops4",
+      "plan_id": "plan_d4f103b6b470",
+      "cbo_enabled": true,
+      "duration_s": 4.6292,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 80000000,
+      "peak_object_store_bytes": 26666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.9,
+      "r_error": 0.4,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 4,
+        "default_ratio": 0.5,
+        "default_duration_s": 4.361,
+        "best_duration_s": 3.7433,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 4.3321,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 4.4972,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 4.3199,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 4.361,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 4.4493,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 3.7433,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 1,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops8",
+      "plan_id": "plan_d4f12dcff0d4",
+      "cbo_enabled": true,
+      "duration_s": 5.1135,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 80000000,
+      "peak_object_store_bytes": 26666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.1,
+      "r_error": 0.4,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 8,
+        "default_ratio": 0.5,
+        "default_duration_s": 5.6852,
+        "best_duration_s": 5.2462,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 5.2462,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 5.5733,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 5.6915,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 5.6852,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 5.7919,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 5.4954,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 2,
+        "subtask_count": 4
+      }
+    },
+    {
+      "record_type": "execution_run",
+      "workload_id": "chain_rows10000000_ops12",
+      "plan_id": "plan_b8d7a04cac90",
+      "cbo_enabled": true,
+      "duration_s": 5.6913,
+      "operator_count": 2,
+      "data_scale_rows": 10000000,
+      "data_scale_bytes": 80000000,
+      "peak_object_store_bytes": 26666672,
+      "peak_heap_bytes": null,
+      "spill_bytes": 0,
+      "derived_r": 0.5,
+      "best_r_from_sweep": 0.7,
+      "r_error": 0.2,
+      "metadata": {
+        "pipeline_desc": "range -> filter -> map_batches*xN -> repartition -> sort",
+        "transform_ops": 12,
+        "default_ratio": 0.5,
+        "default_duration_s": 5.6694,
+        "best_duration_s": 4.9085,
+        "sweep_detail": [
+          {
+            "ratio": 0.1,
+            "time_s": 5.7591,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.2,
+            "time_s": 5.6824,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.3,
+            "time_s": 5.6467,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.5,
+            "time_s": 5.6694,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": true
+          },
+          {
+            "ratio": 0.7,
+            "time_s": 4.9085,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          },
+          {
+            "ratio": 0.9,
+            "time_s": 5.1869,
+            "spill_bytes": 0,
+            "peak_heap_bytes": null,
+            "peak_object_store_bytes": 26666672,
+            "is_default": false
+          }
+        ],
+        "subtask_index": 3,
+        "subtask_count": 4
+      }
+    }
+  ],
+  "validation": {
+    "is_valid": true,
+    "errors": [],
+    "record_count": 12
+  },
+  "merge_summary": {
+    "merged_at": "2026-05-30T01:41:15.904985+00:00",
+    "input_file_count": 4,
+    "coverage": {
+      "observed_payloads": 4,
+      "observed_subtask_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "observed_subtask_count": 4,
+      "missing_subtask_indices": [],
+      "duplicate_subtask_indices": [],
+      "unexpected_subtask_indices": [],
+      "mismatched_manifest_assignments": [],
+      "is_complete": true
+    }
+  },
+  "runtime_feedback": {
+    "generated_at": "2026-05-30T01:41:15.905029+00:00",
+    "alpha": 0.7,
+    "tolerance": 0.02,
+    "max_iterations": 5,
+    "converged_workloads": 12,
+    "total_workloads": 12,
+    "mean_initial_error": 0.2833,
+    "mean_final_error": 0.0119,
+    "workloads": [
+      {
+        "workload_id": "chain_rows1000000_ops2",
+        "num_rows": 1000000,
+        "transform_ops": 2,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.7,
+        "default_error": 0.2,
+        "initial_error": 0.2,
+        "final_ratio": 0.682,
+        "final_error": 0.018,
+        "iterations_to_converge": 2,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.2
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.64,
+            "abs_error": 0.06
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.682,
+            "abs_error": 0.018
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows1000000_ops4",
+        "num_rows": 1000000,
+        "transform_ops": 4,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.2,
+        "default_error": 0.3,
+        "initial_error": 0.3,
+        "final_ratio": 0.2081,
+        "final_error": 0.0081,
+        "iterations_to_converge": 3,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.3
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.29,
+            "abs_error": 0.09
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.227,
+            "abs_error": 0.027
+          },
+          {
+            "iteration": 3,
+            "ratio": 0.2081,
+            "abs_error": 0.0081
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows1000000_ops8",
+        "num_rows": 1000000,
+        "transform_ops": 8,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.1,
+        "default_error": 0.4,
+        "initial_error": 0.4,
+        "final_ratio": 0.1108,
+        "final_error": 0.0108,
+        "iterations_to_converge": 3,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.4
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.22,
+            "abs_error": 0.12
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.136,
+            "abs_error": 0.036
+          },
+          {
+            "iteration": 3,
+            "ratio": 0.1108,
+            "abs_error": 0.0108
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows1000000_ops12",
+        "num_rows": 1000000,
+        "transform_ops": 12,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.2,
+        "default_error": 0.3,
+        "initial_error": 0.3,
+        "final_ratio": 0.2081,
+        "final_error": 0.0081,
+        "iterations_to_converge": 3,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.3
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.29,
+            "abs_error": 0.09
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.227,
+            "abs_error": 0.027
+          },
+          {
+            "iteration": 3,
+            "ratio": 0.2081,
+            "abs_error": 0.0081
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows5000000_ops2",
+        "num_rows": 5000000,
+        "transform_ops": 2,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.3,
+        "default_error": 0.2,
+        "initial_error": 0.2,
+        "final_ratio": 0.318,
+        "final_error": 0.018,
+        "iterations_to_converge": 2,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.2
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.36,
+            "abs_error": 0.06
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.318,
+            "abs_error": 0.018
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows5000000_ops4",
+        "num_rows": 5000000,
+        "transform_ops": 4,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.5,
+        "default_error": 0.0,
+        "initial_error": 0.0,
+        "final_ratio": 0.5,
+        "final_error": 0.0,
+        "iterations_to_converge": 0,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.0
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows5000000_ops8",
+        "num_rows": 5000000,
+        "transform_ops": 8,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.1,
+        "default_error": 0.4,
+        "initial_error": 0.4,
+        "final_ratio": 0.1108,
+        "final_error": 0.0108,
+        "iterations_to_converge": 3,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.4
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.22,
+            "abs_error": 0.12
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.136,
+            "abs_error": 0.036
+          },
+          {
+            "iteration": 3,
+            "ratio": 0.1108,
+            "abs_error": 0.0108
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows5000000_ops12",
+        "num_rows": 5000000,
+        "transform_ops": 12,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.3,
+        "default_error": 0.2,
+        "initial_error": 0.2,
+        "final_ratio": 0.318,
+        "final_error": 0.018,
+        "iterations_to_converge": 2,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.2
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.36,
+            "abs_error": 0.06
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.318,
+            "abs_error": 0.018
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows10000000_ops2",
+        "num_rows": 10000000,
+        "transform_ops": 2,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.9,
+        "default_error": 0.4,
+        "initial_error": 0.4,
+        "final_ratio": 0.8892,
+        "final_error": 0.0108,
+        "iterations_to_converge": 3,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.4
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.78,
+            "abs_error": 0.12
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.864,
+            "abs_error": 0.036
+          },
+          {
+            "iteration": 3,
+            "ratio": 0.8892,
+            "abs_error": 0.0108
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows10000000_ops4",
+        "num_rows": 10000000,
+        "transform_ops": 4,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.9,
+        "default_error": 0.4,
+        "initial_error": 0.4,
+        "final_ratio": 0.8892,
+        "final_error": 0.0108,
+        "iterations_to_converge": 3,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.4
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.78,
+            "abs_error": 0.12
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.864,
+            "abs_error": 0.036
+          },
+          {
+            "iteration": 3,
+            "ratio": 0.8892,
+            "abs_error": 0.0108
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows10000000_ops8",
+        "num_rows": 10000000,
+        "transform_ops": 8,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.1,
+        "default_error": 0.4,
+        "initial_error": 0.4,
+        "final_ratio": 0.1108,
+        "final_error": 0.0108,
+        "iterations_to_converge": 3,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.4
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.22,
+            "abs_error": 0.12
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.136,
+            "abs_error": 0.036
+          },
+          {
+            "iteration": 3,
+            "ratio": 0.1108,
+            "abs_error": 0.0108
+          }
+        ]
+      },
+      {
+        "workload_id": "chain_rows10000000_ops12",
+        "num_rows": 10000000,
+        "transform_ops": 12,
+        "default_ratio": 0.5,
+        "derived_ratio": 0.5,
+        "best_ratio": 0.7,
+        "default_error": 0.2,
+        "initial_error": 0.2,
+        "final_ratio": 0.682,
+        "final_error": 0.018,
+        "iterations_to_converge": 2,
+        "converged": true,
+        "history": [
+          {
+            "iteration": 0,
+            "ratio": 0.5,
+            "abs_error": 0.2
+          },
+          {
+            "iteration": 1,
+            "ratio": 0.64,
+            "abs_error": 0.06
+          },
+          {
+            "iteration": 2,
+            "ratio": 0.682,
+            "abs_error": 0.018
+          }
+        ]
+      }
+    ]
+  }
+}
