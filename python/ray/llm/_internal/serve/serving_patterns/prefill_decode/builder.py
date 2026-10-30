@@ -57,6 +57,14 @@ class PDServingArgs(BaseModelExtended):
         default_factory=dict,
         description="The Ray @serve.deployment options for the ingress.",
     )
+    api_key: Optional[str] = Field(
+        default=None,
+        description="Bearer key required on the OpenAI-compatible HTTP "
+        "endpoints. When set, requests must send `Authorization: Bearer "
+        "<key>` or receive a 401. Takes precedence over the `VLLM_API_KEY` "
+        "environment variable read by the ingress; if neither is set the "
+        "endpoints remain open (no enforcement).",
+    )
 
     @field_validator("prefill_config", "decode_config")
     @classmethod
@@ -198,6 +206,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             name_prefix="Decode:",
             bind_kwargs={"prefill_server": prefill_deployment},
             deployment_cls=decode_cls,
+            api_key=pd_config.api_key,
         )
         logger.info(
             "Direct streaming enabled for PD: "
@@ -227,7 +236,9 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         default_ingress_options, pd_config.ingress_deployment_config
     )
 
-    ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
+    ingress_cls = make_fastapi_ingress(
+        ingress_cls_config.ingress_cls, api_key=pd_config.api_key
+    )
     # Prefill and decode share the same model_id (validated in PDServingArgs).
     # Ingress binds to decode only (the "model" the client sees).
     model_id = pd_config.decode_config.model_id
