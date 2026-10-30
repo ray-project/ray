@@ -1163,6 +1163,13 @@ def dispatch(*args: Any, **kwargs: Any) -> "List[ray.ObjectRef]":
     """Run a remote function on every host in a TPU slice.
 
     Deprecated, please use ``run_on_slice`` instead.
+
+    Args:
+        *args: Positional arguments passed to ``run_on_slice``.
+        **kwargs: Keyword arguments passed to ``run_on_slice``.
+
+    Returns:
+        The object refs that ``run_on_slice`` returns, one per host in the slice.
     """
     return run_on_slice(*args, **kwargs)
 
