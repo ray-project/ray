@@ -74,10 +74,15 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
+        """This worker's device, from :func:`ray.train.torch.get_device`."""
         return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        """Keyword arguments for the distributed sampler.
+
+        ``num_replicas`` is the world size and ``rank`` is this worker's global rank.
+        """
         return dict(
             num_replicas=self.world_size,
             rank=self.global_rank,
@@ -103,10 +108,15 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     @property
     def root_device(self) -> torch.device:
+        """This worker's device, from :func:`ray.train.torch.get_device`."""
         return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        """Keyword arguments for the distributed sampler.
+
+        ``num_replicas`` is the world size and ``rank`` is this worker's global rank.
+        """
         return dict(
             num_replicas=self.world_size,
             rank=self.global_rank,
@@ -121,6 +131,12 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
         checkpointing.
 
         See the note in the class docstring for more details.
+
+        Returns:
+            The model's state dict. With Lightning 2.0.x and PyTorch FSDP, it's the
+            full state dict gathered on rank 0 and offloaded to CPU, with the
+            ``_forward_module.`` prefix removed from its keys. Otherwise, it's the
+            state dict that the parent ``FSDPStrategy`` returns.
         """
 
         assert self.model is not None, "Failed to get the state dict for a None model!"
@@ -167,10 +183,15 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
     @property
     def root_device(self) -> torch.device:
+        """This worker's device, from :func:`ray.train.torch.get_device`."""
         return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        """Keyword arguments for the distributed sampler.
+
+        ``num_replicas`` is the world size and ``rank`` is this worker's global rank.
+        """
         return dict(
             num_replicas=self.world_size,
             rank=self.global_rank,
@@ -186,32 +207,79 @@ class RayLightningEnvironment(LightningEnvironment):  # noqa: F821
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT, "1")
 
     def world_size(self) -> int:
+        """Return the number of workers in the training run.
+
+        Returns:
+            The world size from the Ray Train context.
+        """
         return ray.train.get_context().get_world_size()
 
     def global_rank(self) -> int:
+        """Return this worker's rank across all workers.
+
+        Returns:
+            The world rank from the Ray Train context.
+        """
         return ray.train.get_context().get_world_rank()
 
     def local_rank(self) -> int:
+        """Return this worker's rank among the workers on its node.
+
+        Returns:
+            The local rank from the Ray Train context.
+        """
         return ray.train.get_context().get_local_rank()
 
     def node_rank(self) -> int:
+        """Return the rank of the node this worker runs on.
+
+        Returns:
+            The node rank from the Ray Train context.
+        """
         return ray.train.get_context().get_node_rank()
 
     def set_world_size(self, size: int) -> None:
+        """Do nothing, because :meth:`world_size` reads the Ray Train context.
+
+        Args:
+            size: Ignored.
+        """
         # Disable it since `world_size()` directly returns data from Train context.
         pass
 
     def set_global_rank(self, rank: int) -> None:
+        """Do nothing, because :meth:`global_rank` reads the Ray Train context.
+
+        Args:
+            rank: Ignored.
+        """
         # Disable it since `global_rank()` directly returns data from Train.
         pass
 
     def teardown(self):
+        """Do nothing, in place of the parent environment's teardown."""
         pass
 
 
 @PublicAPI(stability="beta")
 def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
-    """Prepare the PyTorch Lightning Trainer for distributed execution."""
+    """Prepare the PyTorch Lightning Trainer for distributed execution.
+
+    Checks that the trainer's strategy is a :class:`RayDDPStrategy`,
+    :class:`RayFSDPStrategy`, or :class:`RayDeepSpeedStrategy`, or a subclass of
+    one, and that its cluster environment, if it has one, is a
+    :class:`RayLightningEnvironment`.
+
+    Args:
+        trainer: The Lightning ``Trainer`` to prepare.
+
+    Returns:
+        The same ``trainer`` object.
+
+    Raises:
+        RuntimeError: If the trainer's strategy or cluster environment isn't one
+            of the classes above.
+    """
 
     # Check strategy class
     valid_strategy_class = [RayDDPStrategy, RayFSDPStrategy, RayDeepSpeedStrategy]
@@ -324,6 +392,10 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
+        """Report metrics and a checkpoint to Ray Train at the end of an epoch.
+
+        Reports only every ``checkpoint_frequency`` epochs.
+        """
         # Only report (metrics + checkpoint) every `checkpoint_frequency` epochs.
         if (trainer.current_epoch + 1) % self.checkpoint_frequency != 0:
             return

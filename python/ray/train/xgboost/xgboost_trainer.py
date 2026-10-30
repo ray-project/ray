@@ -308,5 +308,13 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         cls,
         checkpoint: Checkpoint,
     ) -> xgboost.Booster:
-        """Retrieve the XGBoost model stored in this checkpoint."""
+        """Retrieve the XGBoost model stored in this checkpoint.
+
+        Args:
+            checkpoint: A checkpoint that ``RayTrainReportCallback`` saved with
+                its default filename.
+
+        Returns:
+            The ``xgboost.Booster`` loaded from the checkpoint.
+        """
         return RayTrainReportCallback.get_model(checkpoint)
