@@ -236,9 +236,12 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
 
         self._worker_thread = None
 
-    def cancel_task_sync(self, task_id):
+    def cancel_task_sync(self, task_id: str):
         """Cancels a task synchronously. Only supported for Redis and RabbitMQ brokers by Celery.
         More details can be found here: https://docs.celeryq.dev/en/stable/userguide/workers.html#revoke-revoking-tasks
+
+        Args:
+            task_id: ID of the task to cancel.
         """
         self._app.control.revoke(task_id)
 
