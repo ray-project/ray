@@ -199,9 +199,7 @@ def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
 
 
 class PandasRow(Mapping):
-    """
-    Row of a tabular Dataset backed by a Pandas DataFrame block.
-    """
+    """Row of a tabular Dataset backed by a Pandas DataFrame block."""
 
     def __init__(self, df: "pandas.DataFrame", row_idx: int):
         self._batch = df

@@ -4762,8 +4762,7 @@ def read_hudi(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from an
+    """Create a :class:`~ray.data.Dataset` from an
     `Apache Hudi table <https://hudi.apache.org>`_.
 
     Examples:
@@ -5408,8 +5407,7 @@ def read_delta_sharing_tables(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Read data from a Delta Sharing table.
+    """Read data from a Delta Sharing table.
     Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
 
     This function reads data from a Delta Sharing table specified by the URL.
@@ -5960,8 +5958,7 @@ def read_lance(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from one or more
+    """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
@@ -6087,8 +6084,7 @@ def read_clickhouse(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+    """Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
 
     Examples:
         >>> import ray

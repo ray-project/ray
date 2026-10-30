@@ -49,6 +49,7 @@ resource-isolation-with-writable-cgroups
 history-server
 k8s-events
 rayjob-sidecar-submitter-restart
+modal-sandbox
 ```
 
 
@@ -92,3 +93,4 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-history-server`
 * {ref}`kuberay-k8s-events`
 * {ref}`kuberay-rayjob-sidecar-submitter-restart`
+* {ref}`kuberay-modal-sandbox`

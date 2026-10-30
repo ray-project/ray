@@ -1130,8 +1130,7 @@ class _StatsManager:
     def _aggregate_per_node_metrics(
         op_metrics: List[OpRuntimeMetrics],
     ) -> Optional[Mapping[str, Mapping[str, int | float]]]:
-        """
-        Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
+        """Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
 
         If per-node metrics are disabled in the current DataContext, returns None.
         Otherwise, it sums up all NodeMetrics fields across the provided metrics and
