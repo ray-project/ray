@@ -1170,6 +1170,7 @@ class AsyncioRouter:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
+        request_meta._routing_started = True
         if is_span_recording():
             trace_attributes = {
                 "request_id": request_meta.request_id,
@@ -1680,6 +1681,33 @@ class AsyncioRouter:
         await self._metrics_manager.shutdown()
 
 
+class _ClaimableFuture(concurrent.futures.Future):
+    """A routing future whose call a handler can claim until routing starts."""
+
+    _lock = threading.Lock()
+
+    def __init__(self):
+        super().__init__()
+        self._routing = False
+        self._claimed = False
+
+    def _start_routing(self) -> bool:
+        # The router thread and a claim on the handler's loop can race.
+        with _ClaimableFuture._lock:
+            if self._claimed:
+                return False
+            self._routing = True
+            return True
+
+    def claim(self) -> bool:
+        with _ClaimableFuture._lock:
+            if self._routing:
+                return False
+            self._claimed = True
+        self.cancel()
+        return True
+
+
 class SingletonThreadRouter(Router):
     """Wrapper class that runs an AsyncioRouter on a separate thread.
 
@@ -1761,7 +1789,9 @@ class SingletonThreadRouter(Router):
         This method uses `run_coroutine_threadsafe` to execute the actual request
         assignment logic (`_asyncio_router.assign_request`) on the dedicated
         asyncio event loop thread. It returns a `concurrent.futures.Future` that
-        can be awaited or queried from the calling thread.
+        can be awaited or queried from the calling thread. Inside a plain HTTP
+        handler, the handler can claim the call until this router's thread starts it,
+        so a call the handler returns unawaited can be forwarded.
 
         Args:
             request_meta: Metadata describing the inbound request.
@@ -1775,7 +1805,8 @@ class SingletonThreadRouter(Router):
         return self._wrap_asyncio_call_in_future(
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
-            )
+            ),
+            claimable=ray.serve.context._get_serve_request_context()._forwardable,
         )
 
     @asynccontextmanager
@@ -1881,6 +1912,7 @@ class SingletonThreadRouter(Router):
     def _wrap_asyncio_call_in_future(
         self,
         coro: Coroutine,
+        claimable: bool = False,
     ) -> concurrent.futures.Future[ReplicaResult]:
         """Wrap an async call in a concurrent.futures.Future for cross-thread execution.
 
@@ -1888,6 +1920,8 @@ class SingletonThreadRouter(Router):
 
         Args:
             coro: The coroutine to execute (e.g., _asyncio_router.assign_request(...))
+            claimable: Whether the calling handler can claim the call to forward it,
+                which it can until this router's thread starts the call.
 
         Returns:
             A concurrent.futures.Future that resolves to the ReplicaResult.
@@ -1919,10 +1953,19 @@ class SingletonThreadRouter(Router):
                 )
                 result.cancel()
 
-        concurrent_future: concurrent.futures.Future = concurrent.futures.Future()
+        concurrent_future: concurrent.futures.Future = (
+            _ClaimableFuture() if claimable else concurrent.futures.Future()
+        )
 
         def create_task_and_setup():
             assert self._asyncio_loop is not None
+            if (
+                isinstance(concurrent_future, _ClaimableFuture)
+                and not concurrent_future._start_routing()
+            ):
+                # The handler claimed the call to forward it.
+                coro.close()
+                return
             task = self._asyncio_loop.create_task(coro)
 
             # Set up your cancellation callback

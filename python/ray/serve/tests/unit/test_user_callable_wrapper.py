@@ -20,6 +20,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.http_util import ASGIReceiveProxy
 from ray.serve._private.replica import UserCallableWrapper
+from ray.serve.context import _get_serve_request_context
 from ray.serve.generated import serve_pb2
 
 
@@ -557,15 +558,8 @@ class FastAPIRequestHandler:
         return PlainTextResponse(f"Hello {msg}!")
 
 
-@pytest.mark.parametrize("run_user_code_in_separate_thread", [False, True])
-@pytest.mark.parametrize("callable", [RawRequestHandler, FastAPIRequestHandler])
-@pytest.mark.asyncio
-async def test_http_handler(
-    callable: Callable, monkeypatch, run_user_code_in_separate_thread: bool
-):
-    user_callable_wrapper = _make_user_callable_wrapper(
-        callable, run_user_code_in_separate_thread=run_user_code_in_separate_thread
-    )
+async def _get_over_http(user_callable_wrapper: UserCallableWrapper, monkeypatch):
+    """Initializes the wrapper and returns its ASGI messages for one HTTP request."""
     await user_callable_wrapper.initialize_callable()
 
     @dataclass
@@ -616,6 +610,19 @@ async def test_http_handler(
         ASGIReceiveProxy(asgi_scope, request_metadata, receive_asgi_messages),
     ):
         result_list.extend(result)
+    return result_list
+
+
+@pytest.mark.parametrize("run_user_code_in_separate_thread", [False, True])
+@pytest.mark.parametrize("callable", [RawRequestHandler, FastAPIRequestHandler])
+@pytest.mark.asyncio
+async def test_http_handler(
+    callable: Callable, monkeypatch, run_user_code_in_separate_thread: bool
+):
+    user_callable_wrapper = _make_user_callable_wrapper(
+        callable, run_user_code_in_separate_thread=run_user_code_in_separate_thread
+    )
+    result_list = await _get_over_http(user_callable_wrapper, monkeypatch)
 
     assert result_list[0]["type"] == "http.response.start"
     assert result_list[0]["status"] == 200
@@ -624,6 +631,40 @@ async def test_http_handler(
         "type": "http.response.body",
         "body": b"Hello b'\"world\"'!",
     }
+
+
+class RawForwardableProbe:
+    async def __call__(self, request: Request) -> PlainTextResponse:
+        return PlainTextResponse(str(_get_serve_request_context()._forwardable))
+
+
+probe_app = FastAPI()
+
+
+@serve.ingress(probe_app)
+class FastAPIForwardableProbe:
+    @probe_app.get("/")
+    async def handle_root(self) -> PlainTextResponse:
+        return PlainTextResponse(str(_get_serve_request_context()._forwardable))
+
+
+@pytest.mark.parametrize("run_user_code_in_separate_thread", [False, True])
+@pytest.mark.parametrize(
+    "callable,forwardable",
+    [(RawForwardableProbe, b"True"), (FastAPIForwardableProbe, b"False")],
+)
+@pytest.mark.asyncio
+async def test_only_a_plain_http_handler_marks_its_calls_forwardable(
+    callable: Callable,
+    forwardable: bytes,
+    monkeypatch,
+    run_user_code_in_separate_thread: bool,
+):
+    user_callable_wrapper = _make_user_callable_wrapper(
+        callable, run_user_code_in_separate_thread=run_user_code_in_separate_thread
+    )
+    result_list = await _get_over_http(user_callable_wrapper, monkeypatch)
+    assert result_list[1]["body"] == forwardable
 
 
 failing_init_app = FastAPI()
