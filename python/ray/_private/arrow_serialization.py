@@ -315,6 +315,8 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         return _primitive_array_to_array_payload(a)
     elif _is_binary(a.type):
         return _binary_array_to_array_payload(a)
+    elif _is_view(a.type):
+        return _view_array_to_array_payload(a)
     elif pa.types.is_list(a.type) or pa.types.is_large_list(a.type):
         return _list_array_to_array_payload(a)
     elif pa.types.is_fixed_size_list(a.type):
@@ -358,6 +360,27 @@ def _is_binary(type_: "pyarrow.DataType") -> bool:
         or pa.types.is_binary(type_)
         or pa.types.is_large_binary(type_)
     )
+
+
+# Cached view-type checkers, resolved on first use. Empty tuple on pyarrow < 19:
+# view types exist since 16, but pa.Array.from_buffers only accepts their variadic
+# data buffers from 19 on, so older versions keep using the IPC fallback.
+_view_type_checkers: Optional[Tuple[Callable[["pyarrow.DataType"], bool], ...]] = None
+
+
+def _is_view(type_: "pyarrow.DataType") -> bool:
+    """Whether the provided Array type is a variable-sized binary view type
+    (string view, binary view) that this module can serialize (pyarrow >= 19)."""
+    global _view_type_checkers
+
+    if _view_type_checkers is None:
+        import pyarrow as pa
+
+        if int(pa.__version__.split(".")[0]) < 19:
+            _view_type_checkers = ()
+        else:
+            _view_type_checkers = (pa.types.is_string_view, pa.types.is_binary_view)
+    return any(checker(type_) for checker in _view_type_checkers)
 
 
 def _null_array_to_array_payload(a: "pyarrow.NullArray") -> "PicklableArrayPayload":
@@ -430,6 +453,39 @@ def _binary_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload
         type=a.type,
         length=len(a),
         buffers=[bitmap_buf, offset_buf, data_buf],
+        null_count=a.null_count,
+        offset=0,
+        children=[],
+    )
+
+
+def _view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
+    """Serialize binary view (string view, binary view) arrays to
+    PicklableArrayPayload.
+    """
+    assert _is_view(a.type), a.type
+    # Buffer scheme: [bitmap, views, data_buffer_0, ..., data_buffer_n]
+    buffers = a.buffers()
+    assert len(buffers) >= 2, len(buffers)
+
+    # Copy bitmap buffer, if needed.
+    if a.null_count > 0:
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(buffers[0], a.offset, len(a))
+    else:
+        bitmap_buf = None
+
+    # Copy the views buffer, if needed. Each view is a fixed-size 16-byte struct.
+    views_buf = buffers[1]
+    if views_buf is not None:
+        views_buf = _copy_normal_buffer_if_needed(views_buf, 16, a.offset, len(a))
+
+    # Variadic data buffers are passed through as-is: views store absolute
+    # (buffer index, offset) references into them, so they can't be truncated
+    # without rewriting every view.
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[bitmap_buf, views_buf, *buffers[2:]],
         null_count=a.null_count,
         offset=0,
         children=[],
