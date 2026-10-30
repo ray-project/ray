@@ -248,17 +248,36 @@ class LongPollClient:
                     f"{self.client_id!r} disabled itself."
                 )
 
+    def _host_actor_id_hex(self) -> str:
+        """Returns the host actor's ID for logs, or "unknown" if it has none."""
+        actor_id = getattr(self.host_actor, "_actor_id", None)
+        return actor_id.hex() if actor_id is not None else "unknown"
+
     def _process_update(self, updates: Dict[str, UpdatedObject]):
         if isinstance(updates, (ray.exceptions.RayActorError)):
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
-            # exit.
-            logger.debug("LongPollClient failed to connect to host. Shutting down.")
+            # exit. It can also happen if the controller actor died
+            # permanently (e.g. ``__init__`` failed during GCS-FT
+            # recovery) — that case is silent under DEBUG, so log at
+            # WARNING with the actor_id and exception type to keep
+            # postmortems possible.
+            actor_id_hex = self._host_actor_id_hex()
+            logger.warning(
+                "LongPollClient host_actor=%s died (%s). Shutting down; "
+                "no automatic reconnect.",
+                actor_id_hex,
+                type(updates).__name__,
+            )
             self.is_running = False
             return
 
         if isinstance(updates, ConnectionError):
-            logger.warning("LongPollClient connection failed, shutting down.")
+            actor_id_hex = self._host_actor_id_hex()
+            logger.warning(
+                "LongPollClient host_actor=%s connection failed. Shutting down.",
+                actor_id_hex,
+            )
             self.is_running = False
             return
 
