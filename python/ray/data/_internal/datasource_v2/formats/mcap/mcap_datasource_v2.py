@@ -13,6 +13,10 @@ records it needs.
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
 
+``read_granularity`` picks what one row of a read of paths is: one message, or
+one Attachment or Metadata record (``mcap_records``). Records are listed and
+packed into read tasks like chunks, each weighted by its size.
+
 A sample read (``read_mcap(samples=...)``) lists nothing: the samples dataset
 names the files, and ``read_api`` feeds it to the read tasks as their manifest.
 Its rows hold each topic's steps around a sample's anchor (``mcap_samples``).
@@ -59,11 +63,16 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     message_schema,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    GRANULARITIES,
+    MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
+    RECORD_GRANULARITIES,
     MCAPSelection,
     TimeRange,
     VideoOptions,
     max_lead_in_ns,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_records import record_schema
 from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
     DEFAULT_MAX_ROW_BYTES,
     SamplePaths,
@@ -136,6 +145,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         ignore_missing_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         read_task_memory: Optional[float] = None,
+        read_granularity: str = MESSAGE_GRANULARITY,
         samples_schema: Optional[pa.Schema] = None,
         local_sample_files: bool = False,
         video: Optional[VideoOptions] = None,
@@ -168,6 +178,12 @@ class MCAPDatasourceV2(FileDataSourceV2):
             self._paths: List[str] = []
             self._filesystem = filesystem
         else:
+            _validate_granularity(
+                read_granularity,
+                video,
+                selects_channels=bool(topics) or bool(message_types),
+                has_time_range=time_range is not None,
+            )
             # Captured against the original paths: resolution below strips the
             # ``local://`` scheme (see ``ParquetDatasourceV2``).
             self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -182,6 +198,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         # With ``video``, the topics that get frame columns, settled by
         # ``infer_schema``.
         self._decoded_topics: Tuple[str, ...] = ()
+        self._granularity = read_granularity
         self._include_metadata = include_metadata
         self._log_time_order = log_time_order
         self._include_row_id = include_row_id
@@ -197,7 +214,8 @@ class MCAPDatasourceV2(FileDataSourceV2):
         self._read_task_memory = read_task_memory
         self._include_paths = include_paths
         synthesized: List[SynthesizedColumn] = []
-        if include_paths:
+        # Record rows carry ``path`` themselves; only message rows synthesize it.
+        if include_paths and read_granularity == MESSAGE_GRANULARITY:
             synthesized.append(PathColumn())
         self._synthesized_columns = tuple(synthesized)
 
@@ -236,6 +254,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
                 include_row_id=self._include_row_id,
                 include_paths=self._include_paths,
             ),
+            granularity=self._granularity,
         )
 
     def get_file_partitioner(self, **kwargs):
@@ -295,13 +314,14 @@ class MCAPDatasourceV2(FileDataSourceV2):
         )
 
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        """The schema of message rows, plus partition and synthesized columns.
+        """The schema of the rows, plus partition and synthesized columns.
 
         Every column but ``data`` has a fixed type. ``data`` holds decoded JSON
         values when every selected channel of the sampled files is JSON-encoded,
         and the raw payload bytes (``binary``) otherwise. The reader follows this
         one decision for every file, so a selection that mixes encodings keeps
-        every payload as bytes. Sample rows hold the samples' own columns, then
+        every payload as bytes. Record rows have a fixed schema
+        (``record_schema``). Sample rows hold the samples' own columns, then
         each topic's (``sample_row_schema``).
         """
         if self._samples_schema is not None:
@@ -314,21 +334,26 @@ class MCAPDatasourceV2(FileDataSourceV2):
                 self._samples_schema, self._topic_plans, self._decoded_topics, resize
             )
         assert sample is not None, "MCAP always receives a sample"
-        data_type = (
-            infer_data_type(
-                self._selection,
-                self._filesystem,
-                sample.paths.tolist(),
-                self._listed_paths,
+        if self._granularity in RECORD_GRANULARITIES:
+            schema = record_schema(
+                self._granularity, include_row_id=self._include_row_id
             )
-            if len(sample) > 0
-            else None
-        )
-        schema = message_schema(
-            include_metadata=self._include_metadata,
-            include_row_id=self._include_row_id,
-            data_type=data_type,
-        )
+        else:
+            data_type = (
+                infer_data_type(
+                    self._selection,
+                    self._filesystem,
+                    sample.paths.tolist(),
+                    self._listed_paths,
+                )
+                if len(sample) > 0
+                else None
+            )
+            schema = message_schema(
+                include_metadata=self._include_metadata,
+                include_row_id=self._include_row_id,
+                data_type=data_type,
+            )
         partitioning = self.resolve_partitioning(sample)
         if partitioning is not None and len(sample) > 0:
             partition_kv = PathPartitionParser(partitioning)(sample.paths.tolist()[0])
@@ -372,6 +397,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         return MCAPScanner(
             schema=schema,
             selection=self._selection,
+            granularity=self._granularity,
             include_metadata=self._include_metadata,
             include_row_id=self._include_row_id,
             log_time_order=self._log_time_order,
@@ -435,3 +461,33 @@ def _listed_video_topics(
                 f"{unselected}. Add them to topics, or drop them from video_topics."
             )
     return listed
+
+
+def _validate_granularity(
+    granularity: str,
+    video: Optional[VideoOptions],
+    *,
+    selects_channels: bool,
+    has_time_range: bool,
+) -> None:
+    """Reject option combinations that cannot mean anything."""
+    if granularity not in GRANULARITIES:
+        raise ValueError(
+            f"read_granularity must be one of {list(GRANULARITIES)}, got "
+            f"{granularity!r}"
+        )
+    if granularity in RECORD_GRANULARITIES and selects_channels:
+        raise ValueError(
+            "topics and message_types select messages; they do not apply to "
+            f"read_granularity={granularity!r}"
+        )
+    if granularity == METADATA_GRANULARITY and has_time_range:
+        raise ValueError(
+            "Metadata records carry no timestamp; time_range does not apply to "
+            "read_granularity='metadata'"
+        )
+    if video is not None and granularity != MESSAGE_GRANULARITY:
+        raise ValueError(
+            "video decodes the video topics of message rows into frames; it does "
+            f"not apply to read_granularity={granularity!r}"
+        )

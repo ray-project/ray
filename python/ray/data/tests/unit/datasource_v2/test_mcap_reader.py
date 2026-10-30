@@ -190,16 +190,6 @@ def chunk_offset(path, index):
     return summary_of(path).chunk_indexes[index].chunk_start_offset
 
 
-@pytest.fixture
-def restore_max_errored_blocks():
-    """Put ``DataContext.max_errored_blocks`` back after the test."""
-    from ray.data.context import DataContext
-
-    saved = DataContext.get_current().max_errored_blocks
-    yield
-    DataContext.get_current().max_errored_blocks = saved
-
-
 CORRUPTIONS = {"payload": write_corrupt_chunk, "header": write_corrupt_chunk_header}
 
 

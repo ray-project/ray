@@ -123,6 +123,8 @@ class SelectedMessageReader:
         offsets: Optional[Set[int]],
         file_summary: Optional[Callable[[], "Summary"]] = None,
         on_corrupt: Optional[OnCorrupt] = None,
+        *,
+        log_time_order: Optional[bool] = None,
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the owned chunks of an indexed file.
 
@@ -133,8 +135,10 @@ class SelectedMessageReader:
 
         With ``on_corrupt``, a chunk that cannot be decoded is handed to it and
         skipped, so the file's other chunks are still read. An error reading
-        ``f`` still raises.
+        ``f`` still raises. ``log_time_order`` overrides the reader's setting.
         """
+        if log_time_order is None:
+            log_time_order = self._log_time_order
         selected = self._selection.selected_channel_ids(
             summary.channels, summary.schemas
         )
@@ -150,7 +154,7 @@ class SelectedMessageReader:
             set(),
             file_summary or (lambda: summary),
         )
-        if not self._log_time_order:
+        if not log_time_order:
             chunks = read_chunks(f, chunk_indexes, self._chunk_reads, on_corrupt)
             for chunk_index, chunk in chunks:
                 yield from self._decoded_messages(

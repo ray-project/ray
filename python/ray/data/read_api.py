@@ -3402,6 +3402,7 @@ def _reject_options_of_listed_reads(**options: Any) -> None:
     """
     defaults = {
         "log_time_order": True,
+        "read_granularity": "message",
         "include_row_id": False,
         "include_paths": False,
         "ignore_missing_paths": False,
@@ -3676,6 +3677,7 @@ def read_mcap(
     include_metadata: bool = True,
     log_time_order: bool = True,
     include_row_id: bool = False,
+    read_granularity: Literal["message", "attachment", "metadata"] = "message",
     video: Optional[VideoOptions] = None,
     video_topics: Optional[Union[List[str], Set[str]]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -3874,6 +3876,16 @@ def read_mcap(
             (``DataContext.use_datasource_v2``). ``read_mcap`` refuses
             ``CheckpointConfig(generated_id_column=...)``, which only
             ``read_parquet`` supports.
+        read_granularity: What one row is. ``"message"`` (the default) is one
+            message per row. ``"attachment"`` and ``"metadata"`` return the files'
+            Attachment or Metadata records, one per row. An attachment row has
+            ``path``, ``name``, ``media_type``, ``log_time``, ``create_time`` and
+            ``data``. A metadata row has ``path``, ``name`` and ``metadata``, a
+            ``map<string, string>``. ``topics`` and ``message_types`` do not apply
+            to these two, and ``time_range`` applies only to attachments. Records
+            are read by byte offset from the summary's index, and read tasks take
+            records up to the read-task budget, at most 16 small ones each
+            (``RAY_DATA_MCAP_RECORDS_PER_READ_TASK``). Requires the V2 datasource.
         video: For a sample read, a :class:`~ray.data.datasource.VideoOptions`
             that decodes the video topics inside the read task. Each video
             topic's steps become a ``frames:<topic>`` tensor of shape ``(steps,
@@ -3964,6 +3976,7 @@ def read_mcap(
             message_types=message_types,
             log_time_order=log_time_order,
             include_row_id=include_row_id,
+            read_granularity=read_granularity,
             partition_filter=partition_filter,
             partitioning=partitioning,
             include_paths=include_paths,
@@ -4047,6 +4060,7 @@ def read_mcap(
             log_time_order=log_time_order,
             include_row_id=include_row_id,
             include_paths=include_paths,
+            read_granularity=read_granularity,
             filesystem=filesystem,
             partitioning=partitioning,
             partition_filter=partition_filter,
@@ -4075,10 +4089,11 @@ def read_mcap(
             partition_filter=partition_filter,
         )
 
-    if not log_time_order or include_row_id:
+    if not log_time_order or include_row_id or read_granularity != "message":
         raise NotImplementedError(
-            "`log_time_order=False`, `include_row_id` and a checkpoint keyed on "
-            "`row_id` on `read_mcap` require the V2 datasource. Enable it with "
+            "`log_time_order=False`, `include_row_id`, a checkpoint keyed on "
+            "`row_id` and `read_granularity` on `read_mcap` require the V2 "
+            "datasource. Enable it with "
             "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
             "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
         )

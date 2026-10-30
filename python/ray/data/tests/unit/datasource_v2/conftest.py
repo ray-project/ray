@@ -14,6 +14,16 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
 
 
 @pytest.fixture
+def restore_max_errored_blocks():
+    """Put ``DataContext.max_errored_blocks`` back after the test."""
+    from ray.data.context import DataContext
+
+    saved = DataContext.get_current().max_errored_blocks
+    yield
+    DataContext.get_current().max_errored_blocks = saved
+
+
+@pytest.fixture
 def chunked_file(tmp_path):
     """Nine JSON messages on ``/a``, ``/b`` and ``/c`` in turn, one per chunk.
 
