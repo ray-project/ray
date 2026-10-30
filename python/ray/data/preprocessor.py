@@ -196,7 +196,9 @@ class Preprocessor(abc.ABC):
         Returns:
             ``FitStatus.NOT_FITTABLE`` if this preprocessor doesn't need fitting,
             ``FitStatus.FITTED`` if it has been fit, and ``FitStatus.NOT_FITTED``
-            otherwise.
+            otherwise. Subclasses can override this. For example,
+            :class:`~ray.data.preprocessors.Chain` also returns
+            ``FitStatus.PARTIALLY_FITTED``.
         """
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
