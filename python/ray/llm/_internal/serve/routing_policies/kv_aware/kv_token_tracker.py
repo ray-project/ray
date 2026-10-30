@@ -1,5 +1,4 @@
 import asyncio
-import functools
 import hashlib
 import logging
 import math
@@ -463,9 +462,7 @@ class KVTokenTracker:
             # The caller can give up (HAProxy times out a slow route) after the
             # service booked the request but before this coroutine resumes. Free
             # that booking, or it stays booked until the service's own expiry.
-            reserve.add_done_callback(
-                functools.partial(self._on_abandoned_reservation, request_id)
-            )
+            self._schedule(self._free_abandoned_reservation(request_id, reserve))
             raise
         self._track_request_state(
             request_id,
@@ -494,15 +491,14 @@ class KVTokenTracker:
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
         }
 
-    def _on_abandoned_reservation(
+    async def _free_abandoned_reservation(
         self, request_id: str, reserve: "asyncio.Future"
     ) -> None:
         """Free the booking of a selection whose caller was cancelled."""
-        if reserve.cancelled() or reserve.exception() is not None:
-            return
-        self._schedule(self._free_abandoned_reservation(request_id))
-
-    async def _free_abandoned_reservation(self, request_id: str) -> None:
+        try:
+            await reserve
+        except Exception:
+            return  # The selection failed, so nothing was booked.
         try:
             await self._svc.free_reservation(request_id)
         except Exception:
