@@ -6,9 +6,13 @@ Ray cluster. The writers import ``mcap`` when called, so the test modules still
 collect without it.
 """
 
+import io
 import json
+import re
 import shutil
+import struct
 from collections import defaultdict
+from fractions import Fraction
 from typing import Any, Dict, List, Optional
 
 import pyarrow as pa
@@ -425,6 +429,9 @@ def read_samples(
     )
 
     table = pa.Table.from_pylist(samples)
+    if options.get("video") is not None:
+        # Planning opens the samples' files to settle the decoded topics.
+        options.setdefault("sample_files", [s["files"][0] for s in samples])
     datasource = MCAPDatasourceV2(
         [], topics=topics, samples_schema=table.schema, filesystem=filesystem, **options
     )
@@ -503,4 +510,235 @@ def write_recording(path, *, chunk_size=600, index=True):
                 data=payload,
                 sequence=0,
             )
+        writer.finish()
+
+
+# -- codec payloads -----------------------------------------------------------
+
+START_CODE = b"\x00\x00\x00\x01"  # opens each Annex-B NAL unit
+
+# H.264 NAL unit types.
+H264_SLICE = 1  # a slice of an inter frame
+H264_IDR = 5
+H264_SPS = 7
+H264_PPS = 8
+
+
+def h264_nal(nal_type: int, ref_idc: int, payload: bytes) -> bytes:
+    """An Annex-B H.264 NAL unit: the start code, a header byte, ``payload``."""
+    return START_CODE + bytes([ref_idc << 5 | nal_type]) + payload
+
+
+H264_KEYFRAME = (
+    h264_nal(H264_SPS, 3, bytes([0x42, 0x00, 0x1F]))
+    + h264_nal(H264_PPS, 3, bytes([0xCE, 0x38, 0x80]))
+    + h264_nal(H264_IDR, 3, bytes([0x88, 0x84, 0x00, 0x33]))
+)
+H264_PFRAME = h264_nal(H264_SLICE, 2, bytes([0x9A, 0x02, 0x04, 0x33]))
+
+
+def cdr_video(frame: bytes, fmt: str, stamp_ns: int = 0) -> bytes:
+    """A CDR-encoded Foxglove ``CompressedVideo`` around ``frame``: the
+    encapsulation header, ``stamp_ns``, a ``frame_id``, ``frame`` as ``data``
+    and ``fmt`` as ``format``, in that order."""
+    body = struct.pack("<iI", stamp_ns // SECOND, stamp_ns % SECOND)
+    body += (4).to_bytes(4, "little") + b"cam\x00"
+    body += len(frame).to_bytes(4, "little") + frame
+    body += bytes(-len(body) % 4)
+    token = fmt.encode() + b"\x00"
+    return b"\x00\x01\x00\x00" + body + len(token).to_bytes(4, "little") + token
+
+
+# A second whose CDR stamp, after the encapsulation header's two zero bytes,
+# reads as 00 00 01 25: a start code and an H.264 IDR slice header.
+START_CODE_SECOND = 0x2501
+
+# A VP9 frame opens with an uncompressed header: frame_marker 0b10, profile 0,
+# show_existing_frame 0, frame_type 0 (key) or 1 (inter), show_frame 1,
+# error_resilient 0. A key frame then carries the sync code.
+VP9_SYNC_CODE = b"\x49\x83\x42"
+VP9_KEYFRAME = b"\x82" + VP9_SYNC_CODE + bytes(16)
+VP9_PFRAME = b"\x86" + bytes(16)
+
+
+GOP = 10  # frames between keyframes of ``encode_h264``
+
+# -- encoded video (the decode tests) -----------------------------------------
+
+FRAME_NS = 33_000_000  # ``write_payloads`` logs frame i at i * FRAME_NS: about 30 fps
+HEIGHT, WIDTH = 48, 64  # the frame size ``encode_h264`` defaults to
+FRAME_SHAPE = (HEIGHT, WIDTH, 3)
+HALF_SIZE = (HEIGHT // 2, WIDTH // 2)  # a ``resize`` target, or a smaller camera
+H264_FILE_FRAMES = 30  # frames in the ``h264_file`` fixture
+
+
+def encode_h264(num_frames, width=WIDTH, height=HEIGHT):
+    """H.264 Annex-B access units, one per frame, a keyframe every ``GOP``."""
+    import av
+    import numpy as np
+
+    container = av.open(io.BytesIO(), mode="w", format="h264")
+    # A fixed GOP, no B-frames and no scene-cut keyframes make the keyframe
+    # positions predictable. Without a global header, libx264 repeats SPS/PPS
+    # before every keyframe, as recorders do.
+    stream = container.add_stream(
+        "libx264",
+        rate=30,
+        options={"g": str(GOP), "bf": "0", "sc_threshold": "0", "tune": "zerolatency"},
+    )
+    stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
+    packets = []
+    for i in range(num_frames):
+        array = np.full((height, width, 3), i * 8 % 256, dtype=np.uint8)
+        array[:, :, 1] = (i * 3) % 256
+        frame = av.VideoFrame.from_ndarray(array, format="rgb24")
+        packets.extend(bytes(p) for p in stream.encode(frame))
+    packets.extend(bytes(p) for p in stream.encode())
+    return packets
+
+
+def encode_vp9(num_frames, width=WIDTH, height=HEIGHT):
+    """VP9 frames from libvpx, one per message, a keyframe every ``GOP``."""
+    import av
+    import numpy as np
+
+    context = av.CodecContext.create("libvpx-vp9", "w")
+    context.width, context.height, context.pix_fmt = width, height, "yuv420p"
+    context.time_base = Fraction(1, 30)
+    context.framerate = Fraction(30, 1)
+    context.gop_size = GOP
+    # No look-ahead and no hidden alt-ref frames, so each packet is one shown
+    # frame and the keyframes fall every ``GOP`` frames.
+    context.options = {
+        "lag-in-frames": "0",
+        "auto-alt-ref": "0",
+        "keyint_min": str(GOP),
+    }
+    # Noise, so frames are as large as a camera's. A flat frame codes to a few
+    # bytes, which can hold an Annex-B start code by chance.
+    rng = np.random.default_rng(0)
+    packets = []
+    for i in range(num_frames):
+        array = rng.integers(0, 256, (height, width, 3), dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(array, format="rgb24").reformat(
+            format="yuv420p"
+        )
+        frame.pts = i
+        packets.extend(bytes(p) for p in context.encode(frame))
+    packets.extend(bytes(p) for p in context.encode(None))
+    return packets
+
+
+# NAL unit types of the parameter sets: H.264's SPS and PPS, H.265's VPS, SPS
+# and PPS.
+PARAMETER_SET_TYPES = {"h264": {H264_SPS, H264_PPS}, "h265": {32, 33, 34}}
+
+
+def nal_units(access_unit: bytes) -> List[bytes]:
+    """The Annex-B NAL units of ``access_unit``, each with its start code."""
+    starts = [m.start() for m in re.finditer(b"\x00\x00\x01", access_unit)]
+    starts = [i - 1 if i > 0 and access_unit[i - 1] == 0 else i for i in starts]
+    return [access_unit[a:b] for a, b in zip(starts, starts[1:] + [len(access_unit)])]
+
+
+def nal_type(unit: bytes, codec: str) -> int:
+    """The type of an Annex-B NAL unit of ``codec`` ("h264" or "h265")."""
+    header = unit[unit.index(b"\x00\x00\x01") + 3]
+    return header & 0x1F if codec == "h264" else (header >> 1) & 0x3F
+
+
+def length_prefixed(access_unit: bytes) -> bytes:
+    """``access_unit``'s NAL units, each after its length as a 4-byte big-endian
+    integer in place of a start code, as MP4 stores them (AVCC)."""
+    units = (u[u.index(b"\x00\x00\x01") + 3 :] for u in nal_units(access_unit))
+    return b"".join(len(unit).to_bytes(4, "big") + unit for unit in units)
+
+
+def without_parameter_sets(access_unit: bytes, codec: str) -> bytes:
+    """``access_unit`` less its parameter-set NAL units."""
+    return b"".join(
+        unit
+        for unit in nal_units(access_unit)
+        if nal_type(unit, codec) not in PARAMETER_SET_TYPES[codec]
+    )
+
+
+def parameter_sets_once(packets, codec: str, keep_first: bool = True):
+    """``packets`` with the parameter sets on the first keyframe only, as from an
+    encoder that writes them once. ``keep_first=False`` keeps them nowhere."""
+    kept = keep_first
+    out = []
+    for packet in packets:
+        stripped = without_parameter_sets(packet, codec)
+        out.append(packet if kept or stripped == packet else stripped)
+        if stripped != packet:
+            kept = False
+    return out
+
+
+def write_payloads(
+    path,
+    payloads,
+    *,
+    schema_name,
+    topic="/camera",
+    chunk_size=1 << 20,
+    log_times=None,
+    extra_topic=None,
+    extra_first=0,
+    **writer_options,
+):
+    """Write ``payloads`` on ``topic``, ``FRAME_NS`` apart or at ``log_times``.
+
+    ``extra_topic``, a ``(topic, schema_name, payload)`` triple, adds a channel
+    with one message at each of the same times, after ``extra_first`` of its
+    messages at time 0 before any payload. ``writer_options`` go to the
+    mcap ``Writer``; chunks are zstd-compressed unless they name a compression.
+    """
+    from mcap.writer import CompressionType, Writer
+
+    writer_options.setdefault("compression", CompressionType.ZSTD)
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=chunk_size, **writer_options)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name=schema_name, encoding="ros2msg", data=b"video\n"
+        )
+        channel_id = writer.register_channel(
+            schema_id=schema_id, topic=topic, message_encoding="cdr"
+        )
+        extra_channel = None
+        extra_payload = b""
+        if extra_topic is not None:
+            extra_schema = writer.register_schema(
+                name=extra_topic[1], encoding="ros2msg", data=b"x\n"
+            )
+            extra_channel = writer.register_channel(
+                schema_id=extra_schema, topic=extra_topic[0], message_encoding="cdr"
+            )
+            extra_payload = extra_topic[2]
+            for _ in range(extra_first):
+                writer.add_message(
+                    channel_id=extra_channel,
+                    log_time=0,
+                    publish_time=0,
+                    data=extra_payload,
+                )
+        for i, payload in enumerate(payloads):
+            log_time = log_times[i] if log_times is not None else i * FRAME_NS
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=log_time,
+                publish_time=log_time,
+                data=payload,
+                sequence=i,
+            )
+            if extra_channel is not None:
+                writer.add_message(
+                    channel_id=extra_channel,
+                    log_time=log_time,
+                    publish_time=log_time,
+                    data=extra_payload,
+                    sequence=i,
+                )
         writer.finish()
