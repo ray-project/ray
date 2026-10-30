@@ -168,7 +168,31 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> List[SingleAgentEpisode]:
-        """Samples from environments and writes data to disk."""
+        """Samples from environments and writes data to disk.
+
+        Samples like `SingleAgentEnvRunner.sample()` and adds the samples to a
+        buffer. If `config.output_max_rows_per_file` is set, writes the buffer to
+        `config.output` once it holds that many rows. Otherwise, writes the
+        samples on every call.
+
+        Args:
+            num_timesteps: The minimum number of timesteps to sample during this
+                call. Only one of `num_timesteps` or `num_episodes` may be
+                provided.
+            num_episodes: The minimum number of episodes to sample during this
+                call. Only one of `num_timesteps` or `num_episodes` may be
+                provided.
+            explore: Whether to compute actions with the RLModule's
+                `forward_exploration()` method, instead of `forward_inference()`.
+                If None, uses the `explore` setting from the config.
+            random_actions: Whether to sample actions randomly from the env's
+                action space, instead of computing them with the RLModule.
+            force_reset: Whether to force-reset all vectorized environments before
+                sampling.
+
+        Returns:
+            The sampled episodes, as `SingleAgentEnvRunner.sample()` returns them.
+        """
 
         # Call the super sample method.
         samples = super().sample(

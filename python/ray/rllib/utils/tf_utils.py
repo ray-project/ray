@@ -623,6 +623,12 @@ def symlog(x: "tf.Tensor") -> "tf.Tensor":
     [1] Mastering Diverse Domains through World Models - 2023
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        `sign(x) * log(abs(x) + 1)`, computed element-wise.
     """
     return tf.math.sign(x) * tf.math.log(tf.math.abs(x) + 1)
 
@@ -634,6 +640,12 @@ def inverse_symlog(y: "tf.Tensor") -> "tf.Tensor":
     [1] Mastering Diverse Domains through World Models - 2023
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Args:
+        y: The input tensor, in symlog space.
+
+    Returns:
+        The tensor `x` for which `symlog(x)` equals `y`, computed element-wise.
     """
     # To get to symlog inverse, we solve the symlog equation for x:
     #     y = sign(x) * log(|x| + 1)

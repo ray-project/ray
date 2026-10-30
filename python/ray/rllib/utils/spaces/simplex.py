@@ -36,6 +36,7 @@ class Simplex(gym.Space):
             self.concentration = np.array([1] * self.dim)
 
     def sample(self):
+        """Returns a random sample from the Dirichlet distribution of this space."""
         return np.random.dirichlet(self.concentration, size=self.shape[:-1]).astype(
             self.dtype
         )

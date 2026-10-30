@@ -44,6 +44,7 @@ class FlexDict(gym.spaces.Dict):
         assert issubclass(type(space), gym.spaces.Space), err
 
     def sample(self):
+        """Returns a dict with a random sample from each sub-space."""
         return {k: space.sample() for k, space in self.spaces.items()}
 
     def __getitem__(self, key):
