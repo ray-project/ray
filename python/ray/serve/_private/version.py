@@ -62,6 +62,11 @@ class DeploymentVersion:
     def __hash__(self) -> int:
         return self._hash
 
+    @property
+    def version_id(self) -> str:
+        """Hexadecimal form of the version hash used for equality."""
+        return f"{self._hash:08x}"
+
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, DeploymentVersion):
             return False

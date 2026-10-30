@@ -1,3 +1,4 @@
+import logging
 import os
 import platform
 import shutil
@@ -33,8 +34,8 @@ def pytest_runtest_setup(item):
 def fake_mkfs_erofs(tmp_path, monkeypatch):
     """A stand-in ``mkfs.erofs`` first on PATH, for tests that need no gVisor.
 
-    It advertises ``--tar`` and copies the flattened tar it is handed to the
-    image path, so a cached ``rootfs.erofs`` is a tar the test can open and
+    It advertises ``--tar`` and copies the tar it reads on stdin to the image
+    path, so a cached ``rootfs.erofs`` is a tar the test can open and
     inspect, with the owners the real build would store. Its argv lands in
     ``mkfs.args`` next to the script. Yields the directory holding both.
     """
@@ -47,8 +48,8 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
         "#!/bin/sh\n"
         'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
         'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
-        "# args: --tar=f -b<page size> -E^inline_data OUT TAR\n"
-        'cp "$5" "$4"\n'
+        "# args: --tar=f -b<page size> -E^inline_data OUT; the tar is on stdin\n"
+        'cat > "$4"\n'
     )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
@@ -147,6 +148,125 @@ def _nft_in_userns_supported() -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return proc.returncode == 0
+
+
+@pytest.fixture
+def sandbox_log(caplog):
+    """caplog, also capturing the sandbox's log records. caplog only listens
+    on the root logger, which the ``ray`` logger doesn't propagate to, unless
+    something already added caplog's handler to a logger the records pass
+    through."""
+    logger = logging.getLogger("ray.experimental.sandbox")
+    node = logger
+    while node is not None:
+        if caplog.handler in node.handlers:
+            yield caplog
+            return
+        if not node.propagate:
+            break
+        node = node.parent
+    logger.addHandler(caplog.handler)
+    try:
+        yield caplog
+    finally:
+        logger.removeHandler(caplog.handler)
+
+
+@pytest.fixture(autouse=True)
+def _clear_overlayfs_detect_caches():
+    """Each test decides an overlayfs sandbox's user namespace, image mount
+    mode and subordinate ids afresh, so its stubs take effect."""
+    from ray.experimental.sandbox._internal import overlayfs
+
+    caches = (
+        overlayfs.UserNamespaceType.detect,
+        overlayfs.ImageMountMode.detect,
+        overlayfs.IdMaps.detect,
+    )
+    for cache in caches:
+        cache.cache_clear()
+    yield
+    for cache in caches:
+        cache.cache_clear()
+
+
+@pytest.fixture(scope="session")
+def ensure_overlayfs_mount(ensure_runsc):
+    """A host that can mount an overlayfs sandbox's kernel overlay (see
+    ``overlayfs.UserNamespaceType.detect`` and
+    ``overlayfs.ImageMountMode.detect``). Requested rather than autouse, so
+    only the overlayfs tests skip when the host can't."""
+    from ray.experimental.sandbox._internal import overlayfs
+    from ray.experimental.sandbox.exceptions import SandboxCreationError
+
+    try:
+        overlayfs.ImageMountMode.detect(overlayfs.UserNamespaceType.detect())
+    except SandboxCreationError as err:
+        pytest.skip(str(err))
+
+
+def _skip_unless_runsc_runs_in_private_userns(tmp_path):
+    """Skip unless runsc can start in the private user namespace an overlayfs
+    sandbox gets. For a worker running as a user other than root, that
+    namespace only maps the worker's own ids, so a runsc the worker reaches
+    only through a group, or through a directory owned by an unmapped user,
+    can't start inside it."""
+    from ray.experimental.sandbox._internal import overlayfs
+
+    runsc = shutil.which("runsc") or "runsc"
+    id_maps = overlayfs.IdMaps.detect()
+    overlay = overlayfs.RootfsOverlay(
+        image="",
+        image_mount_mode=overlayfs.ImageMountMode.FUSE,
+        userns=overlayfs.UserNamespaceType.PRIVATE,
+        id_maps=id_maps,
+        mountpoint=str(tmp_path / "mnt"),
+        tmpfs_dir=str(tmp_path / "tmpfs"),
+    )
+    res = subprocess.run(
+        overlay._wrap_in_private_userns([runsc, "--version"]),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if res.returncode != 0:
+        mapped = "only root" if id_maps is None else "its id maps"
+        pytest.skip(
+            f"{runsc} can't start in this worker's private user namespace, "
+            f"which maps {mapped}, so an overlayfs sandbox in "
+            f"one can't start here either: {res.stderr.strip()}"
+        )
+
+
+@pytest.fixture(
+    params=[
+        ("HOST", "KERNEL"),
+        ("HOST", "FUSE"),
+        ("PRIVATE", "FUSE"),
+    ],
+    ids=["host-kernel", "host-fuse", "private-fuse"],
+)
+def overlay_mount(request, monkeypatch, tmp_path, ensure_overlayfs_mount):
+    """Runs a test through each way of mounting an overlayfs sandbox's rootfs
+    this worker supports, as a (user namespace, image mount) pair."""
+    from ray.experimental.sandbox._internal import overlayfs
+
+    userns = overlayfs.UserNamespaceType[request.param[0]]
+    image_mount_mode = overlayfs.ImageMountMode[request.param[1]]
+    if userns is overlayfs.UserNamespaceType.HOST and not (
+        overlayfs._is_host_userns() and overlayfs._has_mount_privileges()
+    ):
+        pytest.skip("this worker can't mount in the host's user namespace")
+    mounted, errstr = overlayfs._probe_mount(userns, image_mount_mode)
+    if not mounted:
+        pytest.skip(f"this worker can't mount this way: {errstr}")
+    if userns is overlayfs.UserNamespaceType.PRIVATE:
+        _skip_unless_runsc_runs_in_private_userns(tmp_path)
+    monkeypatch.setattr(overlayfs.UserNamespaceType, "detect", lambda: userns)
+    monkeypatch.setattr(
+        overlayfs.ImageMountMode, "detect", lambda userns: image_mount_mode
+    )
+    return userns, image_mount_mode
 
 
 @pytest.fixture(scope="session")

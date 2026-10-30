@@ -1431,8 +1431,7 @@ class ActorReplicaWrapper:
         return temp
 
     def reconfigure(self, version: DeploymentVersion, rank: ReplicaRank) -> bool:
-        """
-        Update replica version. Also, updates the deployment config on the actor
+        """Update replica version. Also, updates the deployment config on the actor
         behind this DeploymentReplica instance if necessary.
 
         Returns: whether the actor is being updated.
@@ -1554,8 +1553,7 @@ class ActorReplicaWrapper:
             )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
-        """
-        Check if current replica has started by making ray API calls on
+        """Check if current replica has started by making ray API calls on
         relevant actor / object ref.
 
         Replica initialization calls __init__(), reconfigure(), and check_health().
@@ -2118,6 +2116,7 @@ class DeploymentReplica:
             replica_id=self._replica_id.unique_id,
             state=ReplicaState.STARTING,
             start_time_s=0,
+            version=version.version_id if version is not None else None,
         )
         self._multiplexed_model_ids: List[str] = []
         self._routing_stats: Dict[str, Any] = {}
@@ -2266,8 +2265,7 @@ class DeploymentReplica:
         gang_context: Optional[GangContext] = None,
         target_node_id: Optional[str] = None,
     ) -> ReplicaSchedulingRequest:
-        """
-        Start a new actor for current DeploymentReplica instance.
+        """Start a new actor for current DeploymentReplica instance.
 
         Args:
             deployment_info: Configuration info for the deployment.
@@ -2298,17 +2296,17 @@ class DeploymentReplica:
         version: DeploymentVersion,
         rank: ReplicaRank,
     ) -> bool:
-        """
-        Update replica version. Also, updates the deployment config on the actor
+        """Update replica version. Also, updates the deployment config on the actor
         behind this DeploymentReplica instance if necessary.
 
         Returns: whether the actor is being updated.
         """
-        return self._actor.reconfigure(version, rank=rank)
+        updating = self._actor.reconfigure(version, rank=rank)
+        self.update_actor_details(version=version.version_id)
+        return updating
 
     def recover(self, deployment_info: DeploymentInfo) -> bool:
-        """
-        Recover states in DeploymentReplica instance by fetching running actor
+        """Recover states in DeploymentReplica instance by fetching running actor
         status
 
         Args:
@@ -2366,6 +2364,8 @@ class DeploymentReplica:
             actor_id=self._actor.actor_id,
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
+            # Successful recovery replaces the provisional version with the actor's.
+            version=self._actor.version.version_id,
         )
 
         return is_ready
@@ -3453,14 +3453,11 @@ class DeploymentState:
         self._in_transition = True
 
     def should_autoscale(self) -> bool:
-        """
-        Check if the deployment is under autoscaling
-        """
+        """Check if the deployment is under autoscaling"""
         return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
-        """
-        Return deployment's target state submitted by user's deployment call.
+        """Return deployment's target state submitted by user's deployment call.
         Should be persisted and outlive current ray cluster.
         """
         return self._target_state
@@ -4120,8 +4117,7 @@ class DeploymentState:
             )
 
     def autoscale(self, decision_num_replicas: int) -> bool:
-        """
-        Apply the given scaling decision by updating the target replica count.
+        """Apply the given scaling decision by updating the target replica count.
 
         Skips if deleting, if `decision_num_replicas` is None, or matches the
         current target. Otherwise updates the state and logs an up/down scaling.
@@ -5023,8 +5019,7 @@ class DeploymentState:
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow: bool = False
     ) -> List[Tuple[DeploymentReplica, ReplicaStartupStatus]]:
-        """
-        Common helper function for startup actions tracking and status
+        """Common helper function for startup actions tracking and status
         transition: STARTING, UPDATING and RECOVERING.
 
         Args:
@@ -5666,8 +5661,7 @@ class DeploymentState:
             replica.record_pushed_health(checked_at, healthy, consecutive_failures)
 
     def check_and_update_replicas(self):
-        """
-        Check current state of all DeploymentReplica being tracked, and compare
+        """Check current state of all DeploymentReplica being tracked, and compare
         with state container from previous update() cycle to see if any state
         transition happened.
         """
@@ -6762,8 +6756,7 @@ class DeploymentStateManager:
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]
     ) -> Dict[DeploymentID, List[str]]:
-        """
-        Given a list of all actor names queried from current ray cluster,
+        """Given a list of all actor names queried from current ray cluster,
         map them to corresponding deployments.
 
         Example:
@@ -6876,8 +6869,7 @@ class DeploymentStateManager:
         all_current_actor_names: List[str],
         all_current_placement_group_names: List[str],
     ):
-        """
-        Recover from checkpoint upon controller failure with all actor names
+        """Recover from checkpoint upon controller failure with all actor names
         found in current cluster.
 
         Each deployment resumes target state from checkpoint if available.
@@ -6910,8 +6902,7 @@ class DeploymentStateManager:
                 )
 
     def shutdown(self):
-        """
-        Shutdown all running replicas by notifying the controller, and leave
+        """Shutdown all running replicas by notifying the controller, and leave
         it to the controller event loop to take actions afterwards.
 
         Deployments are torn down in best effort dependency order. Callers are
@@ -6933,8 +6924,7 @@ class DeploymentStateManager:
         self._advance_shutdown()
 
     def _advance_shutdown(self):
-        """
-        Delete the current shutdown tier, advancing as tiers drain.
+        """Delete the current shutdown tier, advancing as tiers drain.
 
         Deletes every deployment in the current tier and waits for the tier to
         be fully gone from _deployment_states before moving to the next one.
@@ -6973,8 +6963,7 @@ class DeploymentStateManager:
             self._shutdown_tier_started_at = time.time()
 
     def _shutdown_deletion_tiers(self) -> List[List[DeploymentID]]:
-        """
-        Compute best effort reverse topological deletion tiers.
+        """Compute best effort reverse topological deletion tiers.
 
         Builds a directed graph over currently tracked deployments derived from
         each deployment's outbound handle usage (best effort). Runs Kahn's
@@ -7128,6 +7117,7 @@ class DeploymentStateManager:
                 ),
                 target_num_replicas=deployment_state._target_state.target_num_replicas,
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
+                target_version=deployment_state.target_version.version_id,
                 replicas=deployment_state.list_replica_details(),
                 recent_dead_replicas=deployment_state.list_recent_dead_replicas(),
             )
@@ -7135,8 +7125,7 @@ class DeploymentStateManager:
     def get_deployment_statuses(
         self, ids: Optional[List[DeploymentID]] = None
     ) -> List[DeploymentStatusInfo]:
-        """
-        Return the statuses of the deployments with the given `ids`.
+        """Return the statuses of the deployments with the given `ids`.
         If `ids` is `None`, returns the status of all deployments.
         """
         if ids is None:
@@ -7602,8 +7591,7 @@ class DeploymentStateManager:
         return self._deployment_scheduler.schedule_gang_placement_groups(gang_requests)
 
     def record_request_routing_info(self, info: RequestRoutingInfo) -> None:
-        """
-        Record request routing information for a replica.
+        """Record request routing information for a replica.
 
         Args:
             info: Request routing info including deployment name, replica tag,

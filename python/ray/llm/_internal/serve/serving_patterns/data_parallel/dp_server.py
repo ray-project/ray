@@ -98,8 +98,7 @@ class GangMasterInfoRegistry:
 
 
 class DPServer(LLMServer):
-    """
-    Gang-scheduled Data Parallel LLM Server.
+    """Gang-scheduled Data Parallel LLM Server.
 
     Uses Ray Serve's gang scheduling so that if any replica in a DP group deployment
     fails, the entire group is restarted atomically.

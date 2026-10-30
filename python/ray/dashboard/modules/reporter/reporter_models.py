@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Tuple
 
-from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
+from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
 
 if PYDANTIC_INSTALLED:
     from pydantic import field_validator
@@ -39,6 +39,28 @@ if PYDANTIC_INSTALLED:
         ] = None  # converted to list in _compose_stats_payload
         powerMw: Optional[int] = None  # current power draw in milliwatts
         temperatureC: Optional[int] = None  # temperature in Celsius
+
+    class ProcessNpuInfo(BaseModel):
+        """Ascend NPU memory information for a single process."""
+
+        pid: int
+        npuMemoryUsage: int  # bytes
+
+    class NpuUtilizationInfo(BaseModel):
+        """Ascend NPU utilization information for a single device."""
+
+        index: int  # logical index used by ASCEND_RT_VISIBLE_DEVICES
+        cardId: int
+        deviceId: int
+        physicalId: Optional[int] = None
+        name: str
+        utilizationAicore: Optional[int] = None  # percentage
+        memoryUsed: Optional[int] = None  # bytes
+        memoryTotal: Optional[int] = None  # bytes
+        healthStatus: Optional[int] = None  # 0-3 DCMI severity, 4 means missing
+        powerMw: Optional[int] = None
+        temperatureC: Optional[int] = None
+        processesPids: Optional[List[ProcessNpuInfo]] = None
 
     class TpuUtilizationInfo(BaseModel):
         """
@@ -117,6 +139,7 @@ if PYDANTIC_INSTALLED:
         numFds: Optional[int] = None  # Not available on Windows
         gpuMemoryUsage: Optional[int] = None  # in MB, added by _get_workers
         gpuUtilization: Optional[int] = None  # percentage, added by _get_workers
+        npuMemoryUsage: Optional[int] = None  # in bytes, added by _get_workers
 
         @field_validator("cmdline", mode="before")
         @classmethod
@@ -183,6 +206,9 @@ if PYDANTIC_INSTALLED:
         diskIo: DiskIOStats  # (readBytes, writeBytes, readCount, writeCount)
         diskIoSpeed: DiskIOSpeed  # (readSpeed, writeSpeed, readIops, writeIops)
         gpus: List[GpuUtilizationInfo]
+        # Older Reporter agents do not include this field. Keep a per-payload
+        # empty list default so a newer Dashboard Head can parse their data.
+        npus: List[NpuUtilizationInfo] = Field(default_factory=list)
         tpus: List[TpuUtilizationInfo]
         network: NetworkStats  # (sent, received) in bytes
         networkSpeed: NetworkSpeed  # (sendSpeed, receiveSpeed) in bytes/sec
