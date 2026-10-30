@@ -1463,10 +1463,18 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         #
         # TODO avoid python loop
         expanded_shapes_array = pa.array(
-            [_pad_shape_with_singleton_axes(s, ndim) for s in shapes_array.to_pylist()]
+            [
+                None if s is None else _pad_shape_with_singleton_axes(tuple(s), ndim)
+                for s in shapes_array.to_pylist()
+            ],
+            type=shapes_array.type,
         )
 
-        storage = pa.StructArray.from_arrays([data_array, expanded_shapes_array])
+        storage = pa.StructArray.from_arrays(
+            [data_array, expanded_shapes_array],
+            ["data", "shape"],
+            mask=self.storage.is_null(),
+        )
 
         return target_type.wrap_array(storage)
 
