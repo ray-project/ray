@@ -255,8 +255,18 @@ class VLLMEngineConfig(BaseModelExtended):
         return self.engine_kwargs.get("pipeline_parallel_size", 1)
 
     @property
+    def prefill_context_parallel_degree(self) -> int:
+        return self.engine_kwargs.get("prefill_context_parallel_size", 1)
+
+    @property
     def num_devices(self) -> int:
-        return self.tensor_parallel_degree * self.pipeline_parallel_degree
+        # vLLM runs TP x PP x PCP workers per engine. Decode context
+        # parallelism reuses those ranks and adds no devices.
+        return (
+            self.tensor_parallel_degree
+            * self.pipeline_parallel_degree
+            * self.prefill_context_parallel_degree
+        )
 
     @property
     def placement_strategy(self) -> str:
