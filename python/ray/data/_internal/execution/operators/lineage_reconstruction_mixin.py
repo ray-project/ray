@@ -50,6 +50,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         # A plan that traces back to a queued seed is batched here instead of
         # re-injecting the seed.
         self._batched_plans: Dict[LineageTaskId, Set[ReconstructionPlanId]] = {}
+        # Reconstruction tasks that finished successfully.
+        self._num_reconstruction_tasks_finished = 0
         super().__init__(*args, **kwargs)
 
     @abc.abstractmethod

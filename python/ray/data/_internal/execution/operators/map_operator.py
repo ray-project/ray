@@ -775,6 +775,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     self._release_reconstruction_blocks_to_child(
                         lineage_task_id, reconstruction_plan_ids, task_index
                     )
+                    self._num_reconstruction_tasks_finished += 1
                     for reconstruction_plan_id in sorted_reconstruction_plan_ids:
                         lineage_tracker.register_task_complete(
                             lineage_task_id, reconstruction_plan_id
@@ -853,6 +854,21 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     def has_next(self) -> bool:
         assert self._started
         return self._output_queue.has_next()
+
+    def lineage_recovery_progress_str(self) -> str:
+        if self._lineage_tracker is None:
+            return ""
+        num_queued = len(self._batched_plans)
+        num_running = sum(
+            1 for task in self._data_tasks.values() if task.reconstruction_plan_ids
+        )
+        num_finished = self._num_reconstruction_tasks_finished
+        if not (num_queued or num_running or num_finished):
+            return ""
+        return (
+            f"Recovery: {num_queued} queued, {num_running} running, "
+            f"{num_finished} finished"
+        )
 
     def _get_next_inner(self) -> RefBundle:
         assert self._started

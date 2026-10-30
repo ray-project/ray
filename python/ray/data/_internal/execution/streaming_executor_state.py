@@ -1383,4 +1383,9 @@ def format_op_state_summary(
     if suffix:
         desc += f"; {suffix}"
 
+    # Lineage reconstruction status; empty unless reconstruction is enabled.
+    recovery = op_state.op.lineage_recovery_progress_str()
+    if recovery:
+        desc += f"; {recovery}"
+
     return desc

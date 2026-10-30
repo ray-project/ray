@@ -9,7 +9,7 @@ the bundler.
 
 import pickle
 from dataclasses import replace
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -774,6 +774,56 @@ def test_lost_child_reconstructs_across_graph_shapes(
     # Seeds plus children. A child re-registered under a fresh id would add one.
     (tracker,) = trackers
     assert len(_nodes(tracker)) == num_blocks + num_children
+
+
+def test_recovery_status_counts_queued_running_and_finished():
+    """Queued counts reconstruction tasks not yet submitted, and running counts only
+    tasks serving a plan, once each however many plans they serve."""
+    from types import SimpleNamespace
+
+    # Only the attributes the method reads; cast so it type-checks as ``self``.
+    state = SimpleNamespace(
+        _lineage_tracker=LineageTracker(),
+        _batched_plans={"op:3": set(), "op:4": {"plan_d"}},
+        _data_tasks={
+            0: SimpleNamespace(reconstruction_plan_ids=frozenset()),
+            1: SimpleNamespace(reconstruction_plan_ids=frozenset({"plan_a"})),
+            2: SimpleNamespace(reconstruction_plan_ids=frozenset({"plan_b", "plan_c"})),
+        },
+        _num_reconstruction_tasks_finished=3,
+    )
+    op = cast(MapOperator, state)
+    assert MapOperator.lineage_recovery_progress_str(op) == (
+        "Recovery: 2 queued, 2 running, 3 finished"
+    )
+
+    state._lineage_tracker = None
+    assert MapOperator.lineage_recovery_progress_str(op) == ""
+
+
+@reconstruction_enabled
+def test_recovery_status_records_the_re_run_task(
+    ray_start_regular_shared, lose_output, monkeypatch  # noqa: F405
+):
+    """After a real reconstruction, the seed operator reports the re-run task as
+    finished, with nothing left queued or running."""
+    started_ops = []
+    original_start = MapOperator.start
+
+    def recording_start(self, *args, **kwargs):
+        started_ops.append(self)
+        return original_start(self, *args, **kwargs)
+
+    monkeypatch.setattr(MapOperator, "start", recording_start)
+    fired = lose_output("ReadRange")
+
+    ray.data.range(100, override_num_blocks=4).map(
+        lambda row: {"id": row["id"] * 2}
+    ).take_all()
+
+    assert fired == [0]
+    statuses = [op.lineage_recovery_progress_str() for op in started_ops]
+    assert statuses == ["Recovery: 0 queued, 0 running, 1 finished"]
 
 
 def test_reconstruction_stamp_survives_schema_divergence():
