@@ -368,6 +368,126 @@ def test_uv_run_parser():
     assert command == ["--model", "Qwen/Qwen3-32B"]
 
 
+@pytest.mark.parametrize(
+    "args,expected_command",
+    [
+        # Unknown "--option=value" arguments after the module, as passed by
+        # Ray Client (https://github.com/ray-project/ray/issues/62650).
+        (
+            ["-m", "ray.util.client.server", "--address=127.0.0.1:6379", "--port=1"],
+            ["--address=127.0.0.1:6379", "--port=1"],
+        ),
+        # The same arguments in "--option value" form.
+        (
+            ["-m", "ray.util.client.server", "--address", "127.0.0.1:6379"],
+            ["--address", "127.0.0.1:6379"],
+        ),
+        # uv options in "--option=value" form are consumed by the parser.
+        (
+            ["--with=emoji", "--python=3.11", "-m", "mod", "--address=h:p"],
+            ["--address=h:p"],
+        ),
+        (["--module=mod", "--address=h:p"], ["--address=h:p"]),
+        # An unknown "--option=value" right after 'uv run'.
+        (
+            ["--model=Qwen/Qwen3-32B", "script.py"],
+            ["--model=Qwen/Qwen3-32B", "script.py"],
+        ),
+        # An empty value.
+        (["--no-dev", "-m", "mod", "--model="], ["--model="]),
+        # An unknown option whose value itself looks like "--option=value".
+        (
+            ["--no-dev", "-m", "mod", "--model", "--model=x"],
+            ["--model", "--model=x"],
+        ),
+        # Short options: known ones are consumed, an unknown one ends parsing.
+        (["-p", "3.11", "-m", "mod", "-X", "value"], ["-X", "value"]),
+        (["-p3.11", "-m", "mod", "-Xvalue"], ["-Xvalue"]),
+        # Script form: arguments after the script that look like uv options
+        # belong to the script.
+        (
+            ["--no-project", "script.py", "--python=3.9", "--address=h:p"],
+            ["script.py", "--python=3.9", "--address=h:p"],
+        ),
+        (
+            ["--no-project", "script.py", "--python", "3.9"],
+            ["script.py", "--python", "3.9"],
+        ),
+        # "--" ends the uv options.
+        (
+            ["--no-project", "--", "script.py", "--address=h:p"],
+            ["script.py", "--address=h:p"],
+        ),
+    ],
+)
+def test_uv_run_parser_command_is_suffix(args, expected_command):
+    from ray._private.runtime_env.uv_runtime_env_hook import (
+        _create_uv_run_parser,
+        _parse_args,
+    )
+
+    original_args = list(args)
+    _, command = _parse_args(_create_uv_run_parser(), args)
+
+    assert command == expected_command
+    # The command must be exactly the tail of the arguments, so that the caller
+    # can recover the 'uv run' arguments from its length.
+    assert original_args[len(original_args) - len(command) :] == command
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+@pytest.mark.parametrize(
+    "uv_run_args,expected_py_executable",
+    [
+        # https://github.com/ray-project/ray/issues/62650: Ray Client starts its
+        # server with "--option=value" arguments.
+        (
+            [
+                "-m",
+                "ray.util.client.server",
+                "--address=172.18.0.2:6379",
+                "--host=127.0.0.1",
+                "--port=23007",
+                "--mode=specific-server",
+            ],
+            "uv run --python 3.11 python",
+        ),
+        (
+            ["--no-project", "-m", "mod", "--address", "h:p"],
+            "uv run --no-project --python 3.11 python",
+        ),
+        (
+            ["--with=emoji", "--module=mod", "--address=h:p"],
+            "uv run --with=emoji --python 3.11 python",
+        ),
+        (
+            ["-p", "3.12", "-m", "mod", "-X", "value"],
+            "uv run -p 3.12 python",
+        ),
+        (
+            ["--no-project", "script.py", "--python=3.9", "--address=h:p"],
+            "uv run --no-project --python 3.11 python",
+        ),
+    ],
+)
+def test_uv_run_runtime_env_hook_option_with_equals(
+    monkeypatch, tmp_path, uv_run_args, expected_py_executable
+):
+    from ray._private.runtime_env import uv_runtime_env_hook
+
+    monkeypatch.setattr(
+        uv_runtime_env_hook,
+        "_get_uv_run_cmdline",
+        lambda: ["uv", "run"] + uv_run_args,
+    )
+    monkeypatch.setenv("UV_PYTHON", "3.11")
+    monkeypatch.chdir(tmp_path)
+
+    runtime_env = uv_runtime_env_hook.hook({"working_dir": str(tmp_path)})
+
+    assert runtime_env["py_executable"] == expected_py_executable
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, temp_dir):
     tmp_dir = Path(temp_dir)
