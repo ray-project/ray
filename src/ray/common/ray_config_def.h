@@ -471,6 +471,15 @@ RAY_CONFIG(int, object_manager_pull_timeout_ms, 10000)
 /// 0: giving up retrying immediately.
 RAY_CONFIG(int, object_manager_push_timeout_ms, 10000)
 
+/// Timeout, in milliseconds, for a single object-chunk Push RPC between object
+/// managers. If the RPC does not complete in time, it fails with DEADLINE_EXCEEDED
+/// and releases the chunk's PushManager in-flight slot. The pulling node re-requests
+/// the object on its next pull retry. Without a deadline, a Push RPC that never
+/// completes holds its slot forever. Once all slots leak, the node can no longer
+/// send any object to any node.
+/// -1: no deadline (current behavior).
+RAY_CONFIG(int64_t, object_manager_push_rpc_timeout_ms, -1)
+
 /// Default chunk size for multi-chunk transfers to use in the object manager.
 /// In the object manager, no single thread is permitted to transfer more
 /// data than what is specified by the chunk size unless the number of object

@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/grpc_client_manager.h"
 #include "ray/object_manager_rpc_client/object_manager_client_interface.h"
@@ -55,7 +56,8 @@ class ObjectManagerClient : public ObjectManagerClientInterface {
   VOID_RPC_CLIENT_METHOD(ObjectManagerService,
                          Push,
                          grpc_client_manager_->GetGrpcClient(),
-                         /*method_timeout_ms*/ -1,
+                         /*method_timeout_ms*/
+                         ::RayConfig::instance().object_manager_push_rpc_timeout_ms(),
                          override)
 
   /// Pull object from remote object manager
