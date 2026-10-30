@@ -30,7 +30,10 @@ AuthenticationMode GetAuthenticationMode() {
   if (auth_mode_lower == "token") {
     return AuthenticationMode::TOKEN;
   }
-  RAY_CHECK(auth_mode_lower == "disabled") << InvalidAuthenticationModeError();
+  if (auth_mode_lower != "disabled") {
+    // A config error, not a Ray bug, so not RAY_CHECK.
+    RAY_LOG(FATAL) << InvalidAuthenticationModeError();
+  }
   return AuthenticationMode::DISABLED;
 }
 
