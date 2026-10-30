@@ -152,9 +152,25 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             )
         elif util <= self._actor_pool_scaling_down_threshold:
             if actor_pool.num_pending_actors() > 0:
-                return ActorPoolScalingRequest.no_op(
-                    reason="no downscaling while actors are pending"
-                )
+                num_running_actors = actor_pool.num_running_actors()
+                # Only skip while *every* actor is still starting, so that
+                # start-up and `initial_size` pre-warming are not torn down.
+                if num_running_actors == 0:
+                    return ActorPoolScalingRequest.no_op(
+                        reason="no downscaling while all actors are starting"
+                    )
+                # NOTE: `num_running_actors()` includes restarting actors; don't
+                # shrink a pool that is entirely restarting either.
+                if num_running_actors == actor_pool.num_restarting_actors():
+                    return ActorPoolScalingRequest.no_op(
+                        reason="no downscaling while all actors are restarting"
+                    )
+                # Pending actors carry the resource requests that let the
+                # cluster autoscaler add nodes; keep them while they're needed.
+                if self._should_retain_pending_actors(actor_pool, op_state):
+                    return ActorPoolScalingRequest.no_op(
+                        reason="no downscaling while pending actors are needed"
+                    )
             if actor_pool.current_size() <= actor_pool.min_size():
                 return ActorPoolScalingRequest.no_op(reason="reached min size")
 
@@ -178,6 +194,23 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     f"{self._actor_pool_scaling_up_threshold}]"
                 )
             )
+
+    def _should_retain_pending_actors(
+        self, actor_pool: AutoscalingActorPool, op_state: "OpState"
+    ) -> bool:
+        """Whether the pending actors should be retained for the current workload.
+
+        ``BacklogAwareActorAutoscaler`` overrides this to keep the pending
+        actors while the visible work still justifies the pool size.
+        """
+        # NOTE: `num_running_actors()` includes restarting actors, which cannot
+        # execute tasks. Keep them in the denominator to stay consistent with
+        # `get_pool_util()` and with `num_tasks_in_flight()`, which also counts
+        # tasks still pending on restarting actors (ie "nominal" capacity).
+        running_actor_util = actor_pool.num_tasks_in_flight() / (
+            actor_pool.max_actor_concurrency() * actor_pool.num_running_actors()
+        )
+        return running_actor_util > self._actor_pool_scaling_down_threshold
 
     def _get_actor_pool_max_upscaling_delta(self) -> int:
         return (

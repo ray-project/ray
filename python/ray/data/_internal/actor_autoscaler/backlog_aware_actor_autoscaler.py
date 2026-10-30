@@ -38,6 +38,13 @@ class BacklogAwareActorAutoscaler(DefaultActorAutoscaler):
 
         return min_required_size - current_size
 
+    def _should_retain_pending_actors(
+        self, actor_pool: AutoscalingActorPool, op_state: "OpState"
+    ) -> bool:
+        # The pool is larger than the visible work requires iff the
+        # backlog-derived upscale delta is negative.
+        return self._compute_upscale_delta(actor_pool, op_state) >= 0
+
 
 def _estimate_expected_tasks(
     op_state: "OpState",
