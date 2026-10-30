@@ -292,13 +292,14 @@ class OnlineBinPacker(FilePartitioner):
     :meth:`has_partition` / :meth:`next_partition` as they become available;
     call :meth:`finalize` once all input is added to flush the still-open bins.
 
-    By default it packs globally, with one pool of open bins keyed by file, so
-    it needs every listing row (``requires_global_input=True``). With
-    ``requires_global_input=False`` each listing task packs only its own shard
-    of files, and ``partition_files`` flushes the open bins when the task ends.
-    Listing then runs as parallel tasks, at the cost of at most one under-filled
-    bin per shard. A file's rows never cross shards, because shards split the
-    path list.
+    By default it packs globally, so it needs every listing row
+    (``requires_global_input=True``). Setting ``requires_global_input=False``
+    lets listing run as parallel tasks: the listing planner
+    (``plan_list_files_op``) splits the paths passed to ``read_*`` evenly across
+    up to ``DEFAULT_MAX_NUM_LIST_FILES_TASKS`` (200) tasks, and a folder counts
+    as one path. It still uses one task when the read shuffles files. The cost
+    is that bins may not fill as well, since each task packs only its own
+    files, which may lead to more read tasks.
     """
 
     def __init__(
