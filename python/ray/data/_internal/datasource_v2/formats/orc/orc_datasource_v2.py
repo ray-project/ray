@@ -88,6 +88,7 @@ class OrcDatasourceV2(FileDataSourceV2):
     @property
     @override
     def source_paths(self) -> List[str]:
+        """Override when :attr:`paths` is resolved and loses URI schemes."""
         return self._source_paths
 
     @property
