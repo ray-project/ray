@@ -5,7 +5,6 @@ applications:
         - model_loading_config:
             model_id: qwen3.5-0.8b
             model_source: Qwen/Qwen3.5-0.8B
-          accelerator_type: H100
           deployment_config:
             autoscaling_config:
                 min_replicas: 1
@@ -13,7 +12,6 @@ applications:
         - model_loading_config:
             model_id: qwen3.5-0.8b-secondary
             model_source: Qwen/Qwen3.5-0.8B
-          accelerator_type: H100
           deployment_config:
             autoscaling_config:
                 min_replicas: 1

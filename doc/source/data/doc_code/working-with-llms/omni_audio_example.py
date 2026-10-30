@@ -47,7 +47,6 @@ audio_processor_config = vLLMEngineProcessorConfig(
         limit_mm_per_prompt={"audio": 1},
     ),
     batch_size=16,
-    accelerator_type="H100",
     concurrency=1,
     prepare_multimodal_stage={
         "enabled": True,

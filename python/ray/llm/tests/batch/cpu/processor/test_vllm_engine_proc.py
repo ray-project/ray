@@ -20,7 +20,6 @@ from ray.llm._internal.batch.stages.configs import (
     [(1, "uni"), (2, "ray")],
 )
 def test_vllm_engine_processor(
-    gpu_type,
     tensor_parallel_size,
     expected_distributed_executor_backend,
 ):
@@ -35,7 +34,6 @@ def test_vllm_engine_processor(
                 RANDOM_ENV_VAR="12345",
             ),
         ),
-        accelerator_type=gpu_type,
         concurrency=4,
         batch_size=64,
         max_pending_requests=111,
@@ -83,7 +81,7 @@ def test_vllm_engine_processor(
         assert stage.map_batches_kwargs == {
             "zero_copy_batch": True,
             "max_concurrency": 8,
-            "accelerator_type": gpu_type,
+            "accelerator_type": None,
             "num_gpus": 0,
         }
     else:
@@ -91,7 +89,7 @@ def test_vllm_engine_processor(
         assert stage.map_batches_kwargs == {
             "zero_copy_batch": True,
             "max_concurrency": 8,
-            "accelerator_type": gpu_type,
+            "accelerator_type": None,
             "num_gpus": 1,
         }
 
@@ -139,13 +137,12 @@ def test_vllm_engine_processor_invalid_task():
         )
 
 
-def test_vllm_engine_processor_placement_group(gpu_type):
+def test_vllm_engine_processor_placement_group():
     config = vLLMEngineProcessorConfig(
         model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             max_model_len=8192,
         ),
-        accelerator_type=gpu_type,
         concurrency=4,
         batch_size=64,
         chat_template_stage=ChatTemplateStageConfig(enabled=True),
@@ -161,7 +158,7 @@ def test_vllm_engine_processor_placement_group(gpu_type):
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
         "max_concurrency": 8,
-        "accelerator_type": gpu_type,
+        "accelerator_type": None,
         "num_cpus": 1,
         "num_gpus": 1,
     }
@@ -179,7 +176,7 @@ def test_vllm_engine_processor_placement_group(gpu_type):
     ],
 )
 def test_vllm_engine_processor_bundle_per_worker(
-    gpu_type, engine_kwargs_extra, expected_num_bundles
+    engine_kwargs_extra, expected_num_bundles
 ):
     """Test bundle_per_worker auto-expands based on tp*pp."""
     engine_kwargs = dict(max_model_len=8192)
@@ -187,7 +184,6 @@ def test_vllm_engine_processor_bundle_per_worker(
     config = vLLMEngineProcessorConfig(
         model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=engine_kwargs,
-        accelerator_type=gpu_type,
         concurrency=4,
         batch_size=64,
         chat_template_stage=ChatTemplateStageConfig(enabled=True),
@@ -203,14 +199,14 @@ def test_vllm_engine_processor_bundle_per_worker(
     expected_kwargs = {
         "zero_copy_batch": True,
         "max_concurrency": 8,
-        "accelerator_type": gpu_type,
+        "accelerator_type": None,
     }
 
     if expected_num_bundles > 1:
         # TP/PP > 1 -> executor_backend="ray"
         ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
         assert ray_remote_args_fn.args[0] == expected_num_bundles
-        assert ray_remote_args_fn.args[1] == gpu_type
+        assert ray_remote_args_fn.args[1] is None
         expected_bundles = [{"CPU": 1, "GPU": 1}] * expected_num_bundles
         assert ray_remote_args_fn.args[2]["bundles"] == expected_bundles
         assert ray_remote_args_fn.args[2]["strategy"] == "PACK"
@@ -223,13 +219,12 @@ def test_vllm_engine_processor_bundle_per_worker(
     assert stage.map_batches_kwargs == expected_kwargs
 
 
-def test_vllm_engine_processor_bundle_per_worker_conflict(gpu_type):
+def test_vllm_engine_processor_bundle_per_worker_conflict():
     """Test that specifying both bundle_per_worker and bundles raises error."""
     with pytest.raises(ValueError, match="Cannot specify both"):
         vLLMEngineProcessorConfig(
             model_source="Qwen/Qwen3.5-0.8B",
             engine_kwargs=dict(max_model_len=8192),
-            accelerator_type=gpu_type,
             placement_group_config={
                 "bundle_per_worker": {"CPU": 1, "GPU": 1},
                 "bundles": [{"CPU": 1, "GPU": 1}],
@@ -237,13 +232,12 @@ def test_vllm_engine_processor_bundle_per_worker_conflict(gpu_type):
         )
 
 
-def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_256m):
+def test_prepare_multimodal_stage_vllm_engine_processor(model_smolvlm_256m):
     config = vLLMEngineProcessorConfig(
         model_source=model_smolvlm_256m,
         engine_kwargs=dict(
             max_model_len=8192,
         ),
-        accelerator_type=gpu_type,
         concurrency=1,
         batch_size=16,
         prepare_multimodal_stage=PrepareMultimodalStageConfig(

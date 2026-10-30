@@ -169,9 +169,9 @@ def main(
 
             logger.info(f"Performance test results: {results}")
 
-            accelerator = llm_config.get("accelerator_type", "NoGpu")
+            accelerator = llm_config.get("accelerator_type", "GPU")
             tensor_parallel_size = llm_config["engine_kwargs"].get(
-                "tensor_parallel_size", 0 if accelerator == "NoGpu" else 1
+                "tensor_parallel_size", 1
             )
             tag = f"{accelerator}-TP{tensor_parallel_size}"
             for result in results:

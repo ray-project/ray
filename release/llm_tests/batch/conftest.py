@@ -16,11 +16,6 @@ S3_ARTIFACT_LLM_OSSCI_URL = S3_ARTIFACT_URL + "rayllm-ossci/"
 S3_ARTIFACT_ASSETS_URL = S3_ARTIFACT_LLM_OSSCI_URL + "assets/"
 
 
-@pytest.fixture(scope="session")
-def gpu_type():
-    return "H100"
-
-
 def download_model_from_s3(
     remote_url: str, file_list: List[str]
 ) -> Generator[str, None, None]:

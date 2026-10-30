@@ -14,7 +14,7 @@ from ray.llm._internal.batch.processor.sglang_engine_proc import (
 )
 
 
-def test_sglang_engine_processor(gpu_type):
+def test_sglang_engine_processor():
     config = SGLangEngineProcessorConfig(
         model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
@@ -29,7 +29,6 @@ def test_sglang_engine_processor(gpu_type):
                 RANDOM_ENV_VAR="12345",
             ),
         ),
-        accelerator_type=gpu_type,
         concurrency=4,
         batch_size=64,
         max_concurrent_batches=4,
@@ -69,7 +68,7 @@ def test_sglang_engine_processor(gpu_type):
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
         "max_concurrency": 4,
-        "accelerator_type": gpu_type,
+        "accelerator_type": None,
         "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
     }
 

@@ -8,7 +8,7 @@ from ray.serve.llm.openai_api_models import ChatCompletionRequest, CompletionReq
 
 
 @pytest.fixture
-def create_model_qwen3_5_0_8b_deployment(gpu_type, serve_cleanup):
+def create_model_qwen3_5_0_8b_deployment(serve_cleanup):
     """Create a serve deployment for testing."""
     app_name = "test_serve_deployment_processor_app"
     deployment_name = "test_deployment_name"
@@ -40,7 +40,6 @@ def create_model_qwen3_5_0_8b_deployment(gpu_type, serve_cleanup):
             model_id="Qwen/Qwen3.5-0.8B",
             model_source="Qwen/Qwen3.5-0.8B",
         ),
-        accelerator_type=gpu_type,
         deployment_config=dict(
             name="test_deployment_name",  # This is not necessarily the final deployment name
             autoscaling_config=dict(

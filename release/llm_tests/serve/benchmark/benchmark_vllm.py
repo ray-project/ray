@@ -108,11 +108,12 @@ def _engine_kwarg_to_cli(key, value):
 
 
 def get_ray_options(llm_config):
-    num_gpus = llm_config["tensor_parallelism"]["degree"]
-    acc_type = llm_config["accelerator_type"]
-    resources = {f"accelerator_type:{acc_type}": 0.001}
+    engine_kwargs = llm_config["engine_kwargs"]
+    num_gpus = engine_kwargs.get("tensor_parallel_size", 1) * engine_kwargs.get(
+        "pipeline_parallel_size", 1
+    )
 
-    return {"num_gpus": num_gpus, "resources": resources}
+    return {"num_gpus": num_gpus}
 
 
 def start_vllm_process(vllm_cli_args):
@@ -239,7 +240,7 @@ def main(pargs):
 
     results = run_vllm_benchmark(vllm_cli_args)
 
-    tag = f"{llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
+    tag = f"{llm_config.get('accelerator_type', 'GPU')}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
     service_metadata = {
         "cloud_name": "",
         "service_name": "",

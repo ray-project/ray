@@ -56,7 +56,6 @@ video_processor_config = vLLMEngineProcessorConfig(
         },
     ),
     batch_size=1,
-    accelerator_type="H100",
     concurrency=1,
     prepare_multimodal_stage={
         "enabled": True,

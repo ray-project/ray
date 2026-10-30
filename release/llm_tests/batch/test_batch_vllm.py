@@ -239,7 +239,6 @@ def test_vllm_qwen_parallel(tp_size, pp_size, concurrency):
         tokenize_stage=tokenize,
         detokenize_stage=detokenize,
         batch_size=16,
-        accelerator_type=None,
         concurrency=concurrency,
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
@@ -614,7 +613,6 @@ def test_async_udf_queue_capped(concurrency):
         tokenize_stage=False,
         detokenize_stage=False,
         batch_size=4,
-        accelerator_type=None,
         concurrency=concurrency,
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
@@ -802,7 +800,7 @@ def test_vllm_autoscaling_no_starvation():
 
 
 @pytest.mark.parametrize("backend", ["uni", "mp", "ray"])
-def test_generation_model(gpu_type, backend):
+def test_generation_model(backend):
     chat_template = """
 {% if messages[0]['role'] == 'system' %}
     {% set offset = 1 %}
@@ -836,7 +834,6 @@ def test_generation_model(gpu_type, backend):
             distributed_executor_backend=backend,
         ),
         batch_size=16,
-        accelerator_type=gpu_type,
         concurrency=1,
         chat_template_stage=ChatTemplateStageConfig(
             enabled=True, chat_template=chat_template
@@ -872,7 +869,7 @@ def test_generation_model(gpu_type, backend):
     assert all("resp" in out for out in outs)
 
 
-def test_generation_model_tokenized_prompt(gpu_type):
+def test_generation_model_tokenized_prompt():
     tokenizer = AutoTokenizer.from_pretrained(
         "Qwen/Qwen3.5-0.8B", trust_remote_code=True
     )
@@ -887,7 +884,6 @@ def test_generation_model_tokenized_prompt(gpu_type):
             enforce_eager=True,
         ),
         batch_size=16,
-        accelerator_type=gpu_type,
         concurrency=1,
         chat_template_stage=ChatTemplateStageConfig(enabled=False),
         tokenize_stage=TokenizerStageConfig(enabled=False),
@@ -922,7 +918,7 @@ def test_generation_model_tokenized_prompt(gpu_type):
     assert all("resp" in out for out in outs)
 
 
-def test_embedding_model(gpu_type, model_smolvlm_256m):
+def test_embedding_model(model_smolvlm_256m):
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_smolvlm_256m,
         task_type="embed",
@@ -934,7 +930,6 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
             enforce_eager=True,
         ),
         batch_size=16,
-        accelerator_type=gpu_type,
         concurrency=1,
         chat_template_stage=ChatTemplateStageConfig(enabled=True),
         tokenize_stage=TokenizerStageConfig(enabled=True),
@@ -965,7 +960,7 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
     assert all("prompt" in out for out in outs)
 
 
-def test_classification_model(gpu_type):
+def test_classification_model():
     processor_config = vLLMEngineProcessorConfig(
         model_source="HuggingFaceTB/fineweb-edu-classifier",
         task_type="classify",
@@ -973,7 +968,6 @@ def test_classification_model(gpu_type):
             max_model_len=512,  # Model only supports up to 512 tokens
         ),
         batch_size=16,
-        accelerator_type=gpu_type,
         concurrency=1,
         chat_template_stage=ChatTemplateStageConfig(enabled=False),
         tokenize_stage=TokenizerStageConfig(enabled=True),
@@ -1006,7 +1000,7 @@ def test_classification_model(gpu_type):
 @pytest.mark.parametrize("input_raw_image_data", [True, False])
 @pytest.mark.parametrize("decouple_tokenizer", [True, False])
 def test_vision_model(
-    gpu_type, model_smolvlm_256m, image_asset, input_raw_image_data, decouple_tokenizer
+    model_smolvlm_256m, image_asset, input_raw_image_data, decouple_tokenizer
 ):
     image_url, image_pil = image_asset
     llm_processor_config = vLLMEngineProcessorConfig(
@@ -1020,7 +1014,6 @@ def test_vision_model(
             limit_mm_per_prompt={"image": 1},
         ),
         batch_size=16,
-        accelerator_type=gpu_type,
         concurrency=1,
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,
@@ -1079,9 +1072,7 @@ def test_vision_model(
 
 
 @pytest.mark.parametrize("input_raw_audio_data", [True, False])
-def test_audio_model(
-    gpu_type, model_qwen_2_5_omni_3b, audio_asset, input_raw_audio_data
-):
+def test_audio_model(model_qwen_2_5_omni_3b, audio_asset, input_raw_audio_data):
     audio_url, audio_data = audio_asset
     llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_qwen_2_5_omni_3b,
@@ -1091,7 +1082,6 @@ def test_audio_model(
             limit_mm_per_prompt={"audio": 1},
         ),
         batch_size=16,
-        accelerator_type=gpu_type,
         concurrency=1,
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,

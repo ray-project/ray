@@ -67,7 +67,7 @@ def mock_vllm_wrapper():
         yield mock_wrapper
 
 
-def test_vllm_engine_stage_post_init(gpu_type):
+def test_vllm_engine_stage_post_init():
     stage = vLLMEngineStage(
         fn_constructor_kwargs=dict(
             model="Qwen/Qwen3.5-0.8B",
@@ -83,7 +83,6 @@ def test_vllm_engine_stage_post_init(gpu_type):
             zero_copy_batch=True,
             compute=ActorPoolStrategy(size=1),
             max_concurrency=4,
-            accelerator_type=gpu_type,
         ),
     )
 
@@ -106,7 +105,6 @@ def test_vllm_engine_stage_post_init(gpu_type):
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
         "max_concurrency": 4,
-        "accelerator_type": gpu_type,
         "num_gpus": 0,
     }
     scheduling_strategy = ray_remote_args_fn()["scheduling_strategy"]
@@ -115,7 +113,6 @@ def test_vllm_engine_stage_post_init(gpu_type):
     bundle_specs = scheduling_strategy.placement_group.bundle_specs
     assert len(bundle_specs) == 4
     for bundle_spec in bundle_specs:
-        assert bundle_spec[f"accelerator_type:{gpu_type}"] == 0.001
         assert bundle_spec["CPU"] == 1.0
         assert bundle_spec["GPU"] == 1.0
 

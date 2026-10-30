@@ -187,11 +187,6 @@ def model_qwen_2_5_omni_3b():
     yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
 
 
-@pytest.fixture(scope="session")
-def gpu_type():
-    return "H100"
-
-
 @pytest.fixture
 def serve_cleanup():
     yield

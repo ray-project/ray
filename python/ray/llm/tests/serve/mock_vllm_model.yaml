@@ -11,8 +11,6 @@ llm_engine: vLLM
 engine_kwargs:
   max_model_len: 4096
 
-accelerator_type: A10G
-
 deployment_config:
   autoscaling_config:
     min_replicas: 4

@@ -98,7 +98,7 @@ def mock_sgl_engine():
         yield mock_generate_async
 
 
-def test_sglang_engine_stage_post_init(gpu_type):
+def test_sglang_engine_stage_post_init():
     stage = SGLangEngineStage(
         fn_constructor_kwargs=dict(
             model="Qwen/Qwen3.5-0.8B",
@@ -113,7 +113,6 @@ def test_sglang_engine_stage_post_init(gpu_type):
             zero_copy_batch=True,
             compute=ActorPoolStrategy(size=1),
             max_concurrency=4,
-            accelerator_type=gpu_type,
         ),
     )
 
@@ -135,7 +134,6 @@ def test_sglang_engine_stage_post_init(gpu_type):
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
         "max_concurrency": 4,
-        "accelerator_type": gpu_type,
         "num_gpus": 4,
     }
 

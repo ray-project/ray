@@ -1,8 +1,6 @@
 model_loading_config:
   model_id: Qwen/Qwen3.5-0.8B
 
-accelerator_type: H100
-
 placement_group_config:
   bundles:
     - GPU: 1

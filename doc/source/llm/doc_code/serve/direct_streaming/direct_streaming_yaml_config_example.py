@@ -4,7 +4,7 @@ streaming YAML config.
 
 Structure:
 1. Load the YAML config shown in the guide and convert it to an app with
-   build_openai_app, removing accelerator requirements for CI testing.
+   build_openai_app.
 2. Test validation (deployment status polling + cleanup).
 
 Scope: validates that the documented config.yaml parses into a valid
@@ -29,7 +29,6 @@ with open(config_path, "r") as f:
 
 llm_configs = config_dict["applications"][0]["args"]["llm_configs"]
 for config in llm_configs:
-    config.pop("accelerator_type", None)
     # Disable compile cache to avoid cache corruption in CI
     if "runtime_env" not in config:
         config["runtime_env"] = {}
