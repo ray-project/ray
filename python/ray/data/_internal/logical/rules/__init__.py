@@ -13,6 +13,7 @@ from .eliminate_aggregate_shuffle import (
     EliminateAggregateShuffle,
     EnsureLocalAggregateReadsWholePartitions,
 )
+from .extract_equi_join_keys import ExtractEquiJoinKeys
 from .inherit_target_max_block_size import InheritTargetMaxBlockSizeRule
 from .limit_pushdown import LimitPushdownRule
 from .operator_fusion import FuseOperators, are_remote_args_compatible
@@ -34,6 +35,7 @@ __all__ = [
     "DeriveListFilesPushdown",
     "EliminateAggregateShuffle",
     "EnsureLocalAggregateReadsWholePartitions",
+    "ExtractEquiJoinKeys",
     "FuseOperators",
     "InheritTargetMaxBlockSizeRule",
     "LimitPushdownRule",
