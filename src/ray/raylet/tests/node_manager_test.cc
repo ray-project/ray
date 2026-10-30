@@ -104,6 +104,13 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
     return objects_pending_deletion_->find(object_id) != objects_pending_deletion_->end();
   }
 
+  bool HoldsPrimaryCopy(const ObjectID &object_id) const override {
+    return primary_copies.contains(object_id);
+  }
+
+  // Settable by tests: objects whose primary copy this node holds.
+  absl::flat_hash_set<ObjectID> primary_copies;
+
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) override {}
 
   bool IsSpillingInProgress() override { return false; }
@@ -820,20 +827,42 @@ TEST_F(NodeManagerTest, TestPinAndReportMovedObject) {
   plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   ObjectID id = ObjectID::FromRandom();
 
+  using PinResult = NodeManager::MovedObjectPinResult;
+
+  // This node already holds the primary copy: nothing to do.
+  local_object_manager_->primary_copies.insert(id);
+  EXPECT_EQ(node_manager_->PinAndReportMovedObject(id, owner_addr), PinResult::kPinned);
+  EXPECT_TRUE(local_object_manager_->pinned_objects.empty());
+  EXPECT_TRUE(fake_object_directory_->primary_moved_objects.empty());
+  local_object_manager_->primary_copies.erase(id);
+
   // The object is not in the store: nothing is pinned or reported.
-  EXPECT_FALSE(node_manager_->PinAndReportMovedObject(id, owner_addr));
+  EXPECT_EQ(node_manager_->PinAndReportMovedObject(id, owner_addr),
+            PinResult::kNotInStore);
   EXPECT_TRUE(local_object_manager_->pinned_objects.empty());
   EXPECT_TRUE(fake_object_directory_->primary_moved_objects.empty());
 
   RAY_UNUSED(fake_store_client_->TryCreateImmediately(
       id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
-  EXPECT_TRUE(node_manager_->PinAndReportMovedObject(id, owner_addr));
+  EXPECT_EQ(node_manager_->PinAndReportMovedObject(id, owner_addr), PinResult::kPinned);
   EXPECT_EQ(local_object_manager_->pinned_objects, std::vector<ObjectID>{id});
   EXPECT_EQ(fake_object_directory_->primary_moved_objects, std::vector<ObjectID>{id});
 
   // The object is pending deletion: the pin is refused.
   objects_pending_deletion_->emplace(id);
-  EXPECT_FALSE(node_manager_->PinAndReportMovedObject(id, owner_addr));
+  EXPECT_EQ(node_manager_->PinAndReportMovedObject(id, owner_addr),
+            PinResult::kNotPinnable);
+  EXPECT_EQ(local_object_manager_->pinned_objects.size(), 1u);
+  EXPECT_EQ(fake_object_directory_->primary_moved_objects.size(), 1u);
+
+  // The owner is dead: the pin is refused although the copy is in the store.
+  const ObjectID orphan = ObjectID::FromRandom();
+  RAY_UNUSED(fake_store_client_->TryCreateImmediately(
+      orphan, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  node_manager_->failed_workers_cache_.insert(
+      WorkerID::FromBinary(owner_addr.worker_id()));
+  EXPECT_EQ(node_manager_->PinAndReportMovedObject(orphan, owner_addr),
+            PinResult::kNotPinnable);
   EXPECT_EQ(local_object_manager_->pinned_objects.size(), 1u);
   EXPECT_EQ(fake_object_directory_->primary_moved_objects.size(), 1u);
 }
@@ -850,17 +879,21 @@ ObjectInfo MakeObjectInfo(const ObjectID &object_id, const rpc::Address &owner_a
   return info;
 }
 
+rpc::Address MakeOwnerAddress() {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  owner_address.set_node_id(NodeID::FromRandom().Binary());
+  owner_address.set_ip_address("127.0.0.1");
+  owner_address.set_port(1234);
+  return owner_address;
+}
+
 }  // namespace
 
-/// A received move is pinned as the primary copy when the store reports it
-/// local, with the owner from the object info. An object nobody consumes is
-/// left alone.
+/// A moved object is pinned as the primary copy when it becomes local, with
+/// the owner from the object info. An object nobody moves is left alone.
 TEST_F(NodeManagerTest, TestHandleObjectLocalPinsMovedObject) {
-  rpc::Address owner_addr;
-  owner_addr.set_worker_id(WorkerID::FromRandom().Binary());
-  owner_addr.set_node_id(NodeID::FromRandom().Binary());
-  owner_addr.set_ip_address("127.0.0.1");
-  owner_addr.set_port(1234);
+  const rpc::Address owner_addr = MakeOwnerAddress();
   const ObjectID moved = ObjectID::FromRandom();
   const ObjectID plain = ObjectID::FromRandom();
   plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
@@ -868,7 +901,7 @@ TEST_F(NodeManagerTest, TestHandleObjectLocalPinsMovedObject) {
     RAY_UNUSED(fake_store_client_->TryCreateImmediately(
         id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
   }
-  fake_object_manager_->MarkMovePull(moved);
+  fake_object_manager_->MarkMovePull(moved, WorkerID::FromRandom());
 
   node_manager_->HandleObjectLocal(MakeObjectInfo(plain, owner_addr));
   EXPECT_TRUE(local_object_manager_->pinned_objects.empty());
@@ -877,6 +910,98 @@ TEST_F(NodeManagerTest, TestHandleObjectLocalPinsMovedObject) {
   node_manager_->HandleObjectLocal(MakeObjectInfo(moved, owner_addr));
   EXPECT_EQ(local_object_manager_->pinned_objects, std::vector<ObjectID>{moved});
   EXPECT_EQ(fake_object_directory_->primary_moved_objects, std::vector<ObjectID>{moved});
+}
+
+/// When the copy left the store before it could be pinned, the record survives
+/// the cancel of the wait pull, so the fetch of the object by the worker that moves it
+/// pulls it as a move. A pinned copy, or one that must not be pinned because it
+/// is being freed, leaves no record behind.
+TEST_F(NodeManagerTest, TestHandleObjectLocalKeepsRecordAfterPinMiss) {
+  const rpc::Address owner_addr = MakeOwnerAddress();
+  const WorkerID consumer = WorkerID::FromRandom();
+  const ObjectID evicted = ObjectID::FromRandom();
+  const ObjectID present = ObjectID::FromRandom();
+  const ObjectID freed = ObjectID::FromRandom();
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  for (const ObjectID &id : {present, freed}) {
+    RAY_UNUSED(fake_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+  objects_pending_deletion_->emplace(freed);
+  std::vector<rpc::ObjectReference> refs;
+  for (const ObjectID &id : {evicted, present, freed}) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(id.Binary());
+    *ref.mutable_owner_address() = owner_addr;
+    refs.push_back(ref);
+  }
+  lease_dependency_manager_->StartOrUpdateWaitRequest(consumer, refs);
+  ASSERT_EQ(fake_object_manager_->pull_calls.size(), 3u);
+  for (const ObjectID &id : {evicted, present, freed}) {
+    fake_object_manager_->MarkMovePull(id, consumer);
+  }
+
+  node_manager_->HandleObjectLocal(MakeObjectInfo(evicted, owner_addr));
+  EXPECT_TRUE(local_object_manager_->pinned_objects.empty());
+  EXPECT_EQ(fake_object_manager_->cancel_pull_calls.size(), 1u);
+  EXPECT_EQ(fake_object_manager_->GetMovePullRequester(evicted), consumer);
+
+  node_manager_->HandleObjectLocal(MakeObjectInfo(present, owner_addr));
+  EXPECT_EQ(local_object_manager_->pinned_objects, std::vector<ObjectID>{present});
+  EXPECT_EQ(fake_object_manager_->cancel_pull_calls.size(), 2u);
+  EXPECT_FALSE(fake_object_manager_->IsMovePull(present));
+
+  node_manager_->HandleObjectLocal(MakeObjectInfo(freed, owner_addr));
+  EXPECT_EQ(local_object_manager_->pinned_objects, std::vector<ObjectID>{present});
+  EXPECT_EQ(fake_object_manager_->cancel_pull_calls.size(), 3u);
+  EXPECT_FALSE(fake_object_manager_->IsMovePull(freed));
+}
+
+/// Each moved arg of an actor task is handled once, before the wait that
+/// fetches the args: skipped if this node holds its primary copy, pinned now if
+/// a copy is here, recorded as a move otherwise or if the copy is gone, and
+/// left alone if the copy here is being freed.
+TEST_F(NodeManagerTest, TestHandleMovedActorCallArgs) {
+  const rpc::Address owner_addr = MakeOwnerAddress();
+  const WorkerID consumer = WorkerID::FromRandom();
+  const ObjectID primary_here = ObjectID::FromRandom();
+  const ObjectID copy_here = ObjectID::FromRandom();
+  const ObjectID copy_gone = ObjectID::FromRandom();
+  const ObjectID copy_freed = ObjectID::FromRandom();
+  const ObjectID remote = ObjectID::FromRandom();
+  const ObjectID not_moved = ObjectID::FromRandom();
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  for (const ObjectID &id : {copy_here, copy_freed}) {
+    RAY_UNUSED(fake_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+  objects_pending_deletion_->emplace(copy_freed);
+  local_object_manager_->primary_copies.insert(primary_here);
+  // The raylet believes all three copies are local; copy_gone no longer is.
+  for (const ObjectID &id : {copy_here, copy_gone, copy_freed}) {
+    RAY_UNUSED(lease_dependency_manager_->HandleObjectLocal(id));
+  }
+
+  std::vector<rpc::ObjectReference> refs;
+  for (const ObjectID &id :
+       {primary_here, copy_here, copy_gone, copy_freed, remote, remote, not_moved}) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(id.Binary());
+    *ref.mutable_owner_address() = owner_addr;
+    refs.push_back(ref);
+  }
+  node_manager_->HandleMovedActorCallArgs(
+      consumer, refs, {true, true, true, true, true, true, false});
+
+  EXPECT_EQ(local_object_manager_->pinned_objects, std::vector<ObjectID>{copy_here});
+  EXPECT_EQ(fake_object_directory_->primary_moved_objects,
+            std::vector<ObjectID>{copy_here});
+  EXPECT_FALSE(fake_object_manager_->IsMovePull(primary_here));
+  EXPECT_FALSE(fake_object_manager_->IsMovePull(copy_here));
+  EXPECT_FALSE(fake_object_manager_->IsMovePull(copy_freed));
+  EXPECT_FALSE(fake_object_manager_->IsMovePull(not_moved));
+  EXPECT_EQ(fake_object_manager_->GetMovePullRequester(copy_gone), consumer);
+  EXPECT_EQ(fake_object_manager_->GetMovePullRequester(remote), consumer);
 }
 
 TEST_F(NodeManagerTest, TestConsumeSyncMessages) {

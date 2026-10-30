@@ -14,10 +14,11 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "ray/object_manager/object_manager_interface.h"
 
 namespace ray {
@@ -31,19 +32,41 @@ class FakeObjectManager : public ObjectManagerInterface {
                 BundlePriority prio,
                 const TaskMetricsKey &task_key) override {
     pull_calls.push_back(object_refs);
+    pulled_objects_by_request[next_pull_request_id] = ObjectRefsToIds(object_refs);
     return next_pull_request_id++;
   }
 
+  // Cancelling erases the move records of the bundle's objects, as the real
+  // object manager does when no other pull needs them.
   void CancelPull(uint64_t request_id) override {
     cancel_pull_calls.push_back(request_id);
+    for (const auto &object_id : pulled_objects_by_request[request_id]) {
+      move_pulls.erase(object_id);
+    }
   }
 
-  void MarkMovePull(const ObjectID &object_id) override {
-    move_pull_object_ids.insert(object_id);
+  void MarkMovePull(const ObjectID &object_id, const WorkerID &worker_id) override {
+    move_pulls[object_id] = worker_id;
   }
 
   bool IsMovePull(const ObjectID &object_id) const override {
-    return move_pull_object_ids.contains(object_id);
+    return move_pulls.contains(object_id);
+  }
+
+  std::optional<WorkerID> GetMovePullRequester(const ObjectID &object_id) const override {
+    auto it = move_pulls.find(object_id);
+    return it == move_pulls.end() ? std::nullopt : std::optional<WorkerID>(it->second);
+  }
+
+  void EraseMovePullsRequestedBy(const WorkerID &worker_id) override {
+    erase_move_pulls_calls.push_back(worker_id);
+    for (auto it = move_pulls.begin(); it != move_pulls.end();) {
+      if (it->second == worker_id) {
+        move_pulls.erase(it++);
+      } else {
+        ++it;
+      }
+    }
   }
 
   void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) override {
@@ -109,7 +132,9 @@ class FakeObjectManager : public ObjectManagerInterface {
   // Programmable state / recorded calls.
   uint64_t next_pull_request_id = 1;
   std::vector<std::vector<rpc::ObjectReference>> pull_calls;
-  absl::flat_hash_set<ObjectID> move_pull_object_ids;
+  absl::flat_hash_map<uint64_t, std::vector<ObjectID>> pulled_objects_by_request;
+  absl::flat_hash_map<ObjectID, WorkerID> move_pulls;
+  std::vector<WorkerID> erase_move_pulls_calls;
   std::vector<uint64_t> cancel_pull_calls;
   std::vector<ObjectID> mark_object_failed_calls;
   std::vector<ObjectID> freed_objects;

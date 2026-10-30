@@ -260,19 +260,47 @@ void ObjectManager::CancelPull(uint64_t request_id) {
   if (!objects_to_cancel.empty()) {
     absl::MutexLock lock(&move_pull_mutex_);
     for (const auto &object_id : objects_to_cancel) {
-      move_pull_object_ids_.erase(object_id);
+      move_pulls_.erase(object_id);
     }
   }
 }
 
-void ObjectManager::MarkMovePull(const ObjectID &object_id) {
+void ObjectManager::MarkMovePull(const ObjectID &object_id, const WorkerID &worker_id) {
   absl::MutexLock lock(&move_pull_mutex_);
-  move_pull_object_ids_.insert(object_id);
+  auto inserted = move_pulls_.emplace(object_id, worker_id);
+  if (!inserted.second && inserted.first->second != worker_id) {
+    // The worker that was to move the object died while another pull kept its
+    // record; a retry on this node takes the object over.
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Move record passes from worker " << inserted.first->second << " to worker "
+        << worker_id;
+    inserted.first->second = worker_id;
+  }
 }
 
 bool ObjectManager::IsMovePull(const ObjectID &object_id) const {
   absl::ReaderMutexLock lock(&move_pull_mutex_);
-  return move_pull_object_ids_.contains(object_id);
+  return move_pulls_.contains(object_id);
+}
+
+std::optional<WorkerID> ObjectManager::GetMovePullRequester(
+    const ObjectID &object_id) const {
+  absl::ReaderMutexLock lock(&move_pull_mutex_);
+  auto it = move_pulls_.find(object_id);
+  return it == move_pulls_.end() ? std::nullopt : std::optional<WorkerID>(it->second);
+}
+
+void ObjectManager::EraseMovePullsRequestedBy(const WorkerID &worker_id) {
+  absl::MutexLock lock(&move_pull_mutex_);
+  for (auto it = move_pulls_.begin(); it != move_pulls_.end();) {
+    // A record that a pull still needs is left to that pull: CancelPull erases it
+    // when the pull ends, and until then the copy must still arrive as a move.
+    if (it->second == worker_id && !pull_manager_->HasObjectPullRequest(it->first)) {
+      move_pulls_.erase(it++);
+    } else {
+      ++it;
+    }
+  }
 }
 
 void ObjectManager::MarkObjectFailed(const ObjectID &object_id,
@@ -783,7 +811,7 @@ std::string ObjectManager::DebugString() const {
          << num_chunks_received_failed_due_to_plasma_;
   {
     absl::ReaderMutexLock lock(&move_pull_mutex_);
-    result << "\n- num move pull records: " << move_pull_object_ids_.size();
+    result << "\n- num move pull records: " << move_pulls_.size();
   }
   result << "\nEvent stats:" << rpc_service_.stats()->StatsString();
   result << "\n" << push_manager_->DebugString();
