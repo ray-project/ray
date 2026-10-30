@@ -1,3 +1,4 @@
+from itertools import chain
 from typing import Iterable, List
 
 from ray.data._internal import shuffle_batches as shuffle_batches_impl
@@ -12,7 +13,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import ShuffleBatches
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 
@@ -29,16 +30,32 @@ def plan_shuffle_batches_op(
     batch_size = op.batch_size
 
     def shuffle_batches(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+        blocks_iter = iter(blocks)
+        first_block = next(blocks_iter, None)
+        if first_block is None:
+            return
+        empty_block = (
+            first_block
+            if BlockAccessor.for_block(first_block).num_rows() == 0
+            else None
+        )
         batches = batch_blocks(
-            blocks=iter(blocks),
+            blocks=chain((first_block,), blocks_iter),
             stats=None,
             batch_size=batch_size,
             batch_format=None,
             ensure_copy=False,
         )
+        del first_block
+        has_batches = False
         # Restart enumeration for every attempt, including in-process retries.
         for batch_idx, batch in enumerate(batches):
+            has_batches = True
             yield shuffle_fn(batch, seed_config, batch_idx=batch_idx)
+        if not has_batches and empty_block is not None:
+            # Batching skips empty inputs. Preserve their native schema instead
+            # of letting output shaping synthesize an untyped empty block.
+            yield empty_block
 
     # Preserve native blocks through output shaping. Batch-map output builders
     # can convert Pandas batches to Arrow, changing the schema of a permutation.

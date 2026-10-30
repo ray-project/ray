@@ -478,6 +478,47 @@ class ShuffleBatchesTests(unittest.TestCase):
         self.assertEqual(len(shuffle), 1)
         self.assertFalse(shuffle[0].supports_fusion())
 
+    def test_empty_input_preserves_schema_after_materialization(self):
+        tables = [
+            pa.table(
+                {
+                    "id": pa.array([], type=pa.int64()),
+                    "label": pa.array([], type=pa.string()),
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "id": pd.Series([], dtype="Int64"),
+                    "label": pd.Series([], dtype="category"),
+                }
+            ),
+        ]
+        for table in tables:
+            source = (
+                ray.data.from_arrow(table)
+                if isinstance(table, pa.Table)
+                else ray.data.from_pandas(table)
+            )
+            schema = source.schema()
+            for batch_size in (None, 8):
+                with self.subTest(format=type(table).__name__, batch_size=batch_size):
+                    shuffled = source.shuffle_batches(batch_size=batch_size, seed=42)
+                    self.assertEqual(shuffled.schema(fetch_if_missing=False), schema)
+                    output = shuffled.materialize()
+                    self.assertEqual(output.schema(), schema)
+                    self.assertEqual(output.take_all(), [])
+
+    def test_empty_blocks_do_not_change_nonempty_permutations(self):
+        tables = [pa.table({"id": np.arange(start, start + 8)}) for start in (0, 8)]
+        empty = tables[0].slice(0, 0)
+        source = ray.data.from_arrow(tables)
+        with_empty = ray.data.from_arrow([empty, tables[0], empty, tables[1], empty])
+        for batch_size in (None, 4):
+            with self.subTest(batch_size=batch_size):
+                expected = self.ids(source.shuffle_batches(batch_size, seed=42))
+                actual = self.ids(with_empty.shuffle_batches(batch_size, seed=42))
+                self.assertEqual(actual, expected)
+
     def test_small_and_empty_inputs(self):
         self.assertEqual(
             self.ids(_shuffle(self.source([7]), 1, seed=42)), list(range(7))
