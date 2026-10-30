@@ -858,6 +858,21 @@ class BayesOptNestedPointsToEvaluateTest(unittest.TestCase):
         searcher.on_trial_complete("t0", {"loss": 1.0})
         self.assertEqual(len(searcher.optimizer.space), 1)
 
+    def testNestedAnalysisConfigIsRegistered(self):
+        """``register_analysis`` must accept nested configs from a past run."""
+        pytest.importorskip("bayes_opt")
+        from ray.tune.search.bayesopt import BayesOptSearch
+
+        searcher = BayesOptSearch(metric="loss", mode="min")
+        searcher.set_search_properties(
+            None, None, {"a": {"x": tune.uniform(0, 1)}, "y": tune.uniform(0, 1)}
+        )
+        analysis = unittest.mock.MagicMock()
+        analysis.dataframe.return_value = pandas.DataFrame({"loss": [1.0]})
+        analysis.get_all_configs.return_value = {"t0": {"a": {"x": 0.5}, "y": 0.25}}
+        searcher.register_analysis(analysis)
+        self.assertEqual(len(searcher.optimizer.space), 1)
+
 
 class BayesOptConvergenceWarningTest(unittest.TestCase):
     def testWarnsAndStopsOnConvergence(self):
