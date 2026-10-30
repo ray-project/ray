@@ -32,12 +32,21 @@ SAMPLE_RATE = "1s"
 class PrometheusQuery(Enum):
     """Enum to store types of Prometheus queries for a given metric and grouping."""
 
-    VALUE = ("value", "sum({}{{SessionName='{}'}}) by ({})")
+    VALUE = ("value", "sum({}{{SessionName='{}'{}}}) by ({})")
     MAX = (
         "max",
-        "max_over_time(sum({}{{SessionName='{}'}}) by ({})["
+        "max_over_time(sum({}{{SessionName='{}'{}}}) by ({})["
         + f"{MAX_TIME_WINDOW}:{SAMPLE_RATE}])",
     )
+
+
+def _format_query(
+    prom_query: str, metric: str, session_name: str, group_by: str
+) -> str:
+    # Multi-phase operators also export each phase as "<operator>/<phase>",
+    # repeating the operator's values, so dataset-level sums must skip them.
+    label_filter = ", operator!~'.*/.*'" if group_by == "dataset" else ""
+    return prom_query.format(metric, session_name, label_filter, group_by)
 
 
 DATASET_METRICS = {
@@ -89,7 +98,9 @@ class DataHead(SubprocessModule):
                         query_name, prom_query = query.value
                         # Dataset level
                         dataset_result = await self._query_prometheus(
-                            prom_query.format(metric, self.session_name, "dataset")
+                            _format_query(
+                                prom_query, metric, self.session_name, "dataset"
+                            )
                         )
                         for res in dataset_result["data"]["result"]:
                             dataset, value = res["metric"]["dataset"], res["value"][1]
@@ -98,8 +109,11 @@ class DataHead(SubprocessModule):
 
                         # Operator level
                         operator_result = await self._query_prometheus(
-                            prom_query.format(
-                                metric, self.session_name, "dataset, operator"
+                            _format_query(
+                                prom_query,
+                                metric,
+                                self.session_name,
+                                "dataset, operator",
                             )
                         )
                         for res in operator_result["data"]["result"]:

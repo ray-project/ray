@@ -29,14 +29,17 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
-    estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.hash_shuffle import (
     _get_total_cluster_resources,
 )
+from ray.data._internal.execution.operators.shuffle_phase_metrics import (
+    PhaseSpec,
+    ShuffleOperatorMetrics,
+)
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.stats import OpRuntimeMetrics
-from ray.data.block import Block, BlockAccessor, BlockStats, to_stats
+from ray.data._internal.stats import OpRuntimeMetrics, StatsDict
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
@@ -418,6 +421,8 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     single call.
     """
 
+    _FINALIZE_PROGRESS_BAR_NAME = "GPU Reduce"
+
     def __init__(
         self,
         input_op: PhysicalOperator,
@@ -476,16 +481,19 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._extraction_tasks: Dict[int, DataOpTask] = {}
         self._finalization_started: bool = False
         self._output_queue: ReorderingBundleQueue = ReorderingBundleQueue()
-        self._shuffled_blocks_stats: List[BlockStats] = []
-        self._output_blocks_stats: List[BlockStats] = []
-
-        # Progress bars (populated by SubProgressBarMixin callbacks)
-        self._shuffle_bar = None
-        self._reduce_bar = None
-
-        # Metrics
-        self._shuffle_metrics = OpRuntimeMetrics(self)
-        self._reduce_metrics = OpRuntimeMetrics(self)
+        self._phase_metrics = ShuffleOperatorMetrics(
+            self,
+            self._metrics,
+            [
+                PhaseSpec("shuffle", "GPU Shuffle"),
+                PhaseSpec(
+                    "finalize",
+                    self._FINALIZE_PROGRESS_BAR_NAME,
+                    is_output_phase=True,
+                    total_num_tasks=nranks,
+                ),
+            ],
+        )
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -501,17 +509,26 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._rank_pool.start()
 
     def _add_input_inner(self, bundle: RefBundle, input_index: int) -> None:
-        self._shuffle_metrics.on_input_received(bundle)
-        self._shuffled_blocks_stats.extend(to_stats(bundle.metadata))
+        shuffle_metrics = self._phase_metrics.phase_metrics["shuffle"]
+        shuffle_metrics.metrics.on_input_received(bundle)
 
         for block_ref, metadata in zip(bundle.block_refs, bundle.metadata):
             actor = self._rank_pool.get_actor_for_block(self._next_block_idx)
             insert_ref = actor.insert_batch.remote(block_ref)
             task_idx = self._next_block_idx
             self._next_block_idx += 1
+            # Metrics-only view of the block; the actor owns the data once inserted.
+            inserted = RefBundle(
+                [BlockEntry(block_ref, metadata)], schema=None, owns_blocks=False
+            )
 
-            def _on_insert_done(idx: int = task_idx) -> None:
+            def _on_insert_done(
+                idx: int = task_idx, inserted: RefBundle = inserted
+            ) -> None:
                 self._insert_tasks.pop(idx, None)
+                shuffle_metrics.on_task_finished(idx, None, None, None)
+                shuffle_metrics.record_block_stats(*inserted.metadata)
+                shuffle_metrics.update_progress(increment=inserted.num_rows() or 0)
 
             task = MetadataOpTask(
                 task_index=task_idx,
@@ -520,18 +537,12 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 task_resource_bundle=None,
             )
             self._insert_tasks[task_idx] = task
-            self._shuffle_metrics.on_task_submitted(
-                task_idx,
-                RefBundle(
-                    [BlockEntry(block_ref, metadata)],
-                    schema=None,
-                    owns_blocks=False,
-                ),
-                task_id=task.get_task_id(),
+            shuffle_metrics.on_task_submitted(
+                task_idx, inserted, task_id=task.get_task_id()
             )
-
-            if self._shuffle_bar is not None:
-                self._shuffle_bar.update(total=self._next_block_idx)
+            shuffle_metrics.update_progress(
+                total=shuffle_metrics.metrics.rows_inputs_of_submitted_tasks
+            )
 
     def _is_inserting_done(self) -> bool:
         return self._inputs_complete and len(self._insert_tasks) == 0
@@ -542,14 +553,15 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
 
         self._finalization_started = True
-        # Running count of partitions extracted, used for metrics only.
-        # Real partition_id is read from each block's Arrow schema metadata
-        # ("_gpu_partition_id"), embedded by the actor because rapidsmpf's
-        # extract() uses wait_any() and yields in completion order, not
-        # partition order.
-        self._num_partitions_reduced = 0
+        shuffle_metrics = self._phase_metrics.phase_metrics["shuffle"]
+        finalize_metrics = self._phase_metrics.phase_metrics["finalize"]
+        # Shuffle preserves rows, so input rows are the exact output total (an
+        # upper bound for aggregation); the estimator refines it as ranks finish.
+        finalize_metrics.update_progress(
+            total=shuffle_metrics.metrics.rows_inputs_of_submitted_tasks
+        )
 
-        def _on_bundle_ready(bundle: RefBundle) -> None:
+        def _on_bundle_ready(bundle: RefBundle, rank: int) -> None:
             assert (
                 bundle.schema is not None
                 and _GPU_PARTITION_ID_KEY in bundle.schema.metadata
@@ -568,14 +580,6 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 schema=bundle.schema.with_metadata(clean_meta or None),
                 owns_blocks=bundle.owns_blocks,
             )
-            self._num_partitions_reduced += 1
-
-            # Register a logical reduce "task" for this partition, mirroring
-            # the per-partition task lifecycle in the CPU path.
-            empty_bundle = RefBundle([], schema=None, owns_blocks=False)
-            self._reduce_metrics.on_task_submitted(
-                partition_id, empty_bundle, task_id=None
-            )
 
             # Add to the reordering queue keyed by partition_id so output is
             # always emitted in partition order (0, 1, 2, ...) regardless of
@@ -583,34 +587,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._output_queue.add(bundle, key=partition_id)
             self._output_queue.finalize(key=partition_id)
 
-            # Update Finalize Metrics on task output generated
-            self._reduce_metrics.on_output_queued(bundle)
-            self._reduce_metrics.on_task_output_generated(
-                task_index=partition_id, output=bundle
-            )
-
-            # Mark the logical partition task as finished (each GPU
-            # partition produces exactly one block).
-            self._reduce_metrics.on_task_finished(
-                task_index=partition_id,
-                exception=None,
-                task_exec_stats=None,
-                task_exec_driver_stats=None,
-            )
-
-            _, num_outputs, num_rows = estimate_total_num_of_blocks(
-                self._num_partitions_reduced,
-                self.upstream_op_num_outputs(),
-                self._reduce_metrics,
-                total_num_tasks=self._num_partitions,
-            )
-            self._estimated_num_output_bundles = num_outputs
-            self._estimated_output_num_rows = num_rows
-
-            # Update Finalize progress bar
-            self._reduce_bar.update(
-                increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
-            )
+            finalize_metrics.on_task_output(rank, bundle)
+            finalize_metrics.on_output_queued(bundle)
+            finalize_metrics.update_progress(increment=bundle.num_rows() or 0)
 
         def _on_extraction_done(
             exc: Optional[Exception],
@@ -620,6 +599,12 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             rank: int = -1,
         ) -> None:
             self._extraction_tasks.pop(rank, None)
+            finalize_metrics.on_task_finished(rank, exc, worker_stats, driver_stats)
+            # The per-task output average only exists once a rank has finished.
+            self._phase_metrics.update_output_estimates(
+                finalize_metrics, self._rank_pool.nranks
+            )
+            finalize_metrics.update_progress(total=self.num_output_rows_total())
             if not self._extraction_tasks:
                 # release GPU actors so downstream operators can acquire those GPUs
                 self._rank_pool.shutdown()
@@ -634,12 +619,19 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 streaming_gen=block_gen,
                 block_ref_counter=self._block_ref_counter,
                 producer_id=self.id,
-                output_ready_callback=_on_bundle_ready,
+                output_ready_callback=functools.partial(
+                    _on_bundle_ready, rank=rank_idx
+                ),
                 task_done_callback=functools.partial(
                     _on_extraction_done, rank=rank_idx
                 ),
             )
             self._extraction_tasks[rank_idx] = data_task
+            finalize_metrics.on_task_submitted(
+                rank_idx,
+                RefBundle([], schema=None, owns_blocks=False),
+                task_id=data_task.get_task_id(),
+            )
 
     # ------------------------------------------------------------------
     # Output interface
@@ -651,9 +643,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def _get_next_inner(self) -> RefBundle:
         bundle = self._output_queue.get_next()
-        self._reduce_metrics.on_output_dequeued(bundle)
-        self._reduce_metrics.on_output_taken(bundle)
-        self._output_blocks_stats.extend(to_stats(bundle.metadata))
+        finalize_metrics = self._phase_metrics.phase_metrics["finalize"]
+        finalize_metrics.on_output_dequeued(bundle)
+        finalize_metrics.record_block_stats(*bundle.metadata)
         return bundle
 
     # ------------------------------------------------------------------
@@ -715,26 +707,26 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         )
 
     # ------------------------------------------------------------------
-    # SubProgressBarMixin
+    # Metrics, progress bars and stats
     # ------------------------------------------------------------------
+
+    def _extra_metrics(self) -> Dict[str, Any]:
+        return self._phase_metrics.extra_metrics()
+
+    def get_phase_metrics(self) -> Dict[str, OpRuntimeMetrics]:
+        return self._phase_metrics.runtime_metrics_by_phase()
+
+    def num_outputs_total(self) -> Optional[int]:
+        return self._phase_metrics.estimated_num_output_bundles
+
+    def num_output_rows_total(self) -> Optional[int]:
+        return self._phase_metrics.estimated_output_num_rows
 
     def get_sub_progress_bar_names(self) -> List[str]:
-        return ["GPU Shuffle", "GPU Reduce"]
+        return self._phase_metrics.progress_bar_names()
 
     def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "GPU Shuffle":
-            self._shuffle_bar = pg
-        elif name == "GPU Reduce":
-            self._reduce_bar = pg
+        self._phase_metrics.set_progress_bar(name, pg)
 
-    # ------------------------------------------------------------------
-    # Stats
-    # ------------------------------------------------------------------
-
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
-        shuffle_name = f"{self._name}_shuffle"
-        reduce_name = f"{self._name}_finalize"
-        return {
-            shuffle_name: self._shuffled_blocks_stats,
-            reduce_name: self._output_blocks_stats,
-        }
+    def get_stats(self) -> StatsDict:
+        return self._phase_metrics.stats()
