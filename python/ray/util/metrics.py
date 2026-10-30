@@ -174,7 +174,7 @@ class Metric:
         return {"default_tags": self._default_tags.copy()}
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
-        if state and "default_tags" in state:
+        if isinstance(state, dict) and "default_tags" in state:
             self.set_default_tags(state["default_tags"])
 
 
