@@ -2257,6 +2257,18 @@ py_test(
 # Tag: core
 # --------------------------------------------------------------------
 
+py_test(
+    name = "execution/tests/test_rollout_ops",
+    size = "medium",
+    srcs = ["execution/tests/test_rollout_ops.py"],
+    tags = [
+        "core",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Catalog
 py_test(
     name = "test_catalog",
