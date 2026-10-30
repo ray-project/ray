@@ -9,6 +9,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     List,
     Literal,
     Optional,
@@ -5239,11 +5240,16 @@ def from_numpy_refs(
 
 @PublicAPI
 def from_arrow(
-    tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
+    tables: Union[
+        "pyarrow.Table",
+        bytes,
+        List[Union["pyarrow.Table", bytes]],
+        Iterable[Union["pyarrow.Table", bytes]],
+    ],
     *,
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a list of PyArrow tables.
+    """Create a :class:`~ray.data.Dataset` from PyArrow tables.
 
     Examples:
         >>> import pyarrow as pa
@@ -5274,10 +5280,29 @@ def from_arrow(
         ╰───────╯
         (Showing 2 of 2 rows)
 
+        Create a Ray Dataset from an iterable of PyArrow tables. The iterable is
+        consumed one table at a time, so a generator can yield more data than
+        fits in the driver's memory.
+
+        >>> ray.data.from_arrow(pa.table({"x": [i]}) for i in [0, 1])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 0     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
+
 
     Args:
-        tables: A PyArrow table, or a list of PyArrow tables,
-                or its streaming format in bytes.
+        tables: A PyArrow table, or a list or other iterable of PyArrow tables,
+                or its streaming format in bytes. Passing an iterable together
+                with ``override_num_blocks`` consumes it into memory, because
+                splitting the input into a fixed number of blocks needs all of
+                the data.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
@@ -5296,6 +5321,20 @@ def from_arrow(
     if override_num_blocks is not None:
         if override_num_blocks <= 0:
             raise ValueError("override_num_blocks must be > 0")
+        # Splitting the input into a fixed number of blocks needs every table, so
+        # an iterable has to be consumed here. Re-chunking concatenates and
+        # slices the tables, which the Arrow IPC byte form supports neither of,
+        # so parse those now as well.
+        from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+        tables = [
+            ArrowBlockAccessor.from_bytes(table).to_arrow()
+            if isinstance(table, bytes)
+            else table
+            for table in tables
+        ]
+
+    if override_num_blocks is not None and tables:
         combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
         total_rows = len(combined_table)
 
