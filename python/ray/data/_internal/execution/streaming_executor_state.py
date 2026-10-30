@@ -404,7 +404,8 @@ class OpState:
         # Set when a consumer takes output, starts waiting for it, or reports
         # fewer buffered bytes than before. The scheduling loop clears it before
         # reading budgets and waits on it while every active task is
-        # output-backpressured.
+        # output-backpressured, or while it has nothing to wait on, pull or
+        # dispatch.
         self.consumer_activity = threading.Event()
 
     @property

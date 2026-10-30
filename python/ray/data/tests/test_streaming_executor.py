@@ -1001,6 +1001,32 @@ def test_set_external_consumer_bytes_wakes_only_when_bytes_drop(
     assert output_state.consumer_activity.is_set() == expect_wakeup
 
 
+@pytest.mark.parametrize(
+    "consumer_idle,active_tasks,has_output,expected",
+    [
+        (False, [], False, True),
+        (True, [], False, False),
+        (False, [MagicMock(spec=DataOpTask)], False, False),
+        (False, [MagicMock(spec=MetadataOpTask)], False, False),
+        (False, [], True, False),
+    ],
+    ids=["waits", "consumer_idle", "data_task", "actor_ready_task", "output"],
+)
+def test_should_wait_for_consumer_activity(
+    consumer_idle, active_tasks, has_output, expected, ray_start_regular_shared
+):
+    topo, o2, _ = _make_two_op_topology()
+    for op in topo:
+        op.has_next = MagicMock(return_value=False)
+    o2.get_active_tasks = MagicMock(return_value=active_tasks)
+    o2.has_next = MagicMock(return_value=has_output)
+    executor = MagicMock()
+    executor._consumer_idling.return_value = consumer_idle
+
+    should_wait = StreamingExecutor._should_wait_for_consumer_activity(executor, topo)
+    assert should_wait == expected
+
+
 def test_summary_str_backpressure_policies(ray_start_regular_shared):
     """Test that summary_str correctly displays backpressure policy names."""
     opts = ExecutionOptions()

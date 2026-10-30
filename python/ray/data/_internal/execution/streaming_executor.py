@@ -39,6 +39,7 @@ from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
+    WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
     OpState,
     OutputBackpressureGuard,
     Topology,
@@ -681,7 +682,26 @@ class StreamingExecutor(Executor, threading.Thread):
         # Check until all oprators have completed.
         should_continue = not all(op.has_completed() for op in topology)
         self._no_progress_guard.check()
+
+        if should_continue and self._should_wait_for_consumer_activity(topology):
+            self._output_node[1].consumer_activity.wait(
+                WAIT_FOR_TASK_COMPLETION_TIMEOUT_S
+            )
         return should_continue
+
+    def _should_wait_for_consumer_activity(self, topology: Topology) -> bool:
+        """Whether to end this scheduling step waiting for consumer activity
+        instead of spinning.
+
+        Call after dispatching, when nothing more could be dispatched. If no task
+        is left for process_completed_tasks to wait on and no operator has output
+        to pull, the consumer reading its output is what usually frees capacity.
+        Changes the consumer doesn't signal, such as cluster resources, actor
+        restarts or shutdown, are picked up when the wait times out.
+        """
+        return not self._consumer_idling() and not any(
+            op.get_active_tasks() or op.has_next() for op in topology
+        )
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.
