@@ -62,12 +62,47 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
 
 
 @pytest.mark.parametrize("num_inputs", [1, 2])
-def test_from_pandas_override_num_blocks(num_inputs, ray_start_regular_shared):
+@pytest.mark.parametrize("num_rows,num_blocks", [(0, 2), (1, 2), (4, 2), (5, 3)])
+@pytest.mark.parametrize(
+    "data_context_override",
+    [{"enable_pandas_block": False}, {"enable_pandas_block": True}],
+    indirect=True,
+)
+def test_from_pandas_override_num_blocks(
+    num_inputs, num_rows, num_blocks, ray_start_regular_shared, data_context_override
+):
+    df = pd.DataFrame(
+        {
+            "number": np.arange(num_rows, dtype=np.int32),
+            "label": pd.Categorical(["a"] * num_rows, categories=["a", "b"]),
+        },
+        index=np.arange(num_rows) * 2 + 10,
+    )
+    inputs = df if num_inputs == 1 else [df] * num_inputs
+
+    ds = ray.data.from_pandas(inputs, override_num_blocks=num_blocks)
+    blocks = ray.get(ds.to_arrow_refs())
+
+    assert ds.num_blocks() == num_blocks
+    assert len(blocks) == num_blocks
+    block_sizes = [len(block) for block in blocks]
+    assert sum(block_sizes) == num_rows * num_inputs
+    assert max(block_sizes) - min(block_sizes) <= 1
+    assert block_sizes == sorted(block_sizes, reverse=True)
+    assert all(block.column_names == list(df.columns) for block in blocks)
+    if num_rows:
+        pd.testing.assert_frame_equal(
+            pa.concat_tables([block for block in blocks if len(block)]).to_pandas(),
+            pd.concat([df] * num_inputs, ignore_index=True),
+        )
+
+
+@pytest.mark.parametrize("num_blocks", [0, -1])
+def test_from_pandas_invalid_num_blocks(num_blocks):
     df = pd.DataFrame({"number": [0]})
 
-    ds = ray.data.from_pandas([df] * num_inputs, override_num_blocks=2)
-
-    assert ds.materialize().num_blocks() == 2
+    with pytest.raises(ValueError, match="override_num_blocks must be > 0"):
+        ray.data.from_pandas(df, override_num_blocks=num_blocks)
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
@@ -170,7 +205,7 @@ def test_to_pandas_tensor_column_cast_pandas(ray_start_regular_shared):
         # Tensor column should be automatically cast to Tensor extension.
         assert isinstance(dtypes[0], TensorDtype)
         # Original df should not be changed.
-        assert not isinstance(in_df.dtypes[0], TensorDtype)
+        assert not isinstance(in_df.dtypes.iloc[0], TensorDtype)
         out_df = ds.to_pandas()
         # Column should be cast back to object dtype when returning back to user.
         assert out_df["a"].dtype.type is np.object_
