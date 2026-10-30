@@ -14,6 +14,7 @@
 
 #include "ray/common/task/task_spec.h"
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -199,6 +200,19 @@ TEST(TaskSpecTest, TestTaskSpecification) {
   ASSERT_TRUE(task_spec.GetSchedulingStrategy() == scheduling_strategy);
   ASSERT_TRUE(task_spec.GetNodeAffinitySchedulingStrategySoft());
   ASSERT_TRUE(task_spec.GetNodeAffinitySchedulingStrategyNodeId() == node_id);
+}
+
+TEST(TaskSpecTest, TestArgIsMove) {
+  TaskSpecBuilder builder;
+  builder.AddArg(TaskArgByReference(ObjectID::FromRandom(), rpc::Address(), ""));
+  builder.AddArg(TaskArgByReference(ObjectID::FromRandom(), rpc::Address(), ""));
+  builder.AddArg(
+      TaskArgByValue(std::make_shared<RayObject>(rpc::ErrorType::WORKER_DIED)));
+  builder.SetArgIsMove(1);
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
+  ASSERT_FALSE(task_spec.ArgIsMove(0));
+  ASSERT_TRUE(task_spec.ArgIsMove(1));
+  ASSERT_FALSE(task_spec.ArgIsMove(2));
 }
 
 TEST(TaskSpecTest, TestRootDetachedActorId) {

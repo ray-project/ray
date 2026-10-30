@@ -1901,18 +1901,26 @@ std::vector<std::optional<MoveState>> ReferenceCounter::GetMoveStates(
   return move_states;
 }
 
-Status ReferenceCounter::TryCommitMoves(const std::vector<ObjectID> &object_ids) {
+StatusOr<std::vector<bool>> ReferenceCounter::TryCommitMoves(
+    const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mutex_);
   // Validate every object before changing any, so a rejected task moves nothing.
   // Acquire the lock for both validation and commit phases (without unlocking after
   // validation) so that no two tasks can be validated successfully.
+  std::vector<bool> is_move;
+  is_move.reserve(object_ids.size());
   for (const ObjectID &object_id : object_ids) {
-    if (GetMoveStateInternal(object_id) == MoveState::MOVED) {
+    std::optional<MoveState> move_state = GetMoveStateInternal(object_id);
+    if (move_state == MoveState::MOVED) {
       return Status::InvalidArgument(absl::StrFormat(
           "Object %s was created with _consume_once=True and was already passed to an "
           "actor task.",
           object_id.Hex()));
     }
+    // Filled here, before the commit loop below changes any state, so that both
+    // entries of a repeated ID (e.g. f.remote(ref, ref)) are true. In the commit
+    // loop, the second entry would already read MOVED.
+    is_move.push_back(move_state == MoveState::MOVABLE);
   }
   for (const ObjectID &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
@@ -1920,7 +1928,7 @@ Status ReferenceCounter::TryCommitMoves(const std::vector<ObjectID> &object_ids)
       it->second.move_state_ = MoveState::MOVED;
     }
   }
-  return Status::OK();
+  return is_move;
 }
 
 std::optional<MoveState> ReferenceCounter::GetMoveStateInternal(

@@ -267,8 +267,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::vector<std::optional<MoveState>> GetMoveStates(
       const std::vector<ObjectID> &object_ids) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  Status TryCommitMoves(const std::vector<ObjectID> &object_ids) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  StatusOr<std::vector<bool>> TryCommitMoves(
+      const std::vector<ObjectID> &object_ids) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
     lineage_pinning_enabled_.store(lineage_pinning_enabled);
