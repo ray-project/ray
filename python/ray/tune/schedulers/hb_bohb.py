@@ -142,11 +142,11 @@ class HyperBandForBOHB(HyperBandScheduler):
     def choose_trial_to_run(
         self, tune_controller: "TuneController", allow_recurse: bool = True
     ) -> Optional[Trial]:
-        """Fair scheduling within iteration by completion percentage.
+        """Returns the first trial that's ready to run, in bracket creation order.
 
-        List of trials not used since all trials are tracked as state
-        of scheduler. If iteration is occupied (ie, no trials to run),
-        then look into next iteration.
+        Candidate trials come from the scheduler's brackets, not from
+        ``tune_controller``. If an iteration has no trial to run, look into
+        the next iteration.
 
         If no trial is running and no bracket has a trial to run, this method
         processes the brackets that have a paused trial, which can make trials

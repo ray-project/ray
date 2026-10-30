@@ -666,8 +666,8 @@ def uniform(lower: float, upper: float):
 def quniform(lower: float, upper: float, q: float):
     """Sample a quantized float value uniformly between ``lower`` and ``upper``.
 
-    Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
-    ``np.random.uniform(1, 10))``
+    Sampling from ``tune.quniform(1, 10, 0.5)`` is equivalent to sampling from
+    ``np.random.uniform(1, 10)`` and rounding to a multiple of ``0.5``.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
@@ -746,8 +746,8 @@ def randint(lower: int, upper: int):
 
     ``lower`` is inclusive, ``upper`` is exclusive.
 
-    Sampling from ``tune.randint(10)`` is equivalent to sampling from
-    ``np.random.randint(10)``
+    Sampling from ``tune.randint(0, 10)`` is equivalent to sampling from
+    ``np.random.randint(0, 10)``
 
     .. versionchanged:: 1.5.0
         When converting Ray Tune configs to searcher-specific search spaces,

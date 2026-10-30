@@ -29,7 +29,7 @@ class ExperimentPlateauStopper(Stopper):
         ValueError: If the standard deviation parameter is not
             a strictly positive float.
         ValueError: If the patience parameter is not
-            a strictly positive integer.
+            a non-negative integer.
     """
 
     def __init__(
