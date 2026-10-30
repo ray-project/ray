@@ -178,7 +178,7 @@ On a documentation page, use *code-output-style* to show the code and its expect
 
 ### When to use *literalinclude*
 
-If you're writing an end-to-end example and your example doesn't contain outputs, use *literalinclude*.
+If you're writing a longer example that doesn't show outputs, use *literalinclude*. For a full guide that CI doesn't test, see {ref}`writing-e2e-guide`.
 
 ## How to handle hard-to-test examples
 
