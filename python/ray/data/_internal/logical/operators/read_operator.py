@@ -76,17 +76,14 @@ class Read(
         return None
 
     def set_detected_parallelism(self, parallelism: int) -> "Read":
-        """
-        Set the true parallelism that should be used during execution. This
+        """Set the true parallelism that should be used during execution. This
         should be specified by the user or detected by the optimizer.
         """
         object.__setattr__(self, "detected_parallelism", parallelism)
         return self
 
     def get_detected_parallelism(self) -> int:
-        """
-        Get the true parallelism that should be used during execution.
-        """
+        """Get the true parallelism that should be used during execution."""
         return self.detected_parallelism
 
     def estimated_num_outputs(self) -> Optional[int]:

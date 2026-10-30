@@ -330,6 +330,7 @@ class ServeController:
         # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._applied_config_id: Optional[str] = None
         self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
@@ -981,6 +982,8 @@ class ServeController:
                 target_capacity,
                 target_capacity_direction,
                 config_checkpoints_dict,
+                # Checkpoints written before `config_id` existed have four fields.
+                *extra,
             ) = pickle.loads(checkpoint)
 
             return (
@@ -988,6 +991,7 @@ class ServeController:
                 ServeDeploySchema(
                     applications=list(config_checkpoints_dict.values()),
                     target_capacity=target_capacity,
+                    config_id=extra[0] if extra else None,
                 ),
                 target_capacity_direction,
             )
@@ -1327,6 +1331,7 @@ class ServeController:
             self._target_capacity_direction,
         )
         self._target_capacity = config.target_capacity
+        self._applied_config_id = config.config_id
 
         # If a global tracing config is provided in the declarative config,
         # store it so replicas and proxies started for this config pick it up
@@ -1351,6 +1356,7 @@ class ServeController:
                     self._target_capacity,
                     self._target_capacity_direction,
                     new_config_checkpoint,
+                    config.config_id,
                 )
             ),
         )
@@ -1544,6 +1550,7 @@ class ServeController:
             controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
             # Set this explicitly so exclude_unset includes it in the response.
             restores_unset_config_options=True,
+            applied_config_id=self._applied_config_id,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1934,7 +1941,7 @@ class ServeController:
         if checkpoint is None:
             return {}
 
-        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        _, _, _, config_checkpoints_dict, *_ = pickle.loads(checkpoint)
         return {
             app: ServeApplicationSchema.model_validate(config)
             for app, config in config_checkpoints_dict.items()
