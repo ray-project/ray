@@ -288,6 +288,11 @@ class PathPartitionParser:
         partitions: Dict[str, str] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
+            if field not in partitions:
+                raise ValueError(
+                    f"Expected partition field {field!r} (declared in "
+                    f"`field_types`) in path {path!r}, but found {sorted(partitions)}."
+                )
             partitions[field] = _cast_value(partitions[field], data_type)
 
         return partitions
@@ -592,6 +597,14 @@ class PathPartitionFilter:
         return filtered_paths
 
     def apply(self, path: str) -> bool:
+        """Decide whether to read a file, based on the partitions in its path.
+
+        Args:
+            path: The file path to parse partition keys and values from.
+
+        Returns:
+            ``True`` if the filter function keeps the file, ``False`` to skip it.
+        """
         return self._filter_fn(self._parser(path))
 
     @property

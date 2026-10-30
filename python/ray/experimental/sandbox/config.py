@@ -327,10 +327,11 @@ class SandboxConfig:
             units ``memory`` takes. Writes past it fail with ENOSPC inside
             the sandbox, and the sandbox keeps running. Zero (default) means
             no cap. Requires ``readonly=False`` or a ``workdir``: a readonly
-            rootfs with an explicit workdir runs on a private writable
-            overlay too, and a cap keeps that workdir inside the overlay
-            instead of a host directory. In-memory mounts such as /dev/shm
-            count toward the sandbox's memory instead.
+            rootfs stays read-only, so the cap applies to its explicit
+            workdir, whose writes then go to a file in the sandbox's
+            directory on the node instead of the workdir's host directory.
+            In-memory mounts such as /dev/shm count toward the sandbox's
+            memory instead.
     """
 
     image: str

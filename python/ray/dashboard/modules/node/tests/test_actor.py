@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 import time
@@ -12,11 +13,51 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.node import actor_consts
+from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
+
+
+def test_actor_info_associates_npus_by_pid(monkeypatch):
+    node_id = "node-id"
+    worker_id = "worker-id"
+    pid = 1234
+    actor = {
+        "address": {"nodeId": node_id, "workerId": worker_id},
+        "requiredResources": {},
+    }
+    process_stats = {"pid": pid, "cpuPercent": 5}
+    matching_npu = {
+        "index": 0,
+        "name": "Ascend910",
+        "processesPids": [{"pid": pid, "npuMemoryUsage": 1024}],
+    }
+    non_matching_npu = {
+        "index": 1,
+        "name": "Ascend910",
+        "processesPids": [{"pid": pid + 1, "npuMemoryUsage": 2048}],
+    }
+
+    monkeypatch.setattr(DataSource, "core_worker_stats", {worker_id: {"pid": pid}})
+    monkeypatch.setattr(
+        DataSource,
+        "node_physical_stats",
+        {
+            node_id: {
+                "workers": [process_stats],
+                "npus": [matching_npu, non_matching_npu],
+                "mem": [4096, 2048, 50],
+            }
+        },
+    )
+
+    actor_info = asyncio.run(DataOrganizer._get_actor_info(actor))
+
+    assert actor_info["npus"] == [matching_npu]
+    assert actor_info["processStats"] == process_stats
 
 
 def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):

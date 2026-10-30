@@ -10,8 +10,7 @@ class GRUGate(nn.Module):
     """Implements a gated recurrent unit for use in AttentionNet"""
 
     def __init__(self, dim: int, init_bias: int = 0.0, **kwargs):
-        """
-        input_shape (torch.Tensor): dimension of the input
+        """input_shape (torch.Tensor): dimension of the input
         init_bias: Bias added to every input to stabilize training
         """
         super().__init__(**kwargs)

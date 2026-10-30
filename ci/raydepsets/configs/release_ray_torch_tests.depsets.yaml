@@ -1,0 +1,51 @@
+build_arg_sets:
+  py311_cuda128:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+    CUDA_CODE: cu128
+
+depsets:
+  # Extra packages for release tests on the ray-torch (`torch-cu128`) image.
+  # Expanded from the image's own lock and installed with --no-deps through
+  # byod.python_depset, so it stays a consistent superset of the image.
+  - name: torch_${CUDA_CODE}_xgboost_lightgbm_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_xgboost_lightgbm.in
+    # Constrain to the image lock too, so packages the compiled requirements
+    # leave unpinned (openai, langchain, ...) don't float past the image.
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+      - python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/torch_${CUDA_CODE}_xgboost_lightgbm_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
+    build_arg_sets:
+      - py311_cuda128
+
+  - name: torch_${CUDA_CODE}_serve_resnet_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_serve_resnet.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+      - python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/torch_${CUDA_CODE}_serve_resnet_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
+    build_arg_sets:
+      - py311_cuda128

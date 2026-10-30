@@ -562,8 +562,7 @@ def relu(x: np.ndarray, alpha: float = 0.0) -> np.ndarray:
 
 @PublicAPI
 def sigmoid(x: np.ndarray, derivative: bool = False) -> np.ndarray:
-    """
-    Returns the sigmoid function applied to x.
+    """Returns the sigmoid function applied to x.
     Alternatively, can return the derivative or the sigmoid function.
 
     Args:

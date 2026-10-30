@@ -1,5 +1,4 @@
-"""
-This file stores global state for a Serve application. Deployment replicas
+"""This file stores global state for a Serve application. Deployment replicas
 can use this state to access metadata or the Serve controller.
 """
 

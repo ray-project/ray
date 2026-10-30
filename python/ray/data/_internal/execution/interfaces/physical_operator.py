@@ -11,6 +11,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Iterator,
     List,
     Optional,
@@ -114,8 +115,17 @@ class TaskExecDriverStats:
     task_output_backpressure_s: float
 
 
+# Called as (exception, worker_stats, driver_stats, aborted). ``aborted`` is True
+# only for a task torn down because lineage reconstruction is rebuilding its lost
+# output; ``exception`` is then the lost-object error (see
+# ``DataOpTask.mark_aborted``).
 TaskDoneCallbackType = Callable[
-    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]],
+    [
+        Optional[Exception],
+        Optional[TaskExecWorkerStats],
+        Optional[TaskExecDriverStats],
+        bool,
+    ],
     None,
 ]
 
@@ -159,7 +169,7 @@ class DataOpTask(OpTask):
         block_ref_counter: BlockRefCounter,
         producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
-        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
+        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats, aborted: None,
         block_ready_callback: Callable[
             [ray.ObjectRef[Block]], None
         ] = lambda block_ref: None,
@@ -172,7 +182,7 @@ class DataOpTask(OpTask):
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
         lineage_task_id: Optional[str] = None,
-        reconstruction_plan_id: Optional[str] = None,
+        reconstruction_plan_ids: FrozenSet[str] = frozenset(),
     ):
         """Create a DataOpTask
         Args:
@@ -197,9 +207,9 @@ class DataOpTask(OpTask):
                 Used for logging the operator name in warnings/errors.
             lineage_task_id: Logical Ray Data ID of this task, stable across lineage
                 reconstruction attempts.
-            reconstruction_plan_id: The reconstruction plan this attempt serves; ``None`` for a
-                fresh attempt. Carried here because the output and completion
-                callbacks need it after submission.
+            reconstruction_plan_ids: The reconstruction plans this attempt serves; empty
+                for a fresh attempt. Carried here because the output and completion
+                callbacks need them after submission.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -216,7 +226,7 @@ class DataOpTask(OpTask):
         self._block_ref_counter: BlockRefCounter = block_ref_counter
         self._producer_id: str = producer_id
         self._lineage_task_id = lineage_task_id
-        self._reconstruction_plan_id: Optional[str] = reconstruction_plan_id
+        self._reconstruction_plan_ids: FrozenSet[str] = reconstruction_plan_ids
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -440,9 +450,9 @@ class DataOpTask(OpTask):
         return self._lineage_task_id is not None
 
     @property
-    def reconstruction_plan_id(self) -> Optional[str]:
-        """The reconstruction plan this attempt serves; ``None`` if fresh."""
-        return self._reconstruction_plan_id
+    def reconstruction_plan_ids(self) -> FrozenSet[str]:
+        """The reconstruction plans this attempt serves; empty if fresh."""
+        return self._reconstruction_plan_ids
 
     @property
     def has_finished(self) -> bool:
@@ -515,6 +525,7 @@ class DataOpTask(OpTask):
                 self._task_error,
                 None,  # TaskExecStats
                 None,  # TaskExecDriverStats
+                False,  # aborted
             )
         else:
             self._task_done_callback(
@@ -525,14 +536,22 @@ class DataOpTask(OpTask):
                 TaskExecDriverStats(
                     task_output_backpressure_s=self._total_output_backpressure_s,
                 ),
+                False,  # aborted
             )
         self._state = TaskGeneratorState.FINISHED
 
-    def mark_aborted(self, exception: Exception) -> None:
+    def mark_aborted(
+        self, exception: Exception, aborted_for_reconstruction: bool = False
+    ) -> None:
         """Tear down a task whose output was lost, without reading its stream.
 
-        Transitions the task to FINISHED and runs the normal done-callback with
-        ``exception`` set (the same path ``on_data_ready`` takes on a task error)
+        ``exception`` is why the task is torn down. With
+        ``aborted_for_reconstruction``, lineage reconstruction is re-running the
+        task to rebuild its lost output, so the done-callback gets
+        ``aborted=True`` and the operator doesn't count the task as finished or
+        failed: the re-run task is counted instead.
+
+        Transitions the task to FINISHED and runs the normal done-callback
         so the owning operator releases every resource the task reserved --
         running-task metrics, logical CPU/GPU/memory usage, actor-pool slot, and
         pending input refs -- and pops it from ``_data_tasks``. Callers must use
@@ -545,10 +564,14 @@ class DataOpTask(OpTask):
             # earlier abort); firing it twice would double-release the task's
             # resource reservations.
             return
+        # Only lineage reconstruction re-runs a task, so only a lineage-tracked
+        # task can be aborted for it.
+        assert not aborted_for_reconstruction or self.is_lineage_tracked
         self._task_done_callback(
             exception,
             None,  # TaskExecStats
             None,  # TaskExecDriverStats
+            aborted_for_reconstruction,  # aborted
         )
         self._state = TaskGeneratorState.FINISHED
 
@@ -803,8 +826,7 @@ class PhysicalOperator(Operator):
 
     @property
     def target_max_block_size_override(self) -> Optional[int]:
-        """
-        Target max block size output by this operator. If this returns None,
+        """Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
         if self._output_block_size_option_override is None:

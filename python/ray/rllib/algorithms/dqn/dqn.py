@@ -1,5 +1,4 @@
-"""
-Deep Q-Networks (DQN, Rainbow, Parametric DQN)
+"""Deep Q-Networks (DQN, Rainbow, Parametric DQN)
 ==============================================
 
 This file defines the distributed Algorithm class for the Deep Q-Networks

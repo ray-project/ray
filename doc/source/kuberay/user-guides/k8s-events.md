@@ -1,14 +1,14 @@
 ---
 myst:
   html_meta:
-    description: "How to enable platform events in the Ray dashboard on Kubernetes: RBAC permissions, the environment variable that turns the feature on, and how to verify that the dashboard receives events."
+    description: "How to enable platform events in the Ray dashboard on Kubernetes: RBAC permissions, the environment variable that turns the feature on, how to verify that the dashboard receives events, and how to forward Kubernetes node events with the KubeRay operator."
 ---
 
 (kuberay-k8s-events)=
 
 # Enable Ray platform events on Kubernetes
 
-This guide describes how to enable and use platform events in the Ray dashboard on Kubernetes. Platform events surface Kubernetes lifecycle events for the KubeRay custom resources `RayCluster`, `RayJob`, and `RayService` in the Ray dashboard, alongside your Ray application metrics and logs, so you can correlate cluster behavior with application behavior.
+This guide describes how to enable and use platform events in the Ray dashboard on Kubernetes. Platform events surface Kubernetes lifecycle events for the KubeRay custom resources `RayCluster`, `RayJob`, and `RayService` in the Ray dashboard, alongside your Ray application metrics and logs, so you can correlate cluster behavior with application behavior. Starting in KubeRay v1.8.0, you can also forward Kubernetes node events, such as GPU XID errors and NCCL communication failures, to the dashboard. See {ref}`kuberay-node-event-forwarder`.
 
 ## Prerequisites
 
@@ -225,6 +225,44 @@ A successful response is a JSON object containing recent events:
 Open `http://localhost:8265` in your browser. Look for the **Platform Events** tab in the navigation bar at the top. The dashboard displays the events there.
 
 ![Ray dashboard with the Platform Events tab selected, showing a table of Kubernetes lifecycle events with columns for time, severity, source, object, reason, and message.](../images/platform-events-ui.png)
+
+(kuberay-node-event-forwarder)=
+
+## Forward Kubernetes node events
+
+Starting in KubeRay v1.8.0, the KubeRay operator can forward Kubernetes node events, such as kernel errors that node-problem-detector reports, to every RayCluster with Pods on the affected node. The Ray dashboard shows the forwarded events in the **Platform Events** tab.
+
+:::{note}
+The node event forwarder is alpha and disabled by default.
+:::
+
+### Enable the node event forwarder
+
+Install the KubeRay operator with the `RayNodeEventForwarder` feature gate and `nodeEventForwarder.enabled` set to `true`:
+
+```bash
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+
+# Install KubeRay operator v1.8.0 with the node event forwarder enabled
+helm install kuberay-operator kuberay/kuberay-operator \
+  --version 1.8.0 \
+  --set "featureGates[0].name=RayNodeEventForwarder" \
+  --set "featureGates[0].enabled=true" \
+  --set "nodeEventForwarder.enabled=true"
+```
+
+Kubernetes stores node events in the `default` or `kube-system` namespace, so the chart grants the operator read access to events in both. The forwarder doesn't support `singleNamespaceInstall: true`.
+
+### Choose which node events to forward
+
+By default, the Helm chart configures the operator to forward only `Warning` node events. You can customize which events are forwarded using the following Helm values.
+
+An event is forwarded only if it matches all three filters. An empty list disables the corresponding filter and matches all values:
+
+* `nodeEventForwarder.types`: Event types, `Warning` or `Normal`.  Any other value, including lowercase variants such as warning, prevents the operator from starting.
+* `nodeEventForwarder.reasons`: Event reasons, such as `XIDError`.
+* `nodeEventForwarder.sources`: The event's `source.component` or `reportingController`, such as `nvidia-gpu-device-plugin`.
 
 ## Troubleshooting
 

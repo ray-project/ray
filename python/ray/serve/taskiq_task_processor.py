@@ -150,8 +150,7 @@ def _create_broker(
 
 @PublicAPI(stability="beta")
 class TaskiqAdapterConfig(BaseModel):
-    """
-    Taskiq adapter config for async task processing in Ray Serve.
+    """Taskiq adapter config for async task processing in Ray Serve.
 
     Supports multiple brokers via ``broker_type``. Connection URLs and
     broker-specific constructor arguments are passed through ``broker_kwargs``.
@@ -231,8 +230,7 @@ class TaskiqAdapterConfig(BaseModel):
 
 @PublicAPI(stability="beta")
 class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
-    """
-    Taskiq-based task processor adapter for Ray Serve.
+    """Taskiq-based task processor adapter for Ray Serve.
 
     Supports multiple brokers (Redis Streams, RabbitMQ, NATS, Kafka) via
     the ``broker_type`` field in ``TaskiqAdapterConfig``. Broker-specific

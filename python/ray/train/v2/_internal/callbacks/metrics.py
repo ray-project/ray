@@ -96,9 +96,7 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
 
     @contextmanager
     def on_report(self):
-        """
-        Context manager to measure the time taken to report a checkpoint to the storage.
-        """
+        """Context manager to measure the time taken to report a checkpoint to the storage."""
         start_time_s = time_monotonic()
         yield
         elapsed_time_s = time_monotonic() - start_time_s

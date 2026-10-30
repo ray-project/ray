@@ -1,6 +1,5 @@
 # @OldAPIStack
-"""
-Tests, whether APPO can learn in a fault-tolerant fashion.
+"""Tests, whether APPO can learn in a fault-tolerant fashion.
 
 Workers will be configured to automatically get recreated upon failures (here: within
 the environment).

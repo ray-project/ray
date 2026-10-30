@@ -216,8 +216,7 @@ def from_config(cls: Any, config: Optional["FromConfigSpec"] = None, **kwargs) -
 
 @DeveloperAPI
 def from_file(cls: Any, filename: str, *args, **kwargs) -> Any:
-    """
-    Create object from config saved in filename. Expects json or yaml file.
+    """Create object from config saved in filename. Expects json or yaml file.
 
     Args:
         cls: The class to build an instance for (from the file's config).
