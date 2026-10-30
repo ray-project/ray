@@ -741,6 +741,10 @@ class BlockAccessor:
         """Returns new block sorted according to provided `sort_key`"""
         raise NotImplementedError
 
+    def top_n(self, sort_key: "SortKey", limit: int) -> "Block":
+        """Return the first ``limit`` rows ordered by ``sort_key``."""
+        raise NotImplementedError
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
