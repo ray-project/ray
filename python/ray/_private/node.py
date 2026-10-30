@@ -1230,7 +1230,9 @@ class Node:
         # This solves issue #8254 where GRPC fails because the port assigned
         # from this method has been used by a different process.
         for _ in range(ray_constants.NUM_PORT_RETRIES):
-            new_port = random.randint(port, 65535)
+            # Use a private RNG: drawing from the global `random` module here
+            # would perturb a seed the user set before ray.init() (#10145).
+            new_port = random.SystemRandom().randint(port, 65535)
             if new_port in allocated_ports:
                 # This port is allocated for other usage already,
                 # so we shouldn't use it even if it's not in use right now.
