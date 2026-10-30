@@ -896,6 +896,27 @@ def test_ray_init_after_generate_and_start_head_uses_token_auth(address):
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
+def test_ray_start_head_rejects_driver_without_token():
+    """A head started by `ray start --head` with the default auth mode rejects a
+    driver that sends no token."""
+    env = _env_without_auth_settings()
+    port = find_free_port()
+
+    try:
+        _generate_token_and_start_head(env, port)
+
+        set_auth_mode("disabled")
+        reset_auth_token_state()
+        with pytest.raises(AuthenticationError):
+            ray.init(address=f"127.0.0.1:{port}")
+    finally:
+        _cleanup_ray_start(env)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
 def test_ray_start_address_after_generate_and_start_head_joins_with_token_auth():
     """After `ray get-auth-token --generate` and `ray start --head` in the same
     HOME, `ray start --address=...` joins the cluster with token auth on."""

@@ -28,7 +28,6 @@ from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.auth_token import (
     AUTH_TOKEN_REMOTE_PATH,
     load_or_create_cluster_token,
-    token_auth_enabled_locally,
 )
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -952,6 +951,7 @@ def get_or_create_head_node(
             },
             docker_config=config.get("docker"),
             restart_only=restart_only,
+            auth_mode=config.get("auth_mode"),
         )
         updater.start()
         updater.join()
@@ -1100,9 +1100,10 @@ def _should_create_new_head(
 
 def _ships_local_auth_token(config: Dict[str, Any]) -> bool:
     """Whether `ray up` ships this machine's token, rather than none or the
-    one the cluster YAML mounts at ~/.ray/auth_token."""
+    one the cluster YAML mounts at ~/.ray/auth_token. The cluster YAML's
+    auth_mode decides, not this machine's RAY_AUTH_MODE."""
     return (
-        token_auth_enabled_locally()
+        config.get("auth_mode", "token") == "token"
         and AUTH_TOKEN_REMOTE_PATH not in config["file_mounts"]
     )
 
@@ -1120,7 +1121,7 @@ def _add_auth_token_file_mount(
     Returns:
         The temporary file holding a RAY_AUTH_TOKEN value, or None; keep it
         open until the file mounts are synced. Then the token's SHA-256 hex
-        digest, or None when this process isn't in token auth mode or the YAML
+        digest, or None when the cluster YAML sets `auth_mode: disabled` or
         mounts the token.
     """
     if not _ships_local_auth_token(config):

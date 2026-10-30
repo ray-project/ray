@@ -1,18 +1,9 @@
 import os
 
-from ray._raylet import (
-    AuthenticationMode,
-    AuthenticationTokenLoader,
-    get_authentication_mode,
-)
+from ray._raylet import AuthenticationTokenLoader
 from ray.exceptions import AuthenticationError
 
 AUTH_TOKEN_REMOTE_PATH = "~/.ray/auth_token"
-
-
-def token_auth_enabled_locally() -> bool:
-    """Whether this process runs in token auth mode, so a launcher ships a token."""
-    return get_authentication_mode() == AuthenticationMode.TOKEN
 
 
 def load_local_token() -> str:

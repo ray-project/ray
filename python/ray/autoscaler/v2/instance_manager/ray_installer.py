@@ -85,6 +85,7 @@ class RayInstaller(object):
             node_resources=self._config.get_node_resources(instance.instance_type),
             node_labels=self._config.get_node_labels(instance.instance_type),
             process_runner=self._process_runner,
+            auth_mode=self._config.get_config("auth_mode"),
         )
         updater.run()
         # check if the updater was successful by checking the node tags
