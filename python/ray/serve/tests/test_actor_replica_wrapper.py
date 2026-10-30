@@ -474,7 +474,7 @@ def _dummy_request_metadata() -> RequestMetadata:
 
 
 @pytest.mark.asyncio
-async def test_get_queue_len_cancellation_cancels_rpc(ray_instance):
+async def test_get_queue_len_cancellation_requests_rpc_cancellation(ray_instance):
     """Cancelling `get_queue_len` requests cancellation of the RPC and finishes
     without waiting for the replica to finish handling the cancellation.
     """

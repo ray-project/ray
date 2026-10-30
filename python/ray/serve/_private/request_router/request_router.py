@@ -1024,9 +1024,9 @@ class RequestRouter(ABC):
         finally:
             # `asyncio.wait` cancels none of its tasks, on the deadline or when the
             # caller is cancelled (e.g. a routing task whose request was fulfilled by
-            # another task). Cancel them all so `get_queue_len` cancels its RPC.
-            # `cancel()` on a task that already finished also keeps its exception
-            # from being logged as "never retrieved".
+            # another task). Cancel them all so `get_queue_len` requests cancellation
+            # of its RPC. `cancel()` on a task that already finished also keeps its
+            # exception from being logged as "never retrieved".
             for t in get_queue_len_tasks:
                 if not t.done():
                     t.add_done_callback(
@@ -1086,9 +1086,10 @@ class RequestRouter(ABC):
         # Cancellation is cooperative, so wait for the cancelled probes to finish
         # before the results are used. This runs after the results in hand were
         # processed, so a cancellation here doesn't drop them. Probes should handle
-        # cancellation promptly (`RunningReplica.get_queue_len` cancels its RPC
-        # synchronously); the wait is bounded by this round's response deadline so
-        # one that doesn't can't block routing.
+        # cancellation promptly (`RunningReplica.get_queue_len` requests
+        # cancellation of its RPC and returns without awaiting the replica); the
+        # wait is bounded by this round's response deadline so one that doesn't
+        # can't block routing.
         if pending:
             _, still_running = await asyncio.wait(
                 pending, timeout=queue_len_response_deadline_s
