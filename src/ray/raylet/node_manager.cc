@@ -2489,6 +2489,20 @@ void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
 
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
+  // A received move is pinned as the new primary copy before the lease
+  // dependency manager cancels the wait pull, which owns the move record.
+  if (object_manager_.IsMovePull(object_id)) {
+    rpc::Address owner_address;
+    owner_address.set_node_id(object_info.owner_node_id.Binary());
+    owner_address.set_ip_address(object_info.owner_ip_address);
+    owner_address.set_port(object_info.owner_port);
+    owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+    if (PinAndReportMovedObject(object_id, owner_address)) {
+      num_moved_objects_pinned_++;
+    } else {
+      num_moved_objects_pin_failed_++;
+    }
+  }
   // Notify the task dependency manager that this object is local.
   const auto ready_lease_ids = lease_dependency_manager_.HandleObjectLocal(object_id);
   RAY_LOG(DEBUG).WithField(object_id).WithField(self_node_id_)
@@ -2623,6 +2637,8 @@ std::string NodeManager::DebugString() const {
     result << "\nnum async plasma notifications: "
            << async_plasma_objects_notification_.size();
   }
+  result << "\nnum moved objects pinned: " << num_moved_objects_pinned_;
+  result << "\nnum moved objects pin failed: " << num_moved_objects_pin_failed_;
 
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats()->StatsString();
@@ -2720,6 +2736,35 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+bool NodeManager::PinAndReportMovedObject(const ObjectID &object_id,
+                                          const rpc::Address &owner_address) {
+  if (failed_workers_cache_.contains(WorkerID::FromBinary(owner_address.worker_id())) ||
+      failed_nodes_cache_.contains(NodeID::FromBinary(owner_address.node_id()))) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Not pinning moved object because its owner is dead";
+    return false;
+  }
+  std::vector<ObjectID> object_ids{object_id};
+  std::vector<std::unique_ptr<RayObject>> results;
+  // The received copy still holds the store reference taken when it was created
+  // (ReceiveObjectChunk releases it on the main service, behind this call), so
+  // the store cannot have evicted it: the Get only misses if the store itself is
+  // unreachable.
+  // Regarding the last check, the copy can be pending deletion when the owner died,
+  // or freed the object by hand, while the move was in flight; the raylet is about
+  // to delete it, so it must not be pinned.
+  if (!GetObjectsFromPlasma(object_ids, &results) || results.size() != 1 ||
+      results[0] == nullptr || local_object_manager_.ObjectPendingDeletion(object_id)) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Moved object is not in the object store or is being freed";
+    return false;
+  }
+  local_object_manager_.PinObjectsAndWaitForFree(
+      object_ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
+  object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
+  return true;
 }
 
 void NodeManager::HandleGetSystemConfig(rpc::GetSystemConfigRequest request,

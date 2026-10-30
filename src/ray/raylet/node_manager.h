@@ -308,6 +308,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
 
+  /// Pin a received moved object as its primary copy and report the new primary
+  /// to the owner. Called from HandleObjectLocal for an object with a move record.
+  ///
+  /// \param object_id The moved object, sealed in the local store.
+  /// \param owner_address The address of the object's owner.
+  /// \return False if the object is not in the store, is pending deletion, or its
+  /// owner is known to be dead; the object is then left unpinned.
+  bool PinAndReportMovedObject(const ObjectID &object_id,
+                               const rpc::Address &owner_address);
+
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_.GetLocalResourceManager().GetLocalDrainRequest();
@@ -994,6 +1004,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The number of workers killed not by memory above threshold since last report.
   uint64_t number_workers_killed_ = 0;
+
+  /// Received moves pinned as the primary copy, and received moves whose pin
+  /// failed (the object left the store before it could be pinned).
+  uint64_t num_moved_objects_pinned_ = 0;
+  uint64_t num_moved_objects_pin_failed_ = 0;
 
   /// Managers all bundle-related operations.
   PlacementGroupResourceManager &placement_group_resource_manager_;

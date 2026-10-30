@@ -280,6 +280,49 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
   }
 }
 
+TEST_F(OwnershipBasedObjectDirectoryTest, TestReportObjectPrimaryMoved) {
+  const auto owner_id = WorkerID::FromRandom();
+  auto object_info = CreateNewObjectInfo(owner_id);
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_id.Binary());
+
+  obod_->ReportObjectPrimaryMoved(object_info.object_id, current_node_id, owner_address);
+  rpc::ObjectLocationUpdate update =
+      owner_client->buffered_object_locations_.at(owner_id).at(object_info.object_id);
+  ASSERT_EQ(NodeID::FromBinary(update.primary_moved_to_node_id()), current_node_id);
+  ASSERT_FALSE(update.has_plasma_location_update());
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(NumBatchRequestSent(), 1);
+  ASSERT_EQ(NumBatchReplied(), 1);
+  AssertNoLeak();
+}
+
+/// While a batch is in flight, the primary-moved report for an object joins the
+/// buffered ADDED update of that object, so the owner receives both in one update.
+TEST_F(OwnershipBasedObjectDirectoryTest, TestReportObjectPrimaryMovedBufferedWithAdded) {
+  const auto owner_id = WorkerID::FromRandom();
+  SendDummyBatch(owner_id);
+
+  auto object_info = CreateNewObjectInfo(owner_id);
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_id.Binary());
+  obod_->ReportObjectAdded(object_info.object_id, current_node_id, object_info);
+  obod_->ReportObjectPrimaryMoved(object_info.object_id, current_node_id, owner_address);
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(NumBatchReplied(), 1);
+  ASSERT_EQ(NumBatchRequestSent(), 2);
+
+  rpc::ObjectLocationUpdate update =
+      owner_client->buffered_object_locations_.at(owner_id).at(object_info.object_id);
+  AssertObjectPlasmaLocationUpdate(
+      owner_id, object_info.object_id, rpc::ObjectPlasmaLocationUpdate::ADDED);
+  ASSERT_EQ(NodeID::FromBinary(update.primary_moved_to_node_id()), current_node_id);
+
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(NumBatchReplied(), 2);
+  AssertNoLeak();
+}
+
 TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateFIFOOrder) {
   const auto owner_id = WorkerID::FromRandom();
   SendDummyBatch(owner_id);
