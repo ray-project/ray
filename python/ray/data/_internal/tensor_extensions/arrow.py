@@ -1454,7 +1454,15 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
         shapes = shapes_array.to_pylist()
         offsets = data_array.offsets.to_pylist()
-        is_valid = self.is_valid().to_pylist()
+        # A row is null at the struct level, or in either child: the children
+        # do not inherit the struct's validity, and a null child slot would
+        # otherwise read as a row over a neighbour's bytes.
+        is_valid = [
+            struct_valid and data_valid and shape is not None
+            for struct_valid, data_valid, shape in zip(
+                self.is_valid().to_pylist(), data_array.is_valid().to_pylist(), shapes
+            )
+        ]
 
         return create_ragged_ndarray(
             [

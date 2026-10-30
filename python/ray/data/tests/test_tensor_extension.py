@@ -1734,6 +1734,26 @@ def test_tensor_array_to_numpy_with_null_rows(make_tensors):
     assert _rows(with_null.to_pylist()) == expected + [None] + expected
 
 
+def test_variable_shaped_tensor_array_to_numpy_with_null_children():
+    """A variable-shaped row whose data or shape child is null, rather than the
+    struct slot, reads back as None too, instead of as a neighbour's bytes."""
+    tensor_type = ArrowVariableShapedTensorType(pa.float64(), 2)
+    storage = pa.array(
+        [
+            {"data": [1.0, 2.0], "shape": [1, 2]},
+            None,
+            {"data": None, "shape": [1, 1]},
+            {"data": [3.0], "shape": None},
+            {"data": [4.0], "shape": [1, 1]},
+        ],
+        type=tensor_type.storage_type,
+    )
+
+    rows = tensor_type.wrap_array(storage).to_numpy(zero_copy_only=False)
+
+    assert _rows(rows) == [[[1.0, 2.0]], None, None, None, [[4.0]]]
+
+
 @pytest.mark.parametrize("as_list", [False, True])
 def test_tensor_array_from_numpy_with_none_rows(as_list):
     """Tensors with None among them become a tensor array with null rows, for
