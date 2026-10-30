@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/common/placement_group.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
@@ -245,6 +246,7 @@ struct PlacementGroupCreationOptions {
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
           {},
+      std::vector<PlacementGroupSchedulingOption> fallback_strategy = {},
       std::unordered_map<std::string, PlacementStrategy> topology_strategy = {})
       : name_(std::move(name)),
         strategy_(strategy),
@@ -252,7 +254,8 @@ struct PlacementGroupCreationOptions {
         is_detached_(is_detached_p),
         soft_target_node_id_(soft_target_node_id),
         bundle_label_selector_(std::move(bundle_label_selector)),
-        topology_strategy_(std::move(topology_strategy)) {
+        topology_strategy_(std::move(topology_strategy)),
+        fallback_strategy_(std::move(fallback_strategy)) {
     RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
@@ -276,6 +279,8 @@ struct PlacementGroupCreationOptions {
   /// Topology strategy. Maps each non-node topology label (e.g.
   /// "ray.io/gpu-domain") to the placement strategy applied at that label.
   const std::unordered_map<std::string, PlacementStrategy> topology_strategy_;
+  /// A list of scheduling options defining fallback strategies for scheduling.
+  const std::vector<PlacementGroupSchedulingOption> fallback_strategy_;
 };
 
 class ObjectLocation {
