@@ -2415,7 +2415,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       extension_data,
       actor_creation_options.allow_out_of_order_execution,
       root_detached_actor_id,
-      actor_creation_options.actor_generator_backpressure_num_objects);
+      actor_creation_options.actor_generator_backpressure_num_objects,
+      actor_creation_options.restart_on_exception_patterns);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorRefDeletedRequest.

@@ -712,6 +712,83 @@ def raise_sys_exit_with_custom_error_message(
     raise e
 
 
+class _ActorRestartRequested(Exception):
+    """Internal signal that `restart_on_exceptions` matched an exception.
+
+    Streaming generators and async methods must carry this signal to the task
+    thread. Raising SystemExit on the shared event loop would stop it without
+    resolving the waiting future, hanging the task instead of exiting the worker.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.restart_message = message
+
+
+def _format_restart_exception(exc: BaseException) -> str:
+    """Format a fault without letting a broken __str__ mask the original error."""
+    try:
+        message = str(exc)
+    except BaseException:
+        message = "<exception str() failed>"
+    return f"{type(exc).__name__}: {message}"
+
+
+def _exit_for_actor_restart(request: _ActorRestartRequested) -> None:
+    """Convert a restart request only at the outermost task-thread boundary."""
+    try:
+        raise_sys_exit_with_custom_error_message(request.restart_message, 1)
+    except SystemExit as error:
+        raise error from request
+
+
+def _match_restart_exception(exc: BaseException, patterns):
+    """Return the first `restart_on_exceptions` pattern matched by `exc`.
+
+    Walks the exception and its ``__cause__`` / ``__context__`` chain. For each
+    exception, performs a case-insensitive substring match of every pattern
+    against ``f"{type(e).__name__}: {e}"`` (equivalent to the last line of
+    ``traceback.format_exception_only``). Returns the first (original-cased)
+    pattern that matches, or ``None`` if nothing matches.
+    """
+    if not patterns:
+        return None
+    folded_patterns = [(p, p.casefold()) for p in patterns]
+    seen = set()
+    cur = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        text = _format_restart_exception(cur).casefold()
+        for original, folded in folded_patterns:
+            if folded in text:
+                return original
+        cur = cur.__cause__ if cur.__cause__ is not None else cur.__context__
+    return None
+
+
+def _raise_actor_restart_if_needed(exc: BaseException, function_name: str) -> None:
+    """Raise a restart request if an actor pattern matches, or propagate one."""
+    if isinstance(exc, _ActorRestartRequested):
+        raise exc
+
+    restart_patterns = [
+        pattern.decode("utf-8") for pattern in
+        CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+        .CurrentActorRestartOnExceptionPatterns()
+    ]
+    matched_pattern = _match_restart_exception(exc, restart_patterns)
+    if matched_pattern is not None:
+        logger.warning(
+            "restart_on_exceptions matched pattern %r for an "
+            "exception raised by %s; exiting the actor worker to "
+            "trigger a restart.",
+            matched_pattern, function_name)
+        raise _ActorRestartRequested(
+            "Actor worker exiting because restart_on_exceptions "
+            f"pattern {matched_pattern!r} matched an exception from "
+            f"{function_name}: {_format_restart_exception(exc)}") from exc
+
+
 cdef prepare_args_and_increment_put_refs(
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
@@ -1323,6 +1400,9 @@ cdef report_streaming_generator_exception(
             generator or raised as an exception.
         generator_index: The ObjectRef stream index for this exception.
     """
+    # Check both streaming paths before reporting an error to the caller.
+    _raise_actor_restart_if_needed(e, context.function_name)
+
     worker = ray._private.worker.global_worker
 
     cdef:
@@ -1724,9 +1804,19 @@ async def execute_streaming_generator_async(
                 completed_normally = True
                 break
 
+    except _ActorRestartRequested:
+        # Interrupt queued work before this context is freed on worker exit.
+        interrupt_signal_event.set()
+        raise
     except Exception as e:
         # Report the exception to the owner of the task.
-        report_streaming_generator_exception(context, e, cur_generator_index, None)
+        try:
+            report_streaming_generator_exception(
+                context, e, cur_generator_index, None)
+        except _ActorRestartRequested:
+            # Apply the same queued-work cleanup for a newly matched fault.
+            interrupt_signal_event.set()
+            raise
 
     except BaseException as be:
         # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
@@ -1972,6 +2062,8 @@ cdef execute_dynamic_generator_and_store_task_outputs(
             dynamic_returns,
             generator_id.Binary())
     except Exception as error:
+        # Dynamic generators are consumed in store_task_outputs, not the method.
+        _raise_actor_restart_if_needed(error, function_name)
         is_retryable_error[0] = determine_if_retryable(
             should_retry_exceptions,
             error,
@@ -2282,6 +2374,7 @@ cdef void execute_task(
                     # Special casing these two because Ray can raise them
                     raise
                 except BaseException as e:
+                    _raise_actor_restart_if_needed(e, function_name)
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
                                     e,
@@ -2407,6 +2500,11 @@ cdef void execute_task(
             # Special casing these two because Ray can raise them
             raise
         except BaseException as e:
+            # Convert matched faults and propagated requests at the task boundary.
+            try:
+                _raise_actor_restart_if_needed(e, function_name)
+            except _ActorRestartRequested as request:
+                _exit_for_actor_restart(request)
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, caller_address, returns, application_error)
@@ -4073,6 +4171,7 @@ cdef class CoreWorker:
                      c_bool enable_tensor_transport,
                      fallback_strategy,
                      int64_t actor_generator_backpressure_num_objects=-1,
+                     restart_on_exceptions=None,
                      ):
         cdef:
             CRayFunction ray_function
@@ -4088,6 +4187,7 @@ cdef class CoreWorker:
             unordered_map[c_string, c_string] c_labels
             CLabelSelector c_label_selector
             c_vector[CFallbackOption] c_fallback_strategy
+            c_vector[c_string] c_restart_on_exception_patterns
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -4115,6 +4215,14 @@ cdef class CoreWorker:
                 is_detached_optional = make_optional[c_bool](
                     True if is_detached else False)
 
+            # The user-facing option is `restart_on_exceptions`; internally
+            # (proto/C++/WorkerContext) it is `restart_on_exception_patterns`,
+            # mirroring the existing `retry_exceptions` ->
+            # `retry_exception_allowlist` naming convention.
+            for pattern in (restart_on_exceptions or []):
+                c_restart_on_exception_patterns.push_back(
+                    pattern.encode("utf-8"))
+
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
@@ -4134,7 +4242,8 @@ cdef class CoreWorker:
                         c_labels,
                         c_label_selector,
                         c_fallback_strategy,
-                        actor_generator_backpressure_num_objects),
+                        actor_generator_backpressure_num_objects,
+                        c_restart_on_exception_patterns),
                     extension_data,
                     call_site,
                     &c_actor_id,

@@ -133,6 +133,27 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     return None
 
 
+def _validate_restart_on_exceptions(restart_on_exceptions: Any) -> Optional[str]:
+    if restart_on_exceptions is None:
+        return None
+
+    # The container type (list / None) is enforced by the Option's
+    # type_constraint, so here we only validate the elements.
+    for pattern in restart_on_exceptions:
+        if not isinstance(pattern, str):
+            return (
+                "restart_on_exceptions must be a list of non-empty strings, but "
+                f"received an element of type {type(pattern)}."
+            )
+        if not pattern.strip():
+            return (
+                "restart_on_exceptions must not contain empty or whitespace-only "
+                "strings."
+            )
+
+    return None
+
+
 _common_options = {
     "label_selector": Option((dict, type(None)), lambda x: validate_label_selector(x)),
     "fallback_strategy": Option(
@@ -254,6 +275,11 @@ _actor_only_options = {
     "max_restarts": _counting_option("max_restarts", default_value=0),
     "max_task_retries": _counting_option("max_task_retries", default_value=0),
     "max_pending_calls": _counting_option("max_pending_calls", default_value=-1),
+    "restart_on_exceptions": Option(
+        (list, type(None)),
+        _validate_restart_on_exceptions,
+        default_value=None,
+    ),
     "namespace": Option((str, type(None))),
     "get_if_exists": Option(bool, default_value=False),
     "allow_out_of_order_execution": Option((bool, type(None))),

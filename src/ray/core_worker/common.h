@@ -144,7 +144,8 @@ struct ActorCreationOptions {
                        std::unordered_map<std::string, std::string> labels_p = {},
                        LabelSelector label_selector_p = {},
                        std::vector<FallbackOption> fallback_strategy_p = {},
-                       int64_t actor_generator_backpressure_num_objects_p = -1)
+                       int64_t actor_generator_backpressure_num_objects_p = -1,
+                       std::vector<std::string> restart_on_exception_patterns_p = {})
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -167,7 +168,8 @@ struct ActorCreationOptions {
         label_selector(std::move(label_selector_p)),
         fallback_strategy(std::move(fallback_strategy_p)),
         actor_generator_backpressure_num_objects(
-            actor_generator_backpressure_num_objects_p) {
+            actor_generator_backpressure_num_objects_p),
+        restart_on_exception_patterns(std::move(restart_on_exception_patterns_p)) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -232,6 +234,10 @@ struct ActorCreationOptions {
   // on this actor. -1 disables the cap. See proto field
   // ActorCreationTaskSpec.actor_generator_backpressure_num_objects.
   const int64_t actor_generator_backpressure_num_objects = -1;
+  /// Exception patterns that, when matched (case-insensitive substring) against an
+  /// exception raised by an actor method or __init__, cause the worker to exit with a
+  /// system error so the actor is restarted. Empty disables the feature.
+  const std::vector<std::string> restart_on_exception_patterns;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

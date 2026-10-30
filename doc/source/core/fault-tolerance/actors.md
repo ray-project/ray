@@ -127,3 +127,30 @@ Retry behavior depends on the value of `retry_exceptions`:
 1. The default value, which is `0`.
 
 For example, if a method sets `max_task_retries=5` and `retry_exceptions=True`, and the actor sets `max_restarts=2`, Ray executes the method up to six times: once for the initial invocation, and five additional retries. The six invocations might include two actor crashes. After the sixth invocation, a `ray.get` call on the result's object ref raises the exception from the last invocation, or `ray.exceptions.RayActorError` if the actor crashed in the last invocation.
+
+(actor-restart-on-exceptions)=
+
+### Restarting an actor on specific exceptions
+
+Some faults leave the actor process alive while making it unusable, for example a CUDA soft error that poisons the GPU context, or a subprocess that the actor manages dying. Retrying the method in place doesn't help, because the actor keeps the same broken process and state.
+
+For these faults, set `restart_on_exceptions` to a list of case-insensitive substring patterns. If an actor method, the actor's `__init__`, or one of its (streaming or dynamic) generator methods raises an exception whose formatted text (`f"{type(e).__name__}: {e}"`, including the `__cause__` and `__context__` chain) contains any pattern, the actor worker exits with a system error. Ray then restarts the actor on a fresh process, consuming one of its `max_restarts`, and reruns its constructor.
+
+```python
+import ray
+
+@ray.remote(max_restarts=3, max_task_retries=2, restart_on_exceptions=["CUDA error"])
+class ModelWorker:
+    def __init__(self):
+        self._load_model()
+
+    def predict(self, batch):
+        ...
+```
+
+Keep the following in mind:
+
+- **This option restarts the actor, not the call.** The exception isn't surfaced to the caller as the application exception; the call fails with a `RayActorError` instead. To have Ray rerun the call on the restarted actor, also set `max_task_retries` (or `retry_exceptions` with `max_task_retries` for application-level retries on a healthy actor).
+- **In-flight calls fail and actor state is lost.** Other tasks running on the actor fail too, and the restarted actor starts from its constructor, so checkpoint any state you need to recover. Because the failed call may or may not have taken effect, only use this option with actors whose methods are idempotent or externally checkpointed.
+- **A persistent failure becomes a restart loop.** If the constructor or the method raises a matching exception every time, Ray restarts the actor until `max_restarts` runs out, then fails the job. Set a finite `max_restarts` so a logic error surfaces instead of looping.
+- **Patterns match text, not types.** A broad pattern such as `"error"` can match unrelated exceptions. Prefer specific patterns such as `"CUDA error: device-side assert"`, and remember that the `__cause__`/`__context__` chain is searched too, so a wrapped exception can match on the original fault.
