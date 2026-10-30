@@ -2,25 +2,23 @@
 
 import logging
 import math
-from array import array
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
 
 import ray
 from ray import ObjectRef
-from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_METADATA_TYPE,
     FILE_MTIME_COLUMN_NAME,
     FileManifest,
     FileMetadata,
 )
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
@@ -29,40 +27,22 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 
-# Bound submitted reads, not just executing threads, for full inference.
 _SCHEMA_READ_BATCH_SIZE = 256
-_SCHEMA_READ_MIN_FILES = 2048
-_SCHEMA_READ_MAX_TASKS = 16
-_SCHEMA_TASK_NUM_CPUS = 0.5
-_SCHEMA_METADATA_BUDGET = 32 * 1024 * 1024
-_SCHEMA_TASK_METADATA_BUDGET = 1024 * 1024
-# Conservative fixed-record allowance; footer bytes are budgeted separately.
-_FILE_METADATA_RECORD_BYTES = 32
-
 logger = logging.getLogger(__name__)
+_FILE_METADATA_RECORD_BYTES = 32
 
 
 @dataclass
 class FullSchemaInferenceResult:
-    """Planned schema and optional, ordinary Arrow metadata for the same files."""
+    """Schema and optional ordinary Arrow values for the same candidates."""
 
     schema: pa.Schema
     metadata: Optional[pa.ChunkedArray] = None
 
 
 @dataclass
-class _EncodedSchemas:
+class _SchemaBatchResult:
     schemas: List[bytes]
-    indices: array
-
-    def decode(self) -> List[pa.Schema]:
-        schemas = [pa.ipc.read_schema(pa.BufferReader(value)) for value in self.schemas]
-        return [schemas[index] for index in self.indices]
-
-
-@dataclass
-class _SchemaBatchSummary:
-    schema: Optional[bytes]
     metadata: Optional[pa.Array]
     footer_bytes: int
 
@@ -74,7 +54,7 @@ class _FooterBudget:
         self.lock = Lock()
 
     def encode(self, metadata) -> Optional[bytes]:
-        # A metadata-only file adds the header, footer length and trailing magic.
+        # A metadata-only file adds its header, footer length and trailing magic.
         reserved = metadata.serialized_size + 12
         with self.lock:
             if reserved > self.remaining:
@@ -92,140 +72,100 @@ class _FooterBudget:
         return payload
 
 
-def _is_flat_schema(schema: pa.Schema) -> bool:
-    if len(set(schema.names)) != len(schema):
-        return False
-    for field in schema:
-        metadata = field.metadata or {}
-        if any(key.startswith(b"ARROW:extension:") for key in metadata):
-            return False
-        dtype = field.type
-        if not any(
-            predicate(dtype)
-            for predicate in (
-                pa.types.is_null,
-                pa.types.is_boolean,
-                pa.types.is_integer,
-                pa.types.is_floating,
-                pa.types.is_decimal,
-                pa.types.is_string,
-                pa.types.is_large_string,
-                pa.types.is_binary,
-                pa.types.is_large_binary,
-                pa.types.is_fixed_size_binary,
-                pa.types.is_temporal,
-            )
-        ):
-            return False
-    return True
-
-
-def _merge_same_types(
-    left: Optional[pa.Schema], right: pa.Schema
-) -> Optional[pa.Schema]:
-    """Merge only flat fields whose types stay unchanged across all inputs."""
-    if not _is_flat_schema(right):
-        return None
-    if left is None:
-        return right
-    types = {field.name: field.type for field in left}
-    if any(field.name in types and types[field.name] != field.type for field in right):
-        return None
-    return unify_schemas_with_validation([left, right]) or left
-
-
-def _encode_schemas(
-    schemas: List[pa.Schema],
-) -> Tuple[Optional[bytes], _EncodedSchemas]:
-    unique: List[bytes] = []
-    positions: Dict[bytes, int] = {}
-    indices = array("I")
-    merged = None
-    eligible = True
-    for schema in schemas:
-        value = schema.serialize().to_pybytes()
-        if value not in positions:
-            positions[value] = len(unique)
-            unique.append(value)
-        indices.append(positions[value])
-        if eligible:
-            merged = _merge_same_types(merged, schema)
-            eligible = merged is not None
-    partial = merged.serialize().to_pybytes() if merged is not None else None
-    return partial, _EncodedSchemas(unique, indices)
-
-
 def _read_schema_batch(
-    files: List[FileInfo],
+    paths: List[str], filesystem: FileSystem, format_name: str, context: DataContext
+) -> List[bytes]:
+    return _read_schema_metadata_batch(paths, filesystem, format_name, context).schemas
+
+
+def _read_schema_metadata_batch(
+    paths: List[str],
     filesystem: FileSystem,
     format_name: str,
-    row_records: int,
-    footer_credit: int,
     context: DataContext,
-    io_concurrency: int = 4,
-) -> Tuple[_SchemaBatchSummary, _EncodedSchemas]:
+    row_records: int = 0,
+    footer_credit: int = 0,
+    mtimes: Optional[List[Optional[int]]] = None,
+    *,
+    io_concurrency: Optional[int] = None,
+) -> _SchemaBatchResult:
     DataContext._set_current(context)
+    if format_name not in {"Parquet", "ORC"}:
+        raise ValueError(f"Unsupported schema format: {format_name}")
     budget = _FooterBudget(footer_credit)
 
-    def read_file(item: Tuple[int, FileInfo]):
-        index, file = item
+    def read_file(item: Tuple[int, str]):
+        index, path = item
+        metadata: Optional[FileMetadata] = None
         try:
-            with filesystem.open_input_file(file.path) as source:
+            with filesystem.open_input_file(path) as source:
                 if format_name == "Parquet":
                     import pyarrow.parquet as pq
 
-                    reader = pq.ParquetFile(source)
+                    parquet_reader = pq.ParquetFile(source)
                     # This is pq.read_schema's conversion, not schema_arrow.
-                    schema = reader.schema.to_arrow_schema()
-                    num_rows = reader.metadata.num_rows
-                    footer = (
-                        budget.encode(reader.metadata)
-                        if footer_credit and index < row_records
-                        else None
-                    )
-                elif format_name == "ORC":
+                    schema = parquet_reader.schema.to_arrow_schema()
+                    if index < row_records:
+                        metadata = FileMetadata(
+                            parquet_reader.metadata.num_rows,
+                            budget.encode(parquet_reader.metadata)
+                            if footer_credit
+                            else None,
+                            mtimes[index] if mtimes is not None else None,
+                        )
+                else:
                     import pyarrow.orc as orc
 
-                    reader = orc.ORCFile(source)
-                    schema = reader.schema
-                    num_rows = reader.nrows
-                    footer = None
-                else:
-                    raise ValueError(f"Unsupported schema format: {format_name}")
+                    orc_reader = orc.ORCFile(source)
+                    schema = orc_reader.schema
+                    if index < row_records:
+                        metadata = FileMetadata(
+                            num_rows=orc_reader.nrows,
+                            mtime_ns=mtimes[index] if mtimes is not None else None,
+                        )
+                return schema.serialize().to_pybytes(), metadata
         except (OSError, pa.ArrowInvalid, pa.ArrowTypeError) as error:
             raise type(error)(
-                f"Failed to read {format_name} schema from {file.path!r}: {error}"
+                f"Failed to read {format_name} schema from {path!r}: {error}"
             ) from error
-        metadata = (
-            FileMetadata(num_rows, footer, file.mtime_ns)
-            if index < row_records
-            else FileMetadata()
-        )
-        return schema, metadata
 
-    with ThreadPoolExecutor(max_workers=min(io_concurrency, len(files))) as executor:
-        results = list(executor.map(read_file, enumerate(files)))
-    partial, encoded = _encode_schemas([schema for schema, _ in results])
-    metadata = None
-    if row_records:
-        metadata = pa.array(
-            [value.to_metadata() for _, value in results], type=FILE_METADATA_TYPE
+    concurrency = (
+        io_concurrency
+        if io_concurrency is not None
+        else context.full_schema_inference_io_concurrency
+    )
+    with ThreadPoolExecutor(max_workers=min(concurrency, len(paths))) as executor:
+        results = list(executor.map(read_file, enumerate(paths)))
+    metadata = (
+        pa.array(
+            [
+                value.to_metadata() if value is not None else None
+                for _, value in results
+            ],
+            type=FILE_METADATA_TYPE,
         )
-    return (
-        _SchemaBatchSummary(partial, metadata, budget.limit - budget.remaining),
-        encoded,
+        if row_records
+        else None
+    )
+    return _SchemaBatchResult(
+        [schema for schema, _ in results], metadata, budget.limit - budget.remaining
     )
 
 
-def _schema_task_options(remote_args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    read_num_cpus = remote_args.get("num_cpus")
-    if read_num_cpus is not None and read_num_cpus < _SCHEMA_TASK_NUM_CPUS:
+def _schema_task_options(
+    remote_args: Dict[str, Any], num_cpus: float
+) -> Optional[Dict[str, Any]]:
+    read_num_cpus = remote_args.get("num_cpus", 1)
+    if read_num_cpus is None:
+        # Unlike an absent key, explicit None adds no CPU resource in Ray Core.
+        read_num_cpus = 0
+    if read_num_cpus < num_cpus:
         # Do not require more CPU for planning than the requested read can use
         # on its eligible nodes, including label-selected zero-CPU nodes.
         logger.debug("Using driver schema reads for a low read CPU request")
         return None
     scheduling_strategy = remote_args.get("scheduling_strategy", "DEFAULT")
-    # Metadata tasks reserve 0.5 CPU independently of read tasks and may not fit
+    # Schema tasks reserve CPU independently of read tasks and may not fit
     # the placement group's bundles. Explicit None can inherit the caller's PG.
     if scheduling_strategy is None or isinstance(
         scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -255,6 +195,27 @@ def _schema_task_options(remote_args: Dict[str, Any]) -> Optional[Dict[str, Any]
     return {key: value for key, value in remote_args.items() if key in supported}
 
 
+def _validate_full_schema_config(context: DataContext) -> None:
+    for suffix, minimum in (
+        ("min_files", 0),
+        ("max_tasks", 1),
+        ("batch_size", 1),
+        ("io_concurrency", 1),
+    ):
+        name = f"full_schema_inference_{suffix}"
+        value = getattr(context, name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+            raise ValueError(f"{name} must be an integer >= {minimum}, got {value!r}")
+    num_cpus = context.full_schema_inference_num_cpus
+    if (
+        isinstance(num_cpus, bool)
+        or not isinstance(num_cpus, (int, float))
+        or not math.isfinite(num_cpus)
+        or num_cpus <= 0
+    ):
+        raise ValueError("full_schema_inference_num_cpus must be finite and positive")
+
+
 def infer_full_schema_from_files(
     sample: FileManifest,
     filesystem: FileSystem,
@@ -262,163 +223,200 @@ def infer_full_schema_from_files(
     format_name: str,
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
-) -> FullSchemaInferenceResult:
-    """Read every candidate with bounded tasks and retain a lossless merge path.
-
-    Partial schemas are used only when every field stays in the same flat type.
-    All other inputs replay their original ordered schema sequence to Ray's
-    existing one-shot unifier. Metadata is an optional, budgeted optimization.
-    """
-    if not len(sample):
-        return FullSchemaInferenceResult(pa.schema([]))
-    block = sample.as_block()
-    assert isinstance(block, pa.Table)
-    mtimes = (
-        block[FILE_MTIME_COLUMN_NAME].to_pylist()
-        if FILE_MTIME_COLUMN_NAME in block.column_names
-        else [None] * len(sample)
+) -> Optional[pa.Schema]:
+    """Keep the schema-only planning contract, including its driver fallback."""
+    result = infer_full_schema_with_metadata_from_files(
+        sample,
+        filesystem,
+        format_name=format_name,
+        ray_remote_args=ray_remote_args,
+        supports_distributed_reads=supports_distributed_reads,
+        reuse_metadata=False,
     )
-    paths = sample.paths
-    sizes = sample.file_sizes
-    options = _schema_task_options(ray_remote_args)
+    return result.schema if result is not None else None
+
+
+def infer_full_schema_with_metadata_from_files(
+    sample: FileManifest,
+    filesystem: FileSystem,
+    *,
+    format_name: str,
+    ray_remote_args: Dict[str, Any],
+    supports_distributed_reads: bool,
+    reuse_metadata: bool = True,
+) -> Optional[FullSchemaInferenceResult]:
+    """Read every schema once and optionally retain budgeted file metadata."""
+    context = DataContext.get_current()
+    _validate_full_schema_config(context)
+    budget = task_budget = 0
+    if reuse_metadata:
+        for suffix in ("metadata_budget_bytes", "task_metadata_budget_bytes"):
+            name = f"full_schema_inference_{suffix}"
+            value = getattr(context, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a nonnegative integer")
+        budget = context.full_schema_inference_metadata_budget_bytes
+        task_budget = context.full_schema_inference_task_metadata_budget_bytes
+        if min(budget, task_budget) < _FILE_METADATA_RECORD_BYTES:
+            return None
+    paths: List[str] = sample.paths.tolist()
+    if not paths:
+        return FullSchemaInferenceResult(pa.schema([]))
+    options = _schema_task_options(
+        merge_label_selector(ray_remote_args, context.execution_options.label_selector),
+        context.full_schema_inference_num_cpus,
+    )
+    batch_size = context.full_schema_inference_batch_size
     distributed = (
         supports_distributed_reads
         and options is not None
-        and len(sample) > _SCHEMA_READ_MIN_FILES
+        and len(paths) > context.full_schema_inference_min_files
     )
     window = (
         min(
-            _SCHEMA_READ_MAX_TASKS,
-            max(1, math.ceil(ray.cluster_resources().get("CPU", 1) * 2)),
+            context.full_schema_inference_max_tasks,
+            max(
+                1,
+                math.ceil(
+                    ray.cluster_resources().get("CPU", 1)
+                    / context.full_schema_inference_num_cpus
+                ),
+            ),
         )
         if distributed
         else 1
     )
-    # Four I/O threads per task should not reduce the driver's 16-way I/O.
-    distributed = distributed and window >= 4
+    distributed = distributed and window * min(
+        context.full_schema_inference_io_concurrency, batch_size
+    ) >= min(16, batch_size)
+    if not distributed and not reuse_metadata:
+        return None
     if not distributed:
         window = 1
+    read_batch = _read_schema_metadata_batch if reuse_metadata else _read_schema_batch
     read_remote = (
-        cached_remote_fn(
-            _read_schema_batch,
-            num_cpus=_SCHEMA_TASK_NUM_CPUS,
-            max_retries=2,
-            num_returns=2,
-        ).options(**(options or {}))
+        cached_remote_fn(read_batch, max_retries=2).options(
+            num_cpus=context.full_schema_inference_num_cpus, **(options or {})
+        )
         if distributed
         else None
     )
-    context = DataContext.get_current()
-    row_limit = min(len(sample), _SCHEMA_METADATA_BUDGET // _FILE_METADATA_RECORD_BYTES)
+    # Reserve count records first, respecting the task cap even for large batches.
+    row_slots = min(batch_size, task_budget // _FILE_METADATA_RECORD_BYTES)
+    full_batches, tail = divmod(len(paths), batch_size)
+    row_limit = min(
+        budget // _FILE_METADATA_RECORD_BYTES,
+        full_batches * row_slots + min(tail, row_slots),
+    )
+    row_remaining = row_limit
     footer_available = (
-        _SCHEMA_METADATA_BUDGET - row_limit * _FILE_METADATA_RECORD_BYTES
+        budget - row_limit * _FILE_METADATA_RECORD_BYTES
         if format_name == "Parquet"
         else 0
     )
-    pending = deque()
-    inflight = set()
-    ready = set()
-    originals: List[Union[ObjectRef[_EncodedSchemas], _EncodedSchemas]] = []
-    metadata_chunks = []
-    merged = None
-    eligible = True
-    succeeded = False
+    block = sample.as_block()
+    mtimes = (
+        block[FILE_MTIME_COLUMN_NAME].to_pylist()
+        if reuse_metadata
+        and isinstance(block, pa.Table)
+        and FILE_MTIME_COLUMN_NAME in block.column_names
+        else None
+    )
+    schemas: List[Optional[pa.Schema]] = [None] * len(paths)
+    metadata_chunks: Dict[int, pa.Array] = {}
+    pending: Dict[ObjectRef[Any], Tuple[int, int, int]] = {}
+
+    def consume(
+        result: Union[List[bytes], _SchemaBatchResult],
+        offset: int,
+        count: int,
+        credit: int,
+    ) -> None:
+        nonlocal footer_available
+        if isinstance(result, _SchemaBatchResult):
+            footer_available += credit - result.footer_bytes
+            metadata_chunks[offset] = (
+                result.metadata
+                if result.metadata is not None
+                else pa.nulls(count, type=FILE_METADATA_TYPE)
+            )
+            values = result.schemas
+        else:
+            values = result
+        for index, value in enumerate(values):
+            schemas[offset + index] = pa.ipc.read_schema(pa.BufferReader(value))
+
     start = 0
     try:
-        while start < len(sample) or pending:
-            while (
-                start < len(sample)
-                and (len(inflight) if read_remote is not None else len(pending))
-                < window
-            ):
-                stop = min(start + _SCHEMA_READ_BATCH_SIZE, len(sample))
-                files = [
-                    FileInfo(str(paths[i]), int(sizes[i]), mtime_ns=mtimes[i])
-                    for i in range(start, stop)
-                ]
-                row_records = max(0, min(stop, row_limit) - start)
-                footer_credit = min(
-                    footer_available,
-                    max(
-                        0,
-                        _SCHEMA_TASK_METADATA_BUDGET
-                        - row_records * _FILE_METADATA_RECORD_BYTES,
-                    ),
+        while start < len(paths) or pending:
+            while start < len(paths) and len(pending) < window:
+                stop = min(start + batch_size, len(paths))
+                row_records = min(row_slots, stop - start, row_remaining)
+                row_remaining -= row_records
+                credit = (
+                    min(
+                        footer_available,
+                        task_budget - row_records * _FILE_METADATA_RECORD_BYTES,
+                    )
+                    if row_records
+                    else 0
                 )
-                footer_available -= footer_credit
-                args = (
-                    files,
+                footer_available -= credit
+                args: Tuple[Any, ...] = (
+                    paths[start:stop],
                     filesystem,
                     format_name,
-                    row_records,
-                    footer_credit,
                     context,
                 )
+                if reuse_metadata:
+                    args += (
+                        row_records,
+                        credit,
+                        mtimes[start:stop] if mtimes is not None else None,
+                    )
                 if read_remote is not None:
-                    summary, original = read_remote.remote(*args)
-                    inflight.add(summary)
+                    ref = read_remote.remote(*args)
+                    pending[ref] = (start, stop - start, credit)
                 else:
-                    summary, original = _read_schema_batch(*args, io_concurrency=16)
-                pending.append((summary, footer_credit, stop - start))
-                originals.append(original)
+                    consume(
+                        _read_schema_metadata_batch(
+                            paths[start:stop],
+                            filesystem,
+                            format_name,
+                            context,
+                            row_records,
+                            credit,
+                            mtimes[start:stop] if mtimes is not None else None,
+                            io_concurrency=16,
+                        ),
+                        start,
+                        stop - start,
+                        credit,
+                    )
                 start = stop
-            if read_remote is not None and inflight:
-                completed, _ = ray.wait(list(inflight), num_returns=1)
-                inflight.difference_update(completed)
-                ready.update(completed)
-            # Completion releases task slots independently of schema order. Keep
-            # results as refs and reserve footer credit until ordered consumption.
-            while pending:
-                summary, footer_credit, count = pending[0]
-                if read_remote is not None:
-                    if summary not in ready:
-                        break
-                    summary_ref = summary
-                    summary = ray.get(summary_ref)
-                    ready.remove(summary_ref)
-                pending.popleft()
-                footer_available += footer_credit - summary.footer_bytes
-                metadata_chunks.append(
-                    summary.metadata
-                    if summary.metadata is not None
-                    else pa.nulls(count, type=FILE_METADATA_TYPE)
-                )
-                if eligible:
-                    if summary.schema is None:
-                        eligible = False
-                    else:
-                        partial = pa.ipc.read_schema(pa.BufferReader(summary.schema))
-                        merged = _merge_same_types(merged, partial)
-                        eligible = merged is not None
-        if not eligible:
-            schemas = []
-            for original in originals:
-                encoded = (
-                    original
-                    if isinstance(original, _EncodedSchemas)
-                    else ray.get(original)
-                )
-                schemas.extend(encoded.decode())
-            merged = _merge_file_schemas(list(map(str, paths)), schemas, format_name)
-        assert merged is not None
-        metadata = (
-            pa.chunked_array(metadata_chunks, type=FILE_METADATA_TYPE)
+            if not pending:
+                break
+            ready, _ = ray.wait(list(pending), num_returns=1)
+            ref = ready[0]
+            offset, count, credit = pending.pop(ref)
+            consume(ray.get(ref), offset, count, credit)
+        assert all(schema is not None for schema in schemas)
+        return FullSchemaInferenceResult(
+            _merge_file_schemas(paths, cast(List[pa.Schema], schemas), format_name),
+            pa.chunked_array(
+                [metadata_chunks[offset] for offset in sorted(metadata_chunks)],
+                type=FILE_METADATA_TYPE,
+            )
             if row_limit
-            else None
+            else None,
         )
-        succeeded = True
-        return FullSchemaInferenceResult(merged, metadata)
     finally:
-        if not succeeded and read_remote is not None:
-            for summary, _, _ in pending:
-                try:
-                    ray.cancel(summary, force=False)
-                except Exception:
-                    logger.debug("Could not cancel schema task", exc_info=True)
+        for ref in pending:
+            try:
+                ray.cancel(ref, force=False)
+            except Exception:
+                logger.debug("Could not cancel schema task", exc_info=True)
         pending.clear()
-        originals.clear()
-        inflight.clear()
-        ready.clear()
 
 
 def infer_schema_from_files(

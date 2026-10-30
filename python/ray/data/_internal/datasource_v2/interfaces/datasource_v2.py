@@ -288,17 +288,28 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         sample: FileManifest,
         *,
         ray_remote_args: Dict[str, Any],
-    ) -> "FullSchemaInferenceResult":
-        """Infer all candidate schemas, optionally handing metadata to execution.
+    ) -> pa.Schema:
+        """Infer the schema of all candidates before execution.
 
         The default delegates to the existing method so file sources need not
         implement this opt-in planning optimization.
         """
+        return self.infer_schema(sample)
+
+    def infer_full_schema_with_metadata(
+        self,
+        sample: FileManifest,
+        *,
+        ray_remote_args: Dict[str, Any],
+    ) -> FullSchemaInferenceResult:
+        """Optionally retain planning metadata without changing the schema hook."""
         from ray.data._internal.datasource_v2.common.schema_inference import (
             FullSchemaInferenceResult,
         )
 
-        return FullSchemaInferenceResult(self.infer_schema(sample))
+        return FullSchemaInferenceResult(
+            self.infer_full_schema(sample, ray_remote_args=ray_remote_args)
+        )
 
     @property
     @abstractmethod

@@ -18,6 +18,7 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
 from ray.data._internal.datasource_v2.common.schema_inference import (
     FullSchemaInferenceResult,
     infer_full_schema_from_files,
+    infer_full_schema_with_metadata_from_files,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.size_estimators import (
@@ -78,8 +79,8 @@ class OrcDatasourceV2(FileDataSourceV2):
         self._file_extensions = file_extensions
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
-        self._reuse_file_metadata = reuse_file_metadata
         self._synthesized_columns = (PathColumn(),) if include_paths else ()
+        self._reuse_file_metadata = reuse_file_metadata
 
     @property
     @override
@@ -142,16 +143,43 @@ class OrcDatasourceV2(FileDataSourceV2):
     @override
     def infer_full_schema(
         self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
-    ) -> FullSchemaInferenceResult:
+    ) -> pa.Schema:
         if not len(sample):
-            return FullSchemaInferenceResult(self.infer_schema(sample))
-        result = infer_full_schema_from_files(
+            return self.infer_schema(sample)
+        schema = infer_full_schema_from_files(
             sample,
             self._filesystem,
             format_name="ORC",
             ray_remote_args=ray_remote_args,
             supports_distributed_reads=self.supports_distributed_reads,
         )
+        if schema is None:
+            return self.infer_schema(sample)
+        return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema_with_metadata(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> FullSchemaInferenceResult:
+        # Cache settings must not bypass a subclass's schema hook.
+        if (
+            not len(sample)
+            or type(self).infer_full_schema is not OrcDatasourceV2.infer_full_schema
+        ):
+            return super().infer_full_schema_with_metadata(
+                sample, ray_remote_args=ray_remote_args
+            )
+        result = infer_full_schema_with_metadata_from_files(
+            sample,
+            self._filesystem,
+            format_name="ORC",
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+        )
+        if result is None:
+            return super().infer_full_schema_with_metadata(
+                sample, ray_remote_args=ray_remote_args
+            )
         return FullSchemaInferenceResult(
             self._augment_schema(result.schema, sample), result.metadata
         )

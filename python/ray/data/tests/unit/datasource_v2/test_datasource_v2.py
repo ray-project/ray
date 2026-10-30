@@ -133,8 +133,17 @@ def test_file_source_full_schema_defaults_to_infer_schema(mocker):
 
     infer_schema.assert_called_once()
     assert infer_schema.call_args.args[0] is sample
-    assert result.schema is _SCHEMA
-    assert result.metadata is None
+    assert result is _SCHEMA
+
+
+def test_file_source_metadata_hook_preserves_schema_override(mocker):
+    source = _FileSource()
+    sample = FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
+    hook = mocker.patch.object(source, "infer_full_schema", return_value=_SCHEMA)
+    args = {"num_cpus": 0}
+    result = source.infer_full_schema_with_metadata(sample, ray_remote_args=args)
+    hook.assert_called_once_with(sample, ray_remote_args=args)
+    assert result.schema is _SCHEMA and result.metadata is None
 
 
 def test_parquet_is_a_file_source():

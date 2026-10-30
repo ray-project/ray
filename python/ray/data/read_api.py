@@ -649,7 +649,7 @@ def _read_datasource_v2(
     planning_metadata = None
     if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
         assert sample is not None
-        inference = datasource.infer_full_schema(
+        inference = datasource.infer_full_schema_with_metadata(
             sample, ray_remote_args=ray_remote_args
         )
         schema = inference.schema
@@ -1881,14 +1881,19 @@ def read_parquet(
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
         planning, which can be expensive for large or remote datasets. Larger
-        eligible reads distribute this work across bounded Ray tasks. Schemas
-        requiring type promotion or nested/extension reconciliation retain the
-        existing one-shot merge behavior and its driver memory cost.
-        Within a bounded cache budget, planning metadata can be reused for
-        row-group indexing and exact file counts. Data scanning may still read
-        footers. With more than 10,000 candidate files, the reader warns before
-        schema merging. Retained file-info and optional metadata columns add
-        O(files) data to serialized lineage, plus budgeted cached footer bytes.
+        eligible reads distribute schema I/O across bounded Ray tasks. The driver
+        retains every candidate schema and applies the existing one-shot unifier;
+        this does not reduce driver schema storage, which remains O(files).
+        Configure eligibility, task resources, batching and I/O concurrency through
+        :class:`~ray.data.DataContext`. Within the configured metadata payload
+        budgets, planning retains exact file counts and metadata-only Parquet
+        footers for count queries and row-group indexing. Cache misses use normal
+        metadata reads; data scans may still open footers. Validation checks file
+        existence, size and available mtime, not an atomic snapshot.
+        With more than 10,000 candidate files, the reader warns before schema
+        merging. Retained file-info and optional metadata columns add O(files)
+        data to serialized lineage, plus budgeted footer payloads. The cache
+        budgets exclude schemas, column scaffolding and transient copies.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
@@ -3081,14 +3086,18 @@ def read_orc(
 
         ``merge_schema=True`` lists all eligible files and reads their schemas
         during planning, which can be expensive for large or remote datasets.
-        Larger eligible reads distribute this work across bounded Ray tasks.
-        Schemas requiring type promotion or nested/extension reconciliation retain
-        the existing one-shot merge behavior and its driver memory cost.
-        Planning can retain exact file row counts within a bounded cache budget
-        for count queries; ordinary data scans still open ORC metadata.
+        Larger eligible reads distribute schema I/O across bounded Ray tasks.
+        The driver retains every candidate schema and applies the existing
+        one-shot unifier; driver schema storage remains O(files).
+        Configure eligibility, task resources, batching and I/O concurrency through
+        :class:`~ray.data.DataContext`. Within the configured metadata payload
+        budgets, planning retains exact file counts for metadata count queries.
+        Cache misses and data scans still open ORC metadata. Cache validation
+        checks existence, size and available mtime; inputs should remain stable.
         With more than 10,000 candidate files, Ray warns before schema merging.
         Retained file-info and optional metadata columns add O(files) data to
-        serialized lineage.
+        serialized lineage. Cache budgets exclude schemas, column scaffolding
+        and transient copies.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
