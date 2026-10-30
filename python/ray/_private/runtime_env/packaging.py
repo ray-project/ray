@@ -73,6 +73,10 @@ RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR = (
 # zipped on MacOS.
 MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
 
+# Extracted packages live in a cache shared by every worker on the node, so
+# archive members never get setuid, setgid, sticky or group/other write bits.
+EXTRACTED_FILE_MODE_MASK = 0o755
+
 
 def _mib_string(num_bytes: float) -> str:
     size_mib = float(num_bytes / 1024**2)
@@ -1216,7 +1220,7 @@ def unzip_package(
                     # Extract Unix file mode from external_attr
                     mode = zip_info.external_attr >> 16
                     if mode:
-                        os.chmod(member_path, mode)
+                        os.chmod(member_path, mode & EXTRACTED_FILE_MODE_MASK)
     if remove_top_level_directory:
         top_level_directory = get_top_level_dir_from_compressed_package(package_path)
         if top_level_directory is not None:
@@ -1318,7 +1322,7 @@ def untar_package(
                     open(member_path, "wb") as target,
                 ):
                     shutil.copyfileobj(source, target)
-                os.chmod(member_path, member.mode)
+                os.chmod(member_path, member.mode & EXTRACTED_FILE_MODE_MASK)
 
     if remove_top_level_directory:
         top_level_directory = get_top_level_dir_from_tar_package(package_path)
