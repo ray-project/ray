@@ -1871,9 +1871,11 @@ def read_parquet(
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
         planning, which can be expensive for large or remote datasets. Larger
-        eligible reads distribute schema I/O across bounded Ray tasks. The driver
-        retains every candidate schema and applies the existing one-shot unifier;
-        this does not reduce driver schema storage, which remains O(files).
+        eligible reads distribute schema I/O across bounded Ray tasks. On that path,
+        consecutive identical IPC payloads share a decoded schema within the
+        planning call. The driver keeps every candidate position for the existing
+        one-shot unifier; candidate references and schemas with different IPC
+        payloads still require O(files) storage.
         Configure eligibility, task resources, batching and I/O concurrency through
         :class:`~ray.data.DataContext`. Execution reads footer metadata again.
         With more than 10,000 candidate files, the reader warns before schema
@@ -3072,8 +3074,10 @@ def read_orc(
         ``merge_schema=True`` lists all eligible files and reads their schemas
         during planning, which can be expensive for large or remote datasets.
         Larger eligible reads distribute schema I/O across bounded Ray tasks.
-        The driver retains every candidate schema and applies the existing
-        one-shot unifier; driver schema storage remains O(files).
+        On that path, consecutive identical IPC payloads share a decoded schema
+        within the planning call. The driver keeps every candidate position for
+        the existing one-shot unifier; candidate references and schemas with
+        different IPC payloads still require O(files) storage.
         Configure eligibility, task resources, batching and I/O concurrency through
         :class:`~ray.data.DataContext`. Execution reads ORC metadata again.
         With more than 10,000 candidate files, Ray warns before schema merging.

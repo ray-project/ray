@@ -133,7 +133,8 @@ def infer_full_schema_from_files(
     """Read schemas on workers and merge once in candidate order on the driver.
 
     Return None when the caller should use its existing driver inference.
-    The task window bounds submitted batches; driver schema storage is O(files).
+    The task window bounds submitted batches. Consecutive identical IPC payloads
+    share a decoded schema within this call; candidate references remain O(files).
     """
     context = DataContext.get_current()
     _validate_full_schema_config(context)
@@ -171,6 +172,8 @@ def infer_full_schema_from_files(
     )
     schemas: List[Optional[pa.Schema]] = [None] * len(paths)
     pending: Dict[ObjectRef[List[bytes]], int] = {}
+    last_payload: Optional[bytes] = None
+    last_schema: Optional[pa.Schema] = None
     start = 0
     try:
         while start < len(paths) or pending:
@@ -185,7 +188,11 @@ def infer_full_schema_from_files(
             ref = ready[0]
             offset = pending.pop(ref)
             for index, value in enumerate(ray.get(ref)):
-                schemas[offset + index] = pa.ipc.read_schema(pa.BufferReader(value))
+                if value != last_payload:
+                    last_schema = pa.ipc.read_schema(pa.BufferReader(value))
+                    last_payload = value
+                assert last_schema is not None
+                schemas[offset + index] = last_schema
         assert all(schema is not None for schema in schemas)
         return _merge_file_schemas(paths, cast(List[pa.Schema], schemas), format_name)
     finally:

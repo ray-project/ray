@@ -104,18 +104,19 @@ def test_invalid_schema_config(monkeypatch, suffix, value):
 
 
 @pytest.mark.parametrize(
-    "read_args,cpus,io_concurrency,threshold,window",
+    "read_args,cpus,io_concurrency,threshold,window,schema_case",
     [
-        ({}, 4, 4, 0, 0),
-        ({"num_cpus": None}, 4, 4, 0, 0),
-        ({"num_cpus": 2}, 4, 4, 0, 2),
-        ({"num_cpus": 2, "label_selector": {"pool": "read"}}, 8, 4, 0, 3),
-        ({"num_cpus": 2}, 4, 1, 0, 0),
-        ({"num_cpus": 2}, 4, 4, 40, 0),
+        ({}, 4, 4, 0, 0, "unique"),
+        ({"num_cpus": None}, 4, 4, 0, 0, "unique"),
+        ({"num_cpus": 2}, 4, 4, 0, 2, "unique"),
+        ({"num_cpus": 2}, 4, 4, 0, 2, "same"),
+        ({"num_cpus": 2, "label_selector": {"pool": "read"}}, 8, 4, 0, 3, "varied"),
+        ({"num_cpus": 2}, 4, 1, 0, 0, "unique"),
+        ({"num_cpus": 2}, 4, 4, 40, 0, "unique"),
     ],
 )
 def test_ordered_reads_and_task_options(
-    monkeypatch, read_args, cpus, io_concurrency, threshold, window
+    monkeypatch, read_args, cpus, io_concurrency, threshold, window, schema_case
 ):
     context = DataContext.get_current()
     for suffix, value in dict(
@@ -135,17 +136,29 @@ def test_ordered_reads_and_task_options(
     }
     original = deepcopy(args)
     paths = [f"field_{i}" for i in range(40)]
-    schemas = {
-        path: pa.schema(
-            [
-                pa.field(
-                    path, pa.int64(), nullable=False, metadata={b"file": path.encode()}
-                )
-            ],
-            metadata={b"file": path.encode()},
+    nested = pa.struct(
+        [
+            ("value", pa.int64()),
+            ("items", pa.list_(pa.int64())),
+            ("mapping", pa.map_(pa.string(), pa.int64())),
+        ]
+    )
+    schemas = {}
+    for index, path in enumerate(paths):
+        name, metadata, nullable = path, {b"file": path.encode()}, False
+        if schema_case == "same":
+            name, metadata = "shared", {b"file": b"same"}
+        elif schema_case == "varied":
+            # A,A,B,B,A,A,C,C: metadata-only and nullability-only misses,
+            # plus a nonconsecutive repetition that must be decoded again.
+            phase = index // 2 % 4
+            name = f"field_{index // 8}"
+            metadata = {b"file": b"changed" if phase == 1 else b"original"}
+            nullable = phase == 3
+        schemas[path] = pa.schema(
+            [pa.field(name, nested, nullable=nullable, metadata=metadata)],
+            metadata=metadata,
         )
-        for path in paths
-    }
     expected = unify_schemas_with_validation(list(schemas.values()))
     sample = FileManifest.construct_manifest(
         paths=paths, sizes=[1] * 40, chunk_metadatas=[None] * 40
@@ -170,9 +183,11 @@ def test_ordered_reads_and_task_options(
     remote.remote.side_effect = submit
     factory = Mock(return_value=remote)
     merge = Mock(wraps=inference.unify_schemas_with_validation)
+    decode = Mock(wraps=pa.ipc.read_schema)
     cancel = Mock()
     monkeypatch.setattr(inference, "cached_remote_fn", factory)
     monkeypatch.setattr(inference, "unify_schemas_with_validation", merge)
+    monkeypatch.setattr(pa.ipc, "read_schema", decode)
     monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": cpus})
     monkeypatch.setattr(ray, "wait", wait)
     monkeypatch.setattr(ray, "get", lambda ref: payloads[ref])
@@ -197,19 +212,38 @@ def test_ordered_reads_and_task_options(
             label_selector={**selector, **args.get("label_selector", {})},
         )
         merge.assert_called_once()
+        received = merge.call_args.args[0]
+        assert len(received) == len(paths)
         assert all(
-            a.equals(b, check_metadata=True)
-            for a, b in zip(merge.call_args.args[0], schemas.values())
+            a.equals(b, check_metadata=True) for a, b in zip(received, schemas.values())
         )
+        assert decode.call_count == {"same": 1, "varied": 20, "unique": 40}[schema_case]
+        if schema_case == "same":
+            assert all(schema is received[0] for schema in received)
+            decode.reset_mock()
+            again = inference.infer_full_schema_from_files(
+                sample,
+                pafs.LocalFileSystem(),
+                format_name="Parquet",
+                ray_remote_args=args,
+                supports_distributed_reads=True,
+            )
+            assert again is not None and again.equals(expected, check_metadata=True)
+            decode.assert_called_once()
+            assert merge.call_count == 2
     else:
         assert actual is None
         factory.assert_not_called()
         merge.assert_not_called()
+        decode.assert_not_called()
     cancel.assert_not_called()
     assert args == original and selector == {"pool": "context", "zone": "a"}
 
 
-@pytest.mark.parametrize("stage,error", [("wait", KeyboardInterrupt), ("get", OSError)])
+@pytest.mark.parametrize(
+    "stage,error",
+    [("wait", KeyboardInterrupt), ("get", OSError), ("decode", pa.ArrowInvalid)],
+)
 def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
     context = DataContext.get_current()
     for suffix, value in dict(min_files=0, max_tasks=2, batch_size=1).items():
@@ -221,7 +255,13 @@ def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
     monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
     monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 1})
     monkeypatch.setattr(ray, "wait", lambda *a, **k: ([refs[0]], [refs[1]]))
-    monkeypatch.setattr(ray, stage, Mock(side_effect=error("schema failure")))
+    monkeypatch.setattr(ray, "get", lambda ref: [b"invalid"])
+    if stage == "decode":
+        monkeypatch.setattr(
+            pa.ipc, "read_schema", Mock(side_effect=error("schema failure"))
+        )
+    else:
+        monkeypatch.setattr(ray, stage, Mock(side_effect=error("schema failure")))
     cancel = Mock()
     monkeypatch.setattr(ray, "cancel", cancel)
     sample = FileManifest.construct_manifest(
