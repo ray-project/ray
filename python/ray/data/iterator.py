@@ -408,16 +408,29 @@ class DataIterator(abc.ABC):
     @abc.abstractmethod
     @PublicAPI
     def stats(self) -> str:
-        """Returns a string containing execution timing information."""
+        """Returns a string containing execution timing information.
+
+        Returns:
+            The execution timing information, as a string.
+        """
         ...
 
     @abc.abstractmethod
     def schema(self) -> Optional["Schema"]:
-        """Return the schema of the dataset iterated over."""
+        """Return the schema of the dataset iterated over.
+
+        Returns:
+            The schema, or ``None`` if it isn't known.
+        """
         ...
 
     @abc.abstractmethod
     def get_context(self) -> DataContext:
+        """Return the DataContext of the dataset this iterator reads.
+
+        Returns:
+            The :class:`~ray.data.DataContext` of the underlying dataset.
+        """
         ...
 
     @PublicAPI
@@ -1315,6 +1328,10 @@ class DataIterator(abc.ABC):
             This method triggers the execution and materializes all blocks
             of the iterator, returning its contents as a
             :class:`~ray.data.dataset.MaterializedDataset` for further processing.
+
+        Returns:
+            A :class:`~ray.data.dataset.MaterializedDataset` that holds all of the
+            iterator's blocks in object store memory.
         """
 
         from ray.data.dataset import MaterializedDataset

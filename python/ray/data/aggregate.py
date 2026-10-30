@@ -174,6 +174,13 @@ class AggregateFn:
         the post-aggregation schema without executing the plan. When
         any aggregator returns ``None``, the entire ``Aggregate.infer_schema``
         returns ``None`` (callers fall back to a ``limit(1)`` execution).
+
+        Args:
+            input_schema: The schema of the aggregator's input blocks.
+
+        Returns:
+            The output ``pa.Field``, or ``None`` if this aggregator can't infer its
+            output type.
         """
         return None
 
@@ -277,6 +284,12 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         )
 
     def get_target_column(self) -> Optional[str]:
+        """Return the name of the column this aggregation reads.
+
+        Returns:
+            The target column name, or ``None`` for an aggregation that doesn't read
+            a column, such as ``Count()`` over rows.
+        """
         return self._target_col_name
 
     def get_agg_name(self) -> str:
@@ -284,6 +297,9 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
         Returns the aggregation type extracted from the name during initialization.
         For example, returns 'sum' for an aggregator named 'sum(col)'.
+
+        Returns:
+            The aggregation type.
         """
         return self._agg_name
 
@@ -1364,7 +1380,14 @@ class CountDistinct(Unique):
         )
 
     def finalize(self, accumulator: Set[Any]) -> int:
-        """Return the count of distinct values."""
+        """Return the count of distinct values.
+
+        Args:
+            accumulator: The set of distinct values collected across blocks.
+
+        Returns:
+            The number of distinct values.
+        """
         return len(accumulator)
 
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
@@ -1449,6 +1472,19 @@ class ValueCounter(AggregateFnV2):
         new_accumulator: Dict[str, List],
     ) -> Dict[str, List]:
 
+        """Merge the value counts of two accumulators.
+
+        Counts for values in both accumulators are summed. Values only in
+        ``new_accumulator`` are appended with their counts.
+
+        Args:
+            current_accumulator: The accumulated ``values`` and ``counts`` lists.
+                This accumulator is updated in place.
+            new_accumulator: The ``values`` and ``counts`` lists to merge in.
+
+        Returns:
+            ``current_accumulator``, updated with the counts from ``new_accumulator``.
+        """
         values = current_accumulator["values"]
         counts = current_accumulator["counts"]
 
@@ -1773,6 +1809,46 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
 
 @PublicAPI(stability="alpha")
 class ApproximateQuantile(AggregateFnV2):
+    """Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
+    https://datasketches.apache.org/docs/KLL/KLLSketch.html
+
+    The accuracy of the KLL quantile sketch is a function of the configured quantile precision, which also affects
+    the overall size of the sketch.
+    The KLL Sketch has absolute error. For example, a specified rank accuracy of 1% at the
+    median (rank = 0.50) means that the true quantile (if you could extract it from the set)
+    should be between getQuantile(0.49) and getQuantile(0.51). This same 1% error applied at a
+    rank of 0.95 means that the true quantile should be between getQuantile(0.94) and getQuantile(0.96).
+    In other words, the error is a fixed +/- epsilon for the entire range of ranks.
+
+    Typical single-sided rank error by quantile_precision (use for getQuantile/getRank):
+        - quantile_precision=100 → ~2.61%
+        - quantile_precision=200 → ~1.33%
+        - quantile_precision=400 → ~0.68%
+        - quantile_precision=800 → ~0.35%
+
+    See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+
+    Null values in the target column are ignored when constructing the sketch.
+
+    Examples:
+        >>> import ray
+        >>> from ray.data.aggregate import ApproximateQuantile
+        >>> # Create a dataset with some values
+        >>> ds = ray.data.from_items(
+        ...     [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
+        ...     {"value": 80.0}, {"value": 100.0}]
+        ... )
+        >>> result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
+        >>> # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
+
+
+    Args:
+        on: The name of the column to calculate the quantile on. Must be a numeric column.
+        quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
+        quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL); higher values yield lower error but use more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+        alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
+    """
+
     def _require_datasketches(self):
         try:
             from datasketches import kll_floats_sketch  # type: ignore[import]
@@ -1790,45 +1866,6 @@ class ApproximateQuantile(AggregateFnV2):
         quantile_precision: int = 800,
         alias_name: Optional[str] = None,
     ):
-        """Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
-        https://datasketches.apache.org/docs/KLL/KLLSketch.html
-
-        The accuracy of the KLL quantile sketch is a function of the configured quantile precision, which also affects
-        the overall size of the sketch.
-        The KLL Sketch has absolute error. For example, a specified rank accuracy of 1% at the
-        median (rank = 0.50) means that the true quantile (if you could extract it from the set)
-        should be between getQuantile(0.49) and getQuantile(0.51). This same 1% error applied at a
-        rank of 0.95 means that the true quantile should be between getQuantile(0.94) and getQuantile(0.96).
-        In other words, the error is a fixed +/- epsilon for the entire range of ranks.
-
-        Typical single-sided rank error by quantile_precision (use for getQuantile/getRank):
-            - quantile_precision=100 → ~2.61%
-            - quantile_precision=200 → ~1.33%
-            - quantile_precision=400 → ~0.68%
-            - quantile_precision=800 → ~0.35%
-
-        See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
-
-        Null values in the target column are ignored when constructing the sketch.
-
-        Examples:
-            >>> import ray
-            >>> from ray.data.aggregate import ApproximateQuantile
-            >>> # Create a dataset with some values
-            >>> ds = ray.data.from_items(
-            ...     [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
-            ...     {"value": 80.0}, {"value": 100.0}]
-            ... )
-            >>> result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
-            >>> # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
-
-
-        Args:
-            on: The name of the column to calculate the quantile on. Must be a numeric column.
-            quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
-            quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL); higher values yield lower error but use more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
-            alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
-        """
         self._sketch_cls = self._require_datasketches()
         self._quantiles = quantiles
         self._quantile_precision = quantile_precision
@@ -1840,6 +1877,15 @@ class ApproximateQuantile(AggregateFnV2):
         )
 
     def zero(self, quantile_precision: int):
+        """Create an empty KLL sketch.
+
+        Args:
+            quantile_precision: The ``k`` parameter of the sketch, which sets its
+                accuracy and size.
+
+        Returns:
+            An empty ``kll_floats_sketch``.
+        """
         return self._sketch_cls(k=quantile_precision)
 
     def aggregate_block(self, block: Block) -> bytes:
@@ -1865,6 +1911,44 @@ class ApproximateQuantile(AggregateFnV2):
 
 @PublicAPI(stability="alpha")
 class ApproximateTopK(AggregateFnV2):
+    """Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
+    https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
+
+    For an exact variant that returns a plain list of values (at the cost of
+    keeping all distinct values in the accumulator), see :class:`TopKUnique`.
+
+    Guarantees:
+        - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
+        - Reported counts may have an error of at most ± N / (2^log_capacity).
+
+
+    If log_capacity is too small for your data:
+        - Low-frequency items may be evicted from the sketch, potentially causing the top-k
+          results to miss items that should appear in the output.
+        - The error bounds increase, reducing the accuracy of the reported counts.
+
+    Examples:
+        >>> import ray
+        >>> from ray.data.aggregate import ApproximateTopK
+        >>> ds = ray.data.from_items([
+        ...     {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+        ...     {"word": "cherry"}, {"word": "apple"}
+        ... ])
+        >>> result = ds.aggregate(ApproximateTopK(on="word", k=2))
+        >>> # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
+
+    Args:
+        on: The name of the column to aggregate.
+        k: The number of top items to return.
+        log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
+            Higher values increase accuracy but use more memory. Defaults to 15.
+        alias_name: The name of the aggregate. Defaults to None.
+        encode_lists: If `True`, encode list elements.  If `False`, encode
+            whole lists (i.e., the entire list is considered as a single object).
+            `False` by default. Note that this is a top-level flatten (not a recursive
+            flatten) operation.
+    """
+
     def _require_datasketches(self):
         try:
             from datasketches import frequent_strings_sketch
@@ -1883,43 +1967,6 @@ class ApproximateTopK(AggregateFnV2):
         alias_name: Optional[str] = None,
         encode_lists: bool = False,
     ):
-        """Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
-        https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
-
-        For an exact variant that returns a plain list of values (at the cost of
-        keeping all distinct values in the accumulator), see :class:`TopKUnique`.
-
-        Guarantees:
-            - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
-            - Reported counts may have an error of at most ± N / (2^log_capacity).
-
-
-        If log_capacity is too small for your data:
-            - Low-frequency items may be evicted from the sketch, potentially causing the top-k
-              results to miss items that should appear in the output.
-            - The error bounds increase, reducing the accuracy of the reported counts.
-
-        Examples:
-            >>> import ray
-            >>> from ray.data.aggregate import ApproximateTopK
-            >>> ds = ray.data.from_items([
-            ...     {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
-            ...     {"word": "cherry"}, {"word": "apple"}
-            ... ])
-            >>> result = ds.aggregate(ApproximateTopK(on="word", k=2))
-            >>> # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
-
-        Args:
-            on: The name of the column to aggregate.
-            k: The number of top items to return.
-            log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
-                Higher values increase accuracy but use more memory. Defaults to 15.
-            alias_name: The name of the aggregate. Defaults to None.
-            encode_lists: If `True`, encode list elements.  If `False`, encode
-                whole lists (i.e., the entire list is considered as a single object).
-                `False` by default. Note that this is a top-level flatten (not a recursive
-                flatten) operation.
-        """
 
         self.k = k
         self._log_capacity = log_capacity
@@ -1934,6 +1981,15 @@ class ApproximateTopK(AggregateFnV2):
         )
 
     def zero(self, log_capacity: int):
+        """Create an empty frequent-items sketch.
+
+        Args:
+            log_capacity: The base-2 logarithm of the sketch's capacity, passed to the
+                sketch as ``lg_max_k``.
+
+        Returns:
+            An empty ``frequent_strings_sketch``.
+        """
         return self._frequent_strings_sketch(lg_max_k=log_capacity)
 
     def aggregate_block(self, block: Block) -> bytes:

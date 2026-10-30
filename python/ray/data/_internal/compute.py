@@ -198,6 +198,11 @@ class ActorPoolStrategy(ComputeStrategy):
         # backwards compatibility from serialization: instances pickled
         # before this became a property carry the value under the public
         # name instead.
+        """Whether the actor UDF can run concurrently within one actor.
+
+        See the class docstring for how this interacts with
+        ``max_concurrent_calls_per_actor``.
+        """
         return bool(
             self.__dict__.get(
                 "_enable_true_multi_threading",
