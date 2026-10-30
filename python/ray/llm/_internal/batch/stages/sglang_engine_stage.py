@@ -37,10 +37,10 @@ def _truncate_prompt_token_ids(
     following vLLM's rules: ``truncate_prompt_tokens`` sets the limit, a truthy
     ``truncation`` (``True`` or ``"longest_first"``) replaces it with
     ``max_length``, and ``"do_not_truncate"`` disables truncation. ``False``
-    counts as unset. ``truncation_side`` is ``"right"`` (keep the first N
-    tokens, the default) or ``"left"`` (keep the last N). Unlike vLLM, a truthy
-    ``truncation`` needs an explicit ``max_length``, because the engine's
-    context length isn't known here.
+    counts as unset. ``truncation_side`` is ``"left"`` (keep the last N tokens,
+    vLLM's default for generation) or ``"right"`` (keep the first N). Unlike
+    vLLM, a truthy ``truncation`` needs an explicit ``max_length``, because the
+    engine's context length isn't known here.
 
     Args:
         token_ids: The prompt token IDs, or None if the row only has text.
@@ -71,7 +71,7 @@ def _truncate_prompt_token_ids(
     truncation = tokenization_kwargs.get("truncation")
     if isinstance(truncation, np.generic):
         truncation = truncation.item()
-    if truncation in (True, "longest_first"):
+    if truncation is True or truncation == "longest_first":
         limit = tokenization_kwargs.get("max_length")
         if limit is None:
             raise ValueError(
@@ -81,7 +81,7 @@ def _truncate_prompt_token_ids(
             )
     elif truncation == "do_not_truncate":
         limit = None
-    elif truncation not in (None, False):
+    elif truncation is not None and truncation is not False:
         raise ValueError(
             f"Unsupported tokenization_kwargs['truncation']={truncation!r}; "
             "expected True, False, 'longest_first' or 'do_not_truncate'."
@@ -96,7 +96,9 @@ def _truncate_prompt_token_ids(
             f"The truncation limit must be a positive integer, got {limit!r}."
         )
 
-    side = tokenization_kwargs.get("truncation_side") or "right"
+    side = tokenization_kwargs.get("truncation_side")
+    if side is None:
+        side = "left"
     if side not in ("left", "right"):
         raise ValueError(
             f"tokenization_kwargs['truncation_side'] must be 'left' or 'right', "
@@ -491,7 +493,8 @@ class SGLangEngineStage(StatefulStage):
         """The optional input keys of the stage and their descriptions."""
         return {
             "tokenization_kwargs": "Prompt truncation for this row, e.g. "
-            '{"truncation": True, "max_length": 512, "truncation_side": "left"}. '
+            '{"truncation": True, "max_length": 512}. As in vLLM, the last '
+            'max_length tokens are kept unless truncation_side is "right". '
             "Applied to the tokenized prompt, so it needs the tokenize stage and "
             "engine_kwargs['skip_tokenizer_init']=True. Supported keys: "
             "truncation, max_length, truncation_side, truncate_prompt_tokens.",

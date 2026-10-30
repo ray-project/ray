@@ -303,31 +303,32 @@ def _generate_row(**overrides):
 @pytest.mark.parametrize(
     "kwargs,expected",
     [
-        ({"truncation": True, "max_length": 4}, [0, 1, 2, 3]),
+        # As in vLLM's generate runner, the last tokens are kept by default.
+        ({"truncation": True, "max_length": 4}, [6, 7, 8, 9]),
         (
-            {"truncation": True, "max_length": 4, "truncation_side": "left"},
-            [6, 7, 8, 9],
+            {"truncation": True, "max_length": 4, "truncation_side": "right"},
+            [0, 1, 2, 3],
         ),
-        ({"truncation": "longest_first", "max_length": 4}, [0, 1, 2, 3]),
-        ({"truncate_prompt_tokens": 3, "truncation_side": "left"}, [7, 8, 9]),
+        ({"truncation": "longest_first", "max_length": 4}, [6, 7, 8, 9]),
+        ({"truncate_prompt_tokens": 3, "truncation_side": "right"}, [0, 1, 2]),
         # A truthy `truncation` overrides truncate_prompt_tokens, as in vLLM.
         (
             {"truncate_prompt_tokens": 3, "truncation": True, "max_length": 5},
-            [0, 1, 2, 3, 4],
+            [5, 6, 7, 8, 9],
         ),
         # As in vLLM, False counts as unset, so truncate_prompt_tokens applies.
-        ({"truncate_prompt_tokens": 3, "truncation": False}, [0, 1, 2]),
+        ({"truncate_prompt_tokens": 3, "truncation": False}, [7, 8, 9]),
         (
             {"truncate_prompt_tokens": 3, "truncation": "do_not_truncate"},
             list(range(10)),
         ),
         ({"truncation": True, "max_length": 50}, list(range(10))),
         # Ray Data returns struct fields as numpy scalars.
-        ({"truncation": np.bool_(True), "max_length": np.int64(2)}, [0, 1]),
+        ({"truncation": np.bool_(True), "max_length": np.int64(2)}, [8, 9]),
         # Fields set only on other rows of a struct column arrive as None.
         (
             {"truncation": True, "max_length": 2, "padding": None},
-            [0, 1],
+            [8, 9],
         ),
     ],
 )
@@ -345,8 +346,13 @@ def test_truncate_prompt_token_ids(kwargs, expected):
             {"truncation": "only_first", "max_length": 4},
             "Unsupported tokenization_kwargs",
         ),
+        ({"truncation": 1, "max_length": 4}, "Unsupported tokenization_kwargs"),
         (
             {"truncation": True, "max_length": 4, "truncation_side": "middle"},
+            "'left' or 'right'",
+        ),
+        (
+            {"truncation": True, "max_length": 4, "truncation_side": ""},
             "'left' or 'right'",
         ),
         ({"padding": "max_length"}, "Unsupported tokenization_kwargs"),
@@ -364,11 +370,11 @@ async def test_generate_request_applies_tokenization_kwargs():
         tokenization_kwargs={
             "truncation": True,
             "max_length": 3,
-            "truncation_side": "left",
+            "truncation_side": "right",
         }
     )
     request = await wrapper._prepare_llm_request(row)
-    assert request.prompt_token_ids == [7, 8, 9]
+    assert request.prompt_token_ids == [0, 1, 2]
     assert "tokenization_kwargs" not in row
 
 
