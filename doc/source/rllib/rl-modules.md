@@ -133,7 +133,7 @@ For image-based environments such as [Atari](https://ale.farama.org/environments
 You might have to check whether your CNN configuration works with the incoming observation image dimensions. For example, for an [Atari](https://ale.farama.org/environments/) environment, you can use RLlib's Atari wrapper utility, which performs resizing (default 64x64) and gray scaling (default True), frame stacking (default None), frame skipping (default 4), normalization (from uint8 to float32), and applies up to 30 "noop" actions after a reset, which aren't part of the episode:
 
 ```{testcode}
-import gymnasium as gym  # `pip install gymnasium[atari]`
+import gymnasium as gym  # `pip install gymnasium ale-py`
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
