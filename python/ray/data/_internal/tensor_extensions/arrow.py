@@ -811,6 +811,11 @@ class ArrowTensorScalar(pa.ExtensionScalar):
 
     # This function exists to mimic pyarrow's native fixed shaped tensors.
     def to_numpy(self) -> np.ndarray:
+        """Convert this scalar to a NumPy array.
+
+        Returns:
+            The tensor as a NumPy array.
+        """
         return np.array(self)
 
 
@@ -1068,13 +1073,36 @@ class ArrowTensorArray(pa.ExtensionArray):
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
     def to_numpy_ndarray(self, zero_copy_only: bool = True):
+        """Convert the entire array of tensors into a single ndarray.
+
+        This is the same as :meth:`to_numpy`.
+
+        Args:
+            zero_copy_only: Passed to :meth:`to_numpy`, which currently ignores it.
+
+        Returns:
+            A single ndarray representing the entire array of tensors.
+        """
         return self.to_numpy(zero_copy_only=zero_copy_only)
 
     def to_var_shaped_tensor_array(
         self,
         ndim: int,
     ) -> "ArrowVariableShapedTensorArray":
-        """Convert this tensor array to a variable-shaped tensor array."""
+        """Convert this tensor array to a variable-shaped tensor array.
+
+        Args:
+            ndim: The number of dimensions of the target tensor type. Must be at
+                least the number of dimensions of this array's tensors. Shapes with
+                fewer dimensions are padded with singleton axes.
+
+        Returns:
+            The variable-shaped tensor array.
+
+        Raises:
+            ValueError: If ``ndim`` is less than the number of dimensions of this
+                array's tensors.
+        """
 
         shape = self.type.shape
         if ndim < len(shape):
@@ -1169,6 +1197,11 @@ class ArrowVariableShapedTensorType(
 
     @property
     def shape(self) -> Tuple[None, ...]:
+        """The shape of the tensors, with ``None`` for every dimension.
+
+        The tuple has one ``None`` per dimension because the size of each dimension
+        varies between tensors.
+        """
         return (None,) * self.ndim
 
     @property
@@ -1414,6 +1447,20 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         )
 
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
+        """Convert this array to a variable-shaped tensor array.
+
+        Args:
+            ndim: The number of dimensions of the target tensor type. Must be at
+                least this array's number of dimensions. Shapes with fewer dimensions
+                are padded with singleton axes.
+
+        Returns:
+            This array if ``ndim`` already matches, otherwise a new array with
+            ``ndim`` dimensions.
+
+        Raises:
+            ValueError: If ``ndim`` is less than this array's number of dimensions.
+        """
         if ndim == self.type.ndim:
             return self
         elif ndim < self.type.ndim:

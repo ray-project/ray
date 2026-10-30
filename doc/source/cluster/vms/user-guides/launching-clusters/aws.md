@@ -404,3 +404,31 @@ The CloudWatch agent runs as root, so ``~/.ray/auth_token`` doesn't point at tha
 You can apply changes to the CloudWatch Logs, Metrics, Dashboard, and Alarms for your cluster by simply modifying the CloudWatch config files referenced by your Ray cluster config YAML and re-running ``ray up example-cloudwatch.yaml``.
 The Unified CloudWatch Agent will be automatically restarted on all cluster nodes, and your config changes will be applied.
 ```
+
+## AWS Deep Learning Containers
+
+Instead of installing Ray and its dependencies yourself, you can start from a prebuilt image. AWS publishes [Deep Learning Containers](https://aws.github.io/deep-learning-containers/) for Ray that package a Ray component with CUDA and its framework dependencies. AWS builds them on Amazon Linux 2023 and patches them for security. All three share the [`public.ecr.aws/deep-learning-containers/ray`](https://gallery.ecr.aws/deep-learning-containers/ray) repository on the Amazon ECR Public Gallery and differ by tag prefix.
+
+```{list-table}
+:widths: 18 25 18 32
+:header-rows: 1
+
+* - Image
+  - Ray component
+  - Tag prefix
+  - Deployment targets
+* - [ray](https://aws.github.io/deep-learning-containers/ray/)
+  - Ray Serve
+  - `serve-ml-`
+  - Amazon EC2, Amazon SageMaker AI
+* - [ray-llm](https://aws.github.io/deep-learning-containers/ray-llm/)
+  - Ray Serve LLM
+  - `serve-llm-`
+  - Amazon EC2, Amazon EKS
+* - [ray-train](https://aws.github.io/deep-learning-containers/ray-train/)
+  - Ray Train
+  - `train-ml-`
+  - Amazon EC2, Amazon EKS, Amazon SageMaker HyperPod
+```
+
+Each image's page lists its available tags and the Ray version it ships.

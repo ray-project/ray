@@ -362,6 +362,17 @@ class Dataset:
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
+
+        Args:
+            logical_plan: The logical plan that produces this dataset.
+            context: The :class:`~ray.data.DataContext` for this dataset.
+            in_stats: The initial execution statistics. They seed the stats for input
+                that the executor can't observe, such as data from the ``from_*``
+                APIs.
+            cache: The execution cache. If ``None``, the dataset starts with an empty
+                cache.
+            dataset_name: The name of the dataset, used as a prefix for metrics
+                tags.
         """
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
@@ -402,6 +413,19 @@ class Dataset:
     def copy(
         ds: "Dataset", _deep_copy: bool = False, _as: Optional[type] = None
     ) -> "Dataset":
+        """Create a new Dataset from the state of an existing one.
+
+        Args:
+            ds: The dataset to copy.
+            _deep_copy: If ``True``, the new dataset gets copies of the logical plan,
+                context, and stats, and a deep copy of the execution cache. If
+                ``False``, it shares the plan, context, and stats, and gets a copy of
+                the execution cache.
+            _as: The class of the new dataset. Defaults to the class of ``ds``.
+
+        Returns:
+            A new dataset of class ``_as``.
+        """
         if not _as:
             _as = type(ds)
         if _deep_copy:
@@ -602,6 +626,9 @@ class Dataset:
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
+
+        Args:
+            name: The name of the dataset, or ``None`` to clear it.
         """
         self._dataset_name = name
 
@@ -618,6 +645,9 @@ class Dataset:
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
+
+        Returns:
+            The dataset ID.
         """
         return self._get_dataset_id_for_run(self._run_index)
 
@@ -4904,7 +4934,7 @@ class Dataset:
                 look like. The filename is expected to be templatized with `{i}`
                 to ensure unique filenames when writing multiple files. If it's not
                 templatized, Ray Data will add `{i}` to the filename to ensure
-                compatibility with the pyarrow `write_to_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_to_dataset.html>`_.
+                compatibility with the pyarrow `write_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html>`_.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\

@@ -92,20 +92,27 @@ class TorchVisionPreprocessor(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to apply the TorchVision transform to."""
         return self._columns
 
     @property
     def torchvision_transform(
         self,
     ) -> Callable[[Union["np.ndarray", "torch.Tensor"]], "torch.Tensor"]:
+        """The TorchVision transform to apply."""
         return self._torchvision_transform
 
     @property
     def batched(self) -> bool:
+        """Whether the transform is applied to batches instead of individual images."""
         return self._batched
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def __repr__(self) -> str:
@@ -158,12 +165,27 @@ class TorchVisionPreprocessor(SerializablePreprocessorBase):
         return data_batch
 
     def get_input_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor reads.
+
+        Returns:
+            The columns to apply the TorchVision transform to.
+        """
         return self._columns
 
     def get_output_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor writes.
+
+        Returns:
+            The output column names.
+        """
         return self._output_columns
 
     def preferred_batch_format(cls) -> BatchFormat:
+        """Return the batch format this preprocessor prefers.
+
+        Returns:
+            ``BatchFormat.NUMPY``.
+        """
         return BatchFormat.NUMPY
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
