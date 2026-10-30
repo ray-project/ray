@@ -44,6 +44,8 @@ public interface RuntimeContext {
 
   /**
    * Get the handle to the current actor itself. Note that this method must be invoked in an actor.
+   *
+   * <p>The returned handle is weak and does not keep the actor alive.
    */
   <T extends BaseActorHandle> T getCurrentActorHandle();
 

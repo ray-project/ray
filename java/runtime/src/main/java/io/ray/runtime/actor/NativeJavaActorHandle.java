@@ -10,7 +10,11 @@ import java.io.ObjectInput;
 public class NativeJavaActorHandle extends NativeActorHandle implements ActorHandle {
 
   NativeJavaActorHandle(byte[] actorId) {
-    super(actorId, Language.JAVA);
+    this(actorId, false);
+  }
+
+  NativeJavaActorHandle(byte[] actorId, boolean weakRef) {
+    super(actorId, Language.JAVA, weakRef);
   }
 
   /** Required by FST. */

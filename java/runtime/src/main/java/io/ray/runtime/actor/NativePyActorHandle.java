@@ -10,7 +10,11 @@ import java.io.ObjectInput;
 public class NativePyActorHandle extends NativeActorHandle implements PyActorHandle {
 
   NativePyActorHandle(byte[] actorId) {
-    super(actorId, Language.PYTHON);
+    this(actorId, false);
+  }
+
+  NativePyActorHandle(byte[] actorId, boolean weakRef) {
+    super(actorId, Language.PYTHON, weakRef);
   }
 
   /** Required by FST. */

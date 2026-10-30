@@ -38,10 +38,14 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   private Language language;
 
   NativeActorHandle(byte[] actorId, Language language) {
+    this(actorId, language, false);
+  }
+
+  NativeActorHandle(byte[] actorId, Language language, boolean weakRef) {
     Preconditions.checkState(!ActorId.fromBytes(actorId).isNil());
     this.actorId = actorId;
     this.language = language;
-    new NativeActorHandleReference(this);
+    new NativeActorHandleReference(this, weakRef);
   }
 
   /** Required by FST. */
@@ -54,19 +58,27 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   }
 
   public static NativeActorHandle create(byte[] actorId) {
+    return create(actorId, false);
+  }
+
+  public static NativeActorHandle create(byte[] actorId, boolean weakRef) {
     Language language = Language.forNumber(nativeGetLanguage(actorId));
     Preconditions.checkState(language != null, "Language shouldn't be null");
-    return create(actorId, language);
+    return create(actorId, language, weakRef);
   }
 
   public static NativeActorHandle create(byte[] actorId, Language language) {
+    return create(actorId, language, false);
+  }
+
+  public static NativeActorHandle create(byte[] actorId, Language language, boolean weakRef) {
     switch (language) {
       case JAVA:
-        return new NativeJavaActorHandle(actorId);
+        return new NativeJavaActorHandle(actorId, weakRef);
       case PYTHON:
-        return new NativePyActorHandle(actorId);
+        return new NativePyActorHandle(actorId, weakRef);
       case CPP:
-        return new NativeCppActorHandle(actorId);
+        return new NativeCppActorHandle(actorId, weakRef);
       default:
         throw new IllegalStateException("Unknown actor handle language: " + language);
     }
@@ -119,9 +131,15 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
       extends FinalizableWeakReference<NativeActorHandle> {
     private final AtomicBoolean removed;
     private final byte[] actorId;
+    private final boolean weakRef;
 
     public NativeActorHandleReference(NativeActorHandle handle) {
+      this(handle, false);
+    }
+
+    public NativeActorHandleReference(NativeActorHandle handle, boolean weakRef) {
       super(handle, REFERENCE_QUEUE);
+      this.weakRef = weakRef;
       this.actorId = handle.actorId;
       AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
       this.removed = new AtomicBoolean(false);
@@ -133,7 +151,8 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
       if (!removed.getAndSet(true)) {
         REFERENCES.remove(this);
         // It's possible that GC is executed after the runtime is shutdown.
-        if (Ray.isInitialized()) {
+        // Lookup and self handles did not acquire a local lifecycle reference.
+        if (!weakRef && Ray.isInitialized()) {
           nativeRemoveActorHandleReference(actorId);
         }
       }
