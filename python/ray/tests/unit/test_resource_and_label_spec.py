@@ -115,9 +115,11 @@ def test_resource_and_label_spec_resolves_auto_detect(monkeypatch):
         # Object store memory is capped at 2GB on macOS.
         expected_object_store = 2 * 1024**3
     else:
-        # object_store_memory = 8GB * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
-        expected_object_store = int(
-            8 * 1024**3 * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        # object_store_memory = 8GB * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+        # capped at DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES.
+        expected_object_store = min(
+            int(8 * 1024**3 * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION),
+            ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
         )
     assert spec.object_store_memory == expected_object_store
 

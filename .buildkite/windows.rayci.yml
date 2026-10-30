@@ -1,5 +1,8 @@
 group: windows tests
 sort_key: "~windows"
+# Windows commits the whole object store up front at raylet startup, so the default
+# size (30% of RAM) per node exhausts memory when several test clusters share an agent.
+# RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES caps it at 2GiB.
 steps:
   - name: windowsbuild
     wanda: ci/docker/windows.build.wanda.yaml
@@ -19,6 +22,7 @@ steps:
         --operating-system windows
         --except-tags no_windows
         --test-env=CI="1"
+        --test-env=RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES=2147483648
         --test-env=USERPROFILE
     depends_on: windowsbuild
 
@@ -65,6 +69,7 @@ steps:
         --operating-system windows
         --except-tags no_windows,cgroup
         --test-env=CI="1"
+        --test-env=RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES=2147483648
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --parallelism-per-worker 2
@@ -86,6 +91,7 @@ steps:
         --operating-system windows
         --except-tags no_windows
         --test-env=CI="1"
+        --test-env=RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES=2147483648
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
@@ -107,6 +113,7 @@ steps:
         --operating-system windows
         --except-tags no_windows,use_all_core_windows
         --test-env=CI="1"
+        --test-env=RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES=2147483648
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 1
@@ -128,6 +135,7 @@ steps:
         --only-tags use_all_core_windows
         --except-tags no_windows
         --test-env=CI="1"
+        --test-env=RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES=2147483648
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
     depends_on:
@@ -146,6 +154,7 @@ steps:
         --build-name windowsbuild
         --operating-system windows
         --test-env=CI="1"
+        --test-env=RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES=2147483648
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
     depends_on:
@@ -169,6 +178,7 @@ steps:
         --build-name windowsbuild
         --operating-system windows
         --test-env=CI="1"
+        --test-env=RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES=2147483648
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
@@ -193,6 +203,7 @@ steps:
         --build-name windowsbuild
         --operating-system windows
         --test-env=CI="1"
+        --test-env=RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES=2147483648
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
     depends_on:
