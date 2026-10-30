@@ -8,7 +8,7 @@ no RLModules are added or removed during the run.
 Every training iteration, a probe actor on each node reads the USS of every Learner,
 AggregatorActor and EnvRunner process. After a warmup, the script fits a line to each
 process's USS over time and fails if any slope exceeds its category's limit. All
-slopes are also reported as perf metrics, so slow growth shows up across nightlies.
+slopes are also reported as perf metrics, so slow growth shows up across runs.
 
 Run on a cluster with 2 GPUs (one per Learner) and enough CPUs for the EnvRunners,
 e.g. `multi_node_2x1gpu_2x16cpus.yaml`:

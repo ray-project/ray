@@ -2710,14 +2710,14 @@
     script: python example_algorithms/sac/halfcheetah_sac.py --num-learners=4 --num-env-runners=8 --stop-reward=1000.0 --as-release-test
 
 # --------------------------------------------------------------------------
-# RLlib - Nightly memory tests (multi-node)
+# RLlib - Weekly memory tests (multi-node)
 # --------------------------------------------------------------------------
 - name: rllib_footsies_appo_memory_multi_node
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly
+  frequency: weekly
   team: rllib
 
   cluster:
