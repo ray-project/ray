@@ -5011,6 +5011,36 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void CoreWorker::HandleOnObjectFreed(rpc::OnObjectFreedRequest request,
+                                     rpc::OnObjectFreedReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+  ScheduleOnObjectFreedHook(ObjectID::FromBinary(request.object_id()));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::ScheduleOnObjectFreedHook(const ObjectID &object_id) {
+  // The hook's flag and concurrency group are set, and the actor's executors created, on
+  // the task execution thread, so they are read there.
+  task_execution_service_.post(
+      [this, object_id]() {
+        if (!producer_freed_callback_enabled_ || task_receiver_ == nullptr ||
+            options_.on_object_freed_callback == nullptr) {
+          RAY_LOG(DEBUG).WithField(object_id)
+              << "Ignoring a freed object: this worker's actor has no "
+                 "__on_object_freed__ hook.";
+          return;
+        }
+        task_receiver_->RunOnActorExecutor(producer_freed_callback_concurrency_group_,
+                                           [callback = options_.on_object_freed_callback,
+                                            object_id]() { callback(object_id); });
+      },
+      "CoreWorker.ScheduleOnObjectFreedHook");
+}
+
 void CoreWorker::SetActorId(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(actor_id_.IsNil());

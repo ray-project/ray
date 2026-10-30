@@ -110,6 +110,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const PlasmaObjectReadyRequest &request,
       const ClientCallback<PlasmaObjectReadyReply> &callback) = 0;
 
+  virtual void OnObjectFreed(const OnObjectFreedRequest &request,
+                             const ClientCallback<OnObjectFreedReply> &callback) = 0;
+
   virtual void RayletNotifyGCSRestart(
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) = 0;

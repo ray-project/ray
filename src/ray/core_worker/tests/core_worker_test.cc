@@ -70,6 +70,9 @@ class CoreWorkerTest : public ::testing::Test {
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
     options.node_ip_address = "127.0.0.1";
+    options.on_object_freed_callback = [this](const ObjectID &object_id) {
+      hook_calls_.push_back(object_id);
+    };
     options.task_execution_callback =
         [](const rpc::Address &caller_address,
            TaskType task_type,
@@ -322,6 +325,9 @@ class CoreWorkerTest : public ::testing::Test {
   /// Flush all pending object-freed callbacks. Call this in tests after an action
   /// that should trigger a user-registered out-of-scope callback.
   void FlushObjectFreedCallbacks() { object_freed_callback_service_.poll(); }
+
+  /// Objects the `on_object_freed_callback` option was called with.
+  std::vector<ObjectID> hook_calls_;
 
   rpc::Address rpc_address_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -2221,6 +2227,38 @@ TEST_F(CoreWorkerTest, PrimaryMovedWithConsumerSpillKeepsConsumerSpill) {
   EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
 
   reference_counter_->RemoveLocalReference(object_id, nullptr);
+}
+
+TEST_F(CoreWorkerTest, OnObjectFreedForAnotherWorkerIsRejected) {
+  rpc::OnObjectFreedRequest request;
+  request.set_intended_worker_id(WorkerID::FromRandom().Binary());
+  request.set_object_id(ObjectID::FromRandom().Binary());
+  Status reply_status;
+  core_worker_->HandleOnObjectFreed(
+      request,
+      nullptr,
+      [&reply_status](Status status, std::function<void()>, std::function<void()>) {
+        reply_status = status;
+      });
+  ASSERT_TRUE(reply_status.IsInvalid());
+  task_execution_service_.poll();
+  ASSERT_TRUE(hook_calls_.empty());
+}
+
+TEST_F(CoreWorkerTest, OnObjectFreedRunsNothingWithoutHook) {
+  rpc::OnObjectFreedRequest request;
+  request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+  request.set_object_id(ObjectID::FromRandom().Binary());
+  Status reply_status = Status::Invalid("not replied");
+  core_worker_->HandleOnObjectFreed(
+      request,
+      nullptr,
+      [&reply_status](Status status, std::function<void()>, std::function<void()>) {
+        reply_status = status;
+      });
+  ASSERT_TRUE(reply_status.ok());
+  task_execution_service_.poll();
+  ASSERT_TRUE(hook_calls_.empty());
 }
 
 }  // namespace core
