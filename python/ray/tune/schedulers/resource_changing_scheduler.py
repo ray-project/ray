@@ -553,9 +553,11 @@ class DistributeResourcesToTopJob(DistributeResources):
         free_cpus = total_available_cpus - used_cpus
         free_gpus = total_available_gpus - used_gpus
 
+        # Trials that have not reported the metric yet rank last in either mode.
         sorted_trials = sorted(
             all_trials,
-            key=lambda t: -self._metric_op * t.last_result.get(self.metric, np.inf),
+            key=lambda t: -self._metric_op
+            * t.last_result.get(self.metric, -self._metric_op * np.inf),
         )
 
         added_bundles = self._get_added_bundles(
