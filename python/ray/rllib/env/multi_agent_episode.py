@@ -1423,11 +1423,18 @@ class MultiAgentEpisode:
         return terminateds
 
     def get_truncateds(self) -> MultiAgentDict:
+        """Returns the truncated flags of this episode's agents.
+
+        Returns:
+            A dict mapping each agent ID in this episode to whether that agent's
+            `SingleAgentEpisode` is truncated, plus an `"__all__"` key for whether
+            the episode as a whole is truncated.
+        """
         truncateds = {
             agent_id: self.agent_episodes[agent_id].is_truncated
             for agent_id in self.agent_ids
         }
-        truncateds.update({"__all__": self.is_terminated})
+        truncateds.update({"__all__": self.is_truncated})
         return truncateds
 
     def slice(

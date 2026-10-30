@@ -3347,6 +3347,30 @@ class TestMultiAgentEpisode(unittest.TestCase):
             agent_returns + buffered_rewards,
         )
 
+    def test_get_terminateds_and_truncateds(self):
+        # A truncated episode.
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(observations={"a0": 0, "a1": 0})
+        episode.add_env_step(
+            observations={"a0": 1, "a1": 1},
+            actions={"a0": 0, "a1": 0},
+            rewards={"a0": 1.0, "a1": 1.0},
+            truncateds={"a0": True, "a1": True, "__all__": True},
+        )
+        check(episode.get_truncateds(), {"a0": True, "a1": True, "__all__": True})
+
+        # A terminated, but not truncated, episode.
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(observations={"a0": 0, "a1": 0})
+        episode.add_env_step(
+            observations={"a0": 1, "a1": 1},
+            actions={"a0": 0, "a1": 0},
+            rewards={"a0": 1.0, "a1": 1.0},
+            terminateds={"a0": True, "a1": True, "__all__": True},
+        )
+        check(episode.get_terminateds(), {"a0": True, "a1": True, "__all__": True})
+        check(episode.get_truncateds(), {"a0": False, "a1": False, "__all__": False})
+
     def test_len(self):
         # Generate an empty episode and ensure that `len()` raises an error.
         episode = MultiAgentEpisode()
