@@ -687,6 +687,9 @@ def validate_gang_scheduling_bounds(
     Bounds left at their defaults are not checked: gang scheduling rounds the
     autoscaler's decisions up to whole gangs, so the defaults are safe.
     """
+    if autoscaling_config is None:
+        return
+
     if isinstance(autoscaling_config, AutoscalingConfig):
         bounds = {
             name: getattr(autoscaling_config, name)
