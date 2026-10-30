@@ -1,6 +1,6 @@
-"""
-The following is adapted from Dask release 2021.03.1:
-    https://github.com/dask/dask/blob/2021.03.1/dask/local.py
+"""Local scheduler utilities adapted from Dask release 2021.03.1.
+
+Source: https://github.com/dask/dask/blob/2021.03.1/dask/local.py
 """
 
 import os
