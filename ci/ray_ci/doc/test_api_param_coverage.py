@@ -518,6 +518,27 @@ def test_click_command_ignored(decorator):
     assert _check(base=None, head=head) == []
 
 
+def test_property_setter_ignored():
+    # A setter's value is documented on the getter, not in its own Args:.
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            @property
+            def x(self):
+                """The x property."""
+                return 1
+
+            @x.setter
+            def x(self, value):
+                pass
+        '''
+    )
+    assert _check(base=None, head=head) == []
+
+
 # --- changed-file listing (rename detection) ----------------------------------
 
 

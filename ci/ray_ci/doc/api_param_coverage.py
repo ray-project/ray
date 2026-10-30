@@ -132,6 +132,7 @@ _NON_DOCSTRING_PARAM_DECORATORS = frozenset(
         "root_validator",
         "command",
         "group",
+        "setter",
     }
 )
 
@@ -142,7 +143,8 @@ def has_non_docstring_param_decorator(node: _FuncNode) -> bool:
     Matches pydantic validators (``@field_validator``, ``@model_validator``, and
     the v1 ``@validator`` and ``@root_validator``) and Click commands and groups
     (``@click.command()``, ``@cli.command()``, ``@click.group()``), in bare,
-    called, and attribute spellings.
+    called, and attribute spellings. Also matches property setters
+    (``@x.setter``), whose value is documented on the getter.
     """
     for dec in node.decorator_list:
         target = dec.func if isinstance(dec, ast.Call) else dec
