@@ -68,6 +68,15 @@ def _bind_read(op: ReadFiles, name: str) -> ReadFiles:
 
     column = GeneratedIdColumn(name)
     if column not in scanner.synthesized_columns:
+        if any(
+            synthesized_column.name == name
+            for synthesized_column in scanner.synthesized_columns
+        ):
+            raise InvalidCheckpointingConfig(
+                f"Generated ID column {name!r} conflicts with an existing "
+                "synthesized column of the same name. Pick a different "
+                "`CheckpointConfig(generated_id_column=...)`."
+            )
         if name in scanner.schema.names:
             raise InvalidCheckpointingConfig(
                 f"Column {name!r} already exists in the Parquet data, so Ray "
