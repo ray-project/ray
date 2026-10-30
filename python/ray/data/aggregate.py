@@ -1471,7 +1471,6 @@ class ValueCounter(AggregateFnV2):
         current_accumulator: Dict[str, List],
         new_accumulator: Dict[str, List],
     ) -> Dict[str, List]:
-
         """Merge the value counts of two accumulators.
 
         Counts for values in both accumulators are summed. Values only in
