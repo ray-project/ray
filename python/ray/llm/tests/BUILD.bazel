@@ -126,7 +126,6 @@ py_test_module_list(
     files = ["serve/cpu/integration/test_openai_compatibility.py"],
     name_suffix = "_direct_streaming",
     tags = [
-        "cpu",
         "exclusive",
         "team:llm",
     ],

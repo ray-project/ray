@@ -9,13 +9,6 @@ applications:
             autoscaling_config:
                 min_replicas: 1
                 max_replicas: 2
-        - model_loading_config:
-            model_id: qwen3.5-0.8b-secondary
-            model_source: Qwen/Qwen3.5-0.8B
-          deployment_config:
-            autoscaling_config:
-                min_replicas: 1
-                max_replicas: 2
   import_path: ray.serve.llm:build_openai_app
   name: llm_app
   route_prefix: "/"

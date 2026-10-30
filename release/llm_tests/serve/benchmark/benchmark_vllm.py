@@ -240,7 +240,7 @@ def main(pargs):
 
     results = run_vllm_benchmark(vllm_cli_args)
 
-    tag = f"{llm_config.get('accelerator_type', 'GPU')}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
+    tag = f"TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
     service_metadata = {
         "cloud_name": "",
         "service_name": "",

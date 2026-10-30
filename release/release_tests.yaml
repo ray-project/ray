@@ -4548,7 +4548,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_1xh100.yaml
 
@@ -4572,7 +4572,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_1xh100.yaml
 
@@ -4598,7 +4598,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_2xh100.yaml
 
@@ -4619,7 +4619,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_2xh100.yaml
 
@@ -4643,7 +4643,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_2xh100.yaml
 
@@ -4666,7 +4666,7 @@
         # For test_llm_serve_prefill_decode_with_data_parallelism
         RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY: "1"
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/2x2xh100.yaml
 
@@ -4702,7 +4702,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/2x2xh100.yaml
 
@@ -4732,7 +4732,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/2x2xh100.yaml
 
@@ -4752,7 +4752,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/4xh100.yaml
 
@@ -4772,7 +4772,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_1xh100.yaml
 
@@ -4793,7 +4793,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_1xh100.yaml
 
@@ -4813,7 +4813,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_1xh100.yaml
 
@@ -4834,7 +4834,7 @@
       type: llm-cu130
       post_build_script: byod_llm_runai_streamer.sh
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_1xh100.yaml
 
@@ -4854,7 +4854,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
   run:
@@ -4890,7 +4890,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
   run:
@@ -4925,7 +4925,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
   run:
@@ -4961,7 +4961,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/4xh100.yaml
 
@@ -4981,7 +4981,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/4xh100.yaml
 
@@ -5001,7 +5001,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/3xh100.yaml
 
@@ -5021,7 +5021,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_2xh100.yaml
 
@@ -5045,7 +5045,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_2xh100.yaml
 
@@ -5065,7 +5065,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_8xh100.yaml
 
@@ -5089,7 +5089,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_8xh100.yaml
 
@@ -5110,7 +5110,7 @@
       type: llm-cu130
       post_build_script: byod_llm_lmcache_test.sh
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_8xh100.yaml
 
@@ -5133,7 +5133,7 @@
         RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES: "1"
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
 
@@ -5178,7 +5178,7 @@
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
 
@@ -5220,7 +5220,7 @@
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     # Kept in this working_dir rather than referenced across dirs
     # so it ships in the test's runfiles.
@@ -5258,7 +5258,7 @@
         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/2x1xh100.yaml
 
@@ -5283,7 +5283,7 @@
         RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE: "2"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/service_1xh100.yaml
 
@@ -5303,7 +5303,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
 
@@ -5329,7 +5329,7 @@
       runtime_env:
         RAY_ADDRESS: local
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../release/llm_tests/cluster_compute/1xh100.yaml
 
@@ -5354,6 +5354,7 @@
         python "$example"
       done
       python source/llm/doc_code/serve/qwen/qwen_example.py
+      python source/llm/doc_code/serve/qwen/llm_yaml_config_example.py
       python source/llm/doc_code/serve/transcription/transcription_example.py
       for example in source/llm/doc_code/serve/direct_streaming/*_example.py source/llm/doc_code/serve/custom_vllm/*_example.py; do
         RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 RAY_SERVE_ENABLE_HA_PROXY=1 python "$example"
@@ -5375,7 +5376,7 @@
       runtime_env:
         RAY_ADDRESS: local
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../release/llm_tests/cluster_compute/2xh100.yaml
 
@@ -5385,7 +5386,6 @@
       set -e
       python source/llm/doc_code/serve/multi_gpu/bundle_per_worker_example.py
       python source/llm/doc_code/serve/multi_gpu/dp_autoscaling_example.py
-      python source/llm/doc_code/serve/qwen/llm_yaml_config_example.py
 
 - name: llm_doc_4GPU_tests
   frequency: nightly
@@ -5400,7 +5400,7 @@
       runtime_env:
         RAY_ADDRESS: local
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../release/llm_tests/cluster_compute/4xh100.yaml
 
@@ -5427,7 +5427,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
 
@@ -5464,7 +5464,7 @@
       type: llm-cu130
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
 
@@ -5495,7 +5495,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/2x2xh100.yaml
 
@@ -5523,7 +5523,7 @@
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu130.lock
     anyscale_sdk_2026: true
-    cloud: rkn-gpu-cloud
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
     cluster_compute: ../cluster_compute/1xh100.yaml
 

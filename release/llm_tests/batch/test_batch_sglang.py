@@ -33,7 +33,6 @@ def test_chat_template():
         engine_kwargs=dict(
             context_length=2048,
             disable_cuda_graph=True,
-            dtype="bfloat16",
         ),
         batch_size=16,
         concurrency=1,
@@ -86,7 +85,6 @@ def test_sglang_qwen_parallel(tp_size, dp_size, concurrency):
             context_length=2048,
             tp_size=tp_size,
             dp_size=dp_size,
-            dtype="bfloat16",
         ),
         runtime_env=runtime_env,
         tokenize_stage=True,

@@ -1,4 +1,4 @@
-cloud: rkn-gpu-cloud
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
 advanced_instance_config:
   metadata:

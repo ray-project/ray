@@ -166,8 +166,30 @@ async def test_vllm_multimodal_utils():
     assert image_uuids[0] == image_uuid
 
 
-def test_chat_template_with_vllm():
+@pytest.mark.parametrize("backend", ["uni", "mp", "ray"])
+def test_chat_template_with_vllm(backend):
     """Test vLLM with explicit chat template."""
+
+    chat_template = """
+{% if messages[0]['role'] == 'system' %}
+    {% set offset = 1 %}
+{% else %}
+    {% set offset = 0 %}
+{% endif %}
+
+{{ bos_token }}
+{% for message in messages %}
+    {% if (message['role'] == 'user') != (loop.index0 % 2 == offset) %}
+        {{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
+    {% endif %}
+
+    {{ '<|im_start|>' + message['role'] + '\n' + message['content'] | trim + '<|im_end|>\n' }}
+{% endfor %}
+
+{% if add_generation_prompt %}
+    {{ '<|im_start|>assistant\n' }}
+{% endif %}
+    """
 
     processor_config = vLLMEngineProcessorConfig(
         model_source="Qwen/Qwen3.5-0.8B",
@@ -175,6 +197,10 @@ def test_chat_template_with_vllm():
             max_model_len=16384,
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
+            distributed_executor_backend=backend,
+        ),
+        chat_template_stage=ChatTemplateStageConfig(
+            enabled=True, chat_template=chat_template
         ),
         tokenize_stage=True,
         detokenize_stage=True,
@@ -797,76 +823,6 @@ def test_vllm_autoscaling_no_starvation():
     assert all("id" in out for out in results)
     assert all(out.get("resp_1") for out in results)
     assert all(out.get("resp_2") for out in results)
-
-
-@pytest.mark.parametrize("backend", ["uni", "mp", "ray"])
-def test_generation_model(backend):
-    chat_template = """
-{% if messages[0]['role'] == 'system' %}
-    {% set offset = 1 %}
-{% else %}
-    {% set offset = 0 %}
-{% endif %}
-
-{{ bos_token }}
-{% for message in messages %}
-    {% if (message['role'] == 'user') != (loop.index0 % 2 == offset) %}
-        {{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
-    {% endif %}
-
-    {{ '<|im_start|>' + message['role'] + '\n' + message['content'] | trim + '<|im_end|>\n' }}
-{% endfor %}
-
-{% if add_generation_prompt %}
-    {{ '<|im_start|>assistant\n' }}
-{% endif %}
-    """
-
-    processor_config = vLLMEngineProcessorConfig(
-        model_source="Qwen/Qwen3.5-0.8B",
-        engine_kwargs=dict(
-            enable_prefix_caching=False,
-            enable_chunked_prefill=True,
-            max_num_batched_tokens=2048,
-            max_model_len=2048,
-            # Skip CUDA graph capturing to reduce startup time.
-            enforce_eager=True,
-            distributed_executor_backend=backend,
-        ),
-        batch_size=16,
-        concurrency=1,
-        chat_template_stage=ChatTemplateStageConfig(
-            enabled=True, chat_template=chat_template
-        ),
-        tokenize_stage=TokenizerStageConfig(enabled=True),
-        detokenize_stage=DetokenizeStageConfig(enabled=True),
-    )
-
-    processor = build_processor(
-        processor_config,
-        preprocess=lambda row: dict(
-            messages=[
-                {"role": "system", "content": "You are a calculator"},
-                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-            ],
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=50,
-                detokenize=False,
-            ),
-        ),
-        postprocess=lambda row: {
-            "resp": row["generated_text"],
-        },
-    )
-
-    ds = ray.data.range(60)
-    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = processor(ds)
-    ds = ds.materialize()
-    outs = ds.take_all()
-    assert len(outs) == 60
-    assert all("resp" in out for out in outs)
 
 
 def test_generation_model_tokenized_prompt():
