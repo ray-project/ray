@@ -163,6 +163,7 @@ class TorchVisionPreprocessor(SerializablePreprocessorBase):
     def get_output_columns(self) -> List[str]:
         return self._output_columns
 
+    @classmethod
     def preferred_batch_format(cls) -> BatchFormat:
         return BatchFormat.NUMPY
 
