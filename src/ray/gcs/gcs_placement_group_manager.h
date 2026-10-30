@@ -57,12 +57,15 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
+  /// \param placement_group_removed_listener Called with the id of a removed placement
+  /// group after its REMOVED state is persisted.
   GcsPlacementGroupManager(
       instrumented_io_context &io_context,
       GcsPlacementGroupSchedulerInterface *scheduler,
       gcs::GcsTableStorage *gcs_table_storage,
       GcsResourceManager &gcs_resource_manager,
       std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<void(const PlacementGroupID &)> placement_group_removed_listener,
       ray::observability::MetricInterface &placement_group_gauge,
       ray::observability::MetricInterface
           &placement_group_creation_latency_in_ms_histogram,
@@ -72,6 +75,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       ClockInterface &clock);
 
   ~GcsPlacementGroupManager() override = default;
+
+  /// Whether the placement group exists and has not been removed.
+  bool IsPlacementGroupRegistered(const PlacementGroupID &placement_group_id) const;
 
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
@@ -377,6 +383,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       &placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::MetricInterface &placement_group_count_gauge_;
   ClockInterface &clock_;
+
+  const std::function<void(const PlacementGroupID &)> placement_group_removed_listener_;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
