@@ -3442,8 +3442,13 @@ class Dataset:
     def union(self, *other: "Dataset") -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
-        The order of the blocks in the datasets is preserved, as is the
-        relative ordering between the datasets passed in the argument list.
+        The union doesn't append one dataset after another. By default, it
+        emits blocks in the order the input datasets produce them, so the
+        output order isn't deterministic. If you set
+        ``DataContext.execution_options.preserve_order`` to ``True``, it
+        interleaves blocks round-robin: one block from each dataset in
+        argument order, then the next block from each, until every dataset
+        runs out. Within each dataset, blocks keep their order.
 
         .. caution::
             Unioned datasets aren't lineage-serializable. As a result, they can't be
@@ -3452,10 +3457,13 @@ class Dataset:
         Examples:
 
             >>> import ray
-            >>> ds1 = ray.data.range(2)
-            >>> ds2 = ray.data.range(3)
-            >>> ds1.union(ds2).take_all()  # doctest: +SKIP
-            [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
+            >>> ctx = ray.data.DataContext.get_current()
+            >>> ctx.execution_options.preserve_order = True
+            >>> ds1 = ray.data.range(4, override_num_blocks=2)
+            >>> ds2 = ray.data.range(4, override_num_blocks=2)
+            >>> [row["id"] for row in ds1.union(ds2).take_all()]
+            [0, 1, 0, 1, 2, 3, 2, 3]
+            >>> ctx.execution_options.preserve_order = False
 
         Args:
             *other: The datasets to combine with this one. The datasets
