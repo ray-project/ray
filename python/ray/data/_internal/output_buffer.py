@@ -111,6 +111,10 @@ class BlockOutputBuffer:
         assert not self._finalized
         self._finalized = True
 
+    def has_buffered_rows(self) -> bool:
+        """Whether rows added since the last output block are waiting."""
+        return self._buffer.num_rows() > 0
+
     def _exceeded_buffer_row_limit(self) -> bool:
         if self._output_block_size_option.disable_block_shaping:
             return False
