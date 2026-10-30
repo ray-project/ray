@@ -3,17 +3,25 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import time
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 import yaml
 
 import ray
+import ray.dashboard.optional_utils as optional_utils
 from ray._common.network_utils import build_address
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+from ray._common.test_utils import (
+    async_wait_for_condition,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -26,17 +34,21 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_until_server_available,
 )
+from ray.dashboard.modules.job import job_agent as job_agent_module
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    JobInfo,
+    JobInfoStorageClient,
     JobSubmitRequest,
     validate_request_type,
 )
+from ray.dashboard.modules.job.job_agent import JobAgent
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
-from ray.tests.conftest import _ray_start
+from ray.tests.conftest import _ray_start, call_ray_start  # noqa: F401
 from ray.util.state import get_node, list_actors, list_nodes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -686,6 +698,169 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
         await async_wait_for_condition(verify, retry_interval_ms=2000)
     finally:
         subprocess.check_output("ray stop --force", shell=True)
+
+
+def _make_job_agent(*, is_head: bool, **kwargs) -> JobAgent:
+    dashboard_agent = SimpleNamespace(
+        is_head=is_head,
+        session_name="session_test",
+        gcs_address=kwargs.pop("gcs_address", "127.0.0.1:6379"),
+        gcs_client=kwargs.pop("gcs_client", MagicMock()),
+        log_dir=kwargs.pop("log_dir", "/tmp/ray/session_latest/logs"),
+    )
+    return JobAgent(dashboard_agent)
+
+
+def _job_info(status: JobStatus) -> JobInfo:
+    return JobInfo(status=status, entrypoint="echo hi")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "is_head,statuses,expect_job_manager",
+    [
+        # Unfinished jobs on the head: connect and recover them at startup.
+        (True, [JobStatus.SUCCEEDED, JobStatus.RUNNING], True),
+        (True, [JobStatus.PENDING], True),
+        # Nothing to recover: stay lazy and do not connect to Ray as a driver.
+        (True, [], False),
+        (True, [JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.STOPPED], False),
+        # Other nodes never create the JobManager at startup.
+        (False, [JobStatus.RUNNING], False),
+    ],
+)
+async def test_job_agent_run_creates_job_manager_only_for_unfinished_jobs(
+    is_head, statuses, expect_job_manager
+):
+    """The head agent creates its JobManager at startup, connecting to Ray off
+    the event loop thread, only when there are unfinished jobs to recover."""
+    agent = _make_job_agent(is_head=is_head)
+    jobs = {f"job_{i}": _job_info(status) for i, status in enumerate(statuses)}
+    init_threads = []
+
+    def init_ray_connection(gcs_address):
+        assert gcs_address == "127.0.0.1:6379"
+        init_threads.append(threading.current_thread())
+
+    with patch.object(
+        JobInfoStorageClient, "get_all_jobs", AsyncMock(return_value=jobs)
+    ) as get_all_jobs, patch.object(
+        optional_utils, "init_ray_connection", side_effect=init_ray_connection
+    ), patch.object(
+        job_agent_module, "JobManager"
+    ) as job_manager_cls:
+        await agent.run(server=None)
+
+    if not is_head:
+        get_all_jobs.assert_not_called()
+    if expect_job_manager:
+        assert len(init_threads) == 1
+        assert init_threads[0] is not threading.current_thread()
+        job_manager_cls.assert_called_once()
+        assert agent._job_manager is job_manager_cls.return_value
+    else:
+        assert init_threads == []
+        job_manager_cls.assert_not_called()
+        assert agent._job_manager is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failing_step", ["list_jobs", "connect"])
+async def test_job_agent_run_falls_back_to_lazy_init_on_failure(failing_step):
+    """A failure to list jobs or to connect at startup must not fail the agent;
+    the JobManager is then created on the next Job API request as before."""
+    agent = _make_job_agent(is_head=True)
+    error = ConnectionError("GCS is unavailable")
+    get_all_jobs = AsyncMock(
+        side_effect=error if failing_step == "list_jobs" else None,
+        return_value={"job": _job_info(JobStatus.RUNNING)},
+    )
+
+    with patch.object(JobInfoStorageClient, "get_all_jobs", get_all_jobs), patch.object(
+        optional_utils,
+        "init_ray_connection",
+        side_effect=error if failing_step == "connect" else None,
+    ), patch.object(job_agent_module, "JobManager") as job_manager_cls:
+        await agent.run(server=None)
+        job_manager_cls.assert_not_called()
+        assert agent._job_manager is None
+
+        assert agent.get_job_manager() is job_manager_cls.return_value
+        job_manager_cls.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0 "
+        "--port 0 --include-dashboard=False"
+    ],
+    indirect=True,
+)
+async def test_restarted_head_job_agent_recovers_running_job(
+    call_ray_start, tmp_path  # noqa: F811
+):
+    """A RUNNING job must be monitored again once the head agent restarts,
+    without any Job API request reaching the new agent.
+
+    The previous agent is a separate driver process that submits the job and
+    exits, leaving the detached JobSupervisor running.
+    """
+    job_id = "test_restarted_head_job_agent"
+    # `ray start` may not print the address, so connect to the local cluster.
+    address = call_ray_start or "auto"
+    run_string_as_driver(
+        f"""
+import asyncio
+
+import ray
+from ray.dashboard.modules.job.job_manager import JobManager
+from ray.job_submission import JobStatus
+
+ray.init(address="{address}")
+
+
+async def main():
+    job_manager = JobManager(
+        ray._private.worker.global_worker.gcs_client, {str(tmp_path)!r}
+    )
+    await job_manager.submit_job(entrypoint="sleep 60", submission_id="{job_id}")
+    while await job_manager.get_job_status("{job_id}") != "RUNNING":
+        await asyncio.sleep(0.1)
+
+
+asyncio.run(main())
+"""
+    )
+
+    # Earlier tests in this module may leave this process connected to Ray.
+    ray.shutdown()
+    ray.init(address=address)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_info_client = JobInfoStorageClient(gcs_client)
+    assert await job_info_client.get_status(job_id) == JobStatus.RUNNING
+
+    # Start the new head agent. Nothing calls its Job API handlers.
+    agent = _make_job_agent(
+        is_head=True,
+        gcs_address=ray._private.worker.global_worker.node.gcs_address,
+        gcs_client=gcs_client,
+        log_dir=str(tmp_path),
+    )
+    await agent.run(server=None)
+
+    # Only a JobManager monitoring the job notices its supervisor dying.
+    supervisor = ray.get_actor(
+        JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+        namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    )
+    ray.kill(supervisor, no_restart=True)
+
+    async def job_failed():
+        return await job_info_client.get_status(job_id) == JobStatus.FAILED
+
+    await async_wait_for_condition(job_failed, timeout=30)
 
 
 if __name__ == "__main__":
