@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray.job_config import JobConfig
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks
 
@@ -271,6 +272,37 @@ def test_ids(ray_start_regular):
 
     # driver actor name
     assert rtc.get_actor_name() is None
+
+
+@pytest.mark.parametrize(
+    "submission_id",
+    [None, "raysubmit_test123"],
+)
+def test_get_job_submission_id(shutdown_only, submission_id):
+    # Simulate a job with or without a submission ID.
+    metadata = {"job_submission_id": submission_id} if submission_id is not None else {}
+
+    ray.init(job_config=JobConfig(metadata=metadata))
+
+    # Test 1: Driver
+    ctx = ray.get_runtime_context()
+    assert ctx.get_job_submission_id() == submission_id
+
+    # Test 2: Remote Task
+    @ray.remote
+    def get_submission_id_task():
+        return ray.get_runtime_context().get_job_submission_id()
+
+    assert ray.get(get_submission_id_task.remote()) == submission_id
+
+    # Test 3: Remote Actor
+    @ray.remote
+    class SubmissionIdActor:
+        def get_submission_id(self):
+            return ray.get_runtime_context().get_job_submission_id()
+
+    actor = SubmissionIdActor.remote()
+    assert ray.get(actor.get_submission_id.remote()) == submission_id
 
 
 def test_auto_init(shutdown_only):
