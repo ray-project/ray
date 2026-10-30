@@ -822,8 +822,7 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
 
 
 def _eval_projection_without_cse(projection_exprs: List[Expr], block: Block) -> Block:
-    """
-    Evaluate a projection (list of expressions) against a block.
+    """Evaluate a projection (list of expressions) against a block.
 
     Handles projection semantics including:
     - Empty projections
@@ -917,8 +916,7 @@ def eval_projection(
     *,
     common_sub_exprs: Optional[List[Expr]] = None,
 ) -> Block:
-    """
-    Evaluate a projection (list of expressions) against a block.
+    """Evaluate a projection (list of expressions) against a block.
 
     If CSE common expressions are provided, they are evaluated first into
     temporary columns on a working block. Visible projection expressions are

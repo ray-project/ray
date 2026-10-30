@@ -652,6 +652,12 @@ def uniform(lower: float, upper: float):
     Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
     ``np.random.uniform(1, 10))``
 
+    Args:
+        lower: Lower boundary of the output interval.
+        upper: Upper boundary of the output interval.
+
+    Returns:
+        A ``Float`` domain that samples uniformly between ``lower`` and ``upper``.
     """
     return Float(lower, upper).uniform()
 
@@ -660,12 +666,20 @@ def uniform(lower: float, upper: float):
 def quniform(lower: float, upper: float, q: float):
     """Sample a quantized float value uniformly between ``lower`` and ``upper``.
 
-    Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
-    ``np.random.uniform(1, 10))``
+    Sampling from ``tune.quniform(1, 10, 0.5)`` is equivalent to sampling from
+    ``np.random.uniform(1, 10)`` and rounding to a multiple of ``0.5``.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
 
+    Args:
+        lower: Lower boundary of the output interval.
+        upper: Upper boundary of the output interval.
+        q: Quantization number. The result will be rounded to an
+            integer increment of this value.
+
+    Returns:
+        A ``Float`` domain that samples uniformly and quantizes by ``q``.
     """
     return Float(lower, upper).uniform().quantized(q)
 
@@ -717,6 +731,11 @@ def choice(categories: Sequence):
     Sampling from ``tune.choice([1, 2])`` is equivalent to sampling from
     ``np.random.choice([1, 2])``
 
+    Args:
+        categories: The values to sample from.
+
+    Returns:
+        A ``Categorical`` domain that samples uniformly from ``categories``.
     """
     return Categorical(categories).uniform()
 
@@ -727,14 +746,20 @@ def randint(lower: int, upper: int):
 
     ``lower`` is inclusive, ``upper`` is exclusive.
 
-    Sampling from ``tune.randint(10)`` is equivalent to sampling from
-    ``np.random.randint(10)``
+    Sampling from ``tune.randint(0, 10)`` is equivalent to sampling from
+    ``np.random.randint(0, 10)``
 
     .. versionchanged:: 1.5.0
         When converting Ray Tune configs to searcher-specific search spaces,
         the lower and upper limits are adjusted to keep compatibility with
         the bounds stated in the docstring above.
 
+    Args:
+        lower: Lower boundary of the output interval, inclusive.
+        upper: Upper boundary of the output interval, exclusive.
+
+    Returns:
+        An ``Integer`` domain that samples uniformly between ``lower`` and ``upper``.
     """
     return Integer(lower, upper).uniform()
 
@@ -750,6 +775,14 @@ def lograndint(lower: int, upper: int, base: object = _MISSING):
         the lower and upper limits are adjusted to keep compatibility with
         the bounds stated in the docstring above.
 
+    Args:
+        lower: Lower boundary of the output interval, inclusive.
+        upper: Upper boundary of the output interval, exclusive.
+        base: Deprecated. No longer used.
+
+    Returns:
+        An ``Integer`` domain that samples log-uniformly between ``lower`` and
+        ``upper``.
     """
     if base is not _MISSING:
         _warn_for_base()
@@ -770,6 +803,15 @@ def qrandint(lower: int, upper: int, q: int = 1):
         the lower and upper limits are adjusted to keep compatibility with
         the bounds stated in the docstring above.
 
+    Args:
+        lower: Lower boundary of the output interval, inclusive.
+        upper: Upper boundary of the output interval. Inclusive unless
+            ``q`` is 1.
+        q: Quantization number. The result is a multiple of this value.
+            Defaults to 1.
+
+    Returns:
+        An ``Integer`` domain that samples uniformly and quantizes by ``q``.
     """
     return Integer(lower, upper).uniform().quantized(q)
 
@@ -788,6 +830,15 @@ def qlograndint(lower: int, upper: int, q: int, base: object = _MISSING):
         the lower and upper limits are adjusted to keep compatibility with
         the bounds stated in the docstring above.
 
+    Args:
+        lower: Lower boundary of the output interval, inclusive.
+        upper: Upper boundary of the output interval. Inclusive unless
+            ``q`` is 1.
+        q: Quantization number. The result is a multiple of this value.
+        base: Deprecated. No longer used.
+
+    Returns:
+        An ``Integer`` domain that samples log-uniformly and quantizes by ``q``.
     """
     if base is not _MISSING:
         _warn_for_base()
