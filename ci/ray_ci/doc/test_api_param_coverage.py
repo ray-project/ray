@@ -425,6 +425,120 @@ def test_inherited_docstring_through_subscripted_base():
     assert violations == []
 
 
+def test_private_param_ignored():
+    # A leading-underscore kwarg is private by convention. Ray's
+    # Deployment.options(_direct_http=...) (#66255) is the real-world case.
+    base = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            def options(self, alpha):
+                """Options.
+
+                Args:
+                    alpha: The alpha.
+                """
+        '''
+    )
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            def options(self, alpha, _private_flag=False):
+                """Options.
+
+                Args:
+                    alpha: The alpha.
+                """
+        '''
+    )
+    assert _check(base=base, head=head) == []
+
+
+def test_private_param_ignored_but_public_param_still_fails():
+    head = _src(
+        '''
+        @PublicAPI
+        def new_api(alpha, _beta=None):
+            """Summary."""
+        '''
+    )
+    violations = _check(base=None, head=head)
+    assert len(violations) == 1
+    assert violations[0].params == ["alpha"]
+
+
+@pytest.mark.parametrize(
+    "decorators",
+    [
+        ['@field_validator("max_retries")', "@classmethod"],
+        ['@model_validator(mode="after")'],
+        ['@pydantic.field_validator("max_retries")', "@classmethod"],
+        ['@validator("max_retries")'],
+        ["@root_validator"],
+    ],
+)
+def test_pydantic_validator_of_public_class_ignored(decorators):
+    # The framework passes the field value; it isn't a user-facing parameter.
+    # Ray's RequestRouterConfig.validate_max_request_retries(cls, v) (#64399) is
+    # the real-world case.
+    decos = "\n".join(f"    {d}" for d in decorators)
+    head = (
+        "@PublicAPI\n"
+        "class C(BaseModel):\n"
+        '    """Summary."""\n'
+        "\n"
+        f"{decos}\n"
+        "    def validate_max_retries(cls, v):\n"
+        "        return v\n"
+    )
+    assert _check(base=None, head=head) == []
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    ["@click.command()", "@cli.command(name='start')", "@click.group()", "@command"],
+)
+def test_click_command_ignored(decorator):
+    # Click options carry their own help= text. Ray's `ray start`
+    # (#67258) is the real-world case.
+    head = _src(
+        f'''
+        {decorator}
+        @click.option("--alpha", help="The alpha.")
+        @PublicAPI
+        def start(alpha):
+            """Start Ray processes."""
+        '''
+    )
+    assert _check(base=None, head=head) == []
+
+
+def test_property_setter_ignored():
+    # A setter's value is documented on the getter, not in its own Args:.
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            @property
+            def x(self):
+                """The x property."""
+                return 1
+
+            @x.setter
+            def x(self, value):
+                pass
+        '''
+    )
+    assert _check(base=None, head=head) == []
+
+
 # --- changed-file listing (rename detection) ----------------------------------
 
 

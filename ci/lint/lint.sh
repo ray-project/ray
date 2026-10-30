@@ -140,6 +140,11 @@ api_param_coverage() {
   echo "--- Check new-parameter documentation coverage"
   local base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
   git fetch --depth=500 origin "${base_branch}" >/dev/null 2>&1 || true
+  # The depth-limited fetch makes the clone shallow, so a branch forked more
+  # than 500 commits back has no merge-base in it. Fetch the full history then.
+  if ! git merge-base "origin/${base_branch}" HEAD >/dev/null 2>&1; then
+    git fetch --unshallow origin "${base_branch}" >/dev/null 2>&1 || true
+  fi
   PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_param_coverage.py \
     "$(pwd)" --base-ref "origin/${base_branch}" "$@"
 }
