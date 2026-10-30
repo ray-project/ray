@@ -803,6 +803,16 @@ WorkerID ObjectManager::GetLocalObjectProducerWorkerId(const ObjectID &object_id
                                            : it->second.object_info.producer_worker_id;
 }
 
+bool ObjectManager::SetLocalObjectProducerWorkerId(const ObjectID &object_id,
+                                                   const WorkerID &producer_worker_id) {
+  auto it = local_plasma_objects_.find(object_id);
+  if (it == local_plasma_objects_.end()) {
+    return false;
+  }
+  it->second.object_info.producer_worker_id = producer_worker_id;
+  return true;
+}
+
 std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
