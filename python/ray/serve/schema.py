@@ -1147,6 +1147,13 @@ class ServeDeploySchema(BaseModel):
         ..., description="The set of applications to run on the Ray cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+    config_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Identifier echoed as `applied_config_id` when the controller accepts "
+            "this config. Does not affect deployment versions."
+        ),
+    )
 
     @field_validator("applications")
     @classmethod
@@ -1393,6 +1400,15 @@ class ReplicaDetails(ServeActorDetails):
             "state from the running replica actor."
         )
     )
+    version: Optional[str] = Field(
+        default=None,
+        description=(
+            "Deployment version tracked by the controller. During UPDATING, this "
+            "is the version being applied. During RECOVERING, it may be the "
+            "target version until the actor reports its actual version. Check "
+            "the replica state before treating a matching version as applied."
+        ),
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -1487,6 +1503,13 @@ class DeploymentDetails(BaseModel):
     )
     required_resources: Dict = Field(
         description="The resources required per replica of this deployment."
+    )
+    target_version: Optional[str] = Field(
+        default=None,
+        description=(
+            "Target deployment version. Use each replica's `version` and `state` "
+            "together to track rollout progress."
+        ),
     )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
@@ -1937,6 +1960,13 @@ class ServeInstanceDetails(BaseModel):
         description=(
             "Whether removing a deployment config override restores the value "
             "defined in code. Older versions omit this field and keep the override."
+        ),
+    )
+    applied_config_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Identifier of the last config accepted by the controller. Replica "
+            "updates may still be in progress."
         ),
     )
 

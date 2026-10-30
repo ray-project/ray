@@ -25,8 +25,7 @@ __all__ = [
 
 
 def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
-    """
-    Extract all column names referenced by the given expressions.
+    """Extract all column names referenced by the given expressions.
 
     Recursively traverses expression trees to find all ColumnExpr nodes
     and collects their names.
@@ -51,8 +50,7 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
 def _analyze_upstream_project(
     upstream_project: Project,
 ) -> Tuple[Set[str], dict[str, Expr], Set[str]]:
-    """
-    Analyze what the upstream project produces and identifies removed columns.
+    """Analyze what the upstream project produces and identifies removed columns.
 
     Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
     """
@@ -86,8 +84,7 @@ def _validate_fusion(
     upstream_output_columns: Set[str],
     removed_by_renames: Set[str],
 ) -> Tuple[bool, Set[str]]:
-    """
-    Validate if fusion is possible without rewriting expressions.
+    """Validate if fusion is possible without rewriting expressions.
 
     Args:
         downstream_project: The downstream Project operator
@@ -183,8 +180,7 @@ def _would_duplicate_nonidempotent_expr(
 
 
 def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project:
-    """
-    Attempt to merge two consecutive Project operations into one.
+    """Attempt to merge two consecutive Project operations into one.
 
     Example: Upstream: [star(), col("x").alias("y")], Downstream: [star(), (col("y") + 1).alias("z")] → Fused: [star(), (col("x") + 1).alias("z")]
     """
@@ -337,8 +333,7 @@ def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
 
 
 class ProjectionPushdown(Rule):
-    """
-    Optimization rule that pushes projections (column selections) down the query plan.
+    """Optimization rule that pushes projections (column selections) down the query plan.
 
     This rule performs two optimizations:
     1. Fuses consecutive Project operations to eliminate redundant projections
@@ -411,8 +406,7 @@ class ProjectionPushdown(Rule):
 
     @classmethod
     def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:
-        """
-        Optimize a single Project operator.
+        """Optimize a single Project operator.
 
         Steps:
         1. Iteratively fuse with upstream Project operations

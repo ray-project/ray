@@ -644,8 +644,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         skip_internal_metrics: bool = False,
         include_resource_usage: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Return a dict representation of the metrics.
+        """Return a dict representation of the metrics.
 
         Args:
             skip_internal_metrics: Whether to skip internal metrics.

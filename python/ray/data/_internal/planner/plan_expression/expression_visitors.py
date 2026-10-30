@@ -442,8 +442,7 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     """Visitor that generates a readable tree representation of expressions. Returns in pre-order traversal."""
 
     def __init__(self, prefix: str = "", is_last: bool = True):
-        """
-        Initialize the tree representation visitor.
+        """Initialize the tree representation visitor.
 
         Args:
             prefix: The prefix string for indentation (accumulated from parent nodes)
@@ -459,8 +458,7 @@ class _TreeReprVisitor(_ExprVisitor[str]):
         children: List[tuple[str, "Expr"]] = None,
         expr: "Expr" = None,
     ) -> str:
-        """
-        Format a node and its children with tree box-drawing characters.
+        """Format a node and its children with tree box-drawing characters.
 
         Args:
             node_label: The label for this node (e.g., "ADD")
