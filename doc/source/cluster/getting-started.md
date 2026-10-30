@@ -18,6 +18,7 @@ metrics
 configure-manage-dashboard
 configure
 head-node-memory-management
+large-clusters
 Applications Guide <running-applications/index>
 faq
 package-overview
