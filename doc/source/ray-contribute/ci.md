@@ -134,7 +134,16 @@ With the label, a PR runs the following:
 
 The `docstringbuild` image leaves out heavy libraries such as torch and TensorFlow. The step reports a docstring that fails only because one of those libraries is missing as skipped, names the library, and repeats the skipped examples at the end of its log. The label also skips each library's doctest target with the rest of its suites, so those examples run only in the scheduled post-merge builds. See [What doesn't run on your PR](#what-doesnt-run-on-your-pr) for which post-merge builds those are.
 
-The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
+The guard compares each changed file before and after with its docstrings removed, and fails on any other difference. Comments aren't part of the comparison, so comment edits pass. The guard reads the following file types:
+
+* Python files, `.py` and `.pyi`, which it parses with Python's `ast` module.
+* Cython files, `.pyx`, `.pxi`, and `.pxd`, which Python can't parse, so the guard compares their tokens instead.
+
+Two things in a Cython file look like a comment or a docstring but count as code. A `# cython:` or `# distutils:` comment sets compiler options. A string in a `cdef extern from` block is C or C++ source that Cython compiles. The token comparison is also stricter than the `ast` one, so replacing a Cython body that holds only a docstring with `pass` fails the guard.
+
+The guard fails on every other file type, such as C++ under `src/`, and on any added, deleted, or renamed file. It accepts Cython docstring edits, but `doc: docstring examples` runs only Python modules, and no CI step runs the `>>>` examples in a Cython docstring.
+
+To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
 ```bash
 python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
