@@ -1631,8 +1631,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         """
 
         def _sort_gang_resource_requests(req: GangResourceRequest) -> Tuple:
-            """
-            Key function for sorting the gang resource request by:
+            """Return the sort key for a gang resource request.
+
+            The key sorts the gang resource request by:
                 1. the number of placement constraints in the gang request.
                 2. the number of resource requests in the gang request.
             """

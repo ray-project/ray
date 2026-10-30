@@ -20,8 +20,9 @@ class AutoscalerMetricsReporter:
         instances: List[IMInstance],
         node_type_configs: Dict[NodeType, NodeTypeConfig],
     ):
-        """
-        Record autoscaler metrics for:
+        """Set the node count gauges for each node type.
+
+        Records autoscaler metrics for:
             - pending_nodes: Nodes that are launching/pending ray start
             - active_nodes: Active nodes (nodes running ray)
             - recently_failed_nodes: Nodes that are being terminated.
@@ -66,8 +67,9 @@ class AutoscalerMetricsReporter:
         instances: List[IMInstance],
         node_type_configs: Dict[NodeType, NodeTypeConfig],
     ):
-        """
-        Record autoscaler metrics for:
+        """Set the pending and cluster resource gauges for each resource name.
+
+        Records autoscaler metrics for:
             - pending_resources: Pending resources
             - cluster_resources: Cluster resources (resources running on the cluster)
         """

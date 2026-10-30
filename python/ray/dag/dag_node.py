@@ -46,17 +46,18 @@ class DAGNode(DAGNodeBase):
         options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
-        """
-        args:
-            args (Tuple[Any]): Bound node arguments.
-                ex: func_or_class.bind(1)
-            kwargs (Dict[str, Any]): Bound node keyword arguments.
-                ex: func_or_class.bind(a=1)
-            options (Dict[str, Any]): Bound node options arguments.
-                ex: func_or_class.options(num_cpus=2)
-            other_args_to_resolve (Dict[str, Any]): Bound kwargs to resolve
-                that's specific to subclass implementation without exposing
-                as args in base class, example: ClassMethodNode
+        """Initialize the node with its bound arguments and options.
+
+        Args:
+            args: Bound node arguments. For example,
+                ``func_or_class.bind(1)``.
+            kwargs: Bound node keyword arguments. For example,
+                ``func_or_class.bind(a=1)``.
+            options: Bound node options arguments. For example,
+                ``func_or_class.options(num_cpus=2)``.
+            other_args_to_resolve: Bound kwargs to resolve that are specific
+                to a subclass implementation, without exposing them as args
+                in the base class. For example, ``ClassMethodNode``.
         """
         self._bound_args: Tuple[Any] = args or []
         self._bound_kwargs: Dict[str, Any] = kwargs or {}
