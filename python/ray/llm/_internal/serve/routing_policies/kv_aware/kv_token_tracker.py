@@ -213,8 +213,7 @@ class KVTokenTracker:
         # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
         # to get candidate workers to route among.
         self._replica_id_by_worker: Dict[int, str] = {}
-        # Token endpoint per worker, and the callback that connects to new ones.
-        self._token_endpoint_by_worker: Dict[int, str] = {}
+        # Connects to the token endpoints of newly joined workers.
         self._on_token_endpoints: Optional[Callable[[List[str]], None]] = None
         # Per-request state that the lifecycle hooks need, keyed by request id, serves
         # the following purposes:
@@ -242,11 +241,11 @@ class KVTokenTracker:
         return self._block_size
 
     def subscribe_token_endpoints(self, callback: Callable[[List[str]], None]) -> None:
-        """Call ``callback`` with the token endpoints of current workers now,
-        and of new workers as they join."""
+        """Call ``callback`` with the token endpoints of workers as they join.
+
+        Must be called before the event loop runs the first replica update.
+        """
         self._on_token_endpoints = callback
-        if self._token_endpoint_by_worker:
-            self._on_token_endpoints(list(self._token_endpoint_by_worker.values()))
 
     def start_reservation_broadcast(self, handle: Any) -> None:
         """Configure background reservation replication to this deployment."""
@@ -354,16 +353,13 @@ class KVTokenTracker:
         for worker_id in removed:
             self.remove_worker(worker_id)
             self._replica_id_by_worker.pop(worker_id, None)
-            self._token_endpoint_by_worker.pop(worker_id, None)
         new_token_endpoints = []
         for worker_id in added:
             replica_id, kv_event_metadata = members[worker_id]
             self._register_block_size(kv_event_metadata["block_size"], replica_id)
             self._replica_id_by_worker[worker_id] = replica_id
-            token_endpoint = token_endpoints.get(worker_id)
-            if token_endpoint:
-                self._token_endpoint_by_worker[worker_id] = token_endpoint
-                new_token_endpoints.append(token_endpoint)
+            if worker_id in token_endpoints:
+                new_token_endpoints.append(token_endpoints[worker_id])
             self._schedule(
                 self._upsert_worker(worker_id, replica_id, kv_event_metadata)
             )

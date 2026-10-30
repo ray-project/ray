@@ -203,11 +203,11 @@ class TestOnDeploymentTargets:
     async def test_subscribe_token_endpoints(self):
         endpoints = {u: f"tcp://10.0.0.1:{27000 + i}" for i, u in enumerate("abc")}
         tracker = _LocalKVTokenTracker()
-        tracker._on_deployment_targets(make_target_info(["a"], endpoints))
         calls = []
-        # A late subscriber still gets workers already tracked.
         tracker.subscribe_token_endpoints(calls.append)
+        tracker._on_deployment_targets(make_target_info(["a"], endpoints))
         assert calls == [[endpoints["a"]]]
+        # Only workers that just joined are connected.
         tracker._on_deployment_targets(make_target_info(["a", "b", "c"], endpoints))
         assert sorted(calls[1]) == [endpoints["b"], endpoints["c"]]
 

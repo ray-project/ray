@@ -164,6 +164,16 @@ class LLMRouter:
                 llm_config, server.deployment_id
             )
             self._kv_token_tracker.start_reservation_broadcast(get_llm_router_handle())
+            # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
+            # the non-KV ingress import path.
+            from ray.llm._internal.serve.routing_policies.kv_aware import (
+                token_channel,
+            )
+
+            # Subscribe before the first await: LongPoll delivers replica updates
+            # on this event loop, so the sender sees every replica as it joins.
+            self._token_sender = token_channel.TokenSender()
+            self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
@@ -171,14 +181,6 @@ class LLMRouter:
             )
 
             self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
-            # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
-            # the non-KV ingress import path.
-            from ray.llm._internal.serve.routing_policies.kv_aware import (
-                token_channel,
-            )
-
-            self._token_sender = token_channel.TokenSender()
-            self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
         self._handle._init()
 
     @router_app.post("/internal/route")
