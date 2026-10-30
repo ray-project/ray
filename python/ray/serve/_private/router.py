@@ -54,6 +54,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
@@ -618,6 +619,7 @@ class AsyncioRouter:
         node_id: str,
         availability_zone: Optional[str],
         prefer_local_node_routing: bool,
+        prefer_local_az_routing: bool,
         resolve_request_arg_func: Callable = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
         request_router_kwargs: Optional[Dict[str, Any]] = None,
@@ -642,6 +644,7 @@ class AsyncioRouter:
         self._node_id = node_id
         self._availability_zone = availability_zone
         self._prefer_local_node_routing = prefer_local_node_routing
+        self._prefer_local_az_routing = prefer_local_az_routing
         # By default, deployment is available unless we receive news
         # otherwise through a long poll broadcast from the controller.
         self._deployment_available = True
@@ -794,7 +797,7 @@ class AsyncioRouter:
                 use_replica_queue_len_cache=self._enable_strict_max_ongoing_requests,
                 create_replica_wrapper_func=lambda r: RunningReplica(r),
                 prefer_local_node_routing=self._prefer_local_node_routing,
-                prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+                prefer_local_az_routing=self._prefer_local_az_routing,
                 self_availability_zone=self._availability_zone,
                 **backoff_kwargs,
             )
@@ -842,6 +845,35 @@ class AsyncioRouter:
         self._request_router_kwargs = (
             deployment_config.request_router_config.request_router_kwargs
         )
+
+        # The config fields default to the env vars, but that default is
+        # resolved at import time in whichever process builds the
+        # DeploymentConfig: the driver, or the controller's app-build task for
+        # config-file deploys. This router runs in a proxy or replica process
+        # that imported the env vars separately, so the two values can
+        # disagree. Only let the config win when the user actually set the
+        # option; otherwise keep this process's own env var value.
+        if (
+            "prefer_local_node_routing"
+            in deployment_config.user_configured_option_names
+        ):
+            self._prefer_local_node_routing = (
+                deployment_config.prefer_local_node_routing
+            )
+        else:
+            self._prefer_local_node_routing = RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING
+
+        if "prefer_local_az_routing" in deployment_config.user_configured_option_names:
+            self._prefer_local_az_routing = deployment_config.prefer_local_az_routing
+        else:
+            self._prefer_local_az_routing = RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
+
+        # Propagate to the request router if it has already been initialized.
+        if self._request_router is not None:
+            self._request_router.update_locality_routing_params(
+                prefer_local_node_routing=self._prefer_local_node_routing,
+                prefer_local_az_routing=self._prefer_local_az_routing,
+            )
 
         # Warn if deprecated env vars are set
         warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S")
