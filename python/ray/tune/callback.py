@@ -68,44 +68,38 @@ class _CallbackMeta(ABCMeta):
 
 @PublicAPI(stability="beta")
 class Callback(metaclass=_CallbackMeta):
-    """Tune base callback that can be extended and passed to a ``TrialRunner``
+    """Tune base callback that can be extended and passed to ``RunConfig(callbacks=...)``
 
-    Tune callbacks are called from within the ``TrialRunner`` class. There are
+    Tune callbacks are called from within the ``TuneController`` class. There are
     several hooks that can be used, all of which are found in the submethod
     definitions of this base class.
 
     The parameters passed to the ``**info`` dict vary between hooks. The
     parameters passed are described in the docstrings of the methods.
 
-    This example will print a metric each time a result is received:
+    Examples:
+        This example will print a metric each time a result is received:
 
-    .. testcode::
-
-        from ray import tune
-        from ray.tune import Callback
-
-
-        class MyCallback(Callback):
-            def on_trial_result(self, iteration, trials, trial, result,
-                                **info):
-                print(f"Got result: {result['metric']}")
-
-
-        def train_func(config):
-            for i in range(10):
-                tune.report({"metric": i})
-
-        tuner = tune.Tuner(
-            train_func,
-            run_config=tune.RunConfig(
-                callbacks=[MyCallback()]
-            )
-        )
-        tuner.fit()
-
-    .. testoutput::
-        :hide:
-
+        >>> from ray import tune
+        >>> from ray.tune import Callback
+        >>> class MyCallback(Callback):
+        ...     def on_trial_result(self, iteration, trials, trial, result,
+        ...                         **info):
+        ...         print(f"Got result: {result['metric']}")
+        >>> def train_func(config):
+        ...     for i in range(10):
+        ...         tune.report({"metric": i})
+        >>> tuner = tune.Tuner(
+        ...     train_func,
+        ...     run_config=tune.RunConfig(
+        ...         callbacks=[MyCallback()]
+        ...     )
+        ... )
+        >>> print("[ignore]"); results = tuner.fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        Got result: 0
+        ...
+        Got result: 9
         ...
     """
 
