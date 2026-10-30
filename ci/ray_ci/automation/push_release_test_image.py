@@ -76,8 +76,15 @@ def _annotate_pushed_image(image_uri: str, image_type: str) -> None:
 
 
 def _run_gcloud_docker_login() -> None:
-    """Authenticate with GCP Artifact Registry using gcloud."""
-    credentials_path = _runfiles.Rlocation("io_ray/release/aws2gce_iam.json")
+    """Authenticate with GCP Artifact Registry using gcloud.
+
+    The credential config comes from the global config's aws2gce_credentials,
+    like every other GCP login in CI: it names the workload identity pool the
+    current AWS account federates through, which differs between deployments.
+    """
+    credentials_path = _runfiles.Rlocation(
+        "io_ray/" + get_global_config()["aws2gce_credentials"]
+    )
 
     logger.info("Authenticating with GCP Artifact Registry...")
 

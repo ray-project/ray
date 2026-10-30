@@ -410,7 +410,7 @@ py_binary(
     name = "push_release_test_image",
     srcs = ["push_release_test_image.py"],
     data = [
-        "//release:aws2gce_iam.json",
+        "//release:aws2gce_credentials",
         "//release:azure_docker_login.sh",
     ],
     exec_compatible_with = ["//bazel:py3"],
