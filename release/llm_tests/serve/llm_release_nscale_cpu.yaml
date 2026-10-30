@@ -1,0 +1,39 @@
+cloud: rkn-gpu-cloud
+cloud_resource: nscale-osl1-v2
+
+head_node:
+  instance_type: 8CPU-28GB
+  advanced_instance_config:
+    metadata:
+      annotations:
+        release-tests.anyscale.com/aws-credentials: "true"
+      labels:
+        kueue.x-k8s.io/queue-name: llm-team-queue
+    spec:
+      imagePullSecrets:
+        - name: '{{ env["RELEASE_IMAGE_PULL_SECRET_NAME"] }}'
+      volumes:
+        - name: release-aws
+          secret:
+            secretName: '{{ env["RELEASE_AWS_SECRET_NAME"] }}'
+        - name: release-api
+          secret:
+            secretName: '{{ env["RELEASE_ANYSCALE_SECRET_NAME"] }}'
+      containers:
+        - name: ray
+          volumeMounts:
+            - name: release-aws
+              mountPath: /tmp/.aws-release
+              readOnly: true
+            - name: release-api
+              mountPath: /tmp/.release-api
+              readOnly: true
+          env:
+            - {name: ANYSCALE_HOST, value: '{{ env["ANYSCALE_HOST"] }}'}
+            - {name: RELEASE_ANYSCALE_TOKEN_FILE, value: /tmp/.release-api/token}
+            - {name: RELEASE_IMAGE_PULL_SECRET_NAME, value: '{{ env["RELEASE_IMAGE_PULL_SECRET_NAME"] }}'}
+            - {name: RELEASE_AWS_SECRET_NAME, value: '{{ env["RELEASE_AWS_SECRET_NAME"] }}'}
+            - {name: AWS_SHARED_CREDENTIALS_FILE, value: /tmp/.aws-release/credentials}
+            - {name: AWS_CONFIG_FILE, value: /tmp/.aws-release/config}
+            - {name: AWS_PROFILE, value: release-tests}
+worker_nodes: []

@@ -98,6 +98,9 @@
 				},
 				"anyscale_sdk_2026": {
 					"type": "boolean"
+				},
+				"credential_config_secret": {
+					"type": "string"
 				}
 			},
 			"required": [

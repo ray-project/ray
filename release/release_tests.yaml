@@ -5435,3 +5435,22 @@
       frequency: manual
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: llm_serve_qwen3dot5_9b_b200
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+  cluster:
+    byod:
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_release_nscale_cpu.yaml
+    credential_config_secret: arn:aws:secretsmanager:us-west-2:830883877497:secret:release-automation/llm-release-ci-v1-nGJwpd
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+  run:
+    timeout: 2400
+    num_retries: 0
+    script: python run_llm_serve_test_and_bms.py --cloud rkn-gpu-cloud --compute-config llm_1x_b200.yaml --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_b200.yaml --skip-hf-token true --timeout 1200
