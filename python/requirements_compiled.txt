@@ -735,11 +735,10 @@ greenlet==3.4.0
     # via sqlalchemy
 groovy==0.1.2
     # via gradio
-grpcio==1.75.0 ; python_version < "3.14"
+grpcio==1.85.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
-    #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
     #   grpcio-reflection

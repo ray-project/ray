@@ -343,9 +343,11 @@ class GrpcDeployment:
         greeting = f"Hello {user_message.name} from {user_message.origin}"
         num, code, message = self.num_lookup(user_message.name)
 
-        # Set custom code, details, and trailing metadata.
+        # Set custom code, details, and trailing metadata. Status details are
+        # only defined for non-OK statuses.
         grpc_context.set_code(code)
-        grpc_context.set_details(message)
+        if code != grpc.StatusCode.OK:
+            grpc_context.set_details(message)
         grpc_context.set_trailing_metadata([("num", str(num))])
 
         # You can also set a status code before raising an exception.
@@ -393,7 +395,7 @@ except grpc.RpcError as rpc_error:
 # Second call is going to page hit and return OK status code.
 response, call = stub.__call__.with_call(request=request, metadata=metadata)
 assert call.code() == grpc.StatusCode.OK
-assert call.details() == "foo found."
+assert call.details() == ""
 assert any([key == "num" and value == "0" for key, value in call.trailing_metadata()])
 assert any([key == "request_id" for key, _ in call.trailing_metadata()])
 # __end_grpc_context_client__
