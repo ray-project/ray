@@ -237,9 +237,11 @@ class MixManagerCallback(RLlibCallback):
         new_module_id = None
         new_module_spec = None
 
-        win_rate = evaluation_metrics[ENV_RUNNER_RESULTS][
-            f"footsies/eval/win_rates/{self.main_policy}/vs_any"
-        ]
+        # An evaluation round without a decisive episode (only draws) logs no win
+        # rate. Count it as not exceeding the threshold.
+        win_rate = evaluation_metrics.get(ENV_RUNNER_RESULTS, {}).get(
+            f"footsies/eval/win_rates/{self.main_policy}/vs_any", 0.0
+        )
 
         if win_rate > self.win_rate_threshold:
             logger.info(
@@ -294,6 +296,20 @@ class MixManagerCallback(RLlibCallback):
                         },
                     }
                 )
+                # `set_state()` doesn't reach the EnvRunners: the weights version stays
+                # the same, so they skip these weights and keep the new module's random
+                # init. Push the weights to every (eval) EnvRunner directly.
+                new_weights = algorithm.learner_group.get_weights(
+                    module_ids=[new_module_id]
+                )
+                for env_runner_group in (
+                    algorithm.env_runner_group,
+                    algorithm.eval_env_runner_group,
+                ):
+                    env_runner_group.foreach_env_runner(
+                        lambda er, w=new_weights: er.module.set_state(w),
+                        local_env_runner=True,
+                    )
 
                 # STEP 2: CRITICAL - Update aggregator actors with the new module
                 # Aggregators run the learner connector pipeline which needs all modules.
@@ -317,11 +333,8 @@ class MixManagerCallback(RLlibCallback):
                     )
 
                     # Sync weights from learner to aggregator actors
-                    weights = algorithm.learner_group.get_weights(
-                        module_ids=[new_module_id]
-                    )
                     algorithm._aggregator_actor_manager.foreach_actor(
-                        func=lambda actor, w=weights: actor._module.set_state(w)
+                        func=lambda actor, w=new_weights: actor._module.set_state(w)
                     )
 
                     logger.info(
