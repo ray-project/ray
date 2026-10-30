@@ -6108,34 +6108,26 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import sqlite3
-                import ray
-
-                connection = sqlite3.connect("example.db")
-                connection.cursor().execute("CREATE TABLE movie(title, year, score)")
-                dataset = ray.data.from_items([
-                    {"title": "Monty Python and the Holy Grail", "year": 1975, "score": 8.2},
-                    {"title": "And Now for Something Completely Different", "year": 1971, "score": 7.5}
-                ])
-
-                dataset.write_sql(
-                    "INSERT INTO movie VALUES(?, ?, ?)", lambda: sqlite3.connect("example.db")
-                )
-
-                result = connection.cursor().execute("SELECT * FROM movie ORDER BY year")
-                print(result.fetchall())
-
-            .. testoutput::
-
-                [('And Now for Something Completely Different', 1971, 7.5), ('Monty Python and the Holy Grail', 1975, 8.2)]
-
-            .. testcode::
-                :hide:
-
-                import os
-                os.remove("example.db")
+            >>> import os
+            >>> import sqlite3
+            >>> import tempfile
+            >>> import ray
+            >>> db_dir = tempfile.TemporaryDirectory()
+            >>> db_path = os.path.join(db_dir.name, "example.db")
+            >>> connection = sqlite3.connect(db_path)
+            >>> _ = connection.execute("CREATE TABLE movie(title, year, score)")
+            >>> dataset = ray.data.from_items([
+            ...     {"title": "Monty Python and the Holy Grail", "year": 1975, "score": 8.2},
+            ...     {"title": "And Now for Something Completely Different", "year": 1971, "score": 7.5}
+            ... ])
+            >>> dataset.write_sql(
+            ...     "INSERT INTO movie VALUES(?, ?, ?)", lambda: sqlite3.connect(db_path)
+            ... )
+            >>> result = connection.execute("SELECT * FROM movie ORDER BY year")
+            >>> print(result.fetchall())
+            [('And Now for Something Completely Different', 1971, 7.5), ('Monty Python and the Holy Grail', 1975, 8.2)]
+            >>> connection.close()
+            >>> db_dir.cleanup()
 
         Arguments:
             sql: An ``INSERT INTO`` statement that specifies the table to write to. The
@@ -6619,14 +6611,18 @@ class Dataset:
         """Write the dataset to a Lance dataset.
 
         Examples:
-             .. testcode::
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-
-                docs = [{"title": "Lance data sink test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_lance("/tmp/lance_data/", mode=SaveMode.OVERWRITE)
+            >>> import os
+            >>> import tempfile
+            >>> import pandas as pd
+            >>> import ray
+            >>> from ray.data import SaveMode
+            >>> lance_dir = tempfile.TemporaryDirectory()
+            >>> docs = [{"title": "Lance data sink test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_lance(
+            ...     os.path.join(lance_dir.name, "lance_data"), mode=SaveMode.OVERWRITE
+            ... )
+            >>> lance_dir.cleanup()
 
         Args:
             path: The path to the destination Lance dataset. Ignored when namespace
