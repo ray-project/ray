@@ -27,6 +27,10 @@ from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import _split_base_and_ext
 
+# Key for storing the per-task ID-only blocks picked up by
+# `_generate_capture_id_columns_transform` for the post-write checkpoint.
+CHECKPOINT_ID_BLOCKS_KWARG_NAME = "_checkpoint_id_blocks"
+
 
 def _validate_id_column_exists(id_column: str, block: Block) -> None:
     """Validate that the ID column exists in the block.
@@ -142,14 +146,19 @@ def plan_write_op_with_checkpoint_writer(
             f"the checkpoint is saved, duplicate data may be written on retry. "
             f"This will be addressed in a future version."
         )
+        # Pre-write transform: pick up the ID columns while the blocks stream
+        # to the write, since the write does not re-emit them afterwards.
+        capture_id_columns_fn = _generate_capture_id_columns_transform(data_context)
         write_checkpoint_fn = _generate_non_atomic_write_checkpoint_transform(
-            data_context, checkpoint_writer
+            checkpoint_writer
         )
         post_transformations = [
             write_checkpoint_fn,
             collect_stats_fn,
         ]
-        pre_transformations = []
+        pre_transformations = [
+            capture_id_columns_fn,
+        ]
 
     physical_op = _plan_write_op_internal(
         op,
@@ -264,6 +273,46 @@ def _generate_prepare_checkpoint_transform(
     )
 
 
+def _generate_capture_id_columns_transform(
+    data_context: DataContext,
+) -> BlockMapTransformFn:
+    """Generate transform for collecting ID columns while the blocks stream.
+
+    Non-file datasinks write their checkpoint AFTER the data (see
+    `_generate_non_atomic_write_checkpoint_transform`), but the write consumes
+    the blocks without re-emitting them: keeping every block around for a
+    second reader is what inflated write-task memory. So pick up each block's
+    ID column on its way to the write and keep only that -- one column instead
+    of the whole block.
+
+    Steps:
+    1. Validates the ID column exists on every non-empty block
+    2. Stores per-block ID-only blocks in ctx.kwargs for the post-write
+       checkpoint transform
+    3. Passes the original blocks on to the write
+    """
+
+    def capture_id_columns(
+        blocks: Iterable[Block], ctx: TaskContext
+    ) -> Iterable[Block]:
+        id_column = data_context.checkpoint_config.id_column
+        id_blocks: List[Block] = []
+        for block in blocks:
+            ba = BlockAccessor.for_block(block)
+            if ba.num_rows() > 0:
+                # Validate ID column exists
+                _validate_id_column_exists(id_column, block)
+                id_blocks.append(ba.select(columns=[id_column]))
+            yield block
+
+        ctx.kwargs[CHECKPOINT_ID_BLOCKS_KWARG_NAME] = id_blocks
+
+    return BlockMapTransformFn(
+        capture_id_columns,
+        disable_block_shaping=True,
+    )
+
+
 def _generate_commit_checkpoint_transform(
     checkpoint_writer: CheckpointWriter,
 ) -> BlockMapTransformFn:
@@ -285,8 +334,11 @@ def _generate_commit_checkpoint_transform(
     ) -> Iterable[Block]:
         # Each stage runs on the first pull from it, so nothing upstream has
         # run yet. `prepare_checkpoint` is what leaves the pending checkpoints
-        # on `ctx`. Drain first, or there is nothing here to commit.
-        blocks = list(blocks)
+        # on `ctx`. Drain first, or there is nothing here to commit. The write
+        # emits no blocks of its own -- its stats are on `ctx` -- so there is
+        # nothing here to hold on to.
+        for _ in blocks:
+            pass
 
         # Get pending checkpoints written in pre-write phase
         pending_checkpoints: List[PendingCheckpoint] = ctx.kwargs.get(
@@ -297,7 +349,7 @@ def _generate_commit_checkpoint_transform(
         for pending in pending_checkpoints:
             checkpoint_writer.commit_checkpoint(pending)
 
-        return blocks
+        return iter(())
 
     return BlockMapTransformFn(
         commit_checkpoints,
@@ -306,7 +358,6 @@ def _generate_commit_checkpoint_transform(
 
 
 def _generate_non_atomic_write_checkpoint_transform(
-    data_context: DataContext,
     checkpoint_writer: CheckpointWriter,
 ) -> BlockMapTransformFn:
     """Generate transform for writing checkpoints AFTER data write (non-file datasinks).
@@ -324,26 +375,33 @@ def _generate_non_atomic_write_checkpoint_transform(
     For idempotent operations (upserts with unique keys), this is safe. For
     non-idempotent operations (inserts), duplicates may result.
 
+    The blocks are gone by the time this runs -- the write consumes them
+    without re-emitting them -- so the ID columns were picked up on their way
+    past by `_generate_capture_id_columns_transform`.
+
     TODO: For datasinks that support deletions (e.g., SQL DELETE by ID), we
     could store written IDs in pending checkpoints and delete them on recovery,
     avoiding duplicates even for non-idempotent operations.
     """
 
     def write_checkpoint(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-        # Combine all blocks
-        block_list, combined_block = _combine_blocks(blocks)
+        # Drain before reading `ctx` below: consuming the input is what runs
+        # the write stage.
+        for _ in blocks:
+            pass
+
+        # Combine the ID-only blocks captured before the write
+        _, combined_block = _combine_blocks(
+            ctx.kwargs.pop(CHECKPOINT_ID_BLOCKS_KWARG_NAME, [])
+        )
         ba = BlockAccessor.for_block(combined_block)
 
         if ba.num_rows() > 0:
-            # Validate ID column exists
-            id_column = data_context.checkpoint_config.id_column
-            _validate_id_column_exists(id_column, combined_block)
-
             # Write checkpoint directly (no 2-phase commit)
             # No data_file_path since non-file datasinks don't have file paths
             checkpoint_writer.write_block_checkpoint(ba)
 
-        return iter(block_list)
+        return iter(())
 
     return BlockMapTransformFn(
         write_checkpoint,
