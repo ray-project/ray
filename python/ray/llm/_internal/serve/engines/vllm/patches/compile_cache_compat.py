@@ -1,15 +1,16 @@
 """Backport: device-neutral torch.compile cache for vLLM's Ray workers.
 
-TODO(kourosh): Remove once vLLM includes
-https://github.com/vllm-project/vllm/pull/63247 and Ray Serve LLM requires
-that vLLM (with torch >= 2.14).
+TODO(kourosh): Once Ray Serve LLM requires a vLLM with
+https://github.com/vllm-project/vllm/pull/63247 (and torch >= 2.14), replace
+this module with setting VLLM_COMPILE_ON_ONE_RANK=1.
 
 vLLM's Ray executor runs a replica's rank 0 on its physical GPU (cuda:1 for a
 replica placed on GPU 1), while the compile cache is keyed by rank. Inductor
 bakes the compile-time device index into the cached code and kernels, so a
 replica reusing a cache built by a replica on another GPU index crashes with
-"CUDA driver error: invalid argument". The vLLM fix enables torch's
-compile_on_one_rank mode; torch 2.13 does not have it, so on torch 2.13 this
+"CUDA driver error: invalid argument". The vLLM fix uses torch's
+compile_on_one_rank mode behind the opt-in VLLM_COMPILE_ON_ONE_RANK, which this
+module turns on; torch 2.13 does not have the mode, so on torch 2.13 this
 module patches the two places Inductor bakes the device instead.
 
 `apply` runs in each vLLM worker process from Serve LLM's
@@ -17,6 +18,7 @@ worker_process_setup_hook.
 """
 
 import logging
+import os
 import re
 
 logger = logging.getLogger(__name__)
@@ -31,13 +33,15 @@ _CURRENT_DEVICE = "__import__('torch').cuda.current_device()"
 def apply() -> None:
     import vllm.envs as envs
 
-    if hasattr(envs, "VLLM_COMPILE_ON_ONE_RANK"):
-        return  # vLLM already handles it.
-
     import torch
     from torch.compiler import config as compiler_config
 
     if hasattr(compiler_config, "compile_on_one_rank"):
+        if hasattr(envs, "VLLM_COMPILE_ON_ONE_RANK"):
+            # vLLM applies the mode during its compile and keys its cache on
+            # it, but leaves it off by default.
+            os.environ.setdefault("VLLM_COMPILE_ON_ONE_RANK", "1")
+            return
         compiler_config.compile_on_one_rank = True
     elif torch.__version__.startswith("2.13."):
         _patch_codegen()

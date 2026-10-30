@@ -290,5 +290,43 @@ def test_compile_cache_compat_rewrites_device_literals():
     )
 
 
+@pytest.mark.parametrize(
+    "vllm_has_flag,user_env,expected_env,expected_torch_flag",
+    [
+        # vLLM supports the mode but leaves it off: turn it on through vLLM.
+        (True, None, "1", False),
+        # A user's choice wins.
+        (True, "0", "0", False),
+        # Older vLLM on torch >= 2.14: set torch's mode directly.
+        (False, None, None, True),
+    ],
+)
+def test_compile_cache_compat_on_torch_with_compile_on_one_rank(
+    vllm_has_flag, user_env, expected_env, expected_torch_flag
+):
+    import torch.compiler
+    import vllm.envs
+
+    from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat
+
+    if not vllm_has_flag and hasattr(vllm.envs, "VLLM_COMPILE_ON_ONE_RANK"):
+        pytest.skip("installed vLLM already has VLLM_COMPILE_ON_ONE_RANK")
+    env = {"VLLM_COMPILE_ON_ONE_RANK": user_env} if user_env else {}
+    # Stands in for torch >= 2.14's compiler config.
+    compiler_config = SimpleNamespace(compile_on_one_rank=False)
+    with patch.dict("os.environ", env, clear=True), patch.object(
+        torch.compiler, "config", compiler_config
+    ), patch.object(compile_cache_compat, "_add_compile_cache_factor"):
+        if vllm_has_flag:
+            with patch.object(
+                vllm.envs, "VLLM_COMPILE_ON_ONE_RANK", False, create=True
+            ):
+                compile_cache_compat.apply()
+        else:
+            compile_cache_compat.apply()
+        assert os.environ.get("VLLM_COMPILE_ON_ONE_RANK") == expected_env
+        assert compiler_config.compile_on_one_rank is expected_torch_flag
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
