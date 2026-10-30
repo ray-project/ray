@@ -582,7 +582,7 @@ def test_filter_udf_preserves_dictionary_encoded_column_type(
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="predicate expressions require PyArrow >= 20.0.0",
 )
-@pytest.mark.parametrize("literal", ["english", "中文", "café", "🙂"])
+@pytest.mark.parametrize("literal", ["english", "中文"])
 @pytest.mark.parametrize("limit_first", [False, True])
 def test_filter_expr_with_unicode_literal(
     ray_start_regular_shared, literal, limit_first

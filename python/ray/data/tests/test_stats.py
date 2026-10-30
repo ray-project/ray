@@ -2984,6 +2984,8 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
     "value,expected",
     [
         ("ReadRange->MapBatches(<lambda>)_1", "ReadRange->MapBatches(<lambda>)_1"),
+        # ASCII input that already looks like an escape sequence is unchanged.
+        (r"\u4e2d", r"\u4e2d"),
         ("Filter(col('text') == '中文')_1", r"Filter(col('text') == '\u4e2d\u6587')_1"),
         ("café", r"caf\xe9"),
         ("🙂", r"\U0001f642"),
