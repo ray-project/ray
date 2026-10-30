@@ -109,16 +109,20 @@ RayServerBidiReactor::RayServerBidiReactor(
 }
 
 void RayServerBidiReactor::DoDisconnect() {
-  io_context_.dispatch([this]() { Finish(grpc::Status::OK); }, "");
+  io_context_.dispatch([this, self = self_ref_]() { Finish(grpc::Status::OK); }, "");
 }
 
 void RayServerBidiReactor::OnCancel() {
-  io_context_.dispatch([this]() { Disconnect(); }, "");
+  io_context_.dispatch([this, self = self_ref_]() { Disconnect(); }, "");
 }
 
 void RayServerBidiReactor::OnDone() {
+  // See RayClientBidiReactor::OnDone for why `self` is captured here.
   io_context_.dispatch(
-      [this, cleanup_cb = cleanup_cb_, remote_node_id = GetRemoteNodeID()]() {
+      [this,
+       self = self_ref_,
+       cleanup_cb = cleanup_cb_,
+       remote_node_id = GetRemoteNodeID()]() {
         cleanup_cb(this, false);
         self_ref_.reset();
       },
