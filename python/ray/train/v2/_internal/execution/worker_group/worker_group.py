@@ -1097,22 +1097,20 @@ class WorkerGroup(ExecutionGroup):
             [worker.execute_async(_get_tpu_node_info) for worker in workers]
         )
 
-        # Stable sort by (slice name, TPU_WORKER_ID); hosts without an ID keep
-        # input order after hosts with an explicit ID.
-        workers = [
-            worker
-            for worker, _ in sorted(
-                zip(workers, node_infos),
-                key=lambda pair: (
-                    pair[1][0] or "",
-                    float("inf") if pair[1][1] is None else pair[1][1],
+        def sort_key(pair):
+            worker, (pod_name, tpu_worker_id) = pair
+            return (
+                pod_name or "",
+                float("inf") if tpu_worker_id is None else tpu_worker_id,
+                # Keeps each host's workers contiguous when TPU_WORKER_ID is unset.
+                worker.metadata.node_id,
+                min(
+                    (int(i) for i in worker.metadata.accelerator_ids.get("TPU", [])),
+                    default=0,
                 ),
             )
-        ]
 
-        return WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(
-            workers, resource_name="TPU"
-        )
+        return [worker for worker, _ in sorted(zip(workers, node_infos), key=sort_key)]
 
     @staticmethod
     def _assign_worker_ranks(
@@ -1215,11 +1213,9 @@ class WorkerGroup(ExecutionGroup):
 
     @staticmethod
     def _sort_workers_by_gpu_id_grouped_by_node(
-        workers: List[Worker],
-        _first_id: Optional[str] = None,
-        resource_name: str = "GPU",
+        workers: List[Worker], _first_id: Optional[str] = None
     ) -> List[Worker]:
-        """Reorder the workers by grouping by node id and sorting each group by lowest accelerator id.
+        """Reorder the workers by grouping by node id and sorting each group by lowest GPU id.
 
         Example:
             Given workers with the following attributes:
@@ -1242,7 +1238,6 @@ class WorkerGroup(ExecutionGroup):
         Args:
             workers: The workers to sort.
             _first_id: The first node id to group by.
-            resource_name: Accelerator resource key in ``worker.metadata.accelerator_ids``.
 
         Returns:
             List of sorted workers.
@@ -1255,19 +1250,23 @@ class WorkerGroup(ExecutionGroup):
         for worker in workers:
             node_id_to_workers[worker.metadata.node_id].append(worker)
 
-        # Sort workers on the same node by the lowest accelerator id
+        # Sort workers on the same node by the lowest GPU id
         # More details: https://github.com/ray-project/ray/issues/40803
-        def get_lowest_accelerator_id(worker) -> Tuple[int, Union[int, str]]:
-            acc_ids = worker.metadata.accelerator_ids.get(resource_name, [])
-            # Numeric IDs sort numerically ("2" < "10") and before non-numeric IDs
-            # (e.g. GPU UUIDs); the leading tag keeps int and str from being compared.
+        def get_lowest_gpu_id(worker) -> int:
+            gpu_ids = worker.metadata.accelerator_ids.get("GPU", [])
+            # If there are no GPU IDs, return 0 as a default
+            if not gpu_ids:
+                return 0
+
+            # Attempt to convert GPU IDs to integers and find the minimum ID.
+            # Fallback to return the minimum string-based ID
             try:
-                return (0, min((int(acc_id) for acc_id in acc_ids), default=0))
+                return min(int(gpu_id) for gpu_id in gpu_ids)
             except ValueError:
-                return (1, min(str(acc_id) for acc_id in acc_ids))
+                return min(gpu_ids)
 
         for node_id in node_id_to_workers:
-            node_id_to_workers[node_id].sort(key=get_lowest_accelerator_id)
+            node_id_to_workers[node_id].sort(key=get_lowest_gpu_id)
 
         sorted_workers = []
         for workers in node_id_to_workers.values():
