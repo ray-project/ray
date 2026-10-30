@@ -1,6 +1,6 @@
 pyarrow==23.0.1
 hudi>=0.5.0
-pylance
+pylance>=6.0.0
 modin==0.37.1
 pandas==2.3.3
 delta-sharing

@@ -2105,15 +2105,15 @@ kombu==5.6.2 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   celery
-lance-namespace==0.6.1 \
-    --hash=sha256:9699c9e3f12236e5e08ea979cc4e036a8e3c67ed2f37ae6f25c5353ab908e1be \
-    --hash=sha256:f0deea442bd3f1056a8e2fed056ae2778e3356517ec2e680db049058b824d131
+lance-namespace==0.11.1 \
+    --hash=sha256:07643fce9a42ad4d58cc8bf91e3f592bc7f4cbd8d0ad5233223506debf67551c \
+    --hash=sha256:f67cfbbe0647b7cb42f23b673e7edf8a75b7d8a047265a916492f8d247ee1bc2
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   pylance
-lance-namespace-urllib3-client==0.6.1 \
-    --hash=sha256:31fbd058ce1ea0bf49045cdeaa756360ece0bc61e9e10276f41af6d217debe87 \
-    --hash=sha256:b9c103e1377ad46d2bd70eec894bfec0b1e2133dae0964d7e4de543c6e16293b
+lance-namespace-urllib3-client==0.11.1 \
+    --hash=sha256:145a9e9424d7597487249b5b95ee274423bf2910e1a9160b6a07b676b61ea46a \
+    --hash=sha256:36537f529294da6d884ba0fe783704483f0a75463497c7705fd083a4d0257990
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   lance-namespace
@@ -4084,13 +4084,13 @@ pyjwt==2.12.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   snowflake-connector-python
-pylance==2.0.1 \
-    --hash=sha256:51d089429b40cd81c89d7993191e758059e580dd7239fd2748bedd2e1021b592 \
-    --hash=sha256:7fc5ba370514e6ba3e67f49b51e75687534b37e2eefdb91755d4fb20b3f6fe0b \
-    --hash=sha256:804fcfb351a97fd3aad532df1fedafbc0109088e7b0ac3051c3512c3100a4a45 \
-    --hash=sha256:a67f7a96d40a5012b04205879fe7ae50b6bf856fd79e97868582e449cfedbd1b \
-    --hash=sha256:bff6452cdb8c56e84102a52291b7a9b4c08c87248d620afef05793b97de32341 \
-    --hash=sha256:d740d7a7ff9905e358a70d2adae2178ab9d6798cf3ef47729371223463c442e6
+pylance==13.0.0 \
+    --hash=sha256:22a37a0af446964e79cfd6046f9ea2735fcb42f8020eab63947b2bdca04989c2 \
+    --hash=sha256:22e47adcc2c7300ff876fb398ee9c625973932163ec055adae14871f8a09d7b0 \
+    --hash=sha256:2c94649a35161c6100ed822ac022756bfefb840b7e01cf491505c5245186f7b4 \
+    --hash=sha256:38cbe8d204785e697909e8faca91adb3b00a2f6a865c425987cb232d0865c010 \
+    --hash=sha256:8a340dcf750171dd6386db0b6ed303bb22594e1c1b266b7fe149ea1684bf4a9a \
+    --hash=sha256:a54496c4e6c01a8c3d49479fce98474c95a265515091d173aa9e16df271d837d
     # via -r python/requirements/data/pyarrow-latest.txt
 pymars==0.10.0 ; python_full_version < '3.12' \
     --hash=sha256:00457464432670a76e0691242f58ee6d7287bcb9051556565d222534a41860e1 \
