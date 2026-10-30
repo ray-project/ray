@@ -27,7 +27,9 @@ from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo,
@@ -52,6 +54,25 @@ LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (
     float(os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND", "30")),
     float(os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND", "60")),
 )
+
+# How long a client keeps trying to re-resolve a dead host before retiring
+# itself. Bounded so an intentional `serve.shutdown()` still retires clients.
+LONG_POLL_RECONNECT_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_LONG_POLL_RECONNECT_TIMEOUT_S", "60")
+)
+LONG_POLL_RECONNECT_BACKOFF_S = (0.5, 8.0)
+
+
+def _actor_id_str(host_actor: Any) -> str:
+    try:
+        return host_actor._actor_id.hex()
+    except AttributeError:
+        return "<unknown>"
+
+
+def _resolve_serve_controller() -> Any:
+    """Look up the current controller, which may be a replacement actor."""
+    return ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
 
 
 class LongPollNamespace(Enum):
@@ -119,6 +140,9 @@ class LongPollClient:
           to post the callback into.
         client_id: identifier reported back to the host if this client
           disables itself.
+        host_actor_resolver: called to look the host up again after it dies.
+          Defaults to resolving the Serve controller, which every production
+          consumer polls; pass None to retire the client instead.
     """
 
     def __init__(
@@ -127,6 +151,7 @@ class LongPollClient:
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
         client_id: str,
+        host_actor_resolver: Optional[Callable[[], Any]] = _resolve_serve_controller,
     ) -> None:
         # We used to allow this to be optional, but due to Ray Client issue
         # we now enforce all long poll client to post callback to event loop
@@ -144,6 +169,8 @@ class LongPollClient:
             self.key_listeners.keys(), -1
         )
         self.is_running = True
+        self._host_actor_resolver = host_actor_resolver
+        self._reconnect_task: Optional[asyncio.Task] = None
 
         # Metric to track end-to-end latency from controller to client
         self.long_poll_latency_histogram = metrics.Histogram(
@@ -166,6 +193,11 @@ class LongPollClient:
     def stop(self) -> None:
         """Stop the long poll client after the next RPC returns."""
         self.is_running = False
+        # Otherwise a reconnect already in flight lingers for a backoff
+        # interval. Cancel on the loop thread, since callers may be elsewhere.
+        task = self._reconnect_task
+        if task is not None and not task.done() and self.event_loop.is_running():
+            self.event_loop.call_soon_threadsafe(task.cancel)
 
     def add_key_listeners(
         self, key_listeners: Dict[KeyType, UpdateStateCallable]
@@ -248,13 +280,97 @@ class LongPollClient:
                     f"{self.client_id!r} disabled itself."
                 )
 
-    def _process_update(self, updates: Dict[str, UpdatedObject]):
-        if isinstance(updates, (ray.exceptions.RayActorError)):
+    def _start_reconnect(self, error: ray.exceptions.RayActorError) -> None:
+        """Begin re-resolving the host. Runs on the event loop."""
+        if not self.is_running:
+            return
+
+        if self._host_actor_resolver is None:
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
             # exit.
             logger.debug("LongPollClient failed to connect to host. Shutting down.")
             self.is_running = False
+            return
+
+        if self._reconnect_task is None or self._reconnect_task.done():
+            self._reconnect_task = self.event_loop.create_task(self._reconnect(error))
+
+    def _resolve_host_actor(self) -> Optional[Any]:
+        """Resolve the host by name, or None while no replacement exists."""
+        resolver = self._host_actor_resolver
+        if resolver is None or not ray.is_initialized():
+            # Resolving auto-inits Ray, so never reach for it once it is gone.
+            return None
+
+        try:
+            return resolver()
+        except Exception:
+            return None
+
+    async def _reconnect(self, error: ray.exceptions.RayActorError) -> None:
+        """Swap in a replacement host, or retire the client if none appears.
+
+        A replaced controller keeps its registered name but gets a new actor
+        ID, so the handle captured at construction is stale forever.
+        """
+        logger.warning(
+            f"LongPollClient {self.client_id!r} lost its host "
+            f"{_actor_id_str(self.host_actor)}: {type(error).__name__}. "
+            "Trying to re-resolve it."
+        )
+        deadline = time.monotonic() + LONG_POLL_RECONNECT_TIMEOUT_S
+        backoff = LONG_POLL_RECONNECT_BACKOFF_S[0]
+        while self.is_running and time.monotonic() < deadline:
+            if not ray.is_initialized():
+                # This process shut Ray down, so there is nothing left to
+                # reconnect to and no one to deliver updates to.
+                self.is_running = False
+                return
+
+            # This blocks on the GCS, so it must not run on the event loop nor
+            # on the Ray callback thread that delivers the reply it waits for.
+            host_actor = await self.event_loop.run_in_executor(
+                None, self._resolve_host_actor
+            )
+            # The name can still point at the dead actor for a short window
+            # after it exits; rebinding to it would spin instead of recovering.
+            if (
+                self.is_running
+                and host_actor is not None
+                and _actor_id_str(host_actor) != _actor_id_str(self.host_actor)
+            ):
+                self._rebind_host_actor(host_actor)
+                return
+
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, LONG_POLL_RECONNECT_BACKOFF_S[1])
+
+        if self.is_running:
+            logger.warning(
+                f"LongPollClient {self.client_id!r} could not re-resolve its host "
+                f"within {LONG_POLL_RECONNECT_TIMEOUT_S}s and has been disabled; "
+                "it will no longer receive updates."
+            )
+            self.is_running = False
+
+    def _rebind_host_actor(self, host_actor: Any) -> None:
+        """Swap in the replacement host and ask it for a full state refresh.
+
+        Snapshot IDs are per-host counters seeded randomly, so IDs held for the
+        dead host mean nothing to its replacement; -1 forces a full resend.
+        """
+        logger.warning(
+            f"LongPollClient {self.client_id!r} reconnected to host "
+            f"{_actor_id_str(host_actor)}, replacing {_actor_id_str(self.host_actor)}."
+        )
+        self.host_actor = host_actor
+        self.snapshot_ids = dict.fromkeys(self.key_listeners.keys(), -1)
+        self._poll_next()
+
+    def _process_update(self, updates: Dict[str, UpdatedObject]):
+        if isinstance(updates, (ray.exceptions.RayActorError)):
+            self._schedule_to_event_loop(lambda: self._start_reconnect(updates))
             return
 
         if isinstance(updates, ConnectionError):
