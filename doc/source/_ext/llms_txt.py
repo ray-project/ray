@@ -21,11 +21,13 @@ output). It emits three kinds of file into the HTML build output:
 ``<section>/llms-full.txt``
     The verbatim source of every in-scope page under a section, each prefixed
     with a ``# title`` / ``Source: url`` header and separated by ``---``, behind
-    a ``## Contents`` TOC. Sharded per directory because the whole corpus is far
-    larger than any context window; a section that still exceeds
-    ``llms_txt_full_max_shard_tokens`` is split further into per-subdirectory
-    sub-shards (e.g. ``serve/llm/llms-full.txt``) so each loadable unit
-    stays within an agent's effective context budget.
+    a ``## Contents`` TOC. The one change to the source is that each
+    ``literalinclude`` directive is replaced by the code it includes, because
+    Sphinx never publishes the included file. Sharded per directory because
+    the whole corpus is far larger than any context window; a section that
+    still exceeds ``llms_txt_full_max_shard_tokens`` is split further into
+    per-subdirectory sub-shards (e.g. ``serve/llm/llms-full.txt``) so each
+    loadable unit stays within an agent's effective context budget.
 
 ``llms-full.txt`` (root)
     A manifest that links to every shard — sub-shards nested under their parent
@@ -54,7 +56,12 @@ Config values (set generic defaults here; Ray specifics live in ``conf.py``):
     (default ``True``).
 ``llms_txt_full_max_shard_tokens``
     Approximate token budget above which a section shard is split into
-    per-subdirectory sub-shards (default ``200000``; ~4 chars/token).
+    per-subdirectory sub-shards (default ``200000``; ~4 chars/token). Included
+    code counts toward it.
+``llms_txt_expand_literalinclude``
+    Whether shards replace each ``literalinclude`` directive with the code it
+    includes (default ``True``). Set it to ``False`` to ship the directives as
+    written, for example if a page's expansion misbehaves.
 ``llms_txt_build``
     Master switch (default ``True``). Set to ``False`` to skip all generation —
     e.g. on RtD PR previews, where the agent corpus isn't review-critical and
@@ -77,6 +84,7 @@ sticks to APIs that survive the Sphinx 8 -> 9 jump (``findall`` not
 from __future__ import annotations
 
 import fnmatch
+import re
 from pathlib import Path
 
 from docutils import nodes
@@ -428,12 +436,185 @@ def _render_index(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _src_size(env, docname) -> int:
-    """Byte size of a page's source file (0 if unreadable)."""
+# The line a ``literalinclude`` directive opens on, in MyST (backtick or colon
+# fence) and RST syntax. ``arg`` is the rest of the line, naming the file.
+_MYST_LITERALINCLUDE = re.compile(
+    r"^(?P<indent>[ \t]*)(?P<fence>`{3,}|:{3,})\{literalinclude\}(?P<arg>.*)"
+)
+_RST_LITERALINCLUDE = re.compile(r"^(?P<indent>[ \t]*)\.\. literalinclude::(?P<arg>.*)")
+
+
+def _directive_span(lines, start):
+    """Return ``(start, end, indent, arg)`` for the ``literalinclude`` directive
+    that opens at ``lines[start]`` (``end`` inclusive, ``arg`` the argument naming
+    the file it includes), or None if none opens there."""
+    if not 0 <= start < len(lines):
+        return None
+    myst = _MYST_LITERALINCLUDE.match(lines[start])
+    if myst:
+        fence = myst["fence"]
+        closing = re.compile(rf"^[ \t]*{re.escape(fence[0])}{{{len(fence)},}}[ \t]*$")
+        for end in range(start + 1, len(lines)):
+            if closing.match(lines[end]):
+                return start, end, myst["indent"], myst["arg"].strip()
+        return None
+    rst = _RST_LITERALINCLUDE.match(lines[start])
+    if rst:
+        # The directive takes options but no content, so it ends at the last
+        # line indented past it before the first non-blank line that isn't.
+        # Indentation counts tabs as 8 columns, as docutils reads them.
+        depth = len(rst["indent"].expandtabs())
+        end = start
+        for i in range(start + 1, len(lines)):
+            line = lines[i].expandtabs()
+            stripped = line.lstrip()
+            if not stripped:
+                continue
+            if len(line) - len(stripped) <= depth:
+                break
+            end = i
+        return start, end, rst["indent"], rst["arg"].strip()
+    return None
+
+
+def _code_fence(code, language, indent, tildes=False):
+    """Return the lines of a fenced code block holding ``code``, indented by
+    ``indent``.
+
+    The fence is backticks unless the code contains a backtick fence of its own,
+    in which case it's tildes, so the code can't close the block early.
+    ``tildes`` asks for tildes regardless, for a block spliced where a backtick
+    fence would close an enclosing one.
+    """
+    char = "~" if tildes or "```" in code else "`"
+    longest = max(
+        (len(run) for run in re.findall(f"{re.escape(char)}+", code)), default=0
+    )
+    marker = char * max(3, longest + 1)
+    body = [f"{indent}{line}" if line else "" for line in code.rstrip("\n").split("\n")]
+    return [f"{indent}{marker}{language or ''}", *body, f"{indent}{marker}"]
+
+
+def _splice_literalincludes(text, blocks, resolve):
+    """Replace each ``literalinclude`` directive in a page's source with the code
+    it includes.
+
+    ``blocks`` holds ``(line, code, language, path)`` per rendered include, where
+    ``line`` is the 1-based line the doctree reports for it and ``path`` is the
+    file it includes. That's the line the directive opens on, except that MyST
+    can report one nested in other directives a line or two late, inside the
+    directive. So a block replaces the directive whose lines hold its line,
+    provided ``resolve`` maps that directive's argument to ``path``. Returns
+    ``(text, spliced, missed)``: the new text, how many directives it replaced,
+    and ``(line, path)`` for each block no directive matched, whose directive is
+    left as written.
+    """
+    lines = text.split("\n")
+    spans = [_directive_span(lines, i) for i in range(len(lines))]
+    spans = [span for span in spans if span]
+    matched, missed, seen = [], [], set()
+    for line, code, language, path in blocks:
+        span = next((s for s in spans if s[0] <= line - 1 <= s[1]), None)
+        if span is None or resolve(span[3]) != path:
+            missed.append((line, path))
+        elif span[0] not in seen:
+            seen.add(span[0])
+            matched.append((span, code, language))
+    # Bottom-up, so a splice never shifts the lines of one still to come.
+    for (start, end, indent, _), code, language in sorted(
+        matched, key=lambda item: item[0][0], reverse=True
+    ):
+        # A directive that doesn't open with backticks, like RST in a MyST
+        # {eval-rst} block, can sit inside a backtick fence, which a backtick
+        # fence spliced in its place would close early. So it gets tildes.
+        tildes = not lines[start].lstrip().startswith("`")
+        lines[start : end + 1] = _code_fence(code, language, indent, tildes)
+    return "\n".join(lines), len(matched), missed
+
+
+def _literalinclude_blocks(doctree, source):
+    """Return ``(line, code, language, path)`` for each ``literalinclude``
+    rendered from ``source``, in document order, where ``path`` is the file it
+    includes.
+
+    Sphinx gives the literal block a ``literalinclude`` renders a ``source``
+    attribute naming the included file, which no other literal block carries.
+    A block whose directive sits in a file the page pulls in with ``include`` is
+    skipped, because that directive isn't in the page's own source.
+    """
+    blocks = []
+    for node in doctree.findall(nodes.literal_block):
+        if "source" not in node.attributes or not node.line:
+            continue
+        if node.source and Path(node.source) != source:
+            continue
+        blocks.append(
+            (node.line, node.astext(), node.get("language"), Path(node["source"]))
+        )
+    return blocks
+
+
+def _page_text(env, docname, cache):
+    """Return the text a page contributes to its shard, or None if its source
+    can't be read.
+
+    That's the page's verbatim source, except that each ``literalinclude``
+    directive is replaced by the code Sphinx rendered for it, unless
+    ``llms_txt_expand_literalinclude`` is off. Sphinx never publishes the
+    included file, so without this the shard would point an agent at code it
+    has no way to reach. The code comes from the page's doctree rather than
+    from re-running the include, so it matches the rendered page exactly, and a
+    directive quoted as an example inside a code block, which renders nothing,
+    is left as written.
+
+    Cached in ``cache`` under ``("text", docname)``, with a running count of
+    expanded directives under ``("expanded",)``.
+    """
+    key = ("text", docname)
+    if key in cache:
+        return cache[key]
+    source = Path(env.doc2path(docname))
     try:
-        return Path(env.doc2path(docname)).stat().st_size
-    except OSError:  # pragma: no cover - defensive
-        return 0
+        text = source.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:  # pragma: no cover - defensive
+        # UnicodeDecodeError is a ValueError, not an OSError, so decoding a
+        # non-UTF-8 source would otherwise escape this handler and abort the
+        # build with a traceback from inside `build-finished`.
+        logger.warning("[llms_txt] could not read source for %s: %s", docname, exc)
+        text = None
+    expand = getattr(env.config, "llms_txt_expand_literalinclude", True)
+    if text is not None and expand and "literalinclude" in text:
+        doctree = _get_doctree(env, docname, cache)
+        if doctree is not None:
+            # The same resolution Sphinx gave the block its path with.
+            text, spliced, missed = _splice_literalincludes(
+                text,
+                _literalinclude_blocks(doctree, source),
+                lambda arg: Path(env.relfn2path(arg, docname)[1]),
+            )
+            cache[("expanded",)] = cache.get(("expanded",), 0) + spliced
+            for line, path in missed:
+                # info, not warning: a warning raised during build-finished
+                # still fails a build run with fail_on_warning, as RtD's is.
+                logger.info(
+                    "[llms_txt] %s:%d: no literalinclude directive of %s holds "
+                    "the line its code came from; leaving it as written",
+                    docname,
+                    line,
+                    path.name,
+                )
+    cache[key] = text
+    return text
+
+
+def _src_size(env, docname, cache) -> int:
+    """Byte size of the text a page contributes to its shard (0 if unreadable).
+
+    Measured after ``literalinclude`` expansion, so included code counts toward
+    the shard budget.
+    """
+    text = _page_text(env, docname, cache)
+    return len(text.encode("utf-8")) if text is not None else 0
 
 
 def _humanize(segment: str) -> str:
@@ -480,11 +661,11 @@ def _shard_identity(env, prefix, docnames, dir_landing, dir_label, meta_types, c
     return lead, _humanize(prefix.rsplit("/", 1)[-1]), ""
 
 
-def _write_shard(app, env, outdir, relpath, label, description, lead, docnames):
+def _write_shard(app, env, outdir, relpath, label, description, lead, docnames, cache):
     """Write one ``llms-full.txt`` shard (lead page first); return its page count.
 
     Body = ``# label: full text`` header, optional ``> description``, a
-    ``## Contents`` TOC, then the verbatim source of every page.
+    ``## Contents`` TOC, then the source of every page (see ``_page_text``).
     """
     ordered = [lead] + [d for d in docnames if d != lead]
     body = [f"# {label}: full text", ""]
@@ -494,13 +675,8 @@ def _write_shard(app, env, outdir, relpath, label, description, lead, docnames):
     body += [f"- [{_doc_title(env, d)}]({_page_url(app, d)})" for d in ordered]
     body += ["", "---", ""]
     for d in ordered:
-        try:
-            content = Path(env.doc2path(d)).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:  # pragma: no cover - defensive
-            # UnicodeDecodeError is a ValueError, not an OSError, so decoding a
-            # non-UTF-8 source would otherwise escape this handler and abort the
-            # build with a traceback from inside `build-finished`.
-            logger.warning("[llms_txt] could not read source for %s: %s", d, exc)
+        content = _page_text(env, d, cache)
+        if content is None:
             continue
         body += [
             f"# {_doc_title(env, d)}",
@@ -538,7 +714,7 @@ def _emit_shards(
     in display order. A split parent keeps the pages held directly at its level;
     if it has none, it contributes a header-only record (no shard file).
     """
-    total = sum(_src_size(env, d) for d in docnames)
+    total = sum(_src_size(env, d, cache) for d in docnames)
 
     # Partition into subdirectory groups vs pages held directly at this level.
     # Split on the logical path (``_collections/`` alias stripped) so fetched
@@ -566,7 +742,9 @@ def _emit_shards(
             env, prefix, docnames, dir_landing, dir_label, meta_types, cache
         )
         relpath = f"{prefix}/llms-full.txt"
-        count = _write_shard(app, env, outdir, relpath, label, desc, lead, docnames)
+        count = _write_shard(
+            app, env, outdir, relpath, label, desc, lead, docnames, cache
+        )
         records.append((relpath, label, desc, count, depth))
         return
 
@@ -576,7 +754,9 @@ def _emit_shards(
             env, prefix, direct, dir_landing, dir_label, meta_types, cache
         )
         relpath = f"{prefix}/llms-full.txt"
-        count = _write_shard(app, env, outdir, relpath, label, desc, lead, direct)
+        count = _write_shard(
+            app, env, outdir, relpath, label, desc, lead, direct, cache
+        )
         records.append((relpath, label, desc, count, depth))
     else:
         _lead, label, desc = _shard_identity(
@@ -678,7 +858,12 @@ def _write_full_files(
     (outdir / "llms-full.txt").write_text(
         "\n".join(manifest).rstrip() + "\n", encoding="utf-8"
     )
-    logger.info("[llms_txt] wrote llms-full.txt + %d section shards", shard_files)
+    logger.info(
+        "[llms_txt] wrote llms-full.txt + %d section shards, expanding %d "
+        "literalinclude directives",
+        shard_files,
+        cache.get(("expanded",), 0),
+    )
 
 
 def on_build_finished(app, exception):
@@ -710,6 +895,7 @@ def on_build_finished(app, exception):
     )
     summary = getattr(config, "llms_txt_summary", "") or ""
     meta_types = _meta_node_types()
+    # Doctrees by docname, plus the page texts ``_page_text`` caches.
     cache: dict = {}
 
     full_enabled = getattr(config, "llms_txt_full", True)
@@ -747,6 +933,7 @@ def setup(app):
     app.add_config_value("llms_txt_build", True, "html")
     app.add_config_value("llms_txt_base_url", None, "html")
     app.add_config_value("llms_txt_markdown_hint", False, "html")
+    app.add_config_value("llms_txt_expand_literalinclude", True, "html")
 
     app.connect("build-finished", on_build_finished)
 
