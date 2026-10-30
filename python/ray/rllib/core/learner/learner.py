@@ -417,10 +417,19 @@ class Learner(Checkpointable):
 
     @property
     def node(self) -> Any:
+        """The network name of the machine this Learner runs on.
+
+        This is the value of `platform.node()`.
+        """
         return self._node
 
     @property
     def device(self) -> Any:
+        """The device this Learner places its RLModule on.
+
+        None until a framework-specific Learner, such as `TorchLearner`, sets it
+        during `build()`.
+        """
         return self._device
 
     def register_optimizer(

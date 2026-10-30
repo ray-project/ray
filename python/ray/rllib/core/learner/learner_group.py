@@ -235,7 +235,16 @@ class LearnerGroup(Checkpointable):
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     #  Currently LearnerGroup does not have a metrics object.
     def get_stats(self) -> Dict[str, Any]:
-        """Returns the current stats for the input queue for this learner group."""
+        """Returns the current stats for the input queue for this learner group.
+
+        Returns:
+            A dict with the number of timesteps dropped over this LearnerGroup's
+            lifetime because the input queue was full, under
+            `"learner_group_ts_dropped_lifetime"`, and the number of outstanding
+            async requests to remote Learners, under
+            `"actor_manager_num_outstanding_async_reqs"`. The latter is 0 for a
+            local LearnerGroup.
+        """
         return {
             "learner_group_ts_dropped_lifetime": self._ts_dropped,
             "actor_manager_num_outstanding_async_reqs": (
@@ -247,10 +256,18 @@ class LearnerGroup(Checkpointable):
 
     @property
     def is_remote(self) -> bool:
+        """Whether this LearnerGroup uses remote Learner actors.
+
+        True when the config's `num_learners` is greater than 0.
+        """
         return self.config.num_learners > 0
 
     @property
     def is_local(self) -> bool:
+        """Whether this LearnerGroup runs a single local Learner.
+
+        True when the config's `num_learners` is 0.
+        """
         return not self.is_remote
 
     def update(
