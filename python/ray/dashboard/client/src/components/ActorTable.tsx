@@ -109,8 +109,8 @@ const ActorTable = ({
     showAcceleratorColumnsProp ?? globalShowAcceleratorColumns;
 
   const uptimeSorterKey = "fake_uptime_attr";
-  const gpuUtilizationSorterKey = "fake_gpu_attr";
-  const gramUsageSorterKey = "fake_gram_attr";
+  const acceleratorUtilizationSorterKey = "fake_accelerator_attr";
+  const acceleratorMemoryUsageSorterKey = "fake_accelerator_memory_attr";
 
   const defaultSorterKey = uptimeSorterKey;
   const { sorterFunc, setOrderDesc, setSortKey, sorterKey, descVal } =
@@ -120,13 +120,14 @@ const ActorTable = ({
   const sortedActors = useMemo(() => {
     const aggregateUserSortKeys = [
       uptimeSorterKey,
-      gpuUtilizationSorterKey,
-      gramUsageSorterKey,
+      acceleratorUtilizationSorterKey,
+      acceleratorMemoryUsageSorterKey,
     ];
     const actorList = Object.values(actors || {}).filter(filterFunc);
     let actorsSortedUserKey = actorList;
     if (aggregateUserSortKeys.includes(sorterKey)) {
-      // Uptime, GPU utilization, and GRAM usage are user specified sort keys but require an aggregate function
+      // Uptime, accelerator utilization, and accelerator memory usage are user
+      // specified sort keys but require an aggregate function
       // over the actor attribute, so sorting with sortBy
       actorsSortedUserKey = _.sortBy(actorList, (actor) => {
         const descMultiplier = descVal ? 1 : -1;
@@ -144,20 +145,22 @@ const ActorTable = ({
             // Default sort for uptime should be ascending (default for all others is descending)
             // so multiply by -1
             return uptime * -1 * descMultiplier;
-          case gpuUtilizationSorterKey:
-            const sumGpuUtilization = getSumAcceleratorUtilization(
+          case acceleratorUtilizationSorterKey:
+            const sumAcceleratorUtilization = getSumAcceleratorUtilization(
               actor.pid,
               actor.gpus,
               actor.tpus,
+              actor.npus,
             );
-            return sumGpuUtilization * descMultiplier;
-          case gramUsageSorterKey:
-            const sumGRAMUsage = getSumAcceleratorMemoryUsage(
+            return sumAcceleratorUtilization * descMultiplier;
+          case acceleratorMemoryUsageSorterKey:
+            const sumAcceleratorMemoryUsage = getSumAcceleratorMemoryUsage(
               actor.pid,
               actor.gpus,
               actor.tpus,
+              actor.npus,
             );
-            return sumGRAMUsage * descMultiplier;
+            return sumAcceleratorMemoryUsage * descMultiplier;
           default:
             return 0;
         }
@@ -289,25 +292,26 @@ const ActorTable = ({
       ),
     },
     {
-      label: "GPU",
+      label: "Accelerator",
       helpInfo: (
         <Typography>
-          Usage of each GPU device. If no GPU usage is detected, here are the
-          potential root causes:
+          Usage of each accelerator device (for example, GPU, NPU, or TPU). If
+          no accelerator usage is detected, here are the potential root causes:
           <br />
-          1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
-          and try again. <br />
-          2. Non Nvidia or AMD GPUs are being used.
+          1. A Ray image without the required accelerator dependencies is used
+          on this node. Switch to an appropriate image and try again. <br />
+          2. An unsupported accelerator or driver version is being used.
           <br />
-          3. pynvml or pyamdsmi module raises an exception.
+          3. pynvml, pyamdsmi, Ascend DCMI, or the TPU plugin raises an
+          exception.
         </Typography>
       ),
     },
     {
-      label: "GRAM",
+      label: "Accelerator Memory",
       helpInfo: (
         <Typography>
-          Actor's GRAM usage (from Worker Process). <br />
+          Actor's accelerator memory usage (from Worker Process). <br />
         </Typography>
       ),
     },
@@ -555,8 +559,14 @@ const ActorTable = ({
               ["processStats.cpuPercent", "CPU"],
               ...(effectiveShowAcceleratorColumns
                 ? ([
-                    [gpuUtilizationSorterKey, "GPU Utilization"],
-                    [gramUsageSorterKey, "GRAM Usage"],
+                    [
+                      acceleratorUtilizationSorterKey,
+                      "Accelerator Utilization",
+                    ],
+                    [
+                      acceleratorMemoryUsageSorterKey,
+                      "Accelerator Memory Usage",
+                    ],
                   ] as [string, string][])
                 : []),
             ]}
@@ -590,7 +600,8 @@ const ActorTable = ({
                 .filter(
                   (col) =>
                     effectiveShowAcceleratorColumns ||
-                    (col.label !== "GPU" && col.label !== "GRAM"),
+                    (col.label !== "Accelerator" &&
+                      col.label !== "Accelerator Memory"),
                 )
                 .map(({ label, helpInfo }) => (
                   <TableCell align="center" key={label}>
@@ -626,6 +637,7 @@ const ActorTable = ({
                 exitDetail,
                 requiredResources,
                 gpus,
+                npus,
                 tpus,
                 processStats,
                 mem,
@@ -780,6 +792,7 @@ const ActorTable = ({
                       <WorkerAcceleratorRow
                         workerPID={pid}
                         gpus={gpus}
+                        npus={npus}
                         tpus={tpus}
                       />
                     </TableCell>
@@ -789,6 +802,7 @@ const ActorTable = ({
                       <WorkerAcceleratorMemory
                         workerPID={pid}
                         gpus={gpus}
+                        npus={npus}
                         tpus={tpus}
                       />
                     </TableCell>

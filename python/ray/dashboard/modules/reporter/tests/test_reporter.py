@@ -9,7 +9,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import numpy as np
@@ -48,6 +48,7 @@ from ray.dashboard.modules.reporter.reporter_head import (
     _query_flag,
     _task_cpu_profiling_response,
 )
+from ray.dashboard.modules.reporter.reporter_models import StatsPayload
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -149,6 +150,7 @@ STATS_TEMPLATE = {
     },
     "gpus": [],
     "gpu_processes": {},
+    "npus": [],
     "tpus": [],
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
@@ -798,6 +800,141 @@ def test_report_stats_gpu_power_and_temperature(tmp_path):
         assert "GpuIndex" in r.tags
         assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
         assert r.tags.get("GpuUuid") == expected_uuids[r.tags["GpuIndex"]]
+
+
+def test_report_stats_ascend_npu_metrics(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["npus"] = [
+        {
+            "index": 0,
+            "card_id": 2,
+            "device_id": 0,
+            "physical_id": 4,
+            "name": "Ascend910",
+            "utilization_aicore": 97,
+            "memory_used": 4270 * 1024 * 1024,
+            "memory_total": 65536 * 1024 * 1024,
+            "health_status": 2,
+            "power_mw": 940700,
+            "temperature_c": 71,
+            "processes_pids": {
+                4242: {"pid": 4242, "npu_memory_usage": 2048 * 1024 * 1024}
+            },
+        }
+    ]
+
+    records = agent._to_records(stats, {})
+    npu_records = {
+        record.gauge.name: record
+        for record in records
+        if record.gauge.name.startswith("node_npu")
+    }
+
+    assert set(npu_records) == {
+        "node_npus_available",
+        "node_npus_utilization",
+        "node_npu_hbm_used",
+        "node_npu_hbm_available",
+        "node_npu_power_milliwatts",
+        "node_npu_temperature_celsius",
+        "node_npu_health",
+    }
+    assert npu_records["node_npus_available"].value == 1
+    assert npu_records["node_npus_utilization"].value == 97
+    assert npu_records["node_npu_hbm_used"].value == 4270 * 1024 * 1024
+    assert npu_records["node_npu_hbm_available"].value == (65536 - 4270) * 1024 * 1024
+    assert npu_records["node_npu_power_milliwatts"].value == 940700
+    assert npu_records["node_npu_temperature_celsius"].value == 71
+    assert npu_records["node_npu_health"].value == 2
+    assert npu_records["node_npus_available"].tags == {
+        "ip": stats["ip"],
+        "NpuIndex": "0",
+        "NpuPhysicalId": "4",
+        "NpuCardId": "2",
+        "NpuDeviceId": "0",
+        "NpuDeviceName": "Ascend910",
+        "RayNodeType": "head",
+        "IsHeadNode": "true",
+    }
+
+    stats_payload = json.loads(agent._generate_stats_payload(stats))
+    assert stats_payload["npus"][0]["physicalId"] == 4
+    assert stats_payload["npus"][0]["memoryUsed"] == 4270 * 1024 * 1024
+    assert stats_payload["npus"][0]["processesPids"] == [
+        {"pid": 4242, "npuMemoryUsage": 2048 * 1024 * 1024}
+    ]
+
+
+def test_stats_payload_accepts_legacy_reporter_without_npus(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+
+    legacy_payload = json.loads(
+        agent._generate_stats_payload(copy.deepcopy(STATS_TEMPLATE))
+    )
+    legacy_payload.pop("npus")
+
+    parsed_payload = StatsPayload.parse_obj(legacy_payload)
+
+    assert parsed_payload.npus == []
+
+
+def test_reporter_maps_npu_process_memory_to_worker_metrics():
+    worker = MagicMock()
+    worker.status.return_value = psutil.STATUS_RUNNING
+    worker.as_dict.return_value = {
+        "pid": 4242,
+        "cmdline": ["ray::NpuActor"],
+        "cpu_percent": 0.0,
+    }
+
+    agent = object.__new__(ReporterAgent)
+    agent._workers = {}
+    agent._async_get_worker_processes = AsyncMock(return_value={(4242, 1.0): worker})
+    agent._async_get_agent_processes = AsyncMock(return_value={})
+    agent._ip = "127.0.0.1"
+    agent._latest_worker_proc_names = set()
+    agent._latest_gpu_worker_proc_names = set()
+    agent._latest_npu_worker_proc_names = set()
+
+    npus = [
+        {"processes_pids": {4242: {"pid": 4242, "npu_memory_usage": 2 * 1024 * 1024}}},
+        {"processes_pids": {4242: {"pid": 4242, "npu_memory_usage": 3 * 1024 * 1024}}},
+    ]
+    workers = asyncio.run(agent._async_get_workers_and_agents(npus=npus))
+
+    assert workers[0]["npu_memory_usage"] == 5 * 1024 * 1024
+    records = agent.generate_worker_stats_record(workers)
+    npu_records = [
+        record for record in records if record.gauge.name == "component_npu_memory_mb"
+    ]
+    assert len(npu_records) == 1
+    assert npu_records[0].value == 5
+    assert npu_records[0].tags == {
+        "ip": "127.0.0.1",
+        "Component": "ray::NpuActor",
+    }
+
+    workers[0]["npu_memory_usage"] = 0
+    reset_records = agent.generate_worker_stats_record(workers)
+    reset_npu_records = [
+        record
+        for record in reset_records
+        if record.gauge.name == "component_npu_memory_mb"
+    ]
+    assert len(reset_npu_records) == 1
+    assert reset_npu_records[0].value == 0
 
 
 def test_report_stats_gpu_without_power_temperature(tmp_path):

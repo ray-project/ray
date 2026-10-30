@@ -1,6 +1,4 @@
-"""
-TensorFlow policy class used for CQL.
-"""
+"""TensorFlow policy class used for CQL."""
 import logging
 from functools import partial
 from typing import Dict, List, Type, Union

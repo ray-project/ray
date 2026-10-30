@@ -22,6 +22,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "runtime_env_redaction_test",
+    size = "small",
+    srcs = ["runtime_env_redaction_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:runtime_env_redaction",
+        "@nlohmann_json",
+    ],
+)
+
+ray_cc_test(
     name = "id_test",
     size = "small",
     srcs = ["id_test.cc"],
