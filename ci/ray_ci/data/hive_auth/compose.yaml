@@ -1,0 +1,91 @@
+services:
+  kdc:
+    image: ${HIVE_AUTH_RUNTIME_IMAGE:?Set the built runtime image}
+    user: "0"
+    command: ["python", "/opt/hive_auth/prepare.py", "kdc"]
+    environment:
+      HIVE_AUTH_PROFILE: ${HIVE_AUTH_PROFILE:?Set G, T, GT, or N}
+    volumes:
+      - ${HIVE_AUTH_SOURCE}/ci/ray_ci/data/hive_auth:/opt/hive_auth:ro
+      - krb:/krb
+      - kdc:/kdc
+      - server-security:/server-security
+      - driver-security:/driver-security
+      - worker-security:/worker-security
+      - ca:/ca
+      - events:/events
+    healthcheck:
+      test: ["CMD", "python", "/opt/hive_auth/prepare.py", "ready"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  hive:
+    image: ${HIVE_AUTH_HIVE_IMAGE:-apache/hive:4.2.0}
+    hostname: hive.auth.test
+    entrypoint: ["bash", "/fixture/hive-entry.sh"]
+    depends_on:
+      kdc:
+        condition: service_healthy
+    volumes:
+      - ${HIVE_AUTH_SOURCE}/ci/ray_ci/data/hive_auth/hive-entry.sh:/fixture/hive-entry.sh:ro
+      - ${HIVE_AUTH_SOURCE}/ci/ray_ci/data/hive_auth/ClockSkew.java:/fixture/ClockSkew.java:ro
+      - krb:/krb:ro
+      - server-security:/security:ro
+    networks:
+      default:
+        aliases: [hive.auth.test, wrong.hive.auth.test]
+  head:
+    image: ${HIVE_AUTH_RUNTIME_IMAGE:?Set the built runtime image}
+    user: "0"
+    command: ["python", "/opt/hive_auth/prepare.py", "head"]
+    shm_size: 1gb
+    environment: &client-environment
+      HIVE_AUTH_ROLE: driver
+      HIVE_AUTH_PROFILE: ${HIVE_AUTH_PROFILE}
+      RAY_HIVE_TEST_HOST: hive.auth.test
+      RAY_HIVE_TEST_PORT: "10000"
+      RAY_HIVE_TEST_CA_CERT: /ca/ca.pem
+      HIVE_AUTH_EVENTS: /events
+      HIVE_AUTH_RUN_ID: ${HIVE_AUTH_RUN_ID:?Set a unique run id}
+      HIVE_TEST_PASSWORD: ${HIVE_AUTH_PLACEHOLDER:?Set a generated NONE placeholder}
+    depends_on:
+      kdc:
+        condition: service_healthy
+    volumes:
+      - ${HIVE_AUTH_SOURCE:?Set the source checkout}:/ray:ro
+      - ${HIVE_AUTH_SOURCE}/ci/ray_ci/data/hive_auth:/opt/hive_auth:ro
+      - krb:/krb:ro
+      - ca:/ca:ro
+      - driver-security:/auth
+      - events:/events
+    healthcheck:
+      test: ["CMD", "python", "/opt/hive_auth/probe.py", "cluster"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+  worker:
+    image: ${HIVE_AUTH_RUNTIME_IMAGE:?Set the built runtime image}
+    user: "0"
+    command: ["python", "/opt/hive_auth/prepare.py", "worker"]
+    shm_size: 1gb
+    environment:
+      <<: *client-environment
+      HIVE_AUTH_ROLE: worker
+    depends_on:
+      head:
+        condition: service_healthy
+    volumes:
+      - ${HIVE_AUTH_SOURCE}:/ray:ro
+      - ${HIVE_AUTH_SOURCE}/ci/ray_ci/data/hive_auth:/opt/hive_auth:ro
+      - krb:/krb:ro
+      - ca:/ca:ro
+      - worker-security:/auth
+      - events:/events
+volumes:
+  krb:
+  kdc:
+  server-security:
+  driver-security:
+  worker-security:
+  ca:
+  events:

@@ -304,6 +304,25 @@ steps:
         --python-version 3.12
     depends_on: docgpubuild-py312
 
+  - label: ":lock: data: Hive authentication and TLS"
+    if: '!(build.pull_request.labels includes "docstring-only")'
+    tags:
+      - hive_auth_integration
+    instance_type: large
+    timeout_in_minutes: 120
+    commands:
+      # Prepare the current Core in the existing Python 3.10 integration image.
+      # build-only exits before manual-tag test filtering; pytest runs in the
+      # dedicated driver container and checks the exact selected case manifest.
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data:test_hive_auth_integration data
+        --build-only --build-type optimized --build-name datamongobuild-py3.10 --python-version 3.10
+      - >-
+        HIVE_AUTH_RAY_IMAGE="$$(python3 -c 'from ci.ray_ci.container import get_docker_image; print(get_docker_image("datamongobuild-py3.10"))')"
+        bash ci/ray_ci/data/run_hive_auth_integration.sh
+        --requirements python/deplocks/ci/data-hive-auth-ci_depset_py3.10.lock
+        --log-dir /artifact-mount/hive-auth-$${BUILDKITE_JOB_ID}
+    depends_on: datamongobuild-multipy
+
   - label: ":database: data: integration tests"
     tags:
       - data

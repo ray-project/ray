@@ -1,0 +1,10 @@
+load("@rules_python//python:defs.bzl", "py_library")
+
+exports_files(["cases.json"])
+
+py_library(
+    name = "runner",
+    srcs = ["run.py"],
+    data = ["cases.json"],
+    visibility = ["//ci/ray_ci/data:__pkg__"],
+)

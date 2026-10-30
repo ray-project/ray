@@ -297,8 +297,29 @@ SECURITY.md:
 # directory. If any of these starts emitting nothing, the global prose pattern
 # has grown too broad.
 python/ray/rllib/algorithms/ppo/ppo.py: rllib rllib_gpu rllib_directly
-python/ray/data/read_api.py: data
+python/ray/data/read_api.py: data hive_auth_integration
 release/benchmarks/config.yaml: tools
+
+# === Hive security: narrow runtime routes and fast-only checks ===
+python/ray/data/_internal/datasource_v2/formats/hive/hive_hs2.py: data hive_auth_integration
+python/ray/data/tests/datasource/_hive_test_utils.py: data hive_auth_integration
+python/ray/data/tests/datasource/test_hive_auth_integration.py: data hive_auth_integration
+python/ray/data/tests/datasource/test_hive_auth_utils.py: data
+ci/ray_ci/data/hive_auth/compose.yaml: tools hive_auth_integration
+ci/ray_ci/data/hive_auth/cases.json: tools hive_auth_integration
+ci/ray_ci/data/hive_auth/ClockSkew.java: tools hive_auth_integration
+ci/ray_ci/data/hive_auth/README.md:
+ci/ray_ci/data/run_hive_auth_integration.sh: tools hive_auth_integration
+ci/ray_ci/data/test_run_hive_auth_integration.py: tools
+ci/ray_ci/tests.env.Dockerfile: tools hive_auth_integration
+ci/docker/data.build.Dockerfile: data hive_auth_integration
+ci/docker/datamongo.build.wanda.yaml: ml tune train data serve core_cpp cpp java core_python doc linux_wheels macos_wheels dashboard tools release_tests hive_auth_integration
+ci/raydepsets/configs/ci_data.depsets.yaml: ml tune train serve workflow data core_python dashboard linux_wheels java python_dependencies min_build hive_auth_integration
+python/requirements/data/hive-auth.txt: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build hive_auth_integration
+python/deplocks/ci/data-hive-auth-ci_depset_py3.10.lock: ml tune train serve workflow data core_python dashboard linux_wheels java python_dependencies min_build hive_auth_integration
+python/deplocks/ci/data-mongo-ci_depset_py3.10.lock: ml tune train serve workflow data core_python dashboard linux_wheels java python_dependencies min_build hive_auth_integration
+python/deplocks/ci/data-pyarrow-latest-ci_depset_py3.10.lock: ml tune train serve workflow data core_python dashboard linux_wheels java python_dependencies min_build
+python/deplocks/ci/data-pyarrow-latest-ci_depset_py3.12.lock: ml tune train serve workflow data core_python dashboard linux_wheels java python_dependencies min_build
 
 # === Release ===
 
