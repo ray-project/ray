@@ -137,15 +137,20 @@ class _AioSubscriber(_SubscriberBase):
                 self._poll_call(req, timeout=timeout)
             )
             close = get_or_create_event_loop().create_task(self._close.wait())
-            done, others = await asyncio.wait(
+            done, _ = await asyncio.wait(
                 [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
             )
-            # Cancel the other task if needed to prevent memory leak.
-            other_task = others.pop()
-            if not other_task.done():
-                other_task.cancel()
+            # Cancel whatever is still pending to prevent memory leak. Both tasks
+            # may finish in the same event loop iteration, so never assume
+            # exactly one is pending; cancel() is a no-op on a finished task.
+            poll.cancel()
+            close.cancel()
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
+                if poll.done() and not poll.cancelled():
+                    # Retrieve the result so asyncio does not log
+                    # "exception was never retrieved" for a failed poll.
+                    poll.exception()
                 break
             try:
                 self._last_batch_size = len(poll.result().pub_messages)
