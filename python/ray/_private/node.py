@@ -833,7 +833,7 @@ class Node:
 
     @property
     def node_id(self):
-        """Get the node ID."""
+        """Get the node ID as a hex string."""
         return self._node_id
 
     @property
