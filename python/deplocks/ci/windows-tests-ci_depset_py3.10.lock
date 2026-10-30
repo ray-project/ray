@@ -4394,37 +4394,33 @@ pymongo==4.3.2 ; python_full_version < '3.14' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-pymsalruntime==0.18.1 ; sys_platform == 'win32' \
-    --hash=sha256:047a98b6709cddf6a1f50f78ee16d06fea0f42a44971b6d3e2988537277a1a17 \
-    --hash=sha256:06c73a47f024fcf36006b89fe32f2f6f6a004aa661cf8a03d3e496d1ef84cfe8 \
-    --hash=sha256:0b6c4f54ec13309cc7b717ac8760c2d9856d4924cefa2b794b6d03db4cfdeef8 \
-    --hash=sha256:0c22e2e83faa10de422bbfaacc1bb2887c9025ee8a53f0fc2e4f7db01c4a7b66 \
-    --hash=sha256:10020abdfc34bbbf3414b86359de551d2d8bc7c241bc38c59a2468c4d49f21d5 \
-    --hash=sha256:12b8990c4da1327ea46f6271bd57b28a90d3e795deacb370052914c3ff40d4c5 \
-    --hash=sha256:56c3d708ba86311f049b004de81aa97655fed82782d3ec67e14ae1e27d4f5e5b \
-    --hash=sha256:5a759aa551d084b160799f6df59c9891898ab305eb75ff1705bf04281675eb4b \
-    --hash=sha256:600d0f2b9b03dfb457ee1e13f191c2c217c0f6bceca512f1741e5215bc4bc5dc \
-    --hash=sha256:6f66fd99668abc3d4b8d93a9eb80c75178dc63186c79e6dbe133427b279835e0 \
-    --hash=sha256:7183b1b1542a277db119fe55285c7609c661b8506b99cd7e53b7066ce6b838e4 \
-    --hash=sha256:74416947b1071054f3258cac3448a7adf708888727bf283267df2bb27f0998f1 \
-    --hash=sha256:7ae0b160983ea0715d8ac69b441bbd29e7a9f31c9a5a2c350c79a794f5599f38 \
-    --hash=sha256:852dc82b3eaad0cce2c583314705183bf216e7fa7178040defd3a13195c1c406 \
-    --hash=sha256:864b8b9555a180c6baf8a57df3976b2e511582d54099561fbfe73f9f0b95c9f5 \
-    --hash=sha256:8ce2944a0f944833d047bb121396091e00287e2b6373716106da86ea99abf379 \
-    --hash=sha256:8dd68f9fedc200950093378b30a2ade4517324cef060788a759b575ea58dc6b2 \
-    --hash=sha256:910e653c65cd66fa9ce46dec103d3948da2276f7d4d315631a145eaab968d9a8 \
-    --hash=sha256:9b2cecf3a570b7812d2007764df6dfbc27fca401a0d74532d5403aa20a9ef380 \
-    --hash=sha256:9f7945ae0ee78357e9ca87d381f1c19763629a7197391ae7f84f4967a9f06e5b \
-    --hash=sha256:a6c07651cf4e07690d1b022da0977f56820ef553ac6dcbf4c9e68e9611020997 \
-    --hash=sha256:a8adc80fcf723b980976b81a0b409affe80f32d89ae6096d856fd20471d2f0c1 \
-    --hash=sha256:ace12bf9b7fcbf1bf21a03c227717e09ba99acd9190623fe0821a08832ece4eb \
-    --hash=sha256:adf4200a1b423fe5d8e984c142cc64f0b76a9b0f7f8ff767490a2dde94fa642b \
-    --hash=sha256:b90a3c8079ded9d5abc765bd90fdc34f6e49412793740ddbc6122a601008d50f \
-    --hash=sha256:beb926655aae3367b7e4bda2baad86f9271beefee1121f71642da0ed4de37fd2 \
-    --hash=sha256:daae8515ae8adac8662d8230f22af242f87c72d86f308ec51b7432f316199c1b \
-    --hash=sha256:e9320fb187fe1298d2165fa248af00907ca15d3a903a1d35fed86f6bc20b5880 \
-    --hash=sha256:f9aec2f44470d71feae35b611d1d8f15a549d96446e4f60e1ca1fb71856fffed \
-    --hash=sha256:f9fd8ea52395f52f7d62498e47754adf2bfe6530816ff57eff1ba6f524aee51b
+pymsalruntime==0.16.2 ; sys_platform == 'win32' \
+    --hash=sha256:06db5ee216bda4e5b747326eed0983cea53c52c2e29e8f8c506a5a3aeb9d7259 \
+    --hash=sha256:07a32e3e5eb9fa913e96c7a54e73858f1dc4d63b4e82645888347af656bface9 \
+    --hash=sha256:18b51582315b7723c54d99e196058d3ffe63c1e7021adad39f592322afa5d6ef \
+    --hash=sha256:2e2b61d547f18262539b90e5e22462699b5e28ac35454bff419fd4d50e488a29 \
+    --hash=sha256:4d8faa34318ca7d1877bbd85f9ba75198bda5ad48b5cf43fc40e5cb25b7c6821 \
+    --hash=sha256:4e5868333ec8f510e28b7b5998a6374102005027b7850579aa661386d82f9678 \
+    --hash=sha256:510ed8c05bc99a51234fff417e920d26ef5a6e43acd0adb2dc8594102c2bb8ea \
+    --hash=sha256:5e67e7b509c642a12b1877233576f9567aa6c9ebedb6e1970ed6c178c101b6b9 \
+    --hash=sha256:5edf2b06becd2df97de147191ffa65074804c2b8f2613b773c2a949a48a275f8 \
+    --hash=sha256:6741215e88feb056ff1c6128776137e286aab72d4df6d0832b30603f141576ce \
+    --hash=sha256:687216bcb6294fd3e34d019c3d49f91169fd286a054944fc53f59311aa092927 \
+    --hash=sha256:6c1ce399c663c63ce6dd33ca246061e4bd58a460aa02b13ff40d21bcc350210e \
+    --hash=sha256:751708bc18cb8823223bdaca08a7294759ee6cac262fd14c6606f52e06f00cc2 \
+    --hash=sha256:788897a2a27b3b309e29b4346118310875528f9d8cc8f23a2c08c4bfc10d0c30 \
+    --hash=sha256:7a2c436542515a1382d92976fc241ec8e6f705f22e6f6568c7051e84947f9711 \
+    --hash=sha256:8a22c5e0c5c6d18fdd590ec863c4920803dbaeb78ac23e5e8034131faabe4f5e \
+    --hash=sha256:9070f13525912fc19f8f07bfa422bf0b4870c619b0e61d1b31dc8eb4ee5dadd8 \
+    --hash=sha256:9484d618258be2d973da21933ef48e2fbcd860d8bb150e357705ee8f25060d7a \
+    --hash=sha256:acaa7e9857b086befbe9c4c502d663305066e6572b59f7202127816cd2e10be3 \
+    --hash=sha256:ad297bf2c4a409c82427e32b299f3a74757ed3514d8fc051e5c35399db3b6e67 \
+    --hash=sha256:b58e3d41a49ab87e45e9e8a326af9d08d440fa0c284f6fe9445b8c0c588e6c13 \
+    --hash=sha256:c6ab58a1f16c6d6213a996b6edd549c85c8dbb548574dcf8dd74b4d5d7244057 \
+    --hash=sha256:c904beada27ccf17918c8f8581f7d5b225d5850249e27b8359e6c14fb0cf48de \
+    --hash=sha256:cd57ce12341af55d688a7753eb686e593efa4754af647a1805e941c18227148b \
+    --hash=sha256:e561599077874d24ead3fe29fd1a0baf13b66fd7adfd5801c52b4d21fef2305c \
+    --hash=sha256:fbe911ffe3b018a283291ab5effc161e08932314ecd8d848a16365146b4fb815
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   msal
@@ -5679,9 +5675,9 @@ typer==0.24.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements.txt
-typing-extensions==4.16.0 \
-    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
-    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
+typing-extensions==4.15.0 \
+    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
+    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
@@ -5724,9 +5720,9 @@ typing-extensions==4.16.0 \
     #   typing-inspection
     #   uvicorn
     #   virtualenv
-typing-inspection==0.4.4 \
-    --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
-    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
+typing-inspection==0.4.2 \
+    --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
+    --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fastapi

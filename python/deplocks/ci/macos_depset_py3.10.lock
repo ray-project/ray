@@ -204,9 +204,9 @@ applicationinsights==0.11.10 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   azure-cli-telemetry
-appnope==1.0.0 ; sys_platform == 'darwin' \
-    --hash=sha256:685db59cb6043c3c2e528adc0b3bce3a5f8d09bcf7492c6ea650d1b7421f3c49 \
-    --hash=sha256:6fe0c04218aab65c54c4ff81638cdbf848d89f5653b74d68638a137f200dd16e
+appnope==0.1.4 ; sys_platform == 'darwin' \
+    --hash=sha256:1de3860566df9caf38f01f86f65e0e13e379af54f9e4bee1e66b48f2efffd1ee \
+    --hash=sha256:502575ee11cd7a28c0205f379b525beefebab9d161b7c964670864014ed7213c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipython
@@ -5430,9 +5430,9 @@ typer==0.24.1 ; sys_platform != 'win32' \
     #   gradio
     #   hf-gradio
     #   huggingface-hub
-typing-extensions==4.16.0 \
-    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
-    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
+typing-extensions==4.15.0 \
+    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
+    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
@@ -5477,9 +5477,9 @@ typing-extensions==4.16.0 \
     #   typing-inspection
     #   uvicorn
     #   virtualenv
-typing-inspection==0.4.4 \
-    --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
-    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
+typing-inspection==0.4.2 \
+    --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
+    --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fastapi

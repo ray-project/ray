@@ -1024,9 +1024,9 @@ einops==0.8.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   deepspeed
-etils==1.14.0 ; python_full_version < '3.14' \
-    --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
-    --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
+etils==1.13.0 ; python_full_version < '3.14' \
+    --hash=sha256:a5b60c71f95bcd2d43d4e9fb3dc3879120c1f60472bb5ce19f7a860b1d44f607 \
+    --hash=sha256:d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mujoco
@@ -1795,6 +1795,7 @@ importlib-resources==7.1.0 \
     --hash=sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   etils
     #   prophet
 iniconfig==2.3.0 \
     --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \
@@ -5996,9 +5997,9 @@ typer==0.24.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   huggingface-hub
     #   transformers
-typing-extensions==4.16.0 \
-    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
-    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
+typing-extensions==4.15.0 \
+    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
+    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiohttp
@@ -6039,9 +6040,9 @@ typing-inspect==0.9.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pyre-extensions
-typing-inspection==0.4.4 \
-    --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
-    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
+typing-inspection==0.4.2 \
+    --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
+    --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fastapi

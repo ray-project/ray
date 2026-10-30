@@ -210,19 +210,19 @@ anyio==4.13.0 \
     #   starlette
     #   taskiq
     #   watchfiles
-array-record==0.8.5 \
-    --hash=sha256:0b70f71b185b401ecc4b2805e5fd6f0b99c2f80c8a34a9a709e13ed27eca81c5 \
-    --hash=sha256:0ef5c3a74b3589638b0648cd99355ee6d8d8052b1a7c0a940c6369e6205db409 \
-    --hash=sha256:22a661115e4977b89a05ed6a75442b68d5670b0d6c0c658490995f18679c4a82 \
-    --hash=sha256:55ed0715cbbbcd94bb65fbf5817b24ebc7f9111ecb1ba7da1a5c5b06fc2f55a4 \
-    --hash=sha256:9d356e71293cac80f7eaf9125086f1db5192f15da7a67767acf6b66c7ea5088a \
-    --hash=sha256:a0486ecec6f166726743cbe40df25a1f0cfdf60984ef1c6bde6153bc205c26be \
-    --hash=sha256:a3b6cc36e42e831a066942f0a8b3cc257aaa9c60a1b6a98f84b41995434e1161 \
-    --hash=sha256:b4438a378ae5460a876a2f581e9d42942110b227c9e23a606f3b9026230d00c5 \
-    --hash=sha256:b760c2c73cb093d65b6a0919fcd0ed261228de71f6f83ef16af5bad938d3de4b \
-    --hash=sha256:c1c214a0296fb746218cb69c2d45bf7bbb9b7277ac0ea9939c0f6af41d1433ea \
-    --hash=sha256:caa34bda01bc1ccb3d2b7261e05a62b495bf2e00f5f716df59eba0f02149e20b \
-    --hash=sha256:d357a5166380b9669f51e7e31327e9203c7892196970e4efb14285ad2279a92c
+array-record==0.8.3 \
+    --hash=sha256:06b17a0a90bc74a80c4ebad0b99f0e039adb01746b673db3d7a5632d8b138ddd \
+    --hash=sha256:13df1aec9b38afe98973bf5fe3cf523f83ca904b0423d85319930877145b8f28 \
+    --hash=sha256:14facb713fc55ea612cf853c0abbc602032ae619eb85037af3aa41dc4e27eed6 \
+    --hash=sha256:458f6658de86c9369b23ffe64dcb31393a919b91ae2f15147ee2beb2010b122a \
+    --hash=sha256:718403dc9a364519a5fc440ed9e2784077e965489d5a44c96970d3101101e1cd \
+    --hash=sha256:89d2cf5f4709be3c6c2b30c0d366005223375633ffce66dcb13d927a0bdc5228 \
+    --hash=sha256:8a0caee17d2583638391fb9f90c9c12a43f9665576f18ec3604ba49d62bd2dcc \
+    --hash=sha256:9f91636366038afea55061cc539601e353d04ebf32608ae8717df4a4edbd31df \
+    --hash=sha256:adfe6c92918363747539c0caa579f568f75aac079ad7bbd4ebcf7fdb02e5461b \
+    --hash=sha256:dada305fa0dfa3fd6f5f263c43ed37546f815e4f33ce30b066175384dead752e \
+    --hash=sha256:f4004fcceb7961a2cc0090028e68a3eeb91d3f5b38c00d60b533f7004d1d3f7b \
+    --hash=sha256:fa94fa053c1afaecc183a1c31463fd89d1b7b148cc526095bfc50ab58967e47c
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   tensorflow-datasets
@@ -1364,15 +1364,15 @@ einops==0.8.2 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   etils
     #   lerobot
-etils==1.14.0 \
-    --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
-    --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
+etils==1.13.0 \
+    --hash=sha256:a5b60c71f95bcd2d43d4e9fb3dc3879120c1f60472bb5ce19f7a860b1d44f607 \
+    --hash=sha256:d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   array-record
     #   tensorflow-datasets
-evdev==2.0.0 ; python_full_version < '3.13' and 'linux' in sys_platform \
-    --hash=sha256:442fb3f4c8dfc9e61e901133c356220c02d663eca8f34722e0cecdd637eba504
+evdev==1.9.3 ; python_full_version < '3.13' and 'linux' in sys_platform \
+    --hash=sha256:2c140e01ac8437758fa23fe5c871397412461f42d421aa20241dc8fe8cfccbc9
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   pynput
@@ -2122,6 +2122,12 @@ importlib-metadata==6.11.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   diffusers
     #   opentelemetry-api
+importlib-resources==7.1.0 \
+    --hash=sha256:0722d4c6212489c530f2a145a34c0a7a3b4721bc96a15fada5930e2a0b760708 \
+    --hash=sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   etils
 iniconfig==2.3.0 \
     --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \
     --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
@@ -5364,9 +5370,9 @@ typer==0.24.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   huggingface-hub
-typing-extensions==4.16.0 \
-    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
-    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
+typing-extensions==4.15.0 \
+    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
+    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   aiohttp
@@ -5407,9 +5413,9 @@ typing-inspect==0.9.0 ; python_full_version < '3.13' \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   draccus
-typing-inspection==0.4.4 \
-    --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
-    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
+typing-inspection==0.4.2 \
+    --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
+    --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   fastapi

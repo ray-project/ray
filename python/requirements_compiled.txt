@@ -108,7 +108,7 @@ anyio==4.13.0
     #   watchfiles
 applicationinsights==0.11.10
     # via azure-cli-telemetry
-appnope==1.0.0 ; sys_platform == 'darwin'
+appnope==0.1.4 ; sys_platform == 'darwin'
     # via
     #   ipykernel
     #   ipython
@@ -128,7 +128,7 @@ array-record==0.5.1 ; python_full_version < '3.11' or (python_full_version == '3
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow-datasets
-array-record==0.8.5 ; python_full_version >= '3.12' or (python_full_version == '3.11.*' and sys_platform == 'darwin') or (python_full_version == '3.11.*' and sys_platform == 'win32')
+array-record==0.8.3 ; python_full_version >= '3.12' or (python_full_version == '3.11.*' and sys_platform == 'darwin') or (python_full_version == '3.11.*' and sys_platform == 'win32')
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow-datasets
@@ -593,7 +593,7 @@ etils==1.5.2 ; python_full_version < '3.12'
     #   array-record
     #   mujoco
     #   tensorflow-datasets
-etils==1.14.0 ; python_full_version >= '3.12'
+etils==1.13.0 ; python_full_version >= '3.12'
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
@@ -601,7 +601,7 @@ etils==1.14.0 ; python_full_version >= '3.12'
     #   tensorflow-datasets
 evaluate==0.4.6
     # via -r python/requirements/ml/train-test-requirements.txt
-evdev==2.0.0 ; python_full_version == '3.12.*' and 'linux' in sys_platform
+evdev==1.9.3 ; python_full_version == '3.12.*' and 'linux' in sys_platform
     # via pynput
 everett==3.1.0
     # via comet-ml
@@ -2123,7 +2123,7 @@ pydantic==2.12.3 ; python_full_version < '3.14'
     #   pyiceberg
     #   taskiq
     #   wandb
-pydantic==2.14.1 ; python_full_version >= '3.14'
+pydantic==2.13.3 ; python_full_version >= '3.14'
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -2139,7 +2139,7 @@ pydantic==2.14.1 ; python_full_version >= '3.14'
     #   wandb
 pydantic-core==2.41.4 ; python_full_version < '3.14'
     # via pydantic
-pydantic-core==2.50.1 ; python_full_version >= '3.14'
+pydantic-core==2.46.3 ; python_full_version >= '3.14'
     # via pydantic
 pydot==1.4.2
     # via -r python/requirements/test-requirements.txt
@@ -2178,7 +2178,7 @@ pymongo==4.18.2 ; python_full_version >= '3.14'
     # via -r python/requirements/test-requirements.txt
 pymoo==0.6.1.6
     # via botorch
-pymsalruntime==0.18.1 ; sys_platform == 'win32'
+pymsalruntime==0.16.2 ; sys_platform == 'win32'
     # via msal
 pymunk==6.2.1 ; python_full_version < '3.14'
     # via -r python/requirements/ml/rllib-test-requirements.txt
@@ -3068,7 +3068,7 @@ types-setuptools==80.9.0.20250822
     # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.16.0
+typing-extensions==4.15.0
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -3148,7 +3148,7 @@ typing-inspect==0.9.0
     # via
     #   draccus
     #   pyre-extensions
-typing-inspection==0.4.4
+typing-inspection==0.4.2
     # via
     #   fastapi
     #   pydantic
