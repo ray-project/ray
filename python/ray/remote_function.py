@@ -119,13 +119,14 @@ class RemoteFunction:
         # profiler is running, as nsight/rocprof-sys generate report
         # once the process exit.
         num_gpus = self._default_options.get("num_gpus") or 0
+        runtime_env = self._default_options.get("runtime_env")
+        if not isinstance(runtime_env, dict):
+            runtime_env = {}
         if (
             num_gpus > 0 and self._default_options.get("max_calls", None) is None
         ) or any(
-            [
-                s in (self._default_options.get(s) or {})
-                for s in ["nsight", "rocprof-sys"]
-            ]
+            s in runtime_env
+            for s in ["nsight", "rocprof-sys"]
         ):
             self._default_options["max_calls"] = 1
 
