@@ -24,7 +24,7 @@ You also learn how to customize your {ref}`RL environment <rllib-key-concepts-en
 First, install RLlib, [PyTorch](https://pytorch.org), and [Farama Gymnasium](https://gymnasium.farama.org) as shown below:
 
 ```bash
-pip install "ray[rllib]" torch "gymnasium[atari,accept-rom-license,mujoco]"
+pip install "ray[rllib]" torch "gymnasium[atari,mujoco]"
 ```
 
 

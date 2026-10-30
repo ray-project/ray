@@ -79,7 +79,7 @@ pip install "ray[rllib]" torch
 To run the Atari or MuJoCo examples, install these additional packages:
 
 ```bash
-pip install "gymnasium[atari,accept-rom-license,mujoco]"
+pip install "gymnasium[atari,mujoco]"
 ```
 :::
 
@@ -254,7 +254,7 @@ For a quick preview of which algorithms and environments RLlib supports, expand 
 * - [gymnasium](https://gymnasium.farama.org/index.html) <img src="images/sigils/single-agent.svg" class="inline-figure" width="72" alt="single_agent">
 
     ```bash
-    pip install "gymnasium[atari,accept-rom-license,mujoco]"
+    pip install "gymnasium[atari,mujoco]"
     ```
 
     ```python
