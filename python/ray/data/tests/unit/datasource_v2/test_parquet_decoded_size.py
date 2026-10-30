@@ -27,7 +27,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     read_dictionary_page,
     read_size_statistics,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 pa = pytest.importorskip("pyarrow")
 pds = pytest.importorskip("pyarrow.dataset")
@@ -36,7 +35,7 @@ pq = pytest.importorskip("pyarrow.parquet")
 # PyArrow 17 writes no SizeStatistics or view types and lacks ``binary_type`` and
 # ``list_type``; 23 has all of them (18 to 22 unchecked).
 requires_pyarrow_23 = pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("23.0.0"),
+    parse_version(pa.__version__) < parse_version("23.0.0"),
     reason="PyArrow 17 writes no SizeStatistics or view types",
 )
 

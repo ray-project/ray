@@ -15,14 +15,13 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     footer_bytes,
     read_size_statistics,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
 
 # PyArrow 17 writes no SizeStatistics; 23 does (18 to 22 unchecked).
 requires_pyarrow_23 = pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("23.0.0"),
+    parse_version(pa.__version__) < parse_version("23.0.0"),
     reason="PyArrow 17 writes no SizeStatistics",
 )
 
