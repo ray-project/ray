@@ -136,3 +136,21 @@ class ReplicaUnavailableError(RayServeException):
     @property
     def message(self) -> str:
         return f"Replica {self._replica_id} is no longer available."
+
+
+@PublicAPI(stability="alpha")
+class RequestRoutingTimeoutError(RayServeException, TimeoutError):
+    """Raised when a request isn't assigned to a replica within the deployment's
+    `request_routing_timeout_s`.
+
+    Args:
+        message: The error message.
+    """
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self._message = message
+
+    @property
+    def message(self) -> str:
+        return self._message

@@ -302,6 +302,13 @@ class ConsistentHashRouter(RequestRouter):
                         self._pending_requests_to_fulfill.popleft()
                     return
                 request_metadata = pending_request.metadata
+                # Register so a request that's cancelled or times out cancels
+                # this task instead of leaving it routing a done request.
+                routing_task = asyncio.current_task(loop=self._event_loop)
+                assert routing_task is not None
+                self._routing_task_by_pending_request_future[
+                    pending_request.future
+                ] = routing_task
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
@@ -343,6 +350,15 @@ class ConsistentHashRouter(RequestRouter):
                             )
                             logger.warning(warning_log)
                 finally:
+                    if (
+                        self._routing_task_by_pending_request_future.get(
+                            pending_request.future
+                        )
+                        is routing_task
+                    ):
+                        self._routing_task_by_pending_request_future.pop(
+                            pending_request.future
+                        )
                     await gen_choose_replicas_with_backoff.aclose()
 
         except Exception:
@@ -350,3 +366,7 @@ class ConsistentHashRouter(RequestRouter):
         finally:
             self._routing_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
+            # Requests may still be queued after this task is cancelled.
+            # Start replacement tasks if routing work remains.
+            if self._pending_requests_to_route:
+                self._maybe_start_routing_tasks()

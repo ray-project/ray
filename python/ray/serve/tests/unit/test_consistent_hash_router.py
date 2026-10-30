@@ -5,6 +5,7 @@ from typing import Optional
 
 import pytest
 
+from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
@@ -579,6 +580,41 @@ async def test_concurrent_same_session_does_not_orphan(router):
     chosen_replicas = {t.result().replica_id for t in done}
     # Affinity preserved: every burst request lands on the same primary.
     assert len(chosen_replicas) == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_request_stops_its_routing_task(router):
+    """Cancelling a request, as a routing timeout does, cancels the routing task
+    that owns it, even while an earlier pending request keeps the task target up.
+    """
+    loop = get_or_create_event_loop()
+
+    replicas = [
+        FakeRunningReplica(f"r{i}") for i in range(1 + DEFAULT_NUM_FALLBACK_REPLICAS)
+    ]
+    for r in replicas:
+        r.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+    router.update_replicas(replicas)
+
+    head = loop.create_task(router._choose_replica_for_request(_make_request("a")))
+    cancelled = loop.create_task(router._choose_replica_for_request(_make_request("b")))
+    await async_wait_for_condition(
+        lambda: router.curr_num_routing_tasks == 2, retry_interval_ms=1
+    )
+
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    await async_wait_for_condition(
+        lambda: router.curr_num_routing_tasks == 1, timeout=2, retry_interval_ms=1
+    )
+
+    for r in replicas:
+        r.set_queue_len_response(0)
+    await head
+    await async_wait_for_condition(
+        lambda: router.curr_num_routing_tasks == 0, retry_interval_ms=1
+    )
 
 
 @pytest.mark.asyncio

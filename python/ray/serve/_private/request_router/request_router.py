@@ -842,6 +842,25 @@ class RequestRouter(ABC):
         # cleanup in _get_pending_request_matching_multiplexed_model_id() which
         # removes done entries during lookup, amortizing the cleanup cost.
 
+    def _remove_pending_request_from_queues(self, pending_request: PendingRequest):
+        """Remove a pending request that timed out from both pending queues.
+
+        The lazy cleanup only pops a done prefix, so it can't reach a request
+        queued behind a pending one, and no routing task runs while the deployment
+        has no replicas. Match by identity; dataclass `==` would compare the
+        request args.
+        """
+        # A rejected request is re-inserted while its earlier entry may still be
+        # queued, so the same object can appear more than once; drop every copy.
+        for queue in (
+            self._pending_requests_to_fulfill,
+            self._pending_requests_to_route,
+        ):
+            kept = [queued for queued in queue if queued is not pending_request]
+            if len(kept) != len(queue):
+                queue.clear()
+                queue.extend(kept)
+
     def _insert_pending_request_sorted(
         self, queue: Deque[PendingRequest], pending_request: PendingRequest
     ):

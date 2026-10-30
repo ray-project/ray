@@ -9,6 +9,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ray._common.utils import get_or_create_event_loop
+from ray.exceptions import RayTaskError
 from ray.serve import HTTPOptions
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.http_util import (
@@ -22,7 +23,11 @@ from ray.serve._private.http_util import (
     send_http_response_on_exception,
 )
 from ray.serve._private.proxy_request_response import ResponseStatus
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RequestRoutingTimeoutError,
+)
 
 
 @pytest.mark.asyncio
@@ -429,6 +434,23 @@ class TestBackpressureHTTPResponse:
         exc = pickle.loads(pickle.dumps(BackPressureError(3, 2)))
         assert exc.status_code == 503
         assert exc.retry_after_s is None
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_request_routing_timeout_error_doesnt_quote_request_timeout(wrapped):
+    exc = RequestRoutingTimeoutError("Request wasn't assigned within 0.5s.")
+    if wrapped:
+        # A nested handle call that timed out inside a replica.
+        exc = RayTaskError(
+            function_name="test_func",
+            traceback_str="Traceback (most recent call last):\n",
+            cause=exc,
+            pid=12345,
+        ).as_instanceof_cause()
+    status = get_http_response_status(exc, 30.0, "req-1")
+    assert status.code == 408
+    assert status.is_error
+    assert status.message == "Request wasn't assigned within 0.5s."
 
 
 if __name__ == "__main__":

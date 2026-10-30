@@ -18,6 +18,7 @@ from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
+    RequestRoutingTimeoutError,
     gRPCStatusError,
 )
 from ray.serve.generated.serve_pb2 import DESCRIPTOR as SERVE_DESCRIPTOR
@@ -245,7 +246,14 @@ def _truncate_message(
 def get_grpc_response_status(
     exc: BaseException, request_timeout_s: Optional[float], request_id: str
 ) -> ResponseStatus:
-    if isinstance(exc, TimeoutError):
+    if isinstance(exc, RequestRoutingTimeoutError):
+        # Checked before `TimeoutError`: `request_timeout_s` isn't what expired.
+        return ResponseStatus(
+            code=grpc.StatusCode.DEADLINE_EXCEEDED,
+            is_error=True,
+            message=exc.message,
+        )
+    elif isinstance(exc, TimeoutError):
         message = (
             f"Request timed out after {request_timeout_s}s."
             if request_timeout_s is not None
