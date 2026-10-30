@@ -369,11 +369,6 @@ class RayActorOptionsSchema(BaseModel):
 @PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
-    """
-    Specifies options for one deployment within a Serve application. For each deployment
-    this can optionally be included in `ServeApplicationSchema` to override deployment
-    options specified in code.
-    """
 
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
