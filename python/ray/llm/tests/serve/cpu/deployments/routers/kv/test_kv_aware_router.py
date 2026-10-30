@@ -296,6 +296,32 @@ async def test_choose_replicas_routes_to_selected_worker():
 
 
 @pytest.mark.asyncio
+async def test_choose_replicas_remaps_new_candidate_list():
+    """The worker mapping is reused while the candidate list object is
+    unchanged and rebuilt when the request router hands over a new list."""
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+    router = _build_kv_aware_router(get_worker_id("r1"))
+    pending = PendingRequest(
+        args=[],
+        kwargs={REQUEST_TOKEN_IDS_KWARG: [10, 11, 12]},
+        metadata=RequestMetadata(request_id="req-1", internal_request_id="int-1"),
+    )
+
+    assert await router.choose_replicas(replicas, pending) == [[replicas[0]]]
+    first_allowed = router._kv_token_tracker.select_worker.allowed
+    assert await router.choose_replicas(replicas, pending) == [[replicas[0]]]
+    assert router._kv_token_tracker.select_worker.allowed is first_allowed
+
+    # A membership update replaces the list; a newly added replica is routable.
+    updated = [replicas[0], _StubReplica("r3")]
+    router._kv_token_tracker = _KVTokenTrackerStub(get_worker_id("r3"))
+    assert await router.choose_replicas(updated, pending) == [[updated[1]]]
+    assert sorted(router._kv_token_tracker.select_worker.allowed) == sorted(
+        [get_worker_id("r1"), get_worker_id("r3")]
+    )
+
+
+@pytest.mark.asyncio
 async def test_cold_adapter_backs_off_then_routes():
     """A LoRA request that momentarily has no multiplex candidates is still routed
     after backing off, and follows the adapter once a replica advertises it."""

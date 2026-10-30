@@ -1,6 +1,6 @@
 import logging
 import random
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
@@ -43,6 +43,12 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
     this same ingress process; this per-handle router stays thin and simply maps
     candidate replicas to/from Dynamo worker ids.
     """
+
+    # (candidate list, worker id -> replica, allowed worker ids) for the last
+    # candidate list seen; see _map_to_workers.
+    _candidate_workers: Optional[
+        Tuple[List[RunningReplica], Dict[int, RunningReplica], List[int]]
+    ] = None
 
     def initialize_state(self):
         """Bind to the ``KVTokenTracker`` the LLMRouter registered in this
@@ -111,14 +117,13 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
         if not token_ids or self._kv_token_tracker is None:
             return [[random.choice(candidate_replicas)]] if candidate_replicas else []
 
-        worker_id_to_replica = {
-            get_worker_id(replica.replica_id.unique_id): replica
-            for replica in candidate_replicas
-        }
+        worker_id_to_replica, allowed_worker_ids = self._map_to_workers(
+            candidate_replicas
+        )
         selection = await self._kv_token_tracker.select_worker(
             pending_request.metadata.request_id,
             token_ids,
-            list(worker_id_to_replica),
+            allowed_worker_ids,
             _get_expected_output_tokens(pending_request),
             # vLLM stamps this adapter name on the request's KV-cache events and
             # the selection service salts its KV hashes with it, so each adapter
@@ -126,6 +131,25 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
             lora_name=pending_request.metadata.multiplexed_model_id or None,
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
+
+    def _map_to_workers(
+        self, candidate_replicas: List[RunningReplica]
+    ) -> Tuple[Dict[int, RunningReplica], List[int]]:
+        """Map candidates to dynamo worker ids, reusing the last mapping."""
+        cached = self._candidate_workers
+        if cached is not None and cached[0] is candidate_replicas:
+            return cached[1], cached[2]
+        worker_id_to_replica = {
+            get_worker_id(replica.replica_id.unique_id): replica
+            for replica in candidate_replicas
+        }
+        allowed_worker_ids = list(worker_id_to_replica)
+        self._candidate_workers = (
+            candidate_replicas,
+            worker_id_to_replica,
+            allowed_worker_ids,
+        )
+        return worker_id_to_replica, allowed_worker_ids
 
 
 def is_kv_aware(llm_config: LLMConfig) -> bool:
