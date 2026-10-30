@@ -12,6 +12,15 @@ class ValidationFn(Protocol):
     """Protocol for a function that validates a checkpoint."""
 
     def __call__(self, checkpoint: "Checkpoint", **kwargs: Any) -> Dict:
+        """Validate a checkpoint.
+
+        Args:
+            checkpoint: The checkpoint to validate.
+            **kwargs: The ``fn_kwargs`` from the ``ValidationTaskConfig``.
+
+        Returns:
+            A dictionary of validation metrics.
+        """
         ...
 
 
