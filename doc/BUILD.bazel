@@ -614,6 +614,7 @@ doctest_each(
     # Not listed: tasks/nested-tasks.md, whose `doc_code/` snippet is tested
     # instead.
     files = [
+        "source/cluster/configure.md",
         "source/core/actors/async-api.md",
         "source/core/actors/concurrency-group-api.md",
         "source/core/actors/index.md",
