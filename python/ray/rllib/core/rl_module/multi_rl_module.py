@@ -718,8 +718,16 @@ class MultiRLModuleSpec:
         }
 
     @classmethod
-    def from_dict(cls, d) -> "MultiRLModuleSpec":
-        """Creates a MultiRLModuleSpec from a dictionary."""
+    def from_dict(cls, d: Dict[str, Any]) -> "MultiRLModuleSpec":
+        """Creates a MultiRLModuleSpec from a dictionary.
+
+        Args:
+            d: The serialized spec, as `to_dict()` returns it.
+
+        Returns:
+            The MultiRLModuleSpec rebuilt from `d`, with each sub-spec rebuilt with
+            `RLModuleSpec.from_dict()`.
+        """
         return MultiRLModuleSpec(
             multi_rl_module_class=deserialize_type(d["multi_rl_module_class"]),
             observation_space=gym_space_from_dict(d.get("observation_space")),

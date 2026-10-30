@@ -1962,7 +1962,17 @@ class Learner(Checkpointable):
         )
         self._is_built = False
 
-    def apply(self, func, *_args, **_kwargs):
+    def apply(self, func: Callable[..., Any], *_args: Any, **_kwargs: Any) -> Any:
+        """Calls `func` with this Learner as the first argument.
+
+        Args:
+            func: The function to call. Takes the Learner as its first argument.
+            *_args: Positional arguments to pass to `func` after the Learner.
+            **_kwargs: Keyword arguments to pass to `func`.
+
+        Returns:
+            The return value of `func`.
+        """
         return func(self, *_args, **_kwargs)
 
     @abc.abstractmethod

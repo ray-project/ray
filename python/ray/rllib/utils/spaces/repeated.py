@@ -1,3 +1,5 @@
+from typing import Any
+
 import gymnasium as gym
 import numpy as np
 
@@ -34,7 +36,16 @@ class Repeated(gym.Space):
             for _ in range(self.np_random.integers(1, self.max_len + 1))
         ]
 
-    def contains(self, x):
+    def contains(self, x: Any) -> bool:
+        """Returns whether `x` is a valid member of this space.
+
+        Args:
+            x: The value to check.
+
+        Returns:
+            True if `x` is a list or numpy array of at most `max_len` items, each a
+            member of the child space.
+        """
         return (
             isinstance(x, (list, np.ndarray))
             and len(x) <= self.max_len

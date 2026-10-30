@@ -529,7 +529,23 @@ def one_hot(
 
 
 @PublicAPI
-def one_hot_multidiscrete(x, depths=List[int]):
+def one_hot_multidiscrete(
+    x: Union[np.ndarray, "torch.Tensor"], depths: List[int]
+) -> np.ndarray:
+    """One-hot encodes the values of a MultiDiscrete space.
+
+    Encodes each sub-action with `one_hot()` and concatenates the results along
+    the last axis.
+
+    Args:
+        x: The values to encode, of shape `(len(depths),)` or
+            `(batch_size, len(depths))`. A torch tensor is converted to numpy.
+        depths: The number of values of each sub-action, such as the `nvec` of a
+            `MultiDiscrete` space.
+
+    Returns:
+        The float32 one-hot encoding, of size `sum(depths)` in the last axis.
+    """
     # Handle torch arrays properly.
     if torch and isinstance(x, torch.Tensor):
         x = x.numpy()
