@@ -1,5 +1,6 @@
 """ActorHandle and method proxies for stateful root actors."""
 
+import urllib.parse
 from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
 from ray_client.packaging import to_json
@@ -34,10 +35,15 @@ class ActorHandle:
         created: bool = False,
         package_uploaded: bool = False,
     ) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Actor name must be a non-empty string.")
         self._name = name
         self._cluster = cluster
         self._created = created
         self._package_uploaded = package_uploaded
+
+    def _quoted_name(self) -> str:
+        return urllib.parse.quote(self._name, safe="")
 
     def __repr__(self) -> str:
         return f"ActorHandle(name={self._name!r}, address={self._cluster.address!r})"
@@ -67,7 +73,7 @@ class ActorHandle:
         Raises:
             RayClientError: If the actor does not exist or the HTTP request fails.
         """
-        return self._cluster._json("GET", f"/api/actors/{self._name}")
+        return self._cluster._json("GET", f"/api/actors/{self._quoted_name()}")
 
     def logs(self) -> str:
         """Fetches captured stdout and stderr output from the root actor process.
@@ -78,7 +84,7 @@ class ActorHandle:
         Raises:
             RayClientError: If the actor does not exist or the HTTP request fails.
         """
-        resp = self._cluster._json("GET", f"/api/actors/{self._name}/logs")
+        resp = self._cluster._json("GET", f"/api/actors/{self._quoted_name()}/logs")
         if isinstance(resp, dict):
             return str(resp.get("logs", ""))
         return str(resp)
@@ -92,6 +98,8 @@ class ActorHandle:
         *,
         stream: bool = False,
     ) -> Any:
+        if not isinstance(method, str) or not method.strip():
+            raise ValueError("Actor method name must be a non-empty string.")
         to_json(list(args), f"Actor '{self._name}.{method}' positional arguments")
         to_json(dict(kwargs or {}), f"Actor '{self._name}.{method}' keyword arguments")
         body: Dict[str, Any] = {
@@ -100,8 +108,9 @@ class ActorHandle:
         }
         if stream:
             body["stream"] = True
+        q_method = urllib.parse.quote(method, safe="")
         return self._cluster._call_or_stream_actor_method(
-            f"/api/actors/{self._name}/methods/{method}",
+            f"/api/actors/{self._quoted_name()}/methods/{q_method}",
             body,
             target=f"{self._name}.{method}",
             submission_id=f"{self._name}.{method}",
@@ -182,11 +191,12 @@ class ActorHandle:
         Raises:
             RayClientError: If the `DELETE /api/actors/{name}` request fails.
         """
-        resp = self._cluster.request("DELETE", f"/api/actors/{self._name}")
+        endpoint = f"/api/actors/{self._quoted_name()}"
+        resp = self._cluster.request("DELETE", endpoint)
         if resp.status_code == 404:
             return False
         if resp.status_code != 200:
-            raise self._cluster._http_error("DELETE", f"/api/actors/{self._name}", resp)
+            raise self._cluster._http_error("DELETE", endpoint, resp)
         return bool(resp.json().get("killed", True))
 
     def __getattr__(self, method: str) -> "_ActorMethodProxy":

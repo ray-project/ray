@@ -7,6 +7,7 @@ import logging
 import os
 import time
 import traceback
+import urllib.parse
 from datetime import datetime
 from typing import AsyncIterator, Dict, List, Optional, Tuple
 
@@ -272,11 +273,7 @@ class JobAgentSubmissionClient:
             headers=self._get_headers(),
             timeout=aiohttp.ClientTimeout(total=None),
         ) as resp:
-            content_type = (
-                resp.headers.get("Content-Type", "application/json")
-                .split(";")[0]
-                .strip()
-            )
+            content_type = resp.headers.get("Content-Type", "application/json").strip()
             if resp.status != 200:
                 yield resp.status, content_type, await resp.read()
                 return
@@ -676,12 +673,9 @@ class JobHead(SubprocessModule):
                     if sresp is None:
                         if status != 200:
                             return Response(
-                                body=chunk, status=status, content_type=content_type
-                            )
-                        if is_mutating:
-                            self._last_client_actor_activity_at = max(
-                                self._last_client_actor_activity_at,
-                                datetime.now().timestamp(),
+                                body=chunk,
+                                status=status,
+                                content_type=content_type.split(";")[0].strip(),
                             )
                         sresp = StreamResponse(
                             status=status,
@@ -726,17 +720,17 @@ class JobHead(SubprocessModule):
 
     @routes.get("/api/actors/{actor_name}")
     async def get_actor(self, req: Request) -> StreamResponse:
-        name = req.match_info["actor_name"]
+        name = urllib.parse.quote(req.match_info["actor_name"], safe="")
         return await self._proxy_actor_request(req, f"/{name}")
 
     @routes.get("/api/actors/{actor_name}/logs")
     async def get_actor_logs(self, req: Request) -> StreamResponse:
-        name = req.match_info["actor_name"]
+        name = urllib.parse.quote(req.match_info["actor_name"], safe="")
         return await self._proxy_actor_request(req, f"/{name}/logs")
 
     @routes.delete("/api/actors/{actor_name}")
     async def delete_actor(self, req: Request) -> StreamResponse:
-        name = req.match_info["actor_name"]
+        name = urllib.parse.quote(req.match_info["actor_name"], safe="")
         return await self._proxy_actor_request(req, f"/{name}")
 
     @routes.post(
@@ -744,8 +738,8 @@ class JobHead(SubprocessModule):
         resp_type=ResponseType.STREAM,
     )
     async def call_actor_method(self, req: Request) -> StreamResponse:
-        name = req.match_info["actor_name"]
-        method = req.match_info["method"]
+        name = urllib.parse.quote(req.match_info["actor_name"], safe="")
+        method = urllib.parse.quote(req.match_info["method"], safe="")
         return await self._proxy_actor_request(req, f"/{name}/methods/{method}")
 
     async def _proxy_cluster_request(self, req: Request, subpath: str) -> Response:
@@ -779,12 +773,15 @@ class JobHead(SubprocessModule):
 
     @routes.get("/api/cluster/node_groups/{group}")
     async def get_node_group(self, req: Request) -> Response:
-        group = req.match_info["group"]
+        group = urllib.parse.quote(req.match_info["group"], safe="")
         return await self._proxy_cluster_request(req, f"/node_groups/{group}")
 
-    @routes.post("/api/cluster/node_groups/{group}/nodes")
+    @routes.post(
+        "/api/cluster/node_groups/{group}/nodes",
+        resp_type=ResponseType.STREAM,
+    )
     async def add_nodes(self, req: Request) -> Response:
-        group = req.match_info["group"]
+        group = urllib.parse.quote(req.match_info["group"], safe="")
         return await self._proxy_cluster_request(req, f"/node_groups/{group}/nodes")
 
     @routes.get("/api/cluster/nodes")
@@ -793,12 +790,12 @@ class JobHead(SubprocessModule):
 
     @routes.get("/api/cluster/nodes/{node_id}")
     async def get_node(self, req: Request) -> Response:
-        node_id = req.match_info["node_id"]
+        node_id = urllib.parse.quote(req.match_info["node_id"], safe="")
         return await self._proxy_cluster_request(req, f"/nodes/{node_id}")
 
     @routes.delete("/api/cluster/nodes/{node_id}")
     async def destroy_node(self, req: Request) -> Response:
-        node_id = req.match_info["node_id"]
+        node_id = urllib.parse.quote(req.match_info["node_id"], safe="")
         return await self._proxy_cluster_request(req, f"/nodes/{node_id}")
 
     @routes.get("/api/jobs/{job_or_submission_id}")

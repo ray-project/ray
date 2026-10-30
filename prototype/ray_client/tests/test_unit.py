@@ -284,7 +284,8 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
     ) -> Tuple[Optional[Path], Dict[str, str]]:
         if not runtime_env:
             return None, {}
-        act_dir = self.state.tmp_root / f"actor_{actor_name}"
+        safe_dir = urllib.parse.quote(actor_name, safe="")
+        act_dir = self.state.tmp_root / f"actor_{safe_dir}"
         act_dir.mkdir(parents=True, exist_ok=True)
         wd_uri = runtime_env.get("working_dir")
         if wd_uri and str(wd_uri).startswith("gcs://"):
@@ -360,7 +361,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/jobs/"):
             parts = path[len("/api/jobs/") :].split("/")
-            job_id = parts[0]
+            job_id = urllib.parse.unquote(parts[0])
             with self.state.lock:
                 job = self.state.jobs.get(job_id)
                 if job is None:
@@ -408,7 +409,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/actors/"):
             parts = path[len("/api/actors/") :].split("/")
-            actor_name = parts[0]
+            actor_name = urllib.parse.unquote(parts[0])
             with self.state.lock:
                 self.state.check_ttls_locked()
                 act = self.state.actors.get(actor_name)
@@ -461,7 +462,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/cluster/node_groups/"):
-            group = path[len("/api/cluster/node_groups/") :]
+            group = urllib.parse.unquote(path[len("/api/cluster/node_groups/") :])
             with self.state.lock:
                 matching = [
                     n for n in self.state.nodes.values() if n["group_name"] == group
@@ -493,6 +494,21 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                 if state_filter is not None
                 else None
             )
+            valid_states = {"PENDING", "ALIVE", "TERMINATING_SOON", "DEAD"}
+            if allowed_states is not None and (
+                not allowed_states or not allowed_states.issubset(valid_states)
+            ):
+                self._send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": {
+                            "exc_type": "ValueError",
+                            "exc_message": f"Invalid node state filter {state_filter!r}",
+                        },
+                    },
+                )
+                return
             with self.state.lock:
                 items = []
                 for n in self.state.nodes.values():
@@ -509,7 +525,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/cluster/nodes/"):
-            node_id = path[len("/api/cluster/nodes/") :]
+            node_id = urllib.parse.unquote(path[len("/api/cluster/nodes/") :])
             with self.state.lock:
                 node = self.state.nodes.get(node_id)
             if node is None:
@@ -539,13 +555,13 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
         if path.startswith("/api/jobs/"):
-            job_id = path[len("/api/jobs/") :]
+            job_id = urllib.parse.unquote(path[len("/api/jobs/") :])
             with self.state.lock:
                 existed = self.state.jobs.pop(job_id, None) is not None
             self._send_json(200 if existed else 404, {"deleted": existed})
             return
         if path.startswith("/api/actors/"):
-            actor_name = path[len("/api/actors/") :]
+            actor_name = urllib.parse.unquote(path[len("/api/actors/") :])
             with self.state.lock:
                 self.state.delete_actor_calls += 1
                 self.state.check_ttls_locked()
@@ -555,7 +571,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             self._send_json(200 if existed else 404, {"ok": existed, "killed": existed})
             return
         if path.startswith("/api/cluster/nodes/"):
-            node_id = path[len("/api/cluster/nodes/") :]
+            node_id = urllib.parse.unquote(path[len("/api/cluster/nodes/") :])
             body = self._read_json()
             reason = body.get("reason")
             if not isinstance(reason, str) or not reason.strip():
@@ -612,7 +628,6 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "destroyed": True,
                     "state": new_state,
-                    "reason": reason,
                 }
             self._send_json(200, res_payload)
             return
@@ -643,7 +658,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/jobs/") and path.endswith("/stop"):
-            job_id = path[len("/api/jobs/") : -len("/stop")]
+            job_id = urllib.parse.unquote(path[len("/api/jobs/") : -len("/stop")])
             with self.state.lock:
                 job = self.state.jobs.get(job_id)
                 if job is None:
@@ -654,7 +669,9 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/cluster/node_groups/") and path.endswith("/nodes"):
-            group = path[len("/api/cluster/node_groups/") : -len("/nodes")]
+            group = urllib.parse.unquote(
+                path[len("/api/cluster/node_groups/") : -len("/nodes")]
+            )
             count = int(body.get("count", 1))
             with self.state.lock:
                 added = []
@@ -805,7 +822,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     init_kwargs = body.get("kwargs") or {}
 
                     if body.get("module_source") is not None:
-                        mod_name = f"_mock_actor_{name}_{uuid.uuid4().hex[:6]}"
+                        mod_name = f"_mock_actor_{uuid.uuid4().hex[:8]}"
                         mod = types.ModuleType(mod_name)
                         sys.modules[mod_name] = mod
                         mod.__dict__.update(captured_globals)
@@ -864,7 +881,8 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/actors/"):
             parts = path[len("/api/actors/") :].split("/")
             if len(parts) == 3 and parts[1] == "methods":
-                actor_name, method_name = parts[0], parts[2]
+                actor_name = urllib.parse.unquote(parts[0])
+                method_name = urllib.parse.unquote(parts[2])
                 is_stream = query.get("stream") in ("1", "true", "True") or bool(
                     body.get("stream", False)
                 )
@@ -2043,10 +2061,30 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertEqual(self.state.last_created_actor_spec["num_cpus"], 2)
             self.assertEqual(self.state.last_created_actor_spec["num_gpus"], 1)
             self.assertEqual(self.state.last_created_actor_spec["max_concurrency"], 4)
+            self.assertEqual(
+                self.state.last_created_actor_spec["runtime_env"],
+                {"env_vars": {"FAKE_HEADER": "class DecoratedActor:\n@ray.remote"}},
+            )
             self.assertIn("ttl_seconds", self.state.last_created_actor_spec)
             self.assertIsNone(self.state.last_created_actor_spec["ttl_seconds"])
             self.assertEqual(dec_handle.ping(), "pong")
             self.assertIsNone(dec_handle.info()["ttl_seconds"])
+
+            dec_override_handle = cluster.actor(
+                DecoratedActor,
+                name="dec_act_override",
+                runtime_env={"env_vars": {"EXTRA_KEY": "1"}},
+            )
+            self.assertEqual(
+                self.state.last_created_actor_spec["runtime_env"],
+                {
+                    "env_vars": {
+                        "FAKE_HEADER": "class DecoratedActor:\n@ray.remote",
+                        "EXTRA_KEY": "1",
+                    }
+                },
+            )
+            dec_override_handle.kill()
 
             # Reattaching without passing ttl_seconds omits "ttl_seconds" from spec and preserves None
             dec_reattached = cluster.actor(DecoratedActor, name="dec_act")
@@ -2867,6 +2905,8 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
             # Finding 1.2: _deploy_actor_spec enforces monotonic deadline even when server trickles keepalive spaces
             class _SlowTrickleCreateHandler(BaseHTTPRequestHandler):
+                protocol_version = "HTTP/1.1"
+
                 def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
                     return
 
@@ -2876,10 +2916,11 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                         _ = self.rfile.read(length)
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
+                    self.send_header("Transfer-Encoding", "chunked")
                     self.end_headers()
                     for _ in range(100):
                         try:
-                            self.wfile.write(b" ")
+                            self.wfile.write(b"1\r\n \r\n")
                             self.wfile.flush()
                             time.sleep(0.05)
                         except Exception:
@@ -2947,6 +2988,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     self.reap_allowed = True
                     self.unblock_event = asyncio.Event()
                     self.get_info = _FakeMethod(self._get_info)
+                    self.set_ttl = _FakeMethod(self._set_ttl)
                     self.shutdown = _FakeMethod(self._shutdown)
                     self.invoke = _FakeMethod(self._invoke, recorded_invoke_names)
                     self.invoke_stream = _FakeMethod(
@@ -2957,6 +2999,13 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 def __ray_destroy__(self, reason: str = "") -> None:
                     destroyed_handles.append((self, reason))
                     self.unblock_event.set()
+
+                async def _set_ttl(
+                    self, ttl_seconds: Optional[float]
+                ) -> Dict[str, Any]:
+                    info = dict(await self._get_info())
+                    info["ttl_seconds"] = ttl_seconds
+                    return info
 
                 async def _get_info(self) -> Dict[str, Any]:
                     if self._mode == "hang":
@@ -3012,6 +3061,22 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     recorded_actor_options.append(dict(opts))
 
                     def _remote(_spec: Dict[str, Any]) -> _FakeRootHandle:
+                        act_name = opts.get("name")
+                        if act_name:
+                            try:
+                                ray_mod = sys.modules[
+                                    "ray.dashboard.modules.job.actor_manager"
+                                ].ray
+                                ray_mod.get_actor(
+                                    act_name, namespace=opts.get("namespace")
+                                )
+                            except Exception:
+                                pass
+                            else:
+                                raise ValueError(
+                                    f"Actor with name '{act_name}' already exists in "
+                                    f"namespace '{opts.get('namespace')}'"
+                                )
                         h = _FakeRootHandle(mode=current_mode[0])
                         created_handles.append(h)
                         return h
@@ -3052,10 +3117,10 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             ) as mock_rt:
                 mock_rt.return_value.get_node_id.return_value = "node_head"
 
-                # Bug 5: _lookup_actor, kill_actor, and create_actor(get_if_exists=True/"recreate")
+                # Bug 5: lookup_actor, kill_actor, and create_actor(get_if_exists=True/"recreate")
                 # ignore non-_ClientRootActor handles in ray_client namespace while alive,
                 # and allow recreate once the non-root actor is killed externally or replaced.
-                looked_up = await mgr._lookup_actor("user_detached_child")
+                looked_up = await mgr.lookup_actor("user_detached_child")
                 self.assertIsNone(looked_up)
                 self.assertFalse(
                     await mgr._terminate_actor_for_recreate(
@@ -3079,6 +3144,123 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                         "non-ray_client actor", collision_res["error"]["exc_message"]
                     )
                 self.assertEqual(len(killed_handles), 0)
+
+                # Bug R1: Unresponsive live actor (get_info times out) is NOT killed by
+                # create_actor(get_if_exists=True), returning TimeoutError(timed_out=True),
+                # while get_if_exists="recreate" terminates and replaces it.
+                hanging_live_handle = _FakeRootHandle(mode="hang")
+                with patch(
+                    "ray.dashboard.modules.job.actor_manager._CONTROL_TIMEOUT_S",
+                    0.03,
+                ), patch(
+                    "ray.dashboard.modules.job.actor_manager.ray.get_actor",
+                    side_effect=lambda n, namespace=None: (
+                        hanging_live_handle
+                        if n == "busy_live_actor" and not killed_handles
+                        else (_ for _ in ()).throw(ValueError(n))
+                    ),
+                ):
+                    current_mode[0] = "ready"
+                    # 1. Uncached in mgr._actors (discovered via ray.get_actor)
+                    gie_true_uncached = await mgr.create_actor(
+                        {
+                            "name": "busy_live_actor",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "get_if_exists": True,
+                        }
+                    )
+                    self.assertFalse(gie_true_uncached["ok"])
+                    self.assertEqual(
+                        gie_true_uncached["error"]["exc_type"], "TimeoutError"
+                    )
+                    self.assertTrue(gie_true_uncached["error"]["timed_out"])
+                    self.assertEqual(len(killed_handles), 0)
+
+                    # 2. Cached in mgr._actors
+                    mgr._actors["busy_live_actor"] = {
+                        "name": "busy_live_actor",
+                        "handle": hanging_live_handle,
+                        "class_name": "MyService",
+                        "kind": "class",
+                        "namespace": "ray_client",
+                        "detached": True,
+                        "spec_hash": "h",
+                        "ttl_seconds": 1800.0,
+                        "created_at": 1.0,
+                        "last_active": 1.0,
+                        "last_active_mono": 1.0,
+                        "active_calls": 1,
+                        "generator_methods": set(),
+                    }
+                    gie_true_cached = await mgr.create_actor(
+                        {
+                            "name": "busy_live_actor",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "get_if_exists": True,
+                        }
+                    )
+                    self.assertFalse(gie_true_cached["ok"])
+                    self.assertEqual(
+                        gie_true_cached["error"]["exc_type"], "TimeoutError"
+                    )
+                    self.assertTrue(gie_true_cached["error"]["timed_out"])
+                    self.assertEqual(len(killed_handles), 0)
+                    self.assertIn("busy_live_actor", mgr._actors)
+
+                    # 3. get_if_exists=False rejects immediately without killing the live actor
+                    gie_false_cached = await mgr.create_actor(
+                        {
+                            "name": "busy_live_actor",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "get_if_exists": False,
+                        }
+                    )
+                    self.assertFalse(gie_false_cached["ok"])
+                    self.assertEqual(
+                        gie_false_cached["error"]["exc_type"], "ValueError"
+                    )
+                    self.assertEqual(len(killed_handles), 0)
+
+                    # 4. get_if_exists="recreate" terminates and replaces the unresponsive actor
+                    gie_recreate = await mgr.create_actor(
+                        {
+                            "name": "busy_live_actor",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "get_if_exists": "recreate",
+                        }
+                    )
+                    self.assertTrue(gie_recreate["ok"])
+                    self.assertTrue(gie_recreate["created"])
+                    self.assertEqual(len(killed_handles), 1)
+                    self.assertIs(killed_handles[0][0], hanging_live_handle)
+
+                    # 5. Bug R2: Once the actor is gone from Ray (e.g. self-reaped on TTL or
+                    # killed externally) even if stale entries remain in mgr._actors or
+                    # mgr._non_root_names, get_if_exists=False succeeds instead of failing
+                    # on a stale cache check.
+                    mgr._non_root_names.add("busy_live_actor")
+                    gie_false_after_exit = await mgr.create_actor(
+                        {
+                            "name": "busy_live_actor",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "get_if_exists": False,
+                        }
+                    )
+                    self.assertTrue(gie_false_after_exit["ok"])
+                    self.assertTrue(gie_false_after_exit["created"])
+                    self.assertNotIn("busy_live_actor", mgr._non_root_names)
+                await mgr.kill_actor("busy_live_actor")
+                killed_handles.clear()
 
                 user_child_alive[0] = False
                 current_mode[0] = "ready"
@@ -3141,9 +3323,9 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                         mgr.validate_actor_spec(bad_spec)
                 current_mode[0] = "hang"
 
-                # Finding 1.7: _lookup_actor returns None while actor is in _creating_handles
+                # Finding 1.7: lookup_actor returns None while actor is in _creating_handles
                 mgr._creating_handles["in_progress_actor"] = creating_ready_handle
-                self.assertIsNone(await mgr._lookup_actor("in_progress_actor"))
+                self.assertIsNone(await mgr.lookup_actor("in_progress_actor"))
                 mgr._creating_handles.pop("in_progress_actor", None)
 
                 # Finding 1.5: create_actor cleans up handle and returns _init_error when __init__ fails
@@ -3980,11 +4162,15 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cluster.get_node("")
             with self.assertRaises(ValueError):
+                cluster.list_nodes(states="")
+            with self.assertRaises(RayClientError):
                 cluster.list_nodes(states="INVALID_STATE")
             with self.assertRaises(ValueError):
                 cluster.list_nodes(include_dead="yes")  # type: ignore[arg-type]
             with self.assertRaises(ValueError):
                 cluster.destroy_node(added[0]["id"], "")
+            with self.assertRaises(ValueError):
+                cluster.destroy_node(added[0]["id"], "scale down", grace_period_s=None)  # type: ignore[arg-type]
 
             destroyed_res = cluster.destroy_node(added[0]["id"], "scale down")
             self.assertTrue(destroyed_res["destroyed"])
@@ -3997,6 +4183,40 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             )
             with self.assertRaises(RayClientError):
                 cluster.destroy_node("nonexistent_node_id", "cleanup")
+
+            # 4. Bug C2: URL path segment encoding (#, ?, /) and upfront identifier validation before upload
+            act_base = cluster.actor(StreamService, name="svc")
+            act_hash = cluster.actor(StreamService, name="svc#frag")
+            act_query = cluster.actor(StreamService, name="svc?stream=1")
+            act_slash = cluster.actor(StreamService, name="svc/sub")
+            self.assertEqual(act_hash.non_stream(5), 10)
+            self.assertEqual(act_query.non_stream(6), 11)
+            self.assertEqual(act_slash.non_stream(7), 12)
+            self.assertEqual(act_hash.info()["name"], "svc#frag")
+            # Killing svc#frag, svc?stream=1, and svc/sub must NOT kill svc
+            self.assertTrue(act_hash.kill())
+            self.assertTrue(act_query.kill())
+            self.assertTrue(act_slash.kill())
+            self.assertEqual(act_base.info()["name"], "svc")
+            self.assertTrue(act_base.kill())
+
+            # Upfront validation rejects whitespace-only name or submission_id BEFORE uploading working_dir
+            pkg_count_before = len(self.state.packages)
+            with tempfile.TemporaryDirectory() as bad_wd:
+                Path(bad_wd, "mod.py").write_text("x = 1\n", encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    cluster.actor(
+                        StreamService,
+                        name="   ",
+                        runtime_env={"working_dir": bad_wd},
+                    )
+                with self.assertRaises(ValueError):
+                    cluster.submit_job(
+                        "python -V",
+                        submission_id="   ",
+                        runtime_env={"working_dir": bad_wd},
+                    )
+            self.assertEqual(len(self.state.packages), pkg_count_before)
 
 
 if __name__ == "__main__":

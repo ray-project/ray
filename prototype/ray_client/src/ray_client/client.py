@@ -379,6 +379,8 @@ class JobResult:
         package_uploaded: bool = False,
         initial_info: Optional[Dict[str, Any]] = None,
     ) -> None:
+        if not isinstance(submission_id, str) or not submission_id.strip():
+            raise ValueError("submission_id must be a non-empty string.")
         self._submission_id = submission_id
         self._cluster = cluster
         self._package_uploaded = package_uploaded
@@ -389,6 +391,9 @@ class JobResult:
             and initial_info.get("status") in _TERMINAL_JOB_STATUSES
         ):
             self._terminal_info = dict(initial_info)
+
+    def _quoted_id(self) -> str:
+        return urllib.parse.quote(self._submission_id, safe="")
 
     def __repr__(self) -> str:
         return (
@@ -417,7 +422,7 @@ class JobResult:
         """
         if self._terminal_info is not None:
             return dict(self._terminal_info)
-        data = self._cluster._json("GET", f"/api/jobs/{self._submission_id}")
+        data = self._cluster._json("GET", f"/api/jobs/{self._quoted_id()}")
         if isinstance(data, dict) and data.get("status") in _TERMINAL_JOB_STATUSES:
             self._terminal_info = dict(data)
         return data
@@ -456,7 +461,7 @@ class JobResult:
         if self._terminal_logs is not None:
             return self._terminal_logs
         is_terminal = self._terminal_info is not None
-        data = self._cluster._json("GET", f"/api/jobs/{self._submission_id}/logs")
+        data = self._cluster._json("GET", f"/api/jobs/{self._quoted_id()}/logs")
         text = str(data.get("logs", "")) if isinstance(data, dict) else str(data)
         if is_terminal:
             self._terminal_logs = text
@@ -536,17 +541,16 @@ class JobResult:
         Raises:
             RayClientError: If the HTTP request fails with a non-404 status.
         """
+        stop_endpoint = f"/api/jobs/{self._quoted_id()}/stop"
         resp = self._cluster.request(
             "POST",
-            f"/api/jobs/{self._submission_id}/stop",
+            stop_endpoint,
             idempotent=False,
         )
         if resp.status_code == 404:
             return False
         if resp.status_code != 200:
-            raise self._cluster._http_error(
-                "POST", f"/api/jobs/{self._submission_id}/stop", resp
-            )
+            raise self._cluster._http_error("POST", stop_endpoint, resp)
         self._terminal_info = None
         return bool(resp.json().get("stopped", False))
 
@@ -559,13 +563,12 @@ class JobResult:
         Raises:
             RayClientError: If the HTTP request fails with a non-404 status.
         """
-        resp = self._cluster.request("DELETE", f"/api/jobs/{self._submission_id}")
+        del_endpoint = f"/api/jobs/{self._quoted_id()}"
+        resp = self._cluster.request("DELETE", del_endpoint)
         if resp.status_code == 404:
             return False
         if resp.status_code != 200:
-            raise self._cluster._http_error(
-                "DELETE", f"/api/jobs/{self._submission_id}", resp
-            )
+            raise self._cluster._http_error("DELETE", del_endpoint, resp)
         return bool(resp.json().get("deleted", False))
 
 
@@ -941,15 +944,7 @@ class RayCluster:
             if timeout is not None:
                 grace_deadline = time.monotonic() + float(timeout) + 5.0
                 chunks: List[bytes] = []
-                chunk_size = (
-                    65536
-                    if (
-                        getattr(resp.raw, "chunked", False)
-                        or "Content-Length" in resp.headers
-                    )
-                    else 1
-                )
-                for chunk in resp.iter_content(chunk_size=chunk_size):
+                for chunk in resp.iter_content(chunk_size=None):
                     if chunk:
                         chunks.append(chunk)
                     if time.monotonic() >= grace_deadline:
@@ -1092,24 +1087,25 @@ class RayCluster:
             return True
 
     def _prepare_runtime_env(
-        self, runtime_env: Optional[Dict[str, Any]]
+        self,
+        runtime_env: Optional[Dict[str, Any]],
+        base_runtime_env: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], Optional[Union[str, Path]], List[str]]:
-        merged = copy.deepcopy(self._default_runtime_env)
-        if merged.get("env_vars") is None and "env_vars" in merged:
-            merged.pop("env_vars", None)
-        excludes = _exclude_patterns(merged.pop("excludes", None))
-        for key, value in (runtime_env or {}).items():
-            if key == "env_vars":
-                if value is not None:
-                    if not isinstance(value, dict):
-                        raise TypeError(
-                            f"runtime_env['env_vars'] must be a dict, got {value!r}."
-                        )
-                    merged.setdefault("env_vars", {}).update(value)
-            elif key == "excludes":
-                excludes.extend(_exclude_patterns(value))
-            else:
-                merged[key] = copy.deepcopy(value)
+        merged: Dict[str, Any] = {}
+        excludes: List[str] = []
+        for env in (self._default_runtime_env, base_runtime_env, runtime_env):
+            for key, value in (env or {}).items():
+                if key == "env_vars":
+                    if value is not None:
+                        if not isinstance(value, dict):
+                            raise TypeError(
+                                f"runtime_env['env_vars'] must be a dict, got {value!r}."
+                            )
+                        merged.setdefault("env_vars", {}).update(value)
+                elif key == "excludes":
+                    excludes.extend(_exclude_patterns(value))
+                else:
+                    merged[key] = copy.deepcopy(value)
 
         for conflict_key in ("image_uri", "container"):
             if merged.get(conflict_key) is not None:
@@ -1141,9 +1137,13 @@ class RayCluster:
         return merged, working_dir, excludes
 
     def _prepare_and_upload_runtime_env(
-        self, runtime_env: Optional[Dict[str, Any]]
+        self,
+        runtime_env: Optional[Dict[str, Any]],
+        base_runtime_env: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Optional[Dict[str, Any]], bool]:
-        merged_env, working_dir, excludes = self._prepare_runtime_env(runtime_env)
+        merged_env, working_dir, excludes = self._prepare_runtime_env(
+            runtime_env, base_runtime_env=base_runtime_env
+        )
         uploaded = False
         if working_dir is not None:
             zip_bytes, pkg_uri = build_working_dir_package(working_dir, excludes)
@@ -1371,7 +1371,8 @@ class RayCluster:
             "args": bound_args,
             "kwargs": bound_kwargs,
         }
-        endpoint = f"/api/actors/{actor_name}/methods/__call__"
+        q_actor_name = urllib.parse.quote(actor_name, safe="")
+        endpoint = f"/api/actors/{q_actor_name}/methods/__call__"
         return self._call_or_stream_actor_method(
             endpoint,
             call_body,
@@ -1427,6 +1428,10 @@ class RayCluster:
             raise ValueError(
                 f"entrypoint must be a non-empty command string, got {entrypoint!r}."
             )
+        if submission_id is not None and (
+            not isinstance(submission_id, str) or not submission_id.strip()
+        ):
+            raise ValueError("submission_id must be a non-empty string.")
         if metadata is not None:
             if not isinstance(metadata, dict) or not all(
                 isinstance(k, str) and isinstance(v, str) for k, v in metadata.items()
@@ -1517,7 +1522,8 @@ class RayCluster:
                 last_exc = self._http_error("POST", "/api/jobs/", resp)
 
             # Check if the job was already registered before retrying POST /api/jobs/.
-            check = self.request("GET", f"/api/jobs/{submission_id}")
+            q_id = urllib.parse.quote(submission_id, safe="")
+            check = self.request("GET", f"/api/jobs/{q_id}")
             if check.status_code == 200:
                 return submission_id
             if attempt + 1 < _MAX_RETRIES:
@@ -1538,7 +1544,10 @@ class RayCluster:
         Raises:
             RayClientError: If the job does not exist or the HTTP request fails.
         """
-        info = self._json("GET", f"/api/jobs/{submission_id}")
+        if not isinstance(submission_id, str) or not submission_id.strip():
+            raise ValueError("submission_id must be a non-empty string.")
+        q_id = urllib.parse.quote(submission_id, safe="")
+        info = self._json("GET", f"/api/jobs/{q_id}")
         return JobResult(
             submission_id=submission_id,
             cluster=self,
@@ -1554,10 +1563,7 @@ class RayCluster:
         Raises:
             RayClientError: If the HTTP request fails.
         """
-        res = self._json("GET", "/api/jobs/")
-        if isinstance(res, dict) and "jobs" in res:
-            return res["jobs"]
-        return list(res)
+        return list(self._json("GET", "/api/jobs/"))
 
     # 2. Stateful Actors
     def actor(
@@ -1620,6 +1626,8 @@ class RayCluster:
             RayClientError: If the HTTP request fails.
         """
         timeout = _validate_timeout(timeout, "timeout")
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise ValueError("Actor name must be a non-empty string.")
         has_explicit_ttl = ttl_seconds is not _UNSET
         validated_ttl = _validate_ttl_seconds(ttl_seconds) if has_explicit_ttl else None
         validated_get_if_exists = _validate_get_if_exists(get_if_exists)
@@ -1718,7 +1726,12 @@ class RayCluster:
         if captured_globals is not None:
             to_json(captured_globals, f"Actor '{class_name}' captured globals")
 
-        merged_env, uploaded = self._prepare_and_upload_runtime_env(runtime_env)
+        def_runtime_env = (
+            default_opts.get("runtime_env") if isinstance(default_opts, dict) else None
+        )
+        merged_env, uploaded = self._prepare_and_upload_runtime_env(
+            runtime_env, base_runtime_env=def_runtime_env
+        )
 
         actor_name = name or f"{class_name}_{uuid.uuid4().hex[:8]}"
         spec: Dict[str, Any] = {
@@ -1777,7 +1790,10 @@ class RayCluster:
         Raises:
             RayClientError: If the actor does not exist or the HTTP request fails.
         """
-        self._json("GET", f"/api/actors/{name}")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Actor name must be a non-empty string.")
+        q_name = urllib.parse.quote(name, safe="")
+        self._json("GET", f"/api/actors/{q_name}")
         return ActorHandle(name=name, cluster=self, created=False)
 
     def list_actors(self) -> List[Dict[str, Any]]:
@@ -1789,10 +1805,7 @@ class RayCluster:
         Raises:
             RayClientError: If the HTTP request fails.
         """
-        res = self._json("GET", "/api/actors")
-        if isinstance(res, dict) and "actors" in res:
-            return res["actors"]
-        return list(res)
+        return list(self._json("GET", "/api/actors"))
 
     def kill_actor(self, name: str) -> bool:
         """Kills a named root actor and all child actors/objects it owns.
@@ -1836,7 +1849,8 @@ class RayCluster:
         """
         if not isinstance(group_name, str) or not group_name.strip():
             raise ValueError("group_name must be a non-empty string.")
-        return dict(self._json("GET", f"/api/cluster/node_groups/{group_name.strip()}"))
+        q_group = urllib.parse.quote(group_name.strip(), safe="")
+        return dict(self._json("GET", f"/api/cluster/node_groups/{q_group}"))
 
     def add_nodes(
         self,
@@ -1881,16 +1895,15 @@ class RayCluster:
             if eff_timeout is not None
             else ((self._timeout, None) if wait_ready else None)
         )
+        q_group = urllib.parse.quote(group_name.strip(), safe="")
         res = self._json(
             "POST",
-            f"/api/cluster/node_groups/{group_name.strip()}/nodes",
+            f"/api/cluster/node_groups/{q_group}/nodes",
             json_data=body,
             idempotent=False,
             timeout=req_timeout,
         )
         return list(res)
-
-    _VALID_NODE_STATES = frozenset({"PENDING", "ALIVE", "TERMINATING_SOON", "DEAD"})
 
     def list_nodes(
         self,
@@ -1934,11 +1947,6 @@ class RayCluster:
                 raise TypeError(
                     f"states must be a string or sequence of strings, got {states!r}."
                 )
-            if not set(parts).issubset(self._VALID_NODE_STATES):
-                raise ValueError(
-                    f"Invalid node state filter {states!r}; expected one or more of "
-                    f"{sorted(self._VALID_NODE_STATES)}."
-                )
             params.append(("state", ",".join(parts)))
         if group_name is not None:
             if not isinstance(group_name, str) or not group_name.strip():
@@ -1967,7 +1975,8 @@ class RayCluster:
         """
         if not isinstance(node_id, str) or not node_id.strip():
             raise ValueError("node_id must be a non-empty string.")
-        return dict(self._json("GET", f"/api/cluster/nodes/{node_id.strip()}"))
+        q_node = urllib.parse.quote(node_id.strip(), safe="")
+        return dict(self._json("GET", f"/api/cluster/nodes/{q_node}"))
 
     def destroy_node(
         self,
@@ -1996,22 +2005,23 @@ class RayCluster:
             raise ValueError("node_id must be a non-empty string.")
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("reason must be a non-empty string.")
-        if grace_period_s is not None:
-            if (
-                isinstance(grace_period_s, bool)
-                or not isinstance(grace_period_s, (int, float))
-                or not math.isfinite(grace_period_s)
-                or grace_period_s < 0
-            ):
-                raise ValueError(
-                    f"grace_period_s must be a non-negative finite number, got {grace_period_s!r}."
-                )
-        body: Dict[str, Any] = {"reason": reason.strip()}
-        if grace_period_s is not None:
-            body["grace_period_s"] = float(grace_period_s)
+        if (
+            isinstance(grace_period_s, bool)
+            or not isinstance(grace_period_s, (int, float))
+            or not math.isfinite(grace_period_s)
+            or grace_period_s < 0
+        ):
+            raise ValueError(
+                f"grace_period_s must be a non-negative finite number, got {grace_period_s!r}."
+            )
+        body: Dict[str, Any] = {
+            "reason": reason.strip(),
+            "grace_period_s": float(grace_period_s),
+        }
+        q_node = urllib.parse.quote(node_id.strip(), safe="")
         return self._json(
             "DELETE",
-            f"/api/cluster/nodes/{node_id.strip()}",
+            f"/api/cluster/nodes/{q_node}",
             json_data=body,
             idempotent=False,
         )

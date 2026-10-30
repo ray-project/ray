@@ -2,7 +2,6 @@ import asyncio
 import collections
 import concurrent.futures
 import contextlib
-import dataclasses
 import hashlib
 import importlib
 import inspect
@@ -379,8 +378,6 @@ class _LogTeeStream(io.TextIOBase):
         return bool(getattr(self._stream, "isatty", lambda: False)())
 
     def write(self, s: str) -> int:
-        if not isinstance(s, str):
-            s = str(s)
         try:
             self._stream.write(s)
         except Exception:
@@ -658,7 +655,7 @@ class _ClientRootActor:
                 ttl = self._ttl_seconds
                 active = self._active_calls
                 elapsed = time.monotonic() - self._last_active_mono
-                if ttl is not None and ttl > 0 and active == 0 and elapsed >= ttl:
+                if ttl is not None and active == 0 and elapsed >= ttl:
                     self._shutting_down = True
                     should_reap = True
             if should_reap:
@@ -827,7 +824,7 @@ class _ClientRootActor:
         if shutting_down:
             raise RuntimeError(f"Actor '{self._name}' is shutting down.")
         remaining_ttl: Optional[float] = None
-        if ttl is not None and ttl > 0:
+        if ttl is not None:
             if active_calls > 0:
                 remaining_ttl = float(ttl)
             else:
@@ -909,11 +906,7 @@ class _ClientRootActor:
             )
             _validate_strict_json(res, label)
             return {"ok": True, "result": res}
-        except (
-            Exception,
-            asyncio.CancelledError,
-            concurrent.futures.CancelledError,
-        ) as exc:
+        except (Exception, asyncio.CancelledError) as exc:
             return {
                 "ok": False,
                 "error": _format_exception_dict(exc),
@@ -985,11 +978,7 @@ class _ClientRootActor:
                 raise TypeError(
                     f"'{self._target_name}.{method_name}' is not a generator function."
                 )
-        except (
-            GeneratorExit,
-            asyncio.CancelledError,
-            concurrent.futures.CancelledError,
-        ):
+        except (GeneratorExit, asyncio.CancelledError):
             pass
         except Exception as exc:
             if not self._is_stream_canceled(stream_id):
@@ -1020,12 +1009,7 @@ class _ClientRootActor:
                 if not self._shutting_down:
                     ttl = self._ttl_seconds
                     elapsed = time.monotonic() - self._last_active_mono
-                    if (
-                        ttl is None
-                        or ttl <= 0
-                        or self._active_calls > 0
-                        or elapsed < ttl
-                    ):
+                    if ttl is None or self._active_calls > 0 or elapsed < ttl:
                         return {"ok": True, "reaped": False}
                     self._shutting_down = True
         self._cleanup_resources()
@@ -1129,8 +1113,7 @@ class ActorManager:
                 for name, meta in list(self._actors.items()):
                     ttl = meta.get("ttl_seconds")
                     if (
-                        isinstance(ttl, (int, float))
-                        and ttl > 0
+                        ttl is not None
                         and meta.get("active_calls", 0) == 0
                         and (now_mono - meta.get("last_active_mono", now_mono))
                         >= (ttl + 1.5)
@@ -1195,67 +1178,106 @@ class ActorManager:
         with contextlib.suppress(Exception):
             await asyncio.shield(run_background_task(_do_reap()))
 
-    async def _lookup_actor(
-        self, name: str, timeout: float = _CONTROL_TIMEOUT_S
-    ) -> Optional[Dict[str, Any]]:
+    async def _lookup_actor_with_status(
+        self,
+        name: str,
+        *,
+        namespace: str = CLIENT_ACTOR_NAMESPACE,
+        timeout: float = _CONTROL_TIMEOUT_S,
+        fetch_info: bool = False,
+    ) -> Tuple[str, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         self._ensure_reaper()
         async with self._lock:
-            meta = self._actors.get(name)
-            if meta is not None:
-                return meta
             if name in self._creating_handles:
-                return None
-        try:
-            handle = ray.get_actor(name, namespace=CLIENT_ACTOR_NAMESPACE)
-        except Exception:
-            async with self._lock:
-                self._non_root_names.discard(name)
-            return None
-        try:
-            if not _is_client_root_actor_handle(handle):
+                return "CREATING", None, None
+            meta = self._actors.get(name)
+        if meta is not None:
+            if not fetch_info:
+                return "FOUND", meta, None
+            try:
+                info = await asyncio.wait_for(
+                    meta["handle"].get_info.remote(), timeout=timeout
+                )
+            except (RayActorError, RayTaskError):
                 async with self._lock:
-                    self._non_root_names.add(name)
-                return None
+                    if self._actors.get(name) is meta:
+                        self._actors.pop(name, None)
+                        self._prune_name_lock_locked(name)
+                return "BROKEN", None, None
+            except Exception:
+                return "UNRESPONSIVE", meta, None
+            if not isinstance(info, dict) or not info.get("ok", True):
+                return "BROKEN", meta, None
+            info = dict(info)
+            info["active_calls"] = max(
+                info.get("active_calls", 0), meta.get("active_calls", 0)
+            )
+            return "FOUND", meta, info
+
+        try:
+            handle = ray.get_actor(name, namespace=namespace)
+        except Exception:
             async with self._lock:
                 self._non_root_names.discard(name)
-            info = await asyncio.wait_for(handle.get_info.remote(), timeout=timeout)
-            if not isinstance(info, dict) or not info.get("ok", True):
-                return None
-            now_mono = time.monotonic()
-            rem = info.get("remaining_ttl_seconds")
-            ttl = info.get("ttl_seconds")
-            elapsed = (
-                max(0.0, float(ttl) - float(rem))
-                if (ttl is not None and rem is not None)
-                else 0.0
-            )
-            meta = {
-                "name": name,
-                "handle": handle,
-                "class_name": info.get("class_name", name),
-                "kind": info.get("kind", "class"),
-                "namespace": info.get("namespace", CLIENT_ACTOR_NAMESPACE),
-                "detached": bool(info.get("detached", True)),
-                "spec_hash": info.get("spec_hash"),
-                "ttl_seconds": ttl,
-                "created_at": info.get("created_at", time.time()),
-                "last_active": info.get("last_active", time.time()),
-                "last_active_mono": now_mono - elapsed,
-                "active_calls": 0,
-                "generator_methods": set(info.get("generator_methods") or []),
-                "_cached_info": info,
-                "_cached_info_mono": now_mono,
-            }
+            return "MISSING", None, None
+        if not _is_client_root_actor_handle(handle):
             async with self._lock:
-                if name in self._creating_handles:
-                    return None
-                existing = self._actors.get(name)
-                if existing is not None:
-                    return existing
-                self._actors[name] = meta
-            return meta
+                self._non_root_names.add(name)
+            return "NON_ROOT", None, None
+        async with self._lock:
+            self._non_root_names.discard(name)
+        try:
+            info = await asyncio.wait_for(handle.get_info.remote(), timeout=timeout)
+        except (RayActorError, RayTaskError):
+            return "BROKEN", None, None
         except Exception:
-            return None
+            return "UNRESPONSIVE", None, None
+        if not isinstance(info, dict) or not info.get("ok", True):
+            return "BROKEN", None, None
+        now_mono = time.monotonic()
+        rem = info.get("remaining_ttl_seconds")
+        ttl = info.get("ttl_seconds")
+        elapsed = (
+            max(0.0, float(ttl) - float(rem))
+            if (ttl is not None and rem is not None)
+            else 0.0
+        )
+        meta = {
+            "name": name,
+            "handle": handle,
+            "class_name": info.get("class_name", name),
+            "kind": info.get("kind", "class"),
+            "namespace": info.get("namespace", namespace),
+            "detached": bool(info.get("detached", True)),
+            "spec_hash": info.get("spec_hash"),
+            "ttl_seconds": ttl,
+            "created_at": info.get("created_at", time.time()),
+            "last_active": info.get("last_active", time.time()),
+            "last_active_mono": now_mono - elapsed,
+            "active_calls": 0,
+            "generator_methods": set(info.get("generator_methods") or []),
+        }
+        async with self._lock:
+            if name in self._creating_handles:
+                return "CREATING", None, None
+            existing = self._actors.get(name)
+            if existing is not None:
+                meta = existing
+            else:
+                self._actors[name] = meta
+        info = dict(info)
+        info["active_calls"] = max(
+            info.get("active_calls", 0), meta.get("active_calls", 0)
+        )
+        return "FOUND", meta, info
+
+    async def lookup_actor(
+        self, name: str, timeout: float = _CONTROL_TIMEOUT_S
+    ) -> Optional[Dict[str, Any]]:
+        status, meta, _ = await self._lookup_actor_with_status(
+            name, timeout=timeout, fetch_info=False
+        )
+        return meta if status == "FOUND" else None
 
     async def _terminate_actor_for_recreate(
         self,
@@ -1411,12 +1433,17 @@ class ActorManager:
             "custom_resources": custom_resources,
         }
 
-    async def create_actor(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_actor(
+        self, spec: Dict[str, Any], *, _validated: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         self._ensure_reaper()
-        try:
-            validated = self.validate_actor_spec(spec)
-        except ValueError as exc:
-            return {"ok": False, "error": _format_exception_dict(exc)}
+        if _validated is not None:
+            validated = _validated
+        else:
+            try:
+                validated = self.validate_actor_spec(spec)
+            except ValueError as exc:
+                return {"ok": False, "error": _format_exception_dict(exc)}
 
         kind = validated["kind"]
         target_name = validated["target_name"]
@@ -1502,104 +1529,112 @@ class ActorManager:
                     lookup_timeout = _remaining_timeout(_CONTROL_TIMEOUT_S)
                 except asyncio.TimeoutError:
                     return _timeout_error()
-                existing = await self._lookup_actor(
+                eff_lookup_timeout = (
+                    lookup_timeout if lookup_timeout is not None else _CONTROL_TIMEOUT_S
+                )
+                status, existing, info = await self._lookup_actor_with_status(
                     name,
-                    timeout=lookup_timeout
-                    if lookup_timeout is not None
-                    else _CONTROL_TIMEOUT_S,
+                    namespace=namespace,
+                    timeout=eff_lookup_timeout,
+                    fetch_info=True,
                 )
                 should_terminate_existing = False
-                if existing is not None:
-                    try:
-                        cached_info = existing.get("_cached_info")
-                        cached_mono = existing.get("_cached_info_mono", 0.0)
-                        if (
-                            isinstance(cached_info, dict)
-                            and (time.monotonic() - cached_mono) < 0.05
-                        ):
-                            info = cached_info
-                        else:
-                            info = await asyncio.wait_for(
-                                existing["handle"].get_info.remote(),
-                                timeout=_remaining_timeout(_CONTROL_TIMEOUT_S),
-                            )
-                        if not isinstance(info, dict) or not info.get("ok", True):
-                            should_terminate_existing = True
-                        else:
-                            existing_cls = info.get("class_name") or existing.get(
-                                "class_name"
-                            )
-                            existing_hash = info.get("spec_hash") or existing.get(
-                                "spec_hash"
-                            )
-                            class_mismatch = bool(
-                                spec.get("class_name")
-                                and existing_cls
-                                and existing_cls != target_name
-                            )
-                            spec_mismatch = bool(
-                                class_mismatch or existing_hash != spec_hash
-                            )
-                            if get_if_exists == "recreate" and spec_mismatch:
+                if status == "NON_ROOT":
+                    action = "reattached" if get_if_exists is True else "replaced"
+                    return {
+                        "ok": False,
+                        "error": {
+                            "exc_type": "ValueError",
+                            "exc_message": (
+                                f"Actor '{name}' already exists in namespace '{namespace}' "
+                                f"as a non-ray_client actor and cannot be {action}."
+                            ),
+                        },
+                    }
+                if status == "UNRESPONSIVE":
+                    if deadline is not None and time.monotonic() >= deadline:
+                        return _timeout_error()
+                    if get_if_exists == "recreate":
+                        should_terminate_existing = True
+                    else:
+                        return {
+                            "ok": False,
+                            "error": {
+                                "exc_type": "TimeoutError",
+                                "exc_message": (
+                                    f"Actor '{name}' exists but did not respond within "
+                                    f"{_CONTROL_TIMEOUT_S}s; pass get_if_exists='recreate' to replace it."
+                                ),
+                                "timed_out": True,
+                            },
+                        }
+                elif status == "BROKEN" or (
+                    status == "CREATING" and get_if_exists == "recreate"
+                ):
+                    should_terminate_existing = True
+                elif status == "FOUND" and existing is not None and info is not None:
+                    existing_cls = info.get("class_name") or existing.get("class_name")
+                    existing_hash = info.get("spec_hash") or existing.get("spec_hash")
+                    class_mismatch = bool(
+                        spec.get("class_name")
+                        and existing_cls
+                        and existing_cls != target_name
+                    )
+                    spec_mismatch = bool(class_mismatch or existing_hash != spec_hash)
+                    if get_if_exists == "recreate" and spec_mismatch:
+                        should_terminate_existing = True
+                    elif class_mismatch:
+                        return {
+                            "ok": False,
+                            "error": {
+                                "exc_type": "ValueError",
+                                "exc_message": (
+                                    f"Actor '{name}' already exists with class "
+                                    f"'{existing_cls}', cannot reattach as '{target_name}'."
+                                ),
+                            },
+                        }
+                    else:
+                        try:
+                            if has_explicit_ttl:
+                                info = await asyncio.wait_for(
+                                    existing["handle"].set_ttl.remote(ttl_seconds),
+                                    timeout=_remaining_timeout(_CONTROL_TIMEOUT_S),
+                                )
+                                existing["ttl_seconds"] = ttl_seconds
+                        except asyncio.TimeoutError:
+                            if deadline is not None and time.monotonic() >= deadline:
+                                return _timeout_error()
+                            if get_if_exists == "recreate":
                                 should_terminate_existing = True
-                            elif class_mismatch:
+                            else:
                                 return {
                                     "ok": False,
                                     "error": {
-                                        "exc_type": "ValueError",
+                                        "exc_type": "TimeoutError",
                                         "exc_message": (
-                                            f"Actor '{name}' already exists with class "
-                                            f"'{existing_cls}', cannot reattach as '{target_name}'."
+                                            f"Actor '{name}' exists but did not respond within "
+                                            f"{_CONTROL_TIMEOUT_S}s; pass get_if_exists='recreate' to replace it."
                                         ),
+                                        "timed_out": True,
                                     },
                                 }
-                            else:
-                                if has_explicit_ttl and hasattr(
-                                    existing["handle"], "set_ttl"
-                                ):
-                                    info = await asyncio.wait_for(
-                                        existing["handle"].set_ttl.remote(ttl_seconds),
-                                        timeout=_remaining_timeout(_CONTROL_TIMEOUT_S),
-                                    )
-                                    existing["ttl_seconds"] = ttl_seconds
-                                existing["generator_methods"] = set(
-                                    info.get("generator_methods") or []
-                                )
-                                now_mono = time.monotonic()
-                                existing["last_active"] = time.time()
-                                existing["last_active_mono"] = now_mono
-                                existing["_cached_info"] = info
-                                existing["_cached_info_mono"] = now_mono
-                                return {
-                                    **info,
-                                    "ok": True,
-                                    "name": name,
-                                    "created": False,
-                                    "spec_hash": existing_hash or spec_hash,
-                                    "spec_mismatch": spec_mismatch,
-                                }
-                    except asyncio.TimeoutError:
-                        if deadline is not None and time.monotonic() >= deadline:
-                            return _timeout_error()
-                        should_terminate_existing = True
-                    except Exception:
-                        should_terminate_existing = True
-                elif get_if_exists == "recreate":
-                    should_terminate_existing = True
-                else:
-                    try:
-                        stale_handle = ray.get_actor(name, namespace=namespace)
-                    except Exception:
-                        async with self._lock:
-                            self._non_root_names.discard(name)
-                    else:
-                        if _is_client_root_actor_handle(stale_handle):
-                            async with self._lock:
-                                self._non_root_names.discard(name)
+                        except Exception:
                             should_terminate_existing = True
                         else:
-                            async with self._lock:
-                                self._non_root_names.add(name)
+                            existing["generator_methods"] = set(
+                                info.get("generator_methods") or []
+                            )
+                            existing["last_active"] = time.time()
+                            existing["last_active_mono"] = time.monotonic()
+                            return {
+                                **info,
+                                "ok": True,
+                                "name": name,
+                                "created": False,
+                                "spec_hash": existing_hash or spec_hash,
+                                "spec_mismatch": spec_mismatch,
+                            }
                 if should_terminate_existing:
                     try:
                         term_timeout = _remaining_timeout(2.0)
@@ -1611,13 +1646,14 @@ class ActorManager:
                         timeout=term_timeout if term_timeout is not None else 2.0,
                     )
                 if name in self._non_root_names:
+                    action = "reattached" if get_if_exists is True else "replaced"
                     return {
                         "ok": False,
                         "error": {
                             "exc_type": "ValueError",
                             "exc_message": (
                                 f"Actor '{name}' already exists in namespace '{namespace}' "
-                                "as a non-ray_client actor and cannot be replaced."
+                                f"as a non-ray_client actor and cannot be {action}."
                             ),
                         },
                     }
@@ -1731,6 +1767,7 @@ class ActorManager:
 
     async def list_actors(self) -> List[Dict[str, Any]]:
         self._ensure_reaper()
+        discovered_info: Dict[str, Dict[str, Any]] = {}
         with contextlib.suppress(Exception):
             named = ray.util.list_named_actors(all_namespaces=True)
             active_ns_names = [
@@ -1749,7 +1786,15 @@ class ActorManager:
                 )
             uncached_names = [n for n in active_ns_names if n not in known_names]
             if uncached_names:
-                await asyncio.gather(*(self._lookup_actor(n) for n in uncached_names))
+                discovered = await asyncio.gather(
+                    *(
+                        self._lookup_actor_with_status(n, fetch_info=True)
+                        for n in uncached_names
+                    )
+                )
+                for n, (st, _, info) in zip(uncached_names, discovered):
+                    if st == "FOUND" and info is not None:
+                        discovered_info[n] = info
 
         async with self._lock:
             snapshot = list(self._actors.items())
@@ -1757,17 +1802,8 @@ class ActorManager:
         async def _query_one(
             name: str, meta: Dict[str, Any]
         ) -> Optional[Dict[str, Any]]:
-            cached_info = meta.pop("_cached_info", None)
-            cached_mono = meta.pop("_cached_info_mono", 0.0)
-            if (
-                isinstance(cached_info, dict)
-                and (time.monotonic() - cached_mono) < 0.25
-            ):
-                info = dict(cached_info)
-                info["active_calls"] = max(
-                    info.get("active_calls", 0), meta.get("active_calls", 0)
-                )
-                return info
+            if name in discovered_info:
+                return discovered_info[name]
             try:
                 info = await asyncio.wait_for(
                     meta["handle"].get_info.remote(), timeout=_CONTROL_TIMEOUT_S
@@ -1804,30 +1840,11 @@ class ActorManager:
         return [r for r in results if r is not None]
 
     async def get_actor_info(self, name: str) -> Optional[Dict[str, Any]]:
-        meta = await self._lookup_actor(name)
-        if meta is None:
-            return None
-        try:
-            info = await asyncio.wait_for(
-                meta["handle"].get_info.remote(), timeout=_CONTROL_TIMEOUT_S
-            )
-            if not isinstance(info, dict) or not info.get("ok", True):
-                return None
-            info["active_calls"] = max(
-                info.get("active_calls", 0), meta.get("active_calls", 0)
-            )
-            return info
-        except (RayActorError, RayTaskError):
-            async with self._lock:
-                if self._actors.get(name) is meta:
-                    self._actors.pop(name, None)
-                    self._prune_name_lock_locked(name)
-            return None
-        except Exception:
-            return None
+        status, _, info = await self._lookup_actor_with_status(name, fetch_info=True)
+        return info if status == "FOUND" else None
 
     async def get_actor_logs(self, name: str) -> Optional[Dict[str, Any]]:
-        meta = await self._lookup_actor(name)
+        meta = await self.lookup_actor(name)
         if meta is None:
             return None
         try:
@@ -1857,7 +1874,7 @@ class ActorManager:
         an `{"ok": False, "error": ...}` payload, so only cancellation propagates.
         """
         if meta is None:
-            meta = await self._lookup_actor(name)
+            meta = await self.lookup_actor(name)
         if meta is None:
             return None
         one_shot = meta.get("kind") == "function"
@@ -1930,7 +1947,7 @@ class ActorManager:
         meta: Optional[Dict[str, Any]] = None,
     ):
         if meta is None:
-            meta = await self._lookup_actor(name)
+            meta = await self.lookup_actor(name)
         if meta is None:
             yield {
                 "ok": False,
@@ -2067,10 +2084,6 @@ class ActorManager:
 
     @staticmethod
     def _node_group_to_dict(g: Any) -> Dict[str, Any]:
-        if isinstance(g, dict):
-            return dict(g)
-        if dataclasses.is_dataclass(g):
-            return dataclasses.asdict(g)
         return {
             "name": getattr(g, "name", ""),
             "resources": dict(getattr(g, "resources", None) or {}),
@@ -2080,63 +2093,35 @@ class ActorManager:
 
     @staticmethod
     def _node_to_dict(n: Any) -> Dict[str, Any]:
-        if isinstance(n, dict):
-            d: Dict[str, Any] = dict(n)
-        elif dataclasses.is_dataclass(n):
-            d = dataclasses.asdict(n)
-        else:
-            status_attr = getattr(n, "status", None)
-            status_obj = status_attr() if callable(status_attr) else status_attr
-            state_val = (
-                getattr(status_obj, "state", status_obj)
-                if status_obj is not None
-                else getattr(n, "state", "ALIVE")
-            )
-            death_reason = getattr(status_obj, "death_reason", None)
-            if hasattr(death_reason, "value"):
-                death_reason = death_reason.value
-            d = {
-                "id": getattr(n, "id", ""),
-                "group_name": getattr(n, "group_name", "default"),
-                "resources": dict(getattr(n, "resources", None) or {}),
-                "labels": dict(getattr(n, "labels", None) or {}),
-                "detached": bool(getattr(n, "detached", True)),
-                "state": state_val,
-                "death_reason": death_reason,
-                "termination_deadline": getattr(
-                    status_obj, "termination_deadline", None
-                ),
-            }
-        nid = d.get("id") or d.get("node_id") or ""
-        group = (
-            d.get("group_name") or d.get("group") or d.get("node_group") or "default"
+        status_attr = getattr(n, "status", None)
+        status_obj = status_attr() if callable(status_attr) else status_attr
+        state = (
+            getattr(status_obj, "state", status_obj)
+            if status_obj is not None
+            else getattr(n, "state", "ALIVE")
         )
-        state = d.get("state") or d.get("status") or "ALIVE"
         if hasattr(state, "value"):
             state = state.value
-        out = {
-            k: v
-            for k, v in d.items()
-            if k not in ("node_id", "group", "node_group", "status")
+        death_reason = getattr(status_obj, "death_reason", None)
+        if hasattr(death_reason, "value"):
+            death_reason = death_reason.value
+        return {
+            "id": getattr(n, "id", ""),
+            "group_name": getattr(n, "group_name", "default"),
+            "resources": dict(getattr(n, "resources", None) or {}),
+            "labels": dict(getattr(n, "labels", None) or {}),
+            "detached": bool(getattr(n, "detached", True)),
+            "state": str(state),
+            "death_reason": death_reason,
+            "termination_deadline": getattr(status_obj, "termination_deadline", None),
         }
-        out.update(
-            {
-                "id": nid,
-                "group_name": group,
-                "state": str(state),
-            }
-        )
-        return out
 
     def _all_nodes(self, *, include_dead: bool = False) -> List[Dict[str, Any]]:
         cluster_mod = getattr(ray, "cluster", None)
         if cluster_mod is not None:
             node_state_cls = getattr(cluster_mod, "NodeState", None)
             if include_dead and node_state_cls is not None:
-                try:
-                    raw_nodes = cluster_mod.list_nodes(states=list(node_state_cls))
-                except TypeError:
-                    raw_nodes = cluster_mod.list_nodes()
+                raw_nodes = cluster_mod.list_nodes(states=list(node_state_cls))
             else:
                 raw_nodes = cluster_mod.list_nodes()
             return [self._node_to_dict(n) for n in raw_nodes]
@@ -2196,7 +2181,7 @@ class ActorManager:
 
     def get_node_group(self, name: str) -> Dict[str, Any]:
         cluster_mod = getattr(ray, "cluster", None)
-        if cluster_mod is not None and hasattr(cluster_mod, "get_node_group"):
+        if cluster_mod is not None:
             return self._node_group_to_dict(cluster_mod.get_node_group(name))
         for g in self.list_node_groups():
             if g.get("name") == name:
@@ -2238,7 +2223,7 @@ class ActorManager:
 
     def get_node(self, node_id: str) -> Dict[str, Any]:
         cluster_mod = getattr(ray, "cluster", None)
-        if cluster_mod is not None and hasattr(cluster_mod, "get_node"):
+        if cluster_mod is not None:
             return self._node_to_dict(cluster_mod.get_node(node_id))
         for n in self._all_nodes(include_dead=True):
             if n.get("id") == node_id:
@@ -2274,15 +2259,11 @@ class ActorManager:
                     f"would exceed max_nodes={max_nodes}."
                 )
         cluster_mod = getattr(ray, "cluster", None)
-        if cluster_mod is None or not hasattr(cluster_mod, "get_node_group"):
+        if cluster_mod is None:
             raise NotImplementedError(
                 "Cluster node provisioning requires Ray 3.0 (ray.cluster)."
             )
         ng_obj = cluster_mod.get_node_group(group)
-        if not hasattr(ng_obj, "add_nodes"):
-            raise NotImplementedError(
-                "Cluster node provisioning requires Ray 3.0 (ray.cluster)."
-            )
         added_nodes = ng_obj.add_nodes(count, detached=True)
         if wait_ready:
             deadline = (
@@ -2290,22 +2271,16 @@ class ActorManager:
             )
             try:
                 for n in added_nodes:
-                    ready_fn = getattr(n, "ready", None)
-                    if callable(ready_fn):
-                        rem = (
-                            max(0.0, deadline - time.monotonic())
-                            if deadline is not None
-                            else None
-                        )
-                        ready_fn().result(timeout=rem)
+                    rem = (
+                        max(0.0, deadline - time.monotonic())
+                        if deadline is not None
+                        else None
+                    )
+                    n.ready().result(timeout=rem)
             except BaseException:
                 for n in added_nodes:
-                    destroy_fn = getattr(n, "destroy", None)
-                    if callable(destroy_fn):
-                        with contextlib.suppress(Exception):
-                            destroy_fn(
-                                reason="add_nodes wait_ready failed or timed out"
-                            )
+                    with contextlib.suppress(Exception):
+                        n.destroy(reason="add_nodes wait_ready failed or timed out")
                 raise
         return [self._node_to_dict(n) for n in added_nodes]
 
@@ -2333,28 +2308,19 @@ class ActorManager:
         if node.get("group_name") == "head":
             raise ValueError("Cannot destroy the head node.")
         cluster_mod = getattr(ray, "cluster", None)
-        if cluster_mod is None or not hasattr(cluster_mod, "get_node"):
+        if cluster_mod is None:
             raise NotImplementedError(
                 "Cluster node destruction requires Ray 3.0 (ray.cluster)."
             )
         node_obj = cluster_mod.get_node(node_id)
-        if not hasattr(node_obj, "destroy"):
-            raise NotImplementedError(
-                "Cluster node destruction requires Ray 3.0 (ray.cluster)."
-            )
         destroy_kwargs: Dict[str, Any] = {"reason": reason}
         if grace_period_s is not None:
             destroy_kwargs["grace_period_s"] = float(grace_period_s)
         node_obj.destroy(**destroy_kwargs)
-        updated = self._node_to_dict(node_obj)
-        new_state = "DEAD" if node.get("state") == "PENDING" else updated["state"]
         return {
-            **node,
-            **updated,
+            **self._node_to_dict(node_obj),
             "ok": True,
             "destroyed": True,
-            "state": new_state,
-            "reason": reason,
         }
 
 
