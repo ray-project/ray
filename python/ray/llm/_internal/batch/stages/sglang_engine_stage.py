@@ -334,6 +334,69 @@ class SGLangEngineStageUDF(StatefulStageUDF):
             self.llm.shutdown()
 
 
+def _resources_from_placement_group_config(
+    placement_group_config: Dict[str, Any], num_ranks: int
+) -> Dict[str, Any]:
+    """Turn a ``placement_group_config`` into Ray remote args for the engine actor.
+
+    The SGLang engine runs inside this one actor and spawns its own TP/DP rank
+    processes, so no placement group is created: the bundles only say how much
+    the actor reserves. Their sum becomes ``num_cpus`` / ``num_gpus`` (Ray Data
+    takes those as dedicated args) and any other key becomes a custom resource.
+    ``strategy`` therefore has no effect here. This mirrors the vLLM stage's
+    single-process path.
+
+    A bundle GPU below 1 lets several engines share one device. That is only
+    sound for a single-rank engine: every TP/DP rank needs a whole visible
+    device of its own, so a multi-rank engine reserving fewer GPUs than it has
+    ranks would see too few devices and fail after GPU allocation.
+
+    Args:
+        placement_group_config: The config, as a dict. ``bundle_per_worker`` is
+            replicated once per rank (``tp_size * dp_size``).
+        num_ranks: ``tp_size * dp_size`` for this engine.
+
+    Returns:
+        ``num_gpus``, plus ``num_cpus`` and ``resources`` when requested.
+    """
+    from collections import Counter
+
+    from ray.llm._internal.common.placement import PlacementGroupConfig
+
+    config = PlacementGroupConfig(**placement_group_config)
+    if config.bundle_per_worker is not None:
+        bundles = [config.bundle_per_worker] * num_ranks
+    else:
+        bundles = config.bundles
+
+    totals: Counter = Counter()
+    for bundle in bundles:
+        totals.update(bundle.model_dump())
+
+    total_cpus = totals.pop("CPU", 0)
+    total_gpus = totals.pop("GPU", 0)
+    if total_gpus <= 0:
+        raise ValueError(
+            "placement_group_config reserves no GPU for the SGLang engine; "
+            "every bundle has GPU=0."
+        )
+    if num_ranks > 1 and total_gpus < num_ranks:
+        raise ValueError(
+            f"placement_group_config reserves {total_gpus} GPU(s) for an SGLang "
+            f"engine with tp_size * dp_size = {num_ranks}. Each rank needs a "
+            "whole device, so GPU sharing is only supported for single-rank "
+            "engines (tp_size * dp_size == 1)."
+        )
+
+    ray_remote_args: Dict[str, Any] = {"num_gpus": total_gpus}
+    if total_cpus:
+        ray_remote_args["num_cpus"] = total_cpus
+    resources = {k: v for k, v in totals.items() if v}
+    if resources:
+        ray_remote_args["resources"] = resources
+    return ray_remote_args
+
+
 class SGLangEngineStage(StatefulStage):
     """A stage that runs SGLang engine."""
 
@@ -362,9 +425,20 @@ class SGLangEngineStage(StatefulStage):
         # Set up num_gpus required
         tp_size = engine_kwargs.get("tp_size", 1)
         dp_size = engine_kwargs.get("dp_size", 1)
-        num_gpus = tp_size * dp_size
+        num_ranks = tp_size * dp_size
 
-        ray_remote_args["num_gpus"] = num_gpus
+        placement_group_config = fn_constructor_kwargs.pop(
+            "placement_group_config", None
+        )
+        if placement_group_config is None:
+            ray_remote_args["num_gpus"] = num_ranks
+        else:
+            ray_remote_args.update(
+                _resources_from_placement_group_config(
+                    placement_group_config, num_ranks
+                )
+            )
+
         map_batches_kwargs.update(ray_remote_args)
         return values
 

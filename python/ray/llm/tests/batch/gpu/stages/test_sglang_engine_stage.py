@@ -146,6 +146,79 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
     }
 
 
+def _post_init_remote_args(engine_kwargs, placement_group_config):
+    stage = SGLangEngineStage(
+        fn_constructor_kwargs=dict(
+            model="dummy-model",
+            engine_kwargs=engine_kwargs,
+            task_type=SGLangTaskType.GENERATE,
+            placement_group_config=placement_group_config,
+        ),
+        map_batches_kwargs=dict(compute=ActorPoolStrategy(size=1)),
+    )
+    # The UDF constructor does not take it, so the stage must consume it.
+    assert "placement_group_config" not in stage.fn_constructor_kwargs
+    stage.map_batches_kwargs.pop("compute")
+    return stage.map_batches_kwargs
+
+
+def test_sglang_engine_stage_without_placement_group_config_uses_whole_gpus():
+    assert _post_init_remote_args({"tp_size": 2, "dp_size": 2}, None) == {"num_gpus": 4}
+
+
+def test_sglang_engine_stage_fractional_gpu_shares_a_device():
+    remote_args = _post_init_remote_args(
+        {}, {"bundle_per_worker": {"GPU": 0.5}, "strategy": "PACK"}
+    )
+    assert remote_args == {"num_gpus": 0.5}
+
+
+def test_sglang_engine_stage_bundle_per_worker_is_replicated_per_rank():
+    remote_args = _post_init_remote_args(
+        {"tp_size": 2},
+        {"bundle_per_worker": {"GPU": 1, "CPU": 2, "custom": 1}},
+    )
+    assert remote_args == {"num_gpus": 2, "num_cpus": 4, "resources": {"custom": 2}}
+
+
+def test_sglang_engine_stage_explicit_bundles_are_summed():
+    remote_args = _post_init_remote_args(
+        {"tp_size": 2}, {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]}
+    )
+    assert remote_args == {"num_gpus": 2, "num_cpus": 1}
+
+
+@pytest.mark.parametrize(
+    "engine_kwargs,placement_group_config,match",
+    [
+        ({"tp_size": 2}, {"bundle_per_worker": {"GPU": 0.5}}, "single-rank"),
+        ({"dp_size": 2}, {"bundles": [{"GPU": 1}]}, "single-rank"),
+        ({}, {"bundle_per_worker": {"CPU": 1}}, "no GPU"),
+    ],
+)
+def test_sglang_engine_stage_refuses_unsound_gpu_reservations(
+    engine_kwargs, placement_group_config, match
+):
+    with pytest.raises(ValueError, match=match):
+        _post_init_remote_args(engine_kwargs, placement_group_config)
+
+
+def test_sglang_processor_config_validates_placement_group_config():
+    from ray.llm._internal.batch.processor.sglang_engine_proc import (
+        SGLangEngineProcessorConfig,
+    )
+
+    config = SGLangEngineProcessorConfig(
+        model_source="dummy-model",
+        placement_group_config={"bundle_per_worker": {"GPU": 0.5}},
+    )
+    assert config.placement_group_config["bundle_per_worker"]["GPU"] == 0.5
+    assert SGLangEngineProcessorConfig(model_source="m").placement_group_config is None
+
+    with pytest.raises(ValueError, match="either 'bundle_per_worker' or 'bundles'"):
+        SGLangEngineProcessorConfig(model_source="m", placement_group_config={})
+
+
 @pytest.mark.asyncio
 async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M):
     # Create UDF instance - it will use the mocked wrapper

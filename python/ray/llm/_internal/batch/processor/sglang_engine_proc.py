@@ -4,7 +4,7 @@ import hashlib
 import logging
 from typing import Any, Dict, Optional
 
-from pydantic import Field, root_validator
+from pydantic import Field, field_validator, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
@@ -30,6 +30,7 @@ from ray.llm._internal.batch.stages.configs import (
     resolve_stage_config,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.placement import PlacementGroupConfig
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,24 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
     )
+    placement_group_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Resources each engine replica reserves, as placement group "
+        "bundles. Specify either 'bundle_per_worker' (replicated by "
+        "tp_size * dp_size) or 'bundles'. The SGLang engine runs inside one actor, "
+        "so the bundles are summed into that actor's num_cpus/num_gpus/resources "
+        "and 'strategy' has no effect. A fractional GPU lets several single-rank "
+        "engines share a device, e.g. {'bundle_per_worker': {'GPU': 0.5}} for two "
+        "engines per GPU; lower 'mem_fraction_static' in engine_kwargs to match. "
+        "Defaults to tp_size * dp_size whole GPUs.",
+    )
+
+    @field_validator("placement_group_config")
+    @classmethod
+    def validate_placement_group_config(cls, value):
+        if value is None:
+            return None
+        return PlacementGroupConfig(**value).model_dump()
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
@@ -176,6 +195,7 @@ def build_sglang_engine_processor(
                 engine_kwargs=config.engine_kwargs,
                 task_type=config.task_type,
                 max_pending_requests=config.max_pending_requests,
+                placement_group_config=config.placement_group_config,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
