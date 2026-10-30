@@ -140,6 +140,11 @@ class DataConfig:
 
         By default, configurations are carried over from what is already set
         in DataContext.
+
+        Returns:
+            ``ExecutionOptions`` with ``resource_limits``, ``exclude_resources``,
+            ``preserve_order``, and ``verbose_progress`` copied from the current
+            ``DataContext``.
         """
         from ray.data import ExecutionOptions
         from ray.data.context import DataContext

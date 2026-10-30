@@ -557,6 +557,7 @@ class vLLMEngineWrapper:
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 sampling_params=request.params,
+                tokenization_kwargs=request.tokenization_kwargs,
                 lora_request=request.lora_request,
             )
 
@@ -992,7 +993,8 @@ class vLLMEngineStage(StatefulStage):
             "mm_processor_kwargs": "The kwargs for the engine's multimodal processor.",
             "multimodal_uuids": "User-specified UUIDs for multimodal items, mapped by modality.",
         }
-        if self._get_task_type() == vLLMTaskType.EMBED:
+        task_type = self._get_task_type()
+        if task_type == vLLMTaskType.EMBED:
             ret["pooling_params"] = (
                 "The pooling parameters. See "
                 "https://docs.vllm.ai/en/latest/api/vllm/#vllm.PoolingParams "
@@ -1005,5 +1007,16 @@ class vLLMEngineStage(StatefulStage):
                 "See "
                 "https://docs.vllm.ai/en/latest/api/vllm/entrypoints/pooling/offline/#vllm.entrypoints.pooling.offline.PoolingOfflineMixin.embed "
                 "for details."
+            )
+        elif task_type == vLLMTaskType.GENERATE:
+            ret["tokenization_kwargs"] = (
+                "Tokenization keyword arguments passed to the vLLM engine. "
+                "Use this to control prompt truncation, e.g. "
+                '{"truncation": true, "max_length": 512}. Truncation also '
+                "applies to a tokenized_prompt. vLLM keeps the last max_length "
+                "tokens for generation and the first for pooling; set "
+                '"truncation_side" to "left" (last) or "right" (first) to choose. '
+                "Leave room for the generated tokens: max_length bounds the "
+                "prompt only."
             )
         return ret

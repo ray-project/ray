@@ -8,7 +8,7 @@ myst:
 
 # Publishing an example
 
-This page describes how to publish an executable example to the Ray documentation with the recommended template-collections flow. For how to write the notebook content itself, see {ref}`creating-notebook-example`. This page picks up once you have an example to publish.
+This page describes how to publish an executable example to the Ray documentation with the recommended template-collections flow. To add a guide that Ray CI doesn't test, without publishing it as a template, see {ref}`writing-e2e-guide`.
 
 ## Two ways to publish an example
 

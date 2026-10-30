@@ -161,6 +161,9 @@ def get_context() -> TrainContext:
     The context is only available within a function passed to Ray Train.
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
+
+    Returns:
+        The :class:`~ray.train.TrainContext` for the current worker.
     """
     return get_train_fn_utils().get_context()
 

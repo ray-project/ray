@@ -597,6 +597,14 @@ class PathPartitionFilter:
         return filtered_paths
 
     def apply(self, path: str) -> bool:
+        """Decide whether to read a file, based on the partitions in its path.
+
+        Args:
+            path: The file path to parse partition keys and values from.
+
+        Returns:
+            ``True`` if the filter function keeps the file, ``False`` to skip it.
+        """
         return self._filter_fn(self._parser(path))
 
     @property
