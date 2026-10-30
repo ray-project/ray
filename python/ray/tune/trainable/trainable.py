@@ -623,11 +623,21 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, storage=None):
+    def reset(self, new_config: Dict, storage: Optional[StorageContext] = None) -> bool:
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
-        reset actor behavior for the new config."""
+        reset actor behavior for the new config.
+
+        Args:
+            new_config: The config for the new trial. This method removes the
+                trial info and log file entries Tune adds to it.
+            storage: The storage context for the new trial.
+
+        Returns:
+            True if the trainable was reset, False if ``reset_config``
+            returned False.
+        """
         self.config = new_config
 
         self._storage = storage
