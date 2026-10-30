@@ -1,40 +1,42 @@
 ---
 myst:
   html_meta:
-    description: "Troubleshoot multi-node GPU serving on KubeRay: head pod placement on GPU nodes, AWS OFI plugin issues, and NCCL debugging."
+    description: "Troubleshoot multi-node GPU serving on KubeRay: head Pod placement on GPU nodes, AWS OFI plugin issues, and NCCL debugging."
 ---
 
 (serve-multi-node-gpu-troubleshooting)=
 
 # Troubleshoot multi-node GPU serving on KubeRay
 
-This guide helps you diagnose and resolve common issues when deploying multi-node GPU workloads on KubeRay, particularly for large language model (LLM) serving with vLLM.
+This guide helps you diagnose and resolve common issues when you deploy multi-node GPU workloads on KubeRay, particularly large language model (LLM) serving with vLLM.
 
 ## Debugging strategy
 
-When encountering issues with multi-node GPU serving, use this systematic approach to isolate the problem:
+To isolate a problem with multi-node GPU serving, work through the following steps:
 
-1. **Test on different platforms** Compare behavior between:
+1. **Test on different platforms**: Compare behavior across the following setups:
    - Single node without KubeRay
    - Standalone vLLM server on KubeRay
    - Ray Serve LLM deployment on KubeRay
 
-2. **Vary hardware configurations** Test with different GPU types—for example, A100s vs H100s—to identify hardware-specific issues
+1. **Vary hardware configurations**: Test with different GPU types, such as A100s and H100s, to identify hardware-specific issues.
 
-3. **Use minimal reproducers** Create simplified test cases that isolate specific components (NCCL, model loading, etc.)
+1. **Use minimal reproducers**: Create simplified test cases that isolate specific components, such as NCCL or model loading.
 
 ## Common issues and solutions
 
-### 1. Head pod scheduled on GPU node
+Each of the following issues lists its symptoms, its root cause, and a solution.
 
-**Symptoms**
-- `ray status` shows duplicate GPU resources, for example, 24 GPUs when cluster only has 16 GPUs
-- Model serving hangs when using pipeline parallelism (PP > 1)
-- Resource allocation conflicts
+### 1. Head Pod scheduled on GPU node
 
-**Root Cause** The Ray head pod is incorrectly scheduled on a GPU worker node, causing resource accounting issues.
+This issue causes the following symptoms:
+- `ray status` shows duplicate GPU resources, for example, 24 GPUs when the cluster has only 16.
+- Model serving hangs when you use pipeline parallelism with a pipeline-parallel size greater than one.
+- Resource allocation conflicts occur.
 
-**Solution** Configure the head pod to use zero GPUs in your RayCluster specification:
+**Root cause**: The Ray head Pod is incorrectly scheduled on a GPU worker node, which causes resource accounting issues.
+
+**Solution**: Configure the head Pod to use zero GPUs in your RayCluster specification:
 
 ```yaml
 apiVersion: ray.io/v1
@@ -49,41 +51,43 @@ spec:
     # ... other head group configuration
 ```
 
-### 2. AWS OFI plugin version issues (H100-specific)
+(aws-ofi-plugin-version-issues-h100-specific)=
+### 2. AWS OFI plugin version issues on H100 instances
 
-**Symptoms**
-- NCCL initialization failures on H100 instances
-- Works fine on A100 but fails on H100 with identical configuration
-- Malformed topology files
+This issue causes the following symptoms:
+- NCCL fails to initialize on H100 instances.
+- The workload runs on A100 but fails on H100 with an identical configuration.
+- Topology files are malformed.
 
-**Root Cause** Outdated `aws-ofi-plugin` in container images causes NCCL topology detection to fail on H100 instances.
+**Root cause**: An outdated `aws-ofi-plugin` in the container image causes NCCL topology detection to fail on H100 instances.
 
-**Related issues**
-- [NVIDIA NCCL Issue #1726](https://github.com/NVIDIA/nccl/issues/1726)
-- [vLLM Issue #18997](https://github.com/vllm-project/vllm/issues/18997)
-- [AWS OFI NCCL Fix](https://github.com/aws/aws-ofi-nccl/pull/916)
+For more context, see the following related issues:
+- [NVIDIA NCCL issue #1726](https://github.com/NVIDIA/nccl/issues/1726)
+- [vLLM issue #18997](https://github.com/vllm-project/vllm/issues/18997)
+- [AWS OFI NCCL fix](https://github.com/aws/aws-ofi-nccl/pull/916)
 
-**Solution**
-- Update to a newer container image with an updated `aws-ofi-plugin`
-- Use the NCCL debugging script below to verify NCCL functions as expected
-- Consider hardware-specific configuration adjustments
+To resolve this issue, do the following:
+- Update to a container image with a newer `aws-ofi-plugin`.
+- Run the [NCCL debugging script](serve-multi-node-nccl-debugging-script) to verify that NCCL works as expected.
+- Consider adjusting the configuration for your hardware.
 
 ## Further troubleshooting
 
-If you continue to experience issues after following this guide:
+If issues persist after you follow this guide, try the following steps:
 
-1. **Collect diagnostic information**: Run the NCCL debugging script below and save the output
-2. **Check compatibility**: Verify Ray, vLLM, PyTorch, and CUDA versions are compatible
-3. **Review logs**: Examine Ray cluster logs and worker pod logs for additional error details
-4. **Hardware verification**: Test with different GPU types if possible
-5. **Community support**: Share your findings with the Ray and vLLM communities for additional help
+1. **Collect diagnostic information**: Run the [NCCL debugging script](serve-multi-node-nccl-debugging-script) and save the output.
+1. **Check compatibility**: Verify that your Ray, vLLM, PyTorch, and CUDA versions are compatible.
+1. **Review logs**: Examine the Ray cluster logs and worker Pod logs for more error details.
+1. **Verify hardware**: If possible, test with different GPU types.
+1. **Ask the community**: Share your findings with the Ray and vLLM communities for more help.
 
 ## Additional resources
 
-- {doc}`Ray Multi-Node GPU Guide </kuberay/user-guides/gpu>`
-- [vLLM Distributed Serving Documentation](https://docs.vllm.ai/en/latest/serving/parallelism_scaling/)
-- [NCCL Troubleshooting Guide](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html)
+- {ref}`Ray multi-node GPU guide <kuberay-gpu>`
+- [vLLM distributed serving documentation](https://docs.vllm.ai/en/latest/serving/parallelism_scaling/)
+- [NCCL troubleshooting guide](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html)
 
+(serve-multi-node-nccl-debugging-script)=
 ## NCCL debugging script
 
 Use this diagnostic script to identify NCCL-related issues in your multi-node GPU setup:
