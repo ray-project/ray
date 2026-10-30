@@ -170,7 +170,21 @@ class ConcurrencyLimiter(Searcher):
     # BOHB Specific.
     # TODO(team-ml): Refactor alongside HyperBandForBOHB
     def on_pause(self, trial_id: str):
+        """Passes a trial pause to the wrapped searcher.
+
+        ``HyperBandForBOHB`` calls this when it pauses a trial.
+
+        Args:
+            trial_id: The ID of the paused trial.
+        """
         self.searcher.on_pause(trial_id)
 
     def on_unpause(self, trial_id: str):
+        """Passes a trial unpause to the wrapped searcher.
+
+        ``HyperBandForBOHB`` calls this when it unpauses a trial.
+
+        Args:
+            trial_id: The ID of the unpaused trial.
+        """
         self.searcher.on_unpause(trial_id)

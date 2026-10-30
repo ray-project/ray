@@ -1091,6 +1091,10 @@
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
       python_depset: torch_cu128_image_classification_pyarrow19_py3.11.lock
+      runtime_env:
+        # The dataset uses the legacy pickled tensor type. byod.Dockerfile sets
+        # this for the old base images, but ray-torch images don't go through it.
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
     cluster_compute: fixed_size_gpu_compute.yaml
 
   run:
@@ -1116,6 +1120,10 @@
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
       python_depset: torch_cu128_image_classification_pyarrow19_py3.11.lock
+      runtime_env:
+        # The dataset uses the legacy pickled tensor type. byod.Dockerfile sets
+        # this for the old base images, but ray-torch images don't go through it.
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
     cluster_compute: fixed_size_gpu_compute.yaml
 
   run:

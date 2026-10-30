@@ -105,6 +105,9 @@ class RayServegRPCContext:
     This class implements most of the methods from ServicerContext
     (see: https://grpc.github.io/grpc/python/grpc.html#grpc.ServicerContext). It's
     serializable and can be passed with the request to be used on the deployment.
+
+    Args:
+        grpc_context: The gRPC servicer context to copy state from.
     """
 
     def __init__(self, grpc_context: grpc._cython.cygrpc._ServicerContext):
@@ -165,7 +168,12 @@ class RayServegRPCContext:
         return self._invocation_metadata_dict.get("application")
 
     def multiplexed_model_id(self) -> Optional[str]:
-        """Accesses the multiplexed model ID for the RPC, if provided."""
+        """Accesses the multiplexed model ID for the RPC, if provided.
+
+        Returns:
+            The value of the ``multiplexed_model_id`` invocation metadata key, or
+            None if the RPC didn't set it.
+        """
         return self._invocation_metadata_dict.get("multiplexed_model_id")
 
     def traceparent(self) -> Optional[str]:
@@ -226,6 +234,11 @@ class RayServegRPCContext:
         return self._peer_identity_key
 
     def trailing_metadata(self) -> List[Tuple[str, str]]:
+        """Get the trailing metadata for the RPC.
+
+        Returns:
+            The trailing metadata, as key-value pairs.
+        """
         return self._trailing_metadata
 
     def set_code(self, code: grpc.StatusCode):

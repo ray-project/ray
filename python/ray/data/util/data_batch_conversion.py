@@ -243,9 +243,7 @@ def _unwrap_ndarray_object_type_if_needed(arr: np.ndarray) -> np.ndarray:
 
 
 def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFrame":
-    """
-    Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
-    """
+    """Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray."""
     # Get the SettingWithCopyWarning class if available
     SettingWithCopyWarning = _get_setting_with_copy_warning()
 
