@@ -430,36 +430,17 @@ def test_autoscaling_coordinator_e2e(cluster, gpu_tasks_include_cpu):
 
 
 def test_coordinator_actor_runs_on_the_head_node(cluster):
-    """Every requester on the cluster shares the coordinator, so it can't be
-    pinned to the node of whoever created it first: if that node died, the
-    actor could never restart."""
-    worker = cluster.add_node(num_cpus=1)
+    """Test that the coordinator actor runs on the head node, whatever creates it.
+
+    The coordinator is created by a task on a worker node, inside a placement
+    group that captures child tasks (as Tune trials and Train V1 workers do).
+    The actor must still land on the head node, and keep serving requests after
+    both the placement group and the worker node are removed.
+    """
+    worker = cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
-    # The head node has no CPUs, so this runs on the worker node.
-    @ray.remote(num_cpus=1)
-    def create_coordinator():
-        get_or_create_autoscaling_coordinator()
-
-    ray.get(create_coordinator.remote())
-    coordinator = get_or_create_autoscaling_coordinator()
-    assert ray.get(coordinator.get_reserved_resources.remote("r")) == {}
-    actor_info = ray._private.state.actors(coordinator._actor_id.hex())
-    assert actor_info["Address"]["NodeID"] == cluster.head_node.node_id
-
-    # Losing the node that created it doesn't affect it.
-    cluster.remove_node(worker)
-
-    assert ray.get(coordinator.get_reserved_resources.remote("r"), timeout=60) == {}
-
-
-def test_coordinator_actor_escapes_the_callers_placement_group(cluster):
-    """A caller inside a placement group that captures child tasks (Tune
-    trials, Train V1 workers) still creates the coordinator on the head node,
-    outside the group, whose bundles don't hold the head node resource."""
-    cluster.add_node(num_cpus=2)
-    cluster.wait_for_nodes()
-
+    # The head node has no CPUs, so the group and this task land on the worker.
     pg = ray.util.placement_group([{"CPU": 2}])
     ray.get(pg.ready())
 
@@ -479,8 +460,10 @@ def test_coordinator_actor_escapes_the_callers_placement_group(cluster):
     actor_info = ray._private.state.actors(coordinator._actor_id.hex())
     assert actor_info["Address"]["NodeID"] == cluster.head_node.node_id
 
-    # Removing the group doesn't take the coordinator with it.
+    # Neither removing the group nor losing the node that created it takes the
+    # coordinator with it.
     ray.util.remove_placement_group(pg)
+    cluster.remove_node(worker)
     assert ray.get(coordinator.get_reserved_resources.remote("r"), timeout=60) == {}
 
 

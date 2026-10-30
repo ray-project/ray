@@ -31,6 +31,7 @@ import ray._private.services
 import ray._private.services as services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import (
     DEFAULT_DRIVER_TIMEOUT_SECONDS,
