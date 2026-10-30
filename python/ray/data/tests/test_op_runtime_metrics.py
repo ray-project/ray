@@ -15,6 +15,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
+from ray.data.exceptions import LineageReconstructionError
 
 
 def test_max_uss_bytes_distribution():
@@ -50,6 +51,83 @@ def test_max_uss_bytes_distribution():
     assert metrics.max_uss_bytes.num_samples == 2
     assert metrics.max_uss_bytes.mean == 200  # (100 + 300) / 2
     assert metrics.max_uss_bytes.max == 300
+
+
+@pytest.mark.parametrize(
+    "exception,expected",
+    [
+        (ray.exceptions.ObjectLostError("ab", None, ""), True),
+        (ray.exceptions.OwnerDiedError("ab", None, ""), True),
+        (ray.exceptions.ObjectReconstructionFailedError("ab", None, ""), True),
+        (
+            ray.exceptions.RayTaskError(
+                "fn", "tb", ray.exceptions.ObjectLostError("ab", None, "")
+            ),
+            True,
+        ),
+        (ValueError("boom"), False),
+        (ray.exceptions.RayTaskError("fn", "tb", ValueError("boom")), False),
+        (
+            LineageReconstructionError(
+                ray.exceptions.ObjectLostError("ab", None, ""), "failed"
+            ),
+            True,
+        ),
+    ],
+)
+def test_num_tasks_failed_object_lost(exception, expected):
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
+
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(0, exception, None, None)
+
+    assert metrics.num_tasks_failed == 1
+    assert metrics.num_tasks_failed_object_lost == int(expected)
+
+
+def test_aborted_task_not_counted_as_finished():
+    """An aborted task releases its running-task bookkeeping without adding
+    to the finished-task totals, which its replacement counts instead."""
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    block_meta = BlockMetadata(
+        num_rows=1, size_bytes=10, exec_stats=None, input_files=None
+    )
+    inputs = RefBundle(
+        [BlockEntry(ray.ObjectRef.from_random(), block_meta)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    output_meta = BlockMetadata(
+        num_rows=1,
+        size_bytes=10,
+        exec_stats=BlockExecStats(
+            wall_time_s=1.0, block_ser_time_s=0.1, node_id="node"
+        ),
+        input_files=None,
+    )
+    output = RefBundle(
+        [BlockEntry(ray.ObjectRef.from_random(), output_meta)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    metrics.on_task_submitted(0, inputs)
+    metrics.on_task_output_generated(0, output)
+    metrics.on_task_aborted(0)
+
+    assert metrics.num_tasks_running == 0
+    assert metrics.obj_store_mem_pending_task_inputs == 0
+    assert metrics.num_tasks_finished == 0
+    assert metrics.num_tasks_failed == 0
+    assert metrics.num_outputs_of_finished_tasks == 0
+    assert metrics.task_completion_time_s == 0
+    assert metrics._op_task_duration_stats.num_samples == 0
 
 
 def test_task_completion_time_histogram():

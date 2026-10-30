@@ -33,11 +33,6 @@ from typing import Iterable, Set
 
 # Pages with a runnable example that deliberately have no doctest target.
 UNTESTED = {
-    # The `doc_code/` snippet for this page is tested instead.
-    "doc/source/core/tasks/nested-tasks.md",
-    # This was excluded from its library's doctest target before the
-    # per-file split, with no reason recorded.
-    "doc/source/serve/production-guide/fault-tolerance.md",
     # These pages teach doctest syntax. Their `>>>` samples illustrate the
     # format and aren't meant to run.
     "doc/source/ray-contribute/getting-involved.md",

@@ -1,5 +1,4 @@
-"""
-Generic constants for common utilities.
+"""Generic constants for common utilities.
 
 These constants are used by generic utilities and should not contain
 serve-specific or batch-specific values.

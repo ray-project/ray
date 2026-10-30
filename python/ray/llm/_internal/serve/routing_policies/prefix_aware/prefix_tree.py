@@ -15,8 +15,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class Node:
-    """
-    Node in a prefix tree that represents a segment of text and can belong to multiple tenants.
+    """Node in a prefix tree that represents a segment of text and can belong to multiple tenants.
     Each node also tracks the last access time for each tenant.
     Simple example of root node connected to two children Nodes:
         root = Node(text="", parent=None, edge_label_to_child={"f": fooNode, "b": barNode}, tenant_to_last_access_time={"tenant_1": 2})
@@ -28,8 +27,7 @@ class Node:
     """
 
     def __init__(self, text: str = "", parent: Optional[Node] = None) -> None:
-        """
-        Initialize a node in the prefix tree.
+        """Initialize a node in the prefix tree.
 
         Args:
             text: The text segment this node represents
@@ -50,8 +48,7 @@ class Node:
 
 
 class PrefixTree:
-    """
-    Thread-safe multi-tenant prefix tree (approximate radix tree).
+    """Thread-safe multi-tenant prefix tree (approximate radix tree).
 
     Features:
     1. Stores data for multiple tenants in the same tree structure
@@ -101,8 +98,7 @@ class PrefixTree:
 
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
-        """
-        Count the number of shared characters at the beginning of two strings.
+        """Count the number of shared characters at the beginning of two strings.
 
         Args:
             a: First string
@@ -114,8 +110,7 @@ class PrefixTree:
         return len(os.path.commonprefix([a, b]))
 
     def _get_lru_chain(self, tenant: str) -> List[Node]:
-        """
-        Get the LRU chain for a given tenant by traversing from the root to the oldest node.
+        """Get the LRU chain for a given tenant by traversing from the root to the oldest node.
         Note: This method is intended to be used only in tests.
         """
         with self.lock:
@@ -135,9 +130,7 @@ class PrefixTree:
         older_neighbor: Optional[Node],
         tenant: str,
     ) -> None:
-        """
-        Insert a node into the LRU list between two neighbors. Updates the neighbors' pointers and the tail pointer, if that changes.
-        """
+        """Insert a node into the LRU list between two neighbors. Updates the neighbors' pointers and the tail pointer, if that changes."""
         with self.lock:
             if tenant not in self.tenant_to_char_count:
                 logger.debug(f"Tenant '{tenant}' does not exist. No action taken.")
@@ -160,9 +153,7 @@ class PrefixTree:
                 self.tenant_to_lru_tail[tenant] = node
 
     def _remove_node_from_linked_list(self, node: Node, tenant: str) -> None:
-        """
-        Remove a node from the LRU list. Updates the neighbors' pointers and the tail pointer, if that changes.
-        """
+        """Remove a node from the LRU list. Updates the neighbors' pointers and the tail pointer, if that changes."""
         with self.lock:
             if tenant not in self.tenant_to_char_count:
                 logger.debug(f"Tenant '{tenant}' does not exist. No action taken.")
@@ -191,8 +182,7 @@ class PrefixTree:
             node.tenant_to_older_node.pop(tenant, None)
 
     def _remove_tenant_single_node(self, tenant: str, node: Node) -> int:
-        """
-        Remove a tenant from a single node.
+        """Remove a tenant from a single node.
 
         Args:
             tenant: Tenant to remove
@@ -227,8 +217,7 @@ class PrefixTree:
             return removed_chars_len
 
     def add_tenants(self, tenants: List[str], time_s: float) -> None:
-        """
-        Add multiple new tenants to the tree. Also inserts an empty string for each tenant into the tree.
+        """Add multiple new tenants to the tree. Also inserts an empty string for each tenant into the tree.
 
         For each tenant that already exists, a warning is logged and that tenant is skipped.
 
@@ -251,8 +240,7 @@ class PrefixTree:
                 self.insert("", tenant, time_s)
 
     def insert(self, text: str, tenant: str, time_s: float) -> None:
-        """
-        Insert text into tree for a specific tenant, but only if the tenant already exists.
+        """Insert text into tree for a specific tenant, but only if the tenant already exists.
 
         If the tenant doesn't exist in the tree, this will log a warning and return without
         inserting anything. Use add_tenants() first to add a new tenant.
@@ -376,8 +364,7 @@ class PrefixTree:
     def prefix_match(
         self, text: str, available_tenants: Optional[List[str]] = None
     ) -> Tuple[str, Optional[List[str]]]:
-        """
-        Match text against tree and return matched text and matching tenants.
+        """Match text against tree and return matched text and matching tenants.
 
         Args:
             text: Text to match
@@ -445,8 +432,7 @@ class PrefixTree:
             return matched_text, matched_tenants
 
     def remove_tenants(self, tenants: List[str]) -> Dict[str, int]:
-        """
-        Remove multiple tenants and all their nodes from the tree.
+        """Remove multiple tenants and all their nodes from the tree.
         Time complexity: O(n) where n is the total number of nodes owned by all tenants.
 
         Args:
@@ -485,8 +471,7 @@ class PrefixTree:
             return chars_removed
 
     def evict_tenant_by_lru(self, tenant: str, min_remove_size: int) -> int:
-        """
-        Evict least recently used nodes for a tenant until minimum size is freed.
+        """Evict least recently used nodes for a tenant until minimum size is freed.
         Time complexity: O(m) where m is the number of nodes removed.
 
         Args:
@@ -543,23 +528,72 @@ class PrefixTree:
 
             return total_chars_removed
 
-    def get_smallest_tenants(self) -> Optional[List[str]]:
-        """
-        Get the tenants with the smallest total character count.
+    def get_smallest_tenants(
+        self, available_tenants: Optional[List[str]] = None
+    ) -> Optional[List[str]]:
+        """Get the tenants with the smallest total character count.
+
+        Args:
+            available_tenants: List of tenants to choose from (or None for all)
 
         Returns:
             Tenants with smallest character count, or None if no tenants
         """
         with self.lock:
-            if not self.tenant_to_char_count:
+            tenant_to_char_count = self.tenant_to_char_count
+            if available_tenants is not None:
+                tenant_to_char_count = {
+                    tenant: tenant_to_char_count[tenant]
+                    for tenant in available_tenants
+                    if tenant in tenant_to_char_count
+                }
+            if not tenant_to_char_count:
                 return None
 
-            min_count = min(self.tenant_to_char_count.values())
+            min_count = min(tenant_to_char_count.values())
             return [
                 tenant
-                for tenant, count in self.tenant_to_char_count.items()
+                for tenant, count in tenant_to_char_count.items()
                 if count == min_count
             ]
+
+    def prefix_match_or_smallest_tenants(
+        self,
+        text: str,
+        available_tenants: Optional[List[str]] = None,
+        match_rate_threshold: float = 0.0,
+        key_prefix: str = "",
+    ) -> Optional[List[str]]:
+        """Match text against the tree, falling back to the smallest tenants on a weak match.
+
+        Combines prefix_match and get_smallest_tenants, so a caller that routes on the
+        result makes one call instead of two.
+
+        Args:
+            text: Text to match
+            available_tenants: List of tenants to choose from (or None for all)
+            match_rate_threshold: Minimum fraction of the text that must match. Below
+                it, the smallest tenants are returned instead of the matched ones.
+            key_prefix: What the text was inserted under, e.g. a model ID. It's
+                matched before the text but doesn't count toward the match rate.
+
+        Returns:
+            The tenants that own the matched prefix, or the tenants with the smallest
+            character count if the match rate is below match_rate_threshold. None if
+            there are no such tenants.
+        """
+        with self.lock:
+            matched_text, matched_tenants = self.prefix_match(
+                key_prefix + text, available_tenants
+            )
+            # Count only text matched under the key prefix: key prefixes can share a
+            # prefix with each other.
+            matched_chars = max(len(matched_text) - len(key_prefix), 0)
+            # Empty text (e.g. image-only messages) has no prefix to match.
+            match_rate = matched_chars / len(text) if text else 0.0
+            if match_rate < match_rate_threshold:
+                return self.get_smallest_tenants(available_tenants)
+            return matched_tenants
 
     def start_eviction_loop(
         self, eviction_threshold: int, eviction_target: int, interval_secs: float
@@ -610,8 +644,7 @@ class PrefixTree:
 @ray.remote
 class PrefixTreeActor(PrefixTree):
     def getattr(self, attribute: str) -> Any:
-        """
-        Get an attribute of the PrefixTree.
+        """Get an attribute of the PrefixTree.
         Note: This method is intended to be used only in tests.
         """
         return getattr(self, attribute)

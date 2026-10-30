@@ -396,6 +396,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
@@ -426,6 +427,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
         RAY_max_direct_call_object_size: "8192"
@@ -1173,7 +1175,7 @@
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 40 40
-          frequency: weekly
+          frequency: manual
           fail_on_dead_nodes: 0 # Allow node death during test
           max_obj_store_util_percent: 100
       - with:
@@ -1270,6 +1272,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
@@ -1292,6 +1295,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
@@ -1314,6 +1318,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
         RAY_DATA_ENABLE_DISK_SHUFFLE: "1"

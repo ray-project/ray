@@ -32,6 +32,13 @@ class Sandbox:
             is the recommended internet-access mode.
         dns: Optional nameserver IPs for the generated /etc/resolv.conf
             (public resolvers by default for "public").
+        cidr_allowlist: Optional egress allowlist for network="public": only
+            the listed destinations are reachable (plus DNS to the ``dns``
+            resolvers). None means the public internet, with internal
+            addresses left out as a best effort, and a denylist keeps
+            instance metadata and the Kubernetes API service closed whatever
+            the list says; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none); see
             ``DOCKER_DEFAULT_CAPABILITIES``.
@@ -44,12 +51,13 @@ class Sandbox:
             fail with ENOSPC. Zero (default) means no cap. Requires
             ``readonly=False`` or a ``workdir``; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+        restore_from: Path to checkpoint directory if restoring an existing sandbox.
         **kwargs: Additional parameters passed to runtime.
     """
 
     def __init__(
         self,
-        image: str,
+        image: Optional[str] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         env: Optional[Dict[str, str]] = None,
@@ -57,43 +65,82 @@ class Sandbox:
         ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
-        network: str = "none",
+        network: Optional[str] = None,
         dns: Optional[List[str]] = None,
+        cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
-        readonly: bool = True,
+        readonly: Optional[bool] = None,
         disk: Union[str, int, float] = 0,
+        restore_from: Optional[str] = None,
         **kwargs,
     ):
-        env = env or {}
-
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
-        try:
-            assigned = ray.get_runtime_context().get_assigned_resources()
-            if (cpu is None or cpu <= 0) and "CPU" in assigned and assigned["CPU"] > 0:
-                cpu = float(assigned["CPU"])
+        # For restore_from, do not default to actor-assigned resources unless explicitly requested,
+        # so that the checkpoint's recorded resource limits are preserved.
+        if not restore_from:
+            env = env or {}
+            if readonly is None:
+                readonly = True
+            try:
+                assigned = ray.get_runtime_context().get_assigned_resources()
+                if cpu is None and "CPU" in assigned and assigned["CPU"] > 0:
+                    cpu = float(assigned["CPU"])
 
-            if (memory is None) and "memory" in assigned and assigned["memory"] > 0:
-                memory = int(assigned["memory"])
-        except Exception:
-            pass
+                if (memory is None) and "memory" in assigned and assigned["memory"] > 0:
+                    memory = int(assigned["memory"])
+            except Exception:
+                pass
 
         self.runtime = SandboxRuntime()
-        self.instance_id = self.runtime.create(
-            image=image,
-            cpu=cpu,
-            memory=memory,
-            env=env,
-            workdir=workdir,
-            ttl_seconds=ttl_seconds,
-            timeout_seconds=timeout_seconds,
-            rootless=rootless,
-            network=network,
-            dns=dns,
-            capabilities=capabilities,
-            readonly=readonly,
-            disk=disk,
-            **kwargs,
-        )
+        if restore_from:
+            restore_kwargs = dict(kwargs)
+            if env is not None:
+                restore_kwargs["env"] = env
+            if workdir is not None:
+                restore_kwargs["workdir"] = workdir
+            if network is not None:
+                restore_kwargs["network"] = network
+            if dns is not None:
+                restore_kwargs["dns"] = dns
+            if cidr_allowlist is not None:
+                restore_kwargs["cidr_allowlist"] = cidr_allowlist
+            if capabilities is not None:
+                restore_kwargs["capabilities"] = capabilities
+            if readonly is not None:
+                restore_kwargs["readonly"] = readonly
+            if disk:
+                restore_kwargs["disk"] = disk
+
+            self.instance_id = self.runtime.restore(
+                checkpoint_path=restore_from,
+                cpu=cpu,
+                memory=memory,
+                ttl_seconds=ttl_seconds,
+                timeout_seconds=timeout_seconds,
+                **restore_kwargs,
+            )
+        else:
+            if not image:
+                raise ValueError("Must provide either 'image' or 'restore_from'")
+            if network is None:
+                network = "none"
+            self.instance_id = self.runtime.create(
+                image=image,
+                cpu=cpu,
+                memory=memory,
+                env=env,
+                workdir=workdir,
+                ttl_seconds=ttl_seconds,
+                timeout_seconds=timeout_seconds,
+                rootless=rootless,
+                network=network,
+                dns=dns,
+                cidr_allowlist=cidr_allowlist,
+                capabilities=capabilities,
+                readonly=readonly,
+                disk=disk,
+                **kwargs,
+            )
 
     def __del__(self):
         try:
@@ -192,6 +239,62 @@ class Sandbox:
             SandboxStatus of the sandbox instance.
         """
         return self.runtime.get_status(self.instance_id)
+
+    def set_egress_allowlist(self, cidrs: List[str]) -> None:
+        """Replace the egress allowlist of this network="public" sandbox.
+
+        The update is atomic. Connections the new list no longer allows stall
+        from their next packet, and no list opens the denylist; see
+        ``SandboxRuntime.set_egress_allowlist``.
+
+        Args:
+            cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
+                ``ALLOW_ALL_CIDRS`` opens every destination outside the
+                denylist.
+        """
+        self.runtime.set_egress_allowlist(self.instance_id, cidrs)
+
+    def checkpoint(
+        self,
+        checkpoint_path: Optional[str] = None,
+        leave_running: bool = True,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Create a checkpoint of the running sandbox.
+
+        Args:
+            checkpoint_path: Path where the checkpoint directory will be saved.
+            leave_running: If True, keep the sandbox running after checkpointing.
+            timeout_seconds: Timeout for the checkpoint operation.
+            **kwargs: Additional parameters passed to runtime checkpoint.
+
+        Returns:
+            Absolute path to the checkpoint directory.
+        """
+        return self.runtime.checkpoint(
+            self.instance_id,
+            checkpoint_path=checkpoint_path,
+            leave_running=leave_running,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
+
+    def pause(self, timeout_seconds: float = 10.0) -> None:
+        """Pause the running sandbox instance.
+
+        Args:
+            timeout_seconds: Timeout for pause operation.
+        """
+        self.runtime.pause(self.instance_id, timeout_seconds=timeout_seconds)
+
+    def resume(self, timeout_seconds: float = 10.0) -> None:
+        """Resume a paused sandbox instance.
+
+        Args:
+            timeout_seconds: Timeout for resume operation.
+        """
+        self.runtime.resume(self.instance_id, timeout_seconds=timeout_seconds)
 
     def delete(self) -> None:
         """Clean up and terminate the sandbox instance."""
