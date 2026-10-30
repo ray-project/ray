@@ -91,7 +91,7 @@ The Ray Dashboard runs `run()` and `actor()` workloads in root actors on `/api/a
 - **Child namespace isolation**: Non-detached child actors created in the root actor process use namespace `ray_client_<name>`, while detached child actors use `"ray_client"`. `ray.get_actor(name)` in the root process checks `ray_client_<name>` before falling back to `"ray_client"`; nested tasks and child actors must pass `namespace=` explicitly.
 - **Root actor log scope**: `actor.logs()` (`GET /api/actors/{name}/logs`) returns `stdout` and `stderr` from the root actor process. `job.logs()` (`submit_job`) aggregates logs across all job workers.
 - **Cluster activity reporting**: Active `/api/actors` sessions report activity to `/api/component_activities` so auto-terminating clusters stay alive while `run()` or `actor()` workloads are running.
-- **Cluster node management**: `RayCluster` exposes `list_node_groups()`, `get_node_group(name)`, `add_nodes(group_name, count=1, *, wait_ready=False, timeout_s=None)`, `list_nodes(*, state=None, node_group=None, include_dead=False)`, `get_node(node_id)`, and `destroy_node(node_id, reason=..., *, grace_period_s=None)` over `/api/cluster/*`.
+- **Cluster node management**: `RayCluster` exposes `list_node_groups()`, `get_node_group(group_name)`, `add_nodes(group_name, count=1, *, wait_ready=False, timeout=None)`, `list_nodes(*, group_name=None, states=None)`, `get_node(node_id)`, and `destroy_node(node_id, reason="destroyed by ray_client", *, grace_period_s=0.0)` over `/api/cluster/*`.
 
 ## Environment variables
 

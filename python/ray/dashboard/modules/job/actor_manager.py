@@ -445,9 +445,12 @@ class _ClientRootActor:
         self._last_active_mono: float = time.monotonic()
         self._active_calls: int = 0
         self._state_lock = threading.Lock()
-        self._cancelled_streams: Set[str] = set()
+        self._cancelled_streams: "collections.OrderedDict[str, None]" = (
+            collections.OrderedDict()
+        )
         self._placement_groups: List[Any] = []
         self._shutting_down = False
+        self._shutdown_event = threading.Event()
         self._cleaned_up = False
         self._cleanup_lock = threading.RLock()
 
@@ -523,12 +526,13 @@ class _ClientRootActor:
             self._cleanup_resources()
             return
 
-        self._reaper_thread = threading.Thread(
-            target=self._self_reap_loop,
-            name=f"ray-client-ttl-{self._name}",
-            daemon=True,
-        )
-        self._reaper_thread.start()
+        if self._kind != "function":
+            self._reaper_thread = threading.Thread(
+                target=self._self_reap_loop,
+                name=f"ray-client-ttl-{self._name}",
+                daemon=True,
+            )
+            self._reaper_thread.start()
 
     def __repr__(self) -> str:
         if (
@@ -540,6 +544,10 @@ class _ClientRootActor:
         return getattr(self, "_target_name", "_ClientRootActor")
 
     def _install_ray_hooks(self) -> None:
+        ray.init = lambda *a, **kw: None
+        ray.shutdown = lambda *a, **kw: None
+        if os.environ.get("RAY_BACKEND") == "rust":
+            return
         ns = self._namespace
         # Fate-shared actors created in this process default to a namespace of their
         # own, so concurrent roots that create identically named children don't
@@ -582,8 +590,6 @@ class _ClientRootActor:
                     pg_list.append(pg)
             return pg
 
-        ray.init = lambda *a, **kw: None
-        ray.shutdown = lambda *a, **kw: None
         ray.get_actor = _client_get_actor
         ray._private.worker.get_actor = _client_get_actor
         ActorClass._remote = _client_actor_remote
@@ -596,8 +602,7 @@ class _ClientRootActor:
             RuntimeContext.namespace = property(lambda _self: child_ns)
 
     def _self_reap_loop(self) -> None:
-        while not self._shutting_down:
-            time.sleep(0.2)
+        while not self._shutdown_event.wait(timeout=0.5):
             should_reap = False
             with self._state_lock:
                 if self._shutting_down:
@@ -620,6 +625,7 @@ class _ClientRootActor:
                 return
 
     def _cleanup_resources(self) -> None:
+        self._shutdown_event.set()
         with self._cleanup_lock:
             with self._state_lock:
                 if self._cleaned_up:
@@ -814,7 +820,9 @@ class _ClientRootActor:
     @ray.method(concurrency_group="_control")
     def cancel_stream(self, stream_id: str) -> Dict[str, Any]:
         with self._state_lock:
-            self._cancelled_streams.add(stream_id)
+            self._cancelled_streams[stream_id] = None
+            while len(self._cancelled_streams) > 256:
+                self._cancelled_streams.popitem(last=False)
             self._last_active = time.time()
             self._last_active_mono = time.monotonic()
         return {"ok": True, "cancelled": True}
@@ -945,7 +953,7 @@ class _ClientRootActor:
                 }
         finally:
             with self._state_lock:
-                self._cancelled_streams.discard(stream_id)
+                self._cancelled_streams.pop(stream_id, None)
             if gen is not None:
                 with contextlib.suppress(BaseException):
                     if inspect.isasyncgen(gen) and self._async_loop is not None:
@@ -2060,15 +2068,25 @@ class ActorManager:
                             if timeout_s is not None
                             else None
                         )
-                        for n in added_nodes:
-                            ready_fn = getattr(n, "ready", None)
-                            if callable(ready_fn):
-                                rem = (
-                                    max(0.0, deadline - time.monotonic())
-                                    if deadline is not None
-                                    else None
-                                )
-                                ready_fn().result(timeout=rem)
+                        try:
+                            for n in added_nodes:
+                                ready_fn = getattr(n, "ready", None)
+                                if callable(ready_fn):
+                                    rem = (
+                                        max(0.0, deadline - time.monotonic())
+                                        if deadline is not None
+                                        else None
+                                    )
+                                    ready_fn().result(timeout=rem)
+                        except BaseException:
+                            for n in added_nodes:
+                                destroy_fn = getattr(n, "destroy", None)
+                                if callable(destroy_fn):
+                                    with contextlib.suppress(Exception):
+                                        destroy_fn(
+                                            reason="add_nodes wait_ready failed or timed out"
+                                        )
+                            raise
                     return [self._node_to_dict(n) for n in added_nodes]
             if hasattr(cluster_mod, "add_nodes"):
                 cluster_mod.add_nodes(group, count)

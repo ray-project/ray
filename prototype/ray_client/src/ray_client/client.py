@@ -1738,23 +1738,23 @@ class RayCluster:
             return list(res["node_groups"])
         return list(res)
 
-    def get_node_group(self, name: str) -> Dict[str, Any]:
-        """Inspects a node group by name (`GET /api/cluster/node_groups/{name}`).
+    def get_node_group(self, group_name: str) -> Dict[str, Any]:
+        """Inspects a node group by name (`GET /api/cluster/node_groups/{group_name}`).
 
         Args:
-            name: Non-empty node group name (e.g. `"head"`, `"default"`, `"gb300"`).
+            group_name: Non-empty node group name (e.g. `"head"`, `"default"`, `"gb300"`).
 
         Returns:
             Dictionary describing the node group's `name`, `resources`, `labels`, and
             `max_nodes`.
 
         Raises:
-            ValueError: If `name` is not a non-empty string.
+            ValueError: If `group_name` is not a non-empty string.
             RayClientError: If the node group does not exist or the HTTP request fails.
         """
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("name must be a non-empty string.")
-        res = self._json("GET", f"/api/cluster/node_groups/{name.strip()}")
+        if not isinstance(group_name, str) or not group_name.strip():
+            raise ValueError("group_name must be a non-empty string.")
+        res = self._json("GET", f"/api/cluster/node_groups/{group_name.strip()}")
         if isinstance(res, dict) and isinstance(res.get("node_group"), dict):
             return dict(res["node_group"])
         return dict(res)
@@ -1765,6 +1765,7 @@ class RayCluster:
         count: int = 1,
         *,
         wait_ready: bool = False,
+        timeout: Optional[float] = None,
         timeout_s: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Adds detached nodes to a cluster node group (`POST /api/cluster/node_groups/{group}/nodes`).
@@ -1774,14 +1775,14 @@ class RayCluster:
             count: Number of nodes to add (must be an integer >= 1).
             wait_ready: If `True`, waits on the server until the new nodes transition to
                 `ALIVE`.
-            timeout_s: Optional timeout in seconds when waiting for nodes to become
-                ready.
+            timeout: Optional timeout in seconds when waiting for nodes to become ready.
+            timeout_s: Alias for `timeout`.
 
         Returns:
             List of node dictionaries for the newly requested nodes.
 
         Raises:
-            ValueError: If `group_name`, `count`, or `timeout_s` is invalid.
+            ValueError: If `group_name`, `count`, or `timeout` is invalid.
             RayClientError: If the node group does not exist, exceeds `max_nodes`, or
                 the HTTP request fails.
         """
@@ -1789,25 +1790,26 @@ class RayCluster:
             raise ValueError("group_name must be a non-empty string.")
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError(f"count must be a positive integer, got {count!r}.")
-        if timeout_s is not None:
+        eff_timeout = timeout if timeout is not None else timeout_s
+        if eff_timeout is not None:
             if (
-                isinstance(timeout_s, bool)
-                or not isinstance(timeout_s, (int, float))
-                or not math.isfinite(timeout_s)
-                or timeout_s <= 0
+                isinstance(eff_timeout, bool)
+                or not isinstance(eff_timeout, (int, float))
+                or not math.isfinite(eff_timeout)
+                or eff_timeout <= 0
             ):
                 raise ValueError(
-                    f"timeout_s must be a positive finite number, got {timeout_s!r}."
+                    f"timeout must be a positive finite number, got {eff_timeout!r}."
                 )
         body: Dict[str, Any] = {
             "count": count,
             "wait_ready": bool(wait_ready),
         }
-        if timeout_s is not None:
-            body["timeout_s"] = float(timeout_s)
+        if eff_timeout is not None:
+            body["timeout_s"] = float(eff_timeout)
         req_timeout: Any = (
-            (min(self._timeout, float(timeout_s) + 5.0), float(timeout_s) + 5.0)
-            if timeout_s is not None
+            (min(self._timeout, float(eff_timeout) + 5.0), float(eff_timeout) + 5.0)
+            if eff_timeout is not None
             else None
         )
         res = self._json(
@@ -1824,45 +1826,51 @@ class RayCluster:
     def list_nodes(
         self,
         *,
-        state: Optional[Union[str, Sequence[str]]] = None,
+        group_name: Optional[str] = None,
+        states: Optional[Union[str, Sequence[str]]] = None,
         node_group: Optional[str] = None,
+        state: Optional[Union[str, Sequence[str]]] = None,
         include_dead: bool = False,
     ) -> List[Dict[str, Any]]:
         """Lists cluster nodes (`GET /api/cluster/nodes`).
 
         Args:
-            state: Optional state filter string (e.g. `"ALIVE"`) or sequence of state
+            group_name: Optional node group name filter.
+            states: Optional state filter string (e.g. `"ALIVE"`) or sequence of state
                 strings (e.g. `["PENDING", "ALIVE"]`).
-            node_group: Optional node group name filter.
-            include_dead: Whether to include `DEAD` nodes when `state` is not specified.
+            node_group: Alias for `group_name`.
+            state: Alias for `states`.
+            include_dead: Whether to include `DEAD` nodes when `states` is not specified.
 
         Returns:
             List of node metadata dictionaries.
 
         Raises:
-            ValueError: If `node_group` or `state` is invalid.
+            ValueError: If `group_name` or `states` is invalid.
             RayClientError: If the HTTP request fails.
         """
+        eff_states = states if states is not None else state
+        eff_group = group_name if group_name is not None else node_group
         params: List[Tuple[str, str]] = []
-        if state is not None:
-            if isinstance(state, str):
-                if not state.strip():
-                    raise ValueError("state must not be an empty string.")
-                state_val = state.strip()
-            elif isinstance(state, Sequence):
-                parts = [str(s).strip() for s in state if str(s).strip()]
+        if eff_states is not None:
+            if isinstance(eff_states, str):
+                if not eff_states.strip():
+                    raise ValueError("states must not be an empty string.")
+                state_val = eff_states.strip()
+            elif isinstance(eff_states, Sequence):
+                parts = [str(s).strip() for s in eff_states if str(s).strip()]
                 if not parts:
-                    raise ValueError("state sequence must not be empty.")
+                    raise ValueError("states sequence must not be empty.")
                 state_val = ",".join(parts)
             else:
                 raise TypeError(
-                    f"state must be a string or sequence of strings, got {state!r}."
+                    f"states must be a string or sequence of strings, got {eff_states!r}."
                 )
             params.append(("state", state_val))
-        if node_group is not None:
-            if not isinstance(node_group, str) or not node_group.strip():
-                raise ValueError("node_group must be a non-empty string.")
-            params.append(("node_group", node_group.strip()))
+        if eff_group is not None:
+            if not isinstance(eff_group, str) or not eff_group.strip():
+                raise ValueError("group_name must be a non-empty string.")
+            params.append(("node_group", eff_group.strip()))
         if include_dead:
             params.append(("include_dead", "true"))
         endpoint = "/api/cluster/nodes"
@@ -1899,15 +1907,15 @@ class RayCluster:
         node_id: str,
         reason: str = "destroyed by ray_client",
         *,
-        grace_period_s: Optional[float] = None,
+        grace_period_s: float = 0.0,
     ) -> Dict[str, Any]:
         """Destroys a cluster node (`DELETE /api/cluster/nodes/{node_id}`).
 
         Args:
             node_id: Non-empty Ray node ID to destroy.
             reason: Non-empty human-readable reason for destroying the node.
-            grace_period_s: Optional non-negative drain grace period in seconds before
-                the node transitions to `DEAD`.
+            grace_period_s: Non-negative drain grace period in seconds before the node
+                transitions to `DEAD` (defaults to `0.0`).
 
         Returns:
             Dictionary describing the updated node state.
@@ -1938,21 +1946,6 @@ class RayCluster:
             "DELETE",
             f"/api/cluster/nodes/{node_id.strip()}",
             json_data=body,
-            idempotent=False,
-        )
-
-    def scale_worker_group(self, group: str, replicas: int) -> Dict[str, Any]:
-        """Updates target replica count for a KubeRay worker group."""
-        if not isinstance(group, str) or not group.strip():
-            raise ValueError("group must be a non-empty string.")
-        if isinstance(replicas, bool) or not isinstance(replicas, int) or replicas < 0:
-            raise ValueError(
-                f"replicas must be a non-negative integer, got {replicas!r}."
-            )
-        return self._json(
-            "PATCH",
-            f"/api/cluster/worker_groups/{group}",
-            json_data={"replicas": replicas},
             idempotent=False,
         )
 

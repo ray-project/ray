@@ -64,7 +64,25 @@ def _cluster_response(fn: Any, *args: Any, **kwargs: Any) -> Response:
                 content_type="application/json",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
-        if isinstance(exc, ValueError) or exc_name == "MaxNodesExceededError":
+        if isinstance(exc, (TimeoutError, asyncio.TimeoutError)) or exc_name in (
+            "TimeoutError",
+            "FutureTimeoutError",
+        ):
+            return Response(
+                text=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {"exc_type": exc_name, "exc_message": str(exc)},
+                    }
+                ),
+                content_type="application/json",
+                status=aiohttp.web.HTTPRequestTimeout.status_code,
+            )
+        if (
+            isinstance(exc, ValueError)
+            or exc_name == "MaxNodesExceededError"
+            or exc_name.endswith("DiedError")
+        ):
             status = (
                 aiohttp.web.HTTPConflict.status_code
                 if exc_name == "MaxNodesExceededError" or "max_nodes" in str(exc)

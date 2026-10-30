@@ -2340,20 +2340,17 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             self.assertEqual(ut_ctx.exception.exc_type, "TimeoutError")
             self.assertIn("downstream socket timed out", str(ut_ctx.exception))
 
-            # 8. Decision 1 & Finding 1.10: scale_worker_group routes to PATCH /api/cluster/worker_groups/{group},
-            #    add_worker_group is removed, and runtime_env image_uri/container error message is accurate.
+            # 8. Legacy add_worker_group and scale_worker_group are removed in favor of
+            #    Ray 3.0 node management (add_nodes / destroy_node), and runtime_env
+            #    image_uri/container error message is accurate.
             self.assertFalse(hasattr(cluster, "add_worker_group"))
-            scale_res = cluster.scale_worker_group("gpu-group", replicas=2)
-            self.assertEqual(
-                scale_res, {"ok": True, "group": "gpu-group", "replicas": 2}
-            )
-            self.assertEqual(self.state.worker_groups.get("gpu-group"), 2)
+            self.assertFalse(hasattr(cluster, "scale_worker_group"))
             for bad_group in ("", "   ", 123):
                 with self.assertRaises(ValueError):
-                    cluster.scale_worker_group(bad_group, replicas=1)  # type: ignore[arg-type]
-            for bad_replicas in (-1, True, 1.5, "2"):
+                    cluster.add_nodes(bad_group, count=1)  # type: ignore[arg-type]
+            for bad_count in (0, -1, True, 1.5, "2"):
                 with self.assertRaises(ValueError):
-                    cluster.scale_worker_group("gpu-group", replicas=bad_replicas)  # type: ignore[arg-type]
+                    cluster.add_nodes("workers", count=bad_count)  # type: ignore[arg-type]
             for bad_env_key in ("image_uri", "container"):
                 with self.assertRaisesRegex(
                     RayClientError,
@@ -3389,6 +3386,8 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     def ready(self):
                         def _result(timeout=None):
                             ready_waits.append(timeout)
+                            if timeout is not None and timeout > 50.0:
+                                raise TimeoutError("wait_ready timed out")
                             return True
 
                         return types.SimpleNamespace(result=_result)
@@ -3462,6 +3461,13 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     self.assertTrue(destroyed_n1["destroyed"])
                     self.assertEqual(destroyed_n1["state"], "TERMINATING_SOON")
                     self.assertEqual(recorded_destroys, [("n1", "drain test", 15.0)])
+                    with self.assertRaises(TimeoutError):
+                        mgr.add_nodes("workers", 2, wait_ready=True, timeout_s=99.0)
+                    # Both newly created nodes must be cleaned up on wait_ready failure
+                    self.assertEqual(
+                        [d[0] for d in recorded_destroys[1:]],
+                        ["n_added_0", "n_added_1"],
+                    )
                     with self.assertRaises(ValueError):
                         mgr.add_nodes("workers", 0)
                     with self.assertRaises(KeyError):
