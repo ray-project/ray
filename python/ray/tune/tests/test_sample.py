@@ -1632,6 +1632,34 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testConvertZOOptQuantizedInteger(self):
+        from ray.tune.search.zoopt import ZOOptSearch
+
+        # Suggestions must be among the values Tune itself would sample.
+        for domain in (
+            tune.qrandint(1, 21, 5),
+            tune.qrandint(-7, 12, 4),
+            tune.qrandint(0, 100, 10),
+            tune.qrandint(0, 10, 2.0),
+        ):
+            expected = set(domain.sample(size=2000))
+            values = set()
+            for _ in range(5):
+                searcher = ZOOptSearch(
+                    budget=50, metric="a", mode="max", parallel_num=4
+                )
+                searcher.set_search_properties(None, None, {"a": domain})
+                # Stay within ZOOpt's random initial round. Past it, zoopt
+                # 0.4.1 raises `high <= 0` once a space this small is
+                # exhausted.
+                n = 0
+                while isinstance(config := searcher.suggest(str(n)), dict):
+                    values.add(config["a"])
+                    n += 1
+            with self.subTest(expected=sorted(expected)):
+                self.assertTrue(values)
+                self.assertLessEqual(values, expected)
+
     def testSampleBoundsZOOpt(self):
         self.skipTest(
             "ZOOpt parallel_num setting does not seem to be working, "
