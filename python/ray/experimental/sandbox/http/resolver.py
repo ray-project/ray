@@ -84,6 +84,10 @@ class RayActorHandleResolver:
     which surfaces as "not found" on the next call. Deterministic names (a
     client token, a named sandbox) always resolve through ``ray.get_actor``,
     whose own cache follows actor deaths and re-creations.
+
+    Args:
+        settings: The sandbox API settings. The resolver uses their
+            ``namespace`` for the sandbox actors.
     """
 
     # Bounds the handle cache, far above the sandboxes one process serves.
@@ -146,6 +150,15 @@ class RayActorHandleResolver:
         return handle
 
     def get(self, name: str) -> Optional[Any]:
+        """Look up a sandbox actor by name.
+
+        Args:
+            name: The actor name.
+
+        Returns:
+            The actor handle, from the cache or from ``ray.get_actor`` in the
+            configured namespace, or None if no actor has that name.
+        """
         with self._lock:
             handle = self._handles.get(name)
             if handle is not None:
@@ -159,11 +172,21 @@ class RayActorHandleResolver:
             return None
 
     def forget(self, name: str) -> None:
-        """Drop the cached handle of a sandbox whose actor is gone."""
+        """Drop the cached handle of a sandbox whose actor is gone.
+
+        Args:
+            name: The actor name.
+        """
         with self._lock:
             self._handles.pop(name, None)
 
     def list_names(self) -> List[str]:
+        """List the names of the sandbox actors in the configured namespace.
+
+        Returns:
+            The names of the named actors in the namespace whose names start with
+            the sandbox ID prefix.
+        """
         from ray.util import list_named_actors
 
         names: List[str] = []
@@ -175,6 +198,13 @@ class RayActorHandleResolver:
         return names
 
     def kill(self, handle: Any) -> None:
+        """Kill a sandbox actor with ``ray.kill``.
+
+        A failure to kill the actor is logged at debug level and not raised.
+
+        Args:
+            handle: The actor handle to kill.
+        """
         import ray
 
         try:

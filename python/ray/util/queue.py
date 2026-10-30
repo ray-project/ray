@@ -9,11 +9,21 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="beta")
 class Empty(queue.Empty):
+    """Raised when getting an item from an empty Queue.
+
+    A non-blocking get raises it at once, and a blocking get raises it on timeout.
+    """
+
     pass
 
 
 @PublicAPI(stability="beta")
 class Full(queue.Full):
+    """Raised when putting an item into a full Queue.
+
+    A non-blocking put raises it at once, and a blocking put raises it on timeout.
+    """
+
     pass
 
 
@@ -67,19 +77,36 @@ class Queue:
         return self.size()
 
     def size(self) -> int:
-        """The size of the queue."""
+        """The size of the queue.
+
+        Returns:
+            The number of items in the queue.
+        """
         return ray.get(self.actor.qsize.remote())
 
     def qsize(self) -> int:
-        """The size of the queue."""
+        """The size of the queue.
+
+        Returns:
+            The number of items in the queue.
+        """
         return self.size()
 
     def empty(self) -> bool:
-        """Whether the queue is empty."""
+        """Whether the queue is empty.
+
+        Returns:
+            True if the queue has no items, otherwise False.
+        """
         return ray.get(self.actor.empty.remote())
 
     def full(self) -> bool:
-        """Whether the queue is full."""
+        """Whether the queue is full.
+
+        Returns:
+            True if the queue holds ``maxsize`` items, otherwise False. A queue with
+            a ``maxsize`` of zero is never full.
+        """
         return ray.get(self.actor.full.remote())
 
     def put(
