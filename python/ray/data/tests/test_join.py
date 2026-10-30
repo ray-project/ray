@@ -435,6 +435,32 @@ def test_validate_schemas_multi_key_uses_join_key_order(
     )
 
 
+@pytest.mark.parametrize(
+    "on, right_on",
+    [
+        (("a", "a"), ("a", "b")),
+        (("a", "b"), ("a", "a")),
+    ],
+)
+def test_validate_schemas_rejects_duplicate_join_keys(
+    ray_start_regular_shared_2_cpus,
+    on,
+    right_on,
+):
+    left = ray.data.from_items([{"a": 1, "b": 7}])
+    right = ray.data.from_items([{"a": 1, "b": 1}])
+
+    with pytest.raises(ValueError, match="Join key columns must be unique"):
+        left.join(
+            right,
+            join_type="inner",
+            num_partitions=2,
+            on=on,
+            right_on=right_on,
+            validate_schemas=True,
+        )
+
+
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,

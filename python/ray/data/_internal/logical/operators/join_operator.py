@@ -120,6 +120,18 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
                 f"{_col_names_as_str(right_key_column_names)})"
             )
 
+        if len(set(left_key_column_names)) != len(left_key_column_names):
+            raise ValueError(
+                f"Join key columns must be unique in the left operand: "
+                f"{left_key_column_names}"
+            )
+
+        if len(set(right_key_column_names)) != len(right_key_column_names):
+            raise ValueError(
+                f"Join key columns must be unique in the right operand: "
+                f"{right_key_column_names}"
+            )
+
         def _get_key_column_types(schema: "Schema", keys: Tuple[str]):
             if schema is None:
                 return None
