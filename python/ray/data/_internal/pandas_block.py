@@ -1,4 +1,5 @@
 import collections
+import functools
 import logging
 import sys
 from dataclasses import dataclass
@@ -179,7 +180,9 @@ def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
     # If no object-dtype columns, use fast path with regular from_pandas()
     if not any(is_object_dtype(df[col].dtype) for col in df.columns):
         # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
-        return pa.Table.from_pandas(df, preserve_index=False)
+        return _with_parsable_pandas_metadata(
+            pa.Table.from_pandas(df, preserve_index=False)
+        )
 
     # Convert column by column: object-dtype columns go through
     # convert_to_pyarrow_array (handles tensors, PIL images, arbitrary objects),
@@ -196,6 +199,48 @@ def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
         fields.append(pa.field(col_name, arr.type))
 
     return pa.table(dict(zip(df.columns, arrays)), schema=pa.schema(fields))
+
+
+def _with_parsable_pandas_metadata(table: "pyarrow.Table") -> "pyarrow.Table":
+    """Returns ``table`` with every pandas dtype name in its metadata that pandas
+    cannot parse replaced by ``object``.
+
+    ``pa.Table.from_pandas`` records each column's pandas dtype as a string, and
+    ``to_pandas`` rebuilds the dtype from it when no types mapper covers the
+    column. pandas cannot parse the names of parametrized Arrow-backed dtypes,
+    such as ``list<item: int64>[pyarrow]``, and raises ``TypeError``.
+    """
+    metadata = table.schema.metadata
+    pandas_metadata = metadata.get(b"pandas") if metadata else None
+    if pandas_metadata is None:
+        return table
+    parsable = _parsable_pandas_metadata(pandas_metadata)
+    if parsable == pandas_metadata:
+        return table
+    return table.replace_schema_metadata({**metadata, b"pandas": parsable})
+
+
+@functools.lru_cache(maxsize=128)
+def _parsable_pandas_metadata(pandas_metadata: bytes) -> bytes:
+    """Rewrites unparsable ``numpy_type`` entries to ``object``. The same schema
+    recurs across batches, so the result is cached on the metadata bytes."""
+    import json
+
+    from pandas.api.types import pandas_dtype
+
+    document = json.loads(pandas_metadata)
+    changed = False
+    for column in document.get("columns", []):
+        dtype_name = column.get("numpy_type")
+        if not isinstance(dtype_name, str):
+            continue
+        try:
+            pandas_dtype(dtype_name)
+        except (TypeError, ValueError, NotImplementedError):
+            # What pandas raises for a dtype name it cannot parse.
+            column["numpy_type"] = "object"
+            changed = True
+    return json.dumps(document).encode() if changed else pandas_metadata
 
 
 class PandasRow(Mapping):
