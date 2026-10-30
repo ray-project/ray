@@ -10,7 +10,8 @@
 #     ci/ray_ci/doc/run_docstring_examples.py, when its library's full
 #     doctest() target already installs it. The step then reports the
 #     examples that need it as skipped, by name, and they run in that target.
-#     torch, TensorFlow, polars, and lance are omitted this way.
+#     torch, TensorFlow, polars, lance, LightGBM, and XGBoost are omitted
+#     this way.
 #   - Add a library only when it's small, about 25 MB installed or less, and
 #     many examples need it. Keep the extras together within about 25% of the
 #     image's size when this list was set, about 656 MB installed on Linux

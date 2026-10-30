@@ -105,6 +105,14 @@ OMITTED_LIBRARIES = {
     # 138 MB installed on Linux aarch64, for one docstring, and Ray Data's own
     # doctest image installs pylance through data-test-requirements.txt.
     "lance": (),
+    # The LightGBM and XGBoost integrations in Ray Train and Ray Tune import
+    # these at module level, but none of their examples runs here: Tune's are
+    # render-only (+SKIP_EXAMPLE), and Train's are still testcode blocks. The
+    # ML images install both through
+    # python/requirements/ml/core-requirements.txt, and xgboost pulls
+    # nvidia-nccl-cu12 on Linux x86_64.
+    "lightgbm": (),
+    "xgboost": (),
     # The Azure node provider needs azure-cli-core to import, and its only
     # runnable example is a single private import. "azure" is a namespace
     # package, so if any azure-* distribution reaches the image, _installed
