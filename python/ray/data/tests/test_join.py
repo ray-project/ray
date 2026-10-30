@@ -6,11 +6,12 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray.data._internal.logical.operators import JoinType
+from ray.data._internal.logical.operators import Join, JoinType
 from ray.data._internal.util import MiB, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
+from ray.data.expressions import col
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
@@ -1646,6 +1647,267 @@ def test_streaming_join(ray_start_regular_shared_2_cpus):
 
     assert total_rows == N**2
     assert num_blocks >= 1000
+
+
+def _join_condition_inputs():
+    """Left ``(k, a, x)`` and right ``(k2, b, y)``; ``k = k2`` matches one in
+    four rows and ``a = b`` one in three, so the composite key prunes pairs
+    that the first key alone would keep."""
+    left = ray.data.from_items([{"k": i % 4, "a": i % 3, "x": i} for i in range(24)])
+    right = ray.data.from_items(
+        [{"k2": i % 4, "b": i % 3, "y": i * 10} for i in range(12)]
+    )
+    return left, right
+
+
+def _expected_composite_key_join(left: Dataset, right: Dataset, how: str):
+    expected = left.to_pandas().merge(
+        right.to_pandas(), left_on=["k", "a"], right_on=["k2", "b"], how=how
+    )
+    return expected.drop(columns=["k2", "b"])
+
+
+def _optimized_join(ds: Dataset) -> Join:
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    optimized = LogicalOptimizer().optimize(ds._logical_plan)
+    assert isinstance(optimized.dag, Join), optimized.dag.dag_str
+    return optimized.dag
+
+
+@pytest.mark.parametrize("join_type", ["inner", "left_outer"])
+@pytest.mark.parametrize(
+    "condition",
+    [col("a") == col("b"), col("b") == col("a")],
+    ids=["left_eq_right", "right_eq_left"],
+)
+def test_join_condition_extracts_equi_keys(
+    ray_start_regular_shared_2_cpus, join_type, condition
+):
+    """An equality between a left and a right column in ``condition`` becomes
+    a hash key, whichever side of ``==`` each column is on."""
+    left, right = _join_condition_inputs()
+
+    joined = left.join(
+        right,
+        join_type=join_type,
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=condition,
+    )
+
+    join_op = _optimized_join(joined)
+    assert join_op.left_key_columns == ("k", "a")
+    assert join_op.right_key_columns == ("k2", "b")
+    assert join_op.condition is None
+
+    expected = _expected_composite_key_join(
+        left, right, "inner" if join_type == "inner" else "left"
+    )
+    actual = joined.to_pandas()
+    assert rows_same(actual[expected.columns], expected)
+    # The plan-time schema (inferred before the rule rewrites the operator)
+    # must already reflect the extracted key: ``b`` is coalesced into ``a``.
+    assert joined.schema().names == list(actual.columns)
+
+
+def test_join_condition_matches_composite_key_join(ray_start_regular_shared_2_cpus):
+    left, right = _join_condition_inputs()
+
+    via_keys = left.join(
+        right, "inner", num_partitions=4, on=("k", "a"), right_on=("k2", "b")
+    )
+    via_condition = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=col("a") == col("b"),
+    )
+
+    assert rows_same(via_condition.to_pandas(), via_keys.to_pandas())
+
+
+def test_join_condition_skips_pairs_already_in_keys(ray_start_regular_shared_2_cpus):
+    """A conjunct repeating an ``on``/``right_on`` pair is dropped rather than
+    hashed twice; the other conjuncts are still extracted."""
+    left, right = _join_condition_inputs()
+
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=(col("k") == col("k2")) & (col("a") == col("b")),
+    )
+
+    join_op = _optimized_join(joined)
+    assert join_op.left_key_columns == ("k", "a")
+    assert join_op.right_key_columns == ("k2", "b")
+    assert join_op.condition is None
+    assert rows_same(
+        joined.to_pandas(), _expected_composite_key_join(left, right, "inner")
+    )
+
+
+def test_join_condition_residual_is_rejected(ray_start_regular_shared_2_cpus):
+    """Non-equality conjuncts stay on the operator as the residual condition,
+    which nothing can execute yet, so planning fails instead of silently
+    dropping them."""
+    left, right = _join_condition_inputs()
+
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=(col("a") == col("b")) & (col("x") < col("y")),
+    )
+
+    join_op = _optimized_join(joined)
+    assert join_op.left_key_columns == ("k", "a")
+    assert join_op.right_key_columns == ("k2", "b")
+    assert join_op.condition.structurally_equals(col("x") < col("y"))
+
+    with pytest.raises(NotImplementedError, match="Only equalities"):
+        joined.materialize()
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [col("a") == col("a"), col("a") == 1, col("x") < col("y")],
+    ids=["same_side", "literal", "non_equality"],
+)
+def test_join_condition_without_cross_side_equality_is_rejected(
+    ray_start_regular_shared_2_cpus, condition
+):
+    left, right = _join_condition_inputs()
+
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=condition,
+    )
+
+    join_op = _optimized_join(joined)
+    assert join_op.left_key_columns == ("k",)
+    assert join_op.condition.structurally_equals(condition)
+    with pytest.raises(NotImplementedError, match="Only equalities"):
+        joined.materialize()
+
+
+def test_join_condition_unknown_column_is_rejected(ray_start_regular_shared_2_cpus):
+    """Input schemas are inferable here, so the bad column fails at ``join()``."""
+    left, right = _join_condition_inputs()
+
+    with pytest.raises(ValueError, match="'missing'.*not a column of either"):
+        left.join(
+            right,
+            "inner",
+            num_partitions=4,
+            on=("k",),
+            right_on=("k2",),
+            condition=col("missing") == col("b"),
+        )
+
+
+def test_join_condition_ambiguous_column_is_rejected(ray_start_regular_shared_2_cpus):
+    left, right = _join_condition_inputs()
+    # ``a`` now exists on both sides, so ``col("a")`` can't be attributed.
+    right = right.rename_columns({"b": "a"})
+
+    with pytest.raises(ValueError, match="'a'.*ambiguous"):
+        left.join(
+            right,
+            "inner",
+            num_partitions=4,
+            on=("k",),
+            right_on=("k2",),
+            right_suffix="_r",
+            condition=col("a") == col("y"),
+        )
+
+
+def test_join_condition_unresolvable_does_not_break_schema_inference(
+    ray_start_regular_shared_2_cpus,
+):
+    """``Join.infer_schema`` is called by ``Dataset.__repr__`` and by other
+    rules; an unresolvable condition must make it return ``None``, not raise
+    (``resolve_condition`` is where the error is reported)."""
+    left, right = _join_condition_inputs()
+    op = Join(
+        left._logical_plan.dag,
+        right._logical_plan.dag,
+        "inner",
+        ("k",),
+        ("k2",),
+        num_partitions=2,
+        condition=col("missing") == col("b"),
+    )
+
+    assert op.infer_schema() is None
+    with pytest.raises(ValueError, match="'missing'"):
+        op.resolve_condition()
+
+
+def test_join_condition_validate_schemas_checks_extracted_keys(
+    ray_start_regular_shared_2_cpus,
+):
+    """``validate_schemas=True`` type-checks the keys the join will run with,
+    including the pair extracted from ``condition``."""
+    left, _ = _join_condition_inputs()
+    right = ray.data.from_items(
+        [{"k2": i % 4, "b": float(i % 3), "y": i * 10} for i in range(12)]
+    )
+
+    with pytest.raises(ValueError, match="same types"):
+        left.join(
+            right,
+            "inner",
+            num_partitions=4,
+            on=("k",),
+            right_on=("k2",),
+            condition=col("a") == col("b"),
+            validate_schemas=True,
+        )
+
+
+def test_join_condition_needs_inferable_schemas(ray_start_regular_shared_2_cpus):
+    """A row UDF hides the output schema, so the condition's columns can't be
+    attributed to a side and the join reports it."""
+    left, right = _join_condition_inputs()
+    left = left.map(lambda row: row)
+
+    joined = left.join(
+        right,
+        "inner",
+        num_partitions=4,
+        on=("k",),
+        right_on=("k2",),
+        condition=col("a") == col("b"),
+    )
+
+    with pytest.raises(ValueError, match="could not be inferred"):
+        joined.materialize()
+
+
+def test_join_condition_requires_keys(ray_start_regular_shared_2_cpus):
+    left, right = _join_condition_inputs()
+
+    with pytest.raises(ValueError, match="`condition` alone is not supported"):
+        left.join(
+            right, "inner", num_partitions=4, on=(), condition=col("a") == col("b")
+        )
+
+    with pytest.raises(ValueError, match="Expected an `Expr` as `condition`"):
+        left.join(right, "inner", num_partitions=4, on=("k",), condition="a == b")
 
 
 if __name__ == "__main__":
