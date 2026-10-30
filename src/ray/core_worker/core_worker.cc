@@ -3775,25 +3775,36 @@ void CoreWorker::HandleReportGeneratorItemReturns(
       /*consumption_update_callback=*/
       [this, worker_addr, generator_id = consumption_generator_id](
           const Status &status, int64_t total_num_object_consumed) {
-        rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
-        update_request.set_generator_id(generator_id.Binary());
-        update_request.set_total_num_object_consumed(
-            status.ok() ? total_num_object_consumed : -1);
-        auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
-        client->UpdateGeneratorBackpressureConsumed(
-            std::move(update_request),
-            [generator_id](const Status &update_status,
-                           const rpc::UpdateGeneratorBackpressureConsumedReply &) {
-              if (!update_status.ok()) {
-                // The retryable RPC layer retries transient failures; a
-                // permanent failure usually means the executor is gone, in
-                // which case no one is blocked on the corresponding
-                // WaitUntilObjectConsumed. Still WARN so unexpected
-                // executor-side stalls (if any) are visible.
-                RAY_LOG(WARNING).WithField(generator_id)
-                    << "Failed to update generator consumed progress: " << update_status;
-              }
-            });
+        // This callback runs on every read from the stream, usually on the
+        // consumer's Python thread. Post the RPC to io_service_ so the gRPC send
+        // cost stays off that thread.
+        io_service_.post(
+            [this,
+             worker_addr,
+             generator_id,
+             total_num_object_consumed =
+                 status.ok() ? total_num_object_consumed : int64_t{-1}]() {
+              rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
+              update_request.set_generator_id(generator_id.Binary());
+              update_request.set_total_num_object_consumed(total_num_object_consumed);
+              auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
+              client->UpdateGeneratorBackpressureConsumed(
+                  std::move(update_request),
+                  [generator_id](const Status &update_status,
+                                 const rpc::UpdateGeneratorBackpressureConsumedReply &) {
+                    if (!update_status.ok()) {
+                      // The retryable RPC layer retries transient failures; a
+                      // permanent failure usually means the executor is gone, in
+                      // which case no one is blocked on the corresponding
+                      // WaitUntilObjectConsumed. Still WARN so unexpected
+                      // executor-side stalls (if any) are visible.
+                      RAY_LOG(WARNING).WithField(generator_id)
+                          << "Failed to update generator consumed progress: "
+                          << update_status;
+                    }
+                  });
+            },
+            "CoreWorker.UpdateGeneratorBackpressureConsumed");
       });
 }
 
