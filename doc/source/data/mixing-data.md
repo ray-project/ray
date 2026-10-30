@@ -105,9 +105,12 @@ To switch to random mixing, add a streaming shuffle after {meth}`~ray.data.Datas
 Use either of the following streaming-friendly shuffle options in Ray Data:
 
 - {ref}`Local buffer shuffle <local_shuffle_buffer>`, which you enable by passing `local_shuffle_buffer_size` to {meth}`~ray.data.DataIterator.iter_batches`.
-- {ref}`Distributed window shuffle <window_shuffle>`.
+- {ref}`map_batches shuffle <map_batches_shuffle>`.
 
 ```{testcode}
+import numpy as np
+import pyarrow as pa
+
 LOCAL_BATCH_SIZE = 128
 
 ds1 = ray.data.from_items([{"x": 1} for _ in range(750)]).map(preprocess)
@@ -118,9 +121,14 @@ ds2 = ds2.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
 
 mixed = ds1.mix(ds2, weights=[0.75, 0.25])
 
-# Set a large enough window to mix rows from multiple input blocks.
-SHUFFLE_WINDOW_SIZE = 64 * LOCAL_BATCH_SIZE
-mixed = mixed.window_shuffle(window_size=SHUFFLE_WINDOW_SIZE)
+# Add a shuffle after mix() to get random mixing.
+def random_shuffle(batch: pa.Table) -> pa.Table:
+    indices = np.random.permutation(len(batch))
+    return batch.take(indices)
+
+# Set the shuffle buffer size to be large enough for good mixing quality across datasets.
+SHUFFLE_BUFFER_SIZE = 64 * LOCAL_BATCH_SIZE
+mixed = mixed.map_batches(random_shuffle, batch_size=SHUFFLE_BUFFER_SIZE, batch_format="pyarrow")
 ```
 
 (stopping-conditions)=

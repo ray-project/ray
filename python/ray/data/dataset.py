@@ -86,11 +86,11 @@ from ray.data._internal.logical.operators import (
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
+    ShuffleBatches,
     Sort,
     StreamingRepartition,
     StreamingSplit,
     Union as UnionLogicalOperator,
-    WindowShuffle,
     Write,
     Zip,
 )
@@ -2457,135 +2457,124 @@ class Dataset:
         return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=SSR_API_GROUP, stability="alpha")
-    def window_shuffle(
+    def shuffle_batches(
         self,
-        window_size: int,
+        batch_size: int | None = None,
         *,
-        strict: bool = False,
         seed: int | RandomSeedConfig | None = None,
         compute: TaskPoolStrategy | None = None,
         num_cpus: float | None = None,
         memory: float | None = None,
     ) -> "Dataset":
-        """Shuffle rows within batches using parallel map tasks.
+        """Shuffle rows within batches using parallel Ray Data tasks.
 
-        By default, use ``window_size`` as the target batch size, as in
-        :meth:`map_batches`. Each batch receives a uniform random permutation.
-        Batches can span input blocks. A task's final batch can be smaller than
-        ``window_size``, including in the middle of the dataset. A task can
-        process multiple batches. This mode adds no repartition stage.
-
-        Set ``strict=True`` to assemble consecutive ``window_size``-row windows
-        with streaming repartition before shuffling. Only the final window can
-        be smaller. Each window is shuffled in a separate task. Rows never move
-        between windows. Window boundaries follow the upstream execution order;
-        without ``preserve_order``, upstream tasks can change that order.
-        Completed windows can also be emitted out of order.
-        Output block sizes may differ from window sizes due to block shaping.
+        Each batch receives a uniform random permutation. With ``batch_size=None``,
+        shuffle each input block independently. With a positive ``batch_size``,
+        use the same target-sized batching as :meth:`map_batches`. Batches can
+        span input blocks, and a task can process multiple batches. Each task's
+        final batch can be smaller than ``batch_size``, including in the middle
+        of the dataset. Rows never move between shuffle batches.
 
         For example, with four consecutive input blocks of five rows each and
-        ``window_size=8``, default task grouping can produce shuffle batches of
+        ``batch_size=8``, task grouping can produce shuffle batches of
         ``[8, 2, 8, 2]`` rows: each task consumes two blocks and shuffles eight
-        rows followed by its two remaining rows. With ``strict=True``, the
-        shuffle windows contain ``[8, 8, 4]`` rows instead. These are shuffle
-        window sizes, independent of the batch size you choose when iterating.
+        rows followed by its two remaining rows. With ``batch_size=None``, each
+        five-row input block is shuffled separately. These are the batches being
+        shuffled, independent of the batch size you choose when iterating.
 
-        This is a lazy transformation and does not materialize the input or
-        output. Batches can be shuffled and consumed before all input
-        arrives. The streaming executor applies its existing backpressure to
-        task submission and output reading when downstream consumption slows.
-        Each window must fit in a shuffle task's memory; backpressure is not a
-        hard memory limit. Blocking upstream operations can still delay output.
-        Consume it with an iterator, or call ``materialize()`` when you
-        want to cache its shuffled output. Reusing a materialized result also
-        reuses its row order.
+        To construct exact consecutive windows, first call :meth:`repartition`
+        with ``target_num_rows_per_block`` and ``strict=True``, then shuffle
+        each resulting block with ``batch_size=None``. Only the final window
+        can be smaller than the requested size. Window boundaries follow the
+        upstream execution order.
 
-        A seed is reproducible for the same input layout, mode, and task grouping.
-        For reproducible output order, enable ``preserve_order`` on the dataset's
+        This is a lazy transformation. Batches can be shuffled and consumed
+        before all input arrives. The streaming executor applies backpressure
+        when downstream consumption slows. Blocking upstream operations can
+        still delay output. Call ``materialize()`` to cache a shuffled result;
+        reusing that result also reuses its row order. Output block sizes may
+        differ from shuffle batch sizes due to block shaping.
+
+        A seed is reproducible for the same input layout and task grouping. For
+        reproducible output order, enable ``preserve_order`` on the dataset's
         execution options. ``RandomSeedConfig`` controls reseeding between
-        executions. Unlike a rolling local shuffle buffer, neither mode mixes
-        rows across its shuffle batches. This operation is not a global
-        shuffle; use :meth:`random_shuffle` when that randomness is required.
+        executions. Unlike a rolling local shuffle buffer, this operation does
+        not mix rows across shuffle batches. Use :meth:`random_shuffle` for
+        global row shuffling. This operation permutes rows within batches;
+        it does not randomly reorder the batches themselves.
 
-        Memory usage depends on the bytes per window, including input data,
-        output data, indices, and temporary arrays. Input blocks can exceed the
-        window size, so ``window_size`` does not cap task input size or peak
-        memory. Larger windows may increase data movement and require spilling.
-        Eligible chunked tensor columns use Ray's optimized row selection;
-        other columns use existing fallbacks.
+        Each shuffle batch must fit in a task's memory, including input, output,
+        indices, and temporary arrays. Input blocks can exceed ``batch_size``,
+        so it does not cap task input size or peak memory. Backpressure is not
+        a hard memory limit. Eligible chunked tensor columns use Ray's optimized
+        row selection; other columns use existing fallbacks.
 
         Examples:
             >>> import ray
-            >>> shuffled = ray.data.range(100).window_shuffle(20, seed=42)
+            >>> ds = ray.data.range(20, override_num_blocks=4)
+            >>> shuffled = ds.shuffle_batches(batch_size=8, seed=42)
             >>> # Consumption triggers execution; caching is optional.
             >>> sum(len(b) for b in shuffled.iter_batches(batch_format="pyarrow"))
-            100
+            20
+            >>> # Shuffle exact eight-row windows, except the final remainder.
+            >>> exact = ds.repartition(
+            ...     target_num_rows_per_block=8, strict=True
+            ... ).shuffle_batches(seed=42)
+            >>> sum(len(b) for b in exact.iter_batches(batch_format="pyarrow"))
+            20
 
         Args:
-            window_size: Positive target number of rows in each shuffle batch.
-                With ``strict=True``, each window has this many rows except
-                the final window. A value of one returns the input unchanged.
-            strict: If True, construct exact consecutive windows with streaming
-                repartition. If False, use batch-map task grouping, which can
-                produce smaller batches at task boundaries. Defaults to False.
+            batch_size: Target number of rows per shuffle batch, as in
+                :meth:`map_batches`. Task-tail batches can be smaller. If None,
+                shuffle each input block independently. Defaults to None.
+                A value of one returns the input unchanged.
             seed: Optional seed or configuration for execution-based reseeding.
                 An integer gives the same permutation across executions under
                 the ordering conditions above. None uses a random base seed
                 pinned at plan construction and reseeds between executions.
             compute: Optional task-pool strategy limiting parallel shuffle tasks.
-                This limit does not apply to upstream window-construction tasks.
+                This limit does not apply to upstream transforms.
             num_cpus: CPU reservation for each shuffle map task.
             memory: Heap-memory scheduling reservation in bytes for each shuffle
                 map task. This is not a hard memory limit and does not include
-                upstream window-construction tasks or object-store memory.
+                upstream transforms or object-store memory.
 
         Returns:
-            A Dataset containing the shuffled windows.
+            A Dataset with rows shuffled within each batch.
         """
-        if isinstance(window_size, bool) or not isinstance(window_size, int):
-            raise TypeError("window_size must be an integer")
-        if window_size <= 0:
-            raise ValueError("window_size must be positive")
-        if not isinstance(strict, bool):
-            raise TypeError("strict must be a boolean")
+        if batch_size is not None:
+            if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+                raise TypeError("batch_size must be an integer or None")
+            if batch_size <= 0:
+                raise ValueError("batch_size must be positive")
         if compute is not None and not isinstance(compute, TaskPoolStrategy):
-            raise TypeError("window_shuffle currently supports TaskPoolStrategy only")
+            raise TypeError("shuffle_batches currently supports TaskPoolStrategy only")
 
         seed_config = RandomSeedConfig.create_seed_config(seed)
         if seed_config.seed is not None:
             # Validate on the driver rather than failing a remote shuffle task.
             np.random.SeedSequence(seed_config.seed)
-        if window_size == 1:
+        if batch_size == 1:
             return self
         if seed_config.seed is None:
-            # Pin the base seed when constructing the plan, so task retries replay
-            # the same permutation. Independent executions may reseed, like epochs.
+            # Pin the base seed so task retries replay the same permutation.
             seed_config = RandomSeedConfig(
                 seed=get_timestamp_seed(), reseed_after_execution=True
             )
 
-        if strict:
-            # Consume each prebuilt window whole, preserving its tensor chunks.
-            source = self.repartition(
-                target_num_rows_per_block=window_size, strict=True
-            )
-        else:
-            source = self
         remote_args = {}
         if num_cpus is not None:
             remote_args["num_cpus"] = num_cpus
         if memory is not None:
             remote_args["memory"] = memory
-
-        op = WindowShuffle(
-            input_dependencies=[source._logical_plan.dag],
-            window_size=window_size,
-            strict=strict,
+        op = ShuffleBatches(
+            input_dependencies=[self._logical_plan.dag],
+            batch_size=batch_size,
             seed_config=seed_config,
             compute=compute,
             ray_remote_args=remote_args,
         )
-        return Dataset._from_parent(source, LogicalPlan(op, self.context))
+        return Dataset._from_parent(self, LogicalPlan(op, self.context))
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)

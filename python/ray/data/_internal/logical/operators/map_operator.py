@@ -45,7 +45,7 @@ __all__ = [
     "MapRows",
     "Project",
     "StreamingRepartition",
-    "WindowShuffle",
+    "ShuffleBatches",
     "CSE_TEMP_COLUMN_PREFIX",
 ]
 
@@ -298,17 +298,16 @@ class MapBatches(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class WindowShuffle(AbstractMap, LogicalOperatorPreservesSchema):
-    """Shuffle target-sized batches or prebuilt strict windows.
+class ShuffleBatches(AbstractMap, LogicalOperatorPreservesSchema):
+    """Shuffle rows within target-sized batches or whole input blocks.
 
     Although this operation preserves rows and schema, it changes row order.
-    Limit pushdown must stop here, and fusion must not rebundle its windows.
+    Limit pushdown must stop here, and fusion must not rebundle its batches.
     """
 
-    window_size: int
+    batch_size: Optional[int]
     seed_config: RandomSeedConfig
     input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
-    strict: bool = False
     can_modify_num_rows: bool = field(init=False, default=False)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
@@ -318,16 +317,16 @@ class WindowShuffle(AbstractMap, LogicalOperatorPreservesSchema):
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        if self.window_size <= 0:
-            raise ValueError(f"window_size must be positive, got {self.window_size}")
+        if self.batch_size is not None and self.batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
         object.__setattr__(
             self,
             "min_rows_per_bundled_input",
-            None if self.strict else self.window_size,
+            self.batch_size,
         )
-        object.__setattr__(self, "_name", "WindowShuffle")
+        object.__setattr__(self, "_name", "ShuffleBatches")
 
 
 @dataclass(frozen=True, repr=False, eq=False)

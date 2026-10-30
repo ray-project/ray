@@ -700,7 +700,7 @@ The following table maps each drill-down result to the performance tips that add
 * - A single rank straggles
   - {ref}`isolating-ray-data-worker-processes`
 * - Batching dominates and you use a large local shuffle buffer
-  - {ref}`distributed window shuffle <window_shuffle>`
+  - {ref}`map_batches_shuffle`
 ```
 
 For lower-level, per-operator timings that these panels don't cover, see the {ref}`Ray Data dashboard <ray-data-dashboard>` and {ref}`Ray Data stats <ray-data-stats>`.
@@ -848,7 +848,7 @@ trainer = TorchTrainer(
 ```
 
 :::{tip}
-Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`distributed window shuffling <window_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
+Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`map_batches-based shuffling <map_batches_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
 :::
 
 For details on tuning Ray Data, see {ref}`data_performance_tips`.

@@ -799,7 +799,7 @@
           runtime_env:
             RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "0"
 
-- name: "window_shuffle.fastpath_{{take_enabled}}"
+- name: "shuffle_batches.fastpath_{{take_enabled}}"
   python: "3.10"
   frequency: manual
   cluster:
@@ -813,7 +813,7 @@
       take_enabled: ["1", "0"]
   run:
     timeout: 7200
-    script: python benchmark_window_shuffle.py --repeats=3
+    script: python benchmark_shuffle_batches.py --repeats=3
 
 - name: "iter_batches_{{format}}"
   python: "3.10"

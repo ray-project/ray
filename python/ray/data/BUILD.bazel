@@ -507,9 +507,9 @@ py_test(
 )
 
 py_test(
-    name = "test_window_shuffle",
+    name = "test_shuffle_batches",
     size = "medium",
-    srcs = ["tests/test_window_shuffle.py"],
+    srcs = ["tests/test_shuffle_batches.py"],
     tags = [
         "exclusive",
         "team:data",

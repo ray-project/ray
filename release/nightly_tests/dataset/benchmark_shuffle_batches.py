@@ -1,11 +1,11 @@
-"""Compare window_shuffle with a map_batches/PyArrow take UDF.
+"""Compare shuffle_batches with a map_batches/PyArrow take UDF.
 
 Run on a single CPU node with online range_tensor input (4 KiB per row), parallel
-NumPy consumers, and no model computation. Strict mode's baseline constructs the
+NumPy consumers, and no model computation. The exact-window baseline constructs the
 same consecutive windows before calling PyArrow take. Each measured execution
 excludes iterator warmup; a separate untimed execution validates every payload.
 Set RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE before starting to measure its effect on
-the same window-shuffle pipelines. The native baselines do not use that flag.
+the same batch-shuffle pipelines. The native baselines do not use that flag.
 """
 
 import argparse
@@ -25,9 +25,9 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
 
 BASELINES = {
     "map_batches_native_take": "map_batches_native_take",
-    "window_shuffle_default": "map_batches_native_take",
-    "strict_windows_native_take": "strict_windows_native_take",
-    "window_shuffle_strict": "strict_windows_native_take",
+    "shuffle_batches": "map_batches_native_take",
+    "exact_windows_native_take": "exact_windows_native_take",
+    "exact_windows_shuffle_batches": "exact_windows_native_take",
 }
 
 
@@ -71,23 +71,23 @@ def run_pipeline(args, variant, *, validate_payload=False):
     )
     dataset = ray.data.range_tensor(rows, shape=(512,), override_num_blocks=args.blocks)
     compute = TaskPoolStrategy(size=args.concurrency)
-    if variant in ("window_shuffle_default", "window_shuffle_strict"):
-        dataset = dataset.window_shuffle(
-            args.window,
-            strict=variant == "window_shuffle_strict",
+    exact = variant in ("exact_windows_shuffle_batches", "exact_windows_native_take")
+    if exact:
+        dataset = dataset.repartition(
+            target_num_rows_per_block=args.shuffle_batch_size, strict=True
+        )
+    batch_size = None if exact else args.shuffle_batch_size
+    if variant in ("shuffle_batches", "exact_windows_shuffle_batches"):
+        dataset = dataset.shuffle_batches(
+            batch_size=batch_size,
             seed=42,
             compute=compute,
             num_cpus=1,
         )
     else:
-        strict = variant == "strict_windows_native_take"
-        if strict:
-            dataset = dataset.repartition(
-                target_num_rows_per_block=args.window, strict=True
-            )
         dataset = dataset.map_batches(
             native_shuffle,
-            batch_size=None if strict else args.window,
+            batch_size=batch_size,
             batch_format="pyarrow",
             zero_copy_batch=True,
             compute=compute,
@@ -145,7 +145,7 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--batch-size", type=int, default=4096)
     parser.add_argument("--blocks", type=int, default=160)
-    parser.add_argument("--window", type=int, default=262144)
+    parser.add_argument("--shuffle-batch-size", type=int, default=262144)
     parser.add_argument("--warmup-batches", type=int, default=100)
     parser.add_argument("--measured-batches", type=int, default=200)
     parser.add_argument("--repeats", type=int, default=3)
@@ -158,7 +158,7 @@ def main():
             args.workers,
             args.batch_size,
             args.blocks,
-            args.window,
+            args.shuffle_batch_size,
             args.warmup_batches,
             args.measured_batches,
             args.repeats,

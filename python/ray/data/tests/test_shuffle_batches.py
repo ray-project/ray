@@ -1,4 +1,4 @@
-"""Correctness, optimizer, and streaming checks for Dataset.window_shuffle."""
+"""Correctness, optimizer, and streaming checks for Dataset.shuffle_batches."""
 
 import asyncio
 import os
@@ -18,15 +18,15 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.data import RandomSeedConfig
-from ray.data._internal import window_shuffle as window_shuffle_impl
+from ray.data._internal import shuffle_batches as shuffle_batches_impl
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.logical.operators import (
     Limit,
+    ShuffleBatches,
     StreamingRepartition,
-    WindowShuffle,
 )
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
@@ -36,7 +36,7 @@ from ray.data.context import DataContext
 from ray.data.dataset import MaterializedDataset
 from ray.data.expressions import col
 
-_ORIGINAL_SHUFFLE = window_shuffle_impl._shuffle_window
+_ORIGINAL_SHUFFLE = shuffle_batches_impl._shuffle_batch
 _BACKPRESSURE_STATE = None
 
 
@@ -46,7 +46,7 @@ class _ObserveBackpressure(ExecutionCallback):
         if state is None or not state["paused"].is_set():
             return
         for op, op_state in executor._topology.items():
-            if op.name != "WindowShuffle":
+            if op.name != "ShuffleBatches":
                 continue
             if (
                 op._task_submission_backpressure_policy
@@ -216,11 +216,18 @@ def _add_payload(batch):
     return pa.table({"id": batch["id"], "payload": [b"x" * (128 * 1024)] * len(batch)})
 
 
-class WindowShuffleTests(unittest.TestCase):
+def _shuffle(dataset, batch_size, *, exact=False, **kwargs):
+    """Exercise direct batching and explicit exact-window composition."""
+    if exact:
+        dataset = dataset.repartition(target_num_rows_per_block=batch_size, strict=True)
+    return dataset.shuffle_batches(batch_size=None if exact else batch_size, **kwargs)
+
+
+class ShuffleBatchesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.previous_context = DataContext.get_current().copy()
-        # Leave resources for strict repartition alongside two shuffle tasks.
+        # Leave resources for exact repartition alongside two shuffle tasks.
         ray.init(
             num_cpus=4,
             include_dashboard=False,
@@ -255,9 +262,52 @@ class WindowShuffleTests(unittest.TestCase):
     def ids(self, dataset):
         return [row["id"] for row in dataset.take_all()]
 
+    def test_none_shuffles_whole_blocks_without_repartition(self):
+        source = self.source([5, 12, 3])
+        with patch.object(
+            shuffle_batches_impl, "_shuffle_batch", _record_shuffle_batch
+        ):
+            output = source.shuffle_batches(seed=42, compute=TaskPoolStrategy(size=1))
+            rows = output.take_all()
+        op = output._logical_plan.dag
+        self.assertIsNone(op.batch_size)
+        self.assertNotIsInstance(op.input_dependencies[0], StreamingRepartition)
+        groups: dict[int, list[int]] = {}
+        for row in rows:
+            groups.setdefault(row["batch_start"], []).append(row["id"])
+        self.assertEqual(
+            {start: sorted(ids) for start, ids in groups.items()},
+            {0: list(range(5)), 5: list(range(5, 17)), 17: list(range(17, 20))},
+        )
+        self.assertTrue(any(ids != sorted(ids) for ids in groups.values()))
+        self.assertEqual(sorted(row["id"] for row in rows), list(range(20)))
+
+    def test_none_retry_and_execution_reseeding(self):
+        source = self.source([31, 29, 20])
+        source.context.retried_map_errors = ["Injected failure"]
+        source.context.max_map_retries = 1
+        expected = self.ids(source.shuffle_batches(seed=42))
+        with patch.object(
+            shuffle_batches_impl, "_shuffle_batch", _fail_once_after_shuffle
+        ):
+            actual = self.ids(source.shuffle_batches(batch_size=None, seed=42))
+        self.assertEqual(actual, expected)
+        output = source.shuffle_batches(
+            seed=RandomSeedConfig(seed=42, reseed_after_execution=True)
+        )
+        first, second = self.ids(output), self.ids(output)
+        self.assertEqual(sorted(first), list(range(80)))
+        self.assertEqual(sorted(second), list(range(80)))
+        self.assertNotEqual(first, second)
+
+    def test_none_tensor_fast_path_and_parallel_tasks(self):
+        for variable in (False, True):
+            with self.subTest(variable=variable):
+                self.check_tensor_path(variable=variable, exact=False, blockwise=True)
+
     def test_exact_windows_and_tail(self):
         source = self.source([3, 9, 2, 15, 8])
-        output = source.window_shuffle(8, strict=True, seed=42).materialize()
+        output = _shuffle(source, 8, exact=True, seed=42).materialize()
         blocks = ray.get(output.to_arrow_refs())
         self.assertEqual([len(b) for b in blocks], [8, 8, 8, 8, 5])
         for index, block in enumerate(blocks):
@@ -267,14 +317,14 @@ class WindowShuffleTests(unittest.TestCase):
             )
         self.assertEqual(sorted(self.ids(output)), list(range(37)))
 
-    def test_default_and_strict_shuffle_batch_sizes(self):
+    def test_default_and_exact_shuffle_batch_sizes(self):
         source = self.source([5, 5, 5, 5])
-        for strict, expected in ((False, [8, 2, 8, 2]), (True, [8, 8, 4])):
-            with self.subTest(strict=strict):
+        for exact, expected in ((False, [8, 2, 8, 2]), (True, [8, 8, 4])):
+            with self.subTest(exact=exact):
                 with patch.object(
-                    window_shuffle_impl, "_shuffle_window", _record_shuffle_batch
+                    shuffle_batches_impl, "_shuffle_batch", _record_shuffle_batch
                 ):
-                    output = source.window_shuffle(8, strict=strict, seed=42)
+                    output = _shuffle(source, 8, exact=exact, seed=42)
                     # Iterator batches cross shuffle windows. Probe the actual
                     # shuffle inputs rather than inferring them from output blocks.
                     rows = [
@@ -302,50 +352,50 @@ class WindowShuffleTests(unittest.TestCase):
                 groups.setdefault(row["batch_start"], []).append(row["id"])
             return [sorted(ids) for _, ids in sorted(groups.items())]
 
-        for sizes in ([4] * 10, [3, 9, 2, 15, 8], [103], [3]):
-            with self.subTest(sizes=sizes):
-                source = self.source(sizes)
-                reference = source.map_batches(
-                    _record_map_batch,
-                    batch_size=8,
-                    batch_format="pyarrow",
-                    zero_copy_batch=True,
-                    compute=TaskPoolStrategy(size=2),
-                )
-                with patch.object(
-                    window_shuffle_impl, "_shuffle_window", _record_shuffle_batch
-                ):
-                    output = source.window_shuffle(
-                        8, seed=42, compute=TaskPoolStrategy(size=2)
+        for batch_size in (None, 8):
+            for sizes in ([4] * 10, [3, 9, 2, 15, 8], [103], [3]):
+                with self.subTest(sizes=sizes, batch_size=batch_size):
+                    source = self.source(sizes)
+                    reference = source.map_batches(
+                        _record_map_batch,
+                        batch_size=batch_size,
+                        batch_format="pyarrow",
+                        zero_copy_batch=True,
+                        compute=TaskPoolStrategy(size=2),
                     )
-                    actual = members(output)
-                self.assertEqual(actual, members(reference))
-                self.assertEqual(sorted(self.ids(output)), list(range(sum(sizes))))
+                    with patch.object(
+                        shuffle_batches_impl, "_shuffle_batch", _record_shuffle_batch
+                    ):
+                        output = source.shuffle_batches(
+                            batch_size, seed=42, compute=TaskPoolStrategy(size=2)
+                        )
+                        actual = members(output)
+                    self.assertEqual(actual, members(reference))
+                    self.assertEqual(sorted(self.ids(output)), list(range(sum(sizes))))
 
-    def test_strict_selects_repartition(self):
+    def test_repartition_is_explicit(self):
         source = self.source([3, 9, 2, 15, 8])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                output = source.window_shuffle(8, strict=strict, seed=42)
+        for exact in (False, True):
+            with self.subTest(exact=exact):
+                output = _shuffle(source, 8, exact=exact, seed=42)
                 op = output._logical_plan.dag
-                self.assertEqual(op.window_size, 8)
-                self.assertEqual(op.strict, strict)
-                self.assertEqual(op.min_rows_per_bundled_input, None if strict else 8)
+                self.assertEqual(op.batch_size, None if exact else 8)
+                self.assertEqual(op.min_rows_per_bundled_input, None if exact else 8)
                 self.assertEqual(
-                    isinstance(op.input_dependencies[0], StreamingRepartition), strict
+                    isinstance(op.input_dependencies[0], StreamingRepartition), exact
                 )
                 physical, _ = get_execution_plan(output._logical_plan)
                 names = [p.name for p in physical.dag.post_order_iter()]
                 self.assertEqual(
                     any(name.startswith("StreamingRepartition") for name in names),
-                    strict,
+                    exact,
                 )
 
     def test_materialized_input_produces_lazy_output(self):
         source = self.source([3, 9, 2, 15, 8])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                output = source.window_shuffle(8, strict=strict, seed=42)
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                output = _shuffle(source, batch_size, exact=exact, seed=42)
                 self.assertNotIsInstance(output, MaterializedDataset)
                 with self.assertRaises(NotImplementedError):
                     output.num_blocks()
@@ -357,9 +407,9 @@ class WindowShuffleTests(unittest.TestCase):
     def test_default_large_block_has_distinct_batch_permutations(self):
         source = self.source([103])
         with patch.object(
-            window_shuffle_impl, "_shuffle_window", _record_shuffle_batch
+            shuffle_batches_impl, "_shuffle_batch", _record_shuffle_batch
         ):
-            rows = source.window_shuffle(16, seed=42).take_all()
+            rows = _shuffle(source, 16, seed=42).take_all()
         self.assertEqual(len({row["task_idx"] for row in rows}), 1)
         self.assertEqual({row["batch_idx"] for row in rows}, set(range(7)))
         groups = {}
@@ -371,12 +421,14 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_seed_is_reproducible(self):
         source = self.source([13, 7, 17])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                first = source.window_shuffle(8, strict=strict, seed=42).materialize()
-                second = source.window_shuffle(8, strict=strict, seed=42).materialize()
-                different = source.window_shuffle(
-                    8, strict=strict, seed=9
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                first = _shuffle(source, batch_size, exact=exact, seed=42).materialize()
+                second = _shuffle(
+                    source, batch_size, exact=exact, seed=42
+                ).materialize()
+                different = _shuffle(
+                    source, batch_size, exact=exact, seed=9
                 ).materialize()
                 self.assertEqual(self.ids(first), self.ids(second))
                 self.assertNotEqual(self.ids(first), self.ids(different))
@@ -384,7 +436,7 @@ class WindowShuffleTests(unittest.TestCase):
     def test_unordered_execution_preserves_window_membership(self):
         source = self.source([3, 9, 2, 15, 8])
         source.context.execution_options.preserve_order = False
-        output = source.window_shuffle(8, strict=True, seed=42).materialize()
+        output = _shuffle(source, 8, exact=True, seed=42).materialize()
         windows = {
             tuple(sorted(block["id"].to_pylist()))
             for block in ray.get(output.to_arrow_refs())
@@ -396,16 +448,16 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_limit_stays_after_shuffle(self):
         source = self.source([17, 17, 17])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                output = source.window_shuffle(8, strict=strict, seed=42)
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                output = _shuffle(source, batch_size, exact=exact, seed=42)
                 self.assertEqual(self.ids(output.limit(11)), self.ids(output)[:11])
 
     def test_logical_metadata_and_limit_barrier(self):
         source = self.source([17, 17, 17])
-        output = source.window_shuffle(8, seed=42)
+        output = _shuffle(source, 8, seed=42)
         op = output._logical_plan.dag
-        self.assertIsInstance(op, WindowShuffle)
+        self.assertIsInstance(op, ShuffleBatches)
         self.assertFalse(op.can_modify_num_rows)
         self.assertEqual(output.schema(), source.schema())
         self.assertEqual(op.infer_metadata().num_rows, 51)
@@ -417,26 +469,26 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_shuffle_physical_operator_disables_fusion(self):
         source = self.source([103])
-        output = source.window_shuffle(16, seed=42).map_batches(
+        output = _shuffle(source, 16, seed=42).map_batches(
             _identity, batch_size=64, batch_format="pyarrow"
         )
         physical, _ = get_execution_plan(output._logical_plan)
         operators = list(physical.dag.post_order_iter())
-        shuffle = [op for op in operators if op.name == "WindowShuffle"]
+        shuffle = [op for op in operators if op.name == "ShuffleBatches"]
         self.assertEqual(len(shuffle), 1)
         self.assertFalse(shuffle[0].supports_fusion())
 
     def test_small_and_empty_inputs(self):
         self.assertEqual(
-            self.ids(self.source([7]).window_shuffle(1, seed=42)), list(range(7))
+            self.ids(_shuffle(self.source([7]), 1, seed=42)), list(range(7))
         )
         empty = ray.data.from_arrow(pa.table({"id": pa.array([], type=pa.int64())}))
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                small = self.source([3]).window_shuffle(8, strict=strict, seed=42)
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                small = _shuffle(self.source([3]), batch_size, exact=exact, seed=42)
                 self.assertEqual(sorted(self.ids(small)), [0, 1, 2])
                 self.assertEqual(
-                    empty.window_shuffle(8, strict=strict, seed=42).take_all(), []
+                    _shuffle(empty, batch_size, exact=exact, seed=42).take_all(), []
                 )
 
     def test_nullable_and_dictionary_columns_preserve_values_and_schema(self):
@@ -449,28 +501,29 @@ class WindowShuffleTests(unittest.TestCase):
             }
         )
         source = ray.data.from_arrow([table.slice(i, 7) for i in range(0, 37, 7)])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                output = source.window_shuffle(8, strict=strict, seed=42).materialize()
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                output = _shuffle(
+                    source, batch_size, exact=exact, seed=42
+                ).materialize()
                 self.assertEqual(output.schema(), source.schema())
                 self.assertEqual(
                     sorted(output.take_all(), key=lambda row: row["id"]),
                     table.to_pylist(),
                 )
 
-    def test_invalid_window_size_and_compute(self):
+    def test_invalid_batch_size_and_compute(self):
         source = self.source([3])
         for value in (0, -1):
             with self.assertRaises(ValueError):
-                source.window_shuffle(value)
+                source.shuffle_batches(value)
         for value in (True, 1.5, "8"):
             with self.assertRaises(TypeError):
-                source.window_shuffle(value)
+                source.shuffle_batches(value)
         with self.assertRaises(TypeError):
-            source.window_shuffle(8, compute=ray.data.ActorPoolStrategy(size=1))
-        for value in (None, 0, 1, "true"):
-            with self.assertRaises(TypeError):
-                source.window_shuffle(8, strict=value)
+            source.shuffle_batches(8, compute=ray.data.ActorPoolStrategy(size=1))
+        with self.assertRaises(TypeError):
+            source.shuffle_batches(8, strict=True)
 
     def test_pandas_blocks_preserve_schema_dtypes_and_values(self):
         DataContext.get_current().enable_pandas_block = True
@@ -488,9 +541,9 @@ class WindowShuffleTests(unittest.TestCase):
             [frame.iloc[:5], frame.iloc[5:13], frame.iloc[13:]]
         )
         schema = source.schema()
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                shuffled = source.window_shuffle(8, strict=strict, seed=42)
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                shuffled = _shuffle(source, batch_size, exact=exact, seed=42)
                 self.assertEqual(shuffled.schema(fetch_if_missing=False), schema)
                 output = shuffled.materialize()
                 self.assertEqual(output.schema(), schema)
@@ -523,34 +576,32 @@ class WindowShuffleTests(unittest.TestCase):
         source = self.source([32, 32])
         source.context.retried_map_errors = ["Injected failure"]
         source.context.max_map_retries = 1
-        for strict in (False, True):
-            with self.subTest(strict=strict):
+        for exact in (False, True):
+            with self.subTest(exact=exact):
                 with patch.object(
-                    window_shuffle_impl, "_shuffle_window", _fail_once_after_shuffle
+                    shuffle_batches_impl, "_shuffle_batch", _fail_once_after_shuffle
                 ):
-                    result = source.window_shuffle(
-                        32, strict=strict, seed=42
-                    ).materialize()
+                    result = _shuffle(source, 32, exact=exact, seed=42).materialize()
                 self.assertEqual(sorted(self.ids(result)), list(range(64)))
 
     def test_multi_batch_retry_replays_permutations(self):
         source = self.source([64])
         source.context.retried_map_errors = ["Injected failure"]
         source.context.max_map_retries = 1
-        expected = self.ids(source.window_shuffle(16, seed=42))
+        expected = self.ids(_shuffle(source, 16, seed=42))
         with patch.object(
-            window_shuffle_impl, "_shuffle_window", _fail_once_in_second_batch
+            shuffle_batches_impl, "_shuffle_batch", _fail_once_in_second_batch
         ):
-            actual = self.ids(source.window_shuffle(16, seed=42))
+            actual = self.ids(_shuffle(source, 16, seed=42))
         self.assertEqual(actual, expected)
 
     def test_worker_crash_replays_permutations(self):
         source = self.source([64])
-        # Flush early output before the non-strict task fails in its second batch.
+        # Flush early output before the non-exact task fails in its second batch.
         source.context.target_max_block_size = 96
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                crash_batch_idx = 0 if strict else 1
+        for exact in (False, True):
+            with self.subTest(exact=exact):
+                crash_batch_idx = 0 if exact else 1
                 recorder = (
                     ray.remote(_WorkerCrashRecorder)
                     .options(num_cpus=0)
@@ -558,17 +609,13 @@ class WindowShuffleTests(unittest.TestCase):
                 )
                 assert isinstance(recorder, ActorHandle)
                 try:
-                    expected = self.ids(
-                        source.window_shuffle(16, strict=strict, seed=42)
-                    )
+                    expected = self.ids(_shuffle(source, 16, exact=exact, seed=42))
                     with patch.object(
-                        window_shuffle_impl,
-                        "_shuffle_window",
+                        shuffle_batches_impl,
+                        "_shuffle_batch",
                         partial(_crash_once_after_shuffle, recorder=recorder),
                     ):
-                        actual = self.ids(
-                            source.window_shuffle(16, strict=strict, seed=42)
-                        )
+                        actual = self.ids(_shuffle(source, 16, exact=exact, seed=42))
                     self.assertEqual(actual, expected)
                     self.assertIn(
                         (0, crash_batch_idx), ray.get(recorder.get_replayed.remote())
@@ -578,8 +625,8 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_large_source_block_creates_one_window_per_shuffle_task(self):
         source = self.source([103])
-        with patch.object(window_shuffle_impl, "_shuffle_window", _tag_shuffle_task):
-            result = source.window_shuffle(16, strict=True, seed=42).materialize()
+        with patch.object(shuffle_batches_impl, "_shuffle_batch", _tag_shuffle_task):
+            result = _shuffle(source, 16, exact=True, seed=42).materialize()
         blocks = ray.get(result.to_arrow_refs())
         self.assertEqual([len(b) for b in blocks], [16] * 6 + [7])
         tasks = [set(b["task_idx"].to_pylist()) for b in blocks]
@@ -589,12 +636,12 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_no_implicit_materialization(self):
         source = ray.data.range(37, override_num_blocks=3)
-        for strict in (False, True):
-            with self.subTest(strict=strict):
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
                 with patch.object(
                     ray.data.Dataset, "materialize", side_effect=AssertionError
                 ):
-                    result = source.window_shuffle(8, strict=strict, seed=42)
+                    result = _shuffle(source, batch_size, exact=exact, seed=42)
                     batches = list(
                         result.iter_batches(batch_size=7, batch_format="pyarrow")
                     )
@@ -607,19 +654,19 @@ class WindowShuffleTests(unittest.TestCase):
         )
         source.context.target_max_block_size = 1024
         source.context.execution_no_progress_timeout_s = 20
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                output = source.window_shuffle(
-                    16, strict=strict, seed=42, compute=TaskPoolStrategy(size=1)
+        for exact in (False, True):
+            with self.subTest(exact=exact):
+                output = _shuffle(
+                    source, 16, exact=exact, seed=42, compute=TaskPoolStrategy(size=1)
                 )
                 self.assertEqual(sorted(self.ids(output)), list(range(37)))
 
     def test_first_window_arrives_before_upstream_finishes(self):
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                self.check_first_window_arrives_before_upstream_finishes(strict)
+        for exact in (False, True):
+            with self.subTest(exact=exact):
+                self.check_first_window_arrives_before_upstream_finishes(exact)
 
-    def check_first_window_arrives_before_upstream_finishes(self, strict):
+    def check_first_window_arrives_before_upstream_finishes(self, exact):
         # Force the first yielded table out of the upstream output buffer before
         # the UDF waits. The gate makes eager/full-input execution fail reliably.
         # Output buffering flushes above (not at) the byte target. Keep this
@@ -633,7 +680,7 @@ class WindowShuffleTests(unittest.TestCase):
             batch_size=None,
         )
         iterator = iter(
-            source.window_shuffle(8, strict=strict, seed=42).iter_batches(
+            _shuffle(source, 8, exact=exact, seed=42).iter_batches(
                 batch_size=8, batch_format="pyarrow", prefetch_batches=0
             )
         )
@@ -657,11 +704,11 @@ class WindowShuffleTests(unittest.TestCase):
             ray.kill(gate)
 
     def test_slow_consumer_uses_executor_backpressure_and_resumes(self):
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                self.check_slow_consumer_uses_executor_backpressure_and_resumes(strict)
+        for exact in (False, True):
+            with self.subTest(exact=exact):
+                self.check_slow_consumer_uses_executor_backpressure_and_resumes(exact)
 
-    def check_slow_consumer_uses_executor_backpressure_and_resumes(self, strict):
+    def check_slow_consumer_uses_executor_backpressure_and_resumes(self, exact):
         global _BACKPRESSURE_STATE
         # Observe the real default budget policy while the iterator is paused.
         # Test scheduling/backlog, rather than asserting a hard RSS memory cap.
@@ -682,12 +729,14 @@ class WindowShuffleTests(unittest.TestCase):
         )
         ctx.custom_execution_callback_classes = [_ObserveBackpressure]
         total_rows, window = 1024, 8
-        output = (
-            ray.data.range(total_rows, override_num_blocks=128)
-            .map_batches(_add_payload, batch_format="pyarrow", batch_size=None)
-            .window_shuffle(
-                window, strict=strict, seed=42, compute=TaskPoolStrategy(size=2)
-            )
+        output = _shuffle(
+            ray.data.range(total_rows, override_num_blocks=128).map_batches(
+                _add_payload, batch_format="pyarrow", batch_size=None
+            ),
+            window,
+            exact=exact,
+            seed=42,
+            compute=TaskPoolStrategy(size=2),
         )
         iterator = iter(
             output.iter_batches(
@@ -714,9 +763,9 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_downstream_rebatch_preserves_one_window_per_shuffle_task(self):
         source = self.source([103])
-        with patch.object(window_shuffle_impl, "_shuffle_window", _tag_shuffle_task):
+        with patch.object(shuffle_batches_impl, "_shuffle_batch", _tag_shuffle_task):
             result = (
-                source.window_shuffle(16, strict=True, seed=42)
+                _shuffle(source, 16, exact=True, seed=42)
                 .map_batches(_identity, batch_size=64, batch_format="pyarrow")
                 .materialize()
             )
@@ -726,9 +775,9 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_downstream_rebatch_preserves_permutation(self):
         source = self.source([4] * 16)
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                shuffled = source.window_shuffle(8, strict=strict, seed=42)
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                shuffled = _shuffle(source, batch_size, exact=exact, seed=42)
                 expected = self.ids(shuffled)
                 actual = self.ids(
                     shuffled.map_batches(
@@ -739,9 +788,9 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_filter_stays_after_shuffle(self):
         source = self.source([8, 8, 8, 8])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                shuffled = source.window_shuffle(8, strict=strict, seed=42)
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                shuffled = _shuffle(source, batch_size, exact=exact, seed=42)
                 expected = [row_id for row_id in self.ids(shuffled) if row_id < 13]
                 self.assertEqual(
                     self.ids(shuffled.filter(expr=col("id") < 13)), expected
@@ -749,9 +798,9 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_serialized_lineage_replays_permutation(self):
         source = ray.data.range(64, override_num_blocks=4)
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                shuffled = source.window_shuffle(8, strict=strict, seed=42)
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                shuffled = _shuffle(source, batch_size, exact=exact, seed=42)
                 restored = ray.data.Dataset.deserialize_lineage(
                     shuffled.serialize_lineage()
                 )
@@ -761,21 +810,22 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_single_row_window_is_noop(self):
         source = self.source([7])
-        self.assertIs(source.window_shuffle(1, seed=42), source)
+        self.assertIs(_shuffle(source, 1, seed=42), source)
 
     def test_invalid_seed_fails_on_driver(self):
         source = self.source([3])
         for seed in (-1, "42", 1.5):
             with self.assertRaises(ValueError):
-                source.window_shuffle(8, seed=seed)
+                _shuffle(source, 8, seed=seed)
 
     def test_execution_reseeding(self):
         source = self.source([13, 7, 17])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                output = source.window_shuffle(
-                    8,
-                    strict=strict,
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                output = _shuffle(
+                    source,
+                    batch_size,
+                    exact=exact,
                     seed=RandomSeedConfig(seed=42, reseed_after_execution=True),
                 )
                 first = self.ids(output)
@@ -785,9 +835,9 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_unseeded_executions(self):
         source = self.source([64])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                output = source.window_shuffle(16, strict=strict)
+        for batch_size, exact in ((16, False), (None, False), (16, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                output = _shuffle(source, batch_size, exact=exact)
                 first = self.ids(output)
                 second = self.ids(output)
                 self.assertEqual(sorted(first), list(range(64)))
@@ -796,18 +846,19 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_materialization_freezes_reseeded_permutation(self):
         source = self.source([13, 7, 17])
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                cached = source.window_shuffle(
-                    8,
-                    strict=strict,
+        for batch_size, exact in ((8, False), (None, False), (8, True)):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                cached = _shuffle(
+                    source,
+                    batch_size,
+                    exact=exact,
                     seed=RandomSeedConfig(seed=42, reseed_after_execution=True),
                 ).materialize()
                 first = self.ids(cached)
                 second = self.ids(cached)
                 self.assertEqual(first, second)
 
-    def check_tensor_path(self, variable, strict):
+    def check_tensor_path(self, variable, exact, blockwise=False):
         count, window = (2048, 512) if variable else (512, 128)
         tables = []
         for start in range(0, count, 64):
@@ -830,18 +881,25 @@ class WindowShuffleTests(unittest.TestCase):
                     names=["id", "tensor"],
                 )
             )
+        if blockwise:
+            chunks_per_block = window // 64
+            tables = [
+                pa.concat_tables(tables[i : i + chunks_per_block])
+                for i in range(0, len(tables), chunks_per_block)
+            ]
         source = ray.data.from_arrow(tables).materialize()
         gate = ray.remote(_WindowGate).options(num_cpus=0).remote()
         assert isinstance(gate, ActorHandle)
         try:
             with patch.object(
-                window_shuffle_impl,
-                "_shuffle_window",
+                shuffle_batches_impl,
+                "_shuffle_batch",
                 partial(_probe_shuffle, gate=gate),
             ):
-                output = source.window_shuffle(
-                    window,
-                    strict=strict,
+                output = _shuffle(
+                    source,
+                    None if blockwise else window,
+                    exact=exact,
                     seed=42,
                     compute=TaskPoolStrategy(size=2),
                     num_cpus=1,
@@ -884,18 +942,18 @@ class WindowShuffleTests(unittest.TestCase):
             source = ray.data.from_arrow(
                 [table.slice(i, 16) for i in range(0, count, 16)]
             ).materialize()
-            for strict in (False, True):
-                with self.subTest(variable=variable, strict=strict):
+            for exact in (False, True):
+                with self.subTest(variable=variable, exact=exact):
                     gate = ray.remote(_WindowGate).options(num_cpus=0).remote()
                     assert isinstance(gate, ActorHandle)
                     try:
                         with patch.object(
-                            window_shuffle_impl,
-                            "_shuffle_window",
+                            shuffle_batches_impl,
+                            "_shuffle_batch",
                             partial(_probe_shuffle, gate=gate),
                         ):
-                            output = source.window_shuffle(
-                                64, strict=strict, seed=42
+                            output = _shuffle(
+                                source, 64, exact=exact, seed=42
                             ).take_all()
                     finally:
                         ray.kill(gate)
@@ -911,14 +969,14 @@ class WindowShuffleTests(unittest.TestCase):
                         self.assertTrue(np.all(row["tensor"] == row["id"]))
 
     def test_fixed_tensor_fast_path_and_parallel_tasks(self):
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                self.check_tensor_path(variable=False, strict=strict)
+        for exact in (False, True):
+            with self.subTest(exact=exact):
+                self.check_tensor_path(variable=False, exact=exact)
 
     def test_variable_tensor_fast_path_and_parallel_tasks(self):
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                self.check_tensor_path(variable=True, strict=strict)
+        for exact in (False, True):
+            with self.subTest(exact=exact):
+                self.check_tensor_path(variable=True, exact=exact)
 
 
 if __name__ == "__main__":
