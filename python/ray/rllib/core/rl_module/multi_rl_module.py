@@ -403,8 +403,12 @@ class MultiRLModule(RLModule):
         """Returns a KeysView over the module IDs in this MultiRLModule."""
         return self._rl_modules.keys()
 
-    def values(self) -> ValuesView[ModuleID]:
-        """Returns a ValuesView over the module IDs in this MultiRLModule."""
+    def values(self) -> ValuesView[RLModule]:
+        """Returns a ValuesView over the RLModules in this MultiRLModule.
+
+        Returns:
+            A view of the RLModules in this MultiRLModule.
+        """
         return self._rl_modules.values()
 
     def __len__(self) -> int:
