@@ -1017,8 +1017,9 @@ class vLLMEngineStage(StatefulStage):
                 "Tokenization keyword arguments passed to the vLLM engine. "
                 "Use this to control prompt truncation, e.g. "
                 '{"truncation": true, "max_length": 512}. Truncation also '
-                "applies to a tokenized_prompt; add "
-                '"truncation_side": "left" to keep the last max_length tokens. '
+                "applies to a tokenized_prompt. vLLM keeps the last max_length "
+                "tokens for generation and the first for pooling; set "
+                '"truncation_side" to "left" (last) or "right" (first) to choose. '
                 "Leave room for the generated tokens: max_length bounds the "
                 "prompt only."
             )
