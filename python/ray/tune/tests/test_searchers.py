@@ -839,6 +839,26 @@ class BayesOptHashPrecisionTest(unittest.TestCase):
             BayesOptSearch(repeat_float_precision=True)
 
 
+class BayesOptNestedPointsToEvaluateTest(unittest.TestCase):
+    def testNestedPointToEvaluateIsRegistered(self):
+        """A nested ``points_to_evaluate`` entry must register like a flat one."""
+        pytest.importorskip("bayes_opt")
+        from ray.tune.search.bayesopt import BayesOptSearch
+
+        searcher = BayesOptSearch(
+            metric="loss",
+            mode="min",
+            random_search_steps=1,
+            points_to_evaluate=[{"a": {"x": 0.5}, "y": 0.25}],
+        )
+        searcher.set_search_properties(
+            None, None, {"a": {"x": tune.uniform(0, 1)}, "y": tune.uniform(0, 1)}
+        )
+        self.assertEqual(searcher.suggest("t0"), {"a": {"x": 0.5}, "y": 0.25})
+        searcher.on_trial_complete("t0", {"loss": 1.0})
+        self.assertEqual(len(searcher.optimizer.space), 1)
+
+
 class BayesOptConvergenceWarningTest(unittest.TestCase):
     def testWarnsAndStopsOnConvergence(self):
         """BayesOptSearch should warn (not silently stop) when it converges."""

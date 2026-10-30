@@ -296,7 +296,8 @@ class BayesOptSearch(Searcher):
             )
 
         if self._points_to_evaluate:
-            config = self._points_to_evaluate.pop(0)
+            # The optimizer's keys are flattened ("a/x"), so flatten nested points.
+            config = flatten_dict(self._points_to_evaluate.pop(0))
         else:
             # We compute the new point to explore
             config = self.optimizer.suggest(self.utility)
