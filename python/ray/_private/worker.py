@@ -1635,7 +1635,8 @@ def init(
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
-        logging.getLogger("ray").handlers.clear()
+        ray._private.log.clear_logger("ray")
+        logging.getLogger("ray").setLevel(logging.NOTSET)
 
     # Configure the logging settings for the driver process.
     if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
