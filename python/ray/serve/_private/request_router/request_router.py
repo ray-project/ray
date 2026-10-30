@@ -295,7 +295,7 @@ class MultiplexMixin:
 
         # Include reservations in the score so concurrent cold IDs are spread
         # across replicas even before the replica state update arrives.
-        reservation_counts = defaultdict(int)
+        reservation_counts: DefaultDict[ReplicaID, int] = defaultdict(int)
         for replica_id in self._multiplexed_model_id_reserved_replica_ids.values():
             if replica_id in self._replica_id_set:
                 reservation_counts[replica_id] += 1
