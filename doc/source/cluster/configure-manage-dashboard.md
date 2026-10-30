@@ -197,9 +197,11 @@ The Ray Dashboard redacts secret values out of the {ref}`runtime environments <r
 
 Redaction applies only to requests from a browser. `ray list runtime-envs`, `ray job status`, and the Python SDK still return the plaintext values.
 
-Ray also masks `env_vars` values in the runtime environment agent and setup logs and in worker process command lines, which the dashboard shows on the Logs and Cluster pages. This masking applies to every client and doesn't depend on the setting below.
+Ray also masks `env_vars` values in runtime environment error messages, runtime environment agent and setup logs, and worker process command lines, which the dashboard shows on the Logs and Cluster pages. This masking applies to every client and doesn't depend on the setting below.
 
-To disable redaction, set the following environment variable on the Ray head node before starting Ray:
+The setting below also controls redaction in the events that the event aggregator sends to an external HTTP endpoint. Ray redacts these events by default, whatever the endpoint is, so the serialized runtime environment in task, actor, and job definition events shows `<redacted>` for each `env_vars` value. If your event consumer needs the plaintext values, disable redaction as shown below. This setting is shared, so disabling it also turns off redaction in the dashboard.
+
+To disable redaction, set the following environment variable on every node before starting Ray:
 
 ```bash
 export RAY_DASHBOARD_REDACT_RUNTIME_ENV=0
