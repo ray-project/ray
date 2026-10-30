@@ -13,8 +13,10 @@ from ray.data._internal.arrow_block import (
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array, concat
 from ray.data._internal.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowTensorArray,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 
 def simple_array():
@@ -270,6 +272,41 @@ def test_arrow_block_concat():
         }
     )
     assert concatenated.select(["a", "s", "b"]) == expected
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="Requires pyarrow>=16 for native FixedShapeTensorArray",
+)
+def test_iter_rows_native_tensor_null_rows():
+    native = pa.FixedShapeTensorArray.from_numpy_ndarray(
+        np.array([[10.0, 11.0], [20.0, 21.0]])
+    )
+    table = pa.table({"id": [0, 1, 2], "x": native.take(pa.array([0, None, 1]))})
+
+    rows = list(ArrowBlockAccessor.for_block(table).iter_rows(public_row_format=True))
+
+    assert [row["id"] for row in rows] == [0, 1, 2]
+    np.testing.assert_array_equal(rows[0]["x"], [10.0, 11.0])
+    assert rows[1]["x"] is None
+    np.testing.assert_array_equal(rows[2]["x"], [20.0, 21.0])
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="Requires pyarrow>=16 for native FixedShapeTensorArray",
+)
+def test_iter_rows_native_tensor_no_nulls():
+    source = np.arange(12, dtype=np.float64).reshape(3, 2, 2)
+    table = pa.table({"x": pa.FixedShapeTensorArray.from_numpy_ndarray(source)})
+
+    rows = list(ArrowBlockAccessor.for_block(table).iter_rows(public_row_format=True))
+
+    assert len(rows) == 3
+    for row, expected in zip(rows, source):
+        assert isinstance(row["x"], np.ndarray)
+        assert row["x"].shape == (2, 2)
+        np.testing.assert_array_equal(row["x"], expected)
 
 
 if __name__ == "__main__":
