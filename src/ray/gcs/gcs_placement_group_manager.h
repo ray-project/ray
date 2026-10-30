@@ -57,12 +57,16 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
+  /// \param destroy_actors_bound_to_placement_group Destroys the not-yet-alive actors
+  /// of a placement group that is being removed.
   GcsPlacementGroupManager(
       instrumented_io_context &io_context,
       GcsPlacementGroupSchedulerInterface *scheduler,
       gcs::GcsTableStorage *gcs_table_storage,
       GcsResourceManager &gcs_resource_manager,
       std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<void(const PlacementGroupID &)>
+          destroy_actors_bound_to_placement_group,
       ray::observability::MetricInterface &placement_group_gauge,
       ray::observability::MetricInterface
           &placement_group_creation_latency_in_ms_histogram,
@@ -72,6 +76,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       ClockInterface &clock);
 
   ~GcsPlacementGroupManager() override = default;
+
+  /// Remove the placement groups whose creator job was found dead during Initialize.
+  void RemoveStartupLeftoverPlacementGroups();
 
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
@@ -377,6 +384,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       &placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::MetricInterface &placement_group_count_gauge_;
   ClockInterface &clock_;
+
+  const std::function<void(const PlacementGroupID &)>
+      destroy_actors_bound_to_placement_group_;
+
+  std::vector<PlacementGroupID> groups_to_remove_at_startup_;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);

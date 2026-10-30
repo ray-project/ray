@@ -149,7 +149,8 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
     const rpc::SchedulingStrategy &scheduling_strategy,
     bool actor_creation,
     bool force_spillback,
-    const std::string &preferred_node_id) {
+    const std::string &preferred_node_id,
+    bool require_node_available) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies, except for HARD node affnity scheduling policy.
   if (actor_creation && resource_request.IsEmpty() &&
@@ -160,11 +161,11 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
   NodeSchedulingResult result;
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    result =
-        scheduling_policy_->Schedule(resource_request,
-                                     SchedulingOptions::Spread(
-                                         /*avoid_local_node*/ force_spillback,
-                                         /*require_node_available*/ force_spillback));
+    result = scheduling_policy_->Schedule(
+        resource_request,
+        SchedulingOptions::Spread(
+            /*avoid_local_node*/ force_spillback,
+            /*require_node_available*/ force_spillback || require_node_available));
   } else if (scheduling_strategy.scheduling_strategy_case() ==
              rpc::SchedulingStrategy::SchedulingStrategyCase::
                  kNodeAffinitySchedulingStrategy) {
@@ -181,15 +182,19 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
                 .fail_on_unavailable()));
   } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
     result = scheduling_policy_->Schedule(
-        resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
+        resource_request,
+        SchedulingOptions::NodeLabelScheduling(
+            scheduling_strategy,
+            /*require_node_available*/ require_node_available));
   } else {
     // TODO(Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
-    result = scheduling_policy_->Schedule(resource_request,
-                                          SchedulingOptions::Hybrid(
-                                              /*avoid_local_node*/ force_spillback,
-                                              /*require_node_available*/ force_spillback,
-                                              preferred_node_id));
+    result = scheduling_policy_->Schedule(
+        resource_request,
+        SchedulingOptions::Hybrid(
+            /*avoid_local_node*/ force_spillback,
+            /*require_node_available*/ force_spillback || require_node_available,
+            preferred_node_id));
   }
 
   const auto best_node_id = result.node_id;
@@ -209,7 +214,8 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
     bool requires_object_store_memory,
     bool actor_creation,
     bool force_spillback,
-    const std::string &preferred_node_id) {
+    const std::string &preferred_node_id,
+    bool require_node_available) {
   ResourceRequest resource_request =
       ResourceMapToResourceRequest(task_resources, requires_object_store_memory);
   resource_request.SetLabelSelector(label_selector);
@@ -217,7 +223,8 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
                                 scheduling_strategy,
                                 actor_creation,
                                 force_spillback,
-                                preferred_node_id);
+                                preferred_node_id,
+                                require_node_available);
 }
 
 bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
@@ -279,6 +286,9 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
   scheduling::NodeID highest_priority_unavailable_node = scheduling::NodeID::Nil();
   const LabelSelector *highest_priority_unavailable_label_selector = nullptr;
   bool any_selector_is_feasible = false;
+  const bool require_node_available = lease_spec.IsActorCreationTask() &&
+                                      !lease_spec.GetRequiredResources().IsEmpty() &&
+                                      !lease_spec.HasHardNodeAffinity();
 
   // Try each label selector in order until a node is found.
   for (const auto &selector_ref : label_selectors) {
@@ -302,7 +312,8 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
         requires_object_store_memory,
         lease_spec.IsActorCreationTask(),
         exclude_local_node,
-        preferred_node_id);
+        preferred_node_id,
+        require_node_available);
 
     if (result.IsScheduled()) {
       // A feasible node was found.
