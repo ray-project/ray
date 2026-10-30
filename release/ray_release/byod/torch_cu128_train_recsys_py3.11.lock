@@ -1,13 +1,9 @@
---extra-index-url https://download.pytorch.org/whl/cu128
-
-fbgemm-gpu==1.5.0+cu128 \
-    --hash=sha256:39e14c16c284be21859a90683982ae44d36124e6e166d52cebe48a91fbd80295 \
-    --hash=sha256:65df190f77d54053fbfcb53045cfece4f6c84858b9f3dd836bd8ff8cf7dd2051 \
-    --hash=sha256:6a8c7a4454132257500ba2a37ccd18ac6edfa131c6c4ca494aac07fa6915a828 \
-    --hash=sha256:71ffe252fe9d58e2e736146f7cda03c0992a8ab538a41c29ac304193dce7f379 \
-    --hash=sha256:c4130d581015d872f57d1310e910feb161e9a99e4f338c3a1ce94686b2c262d9 \
-    --hash=sha256:d1a866a11e6f38afa0481dd29c9140e879b87bc643957703956c3c4dc30b267e \
-    --hash=sha256:dc2b459a476774c00dcced2405a47101b07cd2047b9815eaa1b210669b21308a
+fbgemm-gpu==1.5.0 \
+    --hash=sha256:0e5b5ad9e0e740c240b9e9d052e520e969e3559c0ce80547d2d3e395afc38ac4 \
+    --hash=sha256:52bacb5755742bfbf300727aecf6f0733b116d3e0d57263ec136fce7ec726847 \
+    --hash=sha256:856c84def3fc3ca43e6d5ec5458d426db9ef2ea60cc8afb3ce21a67e07208a72 \
+    --hash=sha256:9fe76bd1c5f1917c6f26932c7673633ed9780ccd8747993cf70d5c0c2ae561c5 \
+    --hash=sha256:e9385f86931abbf604afe892422304a01ca175eae3fddfbbb35314e5ebcb13ec
     # via -r release/ray_release/byod/requirements_train_recsys.in
 iopath==0.1.10 \
     --hash=sha256:3311c16a4d9137223e20f141655759933e1eda24f8bff166af834af3c645ef01
@@ -57,8 +53,10 @@ tensordict==0.14.3 \
 torchmetrics==1.0.3 \
     --hash=sha256:612a74ab8ebfcd4ebb38e5c370ce29a0e73af074948048f6f2233e25cf60da75
     # via -r release/ray_release/byod/requirements_train_recsys.in
-torchrec==1.5.0+cu128 \
-    --hash=sha256:966421c469f4c3cad5d3800e6f4f49fcfcc33e14a39801c465f00f335efc4e75
+torchrec==1.5.0 \
+    --hash=sha256:385aa4156d6ae24bb15131aacca81f1925cdca150045cc4482372e2b14b4bc98 \
+    --hash=sha256:a2841683a363eb33fbb13951e5a877ef81a735ed7ba80b8c9d5c412bba23bd4a \
+    --hash=sha256:d1186f7d170ad4bb4745db46e718dd570c1049c795cfc8b67725612ba7194c03
     # via -r release/ray_release/byod/requirements_train_recsys.in
 typing-inspect==0.9.0 \
     --hash=sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f
