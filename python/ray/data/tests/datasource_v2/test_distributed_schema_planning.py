@@ -208,8 +208,14 @@ def test_worker_schemas_preserve_driver_unifier(
         paths = [tmp_path / f"f{i}.parquet" for i in range(3)]
         for path, table in zip(paths, tables):
             pq.write_table(table, path)
-        expected = unify_schemas_with_validation([pq.read_schema(p) for p in paths])
+        file_schemas = [pq.read_schema(p) for p in paths]
+        if case == "late_object":
+            with pytest.raises((pa.ArrowTypeError, pa.ArrowInvalid)):
+                unify_schemas_with_validation(file_schemas[:2])
+        expected = unify_schemas_with_validation(file_schemas)
         assert isinstance(expected, pa.Schema)
+        if case == "late_object":
+            assert isinstance(expected.field("id").type, ArrowPythonObjectType)
         ctx = DataContext.get_current()
         for key, value in dict(
             use_datasource_v2=True,
