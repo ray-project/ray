@@ -126,8 +126,11 @@ class MedianStoppingRule(FIFOScheduler):
         """Callback for early stopping.
 
         This stopping rule stops a running trial if the trial's best objective
-        value by step `t` is strictly worse than the median of the running
-        averages of all completed trials' objectives reported up to step `t`.
+        value so far is strictly worse than the median of the other trials'
+        running averages at step `t`. A trial's running average covers the
+        results it reported from ``grace_period`` up to step `t`. Only trials
+        that have reported a result at step `t` or later count, whether or not
+        they've completed.
 
         Args:
             tune_controller: The controller running the experiment.

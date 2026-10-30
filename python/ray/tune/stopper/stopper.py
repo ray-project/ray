@@ -8,9 +8,9 @@ from ray.util.annotations import PublicAPI
 class Stopper(abc.ABC):
     """Base class for implementing a Tune experiment stopper.
 
-    Allows users to implement experiment-level stopping via ``stop_all``. By
-    default, this class does not stop any trials. Subclasses need to
-    implement ``__call__`` and ``stop_all``.
+    Allows users to implement experiment-level stopping via ``stop_all``.
+    Subclasses need to implement ``__call__`` and ``stop_all``. The base
+    class raises ``NotImplementedError`` for both.
 
     Examples:
 

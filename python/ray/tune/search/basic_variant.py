@@ -431,7 +431,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         return any(Path(dirpath).glob(self.CKPT_FILE_TMPL.format("*")))
 
     def restore_from_dir(self, dirpath: str):
-        """Restores self + searcher + search wrappers from dirpath.
+        """Restores the generator's state from the newest checkpoint in dirpath.
 
         Args:
             dirpath: Directory that holds the checkpoint file to restore from.
