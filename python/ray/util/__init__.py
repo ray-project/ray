@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Union
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
@@ -24,7 +24,9 @@ from ray.util.serialization import deregister_serializer, register_serializer
 @PublicAPI(stability="beta")
 @wrap_auto_init
 @client_mode_hook
-def list_named_actors(all_namespaces: bool = False) -> List[str]:
+def list_named_actors(
+    all_namespaces: bool = False,
+) -> Union[List[str], List[Dict[str, str]]]:
     """List all named actors in the system.
 
     Actors must have been created with Actor.options(name="name").remote().
