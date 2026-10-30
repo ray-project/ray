@@ -134,10 +134,11 @@ api_policy_check() {
 
 api_param_coverage() {
   # Static, diff-scoped check: fail a PR that adds a new @PublicAPI callable, or
-  # a new parameter on an existing one, without a docstring Args: entry.
+  # a new parameter on an existing one, without a docstring Args: entry. Pass
+  # --check presence to check for a docstring and Returns: section instead.
   # Pre-existing gaps are grandfathered. Parses source only, so no Ray build or
   # install is needed. Non-blocking by default; pass --blocking to gate.
-  echo "--- Check new-parameter documentation coverage"
+  echo "--- Check public API documentation coverage"
   local base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
   git fetch --depth=500 origin "${base_branch}" >/dev/null 2>&1 || true
   # The depth-limited fetch makes the clone shallow, so a branch forked more

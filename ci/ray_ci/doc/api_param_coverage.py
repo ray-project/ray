@@ -18,12 +18,17 @@ appears in an ``Args:`` / ``Arguments:`` block (or, for ``__init__``, in the
 class docstring, matching Ray's default ``autoclass_content="class"``); the
 description prose is not inspected. Empty-description detection is out of scope
 (it needs ``numpydoc.validate`` or a custom rule).
+
+A second, separate check reuses the same diff and scope for docstring
+*presence*: it fails when a new or changed public callable has no docstring, or
+annotates a non-``None`` return without a ``Returns:`` (or ``Yields:``) section.
+See :func:`new_presence_violations_for_file`.
 """
 import ast
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
 
 _FuncNode = Union[ast.FunctionDef, ast.AsyncFunctionDef]
 
@@ -37,6 +42,13 @@ _GOOGLE_PARAM = re.compile(r"^\s+([*]{0,2}[A-Za-z_]\w*)\s*(\(|:)")
 _NEXT_SECTION = re.compile(
     r"^\s*(Returns|Return|Yields|Raises|Examples?|Example|Note|Notes|Warning|"
     r"Warnings|See Also|References|Attributes|Todo)\s*:\s*$",
+    re.M,
+)
+# A documented return: a Google "Returns:"/"Yields:" header, a NumPy underlined
+# header, or a reST ":returns:"/":rtype:"/":yields:" field.
+_RETURNS_SECTION = re.compile(
+    r"^\s*(Returns?|Yields?)\s*:\s*$|^\s*(Returns?|Yields?)\s*\n\s*-{3,}"
+    r"|:(returns?|rtype|yields?):",
     re.M,
 )
 
@@ -73,6 +85,28 @@ def documented_params(docstring: Optional[str]) -> Set[str]:
     return documented
 
 
+def has_returns_section(docstring: Optional[str]) -> bool:
+    """Whether a docstring documents a return or yield value."""
+    return bool(docstring and _RETURNS_SECTION.search(docstring))
+
+
+def _decorator_name(dec: ast.expr) -> Optional[str]:
+    """Simple name of one decorator, in bare, called, and attribute forms."""
+    target = dec.func if isinstance(dec, ast.Call) else dec
+    if isinstance(target, ast.Name):
+        return target.id
+    if isinstance(target, ast.Attribute):
+        return target.attr
+    return None
+
+
+def _decorator_names(
+    node: Union[ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef]
+) -> Set[str]:
+    """Simple names of a node's decorators."""
+    return {_decorator_name(dec) for dec in node.decorator_list} - {None}
+
+
 def has_publicapi_decorator(
     node: Union[ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef]
 ) -> bool:
@@ -83,16 +117,7 @@ def has_publicapi_decorator(
     spellings. Only ``@PublicAPI`` counts; ``@DeveloperAPI`` and ``@Deprecated``
     are not part of the rendered public API surface.
     """
-    for dec in node.decorator_list:
-        target = dec.func if isinstance(dec, ast.Call) else dec
-        name = None
-        if isinstance(target, ast.Name):
-            name = target.id
-        elif isinstance(target, ast.Attribute):
-            name = target.attr
-        if name == "PublicAPI":
-            return True
-    return False
+    return "PublicAPI" in _decorator_names(node)
 
 
 # Annotations that take a callable back out of the rendered public surface even
@@ -108,16 +133,7 @@ def has_non_public_annotation(node: _FuncNode) -> bool:
     the callable is not part of the rendered public API surface, so its
     parameters are out of scope for this check.
     """
-    for dec in node.decorator_list:
-        target = dec.func if isinstance(dec, ast.Call) else dec
-        name = None
-        if isinstance(target, ast.Name):
-            name = target.id
-        elif isinstance(target, ast.Attribute):
-            name = target.attr
-        if name in _NON_PUBLIC_ANNOTATIONS:
-            return True
-    return False
+    return bool(_decorator_names(node) & _NON_PUBLIC_ANNOTATIONS)
 
 
 # Decorators that mark a callable as something other than a Python API whose
@@ -146,16 +162,7 @@ def has_non_docstring_param_decorator(node: _FuncNode) -> bool:
     called, and attribute spellings. Also matches property setters
     (``@x.setter``), whose value is documented on the getter.
     """
-    for dec in node.decorator_list:
-        target = dec.func if isinstance(dec, ast.Call) else dec
-        name = None
-        if isinstance(target, ast.Name):
-            name = target.id
-        elif isinstance(target, ast.Attribute):
-            name = target.attr
-        if name in _NON_DOCSTRING_PARAM_DECORATORS:
-            return True
-    return False
+    return bool(_decorator_names(node) & _NON_DOCSTRING_PARAM_DECORATORS)
 
 
 def signature_params(func: _FuncNode) -> List[str]:
@@ -212,6 +219,43 @@ class ClassIndex:
         default_factory=lambda: defaultdict(dict)
     )
     class_doc: Dict[str, Set[str]] = field(default_factory=lambda: defaultdict(set))
+    # For the presence check, keyed ``func``, ``Class``, or ``Class.method``:
+    # whether the node's own non-empty docstring has a Returns: section (key
+    # present == has own doc), and the keys a ``@_copy_doc(target)`` decorator
+    # copies the docstring from.
+    docs: Dict[str, bool] = field(default_factory=dict)
+    copies: Dict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
+
+    def resolve_doc(self, key: str, _seen=None) -> Optional[bool]:
+        """Whether the docstring a callable renders with has a Returns: section.
+
+        Follows ``@_copy_doc`` edges first, since the decorator replaces the
+        docstring at import time, then the callable's own docstring, then its
+        bases. Returns None when no docstring is found.
+        """
+        if _seen is None:
+            _seen = set()
+        if key in _seen:
+            return None
+        _seen.add(key)
+        for target in self.copies.get(key, []):
+            got = self.resolve_doc(target, _seen)
+            if got is not None:
+                return got
+        if key in self.docs:
+            return self.docs[key]
+        return self.resolve_inherited_doc(key, _seen)
+
+    def resolve_inherited_doc(self, key: str, _seen=None) -> Optional[bool]:
+        """Like :meth:`resolve_doc`, but only from the bases of ``key``'s class."""
+        if _seen is None:
+            _seen = set()
+        class_name, _, method = key.partition(".")
+        for base in self.bases.get(class_name, []):
+            got = self.resolve_doc(f"{base}.{method}" if method else base, _seen)
+            if got is not None:
+                return got
+        return None
 
     def inherited_method_params(
         self, class_name: str, method_name: str, _seen=None
@@ -246,13 +290,71 @@ class ClassIndex:
         return set()
 
 
+def _import_aliases(tree: ast.Module) -> Dict[str, str]:
+    """Map ``asname -> name`` for a module's ``from x import name as asname``."""
+    aliases = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.asname:
+                    aliases[alias.asname] = alias.name
+    return aliases
+
+
+def _copy_doc_targets(
+    node: Union[_FuncNode, ast.ClassDef], aliases: Dict[str, str]
+) -> List[str]:
+    """Index keys that a ``@_copy_doc(target)`` decorator may copy from.
+
+    ``ray.train.utils._copy_doc`` and ``ray.train.v2._internal.util._copy_doc``
+    set ``__doc__`` from their target at import time, so the docstring Sphinx
+    renders isn't in the decorated node's source. A ``Name.attr`` target is
+    either a class method or a function in an imported module, so both keys are
+    returned. Import aliases are resolved, so ``TrainV1Context.get_world_size``
+    finds ``TrainContext.get_world_size``.
+    """
+    for dec in node.decorator_list:
+        if not isinstance(dec, ast.Call) or not dec.args:
+            continue
+        if _decorator_name(dec) != "_copy_doc":
+            continue
+        target = dec.args[0]
+        if isinstance(target, ast.Name):
+            return [aliases.get(target.id, target.id)]
+        if isinstance(target, ast.Attribute):
+            owner = target.value
+            if isinstance(owner, ast.Name):
+                owner_name = aliases.get(owner.id, owner.id)
+            elif isinstance(owner, ast.Attribute):
+                owner_name = owner.attr
+            else:
+                return [target.attr]
+            return [f"{owner_name}.{target.attr}", target.attr]
+    return []
+
+
+def _record_doc(
+    index: ClassIndex,
+    key: str,
+    node: Union[_FuncNode, ast.ClassDef],
+    aliases: Dict[str, str],
+) -> None:
+    doc = ast.get_docstring(node)
+    if doc:
+        index.docs[key] = index.docs.get(key, False) or has_returns_section(doc)
+    for target in _copy_doc_targets(node, aliases):
+        if target not in index.copies[key]:
+            index.copies[key].append(target)
+
+
 def build_class_index(files: Iterable[Tuple[str, str]]) -> ClassIndex:
     """Build a :class:`ClassIndex` from ``(path, source)`` pairs.
 
     Walks every class in every file (public or not) so docstring inheritance
-    can be resolved. Same simple-name collisions across modules are merged
-    (union of documented params, concatenated bases). Files that fail to parse
-    are skipped.
+    can be resolved, and every module-level function so ``@_copy_doc`` targets
+    can be. Same simple-name collisions across modules are merged (union of
+    documented params, concatenated bases). Files that fail to parse are
+    skipped.
     """
     index = ClassIndex()
     for _path, source in files:
@@ -260,6 +362,10 @@ def build_class_index(files: Iterable[Tuple[str, str]]) -> ClassIndex:
             tree = ast.parse(source)
         except (SyntaxError, ValueError):
             continue
+        aliases = _import_aliases(tree)
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                _record_doc(index, node.name, node, aliases)
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -270,12 +376,14 @@ def build_class_index(files: Iterable[Tuple[str, str]]) -> ClassIndex:
             cdoc = ast.get_docstring(node)
             if cdoc:
                 index.class_doc[cn] |= documented_params(cdoc)
+            _record_doc(index, cn, node, aliases)
             for sub in node.body:
                 if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     mdoc = ast.get_docstring(sub)
                     if mdoc is not None:  # own docstring -> stops MRO walk
                         index.method_own[cn].setdefault(sub.name, set())
                         index.method_own[cn][sub.name] |= documented_params(mdoc)
+                    _record_doc(index, f"{cn}.{sub.name}", sub, aliases)
     return index
 
 
@@ -331,28 +439,23 @@ def _undocumented_for_func(
     )
 
 
-def public_callables(source: str, index: ClassIndex) -> Dict[str, Callable_]:
-    """Map ``qualname -> Callable_`` for the public callables defined in ``source``.
+def _public_nodes(
+    tree: ast.Module,
+) -> Iterator[Tuple[str, Union[_FuncNode, ast.ClassDef], Optional[ast.ClassDef]]]:
+    """Yield ``(qualname, node, owning_class)`` for the public API surface.
 
-    Public callables are module-level functions decorated ``@PublicAPI`` and the
-    methods of ``@PublicAPI`` classes, excluding methods that carry their own
-    ``@DeveloperAPI`` or ``@Deprecated`` annotation. ``qualname`` is ``func`` for
-    a module-level function and ``Class.method`` for a method, which is a stable
-    key across revisions of the same file.
+    That's module-level ``@PublicAPI`` functions and classes, and the methods of
+    ``@PublicAPI`` classes, excluding methods that carry their own
+    ``@DeveloperAPI`` or ``@Deprecated`` annotation. ``qualname`` is ``func`` or
+    ``Class`` at module level and ``Class.method`` for a method, which is a
+    stable key across revisions of the same file.
     """
-    out: Dict[str, Callable_] = {}
-    try:
-        tree = ast.parse(source)
-    except (SyntaxError, ValueError):
-        return out
-
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if has_publicapi_decorator(node):
-                c = _undocumented_for_func(node, node.name, index, None)
-                if c is not None:
-                    out[c.qualname] = c
+                yield node.name, node, None
         elif isinstance(node, ast.ClassDef) and has_publicapi_decorator(node):
+            yield node.name, node, None
             for sub in node.body:
                 if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     # A method inherits public scope from its class, but its own
@@ -362,11 +465,26 @@ def public_callables(source: str, index: ClassIndex) -> Dict[str, Callable_]:
                         sub
                     ):
                         continue
-                    c = _undocumented_for_func(
-                        sub, f"{node.name}.{sub.name}", index, node
-                    )
-                    if c is not None:
-                        out[c.qualname] = c
+                    yield f"{node.name}.{sub.name}", sub, node
+
+
+def public_callables(source: str, index: ClassIndex) -> Dict[str, Callable_]:
+    """Map ``qualname -> Callable_`` for the public callables defined in ``source``.
+
+    Public callables are the functions and methods :func:`_public_nodes` yields.
+    """
+    out: Dict[str, Callable_] = {}
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return out
+
+    for qual, node, class_node in _public_nodes(tree):
+        if isinstance(node, ast.ClassDef):
+            continue
+        c = _undocumented_for_func(node, qual, index, class_node)
+        if c is not None:
+            out[c.qualname] = c
     return out
 
 
@@ -411,6 +529,174 @@ def new_violations_for_file(
                     qualname=qual,
                     lineno=head_c.lineno,
                     params=new_params,
+                )
+            )
+    violations.sort(key=lambda v: (v.path, v.lineno, v.qualname))
+    return violations
+
+
+# --- Docstring and Returns: presence ------------------------------------------
+
+MISSING_DOCSTRING = "docstring"
+MISSING_RETURNS = "Returns: section"
+
+# Autodoc renders a property's type from its return annotation, so a property
+# doesn't need a Returns: section.
+_PROPERTY_DECORATORS = frozenset({"property", "cached_property"})
+# Return annotations that mean the callable never returns a value.
+_NO_RETURN_ANNOTATIONS = frozenset({"NoReturn", "Never"})
+
+
+def needs_returns_section(func: _FuncNode) -> bool:
+    """Whether a function annotates a return value that its docstring should document.
+
+    True for any return annotation other than ``None``, ``NoReturn``, or
+    ``Never``, except on properties.
+    """
+    ret = func.returns
+    if ret is None:
+        return False
+    if isinstance(ret, ast.Constant) and ret.value in (None, "None"):
+        return False
+    if isinstance(ret, ast.Name) and ret.id in _NO_RETURN_ANNOTATIONS:
+        return False
+    if isinstance(ret, ast.Attribute) and ret.attr in _NO_RETURN_ANNOTATIONS:
+        return False
+    return not (_decorator_names(func) & _PROPERTY_DECORATORS)
+
+
+def _rendered_doc(
+    node: Union[_FuncNode, ast.ClassDef],
+    qual: str,
+    index: ClassIndex,
+    aliases: Dict[str, str],
+) -> Tuple[bool, bool]:
+    """``(has_docstring, has_returns_section)`` for the docstring a node renders with.
+
+    Resolves ``@_copy_doc`` first, then the node's own docstring, then the
+    docstring Sphinx inherits from a base (``autodoc_inherit_docstrings``). A
+    ``@_copy_doc`` target the index can't resolve fails open: the docstring is
+    copied at runtime from code this static check can't see, so both count as
+    present.
+    """
+    if "_copy_doc" in _decorator_names(node):
+        for target in _copy_doc_targets(node, aliases):
+            got = index.resolve_doc(target)
+            if got is not None:
+                return True, got
+        return True, True
+    own = ast.get_docstring(node)
+    if own:
+        return True, has_returns_section(own)
+    got = index.resolve_inherited_doc(qual)
+    if got is None:
+        return False, False
+    return True, got
+
+
+@dataclass
+class Presence:
+    """A public callable's docstring-presence state at one tree revision."""
+
+    qualname: str
+    lineno: int
+    missing: Set[str]  # subset of {MISSING_DOCSTRING, MISSING_RETURNS}
+
+
+def _presence_for(
+    node: Union[_FuncNode, ast.ClassDef],
+    qual: str,
+    index: ClassIndex,
+    aliases: Dict[str, str],
+) -> Optional[Presence]:
+    """Presence state for one public node, or None if it is not in scope.
+
+    Out of scope: private names, including ``__init__``, whose parameters the
+    class docstring documents; ``@overload`` stubs; and the pydantic
+    validators, Click commands, and property setters that the parameter check
+    also skips.
+
+    A callable without a docstring also counts as missing its Returns: section
+    when it needs one. Otherwise, adding a docstring without Returns: to a
+    grandfathered callable would read as new debt.
+    """
+    if node.name.startswith("_"):
+        return None
+    if not isinstance(node, ast.ClassDef) and (
+        has_non_docstring_param_decorator(node) or "overload" in _decorator_names(node)
+    ):
+        return None
+    has_doc, has_returns = _rendered_doc(node, qual, index, aliases)
+    missing = set()
+    if not has_doc:
+        missing.add(MISSING_DOCSTRING)
+    if (
+        not isinstance(node, ast.ClassDef)
+        and needs_returns_section(node)
+        and not has_returns
+    ):
+        missing.add(MISSING_RETURNS)
+    return Presence(qualname=qual, lineno=node.lineno, missing=missing)
+
+
+def public_presence(source: str, index: ClassIndex) -> Dict[str, Presence]:
+    """Map ``qualname -> Presence`` for the public classes and callables in ``source``."""
+    out: Dict[str, Presence] = {}
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return out
+    aliases = _import_aliases(tree)
+    for qual, node, _class_node in _public_nodes(tree):
+        p = _presence_for(node, qual, index, aliases)
+        if p is not None:
+            out[qual] = p
+    return out
+
+
+@dataclass
+class PresenceViolation:
+    """Newly-missing docstring parts on one public class or callable."""
+
+    path: str
+    qualname: str
+    lineno: int
+    missing: List[str]  # newly-missing parts, docstring first
+
+
+def new_presence_violations_for_file(
+    path: str,
+    base_source: Optional[str],
+    head_source: str,
+    base_index: ClassIndex,
+    head_index: ClassIndex,
+) -> List[PresenceViolation]:
+    """Newly-missing docstrings and Returns: sections in one file.
+
+    Same diff as :func:`new_violations_for_file`: a part is newly missing when
+    it is missing at head and was not already missing at base for the same
+    callable. That covers new public callables, a docstring or Returns: section
+    a PR removes, and a return annotation a PR adds to an existing callable.
+    """
+    head = public_presence(head_source, head_index)
+    base = public_presence(base_source, base_index) if base_source is not None else {}
+
+    violations: List[PresenceViolation] = []
+    for qual, head_p in head.items():
+        base_p = base.get(qual)
+        already = base_p.missing if base_p is not None else set()
+        new_missing = [
+            m
+            for m in (MISSING_DOCSTRING, MISSING_RETURNS)
+            if m in head_p.missing - already
+        ]
+        if new_missing:
+            violations.append(
+                PresenceViolation(
+                    path=path,
+                    qualname=qual,
+                    lineno=head_p.lineno,
+                    missing=new_missing,
                 )
             )
     violations.sort(key=lambda v: (v.path, v.lineno, v.qualname))
