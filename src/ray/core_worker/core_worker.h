@@ -293,6 +293,25 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   const WorkerID &GetWorkerID() const;
 
+  /**
+   * Record whether this worker's actor class defines the `__on_object_freed__` hook,
+   * and the concurrency group the hook runs in. Called once on the actor creation
+   * path, before `__init__` runs.
+   *
+   * \param[in] enabled Whether the actor class defines the hook.
+   * \param[in] concurrency_group The hook's concurrency group. Empty means the
+   * default group.
+   */
+  void SetProducerFreedCallback(bool enabled, std::string concurrency_group);
+
+  /** Whether this worker's actor class defines the `__on_object_freed__` hook. */
+  bool ProducerFreedCallbackEnabled() const { return producer_freed_callback_enabled_; }
+
+  /** The concurrency group the `__on_object_freed__` hook runs in. */
+  const std::string &ProducerFreedCallbackConcurrencyGroup() const {
+    return producer_freed_callback_concurrency_group_;
+  }
+
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
@@ -2291,6 +2310,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Callback to free an RDT object when it is out of scope.
   std::function<void(const ObjectID &)> free_actor_object_callback_;
+
+  /// Set once on the actor creation path, before any actor method or RPC for the actor
+  /// runs, so they are read without a lock.
+  bool producer_freed_callback_enabled_ = false;
+  std::string producer_freed_callback_concurrency_group_;
 
   // Shutdown synchronization primitives
   std::atomic<bool> connected_{true};

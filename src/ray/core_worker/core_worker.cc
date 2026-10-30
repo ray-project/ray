@@ -850,6 +850,11 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_->GetWorkerID(); }
 
+void CoreWorker::SetProducerFreedCallback(bool enabled, std::string concurrency_group) {
+  producer_freed_callback_enabled_ = enabled;
+  producer_freed_callback_concurrency_group_ = std::move(concurrency_group);
+}
+
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
                                   uint64_t attempt_number,
                                   const std::string &task_name) {
