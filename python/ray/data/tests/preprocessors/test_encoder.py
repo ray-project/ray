@@ -1702,6 +1702,7 @@ def test_encoder_arrow_and_inverse_label_caching(monkeypatch):
     """Verify OrdinalEncoder, OneHotEncoder, and LabelEncoder cache lookup structures
     across batches, invalidate on refit, and exclude caches when pickled."""
     import pickle
+
     import ray.data.preprocessors.encoder as encoder_mod
 
     calls = []
