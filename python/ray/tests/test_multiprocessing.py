@@ -16,7 +16,7 @@ from collections import defaultdict
 import pytest
 
 import ray
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.util.multiprocessing import JoinableQueue, Pool, TimeoutError
 
 
@@ -315,14 +315,38 @@ def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib
                 assert not result.successful()
 
             if callback_type == "regular callback":
-                # Check that regular callback returned a list of all indices
-                for index in callback_results:
-                    assert index in indices
-                    indices.remove(index)
-                assert len(indices) == 0
+                assert callback_results == indices
             else:
                 # Check that error callback returned a single exception
                 assert isinstance(callback_results, Exception)
+
+
+@pytest.mark.parametrize("map_method", ["map_async", "starmap_async"])
+def test_map_callback_preserves_input_order(pool_4_processes, map_method):
+    signal = SignalActor.remote()
+    callback_results = []
+
+    def f(index):
+        if index == 0:
+            ray.get(signal.wait.remote())
+        return index * 10
+
+    # The default chunksize is two, exercising both inter- and intra-chunk order.
+    inputs = list(range(32))
+    if map_method == "starmap_async":
+        inputs = [(index,) for index in inputs]
+    result = getattr(pool_4_processes, map_method)(
+        f, inputs, callback=callback_results.append
+    )
+    try:
+        # Ensure the collector consumes a later chunk before releasing the first.
+        wait_for_condition(lambda: result._result_thread.result(1) == [20, 30])
+    finally:
+        ray.get(signal.send.remote())
+
+    expected = [index * 10 for index in range(32)]
+    assert result.get(timeout=10) == expected
+    assert callback_results == [expected]
 
 
 def callback_test_helper(args):
