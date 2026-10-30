@@ -39,13 +39,32 @@ class RayError(Exception):
         ).SerializeToString()
 
     @staticmethod
-    def from_bytes(b):
+    def from_bytes(b: bytes) -> BaseException:
+        """Deserialize an exception from bytes produced by :meth:`to_bytes`.
+
+        Args:
+            b: A serialized ``RayException`` protobuf message.
+
+        Returns:
+            The exception that :meth:`from_ray_exception` builds from the message.
+        """
         ray_exception = RayException()
         ray_exception.ParseFromString(b)
         return RayError.from_ray_exception(ray_exception)
 
     @staticmethod
-    def from_ray_exception(ray_exception):
+    def from_ray_exception(ray_exception: RayException) -> BaseException:
+        """Build an exception from a ``RayException`` protobuf message.
+
+        Args:
+            ray_exception: The protobuf message.
+
+        Returns:
+            For an exception raised in Python, the unpickled original exception,
+            or an ``UnserializableException`` that carries the original traceback
+            if unpickling fails. For an exception raised in another language, a
+            ``CrossLanguageError``.
+        """
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
@@ -65,9 +84,14 @@ class RayError(Exception):
 
 @PublicAPI
 class CrossLanguageError(RayError):
-    """Raised from another language."""
+    """Raised from another language.
 
-    def __init__(self, ray_exception):
+    Args:
+        ray_exception: The ``RayException`` protobuf message that describes the
+            exception, including its language and formatted traceback.
+    """
+
+    def __init__(self, ray_exception: RayException):
         super().__init__(
             "An exception raised from {}:\n{}".format(
                 Language.Name(ray_exception.language),
@@ -159,16 +183,30 @@ class RayTaskError(RayError):
 
     def __init__(
         self,
-        function_name,
-        traceback_str,
-        cause,
-        proctitle=None,
-        pid=None,
-        ip=None,
-        actor_repr=None,
-        actor_id=None,
+        function_name: str,
+        traceback_str: str,
+        cause: BaseException,
+        proctitle: Optional[str] = None,
+        pid: Optional[int] = None,
+        ip: Optional[str] = None,
+        actor_repr: Optional[str] = None,
+        actor_id: Optional[str] = None,
     ):
-        """Initialize a RayTaskError."""
+        """Initialize a RayTaskError.
+
+        Args:
+            function_name: The name of the function that raised the exception.
+            traceback_str: The formatted traceback of the exception.
+            cause: The exception the task raised. If it isn't serializable, Ray
+                replaces it with a ``RayError`` that carries its message.
+            proctitle: The title of the worker process. Defaults to the current
+                process title.
+            pid: The ID of the worker process. Defaults to the current process ID.
+            ip: The IP address of the node. Defaults to the current node's IP
+                address.
+            actor_repr: The ``repr`` of the actor, if the task was an actor task.
+            actor_id: The actor ID in hex, if the task was an actor task.
+        """
         import ray
 
         if proctitle:
@@ -563,9 +601,13 @@ class RaySystemError(RayError):
     """Indicates that Ray encountered a system error.
 
     This exception can be thrown when the raylet is killed.
+
+    Args:
+        client_exc: The error message.
+        traceback_str: The formatted traceback, if any.
     """
 
-    def __init__(self, client_exc, traceback_str=None):
+    def __init__(self, client_exc: str, traceback_str: Optional[str] = None):
         self.client_exc = client_exc
         self.traceback_str = traceback_str
 
@@ -675,10 +717,13 @@ class OutOfMemoryError(RayError):
 
     This is raised if the node is low on memory and tasks or actors are being
     evicted to free up memory.
+
+    Args:
+        message: The error message.
     """
 
     # TODO: (clarng) expose the error message string here and format it with proto
-    def __init__(self, message):
+    def __init__(self, message: str):
         self.message = message
 
     def __str__(self):
@@ -687,10 +732,14 @@ class OutOfMemoryError(RayError):
 
 @PublicAPI
 class NodeDiedError(RayError):
-    """Indicates that the node is either dead or unreachable."""
+    """Indicates that the node is either dead or unreachable.
+
+    Args:
+        message: The error message.
+    """
 
     # TODO: (clarng) expose the error message string here and format it with proto
-    def __init__(self, message):
+    def __init__(self, message: str):
         self.message = message
 
     def __str__(self):
