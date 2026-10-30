@@ -3541,6 +3541,51 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   ASSERT_FALSE(rc->HasReference(object_id_2));
 }
 
+TEST_F(ReferenceCountTest, TestStreamingReturnsInheritYieldsConsumeOnce) {
+  rpc::Address address;
+  address.set_ip_address("1234");
+  auto add_generator = [&](bool yields_consume_once) {
+    ObjectID generator_id = ObjectID::FromRandom();
+    rc->AddOwnedObject(generator_id,
+                       {},
+                       address,
+                       "",
+                       0,
+                       LineageReconstructionEligibility::ELIGIBLE,
+                       /*add_local_ref=*/true,
+                       /*pinned_at_node_id=*/std::nullopt,
+                       /*tensor_transport=*/std::nullopt,
+                       MoveState::NOT_MOVABLE,
+                       yields_consume_once);
+    return generator_id;
+  };
+  ObjectID consume_once_generator = add_generator(/*yields_consume_once=*/true);
+  ObjectID plain_generator = add_generator(/*yields_consume_once=*/false);
+
+  // The generator object itself stays NOT_MOVABLE.
+  ASSERT_EQ(rc->GetMoveState(consume_once_generator), MoveState::NOT_MOVABLE);
+
+  ObjectID yielded = ObjectID::FromRandom();
+  ObjectID plain_yielded = ObjectID::FromRandom();
+  rc->OwnDynamicStreamingTaskReturnRef(yielded, consume_once_generator);
+  rc->OwnDynamicStreamingTaskReturnRef(plain_yielded, plain_generator);
+  ASSERT_EQ(rc->GetMoveState(yielded), MoveState::MOVABLE);
+  ASSERT_EQ(rc->GetMoveState(plain_yielded), MoveState::NOT_MOVABLE);
+
+  // A later call for an existing object, e.g. the item report after a peek, does not
+  // reset a moved object.
+  ASSERT_TRUE(rc->TryCommitMoves({yielded}).ok());
+  rc->OwnDynamicStreamingTaskReturnRef(yielded, consume_once_generator);
+  ASSERT_EQ(rc->GetMoveState(yielded), MoveState::MOVED);
+
+  std::vector<ObjectID> out;
+  for (const ObjectID &id :
+       {yielded, plain_yielded, consume_once_generator, plain_generator}) {
+    rc->RemoveLocalReference(id, &out);
+  }
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+}
+
 TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   rpc::Address addr;
   addr.set_worker_id(WorkerID::FromRandom().Binary());

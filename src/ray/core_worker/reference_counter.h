@@ -108,7 +108,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
       const std::optional<std::string> &tensor_transport = std::nullopt,
-      MoveState move_state = MoveState::NOT_MOVABLE) override ABSL_LOCKS_EXCLUDED(mutex_);
+      MoveState move_state = MoveState::NOT_MOVABLE,
+      bool yields_consume_once = false) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -492,6 +493,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Only set on owned objects; borrowers always see NOT_MOVABLE.
     MoveState move_state_ = MoveState::NOT_MOVABLE;
 
+    /// Only set on the generator object of a streaming generator task submitted with
+    /// `consume_once=True`. The objects the generator yields are created MOVABLE, while
+    /// the generator object itself stays NOT_MOVABLE.
+    bool yields_consume_once_ = false;
+
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
     /// is inlined (not stored in plasma), then its lineage ref count is 0
@@ -558,7 +564,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                               bool add_local_ref,
                               const std::optional<NodeID> &pinned_at_node_id,
                               const std::optional<std::string> &tensor_transport,
-                              MoveState move_state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                              MoveState move_state,
+                              bool yields_consume_once = false)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);

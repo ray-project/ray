@@ -230,7 +230,8 @@ void ReferenceCounter::AddOwnedObject(
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
     const std::optional<std::string> &tensor_transport,
-    MoveState move_state) {
+    MoveState move_state,
+    bool yields_consume_once) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -241,7 +242,8 @@ void ReferenceCounter::AddOwnedObject(
                                    add_local_ref,
                                    pinned_at_node_id,
                                    tensor_transport,
-                                   move_state))
+                                   move_state,
+                                   yields_consume_once))
       << "Tried to create an owned object that already exists: " << object_id;
 }
 
@@ -309,7 +311,9 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     /*add_local_ref=*/true,
                                     std::optional<NodeID>(),
                                     /*tensor_transport=*/std::nullopt,
-                                    MoveState::NOT_MOVABLE));
+                                    outer_it->second.yields_consume_once_
+                                        ? MoveState::MOVABLE
+                                        : MoveState::NOT_MOVABLE));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -360,7 +364,8 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
     const std::optional<std::string> &tensor_transport,
-    MoveState move_state) {
+    MoveState move_state,
+    bool yields_consume_once) {
   if (object_id_refs_.contains(object_id)) {
     return false;
   }
@@ -385,6 +390,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                                    tensor_transport))
                 .first;
   it->second.move_state_ = move_state;
+  it->second.yields_consume_once_ = yields_consume_once;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.

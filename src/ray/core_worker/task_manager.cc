@@ -352,14 +352,13 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const std::string &call_site,
     int max_retries,
     bool consume_once) {
-  // If consume_once is true, the task must be an actor task without a streaming
-  // generator or dynamic returns.
-  // TODO(karticam): Allow streaming generators in a follow-up PR. Dynamic returns stay
-  //  unsupported.
-  RAY_CHECK(!consume_once || (spec.IsActorTask() && !spec.IsStreamingGenerator() &&
-                              !spec.ReturnsDynamic()))
+  // If consume_once is true, the task must be an actor task without dynamic returns.
+  // A streaming generator also sets ReturnsDynamic, so it is checked separately.
+  RAY_CHECK(!consume_once || (spec.IsActorTask() &&
+                              (spec.IsStreamingGenerator() || !spec.ReturnsDynamic())))
       << absl::StrFormat(
-             "consume_once is only supported on non-generator actor tasks, got task %s",
+             "consume_once is only supported on actor tasks without dynamic returns, got "
+             "task %s",
              spec.TaskId().Hex());
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
@@ -393,7 +392,11 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   std::vector<ObjectID> return_ids;
   return_ids.reserve(num_returns);
   auto tensor_transport = spec.TensorTransport();
-  const MoveState move_state = consume_once ? MoveState::MOVABLE : MoveState::NOT_MOVABLE;
+  // The only return of a streaming generator task is the generator object. It stays
+  // NOT_MOVABLE, and the objects the generator yields are created MOVABLE instead.
+  const bool yields_consume_once = consume_once && spec.IsStreamingGenerator();
+  const MoveState move_state =
+      consume_once && !yields_consume_once ? MoveState::MOVABLE : MoveState::NOT_MOVABLE;
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
@@ -421,7 +424,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         /*add_local_ref=*/true,
                                         /*pinned_at_node_id=*/std::optional<NodeID>(),
                                         tensor_transport,
-                                        move_state);
+                                        move_state,
+                                        yields_consume_once);
     }
 
     return_ids.push_back(return_id);

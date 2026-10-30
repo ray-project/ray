@@ -417,6 +417,67 @@ TEST_F(TaskManagerTest, TestReturnsAreNotMovableByDefault) {
   manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
 
+TEST_F(TaskManagerTest, TestConsumeOnceStreamingGeneratorYieldsAreMovable) {
+  auto spec = CreateActorStreamingGeneratorTaskHelper(
+      /*generator_backpressure_num_objects=*/-1,
+      /*actor_generator_backpressure_num_objects=*/1);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(
+      caller_address, spec, "", /*max_retries=*/0, /*consume_once=*/true);
+  ASSERT_EQ(reference_counter_->GetMoveState(generator_id), MoveState::NOT_MOVABLE);
+
+  // The item report creates the yielded object.
+  auto reported_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto req = GetIntermediateTaskReturn(/*idx*/ 0,
+                                       /*finished*/ false,
+                                       generator_id,
+                                       reported_id,
+                                       GenerateRandomBuffer(),
+                                       /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+  ASSERT_EQ(reference_counter_->GetMoveState(reported_id), MoveState::MOVABLE);
+
+  // A peek creates the next yielded object before its report.
+  ObjectID read_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &read_id).ok());
+  ASSERT_EQ(read_id, reported_id);
+  auto [peeked_id, ready] = manager_.PeekObjectRefStream(generator_id);
+  ASSERT_EQ(peeked_id, ObjectID::FromIndex(spec.TaskId(), 3));
+  ASSERT_FALSE(ready);
+  ASSERT_EQ(reference_counter_->GetMoveState(peeked_id), MoveState::MOVABLE);
+
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/1);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestStreamingGeneratorYieldsAreNotMovableByDefault) {
+  auto spec = CreateActorStreamingGeneratorTaskHelper(
+      /*generator_backpressure_num_objects=*/-1,
+      /*actor_generator_backpressure_num_objects=*/1);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "");
+
+  auto reported_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto req = GetIntermediateTaskReturn(/*idx*/ 0,
+                                       /*finished*/ false,
+                                       generator_id,
+                                       reported_id,
+                                       GenerateRandomBuffer(),
+                                       /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+  ASSERT_EQ(reference_counter_->GetMoveState(generator_id), MoveState::NOT_MOVABLE);
+  ASSERT_EQ(reference_counter_->GetMoveState(reported_id), MoveState::NOT_MOVABLE);
+
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/1);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
 TEST_F(TaskManagerTest, TestTaskSuccess) {
   rpc::Address caller_address;
   ObjectID dep1 = ObjectID::FromRandom();
