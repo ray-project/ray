@@ -3,6 +3,7 @@ from typing import Dict, Optional
 import pytest
 
 from ray.tune.callback import Callback, CallbackList
+from ray.tune.utils.callback import _create_default_callbacks
 
 
 class StatefulCallback(Callback):
@@ -52,6 +53,20 @@ def test_callback_list_without_stateful_callback(tmp_path):
 
     with pytest.raises(RuntimeError):
         callbacks.restore_from_dir(str(tmp_path))
+
+
+def test_create_default_callbacks_does_not_mutate_input():
+    """The caller's list (e.g. ``RunConfig.callbacks``) must not be extended with
+    per-run callbacks, or reusing it for another run carries stale ones along."""
+
+    user_callbacks = [Callback()]
+    first = _create_default_callbacks(user_callbacks)
+
+    assert len(first) > 1
+    assert len(user_callbacks) == 1
+
+    second = _create_default_callbacks(user_callbacks)
+    assert [type(c) for c in second] == [type(c) for c in first]
 
 
 if __name__ == "__main__":
