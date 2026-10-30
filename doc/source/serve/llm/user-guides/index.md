@@ -12,6 +12,7 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 
 - {doc}`Configuration reference <configuration>`: every `LLMConfig` field, from model loading and engine kwargs to accelerators, placement, and deployment options.
 - {doc}`Deployment initialization <deployment-initialization>`: speed up model loading and replica startup with caching, streaming load formats, and initialization callbacks.
+- {doc}`Fast scale-out with ModelExpress <model-express>`: load a new replica's weights and compile caches from a running replica over GPU-to-GPU transfers.
 - {doc}`Multi-LoRA deployment <multi-lora>`: serve many LoRA adapters on a shared base model with runtime switching and an LRU cache.
 
 ## Scale across GPUs and nodes
@@ -48,6 +49,7 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 
 Configuration reference <configuration>
 Deployment initialization <deployment-initialization>
+Fast scale-out with ModelExpress <model-express>
 Multi-LoRA deployment <multi-lora>
 Cross-node parallelism <cross-node-parallelism>
 Data parallel attention <data-parallel-attention>

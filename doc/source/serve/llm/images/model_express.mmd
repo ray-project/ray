@@ -1,0 +1,21 @@
+%% Source for model_express.svg. Render with:
+%%   mmdc -i model_express.mmd -o model_express.svg -b transparent
+flowchart LR
+  storage[("Model storage<br/>Hugging Face, S3")]
+
+  subgraph n1["Node A"]
+    r1["Replica 1 (serving)<br/>vLLM workers"]
+  end
+
+  subgraph head["Head node"]
+    mx["mx app: MX server<br/>(registry of sources)"]
+  end
+
+  subgraph n2["Node B"]
+    r2["Replica 2 (starting)<br/>vLLM workers"]
+  end
+
+  storage -- "1) cold start" --> r1
+  r1 -- "2) register as a source<br/>once the engine is up" --> mx
+  r2 -- "3) look up a source" --> mx
+  r1 == "4) weights + compile caches<br/>GPU to GPU over NIXL" ==> r2
