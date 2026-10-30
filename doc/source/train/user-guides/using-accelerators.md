@@ -119,7 +119,7 @@ trainer.fit()
 
 :::{tab-item} TPU
 :sync: TPU
-When you set `use_tpu=True`, Ray Train configures the distributed environment for TPU execution on each worker. The specific initialization depends on the trainer you use, such as {class}`~ray.train.v2.jax.JaxTrainer`.
+When you set `use_tpu=True`, Ray Train configures the distributed environment for TPU execution on each worker and assigns ranks in order of TPU slice, host (`TPU_WORKER_ID`), and lowest assigned TPU device ID, so each host's workers receive contiguous ranks. The specific initialization depends on the trainer you use, such as {class}`~ray.train.v2.jax.JaxTrainer`.
 
 The following example shows a basic TPU training setup with {class}`~ray.train.v2.jax.JaxTrainer`:
 
