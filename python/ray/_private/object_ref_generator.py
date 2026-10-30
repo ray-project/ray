@@ -52,6 +52,10 @@ class ObjectRefGenerator:
         obj_ref_gen: ray.ObjectRefGenerator = gen.remote()
         for obj_ref in obj_ref_gen:
             print("Got:", ray.get(obj_ref))
+
+    Args:
+        generator_ref: The object ref of the generator task.
+        worker: The Ray worker that owns the generator task.
     """
 
     def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker"):
@@ -89,6 +93,7 @@ class ObjectRefGenerator:
         raise NotImplementedError("`gen.throw` is not supported.")
 
     def close(self):
+        """Not supported. Always raises ``NotImplementedError``."""
         raise NotImplementedError("`gen.close` is not supported.")
 
     def __aiter__(self) -> "ObjectRefGenerator":
@@ -104,6 +109,7 @@ class ObjectRefGenerator:
         raise NotImplementedError("`gen.athrow` is not supported.")
 
     async def aclose(self):
+        """Not supported. Always raises ``NotImplementedError``."""
         raise NotImplementedError("`gen.aclose` is not supported.")
 
     def completed(self) -> "ray.ObjectRef":
@@ -114,6 +120,9 @@ class ObjectRefGenerator:
         the `ray.get(gen.completed())` raises an exception.
 
         The function returns immediately.
+
+        Returns:
+            The object ref of the generator task.
         """
         return self._generator_ref
 
@@ -125,6 +134,9 @@ class ObjectRefGenerator:
         (this condition should be checked using is_finished).
 
         The function returns immediately.
+
+        Returns:
+            True if the next object ref is ready, otherwise False.
         """
         self.worker.check_connected()
         core_worker = self.worker.core_worker
@@ -148,6 +160,10 @@ class ObjectRefGenerator:
         or StopAsyncIteration
 
         The function returns immediately.
+
+        Returns:
+            True if the generator task finished and every object ref has been
+            consumed, otherwise False.
         """
         self.worker.check_connected()
         core_worker = self.worker.core_worker

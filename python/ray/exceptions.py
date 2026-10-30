@@ -28,6 +28,7 @@ class RayError(Exception):
     """Super class of all ray exception types."""
 
     def to_bytes(self):
+        """Serialize this exception to a ``RayException`` protobuf message in bytes."""
         # Extract exc_info from exception object.
         exc_info = (type(self), self, self.__traceback__)
         formatted_exception_string = "\n".join(format_exception(*exc_info))
@@ -206,7 +207,12 @@ class RayTaskError(RayError):
 
     def make_dual_exception_instance(self) -> "RayTaskError":
         """Makes a object instance that inherits from both RayTaskError and the type of
-        `self.cause`. Raises TypeError if the cause class can't be subclassed"""
+        `self.cause`. Raises TypeError if the cause class can't be subclassed.
+
+        Returns:
+            An instance of a class that subclasses both RayTaskError and the class of
+            ``self.cause``.
+        """
         # For normal user Exceptions, we subclass from both
         # RayTaskError and the user exception. For ExceptionGroup,
         # we special handle it because it has a different __new__()
@@ -420,6 +426,13 @@ class RayActorError(RayError):
     This exception could happen because the actor process is dead, or is unavailable for
     the moment. Ray raises subclasses `ActorDiedError` and `ActorUnavailableError`
     respectively.
+
+    Args:
+        actor_id: The actor ID in hex.
+        error_msg: The error message.
+        actor_init_failed: Whether the actor failed while running its
+            ``__init__`` method.
+        preempted: Whether the actor died because its node was preempted.
     """
 
     BASE_ERROR_MSG = "The actor experienced an error before finishing this task."
@@ -433,9 +446,9 @@ class RayActorError(RayError):
     ):
         #: The actor ID in hex string.
         self.actor_id = actor_id
-        #: Whether the actor failed in the middle of __init__.
-        self.error_msg = error_msg
         #: The full error message.
+        self.error_msg = error_msg
+        #: Whether the actor failed in the middle of __init__.
         self._actor_init_failed = actor_init_failed
         #: Whether the actor died because the node was preempted.
         self._preempted = preempted
@@ -445,10 +458,12 @@ class RayActorError(RayError):
 
     @property
     def preempted(self) -> bool:
+        """Whether the actor died because its node was preempted."""
         return self._preempted
 
     @property
     def actor_init_failed(self) -> bool:
+        """Whether the actor failed while running its ``__init__`` method."""
         return self._actor_init_failed
 
 
@@ -569,6 +584,9 @@ class AuthenticationError(RayError, ConnectionError):
     (e.g., a Ray CLI command interacting with a remote cluster).
 
     Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+
+    Args:
+        message: The error message.
     """
 
     def __init__(self, message: str):
@@ -1002,6 +1020,9 @@ class TaskUnschedulableError(RayError):
 
     One example is that the node specified through
     NodeAffinitySchedulingStrategy is dead.
+
+    Args:
+        error_message: The reason the task can't be scheduled.
     """
 
     def __init__(self, error_message: str):
@@ -1017,6 +1038,9 @@ class ActorUnschedulableError(RayError):
 
     One example is that the node specified through
     NodeAffinitySchedulingStrategy is dead.
+
+    Args:
+        error_message: The reason the actor can't be scheduled.
     """
 
     def __init__(self, error_message: str):
