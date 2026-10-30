@@ -93,7 +93,7 @@ class SGLangOutputData(BaseModel):
             generated_tokens=output["output_ids"] if "output_ids" in output else None,
             generated_text=output["text"] if "text" in output else None,
             num_generated_tokens=meta_info["completion_tokens"],
-            embeddings=output.get("embedding", None) if "embedding" in output else None,
+            embeddings=output.get("embedding"),
             metrics=output.get("metrics", None),
             logprobs=logprobs,
             prompt_logprobs=prompt_logprobs,
@@ -194,24 +194,10 @@ class SGLangEngineWrapper:
         row.pop("multimodal_uuids", None)
         row.pop("mm_processor_kwargs", None)
 
-        # Support direct media columns as fallback if multimodal_data was not used
-        direct_image = row.pop("image_data", None)
-        if direct_image is None:
-            direct_image = row.pop("image", None)
-        if direct_image is None:
-            direct_image = row.pop("images", None)
-
-        direct_audio = row.pop("audio_data", None)
-        if direct_audio is None:
-            direct_audio = row.pop("audio", None)
-
-        direct_video = row.pop("video_data", None)
-        if direct_video is None:
-            direct_video = row.pop("video", None)
-
-        image_data = direct_image
-        audio_data = direct_audio
-        video_data = direct_video
+        # Unconditionally pop only specific SGLang engine media columns.
+        image_data = row.pop("image_data", None)
+        audio_data = row.pop("audio_data", None)
+        video_data = row.pop("video_data", None)
 
         if multimodal_data is not None:
             if not isinstance(multimodal_data, dict):
@@ -231,7 +217,7 @@ class SGLangEngineWrapper:
                 if image_data is not None:
                     raise ValueError(
                         "Conflicting image data provided: both 'multimodal_data[\"image\"]' "
-                        "and direct image column were specified."
+                        "and direct 'image_data' column were specified."
                     )
                 image_data = multimodal_data["image"]
 
@@ -239,7 +225,7 @@ class SGLangEngineWrapper:
                 if audio_data is not None:
                     raise ValueError(
                         "Conflicting audio data provided: both 'multimodal_data[\"audio\"]' "
-                        "and direct audio column were specified."
+                        "and direct 'audio_data' column were specified."
                     )
                 audio_data = multimodal_data["audio"]
 
@@ -247,7 +233,7 @@ class SGLangEngineWrapper:
                 if video_data is not None:
                     raise ValueError(
                         "Conflicting video data provided: both 'multimodal_data[\"video\"]' "
-                        "and direct video column were specified."
+                        "and direct 'video_data' column were specified."
                     )
                 video_data = multimodal_data["video"]
 
@@ -488,7 +474,7 @@ class SGLangEngineStage(StatefulStage):
 
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
-        ret = {"prompt": "The text prompt (str)."}
+        ret = {}
         task_type = self.fn_constructor_kwargs.get("task_type", SGLangTaskType.GENERATE)
         if task_type == SGLangTaskType.GENERATE:
             ret["sampling_params"] = (
@@ -499,8 +485,13 @@ class SGLangEngineStage(StatefulStage):
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
         return {
+            "prompt": (
+                "The text prompt (str). Required if tokenized_prompt is not provided. "
+                "Either prompt or tokenized_prompt must be provided."
+            ),
             "tokenized_prompt": (
-                "The tokenized prompt. Required if prompt is not provided."
+                "The tokenized prompt. Required if prompt is not provided. "
+                "Either prompt or tokenized_prompt must be provided."
             ),
             "multimodal_data": (
                 "The multimodal data (images, audio, video) to pass to the model, "

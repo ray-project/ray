@@ -323,7 +323,9 @@ async def test_sglang_wrapper_uses_explicit_multimodal_data(
 async def test_sglang_wrapper_direct_media_columns(
     model_llama_3_2_216M, mock_sgl_engine
 ):
-    """Direct media columns (e.g. image_data, audio, video) are accepted and popped."""
+    """Direct media columns (image_data, audio_data, video_data) are accepted
+    and popped, while generic columns (e.g. image, audio, video) are not stolen.
+    """
     wrapper = SGLangEngineWrapper(
         model=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
@@ -333,13 +335,15 @@ async def test_sglang_wrapper_direct_media_columns(
     sentinel_image = object()
     sentinel_audio = object()
     sentinel_video = object()
+    sentinel_user_image = object()
 
     row = {
         "__idx_in_batch": 0,
         "prompt": "hi",
         "image_data": [sentinel_image],
-        "audio": sentinel_audio,
-        "video": sentinel_video,
+        "audio_data": sentinel_audio,
+        "video_data": sentinel_video,
+        "image": sentinel_user_image,  # Generic column that should not be stolen
         "sampling_params": {"max_tokens": 1, "temperature": 0.0},
     }
 
@@ -350,8 +354,9 @@ async def test_sglang_wrapper_direct_media_columns(
     assert request.video_data == sentinel_video
 
     assert "image_data" not in row
-    assert "audio" not in row
-    assert "video" not in row
+    assert "audio_data" not in row
+    assert "video_data" not in row
+    assert row["image"] is sentinel_user_image
 
 
 @pytest.mark.asyncio
@@ -520,6 +525,56 @@ def test_sglang_output_data_schema():
     assert expected_fields.issubset(set(dump.keys()))
     assert dump["logprobs"] == [0.1, 0.2]
     assert dump["embeddings"] is None
+
+
+@pytest.mark.asyncio
+async def test_sglang_wrapper_tokenized_prompt_only(
+    model_llama_3_2_216M, mock_sgl_engine
+):
+    """Token-only requests without 'prompt' are accepted when skip_tokenizer_init=True."""
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+        skip_tokenizer_init=True,
+    )
+
+    row = {
+        "__idx_in_batch": 0,
+        "tokenized_prompt": [101, 2054, 2003, 102],
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+
+    assert request.prompt is None
+    assert request.prompt_token_ids == [101, 2054, 2003, 102]
+    assert "tokenized_prompt" not in row
+
+
+def test_sglang_engine_stage_input_keys(gpu_type, model_llama_3_2_216M):
+    """Verify get_required_input_keys does not require 'prompt'."""
+    stage = SGLangEngineStage(
+        fn_constructor_kwargs=dict(
+            model=model_llama_3_2_216M,
+            task_type=SGLangTaskType.GENERATE,
+        ),
+        map_batches_kwargs=dict(
+            compute=ActorPoolStrategy(size=1),
+            accelerator_type=gpu_type,
+        ),
+    )
+    required_keys = stage.get_required_input_keys()
+    assert "prompt" not in required_keys
+    assert "sampling_params" in required_keys
+
+    optional_keys = stage.get_optional_input_keys()
+    assert "prompt" in optional_keys
+    assert "tokenized_prompt" in optional_keys
+    assert "multimodal_data" in optional_keys
+    assert "image_data" in optional_keys
+    assert "audio_data" in optional_keys
+    assert "video_data" in optional_keys
 
 
 if __name__ == "__main__":
