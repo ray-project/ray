@@ -1296,3 +1296,11 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+/// If true, Python workers are forked from a warm fork server process
+/// instead of starting a new Python interpreter from scratch.
+RAY_CONFIG(bool, enable_worker_fork_server, false)
+
+/// Timeout in milliseconds for a fork server socket request before falling back to
+/// starting a fresh worker process.
+RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 500)

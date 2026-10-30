@@ -857,6 +857,33 @@ class TestValidateEnvVars:
             validation.parse_and_validate_env_vars({1.23: "hi"})
 
 
+class TestValidatePreloadModules:
+    @pytest.mark.parametrize(
+        "preload_modules,expected_result,expected_error",
+        [
+            (["os", "sys", "urllib.parse"], ["os", "sys", "urllib.parse"], None),
+            ([" os ", "os", "sys"], ["os", "sys"], None),
+            ([], [], None),
+            ("os", None, TypeError),
+            ([123], None, TypeError),
+            ([""], None, ValueError),
+            (["123invalid"], None, ValueError),
+            (["bad..module"], None, ValueError),
+            (["import"], None, ValueError),
+            (["foo.class"], None, ValueError),
+        ],
+    )
+    def test_preload_modules_validation(
+        self, preload_modules, expected_result, expected_error
+    ):
+        if expected_error is None:
+            env = RuntimeEnv(preload_modules=preload_modules)
+            assert env.preload_modules() == expected_result
+        else:
+            with pytest.raises(expected_error):
+                RuntimeEnv(preload_modules=preload_modules)
+
+
 def test_validate_no_local_paths_raises_exceptions_on_type_mismatch():
     with pytest.raises(TypeError):
         _validate_no_local_paths(1)
