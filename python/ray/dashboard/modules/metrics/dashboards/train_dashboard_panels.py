@@ -3,21 +3,57 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     K8S_DISK_USAGE_NOTE,
     DashboardConfig,
     Panel,
+    PanelTemplate,
     Row,
     Target,
 )
 
 # Ray Train Metrics (Controller)
+# (state name, color) for each value of the `ray_train_controller_state` gauge.
+# Keep in sync with `ControllerMetrics.CONTROLLER_STATE_CODES` in
+# `ray/train/v2/_internal/metrics/controller.py`.
+CONTROLLER_STATE_CODES = {
+    1: ("INITIALIZING", "light-blue"),
+    2: ("SCHEDULING", "blue"),
+    3: ("RESCHEDULING", "dark-blue"),
+    4: ("RUNNING", "green"),
+    5: ("PREEMPTING", "orange"),
+    6: ("RESTARTING", "yellow"),
+    7: ("RESIZING", "purple"),
+    8: ("SHUTTING_DOWN", "text"),
+    9: ("ERRORED", "red"),
+    10: ("FINISHED", "dark-green"),
+    11: ("ABORTED", "dark-orange"),
+}
+
 CONTROLLER_STATE_PANEL = Panel(
     id=1,
     title="Controller State",
-    description="Current state of the Ray Train controller.",
+    description="State of the Ray Train controller over time, one row per training run (run name and the first 8 characters of the run ID). States shorter than the Prometheus scrape interval may not appear.",
     unit="",
     targets=[
         Target(
-            expr='sum(ray_train_controller_state{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name, ray_train_controller_state)',
-            legend="Run Name: {{ray_train_run_name}}, Controller State: {{ray_train_controller_state}}",
+            # `last_over_time(...[$__interval])` ends a run's row about one scrape
+            # interval after its samples stop ($__interval is the query step, which
+            # Grafana never sets below the data source's scrape interval). A plain
+            # instant selector would carry the last state forward for Prometheus' 5m
+            # lookback when the backend doesn't record staleness.
+            # `> 0` drops samples recorded after the controller resets its metrics.
+            expr='label_replace(max(last_over_time(ray_train_controller_state{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}[$__interval])) by (ray_train_run_name, ray_train_run_id) > 0, "short_run_id", "$1", "ray_train_run_id", "(.{{8}}).*")',
+            legend="{{ray_train_run_name}} ({{short_run_id}})",
         ),
+    ],
+    template=PanelTemplate.STATE_TIMELINE,
+    value_mappings=[
+        {
+            "type": "value",
+            "options": {
+                str(code): {"text": state, "color": color, "index": index}
+                for index, (code, (state, color)) in enumerate(
+                    CONTROLLER_STATE_CODES.items()
+                )
+            },
+        }
     ],
 )
 

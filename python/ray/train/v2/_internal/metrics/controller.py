@@ -22,8 +22,25 @@ class ControllerMetrics:
     WORKER_GROUP_START_TOTAL_TIME_S = "train_worker_group_start_total_time_s"
     WORKER_GROUP_SHUTDOWN_TOTAL_TIME_S = "train_worker_group_shutdown_total_time_s"
 
-    # ===== Tag Keys =====
-    CONTROLLER_STATE_TAG_KEY = "ray_train_controller_state"
+    # ===== Controller State Codes =====
+    # Value recorded by the controller state gauge for each state. The Train Grafana
+    # dashboard's state timeline panel maps these codes back to state names, so keep
+    # them in sync with `CONTROLLER_STATE_PANEL` in
+    # `ray/dashboard/modules/metrics/dashboards/train_dashboard_panels.py`.
+    # 0 is reserved for "no state recorded".
+    CONTROLLER_STATE_CODES: Dict[TrainControllerStateType, int] = {
+        TrainControllerStateType.INITIALIZING: 1,
+        TrainControllerStateType.SCHEDULING: 2,
+        TrainControllerStateType.RESCHEDULING: 3,
+        TrainControllerStateType.RUNNING: 4,
+        TrainControllerStateType.PREEMPTING: 5,
+        TrainControllerStateType.RESTARTING: 6,
+        TrainControllerStateType.RESIZING: 7,
+        TrainControllerStateType.SHUTTING_DOWN: 8,
+        TrainControllerStateType.ERRORED: 9,
+        TrainControllerStateType.FINISHED: 10,
+        TrainControllerStateType.ABORTED: 11,
+    }
 
     @classmethod
     def _create_time_metric(
@@ -43,7 +60,7 @@ class ControllerMetrics:
             name=cls.CONTROLLER_STATE,
             description="Current state of the Ray Train controller",
             base_tags=base_tags,
-            enum_tag_key=cls.CONTROLLER_STATE_TAG_KEY,
+            enum_codes=cls.CONTROLLER_STATE_CODES,
         )
 
     @classmethod
