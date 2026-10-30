@@ -91,6 +91,8 @@ class TestDeploymentOptions:
         "graceful_shutdown_timeout_s": 10,
         "health_check_period_s": 10,
         "health_check_timeout_s": 10,
+        "prefer_local_node_routing": False,
+        "prefer_local_az_routing": False,
     }
 
     deployment_option_combos = get_random_dict_combos(deployment_options, 1000)
@@ -172,6 +174,42 @@ class TestDeploymentOptions:
 
         f = f.options(**options)
         assert f._deployment_config.user_configured_option_names == set(options.keys())
+
+    @pytest.mark.parametrize(
+        "field_name",
+        ["prefer_local_node_routing", "prefer_local_az_routing"],
+    )
+    @pytest.mark.parametrize("value", [True, False])
+    def test_options_locality_routing(self, field_name, value):
+        """Explicit locality flags via .options() are stored and user-configured."""
+
+        @serve.deployment
+        def f():
+            pass
+
+        f = f.options(**{field_name: value})
+        assert getattr(f._deployment_config, field_name) is value
+        assert field_name in f._deployment_config.user_configured_option_names
+
+    @pytest.mark.parametrize(
+        "field_name",
+        ["prefer_local_node_routing", "prefer_local_az_routing"],
+    )
+    @pytest.mark.parametrize("value", [True, False])
+    def test_decorator_locality_routing(self, field_name, value):
+        """Locality flags set on @serve.deployment survive proto round-trip."""
+
+        @serve.deployment(**{field_name: value})
+        def f():
+            pass
+
+        assert getattr(f._deployment_config, field_name) is value
+        assert field_name in f._deployment_config.user_configured_option_names
+
+        serialized = f._deployment_config.to_proto_bytes()
+        deserialized = DeploymentConfig.from_proto_bytes(serialized)
+        assert getattr(deserialized, field_name) is value
+        assert field_name in deserialized.user_configured_option_names
 
     def test_deployment_decorator_version_removed(self):
         with pytest.raises(
