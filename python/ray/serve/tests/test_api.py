@@ -1363,18 +1363,23 @@ def test_custom_request_router_kwargs(serve_instance):
     assert handle.remote().result() == "Hello, world!"
 
 
-def test_backoff_params_imperative(serve_instance):
+def test_backoff_params_imperative(serve_instance, monkeypatch):
     """Check that custom initial_backoff_s is actually applied during retries.
 
     Deploys with max_ongoing_requests=1 and a large initial_backoff_s. Sends a
     blocking request to fill the replica, then sends a second request that enters
-    backoff. Verifies the second request takes at least initial_backoff_s to
-    complete (proving the backoff sleep was applied).
+    backoff. Records the backoff the router computes instead of timing the
+    request, so the check does not depend on the OS clock.
     """
-    import time
-
     custom_initial_backoff_s = 3.0
     signal = SignalActor.remote()
+    backoffs_s = []
+    compute_backoff_s = RequestRouter._compute_backoff_s
+
+    def record_backoff_s(self, attempt: int) -> float:
+        backoff_s = compute_backoff_s(self, attempt)
+        backoffs_s.append(backoff_s)
+        return backoff_s
 
     @serve.deployment(
         max_ongoing_requests=1,
@@ -1403,36 +1408,24 @@ def test_backoff_params_imperative(serve_instance):
     blocking_ref = handle.remote(block=True)
 
     # Wait for the blocking request to be processing.
-    time.sleep(0.5)
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
 
     # Send a second request — the router's queue length probe will find the
     # replica at capacity and enter the backoff loop.
-    start = time.monotonic()
+    monkeypatch.setattr(RequestRouter, "_compute_backoff_s", record_backoff_s)
     second_ref = handle.remote(block=False)
 
-    # Unblock the first request while the backoff sleep is in progress.
-    # The router exhausts locality probes then sleeps for initial_backoff_s;
-    # we wait 1s (< 3s) so the signal arrives during the sleep.
-    time.sleep(1)
+    # Unblock the first request once the second has started its backoff.
+    wait_for_condition(lambda: len(backoffs_s) > 0)
     ray.get(signal.send.remote())
 
     # Wait for both requests to complete.
     blocking_ref.result()
     second_ref.result()
-    elapsed = time.monotonic() - start
 
-    # With initial_backoff_s=3.0 and max_backoff_s=3.0, every backoff sleep
-    # is exactly 3.0s (min(3.0 * 2.0^attempt, 3.0) = 3.0 for all attempts).
-    # A lower bound of 3.0s proves the backoff sleep was applied.
-    # An upper bound of 5.0s proves only ONE sleep occurred (two would be ≥6s),
-    # confirming it was the initial backoff (attempt 0).
-    # asyncio fires timers up to one clock tick early, and a monotonic tick on
-    # Windows is 15.6ms before Python 3.13, so allow one tick under the sleep.
-    clock_resolution_s = time.get_clock_info("monotonic").resolution
-    assert custom_initial_backoff_s - clock_resolution_s <= elapsed < 5.0, (
-        f"Expected [{custom_initial_backoff_s}, 5.0)s due to a single backoff sleep, "
-        f"but request completed in {elapsed:.2f}s"
-    )
+    # Attempt 0 backs off for initial_backoff_s, so a router still on the
+    # default config would record 0.025s here.
+    assert backoffs_s[0] == custom_initial_backoff_s
 
 
 def test_overloaded_app_builder_signatures():
