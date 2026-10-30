@@ -1776,6 +1776,24 @@ def test_unify_tensor_arrays_null_chunk_becomes_null_rows(other_shape):
     assert unified[0].type == unify_tensor_arrays([tensors, other])[0].type
 
 
+def test_unify_tensor_arrays_keeps_null_rows_through_shape_promotion():
+    """A fixed-shape chunk that already holds a null row keeps that row null
+    when a differently shaped chunk promotes it to the variable-shaped type,
+    for a sliced chunk too, instead of reading a neighbour's tensor."""
+    ones = np.ones((2, 2), np.float32)
+    sevens = np.full((2, 2), 7, np.float32)
+    with_null = ArrowTensorArray.from_numpy(create_ragged_ndarray([ones, None, sevens]))
+    other = ArrowTensorArray.from_numpy(np.zeros((1, 3, 3), np.float32))
+
+    promoted = unify_tensor_arrays([with_null, other])[0]
+    promoted_slice = unify_tensor_arrays([with_null[1:], other])[0]
+
+    assert isinstance(promoted.type, ArrowVariableShapedTensorType)
+    assert promoted.null_count == 1
+    assert _rows(promoted.to_numpy(zero_copy_only=False)) == _rows([ones, None, sevens])
+    assert _rows(promoted_slice.to_numpy(zero_copy_only=False)) == _rows([None, sevens])
+
+
 def test_tensor_column_with_null_rows_to_pandas_and_back():
     """A chunked tensor column with null rows converts to pandas with those rows
     missing, and converts back to a tensor column with the same null rows."""

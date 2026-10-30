@@ -1152,9 +1152,12 @@ class ArrowTensorArray(pa.ExtensionArray):
             type=ArrowVariableShapedTensorArray.SHAPES_ARRAY_TYPE,
         ).fill_null(target_shape)
 
+        # The list storage keeps its null rows; the struct needs its own mask
+        # for them, or they read as valid rows over a neighbour's data.
         storage = pa.StructArray.from_arrays(
             [self.storage, shape_array],
             ["data", "shape"],
+            mask=self.is_null(),
         )
 
         target_type = ArrowVariableShapedTensorType(
