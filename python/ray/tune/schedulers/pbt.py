@@ -1010,6 +1010,15 @@ class PopulationBasedTraining(FIFOScheduler):
 
         This enables the PBT scheduler to support a greater number of
         concurrent trials than can fit in the cluster at any given time.
+
+        Args:
+            tune_controller: The controller running the experiment.
+
+        Returns:
+            The ``PENDING`` or ``PAUSED`` trial with the lowest ``time_attr``
+            value as of its last perturbation interval, or ``None`` if there's
+            none. In synchronous mode, only trials that
+            haven't reached the next perturbation point are candidates.
         """
         candidates = []
         for trial in tune_controller.get_trials():
@@ -1029,11 +1038,21 @@ class PopulationBasedTraining(FIFOScheduler):
 
     # Unit test only. TODO(xwjiang): Remove test-specific APIs.
     def reset_stats(self):
+        """Reset the counts of perturbations and checkpoints to zero."""
         self._num_perturbations = 0
         self._num_checkpoints = 0
 
     # Unit test only. TODO(xwjiang): Remove test-specific APIs.
     def last_scores(self, trials: List[Trial]) -> List[float]:
+        """Returns the last recorded score of each unfinished trial.
+
+        Args:
+            trials: The trials to read scores from.
+
+        Returns:
+            The last score of each trial in ``trials`` that has a score and
+            hasn't finished.
+        """
         scores = []
         for trial in trials:
             state = self._trial_state[trial]

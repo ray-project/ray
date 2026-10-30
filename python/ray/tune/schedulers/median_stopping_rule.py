@@ -128,6 +128,19 @@ class MedianStoppingRule(FIFOScheduler):
         This stopping rule stops a running trial if the trial's best objective
         value by step `t` is strictly worse than the median of the running
         averages of all completed trials' objectives reported up to step `t`.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that reported the result.
+            result: The result the trial reported.
+
+        Returns:
+            ``TrialScheduler.STOP`` to stop the trial early, or
+            ``TrialScheduler.PAUSE`` instead when ``hard_stop`` is False.
+            When too few other trials have reached step `t` to compare against,
+            ``TrialScheduler.PAUSE`` if at least ``min_time_slice`` has passed
+            since the trial last paused and other trials are waiting to run.
+            Otherwise ``TrialScheduler.CONTINUE``.
         """
         if self._time_attr not in result or self._metric not in result:
             return TrialScheduler.CONTINUE
