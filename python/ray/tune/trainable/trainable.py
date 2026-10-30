@@ -200,6 +200,7 @@ class Trainable:
         return ""
 
     def get_current_ip_pid(self):
+        """Returns the IP address of the node and the ID of the process this runs in."""
         return self._local_ip, os.getpid()
 
     def get_auto_filled_metrics(
@@ -214,6 +215,18 @@ class Trainable:
         If ``debug_metrics_only`` is True, only metrics that don't
         require at least one iteration will be returned
         (``ray.tune.result.DEBUG_METRICS``).
+
+        Args:
+            now: The time to report in the ``date`` metric, and in
+                ``timestamp`` when ``timestamp`` isn't given. Defaults to the
+                current time.
+            time_this_iter: The value of the ``time_this_iter_s`` metric.
+            timestamp: The value of the ``timestamp`` metric, in seconds since
+                the epoch. Defaults to ``now``.
+            debug_metrics_only: Whether to return only the debug metrics.
+
+        Returns:
+            A dict that maps each auto-filled metric name to its value.
         """
         if now is None:
             now = datetime.today()
@@ -238,6 +251,11 @@ class Trainable:
         return autofilled
 
     def is_actor(self):
+        """Whether this trainable runs in a Ray actor.
+
+        Returns:
+            True if it runs in a Ray actor, False otherwise.
+        """
         try:
             actor_id = ray._private.worker.global_worker.actor_id
             return actor_id != actor_id.nil()
@@ -399,6 +417,12 @@ class Trainable:
         return result
 
     def get_state(self):
+        """Returns the trainable's training progress and the Ray version.
+
+        Returns:
+            A dict with the iteration count, total timesteps, total time,
+            total episodes, the last result, and the Ray version.
+        """
         return {
             "iteration": self._iteration,
             "timesteps_total": self._timesteps_total,

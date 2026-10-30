@@ -386,6 +386,12 @@ class BasicVariantGenerator(SearchAlgorithm):
             self._live_trials.remove(trial_id)
 
     def get_state(self):
+        """Returns the generator's state, for checkpointing.
+
+        Returns:
+            A copy of the generator's attributes without its trial iterators,
+            or False if any of its variants are generated lazily.
+        """
         if any(iterator.lazy_eval for iterator in self._iterators):
             return False
         state = self.__dict__.copy()
@@ -394,6 +400,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         return state
 
     def set_state(self, state):
+        """Restores the generator's state and rebuilds its trial iterators."""
         self.__dict__.update(state)
         self._trial_iter = None
         self._trial_generator = []
@@ -413,11 +420,22 @@ class BasicVariantGenerator(SearchAlgorithm):
         )
 
     def has_checkpoint(self, dirpath: str):
-        """Whether a checkpoint file exists within dirpath."""
+        """Whether a checkpoint file exists within dirpath.
+
+        Args:
+            dirpath: Directory to look for a checkpoint file in.
+
+        Returns:
+            True if ``dirpath`` holds a checkpoint file, False otherwise.
+        """
         return any(Path(dirpath).glob(self.CKPT_FILE_TMPL.format("*")))
 
     def restore_from_dir(self, dirpath: str):
-        """Restores self + searcher + search wrappers from dirpath."""
+        """Restores self + searcher + search wrappers from dirpath.
+
+        Args:
+            dirpath: Directory that holds the checkpoint file to restore from.
+        """
         state_dict = _load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*"))
         if not state_dict:
             raise RuntimeError("Unable to find checkpoint in {}.".format(dirpath))

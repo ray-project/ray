@@ -45,11 +45,23 @@ class Stopper(abc.ABC):
     """
 
     def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
-        """Returns true if the trial should be terminated given the result."""
+        """Returns true if the trial should be terminated given the result.
+
+        Args:
+            trial_id: The ID of the trial that reported the result.
+            result: The result the trial reported.
+
+        Returns:
+            True to stop the trial, False to let it continue.
+        """
         raise NotImplementedError
 
     def stop_all(self) -> bool:
-        """Returns true if the experiment should be terminated."""
+        """Returns true if the experiment should be terminated.
+
+        Returns:
+            True to stop all trials, False otherwise.
+        """
         raise NotImplementedError
 
 

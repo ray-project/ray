@@ -29,6 +29,11 @@ class FunctionStopper(Stopper):
 
     @classmethod
     def is_valid_function(cls, fn):
+        """Whether ``fn`` is a callable, other than a ``Stopper``, to wrap.
+
+        Raises a ``ValueError`` if ``fn`` qualifies but has a ``stop_all``
+        attribute, since it's likely meant to be a ``Stopper``.
+        """
         is_function = callable(fn) and not issubclass(type(fn), Stopper)
         if is_function and hasattr(fn, "stop_all"):
             raise ValueError(
