@@ -331,6 +331,13 @@ class FakeNodeInfoGcsServiceHandler : public rpc::NodeInfoGcsServiceHandler {
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 
+  void HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request,
+                              rpc::UpdateNodeLabelsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
   bool called_ = false;
 };
 
@@ -387,6 +394,25 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationAndGating) {
       callback_called = true;
     };
     proxy.HandleUnregisterNode(request, &reply, send_reply_callback, "peer");
+    EXPECT_TRUE(callback_called);
+    EXPECT_FALSE(underlying.called_);
+    underlying.called_ = false;
+  }
+  {
+    // Relabeling a node mutates cluster state, so a passive GCS must reject it too.
+    rpc::UpdateNodeLabelsRequest request;
+    rpc::UpdateNodeLabelsReply reply;
+    bool callback_called = false;
+    auto send_reply_callback = [&callback_called, &reply](Status status,
+                                                          std::function<void()> f1,
+                                                          std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      Status logical_status =
+          Status(StatusCode(reply.status().code()), reply.status().message());
+      EXPECT_TRUE(logical_status.IsGcsPassive());
+      callback_called = true;
+    };
+    proxy.HandleUpdateNodeLabels(request, &reply, send_reply_callback);
     EXPECT_TRUE(callback_called);
     EXPECT_FALSE(underlying.called_);
     underlying.called_ = false;

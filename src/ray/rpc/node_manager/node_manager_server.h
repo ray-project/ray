@@ -59,6 +59,7 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)              \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)                 \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)                    \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(UpdateRayletLabels)             \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                 \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerFailureCause)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
@@ -123,6 +124,10 @@ class NodeManagerServiceHandler {
   virtual void HandleDrainRaylet(rpc::DrainRayletRequest request,
                                  rpc::DrainRayletReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateRayletLabels(rpc::UpdateRayletLabelsRequest request,
+                                        rpc::UpdateRayletLabelsReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                        rpc::CancelWorkerLeaseReply *reply,
