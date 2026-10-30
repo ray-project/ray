@@ -8,6 +8,7 @@ import pyarrow
 
 from ray.data._internal.datasource.webdataset_datasource import (
     _apply_list,
+    _base_plus_ext,
     _default_encoder,
     _make_iterable,
 )
@@ -19,6 +20,17 @@ WebDatasetEncoderSpec = Union[bool, str, WebDatasetEncoder]
 WebDatasetEncoderConfig = Optional[
     Union[WebDatasetEncoderSpec, List[WebDatasetEncoderSpec]]
 ]
+
+
+def _validate_key(key: str) -> None:
+    """Raise ``ValueError`` if WebDataset readers can't recover ``key``."""
+    if _base_plus_ext(f"{key}.x") != (key, "x"):
+        raise ValueError(
+            f"WebDataset readers can't recover key {key!r}, because they split "
+            "each tar member name at the first dot in its last path part. Use a "
+            "key whose last path part is non-empty and has no dots, for example "
+            "by dropping a file extension or using a hash of the id."
+        )
 
 
 class WebDatasetDatasink(BlockBasedFileDatasink):
@@ -45,6 +57,7 @@ class WebDatasetDatasink(BlockBasedFileDatasink):
             if "__key__" not in sample:
                 sample["__key__"] = uuid.uuid4().hex
             key = sample["__key__"]
+            _validate_key(str(key))
             for k, v in sample.items():
                 if v is None or k.startswith("__"):
                     continue
