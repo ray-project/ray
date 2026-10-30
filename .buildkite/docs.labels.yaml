@@ -7,6 +7,8 @@
 #     select it and it also carries one of these tags.
 #   skip_tags_unless_present: without the label, steps carrying these tags are
 #     skipped, along with any step that depends on them.
+#   skip_tags_when_present: with the label, steps carrying these tags are
+#     skipped, along with any step that depends on them.
 
 # A PR that changes nothing but docstrings and comments skips every library's
 # test suites and runs the changed modules' >>> examples instead. Kept: steps
@@ -20,3 +22,11 @@
 # Opt-in docs example tests run only on a PR with the label.
 - label: docs-example-test
   skip_tags_unless_present: [doc_example_optin]
+
+# A PR whose change can't affect GPU behavior skips every step tagged `gpu`,
+# in every library, and the images only those steps need. Meant for docs and
+# CI infrastructure edits that route to GPU suites only incidentally, such as
+# doc/BUILD.bazel, which selects every library's docs example steps. The
+# scheduled post-merge builds still run the GPU steps.
+- label: skip-gpu-tests
+  skip_tags_when_present: [gpu]
