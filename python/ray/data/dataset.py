@@ -113,6 +113,7 @@ from ray.data._internal.util import (
     explain_plan,
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
+    validate_actor_placement_group_config,
 )
 from ray.data.aggregate import (
     AggregateFn,
@@ -944,9 +945,18 @@ class Dataset:
         accelerator_type: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """Apply a function to batches without public ``map_batches`` validation."""
+        """Apply a function to batches without public ``map_batches`` validation.
+
+        ``placement_group_bundles`` creates a placement group per map worker actor
+        and schedules the actor in its first bundle, capturing child tasks and
+        actors into the same group. Only actor-based transforms support this option.
+        It overrides any scheduling strategy returned by ``ray_remote_args_fn``.
+        ``placement_group_strategy`` requires bundles and defaults to ``PACK``.
+        """
         # NOTE: The `map_groups` implementation calls `map_batches` with
         # `batch_size=None`. The issue is that if you request GPUs with
         # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
@@ -983,6 +993,13 @@ class Dataset:
             runtime_env=runtime_env,
         )
 
+        validate_actor_placement_group_config(
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+
         batch_format = _apply_batch_format(batch_format)
 
         map_batches_op = MapBatches(
@@ -1000,6 +1017,8 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset._from_parent(self, logical_plan)
