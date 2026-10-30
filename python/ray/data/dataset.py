@@ -3255,9 +3255,7 @@ class Dataset:
         # Counting once here also lets us distribute leftover rows below.
         ds, ds_length = self._try_count_or_materialize(ds)
         if isinstance(test_size, int):
-            ds_length = self._validate_test_size_int(
-                test_size, ds, ds_length=ds_length
-            )
+            ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
             n_test = test_size
             fraction = test_size / ds_length
         else:
@@ -3324,9 +3322,7 @@ class Dataset:
                     progressed = True
             if not progressed:
                 break
-        test_counts = {
-            key: b + e for (key, _), b, e in zip(class_sizes, base, extra)
-        }
+        test_counts = {key: b + e for (key, _), b, e in zip(class_sizes, base, extra)}
 
         def add_train_flag(group_batch, test_counts):
             n = len(group_batch)
