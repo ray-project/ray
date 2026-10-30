@@ -44,6 +44,7 @@ from ray_client._ignore import _compile_ignore_rules, _is_ignored
 from ray_client.client import (
     _normalize_resources,
     _validate_get_if_exists,
+    _validate_node_id_and_label_selector,
     _validate_ttl_seconds,
 )
 from ray_client.packaging import (
@@ -127,6 +128,7 @@ except (ImportError, OSError):
             "memory": norm_memory,
             "resources": norm_resources or {},
             "label_selector": spec.get("label_selector") or {},
+            "node_id": spec.get("node_id"),
             "max_concurrency": (
                 int(max_concurrency)
                 if isinstance(max_concurrency, int)
@@ -196,6 +198,26 @@ class _MockClusterState:
         self.actors: Dict[str, Dict[str, Any]] = {}
         self.jobs: Dict[str, Dict[str, Any]] = {}
         self.worker_groups: Dict[str, int] = {}
+        self.nodes: Dict[str, Dict[str, Any]] = {
+            "node_head": {
+                "node_id": "node_head",
+                "node_group": "head",
+                "state": "RUNNING",
+                "alive": True,
+                "node_ip": "127.0.0.1",
+                "resources": {"CPU": 4.0},
+                "labels": {"ray.io/node-group": "head"},
+            },
+            "node_worker_1": {
+                "node_id": "node_worker_1",
+                "node_group": "gpu-workers",
+                "state": "RUNNING",
+                "alive": True,
+                "node_ip": "10.0.0.2",
+                "resources": {"CPU": 8.0, "GPU": 1.0},
+                "labels": {"ray.io/node-group": "gpu-workers"},
+            },
+        }
         self.last_created_actor_spec: Optional[Dict[str, Any]] = None
         self.delete_actor_calls = 0
         self.fail_next_requests = 0
@@ -456,6 +478,75 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     )
                     return
 
+        if path == "/api/cluster/node_groups":
+            with self.state.lock:
+                groups: Dict[str, Dict[str, Any]] = {}
+                for node in self.state.nodes.values():
+                    g = node["node_group"]
+                    entry = groups.setdefault(
+                        g,
+                        {
+                            "name": g,
+                            "count": 0,
+                            "resources": dict(node.get("resources") or {}),
+                            "labels": dict(node.get("labels") or {}),
+                        },
+                    )
+                    entry["count"] += 1
+                items = list(groups.values())
+            self._send_json(200, {"ok": True, "node_groups": items})
+            return
+
+        if path.startswith("/api/cluster/node_groups/"):
+            group = path[len("/api/cluster/node_groups/") :]
+            with self.state.lock:
+                matching = [
+                    n for n in self.state.nodes.values() if n["node_group"] == group
+                ]
+            if not matching:
+                self._send_json(
+                    404, {"ok": False, "error": f"Node group '{group}' not found"}
+                )
+                return
+            first = matching[0]
+            self._send_json(
+                200,
+                {
+                    "ok": True,
+                    "node_group": {
+                        "name": group,
+                        "count": len(matching),
+                        "resources": dict(first.get("resources") or {}),
+                        "labels": dict(first.get("labels") or {}),
+                    },
+                },
+            )
+            return
+
+        if path == "/api/cluster/nodes":
+            query = dict(urllib.parse.parse_qsl(parsed.query))
+            group_filter = query.get("node_group")
+            with self.state.lock:
+                items = [
+                    dict(n)
+                    for n in self.state.nodes.values()
+                    if group_filter is None or n["node_group"] == group_filter
+                ]
+            self._send_json(200, {"ok": True, "nodes": items})
+            return
+
+        if path.startswith("/api/cluster/nodes/"):
+            node_id = path[len("/api/cluster/nodes/") :]
+            with self.state.lock:
+                node = self.state.nodes.get(node_id)
+            if node is None:
+                self._send_json(
+                    404, {"ok": False, "error": f"Node '{node_id}' not found"}
+                )
+                return
+            self._send_json(200, {"ok": True, "node": dict(node)})
+            return
+
         self._send_json(404, {"error": "unknown endpoint"})
 
     def do_PUT(self) -> None:  # noqa: N802
@@ -503,6 +594,15 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                 self.state._cleanup_actor_locked(popped)
             self._send_json(200 if existed else 404, {"ok": existed, "killed": existed})
             return
+        if path.startswith("/api/cluster/nodes/"):
+            node_id = path[len("/api/cluster/nodes/") :]
+            with self.state.lock:
+                existed = self.state.nodes.pop(node_id, None) is not None
+            self._send_json(
+                200 if existed else 404,
+                {"ok": existed, "node_id": node_id, "destroyed": existed},
+            )
+            return
         self._send_json(404, {"error": "unknown endpoint"})
 
     def do_POST(self) -> None:  # noqa: N802
@@ -540,6 +640,32 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"stopped": True})
             return
 
+        if path.startswith("/api/cluster/node_groups/") and path.endswith("/nodes"):
+            group = path[len("/api/cluster/node_groups/") : -len("/nodes")]
+            count = int(body.get("count", 1))
+            with self.state.lock:
+                added = []
+                for _ in range(count):
+                    nid = f"node_{group}_{uuid.uuid4().hex[:6]}"
+                    info = {
+                        "id": nid,
+                        "node_id": nid,
+                        "group_name": group,
+                        "node_group": group,
+                        "state": "ALIVE",
+                        "alive": True,
+                        "node_ip": "10.0.0.9",
+                        "resources": {"CPU": 8.0},
+                        "labels": {"ray.io/node-group": group},
+                    }
+                    self.state.nodes[nid] = info
+                    added.append(info)
+            self._send_json(
+                200,
+                {"ok": True, "name": group, "added": len(added), "nodes": added},
+            )
+            return
+
         if path == "/api/actors":
             kind = body.get("kind") or ("function" if "fn_name" in body else "class")
             target_name = (
@@ -559,6 +685,9 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     )
                     get_if_exists = _validate_get_if_exists(
                         body.get("get_if_exists", True)
+                    )
+                    _validate_node_id_and_label_selector(
+                        body.get("node_id"), body.get("label_selector")
                     )
                     num_cpus, _, _, _ = _normalize_resources(
                         body.get("num_cpus"),
@@ -751,10 +880,14 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         target_callable = getattr(act["instance"], method_name)
 
                     out = self._exec_in_actor_env(act, target_callable, args, kwargs)
-                    if is_stream or inspect.isgenerator(out):
+                    if inspect.isgenerator(out):
                         stream_sent = True
                         self._send_sse_stream(out, act["logs"])
                         return
+                    if is_stream:
+                        raise TypeError(
+                            f"'{act['class_name']}.{method_name}' is not a generator function."
+                        )
                     _finish_non_stream_call()
                     self._send_json(
                         200,
@@ -3139,6 +3272,201 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 self.assertFalse(res_conflict["ok"])
                 self.assertEqual(res_conflict["error"]["exc_type"], "ValueError")
 
+                # Item 4: node_id placement on Ray 2.x (label_selector) vs RAY_BACKEND=rust (node_id)
+                recorded_actor_options.clear()
+                res_node_v2 = await mgr.create_actor(
+                    {
+                        "name": "svc_node_v2",
+                        "kind": "class",
+                        "class_name": "MyService",
+                        "module_source": "class MyService:\n    pass\n",
+                        "node_id": "node_abc123",
+                    }
+                )
+                self.assertTrue(res_node_v2["ok"])
+                opts_node_v2 = recorded_actor_options[-1]
+                self.assertEqual(
+                    opts_node_v2.get("label_selector"),
+                    {"ray.io/node-id": "node_abc123"},
+                )
+
+                with patch.dict(os.environ, {"RAY_BACKEND": "rust"}):
+                    res_node_rust = await mgr.create_actor(
+                        {
+                            "name": "svc_node_rust",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "node_id": "node_abc123",
+                        }
+                    )
+                self.assertTrue(res_node_rust["ok"])
+                self.assertEqual(
+                    recorded_actor_options[-1].get("node_id"), "node_abc123"
+                )
+                self.assertEqual(res_node_v2["spec_hash"], res_node_rust["spec_hash"])
+
+                # Conflicting node_id and label_selector returns ValueError
+                res_node_conflict = await mgr.create_actor(
+                    {
+                        "name": "svc_node_conflict",
+                        "kind": "class",
+                        "class_name": "MyService",
+                        "module_source": "class MyService:\n    pass\n",
+                        "node_id": "node_abc123",
+                        "label_selector": {"tier": "spot"},
+                    }
+                )
+                self.assertFalse(res_node_conflict["ok"])
+                self.assertEqual(res_node_conflict["error"]["exc_type"], "ValueError")
+
+                # Item 5: ActorManager cluster node management fallback (ray.nodes) and ray.cluster delegation
+                fake_ray_nodes = [
+                    {
+                        "NodeID": "n_head",
+                        "Alive": True,
+                        "NodeManagerAddress": "127.0.0.1",
+                        "Resources": {"CPU": 4.0, "node:__internal_head__": 1.0},
+                        "Labels": {"ray.io/node-id": "n_head"},
+                    },
+                    {
+                        "NodeID": "n_worker",
+                        "Alive": True,
+                        "NodeManagerAddress": "10.0.0.5",
+                        "Resources": {"CPU": 8.0, "GPU": 1.0},
+                        "Labels": {
+                            "ray.io/node-id": "n_worker",
+                            "ray.io/node-group": "gpu-pool",
+                        },
+                    },
+                ]
+                with patch(
+                    "ray.dashboard.modules.job.actor_manager.ray.nodes",
+                    return_value=fake_ray_nodes,
+                ):
+                    ng_res = mgr.list_node_groups()
+                    self.assertEqual(
+                        [g["name"] for g in ng_res],
+                        ["head", "gpu-pool", "default"],
+                    )
+                    g_info = mgr.get_node_group("gpu-pool")
+                    self.assertEqual(g_info["name"], "gpu-pool")
+                    with self.assertRaises(KeyError):
+                        mgr.get_node_group("missing-pool")
+
+                    nodes_all = mgr.list_nodes()
+                    self.assertEqual(len(nodes_all), 2)
+                    nodes_gpu = mgr.list_nodes(node_group="gpu-pool")
+                    self.assertEqual([n["id"] for n in nodes_gpu], ["n_worker"])
+                    self.assertEqual(mgr.get_node("n_worker")["ip_address"], "10.0.0.5")
+                    with self.assertRaises(KeyError):
+                        mgr.get_node("missing_node")
+                    with self.assertRaises(ValueError):
+                        mgr.add_nodes("head", 1)
+                    with self.assertRaises(ValueError):
+                        mgr.destroy_node("n_head")
+                    destroyed = mgr.destroy_node("n_worker", "scale down")
+                    self.assertTrue(destroyed["destroyed"])
+
+                recorded_destroys: List[Tuple[str, str, Optional[float]]] = []
+                ready_waits: List[Optional[float]] = []
+
+                class _FakeNodeObj:
+                    def __init__(self, nid: str, group_name: str):
+                        self.id = nid
+                        self.group_name = group_name
+                        self.resources = {"CPU": 8.0}
+                        self.labels = {"ray.io/node-group": group_name}
+                        self.detached = True
+
+                    def status(self):
+                        return types.SimpleNamespace(
+                            state=types.SimpleNamespace(value="ALIVE"),
+                            death_reason=None,
+                            termination_deadline=None,
+                        )
+
+                    def ready(self):
+                        def _result(timeout=None):
+                            ready_waits.append(timeout)
+                            return True
+
+                        return types.SimpleNamespace(result=_result)
+
+                    def destroy(
+                        self,
+                        *,
+                        reason: str,
+                        grace_period_s: Optional[float] = None,
+                    ):
+                        recorded_destroys.append((self.id, reason, grace_period_s))
+
+                fake_node_n1 = _FakeNodeObj("n1", "workers")
+
+                class _FakeNodeGroupObj:
+                    def __init__(self, name: str, max_nodes: int = 10):
+                        self.name = name
+                        self.resources = {"CPU": 8.0}
+                        self.labels = {}
+                        self.max_nodes = max_nodes
+
+                    def add_nodes(self, count: int, *, detached: bool = False):
+                        assert detached is True
+                        return [
+                            _FakeNodeObj(f"n_added_{i}", self.name)
+                            for i in range(count)
+                        ]
+
+                fake_groups = {
+                    "head": _FakeNodeGroupObj("head", max_nodes=1),
+                    "workers": _FakeNodeGroupObj("workers", max_nodes=10),
+                }
+
+                def _get_ng(g_name: str):
+                    if g_name not in fake_groups:
+                        raise KeyError(g_name)
+                    return fake_groups[g_name]
+
+                def _get_node(nid: str):
+                    if nid == "n1":
+                        return fake_node_n1
+                    raise KeyError(nid)
+
+                fake_cluster_mod = types.SimpleNamespace(
+                    list_node_groups=lambda: list(fake_groups.values()),
+                    get_node_group=_get_ng,
+                    list_nodes=lambda: [fake_node_n1],
+                    get_node=_get_node,
+                )
+                with patch(
+                    "ray.dashboard.modules.job.actor_manager.ray.cluster",
+                    new=fake_cluster_mod,
+                    create=True,
+                ):
+                    self.assertEqual(
+                        [g["name"] for g in mgr.list_node_groups()],
+                        ["head", "workers"],
+                    )
+                    self.assertEqual(
+                        mgr.get_node_group("head")["name"],
+                        "head",
+                    )
+                    added_res = mgr.add_nodes(
+                        "workers", 2, wait_ready=True, timeout_s=3.0
+                    )
+                    self.assertEqual(len(added_res), 2)
+                    self.assertEqual(len(ready_waits), 2)
+                    destroyed_n1 = mgr.destroy_node(
+                        "n1", "drain test", grace_period_s=15.0
+                    )
+                    self.assertTrue(destroyed_n1["destroyed"])
+                    self.assertEqual(destroyed_n1["state"], "TERMINATING_SOON")
+                    self.assertEqual(recorded_destroys, [("n1", "drain test", 15.0)])
+                    with self.assertRaises(ValueError):
+                        mgr.add_nodes("workers", 0)
+                    with self.assertRaises(KeyError):
+                        mgr.destroy_node("missing")
+
             if mgr._reaper_task is not None:
                 mgr._reaper_task.cancel()
 
@@ -3288,6 +3616,127 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 cluster.actor(PlacedWorker, resources={"memory": 1024.5})
             with self.assertRaisesRegex(ValueError, "resources\\['memory'\\]"):
                 cluster.run(check_fn, 1, resources={"memory": 1024.5})
+
+    def test_node_id_actor_stream_and_cluster_node_management(self):
+        with RayCluster(address=self.address) as cluster:
+            # 1. node_id placement on run(), top-level run(), actor(), and @ray.remote inheritance
+            def get_val(x: int) -> int:
+                return x * 2
+
+            self.assertEqual(cluster.run(get_val, 21, node_id="node_head"), 42)
+            assert self.state.last_created_actor_spec is not None
+            self.assertEqual(self.state.last_created_actor_spec["node_id"], "node_head")
+
+            self.assertEqual(
+                run(get_val, 10, address=self.address, node_id="node_worker_1"), 20
+            )
+            self.assertEqual(
+                self.state.last_created_actor_spec["node_id"], "node_worker_1"
+            )
+
+            class StreamService:
+                def gen_items(self, count: int) -> Iterator[int]:
+                    for i in range(count):
+                        yield i * 10
+
+                def gen_expr(self, count: int):
+                    return (i + 1 for i in range(count))
+
+                def non_stream(self, x: int) -> int:
+                    return x + 5
+
+            class FakeRemoteNodePinned:
+                _default_options = {"node_id": "node_worker_1"}
+                __ray_metadata__ = types.SimpleNamespace(
+                    modified_class=types.SimpleNamespace(
+                        __ray_actor_class__=StreamService
+                    )
+                )
+
+            with cluster.actor(
+                FakeRemoteNodePinned, name="node_pinned_actor"
+            ) as pinned_act:
+                assert self.state.last_created_actor_spec is not None
+                self.assertEqual(
+                    self.state.last_created_actor_spec["node_id"], "node_worker_1"
+                )
+                # Explicit label_selector overrides inherited _default_options["node_id"]
+                with cluster.actor(
+                    FakeRemoteNodePinned,
+                    name="node_override_actor",
+                    label_selector={"tier": "on-demand"},
+                ):
+                    self.assertIsNone(self.state.last_created_actor_spec.get("node_id"))
+                    self.assertEqual(
+                        self.state.last_created_actor_spec["label_selector"],
+                        {"tier": "on-demand"},
+                    )
+
+                # 2. ActorHandle.stream() and _ActorMethodProxy.stream()
+                self.assertEqual(list(pinned_act.stream("gen_items", 3)), [0, 10, 20])
+                self.assertEqual(list(pinned_act.gen_items.stream(3)), [0, 10, 20])
+                self.assertEqual(list(pinned_act.gen_expr.stream(3)), [1, 2, 3])
+
+                # Calling stream() on a non-generator method raises RayJobExecutionError (a RayClientError)
+                with self.assertRaises(RayClientError):
+                    list(pinned_act.stream("non_stream", 7))
+                with self.assertRaises(RayClientError):
+                    list(pinned_act.non_stream.stream(7))
+
+                # If server returns non-SSE 200 JSON when require_stream=True, raise RayClientError
+                fake_resp = types.SimpleNamespace(
+                    status_code=200,
+                    headers={"Content-Type": "application/json"},
+                    text='{"ok": true, "result": 12}',
+                    json=lambda: {"ok": True, "result": 12},
+                    close=lambda: None,
+                )
+                with patch.object(cluster, "request", return_value=fake_resp):
+                    with self.assertRaisesRegex(RayClientError, "Expected SSE stream"):
+                        pinned_act.stream("non_stream", 7)
+
+            # Validation errors for invalid or conflicting node_id
+            with self.assertRaisesRegex(ValueError, "Cannot specify both 'node_id'"):
+                cluster.run(get_val, 1, node_id="node_head", label_selector={"a": "b"})
+            with self.assertRaisesRegex(ValueError, "Cannot specify both 'node_id'"):
+                cluster.actor(
+                    StreamService, node_id="node_head", label_selector={"a": "b"}
+                )
+            with self.assertRaisesRegex(ValueError, "node_id must be a non-empty"):
+                cluster.run(get_val, 1, node_id="")
+
+            # 3. Cluster node management APIs on RayCluster
+            groups = cluster.list_node_groups()
+            self.assertEqual({g["name"] for g in groups}, {"head", "gpu-workers"})
+
+            gpu_group = cluster.get_node_group("gpu-workers")
+            self.assertEqual(gpu_group["name"], "gpu-workers")
+            self.assertEqual(gpu_group["count"], 1)
+
+            all_nodes = cluster.list_nodes()
+            self.assertEqual(len(all_nodes), 2)
+            gpu_nodes = cluster.list_nodes(node_group="gpu-workers")
+            self.assertEqual([n["node_id"] for n in gpu_nodes], ["node_worker_1"])
+
+            n_info = cluster.get_node("node_worker_1")
+            self.assertEqual(n_info["node_ip"], "10.0.0.2")
+
+            added = cluster.add_nodes("gpu-workers", 2, wait_ready=True, timeout_s=5.0)
+            self.assertEqual(len(added), 2)
+            self.assertEqual(len(cluster.list_nodes(node_group="gpu-workers")), 3)
+
+            with self.assertRaises(ValueError):
+                cluster.add_nodes("gpu-workers", -1)
+            with self.assertRaises(ValueError):
+                cluster.add_nodes("", 1)
+            with self.assertRaises(ValueError):
+                cluster.get_node("")
+
+            destroyed_res = cluster.destroy_node(added[0]["node_id"], "scale down")
+            self.assertTrue(destroyed_res["destroyed"])
+            self.assertEqual(len(cluster.list_nodes(node_group="gpu-workers")), 2)
+            with self.assertRaises(RayClientError):
+                cluster.destroy_node("nonexistent_node_id")
 
 
 if __name__ == "__main__":

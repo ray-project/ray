@@ -46,6 +46,43 @@ def _actor_not_found_response(name: str) -> Response:
     )
 
 
+def _cluster_response(fn: Any, *args: Any, **kwargs: Any) -> Response:
+    try:
+        res = fn(*args, **kwargs)
+        return Response(text=json.dumps(res), content_type="application/json")
+    except Exception as exc:
+        exc_name = type(exc).__name__
+        if isinstance(exc, KeyError) or exc_name.endswith("NotFoundError"):
+            msg = exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
+            return Response(
+                text=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {"exc_type": exc_name, "exc_message": msg},
+                    }
+                ),
+                content_type="application/json",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+        if isinstance(exc, ValueError) or exc_name == "MaxNodesExceededError":
+            status = (
+                aiohttp.web.HTTPConflict.status_code
+                if exc_name == "MaxNodesExceededError" or "max_nodes" in str(exc)
+                else aiohttp.web.HTTPBadRequest.status_code
+            )
+            return Response(
+                text=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {"exc_type": exc_name, "exc_message": str(exc)},
+                    }
+                ),
+                content_type="application/json",
+                status=status,
+            )
+        raise
+
+
 class JobAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
@@ -387,6 +424,75 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             req,
             actor_mgr.call_actor_method(name, method, body),
             not_found_name=name,
+        )
+
+    @routes.get("/api/job_agent/cluster/node_groups")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def list_node_groups(self, req: Request) -> Response:
+        return _cluster_response(self.get_actor_manager().list_node_groups)
+
+    @routes.get("/api/job_agent/cluster/node_groups/{group}")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def get_node_group(self, req: Request) -> Response:
+        group = req.match_info["group"]
+        return _cluster_response(self.get_actor_manager().get_node_group, group)
+
+    @routes.post("/api/job_agent/cluster/node_groups/{group}/nodes")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def add_nodes(self, req: Request) -> Response:
+        group = req.match_info["group"]
+        body = await req.json() if req.can_read_body else {}
+        wait_ready = bool(body.get("wait_ready", False))
+        if wait_ready:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None,
+                lambda: _cluster_response(
+                    self.get_actor_manager().add_nodes,
+                    group,
+                    count=body.get("count", 1),
+                    wait_ready=True,
+                    timeout_s=body.get("timeout_s"),
+                ),
+            )
+        return _cluster_response(
+            self.get_actor_manager().add_nodes,
+            group,
+            count=body.get("count", 1),
+            wait_ready=False,
+            timeout_s=body.get("timeout_s"),
+        )
+
+    @routes.get("/api/job_agent/cluster/nodes")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def list_nodes(self, req: Request) -> Response:
+        include_dead = req.query.get("include_dead", "false").lower() in (
+            "1",
+            "true",
+        )
+        return _cluster_response(
+            self.get_actor_manager().list_nodes,
+            state=req.query.get("state"),
+            node_group=req.query.get("node_group"),
+            include_dead=include_dead,
+        )
+
+    @routes.get("/api/job_agent/cluster/nodes/{node_id}")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def get_node(self, req: Request) -> Response:
+        node_id = req.match_info["node_id"]
+        return _cluster_response(self.get_actor_manager().get_node, node_id)
+
+    @routes.delete("/api/job_agent/cluster/nodes/{node_id}")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def destroy_node(self, req: Request) -> Response:
+        node_id = req.match_info["node_id"]
+        body = await req.json() if req.can_read_body else {}
+        return _cluster_response(
+            self.get_actor_manager().destroy_node,
+            node_id,
+            reason=body.get("reason", "destroyed by ray_client"),
+            grace_period_s=body.get("grace_period_s"),
         )
 
     def get_job_manager(self):

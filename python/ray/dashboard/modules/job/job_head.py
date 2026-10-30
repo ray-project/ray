@@ -224,8 +224,9 @@ class JobAgentSubmissionClient:
         subpath: str,
         json_body: Optional[Dict] = None,
         params: Optional[Dict[str, str]] = None,
+        prefix: str = "/api/job_agent/actors",
     ) -> Tuple[int, str, str]:
-        url = f"{self._agent_address}/api/job_agent/actors{subpath}"
+        url = f"{self._agent_address}{prefix}{subpath}"
         async with self._session.request(
             method,
             url,
@@ -703,6 +704,57 @@ class JobHead(SubprocessModule):
         name = req.match_info["actor_name"]
         method = req.match_info["method"]
         return await self._proxy_actor_request(req, f"/{name}/methods/{method}")
+
+    async def _proxy_cluster_request(self, req: Request, subpath: str) -> Response:
+        try:
+            body = await req.json() if req.can_read_body else None
+        except Exception:
+            body = None
+        params = dict(req.query) if req.query else None
+        try:
+            agent = await self.get_target_agent()
+            status, text, content_type = await agent.forward_actor_request(
+                req.method,
+                subpath,
+                json_body=body,
+                params=params,
+                prefix="/api/job_agent/cluster",
+            )
+            return Response(text=text, status=status, content_type=content_type)
+        except Exception:
+            logger.exception(f"Failed cluster request {req.method} {subpath}")
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+    @routes.get("/api/cluster/node_groups")
+    async def list_node_groups(self, req: Request) -> Response:
+        return await self._proxy_cluster_request(req, "/node_groups")
+
+    @routes.get("/api/cluster/node_groups/{group}")
+    async def get_node_group(self, req: Request) -> Response:
+        group = req.match_info["group"]
+        return await self._proxy_cluster_request(req, f"/node_groups/{group}")
+
+    @routes.post("/api/cluster/node_groups/{group}/nodes")
+    async def add_nodes(self, req: Request) -> Response:
+        group = req.match_info["group"]
+        return await self._proxy_cluster_request(req, f"/node_groups/{group}/nodes")
+
+    @routes.get("/api/cluster/nodes")
+    async def list_nodes(self, req: Request) -> Response:
+        return await self._proxy_cluster_request(req, "/nodes")
+
+    @routes.get("/api/cluster/nodes/{node_id}")
+    async def get_node(self, req: Request) -> Response:
+        node_id = req.match_info["node_id"]
+        return await self._proxy_cluster_request(req, f"/nodes/{node_id}")
+
+    @routes.delete("/api/cluster/nodes/{node_id}")
+    async def destroy_node(self, req: Request) -> Response:
+        node_id = req.match_info["node_id"]
+        return await self._proxy_cluster_request(req, f"/nodes/{node_id}")
 
     @routes.get("/api/jobs/{job_or_submission_id}")
     async def get_job_info(self, req: Request) -> Response:

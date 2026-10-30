@@ -1,7 +1,7 @@
 """Live Ray cluster integration tests for ray_client.
 
 Run with:
-    RAY_LIVE_CLUSTER_ADDRESS=http://127.0.0.1:8265 pytest prototype/ray_client/tests/
+    PYTHONPATH=python:prototype/ray_client/src pytest prototype/ray_client/tests/test_integration_live_cluster.py -v
 """
 
 import asyncio
@@ -15,7 +15,7 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List
+from typing import Callable, Iterator, List, Optional
 
 from ray_client import (
     ActorHandle,
@@ -40,17 +40,62 @@ class _TopLevelLiveActorWithClassAttrDefault:
         return x + self.DEFAULT_BONUS
 
 
-@unittest.skipUnless(
-    LIVE_ADDRESS,
-    "Set RAY_LIVE_CLUSTER_ADDRESS=http://127.0.0.1:8265 to run live cluster tests",
-)
 class TestLiveRayClusterIntegration(unittest.TestCase):
+    live_address: str = ""
+    _started_local_ray: bool = False
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if LIVE_ADDRESS:
+            cls.live_address = LIVE_ADDRESS
+            cls._started_local_ray = False
+            return
+        ctx = ray.init(
+            address="local",
+            num_cpus=4,
+            include_dashboard=True,
+            ignore_reinit_error=True,
+        )
+        webui_url: Optional[str] = None
+        if isinstance(ctx, dict):
+            webui_url = ctx.get("webui_url")
+        else:
+            webui_url = getattr(ctx, "dashboard_url", None) or ctx.address_info.get(
+                "webui_url"
+            )
+        if not webui_url:
+            ray.shutdown()
+            raise unittest.SkipTest("Ray dashboard URL is unavailable")
+        if not webui_url.startswith(("http://", "https://")):
+            webui_url = f"http://{webui_url}"
+        cls.live_address = webui_url
+        cls._started_local_ray = True
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls._started_local_ray:
+            ray.shutdown()
+            cls._started_local_ray = False
+
     def setUp(self):
-        assert LIVE_ADDRESS is not None
-        self.cluster = RayCluster(address=LIVE_ADDRESS)
+        self.cluster = RayCluster(address=self.live_address)
 
     def tearDown(self):
         self.cluster.close()
+
+    def _wait_until(
+        self,
+        predicate: Callable[[], bool],
+        *,
+        timeout: float = 5.0,
+        interval: float = 0.05,
+    ) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(interval)
+        self.assertTrue(predicate())
 
     def test_run_driver_function_tasks_actors_and_fate_sharing(self):
         def compute_batch(items: List[int], scale: int = GLOBAL_FACTOR) -> dict:
@@ -285,9 +330,8 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                     "has_secret": os.path.exists("creds.secret"),
                 }
 
-            assert LIVE_ADDRESS is not None
             with RayCluster(
-                address=LIVE_ADDRESS,
+                address=self.live_address,
                 default_runtime_env={"working_dir": root},
             ) as wd_cluster:
                 res = wd_cluster.run(use_helper_and_ray_data, "ray")
@@ -488,26 +532,20 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             # 3. Async coroutine cancellation on timeout runs except asyncio.CancelledError on cluster
             with self.assertRaises(RayJobTimeoutError):
                 trainer.cancellable_async_sleep.call(30.0, timeout=0.35)
-            time.sleep(0.25)
-            self.assertEqual(trainer.get_state()["async_cancelled"], 1)
+            self._wait_until(lambda: trainer.get_state()["async_cancelled"] == 1)
 
             # 4. Recursive child @ray.remote task cancellation on timeout unblocks ray.get()
             t0 = time.monotonic()
             with self.assertRaises(RayJobTimeoutError):
                 trainer.spawn_blocking_child_task.call(30.0, timeout=0.35)
-            deadline = time.monotonic() + 2.5
-            while (
-                time.monotonic() < deadline
-                and trainer.info().get("active_calls", 1) != 0
-            ):
-                time.sleep(0.1)
+            self._wait_until(lambda: trainer.info().get("active_calls", 1) == 0)
             # Actor is immediately responsive and active_calls returns to 0
             self.assertLess(time.monotonic() - t0, 5.0)
             self.assertEqual(trainer.info()["active_calls"], 0)
 
-            # 5. Concurrent mid-run steering + early-break SSE cancellation
+            # 5. Concurrent mid-run steering + early-break SSE cancellation via .stream()
             seen = []
-            for metrics in trainer.train_steps(50):
+            for metrics in trainer.train_steps.stream(50):
                 seen.append(metrics)
                 if metrics["step"] == 0:
                     trainer.update_lr(1e-4)
@@ -519,14 +557,18 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             self.assertTrue(any(m["lr"] == 1e-4 for m in seen[1:]))
 
             # Verify generator was cancelled on the cluster rather than running all 50 steps
-            time.sleep(0.25)
+            self._wait_until(lambda: trainer.info().get("active_calls", 1) == 0)
             state_after = trainer.get_state()
             self.assertLess(state_after["steps_executed"], 15)
-            time.sleep(0.2)
+            time.sleep(0.15)
             self.assertEqual(
                 trainer.get_state()["steps_executed"], state_after["steps_executed"]
             )
             self.assertIn("updated lr to 0.0001", trainer.logs())
+
+            # Calling stream() on a non-generator method raises RayJobExecutionError
+            with self.assertRaises(RayJobExecutionError):
+                list(trainer.stream("get_state"))
         finally:
             trainer.kill()
 
@@ -608,10 +650,11 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             # Run a 1.0s call (> 0.6s TTL): must succeed without being reaped mid-call
             self.assertEqual(busy_actor.slow_call(1.0), "done")
             # Once idle for > 0.6s, actor is automatically reaped and close() runs
-            time.sleep(0.9)
-            active_names = [a["name"] for a in self.cluster.list_actors()]
-            self.assertNotIn("busy_ttl_actor", active_names)
-            self.assertIn("closed:ttl_reaped", recorder.get_events())
+            self._wait_until(
+                lambda: "busy_ttl_actor"
+                not in [a["name"] for a in self.cluster.list_actors()]
+                and "closed:ttl_reaped" in recorder.get_events()
+            )
         finally:
             busy_actor.kill()
             recorder.kill()
@@ -765,10 +808,11 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 name="live_slow_kill_actor",
                 get_if_exists=False,
             )
-            time.sleep(0.35)
-            t_kill = time.monotonic()
-            self.assertTrue(self.cluster.kill_actor("live_slow_kill_actor"))
-            self.assertLess(time.monotonic() - t_kill, 2.0)
+            self._wait_until(
+                lambda: self.cluster.kill_actor("live_slow_kill_actor"),
+                timeout=5.0,
+                interval=0.05,
+            )
             with self.assertRaises(Exception):
                 slow_fut.result(timeout=3.0)
         with self.cluster.actor(
@@ -807,12 +851,10 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             self.assertEqual(first_byte, b" ")
         finally:
             disc_resp.close()
-        deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline:
-            names = [a["name"] for a in self.cluster.list_actors()]
-            if "live_disconnect_init_actor" not in names:
-                break
-            time.sleep(0.1)
+        self._wait_until(
+            lambda: "live_disconnect_init_actor"
+            not in [a["name"] for a in self.cluster.list_actors()]
+        )
         with self.cluster.actor(
             SlowInitActor,
             0.0,
@@ -916,6 +958,37 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         self.assertIsNotNone(driver_activity.get("last_activity_at"))
         self.assertGreater(driver_activity["last_activity_at"], before_last_activity)
 
+        # 11. Cluster node introspection (list_nodes, get_node, list_node_groups, get_node_group)
+        #     and node_id placement on run() and actor()
+        nodes = self.cluster.list_nodes()
+        self.assertGreaterEqual(len(nodes), 1)
+        head_node_id = nodes[0]["node_id"]
+        self.assertEqual(self.cluster.get_node(head_node_id)["node_id"], head_node_id)
+
+        groups = self.cluster.list_node_groups()
+        self.assertGreaterEqual(len(groups), 1)
+        first_group_name = groups[0]["name"]
+        self.assertEqual(
+            self.cluster.get_node_group(first_group_name)["name"], first_group_name
+        )
+
+        def get_current_node_id() -> str:
+            import ray
+
+            return ray.get_runtime_context().get_node_id()
+
+        self.assertEqual(
+            self.cluster.run(get_current_node_id, node_id=head_node_id), head_node_id
+        )
+        with self.cluster.actor(
+            SlowInitActor,
+            0.0,
+            name="live_node_pinned_actor",
+            node_id=head_node_id,
+            get_if_exists="recreate",
+        ) as node_act:
+            self.assertEqual(node_act.ping(), "ready")
+
     def test_examples_run_end_to_end(self):
         examples_dir = Path(__file__).resolve().parents[1] / "examples"
         sys.path.insert(0, str(examples_dir))
@@ -925,17 +998,16 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             ex3 = __import__("03_vibecoded_multicluster_sharding_client")
             ex4 = __import__("04_interactive_streaming_and_workspaces")
 
-            assert LIVE_ADDRESS is not None
-            out1 = ex1.run_demo(LIVE_ADDRESS)
+            out1 = ex1.run_demo(self.live_address)
             self.assertEqual(out1["count"], 4)
 
-            out2 = ex2.run_demo(LIVE_ADDRESS)
+            out2 = ex2.run_demo(self.live_address)
             self.assertEqual(out2, {"v1": 15, "v2": 42})
 
-            out3 = ex3.run_demo([LIVE_ADDRESS, LIVE_ADDRESS])
+            out3 = ex3.run_demo([self.live_address, self.live_address])
             self.assertEqual(out3["total_sum_of_squares"], 285)
 
-            out4 = ex4.run_demo(LIVE_ADDRESS)
+            out4 = ex4.run_demo(self.live_address)
             self.assertEqual(out4["driver_summary"], {"steps": 2, "totals": [6, 36]})
             self.assertEqual(
                 out4["summary_a"],

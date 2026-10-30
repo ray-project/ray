@@ -133,9 +133,14 @@ def run_demo(address: Optional[str] = None) -> dict:
     )
     active_before = [a["name"] for a in cluster.list_actors()]
     assert "ephemeral_ttl_actor" in active_before
-    time.sleep(1.1)
-    active_after = [a["name"] for a in cluster.list_actors()]
-    ttl_cleaned = "ephemeral_ttl_actor" not in active_after
+    deadline = time.monotonic() + 5.0
+    ttl_cleaned = False
+    while time.monotonic() < deadline:
+        active_after = [a["name"] for a in cluster.list_actors()]
+        if "ephemeral_ttl_actor" not in active_after:
+            ttl_cleaned = True
+            break
+        time.sleep(0.05)
     cluster.close()
 
     return {

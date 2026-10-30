@@ -7,10 +7,21 @@ import math
 import os
 import threading
 import time
+import urllib.parse
 import uuid
 import warnings
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 try:
     import requests
@@ -269,8 +280,32 @@ def _normalize_resources(
     return num_cpus, num_gpus, memory, (custom or None)
 
 
+def _validate_node_id_and_label_selector(
+    node_id: Any, label_selector: Optional[Dict[str, str]]
+) -> Optional[str]:
+    if node_id is not None:
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError(f"node_id must be a non-empty string, got {node_id!r}.")
+        node_id = node_id.strip()
+    if node_id is not None and label_selector:
+        raise ValueError("Cannot specify both 'node_id' and 'label_selector'.")
+    return node_id
+
+
 class JobResult:
-    """Handle to a submitted CLI job on `/api/jobs/`."""
+    """Handle to a submitted CLI job on `/api/jobs/`.
+
+    `JobResult` polls job status and logs on the Ray Dashboard REST API and caches
+    metadata and logs once the job reaches a terminal status (`SUCCEEDED`, `FAILED`,
+    or `STOPPED`).
+
+    Args:
+        submission_id: Unique job submission ID on `/api/jobs/`.
+        cluster: Owning `RayCluster` client instance.
+        package_uploaded: Whether submitting this job uploaded a new `working_dir`
+            package to the cluster.
+        initial_info: Optional initial job status payload fetched on reattach.
+    """
 
     def __init__(
         self,
@@ -299,13 +334,23 @@ class JobResult:
 
     @property
     def submission_id(self) -> str:
+        """Job submission ID on `/api/jobs/`."""
         return self._submission_id
 
     @property
     def package_uploaded(self) -> bool:
+        """Whether submitting this job uploaded a new `working_dir` package."""
         return self._package_uploaded
 
     def info(self) -> Dict[str, Any]:
+        """Fetches job status and metadata from `GET /api/jobs/{submission_id}`.
+
+        Returns:
+            Dictionary of job metadata, including `status`, `entrypoint`, and `message`.
+
+        Raises:
+            RayClientError: If the job does not exist or the HTTP request fails.
+        """
         if self._terminal_info is not None:
             return dict(self._terminal_info)
         data = self._cluster._json("GET", f"/api/jobs/{self._submission_id}")
@@ -314,12 +359,36 @@ class JobResult:
         return data
 
     def status(self) -> str:
+        """Returns the current job status string (e.g. `PENDING`, `RUNNING`, `SUCCEEDED`).
+
+        Returns:
+            Current job status string.
+
+        Raises:
+            RayClientError: If the job does not exist or the HTTP request fails.
+        """
         return str(self.info().get("status", "UNKNOWN"))
 
     def done(self) -> bool:
+        """Returns whether the job has reached a terminal status (`SUCCEEDED`, `FAILED`, `STOPPED`).
+
+        Returns:
+            `True` if the job is in a terminal state, `False` otherwise.
+
+        Raises:
+            RayClientError: If the job does not exist or the HTTP request fails.
+        """
         return self.status() in _TERMINAL_JOB_STATUSES
 
     def logs(self) -> str:
+        """Fetches aggregated stdout and stderr logs for the job.
+
+        Returns:
+            Log text for the job from `GET /api/jobs/{submission_id}/logs`.
+
+        Raises:
+            RayClientError: If the job does not exist or the HTTP request fails.
+        """
         if self._terminal_logs is not None:
             return self._terminal_logs
         is_terminal = self._terminal_info is not None
@@ -334,6 +403,22 @@ class JobResult:
         timeout: Optional[float] = None,
         on_log_line: Optional[Callable[[str], None]] = None,
     ) -> str:
+        """Polls until the job reaches a terminal status.
+
+        Args:
+            timeout: Optional maximum number of seconds to wait before raising
+                `RayJobTimeoutError` (leaving the job running on the cluster).
+            on_log_line: Optional callback invoked for each newly emitted log line while
+                waiting.
+
+        Returns:
+            Terminal status string (`SUCCEEDED`, `FAILED`, or `STOPPED`).
+
+        Raises:
+            RayJobTimeoutError: If the job does not reach a terminal state within
+                `timeout` seconds.
+            RayClientError: If polling the job status or logs fails.
+        """
         deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
         delay = 0.1
         log_offset = 0
@@ -377,6 +462,15 @@ class JobResult:
             delay = min(delay * 1.5, 2.0)
 
     def stop(self) -> bool:
+        """Requests the cluster to stop the running job (`POST /api/jobs/{id}/stop`).
+
+        Returns:
+            `True` if the job was stopped, or `False` if the job was not found or
+            already stopped.
+
+        Raises:
+            RayClientError: If the HTTP request fails with a non-404 status.
+        """
         resp = self._cluster.request(
             "POST",
             f"/api/jobs/{self._submission_id}/stop",
@@ -392,6 +486,14 @@ class JobResult:
         return bool(resp.json().get("stopped", False))
 
     def delete(self) -> bool:
+        """Deletes the job record (`DELETE /api/jobs/{id}`).
+
+        Returns:
+            `True` if the job was deleted, or `False` if the job was not found.
+
+        Raises:
+            RayClientError: If the HTTP request fails with a non-404 status.
+        """
         resp = self._cluster.request("DELETE", f"/api/jobs/{self._submission_id}")
         if resp.status_code == 404:
             return False
@@ -470,7 +572,22 @@ class _SSEStreamIterator(Iterator[Any]):
 
 
 class RayCluster:
-    """Unified HTTP client for submitting CLI jobs, driver functions, and stateful actors."""
+    """Unified HTTP client for submitting CLI jobs, driver functions, stateful actors, and cluster node management.
+
+    Args:
+        address: Ray Dashboard HTTP address (e.g. `"http://127.0.0.1:8265"`). If `None`
+            or `"auto"`, resolves from `RAY_API_SERVER_ADDRESS`, `RAY_ADDRESS`, or
+            defaults to `"http://127.0.0.1:8265"`.
+        headers: Optional HTTP headers included on every request.
+        verify: TLS certificate verification boolean or path to a CA bundle.
+        default_runtime_env: Default `runtime_env` merged into `run()`, `actor()`, and
+            `submit_job()` calls.
+        timeout: Default HTTP request timeout in seconds for control operations.
+
+    Raises:
+        ImportError: If `requests` is not installed.
+        RayClientError: If `address` uses an unsupported scheme or auth token loading fails.
+    """
 
     def __init__(
         self,
@@ -505,6 +622,7 @@ class RayCluster:
         self.close()
 
     def close(self) -> None:
+        """Closes all open HTTP sessions held by this client."""
         with self._sessions_lock:
             sessions = list(self._sessions)
             self._sessions.clear()
@@ -534,6 +652,7 @@ class RayCluster:
 
     @property
     def address(self) -> str:
+        """Resolved Ray Dashboard HTTP base URL without trailing slash."""
         return self._address
 
     @property
@@ -564,7 +683,24 @@ class RayCluster:
         timeout: Optional[float] = None,
         stream: bool = False,
     ) -> "requests.Response":
-        """Sends an HTTP request to the Ray Dashboard server."""
+        """Sends an HTTP request to the Ray Dashboard server.
+
+        Args:
+            method: HTTP method (e.g. `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`).
+            endpoint: API path beginning with `"/"` (e.g. `"/api/actors"`).
+            data: Optional raw request body bytes.
+            json_data: Optional JSON-serializable request body dictionary.
+            idempotent: If `True`, automatically retries on transient network errors
+                and HTTP 502/503/504 responses.
+            timeout: Optional timeout in seconds (or `(connect, read)` tuple).
+            stream: Whether to stream the HTTP response body.
+
+        Returns:
+            The `requests.Response` object.
+
+        Raises:
+            RayClientError: If the HTTP request fails after retries.
+        """
         url = f"{self._address}{endpoint}"
         req_timeout = self._timeout if timeout is None else timeout
         attempts = _MAX_RETRIES if idempotent else 1
@@ -781,6 +917,7 @@ class RayCluster:
         timeout: Optional[float] = None,
         on_close: Optional[Callable[[], None]] = None,
         is_actor_method: bool = False,
+        require_stream: bool = False,
     ) -> Any:
         sub_id = submission_id or target
         req_body = dict(body)
@@ -850,6 +987,11 @@ class RayCluster:
                     target,
                     data.get("error") or {},
                     logs=str(data.get("logs") or ""),
+                )
+            if require_stream:
+                raise RayClientError(
+                    f"Expected SSE stream from '{target}', but method returned a "
+                    "non-streaming JSON response."
                 )
             return data.get("result")
         finally:
@@ -950,9 +1092,13 @@ class RayCluster:
         num_gpus: Optional[Union[int, float]] = None,
         resources: Optional[Dict[str, float]] = None,
         *,
+        node_id: Optional[str] = None,
         label_selector: Optional[Dict[str, str]] = None,
         allow_generator: bool = False,
     ) -> Tuple[Dict[str, Any], List[Any], Dict[str, Any]]:
+        validated_node_id = _validate_node_id_and_label_selector(
+            node_id, label_selector
+        )
         (
             resolved_cpus,
             resolved_gpus,
@@ -993,6 +1139,7 @@ class RayCluster:
             "module_source": module_source,
             "captured_globals": captured_globals,
             "runtime_env": merged_env,
+            "node_id": validated_node_id,
             "num_cpus": resolved_cpus,
             "num_gpus": resolved_gpus,
             "memory": resolved_memory,
@@ -1082,16 +1229,43 @@ class RayCluster:
         *args: Any,
         kwargs: Optional[Dict[str, Any]] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
+        node_id: Optional[str] = None,
         num_cpus: Optional[Union[int, float]] = None,
         num_gpus: Optional[Union[int, float]] = None,
         resources: Optional[Dict[str, float]] = None,
         label_selector: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
     ) -> Any:
-        """Packages `fn` and runs it in a one-shot root Ray Actor.
+        """Packages `fn` and runs it in a one-shot root Ray Actor on `/api/actors`.
 
-        Returns the JSON result for a regular/async function, or an SSE iterator of
-        yielded JSON items if `fn` is a generator or async generator function.
+        Args:
+            fn: Python function or `"module:function"` import path to execute.
+            *args: Positional arguments serialized as round-trip JSON.
+            kwargs: Optional dictionary of keyword arguments serialized as JSON.
+            runtime_env: Optional runtime environment overrides (e.g. `working_dir`,
+                `env_vars`, `pip`).
+            node_id: Optional Ray node ID to pin the driver actor to. Cannot be
+                combined with `label_selector`.
+            num_cpus: Optional CPU requirement for the root driver actor (defaults to 0).
+            num_gpus: Optional GPU requirement for the root driver actor.
+            resources: Optional Ray 3.0 unified resource map (e.g. `{"CPU": 1, "GPU": 1}`).
+            label_selector: Optional node label selector dictionary. Cannot be combined
+                with `node_id`.
+            timeout: Optional timeout in seconds covering actor creation and execution.
+
+        Returns:
+            The decoded JSON return value for a synchronous or `async def` function, or
+            an SSE iterator of yielded JSON items if `fn` is a generator or async
+            generator function.
+
+        Raises:
+            RayClientSerializationError: If `fn`, `args`, `kwargs`, or referenced globals
+                cannot be serialized as round-trip JSON.
+            ValueError: If resource options or `node_id`/`label_selector` conflict.
+            RayJobExecutionError: If `fn` raises an unhandled exception or returns a
+                non-JSON result.
+            RayJobTimeoutError: If execution exceeds `timeout`.
+            RayClientError: If the HTTP request fails.
         """
         spec, bound_args, bound_kwargs = self._build_driver_actor_spec(
             fn,
@@ -1101,6 +1275,7 @@ class RayCluster:
             num_cpus,
             num_gpus,
             resources,
+            node_id=node_id,
             label_selector=label_selector,
             allow_generator=True,
         )
@@ -1151,7 +1326,32 @@ class RayCluster:
         wait: bool = False,
         timeout: Optional[float] = None,
     ) -> JobResult:
-        """Submits an entrypoint CLI script to `/api/jobs/` and returns a `JobResult`."""
+        """Submits an entrypoint CLI script to `/api/jobs/` and returns a `JobResult`.
+
+        Args:
+            entrypoint: Non-empty shell command string to execute on the cluster.
+            runtime_env: Optional runtime environment dictionary.
+            metadata: Optional `dict[str, str]` job metadata tags.
+            submission_id: Optional explicit job submission ID.
+            entrypoint_num_cpus: Optional CPUs reserved for the entrypoint process.
+            entrypoint_num_gpus: Optional GPUs reserved for the entrypoint process.
+            entrypoint_memory: Optional memory in bytes for the entrypoint process.
+            entrypoint_resources: Optional resource dictionary for the entrypoint.
+            entrypoint_label_selector: Optional node label selector for the entrypoint.
+            wait: If `True`, blocks until the job reaches a terminal state and raises
+                `RayJobExecutionError` if it does not succeed.
+            timeout: Optional timeout in seconds when `wait=True`.
+
+        Returns:
+            A `JobResult` handle for inspecting status, logs, or stopping the job.
+
+        Raises:
+            ValueError: If `entrypoint` is empty or resource values are invalid.
+            TypeError: If `metadata` or `runtime_env` entries have invalid types.
+            RayJobExecutionError: If `wait=True` and the job fails or is stopped.
+            RayJobTimeoutError: If `wait=True` and the job does not finish within `timeout`.
+            RayClientError: If the HTTP submission request fails.
+        """
         if not isinstance(entrypoint, str) or not entrypoint.strip():
             raise ValueError(
                 f"entrypoint must be a non-empty command string, got {entrypoint!r}."
@@ -1253,7 +1453,17 @@ class RayCluster:
         raise last_exc
 
     def get_job(self, submission_id: str) -> JobResult:
-        """Returns a `JobResult` handle for an existing job `submission_id`."""
+        """Returns a `JobResult` handle for an existing job `submission_id`.
+
+        Args:
+            submission_id: Existing job submission ID on `/api/jobs/`.
+
+        Returns:
+            A `JobResult` bound to `submission_id`.
+
+        Raises:
+            RayClientError: If the job does not exist or the HTTP request fails.
+        """
         info = self._json("GET", f"/api/jobs/{submission_id}")
         return JobResult(
             submission_id=submission_id,
@@ -1262,7 +1472,14 @@ class RayCluster:
         )
 
     def list_jobs(self) -> List[Dict[str, Any]]:
-        """Lists jobs recorded on `/api/jobs/`."""
+        """Lists jobs recorded on `/api/jobs/`.
+
+        Returns:
+            List of job metadata dictionaries.
+
+        Raises:
+            RayClientError: If the HTTP request fails.
+        """
         res = self._json("GET", "/api/jobs/")
         if isinstance(res, dict) and "jobs" in res:
             return res["jobs"]
@@ -1276,6 +1493,7 @@ class RayCluster:
         kwargs: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
+        node_id: Optional[str] = None,
         num_cpus: Optional[Union[int, float]] = None,
         num_gpus: Optional[Union[int, float]] = None,
         resources: Optional[Dict[str, float]] = None,
@@ -1286,12 +1504,51 @@ class RayCluster:
         detached: bool = True,
         timeout: Optional[float] = None,
     ) -> ActorHandle:
-        """Deploys or reattaches to a root Ray Actor on `/api/actors`."""
+        """Deploys or reattaches to a root Ray Actor on `/api/actors`.
+
+        Args:
+            cls_or_path: Python class (plain or `@ray.remote` decorated) or
+                `"module:ClassName"` import path.
+            *args: Positional constructor arguments serialized as round-trip JSON.
+            kwargs: Optional dictionary of constructor keyword arguments.
+            name: Optional actor name for reattachment across sessions.
+            runtime_env: Optional runtime environment overrides.
+            node_id: Optional Ray node ID to pin the actor to. Cannot be combined with
+                `label_selector`.
+            num_cpus: Optional CPU requirement (defaults to `@ray.remote` option or 1).
+            num_gpus: Optional GPU requirement.
+            resources: Optional Ray 3.0 unified resource map (e.g. `{"CPU": 2, "GPU": 1}`).
+            label_selector: Optional node label selector dictionary. Cannot be combined
+                with `node_id`.
+            max_concurrency: Optional maximum concurrent calls on the actor.
+            ttl_seconds: Optional idle TTL in seconds before the actor is automatically
+                reaped (`None` disables idle reaping; omitting preserves an existing
+                actor's TTL on reattachment).
+            get_if_exists: Reattachment behavior when `name` already exists: `True`
+                reattaches (emitting a `UserWarning` if the spec changed), `False` raises
+                an error, and `"recreate"` replaces the existing actor if its spec changed.
+            detached: Whether the actor is detached (`True`, default) or fate-shared with
+                the dashboard agent (`False`).
+            timeout: Optional timeout in seconds for actor creation and `__init__`.
+
+        Returns:
+            An `ActorHandle` connected to the remote actor.
+
+        Raises:
+            RayClientSerializationError: If constructor arguments or referenced globals
+                are not round-trip JSON.
+            ValueError: If options (`ttl_seconds`, `get_if_exists`, `node_id`,
+                `label_selector`, or resources) are invalid or conflict.
+            RayJobExecutionError: If actor creation or `__init__` fails on the cluster.
+            RayJobTimeoutError: If actor creation exceeds `timeout`.
+            RayClientError: If the HTTP request fails.
+        """
         has_explicit_ttl = ttl_seconds is not _UNSET
         validated_ttl = _validate_ttl_seconds(ttl_seconds) if has_explicit_ttl else None
         validated_get_if_exists = _validate_get_if_exists(get_if_exists)
         if not isinstance(detached, bool):
             raise ValueError(f"detached must be a bool, got {detached!r}.")
+        node_id = _validate_node_id_and_label_selector(node_id, label_selector)
         raw_resources = resources
         num_cpus, num_gpus, memory, resources = _normalize_resources(
             num_cpus, num_gpus, None, resources
@@ -1321,7 +1578,16 @@ class RayCluster:
             if not has_custom_override and def_resources is not None:
                 resources = dict(def_resources)
             if (
-                label_selector is None
+                node_id is None
+                and label_selector is None
+                and default_opts.get("node_id") is not None
+            ):
+                node_id = _validate_node_id_and_label_selector(
+                    default_opts["node_id"], None
+                )
+            if (
+                node_id is None
+                and label_selector is None
                 and default_opts.get("label_selector") is not None
             ):
                 label_selector = dict(default_opts["label_selector"])
@@ -1381,6 +1647,7 @@ class RayCluster:
             "args": bound_args,
             "kwargs": bound_kwargs,
             "runtime_env": merged_env,
+            "node_id": node_id,
             "num_cpus": resolved_cpus,
             "num_gpus": num_gpus,
             "memory": memory,
@@ -1414,22 +1681,266 @@ class RayCluster:
         )
 
     def get_actor(self, name: str) -> ActorHandle:
-        """Returns an `ActorHandle` for an existing actor on the cluster."""
+        """Returns an `ActorHandle` for an existing actor on the cluster.
+
+        Args:
+            name: Name of the existing actor on `/api/actors`.
+
+        Returns:
+            An `ActorHandle` with `created=False`.
+
+        Raises:
+            RayClientError: If the actor does not exist or the HTTP request fails.
+        """
         self._json("GET", f"/api/actors/{name}")
         return ActorHandle(name=name, cluster=self, created=False)
 
     def list_actors(self) -> List[Dict[str, Any]]:
-        """Lists active client-managed actors on `/api/actors`."""
+        """Lists active client-managed actors on `/api/actors`.
+
+        Returns:
+            List of actor metadata dictionaries.
+
+        Raises:
+            RayClientError: If the HTTP request fails.
+        """
         res = self._json("GET", "/api/actors")
         if isinstance(res, dict) and "actors" in res:
             return res["actors"]
         return list(res)
 
     def kill_actor(self, name: str) -> bool:
-        """Kills a named root actor and all child actors/objects it owns."""
+        """Kills a named root actor and all child actors/objects it owns.
+
+        Args:
+            name: Name of the actor to terminate.
+
+        Returns:
+            `True` if the actor existed and was terminated, `False` otherwise.
+
+        Raises:
+            RayClientError: If the HTTP request fails with a non-404 status.
+        """
         return ActorHandle(name=name, cluster=self).kill()
 
-    # 3. Cluster Resource Management (planned KubeRay control-plane extension)
+    # 3. Cluster Node Management
+    def list_node_groups(self) -> List[Dict[str, Any]]:
+        """Lists all node groups declared on the cluster (`GET /api/cluster/node_groups`).
+
+        Returns:
+            List of node group dictionaries (including the `"head"` group).
+
+        Raises:
+            RayClientError: If the HTTP request fails.
+        """
+        res = self._json("GET", "/api/cluster/node_groups")
+        if isinstance(res, dict) and "node_groups" in res:
+            return list(res["node_groups"])
+        return list(res)
+
+    def get_node_group(self, name: str) -> Dict[str, Any]:
+        """Inspects a node group by name (`GET /api/cluster/node_groups/{name}`).
+
+        Args:
+            name: Non-empty node group name (e.g. `"head"`, `"default"`, `"gb300"`).
+
+        Returns:
+            Dictionary describing the node group's `name`, `resources`, `labels`, and
+            `max_nodes`.
+
+        Raises:
+            ValueError: If `name` is not a non-empty string.
+            RayClientError: If the node group does not exist or the HTTP request fails.
+        """
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("name must be a non-empty string.")
+        res = self._json("GET", f"/api/cluster/node_groups/{name.strip()}")
+        if isinstance(res, dict) and isinstance(res.get("node_group"), dict):
+            return dict(res["node_group"])
+        return dict(res)
+
+    def add_nodes(
+        self,
+        group_name: str,
+        count: int = 1,
+        *,
+        wait_ready: bool = False,
+        timeout_s: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """Adds detached nodes to a cluster node group (`POST /api/cluster/node_groups/{group}/nodes`).
+
+        Args:
+            group_name: Non-empty target node group name.
+            count: Number of nodes to add (must be an integer >= 1).
+            wait_ready: If `True`, waits on the server until the new nodes transition to
+                `ALIVE`.
+            timeout_s: Optional timeout in seconds when waiting for nodes to become
+                ready.
+
+        Returns:
+            List of node dictionaries for the newly requested nodes.
+
+        Raises:
+            ValueError: If `group_name`, `count`, or `timeout_s` is invalid.
+            RayClientError: If the node group does not exist, exceeds `max_nodes`, or
+                the HTTP request fails.
+        """
+        if not isinstance(group_name, str) or not group_name.strip():
+            raise ValueError("group_name must be a non-empty string.")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise ValueError(f"count must be a positive integer, got {count!r}.")
+        if timeout_s is not None:
+            if (
+                isinstance(timeout_s, bool)
+                or not isinstance(timeout_s, (int, float))
+                or not math.isfinite(timeout_s)
+                or timeout_s <= 0
+            ):
+                raise ValueError(
+                    f"timeout_s must be a positive finite number, got {timeout_s!r}."
+                )
+        body: Dict[str, Any] = {
+            "count": count,
+            "wait_ready": bool(wait_ready),
+        }
+        if timeout_s is not None:
+            body["timeout_s"] = float(timeout_s)
+        req_timeout: Any = (
+            (min(self._timeout, float(timeout_s) + 5.0), float(timeout_s) + 5.0)
+            if timeout_s is not None
+            else None
+        )
+        res = self._json(
+            "POST",
+            f"/api/cluster/node_groups/{group_name.strip()}/nodes",
+            json_data=body,
+            idempotent=False,
+            timeout=req_timeout,
+        )
+        if isinstance(res, dict) and "nodes" in res:
+            return list(res["nodes"])
+        return list(res)
+
+    def list_nodes(
+        self,
+        *,
+        state: Optional[Union[str, Sequence[str]]] = None,
+        node_group: Optional[str] = None,
+        include_dead: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Lists cluster nodes (`GET /api/cluster/nodes`).
+
+        Args:
+            state: Optional state filter string (e.g. `"ALIVE"`) or sequence of state
+                strings (e.g. `["PENDING", "ALIVE"]`).
+            node_group: Optional node group name filter.
+            include_dead: Whether to include `DEAD` nodes when `state` is not specified.
+
+        Returns:
+            List of node metadata dictionaries.
+
+        Raises:
+            ValueError: If `node_group` or `state` is invalid.
+            RayClientError: If the HTTP request fails.
+        """
+        params: List[Tuple[str, str]] = []
+        if state is not None:
+            if isinstance(state, str):
+                if not state.strip():
+                    raise ValueError("state must not be an empty string.")
+                state_val = state.strip()
+            elif isinstance(state, Sequence):
+                parts = [str(s).strip() for s in state if str(s).strip()]
+                if not parts:
+                    raise ValueError("state sequence must not be empty.")
+                state_val = ",".join(parts)
+            else:
+                raise TypeError(
+                    f"state must be a string or sequence of strings, got {state!r}."
+                )
+            params.append(("state", state_val))
+        if node_group is not None:
+            if not isinstance(node_group, str) or not node_group.strip():
+                raise ValueError("node_group must be a non-empty string.")
+            params.append(("node_group", node_group.strip()))
+        if include_dead:
+            params.append(("include_dead", "true"))
+        endpoint = "/api/cluster/nodes"
+        if params:
+            endpoint = f"{endpoint}?{urllib.parse.urlencode(params)}"
+        res = self._json("GET", endpoint)
+        if isinstance(res, dict) and "nodes" in res:
+            return list(res["nodes"])
+        return list(res)
+
+    def get_node(self, node_id: str) -> Dict[str, Any]:
+        """Inspects a specific cluster node (`GET /api/cluster/nodes/{node_id}`).
+
+        Args:
+            node_id: Non-empty Ray node ID.
+
+        Returns:
+            Dictionary describing the node's `id`, `group_name`, `state`, `resources`,
+            and `labels`.
+
+        Raises:
+            ValueError: If `node_id` is not a non-empty string.
+            RayClientError: If the node does not exist or the HTTP request fails.
+        """
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("node_id must be a non-empty string.")
+        res = self._json("GET", f"/api/cluster/nodes/{node_id.strip()}")
+        if isinstance(res, dict) and isinstance(res.get("node"), dict):
+            return dict(res["node"])
+        return dict(res)
+
+    def destroy_node(
+        self,
+        node_id: str,
+        reason: str = "destroyed by ray_client",
+        *,
+        grace_period_s: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Destroys a cluster node (`DELETE /api/cluster/nodes/{node_id}`).
+
+        Args:
+            node_id: Non-empty Ray node ID to destroy.
+            reason: Non-empty human-readable reason for destroying the node.
+            grace_period_s: Optional non-negative drain grace period in seconds before
+                the node transitions to `DEAD`.
+
+        Returns:
+            Dictionary describing the updated node state.
+
+        Raises:
+            ValueError: If `node_id`, `reason`, or `grace_period_s` is invalid.
+            RayClientError: If the node does not exist, cannot be destroyed, or the
+                HTTP request fails.
+        """
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("node_id must be a non-empty string.")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("reason must be a non-empty string.")
+        if grace_period_s is not None:
+            if (
+                isinstance(grace_period_s, bool)
+                or not isinstance(grace_period_s, (int, float))
+                or not math.isfinite(grace_period_s)
+                or grace_period_s < 0
+            ):
+                raise ValueError(
+                    f"grace_period_s must be a non-negative finite number, got {grace_period_s!r}."
+                )
+        body: Dict[str, Any] = {"reason": reason.strip()}
+        if grace_period_s is not None:
+            body["grace_period_s"] = float(grace_period_s)
+        return self._json(
+            "DELETE",
+            f"/api/cluster/nodes/{node_id.strip()}",
+            json_data=body,
+            idempotent=False,
+        )
+
     def scale_worker_group(self, group: str, replicas: int) -> Dict[str, Any]:
         """Updates target replica count for a KubeRay worker group."""
         if not isinstance(group, str) or not group.strip():
@@ -1452,14 +1963,52 @@ RayClient = RayCluster
 def run(
     fn: Union[Callable[..., Any], str],
     *args: Any,
+    kwargs: Optional[Dict[str, Any]] = None,
+    runtime_env: Optional[Dict[str, Any]] = None,
+    node_id: Optional[str] = None,
+    num_cpus: Optional[Union[int, float]] = None,
+    num_gpus: Optional[Union[int, float]] = None,
+    resources: Optional[Dict[str, float]] = None,
+    label_selector: Optional[Dict[str, str]] = None,
+    timeout: Optional[float] = None,
     address: Optional[str] = None,
     headers: Optional[Dict[str, str]] = None,
     verify: Union[bool, str] = True,
     default_runtime_env: Optional[Dict[str, Any]] = None,
     request_timeout: float = 30.0,
-    **options: Any,
 ) -> Any:
-    """Runs `fn(*args)` as a driver function on the cluster at `address`."""
+    """Runs `fn(*args)` as a one-shot driver function on the Ray cluster at `address`.
+
+    Args:
+        fn: Python function or `"module:function"` import path to execute.
+        *args: Positional arguments serialized as round-trip JSON.
+        kwargs: Optional dictionary of keyword arguments serialized as JSON.
+        runtime_env: Optional runtime environment overrides.
+        node_id: Optional Ray node ID to pin the driver actor to.
+        num_cpus: Optional CPU requirement for the root driver actor (defaults to 0).
+        num_gpus: Optional GPU requirement for the root driver actor.
+        resources: Optional Ray 3.0 unified resource map (e.g. `{"CPU": 1}`).
+        label_selector: Optional node label selector dictionary.
+        timeout: Optional timeout in seconds covering actor creation and execution.
+        address: Ray Dashboard HTTP address (defaults to `RAY_API_SERVER_ADDRESS`,
+            `RAY_ADDRESS`, or `"http://127.0.0.1:8265"`).
+        headers: Optional HTTP headers for cluster requests.
+        verify: TLS certificate verification boolean or CA bundle path.
+        default_runtime_env: Default runtime environment merged with `runtime_env`.
+        request_timeout: Default HTTP timeout in seconds for control operations.
+
+    Returns:
+        The decoded JSON return value for a regular or async function, or an SSE
+        iterator of yielded JSON items if `fn` is a generator or async generator.
+
+    Raises:
+        RayClientSerializationError: If `fn`, `args`, `kwargs`, or referenced globals
+            are not round-trip JSON.
+        ValueError: If resource options or `node_id`/`label_selector` conflict.
+        RayJobExecutionError: If `fn` raises an unhandled exception on the cluster.
+        RayJobTimeoutError: If execution exceeds `timeout`.
+        RayClientError: If the HTTP request fails.
+    """
     cluster = RayCluster(
         address=address,
         headers=headers,
@@ -1468,7 +2017,18 @@ def run(
         timeout=request_timeout,
     )
     try:
-        res = cluster.run(fn, *args, **options)
+        res = cluster.run(
+            fn,
+            *args,
+            kwargs=kwargs,
+            runtime_env=runtime_env,
+            node_id=node_id,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources,
+            label_selector=label_selector,
+            timeout=timeout,
+        )
     except BaseException:
         cluster.close()
         raise

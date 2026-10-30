@@ -2,6 +2,7 @@ import asyncio
 import collections
 import concurrent.futures
 import contextlib
+import dataclasses
 import hashlib
 import importlib
 import inspect
@@ -248,6 +249,7 @@ def _compute_spec_hash(
         "memory": norm_memory,
         "resources": norm_resources,
         "label_selector": spec.get("label_selector") or {},
+        "node_id": spec.get("node_id"),
         "max_concurrency": (
             int(max_concurrency)
             if isinstance(max_concurrency, int)
@@ -553,7 +555,7 @@ class _ClientRootActor:
 
         _orig_get_actor = ray.get_actor
         _orig_actor_remote = ActorClass._remote
-        _orig_pg = ray.util.placement_group
+        _orig_pg = getattr(ray.util, "placement_group", None)
 
         def _client_get_actor(name: str, namespace: Optional[str] = None):
             if namespace is not None:
@@ -585,11 +587,13 @@ class _ClientRootActor:
         ray.get_actor = _client_get_actor
         ray._private.worker.get_actor = _client_get_actor
         ActorClass._remote = _client_actor_remote
-        ray.util.placement_group = _client_placement_group
-        pg_mod = sys.modules.get("ray.util.placement_group")
-        if pg_mod is not None:
-            pg_mod.placement_group = _client_placement_group
-        RuntimeContext.namespace = property(lambda _self: child_ns)
+        if callable(_orig_pg):
+            ray.util.placement_group = _client_placement_group
+            pg_mod = sys.modules.get("ray.util.placement_group")
+            if pg_mod is not None:
+                pg_mod.placement_group = _client_placement_group
+        if hasattr(RuntimeContext, "namespace"):
+            RuntimeContext.namespace = property(lambda _self: child_ns)
 
     def _self_reap_loop(self) -> None:
         while not self._shutting_down:
@@ -606,8 +610,13 @@ class _ClientRootActor:
                     should_reap = True
             if should_reap:
                 self._cleanup_resources()
-                with contextlib.suppress(Exception):
+                try:
                     ray.actor.exit_actor()
+                except Exception:
+                    with contextlib.suppress(Exception):
+                        ray.get_runtime_context().current_actor.__ray_destroy__(
+                            reason="idle TTL expired"
+                        )
                 return
 
     def _cleanup_resources(self) -> None:
@@ -1246,6 +1255,15 @@ class ActorManager:
                 spec["ttl_seconds"] if has_explicit_ttl else 1800.0
             )
             get_if_exists = _validate_get_if_exists(spec.get("get_if_exists", True))
+            node_id = spec.get("node_id")
+            if node_id is not None:
+                if not isinstance(node_id, str) or not node_id.strip():
+                    raise ValueError(
+                        f"node_id must be a non-empty string, got {node_id!r}."
+                    )
+                node_id = node_id.strip()
+            if node_id is not None and spec.get("label_selector"):
+                raise ValueError("Cannot specify both 'node_id' and 'label_selector'.")
             (
                 num_cpus,
                 num_gpus,
@@ -1280,6 +1298,7 @@ class ActorManager:
         max_concurrency = (
             spec["max_concurrency"] if spec.get("max_concurrency") is not None else 10
         )
+        spec = dict(spec, node_id=node_id)
         spec_hash = _compute_spec_hash(
             spec, kind, target_name, num_cpus, max_concurrency
         )
@@ -1449,11 +1468,23 @@ class ActorManager:
                     options["lifetime"] = "detached"
                 if spec.get("runtime_env"):
                     options["runtime_env"] = spec["runtime_env"]
-                placement_keys = ("num_gpus", "memory", "resources", "label_selector")
+                placement_keys = (
+                    "num_gpus",
+                    "memory",
+                    "resources",
+                    "label_selector",
+                )
                 for opt_key in placement_keys:
                     if spec.get(opt_key) is not None:
                         options[opt_key] = spec[opt_key]
-                if (
+                if spec.get("node_id") is not None:
+                    if os.environ.get("RAY_BACKEND") == "rust":
+                        options["node_id"] = spec["node_id"]
+                    else:
+                        options["label_selector"] = {
+                            ray._raylet.RAY_NODE_ID_KEY: spec["node_id"]
+                        }
+                elif (
                     num_cpus == 0
                     and not any(spec.get(k) for k in placement_keys)
                     and os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR)
@@ -1462,9 +1493,13 @@ class ActorManager:
                     # Like a Ray Jobs driver, a root that requests no resources runs
                     # on the head node, where this agent runs. It then starts even on
                     # a `num-cpus=0` head and never takes a CPU from worker nodes.
-                    options["label_selector"] = {
-                        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
-                    }
+                    head_node_id = ray.get_runtime_context().get_node_id()
+                    if os.environ.get("RAY_BACKEND") == "rust":
+                        options["node_id"] = head_node_id
+                    else:
+                        options["label_selector"] = {
+                            ray._raylet.RAY_NODE_ID_KEY: head_node_id
+                        }
 
                 handle = _RemoteClientRootActor.options(**options).remote(spec)
                 async with self._lock:
@@ -1816,6 +1851,279 @@ class ActorManager:
         if not killed and not killed_creating:
             return None
         return {"ok": True, "name": name, "killed": True}
+
+    @staticmethod
+    def _node_group_to_dict(g: Any) -> Dict[str, Any]:
+        if isinstance(g, dict):
+            return dict(g)
+        if dataclasses.is_dataclass(g):
+            return dataclasses.asdict(g)
+        return {
+            "name": getattr(g, "name", ""),
+            "resources": dict(getattr(g, "resources", None) or {}),
+            "labels": dict(getattr(g, "labels", None) or {}),
+            "max_nodes": getattr(g, "max_nodes", None),
+        }
+
+    @staticmethod
+    def _node_to_dict(n: Any) -> Dict[str, Any]:
+        if isinstance(n, dict):
+            d: Dict[str, Any] = dict(n)
+        elif dataclasses.is_dataclass(n):
+            d = dataclasses.asdict(n)
+        else:
+            status_attr = getattr(n, "status", None)
+            status_obj = status_attr() if callable(status_attr) else status_attr
+            state_val = (
+                getattr(status_obj, "state", status_obj)
+                if status_obj is not None
+                else getattr(n, "state", "ALIVE")
+            )
+            death_reason = getattr(status_obj, "death_reason", None)
+            if hasattr(death_reason, "value"):
+                death_reason = death_reason.value
+            d = {
+                "id": getattr(n, "id", ""),
+                "group_name": getattr(n, "group_name", "default"),
+                "resources": dict(getattr(n, "resources", None) or {}),
+                "labels": dict(getattr(n, "labels", None) or {}),
+                "detached": bool(getattr(n, "detached", True)),
+                "state": state_val,
+                "death_reason": death_reason,
+                "termination_deadline": getattr(
+                    status_obj, "termination_deadline", None
+                ),
+            }
+        nid = d.get("id") or d.get("node_id") or ""
+        group = (
+            d.get("group_name") or d.get("group") or d.get("node_group") or "default"
+        )
+        state = d.get("state") or d.get("status") or "ALIVE"
+        if hasattr(state, "value"):
+            state = state.value
+        return {
+            **d,
+            "id": nid,
+            "node_id": nid,
+            "group": group,
+            "group_name": group,
+            "node_group": group,
+            "status": str(state),
+            "state": str(state),
+        }
+
+    def _all_nodes(self, *, include_dead: bool = False) -> List[Dict[str, Any]]:
+        cluster_mod = getattr(ray, "cluster", None)
+        if cluster_mod is not None:
+            node_state_cls = getattr(cluster_mod, "NodeState", None)
+            if include_dead and node_state_cls is not None:
+                try:
+                    raw_nodes = cluster_mod.list_nodes(states=list(node_state_cls))
+                except TypeError:
+                    raw_nodes = cluster_mod.list_nodes()
+            else:
+                raw_nodes = cluster_mod.list_nodes()
+            return [self._node_to_dict(n) for n in raw_nodes]
+
+        nodes: List[Dict[str, Any]] = []
+        for entry in ray.nodes():
+            raw_res = entry.get("Resources") or {}
+            labels = dict(entry.get("Labels") or {})
+            is_head = "node:__internal_head__" in raw_res
+            group = labels.get("ray.io/node-group") or (
+                "head" if is_head else "default"
+            )
+            state = "ALIVE" if entry.get("Alive") else "DEAD"
+            resources = {
+                k: float(v) for k, v in raw_res.items() if not k.startswith("node:")
+            }
+            nid = entry.get("NodeID", "")
+            nodes.append(
+                {
+                    "id": nid,
+                    "node_id": nid,
+                    "group": group,
+                    "group_name": group,
+                    "node_group": group,
+                    "status": state,
+                    "state": state,
+                    "ip_address": entry.get("NodeManagerAddress", ""),
+                    "resources": resources,
+                    "labels": labels,
+                    "detached": True,
+                }
+            )
+        return nodes
+
+    def list_node_groups(self) -> List[Dict[str, Any]]:
+        cluster_mod = getattr(ray, "cluster", None)
+        if cluster_mod is not None:
+            return [self._node_group_to_dict(g) for g in cluster_mod.list_node_groups()]
+        groups: Dict[str, Dict[str, Any]] = {}
+        for n in self._all_nodes():
+            g_name = n["group_name"]
+            if g_name not in groups or n["state"] == "ALIVE":
+                groups[g_name] = {
+                    "name": g_name,
+                    "max_nodes": 1 if g_name == "head" else None,
+                    "idle_timeout_s": None,
+                    "resources": dict(n["resources"]),
+                    "labels": {
+                        k: v
+                        for k, v in n["labels"].items()
+                        if k != ray._raylet.RAY_NODE_ID_KEY
+                    },
+                }
+        if "default" not in groups:
+            groups["default"] = {
+                "name": "default",
+                "max_nodes": None,
+                "idle_timeout_s": None,
+                "resources": {},
+                "labels": {},
+            }
+        return list(groups.values())
+
+    def get_node_group(self, name: str) -> Dict[str, Any]:
+        cluster_mod = getattr(ray, "cluster", None)
+        if cluster_mod is not None and hasattr(cluster_mod, "get_node_group"):
+            return self._node_group_to_dict(cluster_mod.get_node_group(name))
+        for g in self.list_node_groups():
+            if g.get("name") == name:
+                return g
+        raise KeyError(f"Node group '{name}' does not exist.")
+
+    def list_nodes(
+        self,
+        *,
+        state: Optional[str] = None,
+        node_group: Optional[str] = None,
+        include_dead: bool = False,
+    ) -> List[Dict[str, Any]]:
+        if node_group is not None:
+            self.get_node_group(node_group)
+        allowed = (
+            {s.strip().upper() for s in state.split(",") if s.strip()}
+            if state is not None
+            else None
+        )
+        need_dead = include_dead or (allowed is not None and "DEAD" in allowed)
+        nodes = self._all_nodes(include_dead=need_dead)
+        if node_group is not None:
+            nodes = [n for n in nodes if n["group_name"] == node_group]
+        if allowed is not None:
+            nodes = [n for n in nodes if n["state"].upper() in allowed]
+        elif not include_dead:
+            nodes = [n for n in nodes if n["state"] != "DEAD"]
+        return nodes
+
+    def get_node(self, node_id: str) -> Dict[str, Any]:
+        cluster_mod = getattr(ray, "cluster", None)
+        if cluster_mod is not None and hasattr(cluster_mod, "get_node"):
+            return self._node_to_dict(cluster_mod.get_node(node_id))
+        for n in self._all_nodes(include_dead=True):
+            if n.get("id") == node_id:
+                return n
+        raise KeyError(f"Node '{node_id}' does not exist.")
+
+    def add_nodes(
+        self,
+        group: str,
+        count: int = 1,
+        *,
+        wait_ready: bool = False,
+        timeout_s: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise ValueError(f"count must be a positive integer, got {count!r}.")
+        if timeout_s is not None and (
+            isinstance(timeout_s, bool)
+            or not isinstance(timeout_s, (int, float))
+            or not math.isfinite(timeout_s)
+            or timeout_s <= 0
+        ):
+            raise ValueError(
+                f"timeout_s must be a positive finite number, got {timeout_s!r}."
+            )
+        grp = self.get_node_group(group)
+        if group == "head":
+            raise ValueError("Cannot add nodes to the 'head' node group (max_nodes=1).")
+        cluster_mod = getattr(ray, "cluster", None)
+        if cluster_mod is not None:
+            if hasattr(cluster_mod, "get_node_group"):
+                ng_obj = cluster_mod.get_node_group(group)
+                if hasattr(ng_obj, "add_nodes"):
+                    added_nodes = ng_obj.add_nodes(count, detached=True)
+                    if wait_ready:
+                        deadline = (
+                            (time.monotonic() + float(timeout_s))
+                            if timeout_s is not None
+                            else None
+                        )
+                        for n in added_nodes:
+                            ready_fn = getattr(n, "ready", None)
+                            if callable(ready_fn):
+                                rem = (
+                                    max(0.0, deadline - time.monotonic())
+                                    if deadline is not None
+                                    else None
+                                )
+                                ready_fn().result(timeout=rem)
+                    return [self._node_to_dict(n) for n in added_nodes]
+            if hasattr(cluster_mod, "add_nodes"):
+                cluster_mod.add_nodes(group, count)
+        elif grp.get("resources"):
+            with contextlib.suppress(Exception):
+                ray.autoscaler.sdk.request_resources(
+                    bundles=[dict(grp["resources"])] * count
+                )
+        return self.list_nodes(node_group=group)[:count]
+
+    def destroy_node(
+        self,
+        node_id: str,
+        reason: str = "destroyed by ray_client",
+        *,
+        grace_period_s: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("reason must be a non-empty string.")
+        if grace_period_s is not None and (
+            isinstance(grace_period_s, bool)
+            or not isinstance(grace_period_s, (int, float))
+            or not math.isfinite(grace_period_s)
+            or grace_period_s < 0
+        ):
+            raise ValueError(
+                f"grace_period_s must be a non-negative finite number, got {grace_period_s!r}."
+            )
+        node = self.get_node(node_id)
+        if node.get("group_name") == "head":
+            raise ValueError("Cannot destroy the head node.")
+        cluster_mod = getattr(ray, "cluster", None)
+        if cluster_mod is not None:
+            if hasattr(cluster_mod, "get_node"):
+                node_obj = cluster_mod.get_node(node_id)
+                if hasattr(node_obj, "destroy"):
+                    destroy_kwargs: Dict[str, Any] = {"reason": reason}
+                    if grace_period_s is not None:
+                        destroy_kwargs["grace_period_s"] = float(grace_period_s)
+                    node_obj.destroy(**destroy_kwargs)
+            elif hasattr(cluster_mod, "destroy_node"):
+                cluster_mod.destroy_node(node_id, reason=reason)
+        new_state = (
+            "TERMINATING_SOON"
+            if (grace_period_s is not None and grace_period_s > 0)
+            else "DEAD"
+        )
+        return {
+            **node,
+            "ok": True,
+            "destroyed": True,
+            "state": new_state,
+            "status": new_state,
+            "reason": reason,
+        }
 
 
 with contextlib.suppress(Exception):
