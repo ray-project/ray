@@ -211,7 +211,9 @@ class GlobalState:
                 which can be one of the following: "DEPENDENCIES_UNREADY",
                 "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
         Returns:
-            Information from the actor table.
+            Information from the actor table. With no `actor_id`, a dict keyed
+            by actor ID as a hex string. "ActorID", "JobID" and "NodeID"
+            values are hex strings.
         """
         accessor = self._connect_and_get_accessor()
 
@@ -276,7 +278,8 @@ class GlobalState:
         """Fetch and parse the Gcs node info table.
 
         Returns:
-            Information about the node in the cluster.
+            Information about the node in the cluster, as a list of dicts
+            whose "NodeID" is a hex string.
         """
         accessor = self._connect_and_get_accessor()
 
@@ -288,7 +291,7 @@ class GlobalState:
         Returns:
             Information about the Ray jobs in the cluster,
             namely a list of dicts with keys:
-            - "JobID" (identifier for the job),
+            - "JobID" (identifier for the job, as a hex string),
             - "DriverIPAddress" (IP address of the driver for this job),
             - "DriverPid" (process ID of the driver for this job),
             - "StartTime" (UNIX timestamp of the start time of this job),
@@ -900,7 +903,7 @@ class GlobalState:
         return set(self.total_resources_per_node().keys())
 
     def available_resources_per_node(self):
-        """Returns a dictionary mapping node id to available resources."""
+        """Returns a dictionary mapping node hex id to available resources."""
         accessor = self._connect_and_get_accessor()
         available_resources_by_id = {}
 
@@ -967,7 +970,7 @@ class GlobalState:
         return json.loads(accessor.get_system_config())
 
     def get_node(self, node_id: str):
-        """Get the node information for a node id."""
+        """Get the node information for a node id given as a hex string."""
         accessor = self._connect_and_get_accessor()
         return accessor.get_node(node_id)
 
@@ -1043,8 +1046,8 @@ class GlobalState:
 
         return result
 
-    def get_actor_info(self, actor_id: ray.ActorID) -> Optional[str]:
-        """Get the actor info for a actor id."""
+    def get_actor_info(self, actor_id: ray.ActorID) -> Optional[bytes]:
+        """Get the serialized ActorTableData for an actor id."""
         accessor = self._connect_and_get_accessor()
         return accessor.get_actor_info(actor_id)
 
@@ -1058,7 +1061,7 @@ def jobs():
 
     Returns:
         Information from the job table, namely a list of dicts with keys:
-        - "JobID" (identifier for the job),
+        - "JobID" (identifier for the job, as a hex string),
         - "DriverIPAddress" (IP address of the driver for this job),
         - "DriverPid" (process ID of the driver for this job),
         - "StartTime" (UNIX timestamp of the start time of this job),
@@ -1082,7 +1085,8 @@ def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
     Returns:
-        Information about the Ray clients in the cluster.
+        Information about the Ray clients in the cluster, as a list of dicts
+        whose "NodeID" is a hex string.
     """
     return state.node_table()
 
