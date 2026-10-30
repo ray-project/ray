@@ -192,8 +192,9 @@ class _MissingStratifyKey:
     """Canonical dict key for ``NaN``/``NaT`` stratification values.
 
     NaN never compares equal to itself, so a raw ``NaN`` used as a dict key
-    cannot be looked up again in another block. All missing values share this
-    sentinel, which still stays distinct from ``None``.
+    cannot be looked up again in another block. Every self-unequal value
+    (``NaN``, ``NaT``) maps here, so they still group together; ``None``
+    compares equal to itself and therefore keeps its own group.
     """
 
     __slots__ = ()
@@ -3267,7 +3268,9 @@ class Dataset:
             if fraction < 1.0 and n_test >= ds_length:
                 n_test = ds_length - 1
 
-        def _normalize_key(key):
+        def _normalize_key(key: Any) -> Any:
+            # Arrow/numpy scalars hash inconsistently across blocks, so unwrap
+            # them to plain Python values before using them as dict keys.
             if hasattr(key, "item"):
                 try:
                     return key.item()
@@ -3295,8 +3298,10 @@ class Dataset:
         base = []
         remainders = []
         for _, count in class_sizes:
-            base_count = min(int(count * fraction), count)
+            base_count = int(count * fraction)
             base.append(base_count)
+            # fraction < 1, so the truncated product is < count and this
+            # remainder is always in [0, 1).
             remainders.append(count * fraction - base_count)
 
         extra = [0] * len(class_sizes)
