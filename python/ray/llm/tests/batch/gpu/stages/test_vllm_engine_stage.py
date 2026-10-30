@@ -194,10 +194,9 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
+@pytest.mark.parametrize("max_pending_requests", [2, -1])
+async def test_vllm_wrapper_semaphore(model_llama_3_2_216M, max_pending_requests):
     from vllm.outputs import CompletionOutput, RequestOutput
-
-    max_pending_requests = 2
 
     with (
         patch("vllm.AsyncLLMEngine") as mock_engine,
@@ -207,15 +206,16 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
     ):
         mock_engine.from_engine_args.return_value = AsyncMock()
         num_running_requests = 0
+        max_running_requests = 0
         request_lock = asyncio.Lock()
 
         # Configure mock engine's generate behavior to simulate delay
         async def mock_generate(request):
-            nonlocal num_running_requests
+            nonlocal num_running_requests, max_running_requests
             async with request_lock:
                 num_running_requests += 1
+                max_running_requests = max(max_running_requests, num_running_requests)
 
-            assert num_running_requests <= max_pending_requests
             await asyncio.sleep(0.3)
 
             async with request_lock:
@@ -241,7 +241,7 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
 
         mock_generate_async.side_effect = mock_generate
 
-        # Create wrapper with max 2 pending requests
+        # A non-positive max_pending_requests disables the limit.
         wrapper = vLLMEngineWrapper(
             model=model_llama_3_2_216M,
             model_source=model_llama_3_2_216M,
@@ -261,6 +261,10 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
 
         # Verify all requests were processed
         assert mock_generate_async.call_count == 10
+        if max_pending_requests > 0:
+            assert max_running_requests == max_pending_requests
+        else:
+            assert max_running_requests == len(batch)
 
         # Clean up GPU memory
         wrapper.shutdown()
@@ -798,6 +802,48 @@ async def test_vllm_udf_should_continue_on_error_yields_error_row(mock_vllm_wrap
     assert "prompt too long" in results[0]["__inference_error__"]
     # Error rows include the original prompt for debuggability
     assert results[0]["prompt"] == "test prompt"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "row,expected_prompt",
+    [
+        ({"prompt": "test prompt"}, "test prompt"),
+        # Rows with only token IDs have a None prompt.
+        ({"prompt": None, "tokenized_prompt": [1, 2, 3]}, ""),
+    ],
+)
+async def test_vllm_udf_error_row_keeps_prompt_popped_by_wrapper(
+    mock_vllm_wrapper, row, expected_prompt
+):
+    """Error rows keep the prompt, although the wrapper pops it from the row."""
+    udf = vLLMEngineStageUDF(
+        data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
+        model="/tmp/fake-model",
+        task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
+        engine_kwargs={},
+        should_continue_on_error=True,
+    )
+    # Prepare the request with the real wrapper, then fail in the engine.
+    wrapper = _make_bare_wrapper()
+    wrapper.semaphore = asyncio.Semaphore(1)
+    wrapper.engine = MagicMock()
+    wrapper.engine.generate = MagicMock(side_effect=ValueError("prompt too long"))
+    wrapper.engine.do_log_stats = AsyncMock()
+    udf.llm = wrapper
+
+    batch = {"__data": [{**row, "sampling_params": {"temperature": 0.7}}]}
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 1
+    assert "prompt too long" in results[0]["__inference_error__"]
+    assert results[0]["prompt"] == expected_prompt
 
 
 @pytest.mark.asyncio
