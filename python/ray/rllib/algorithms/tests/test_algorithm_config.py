@@ -1,3 +1,4 @@
+import copy
 import unittest
 from typing import Type
 
@@ -538,6 +539,361 @@ class TestAlgorithmConfig(unittest.TestCase):
         # The unresolved search space survives serialization so Tune can sample it.
         self.assertIsInstance(
             config_dict["_train_batch_size_per_learner"], tune.search.sample.Domain
+        )
+
+    def test_connector_pipeline_builder(self):
+        """Tests the `*_connector_builder` hooks for all three pipelines.
+
+        A builder receives the fully-built ConnectorPipelineV2 - including RLlib's
+        default pieces - and may modify it in place, e.g. insert a custom piece
+        between two default ones or remove a default piece.
+        """
+        from ray.rllib.connectors.common import BatchIndividualItems
+        from ray.rllib.connectors.connector_v2 import ConnectorV2
+        from ray.rllib.connectors.learner import AddColumnsFromEpisodesToTrainBatch
+        from ray.rllib.connectors.module_to_env import GetActions
+
+        class Marker(ConnectorV2):
+            def __call__(self, *, rl_module, batch, episodes, shared_data=None):
+                return batch
+
+        def connector_names(pipeline):
+            return [type(c).__name__ for c in pipeline.connectors]
+
+        env = gym.make("CartPole-v1")
+        obs_space, act_space = env.observation_space, env.action_space
+
+        # Env-to-module: Insert a custom piece between two default pieces.
+        def env_to_module_builder(pipeline, device=None):
+            pipeline.insert_before(BatchIndividualItems, Marker())
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(env_to_module_connector_builder=env_to_module_builder)
+        )
+        self.assertEqual(
+            connector_names(config.build_env_to_module_connector(env=env)),
+            [
+                "AddObservationsFromEpisodesToBatch",
+                "AddTimeDimToBatchAndZeroPad",
+                "AddStatesFromEpisodesToBatch",
+                "Marker",
+                "BatchIndividualItems",
+                "NumpyToTensor",
+            ],
+        )
+
+        # Module-to-env: remove a default piece (verify device).
+        seen_device = []
+
+        def module_to_env_builder(pipeline, device=None):
+            seen_device.append(device)
+            pipeline.remove(GetActions)
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(module_to_env_connector_builder=module_to_env_builder)
+        )
+        names = connector_names(
+            config.build_module_to_env_connector(env=env, device="cpu")
+        )
+        self.assertNotIn("GetActions", names)
+        self.assertIn("NormalizeAndClipActions", names)
+        self.assertEqual(seen_device, ["cpu"])
+
+        # Learner: Replace a default piece with a custom one.
+        def learner_builder(pipeline, device=None):
+            pipeline.remove(AddColumnsFromEpisodesToTrainBatch)
+            pipeline.insert_after("AddObservationsFromEpisodesToBatch", Marker())
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .learners(learner_connector_builder=learner_builder)
+        )
+        names = connector_names(config.build_learner_connector(obs_space, act_space))
+        self.assertNotIn("AddColumnsFromEpisodesToTrainBatch", names)
+        self.assertEqual(
+            names.index("Marker"),
+            names.index("AddObservationsFromEpisodesToBatch") + 1,
+        )
+
+        # Legacy `*_connector` pieces keep their historical placement.
+
+        # Env-to-module: prepended.
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(env_to_module_connector=lambda env, spaces, device: Marker())
+        )
+        names = connector_names(config.build_env_to_module_connector(env=env))
+        self.assertEqual(names.index("Marker"), 0)
+
+        # Module-to-env: in the middle.
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(module_to_env_connector=lambda env, spaces: Marker())
+        )
+        names = connector_names(config.build_module_to_env_connector(env=env))
+        self.assertLess(
+            names.index("RemoveSingleTsTimeRankFromBatch"),
+            names.index("Marker"),
+        )
+        self.assertLess(
+            names.index("Marker"),
+            names.index("NormalizeAndClipActions"),
+        )
+
+        # Learner: PPO prepends its own default `AddOneTsToEpisodesAndTruncate`, so the
+        # legacy piece sits right after it and in front of the base default pieces.
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .learners(learner_connector=lambda obs, act: Marker())
+        )
+        names = connector_names(config.build_learner_connector(obs_space, act_space))
+        self.assertLess(
+            names.index("AddOneTsToEpisodesAndTruncate"), names.index("Marker")
+        )
+        self.assertLess(
+            names.index("Marker"), names.index("AddObservationsFromEpisodesToBatch")
+        )
+
+        # Legacy `*_connector` + builder can be combined.
+        seen = []
+
+        def combined_builder(pipeline, device=None):
+            seen.append(connector_names(pipeline))
+            pipeline.insert_after("Marker", Marker())
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(
+                env_to_module_connector=lambda env, spaces, device: Marker(),
+                env_to_module_connector_builder=combined_builder,
+            )
+        )
+        names = connector_names(config.build_env_to_module_connector(env=env))
+        # Builder saw legacy piece + defaults.
+        self.assertEqual(seen[0][0], "Marker")
+        self.assertIn("AddObservationsFromEpisodesToBatch", seen[0])
+        # Builder's change applied.
+        self.assertEqual(names.count("Marker"), 2)
+
+    def test_connector_pipeline_insert_missing_raises(self):
+        """`insert_before`/`insert_after` raise if the target piece is absent."""
+        from ray.rllib.connectors.common import NumpyToTensor
+        from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
+        from ray.rllib.connectors.connector_v2 import ConnectorV2
+
+        class Marker(ConnectorV2):
+            def __call__(self, *, rl_module, batch, episodes, shared_data=None):
+                return batch
+
+        pipeline = ConnectorPipelineV2(connectors=[Marker()])
+        with self.assertRaisesRegex(ValueError, "Can not find connector"):
+            pipeline.insert_before(NumpyToTensor, Marker())
+        with self.assertRaisesRegex(ValueError, "Can not find connector"):
+            pipeline.insert_after(NumpyToTensor, Marker())
+        # A real target still works and lands in the right spot.
+        pipeline.insert_before(Marker, NumpyToTensor())
+        self.assertEqual(
+            [type(c).__name__ for c in pipeline.connectors],
+            ["NumpyToTensor", "Marker"],
+        )
+
+    def test_differentiable_learner_connector_builder(self):
+        """`DifferentiableLearnerConfig` forwards the builder + device."""
+        from ray.rllib.connectors.common import BatchIndividualItems
+        from ray.rllib.connectors.connector_v2 import ConnectorV2
+        from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
+        from ray.rllib.core.learner.differentiable_learner_config import (
+            DifferentiableLearnerConfig,
+        )
+
+        class DummyDiffLearner(DifferentiableLearner):
+            pass
+
+        class Marker(ConnectorV2):
+            def __call__(self, *, rl_module, batch, episodes, shared_data=None):
+                return batch
+
+        seen_device = []
+
+        def builder(pipeline, device=None):
+            seen_device.append(device)
+            pipeline.insert_before(BatchIndividualItems, Marker())
+            return pipeline
+
+        learner_cfg = DifferentiableLearnerConfig(
+            learner_class=DummyDiffLearner,
+            learner_connector_builder=builder,
+        )
+        env = gym.make("CartPole-v1")
+        pipeline = learner_cfg.build_learner_connector(
+            env.observation_space, env.action_space, device="cpu"
+        )
+        names = [type(c).__name__ for c in pipeline.connectors]
+        self.assertIn("Marker", names)
+        self.assertEqual(seen_device, ["cpu"])
+
+        # A builder that doesn't return a `LearnerConnectorPipeline` raises.
+        bad_cfg = DifferentiableLearnerConfig(
+            learner_class=DummyDiffLearner,
+            learner_connector_builder=lambda pipeline, device: None,
+        )
+        with self.assertRaisesRegex(
+            ValueError, "must return a `LearnerConnectorPipeline`"
+        ):
+            bad_cfg.build_learner_connector(
+                env.observation_space, env.action_space, device="cpu"
+            )
+
+    def test_connector_builder_receives_device(self):
+        """All three builder hooks receive the `device` kwarg."""
+        env = gym.make("CartPole-v1")
+        seen = {}
+
+        def make(name):
+            def builder(pipeline, device=None):
+                seen[name] = device
+                return pipeline
+
+            return builder
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(
+                env_to_module_connector_builder=make("env_to_module"),
+                module_to_env_connector_builder=make("module_to_env"),
+            )
+            .learners(learner_connector_builder=make("learner"))
+        )
+        config.build_env_to_module_connector(env=env, device="cpu")
+        config.build_module_to_env_connector(env=env, device="cpu")
+        config.build_learner_connector(
+            env.observation_space, env.action_space, device="cpu"
+        )
+        self.assertEqual(
+            seen,
+            {"env_to_module": "cpu", "module_to_env": "cpu", "learner": "cpu"},
+        )
+
+    def test_connector_builder_second_arg_is_positional(self):
+        """The builder's second arg is positional; its name must not matter."""
+        env = gym.make("CartPole-v1")
+
+        def builder(pipeline, dev):  # deliberately not named `device`
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(
+                env_to_module_connector_builder=builder,
+                module_to_env_connector_builder=builder,
+            )
+            .learners(learner_connector_builder=builder)
+        )
+        # Must not raise a `TypeError` about an unexpected `device` keyword arg.
+        config.build_env_to_module_connector(env=env, device="cpu")
+        config.build_module_to_env_connector(env=env, device="cpu")
+        config.build_learner_connector(
+            env.observation_space, env.action_space, device="cpu"
+        )
+
+    def test_connector_builder_sees_algo_defaults(self):
+        """Algo-specific learner defaults (PPO's GAE) are visible to the builder."""
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray.rllib.connectors.learner import GeneralAdvantageEstimation
+
+        env = gym.make("CartPole-v1")
+        seen = []
+
+        def builder(pipeline, device):
+            seen.append([type(c).__name__ for c in pipeline.connectors])
+            pipeline.remove(GeneralAdvantageEstimation)
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .learners(learner_connector_builder=builder)
+        )
+        pipeline = config.build_learner_connector(
+            env.observation_space, env.action_space
+        )
+        names = [type(c).__name__ for c in pipeline.connectors]
+        self.assertIn("AddOneTsToEpisodesAndTruncate", seen[0])
+        self.assertIn("GeneralAdvantageEstimation", seen[0])
+        self.assertNotIn("GeneralAdvantageEstimation", names)
+
+    def test_connector_builder_must_return_pipeline(self):
+        """A builder that doesn't return the specific pipeline type raises."""
+        env = gym.make("CartPole-v1")
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(env_to_module_connector_builder=lambda p, device: None)
+        )
+        with self.assertRaisesRegex(ValueError, "must return an `EnvToModulePipeline`"):
+            config.build_env_to_module_connector(env=env)
+
+    def test_connector_builder_with_defaults_disabled(self):
+        """With default connectors disabled, the builder runs on the bare pipeline."""
+        from ray.rllib.connectors.connector_v2 import ConnectorV2
+
+        class Marker(ConnectorV2):
+            def __call__(self, *, rl_module, batch, episodes, shared_data=None):
+                return batch
+
+        env = gym.make("CartPole-v1")
+
+        def builder(pipeline, device=None):
+            pipeline.prepend(Marker())
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(
+                add_default_connectors_to_env_to_module_pipeline=False,
+                env_to_module_connector_builder=builder,
+            )
+        )
+        names = [
+            type(c).__name__
+            for c in config.build_env_to_module_connector(env=env).connectors
+        ]
+        self.assertEqual(names, ["Marker"])
+
+    def test_connector_builder_config_roundtrip(self):
+        """`to_dict`/`from_dict` and `deepcopy` preserve the builder callable."""
+
+        def builder(pipeline, device=None):
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(env_to_module_connector_builder=builder)
+        )
+        self.assertIs(
+            PPOConfig.from_dict(config.to_dict())._env_to_module_connector_builder,
+            builder,
+        )
+        self.assertIs(
+            copy.deepcopy(config)._env_to_module_connector_builder,
+            builder,
         )
 
 

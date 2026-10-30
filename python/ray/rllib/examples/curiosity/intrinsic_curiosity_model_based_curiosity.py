@@ -78,14 +78,18 @@ import numpy as np
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.connectors.common import (
+    AddObservationsFromEpisodesToBatch,
+    NumpyToTensor,
+)
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.connectors.learner import AddNextObservationsFromEpisodesToTrainBatch
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.learners.classes.intrinsic_curiosity_learners import (
     ICM_MODULE_ID,
-    DQNTorchLearnerWithCuriosity,
-    PPOTorchLearnerWithCuriosity,
+    IntrinsicCuriosityModelConnector,
 )
 from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (
     IntrinsicCuriosityModel,
@@ -105,6 +109,30 @@ parser = add_rllib_example_script_args(
     default_timesteps=10000000,
     default_reward=0.9,
 )
+
+# Intrinsic reward coefficient (used by the ICM connector builder below).
+INTRINSIC_REWARD_COEFF = 0.05
+
+
+def _learner_connector_builder(pipeline, device):
+    """Modifies RLlib's default Learner pipeline for ICM training.
+
+    - `AddNextObservationsFromEpisodesToTrainBatch`: provides the NEXT_OBS for the ICM's
+    forward-/inverse-dynamics training (right after the default OBS piece).
+    - `IntrinsicCuriosityModelConnector`: computes intrinsic rewards and adds them to
+    the main module's extrinsic rewards (after `NumpyToTensor`).
+    """
+    pipeline.insert_after(
+        AddObservationsFromEpisodesToBatch,
+        AddNextObservationsFromEpisodesToTrainBatch(),
+    )
+    pipeline.insert_after(
+        NumpyToTensor,
+        IntrinsicCuriosityModelConnector(
+            intrinsic_reward_coeff=INTRINSIC_REWARD_COEFF,
+        ),
+    )
+    return pipeline
 
 
 class MeasureMaxDistanceToStart(RLlibCallback):
@@ -221,7 +249,7 @@ if __name__ == "__main__":
         .training(
             learner_config_dict={
                 # Intrinsic reward coefficient.
-                "intrinsic_reward_coeff": 0.05,
+                "intrinsic_reward_coeff": INTRINSIC_REWARD_COEFF,
                 # Forward loss weight (vs inverse dynamics loss). Total ICM loss is:
                 # L(total ICM) = (
                 #     `forward_loss_weight` * L(forward)
@@ -230,6 +258,7 @@ if __name__ == "__main__":
                 "forward_loss_weight": 0.2,
             }
         )
+        .learners(learner_connector_builder=_learner_connector_builder)
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
                 rl_module_specs={
@@ -271,15 +300,11 @@ if __name__ == "__main__":
     if args.algo == "PPO":
         base_config.training(
             num_epochs=6,
-            # Plug in the correct Learner class.
-            learner_class=PPOTorchLearnerWithCuriosity,
             train_batch_size_per_learner=2000,
             lr=0.0003,
         )
     elif args.algo == "DQN":
         base_config.training(
-            # Plug in the correct Learner class.
-            learner_class=DQNTorchLearnerWithCuriosity,
             train_batch_size_per_learner=128,
             lr=0.00075,
             replay_buffer_config={
