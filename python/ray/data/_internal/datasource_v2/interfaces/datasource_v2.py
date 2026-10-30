@@ -155,17 +155,6 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         ...
 
-    @property
-    def source_paths(self) -> List[str]:
-        """The paths as the caller passed them, recorded on ``ListFiles`` for
-        lineage tracking.
-
-        Defaults to :attr:`paths`. Override this when :attr:`paths` holds
-        resolved paths: ``_resolve_paths_and_filesystem`` strips the URI scheme,
-        so ``s3://bucket/a`` becomes ``bucket/a``.
-        """
-        return self.paths
-
     @abstractmethod
     def _get_file_indexer(self) -> FileIndexer:
         """Indexer that ``ListFiles`` runs to turn :attr:`paths` into
@@ -299,6 +288,17 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         ``_resolve_paths_and_filesystem``.
         """
         ...
+
+    @property
+    def source_paths(self) -> List[str]:
+        """The paths as the caller passed them, recorded on ``ListFiles`` for
+        lineage tracking.
+
+        Defaults to :attr:`paths`. Override this when :attr:`paths` holds
+        resolved paths: ``_resolve_paths_and_filesystem`` strips the URI scheme,
+        so ``s3://bucket/a`` becomes ``bucket/a``.
+        """
+        return self.paths
 
     @property
     def file_extensions(self) -> Optional[List[str]]:
