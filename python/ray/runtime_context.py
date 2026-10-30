@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class RuntimeContext(object):
     """A class used for getting runtime context.
 
-    Use :func:`ray.get_runtime_context` to get an instance instead of
+    Use :func:`~ray.runtime_context.get_runtime_context` to get an instance instead of
     constructing one.
 
     Args:
