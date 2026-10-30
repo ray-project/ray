@@ -612,13 +612,13 @@ doctest_each(
 doctest_each(
     size = "large",
     files = [
+        "source/cluster/configure.md",
         "source/core/actors/async-api.md",
         "source/core/actors/concurrency-group-api.md",
         "source/core/actors/index.md",
         "source/core/actors/named-actors.md",
         "source/core/actors/task-orders.md",
         "source/core/actors/terminating-actors.md",
-        "source/core/configure.md",
         "source/core/internals/task-lifecycle.md",
         "source/core/miscellaneous.md",
         "source/core/objects/index.md",

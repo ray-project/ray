@@ -15,6 +15,9 @@ If you're new to Ray, start with the {ref}`walkthrough <core-walkthrough>`.
 ```{toctree}
 :maxdepth: 4
 
+starting-ray
+tips-for-first-time
+using-ray-with-jupyter
 tasks/index
 actors/index
 objects/index

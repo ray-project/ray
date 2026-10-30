@@ -14,7 +14,7 @@ Set your application's namespace when you first connect to the cluster.
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/namespaces.py
+```{literalinclude} ../doc_code/namespaces.py
 :language: python
 :start-after: __init_namespace_start__
 :end-before: __init_namespace_end__
@@ -43,7 +43,7 @@ You can access a named actor only within its namespace.
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/namespaces.py
+```{literalinclude} ../doc_code/namespaces.py
 :language: python
 :start-after: __actor_namespace_start__
 :end-before: __actor_namespace_end__
@@ -138,7 +138,7 @@ You can specify a namespace for a named actor when you create it. The actor belo
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/namespaces.py
+```{literalinclude} ../doc_code/namespaces.py
 :language: python
 :start-after: __specify_actor_namespace_start__
 :end-before: __specify_actor_namespace_end__
@@ -185,7 +185,7 @@ When you don't specify a namespace, Ray places your job in an anonymous namespac
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/namespaces.py
+```{literalinclude} ../doc_code/namespaces.py
 :language: python
 :start-after: __anonymous_namespace_start__
 :end-before: __anonymous_namespace_end__
@@ -250,7 +250,7 @@ Get the current namespace with the {ref}`runtime_context APIs <runtime-context-a
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/namespaces.py
+```{literalinclude} ../doc_code/namespaces.py
 :language: python
 :start-after: __get_namespace_start__
 :end-before: __get_namespace_end__
