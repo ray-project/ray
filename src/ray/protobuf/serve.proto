@@ -135,6 +135,12 @@ message RequestRouterConfig {
 
   // Maximum backoff time (in seconds) between retries.
   double max_backoff_s = 8;
+
+  // Maximum number of times the router retries routing a request after a
+  // replica rejects it. -1 means unlimited retries (the default).
+  // Declared optional so that unset (e.g. from an older controller) is
+  // distinguishable from 0 (which means zero retries).
+  optional int32 max_request_retries = 9;
 }
 //[End] ROUTING CONFIG
 
