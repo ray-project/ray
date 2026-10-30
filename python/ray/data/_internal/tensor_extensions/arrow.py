@@ -803,6 +803,8 @@ def create_arrow_fixed_shape_tensor_type(
 
 @PublicAPI(stability="beta")
 class ArrowTensorScalar(pa.ExtensionScalar):
+    """A scalar that holds one tensor from an Arrow tensor array."""
+
     def as_py(self, **kwargs: Any) -> np.ndarray:
         """Convert this scalar to a NumPy array.
 
