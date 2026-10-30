@@ -1,5 +1,4 @@
-"""
-Example of an environment that uses a named remote actor as parameter
+"""Example of an environment that uses a named remote actor as parameter
 server.
 
 """

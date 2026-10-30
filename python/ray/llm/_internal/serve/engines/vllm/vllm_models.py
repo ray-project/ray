@@ -130,8 +130,7 @@ class VLLMEngineConfig(BaseModelExtended):
         return self.engine_kwargs.get("trust_remote_code", False)
 
     def get_initialization_kwargs(self) -> dict:
-        """
-        Get kwargs that will be actually passed to the LLMInitializer
+        """Get kwargs that will be actually passed to the LLMInitializer
         constructor.
         """
         engine_kwargs = self.engine_kwargs.copy()

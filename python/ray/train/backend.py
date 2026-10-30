@@ -32,8 +32,7 @@ class BackendConfig:
         return make_table_html_repr(obj=self, title=type(self).__name__)
 
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Returns serializable dictionary representation of the backend config.
+        """Returns serializable dictionary representation of the backend config.
         Subclasses can override this to expose framework-specific configuration.
 
         The fields here are used for state export of the backend config.

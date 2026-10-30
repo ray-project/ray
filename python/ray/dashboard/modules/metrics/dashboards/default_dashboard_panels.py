@@ -19,6 +19,8 @@ MAX_CPUS = 'sum(autoscaler_cluster_resources{{resource="CPU",{global_filters}}})
 PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
 MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
 PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
+MAX_NPUS = 'sum(autoscaler_cluster_resources{{resource="NPU",{global_filters}}})'
+PENDING_NPUS = 'sum(autoscaler_pending_resources{{resource="NPU",{global_filters}}})'
 MAX_MEMORY = 'sum(autoscaler_cluster_resources{{resource="memory",{global_filters}}})'
 PENDING_MEMORY = (
     'sum(autoscaler_pending_resources{{resource="memory",{global_filters}}})'
@@ -31,6 +33,7 @@ def max_plus_pending(max_resource, pending_resource):
 
 MAX_PLUS_PENDING_CPUS = max_plus_pending(MAX_CPUS, PENDING_CPUS)
 MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
+MAX_PLUS_PENDING_NPUS = max_plus_pending(MAX_NPUS, PENDING_NPUS)
 MAX_PLUS_PENDING_MEMORY = max_plus_pending(MAX_MEMORY, PENDING_MEMORY)
 
 MAX_PERCENTAGE_EXPRESSION = (
@@ -77,6 +80,11 @@ OVERVIEW_AND_HEALTH_PANELS = [
                 expr='sum(ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_gpus_available{{instance=~"$Instance",{global_filters}}}) or vector(0))',
                 legend="GPU (physical)",
             ),
+            # Ascend NPU AI Core
+            Target(
+                expr='avg(ray_node_npus_utilization{{instance=~"$Instance",{global_filters}}})',
+                legend="NPU AI Core (physical)",
+            ),
             # Memory
             Target(
                 expr='sum(ray_node_mem_used_host{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_mem_total_host{{instance=~"$Instance",{global_filters}}})) * 100',
@@ -86,6 +94,11 @@ OVERVIEW_AND_HEALTH_PANELS = [
             Target(
                 expr='sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}})) * 100',
                 legend="GRAM",
+            ),
+            # Ascend NPU HBM
+            Target(
+                expr='sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_npu_hbm_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}})) * 100',
+                legend="NPU HBM",
             ),
             # Object Store
             Target(
@@ -314,6 +327,28 @@ RAY_RESOURCES_PANELS = [
         ],
     ),
     Panel(
+        id=72,
+        title="Logical NPU Usage",
+        description='Logical NPU usage of Ray. The dotted line indicates the total number of NPUs. The logical NPU is allocated by `resources={"NPU": ...}` arguments from tasks and actors. PENDING means the number of NPUs that will be available when new nodes are up after the autoscaler scales up.',
+        unit="NPUs",
+        targets=[
+            Target(
+                expr='sum(ray_resources{{Name="NPU",State="USED",instance=~"$Instance",{global_filters}}}) by (instance)',
+                legend="NPU Usage: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_resources{{Name="NPU",instance=~"$Instance",{global_filters}}})',
+                legend="MAX",
+            ),
+            # If max + pending > max, we display this value.
+            # (A and predicate) means to return A when the predicate satisfies in PromSql.
+            Target(
+                expr=f"({MAX_PLUS_PENDING_NPUS} and {MAX_PLUS_PENDING_NPUS} > ({MAX_NPUS} or vector(0)))",
+                legend="MAX + PENDING",
+            ),
+        ],
+    ),
+    Panel(
         id=61,
         title="Logical Memory Usage",
         description="Logical memory usage of Ray by node. The dotted line indicates the total amount of memory available. Logical memory refers to Ray's view of memory resources allocated to tasks and actors. PENDING means the amount of memory that will be available when new nodes are up after the autoscaler scales up.",
@@ -445,6 +480,22 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
             ),
             Target(
                 expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}})) * 1024 * 1024',
+                legend="MAX",
+            ),
+        ],
+    ),
+    Panel(
+        id=66,
+        title="Node NPU Memory Usage by Component",
+        description="The physical (hardware) Ascend NPU memory usage across the cluster, broken down by Ray component. This reports the summed NPU memory usage per component.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_component_npu_memory_mb{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (Component)',
+                legend="{{Component}}",
+            ),
+            Target(
+                expr='sum(ray_node_npu_hbm_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -646,6 +697,78 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
             Target(
                 expr='sum(ray_node_gpu_temperature_celsius{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
                 legend="Temperature: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=67,
+        title="Node NPU AI Core Utilization",
+        description="Ascend NPU AI Core utilization for each device on a node.",
+        unit="%",
+        targets=[
+            Target(
+                expr='avg(ray_node_npus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, NpuIndex, NpuDeviceName)',
+                legend="AI Core: {{instance}} ({{RayNodeType}}), npu.{{NpuIndex}}, {{NpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=68,
+        title="Node NPU Memory Usage (HBM)",
+        description="Ascend NPU high-bandwidth memory (HBM) used and available for each device on a node.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_node_npu_hbm_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, NpuIndex, NpuDeviceName)',
+                legend="Used HBM: {{instance}} ({{RayNodeType}}), npu.{{NpuIndex}}, {{NpuDeviceName}}",
+            ),
+            Target(
+                expr='sum(ray_node_npu_hbm_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, NpuIndex, NpuDeviceName)',
+                legend="Available HBM: {{instance}} ({{RayNodeType}}), npu.{{NpuIndex}}, {{NpuDeviceName}}",
+            ),
+        ],
+    ),
+    Panel(
+        id=69,
+        title="Node NPU Power",
+        description="Current Ascend NPU power draw per device. Reported in milliwatts and displayed in watts.",
+        unit="mwatt",
+        targets=[
+            Target(
+                expr='sum(ray_node_npu_power_milliwatts{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, NpuIndex, NpuDeviceName)',
+                legend="Power: {{instance}} ({{RayNodeType}}), npu.{{NpuIndex}}, {{NpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=70,
+        title="Node NPU Temperature",
+        description="Current Ascend NPU temperature per device in Celsius.",
+        unit="celsius",
+        targets=[
+            Target(
+                expr='max(ray_node_npu_temperature_celsius{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, NpuIndex, NpuDeviceName)',
+                legend="Temperature: {{instance}} ({{RayNodeType}}), npu.{{NpuIndex}}, {{NpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=71,
+        title="Node NPU Health",
+        description="Ascend NPU health level for each device: 0 is OK, 1 is minor, 2 is major, 3 is critical, and 4 means that health information is missing.",
+        unit="short",
+        targets=[
+            Target(
+                expr='max(ray_node_npu_health{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, NpuIndex, NpuDeviceName)',
+                legend="Health: {{instance}} ({{RayNodeType}}), npu.{{NpuIndex}}, {{NpuDeviceName}}",
             ),
         ],
         fill=0,

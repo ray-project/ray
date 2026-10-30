@@ -21,8 +21,7 @@ class TokenizeUDF(StatefulStageUDF):
         model: str,
         trust_remote_code: bool = False,
     ):
-        """
-        Initialize the TokenizeUDF.
+        """Initialize the TokenizeUDF.
 
         Args:
             data_column: The data column name.
@@ -54,8 +53,7 @@ class TokenizeUDF(StatefulStageUDF):
         )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Tokenize the given batch.
+        """Tokenize the given batch.
 
         Args:
             batch: A list of rows to send.
@@ -74,9 +72,7 @@ class TokenizeUDF(StatefulStageUDF):
 
 
 class TokenizeStage(StatefulStage):
-    """
-    A stage that tokenizes the input.
-    """
+    """A stage that tokenizes the input."""
 
     fn: Type[StatefulStageUDF] = TokenizeUDF
 
@@ -93,8 +89,7 @@ class DetokenizeUDF(StatefulStageUDF):
         model: str,
         trust_remote_code: bool = False,
     ):
-        """
-        Initialize the DetokenizeUDF.
+        """Initialize the DetokenizeUDF.
 
         Args:
             data_column: The data column name.
@@ -126,8 +121,7 @@ class DetokenizeUDF(StatefulStageUDF):
         )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Detokenize the given batch.
+        """Detokenize the given batch.
 
         Args:
             batch: A list of rows to send.
@@ -149,9 +143,7 @@ class DetokenizeUDF(StatefulStageUDF):
 
 
 class DetokenizeStage(StatefulStage):
-    """
-    A stage that detokenizes the input.
-    """
+    """A stage that detokenizes the input."""
 
     fn: Type[StatefulStageUDF] = DetokenizeUDF
 
