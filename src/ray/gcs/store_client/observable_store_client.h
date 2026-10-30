@@ -14,14 +14,17 @@
 
 #pragma once
 
+#include <boost/asio.hpp>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/util/clock.h"
+#include "ray/util/thread_utils.h"
 
 namespace ray {
 
@@ -43,7 +46,8 @@ std::shared_ptr<StoreClient> MaybeObserve(
     bool enabled,
     ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
     ray::observability::MetricInterface &storage_operation_count_counter,
-    ClockInterface &clock);
+    ClockInterface &clock,
+    boost::asio::io_context &metric_context);
 
 /// Wraps around a StoreClient instance and observe the metrics.
 class ObservableStoreClient : public StoreClient {
@@ -59,12 +63,14 @@ class ObservableStoreClient : public StoreClient {
       std::shared_ptr<StoreClient> delegate,
       ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
       ray::observability::MetricInterface &storage_operation_count_counter,
-      ClockInterface &clock)
+      ClockInterface &clock,
+      boost::asio::io_context &metric_context)
       : delegate_(std::move(delegate)),
         storage_operation_latency_in_ms_histogram_(
             storage_operation_latency_in_ms_histogram),
         storage_operation_count_counter_(storage_operation_count_counter),
-        clock_(clock) {}
+        clock_(clock),
+        metric_context_(metric_context) {}
 
   void AsyncPut(const std::string &table_name,
                 const std::string &key,
@@ -108,6 +114,7 @@ class ObservableStoreClient : public StoreClient {
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram_;
   ray::observability::MetricInterface &storage_operation_count_counter_;
   ClockInterface &clock_;
+  boost::asio::io_context &metric_context_;
 };
 
 }  // namespace gcs

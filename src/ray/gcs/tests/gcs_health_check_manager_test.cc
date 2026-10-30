@@ -92,7 +92,8 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     auto node_id = NodeID::FromRandom();
     auto port = GetFreePort();
     RAY_LOG(INFO) << "Get port " << port;
-    auto server = std::make_shared<rpc::GrpcServer>(node_id.Hex(), port, true);
+    auto server =
+        std::make_shared<rpc::GrpcServer>(node_id.Hex(), port, true, metric_context_);
 
     auto channel = grpc::CreateChannel(BuildAddress("localhost", port),
                                        grpc::InsecureChannelCredentials());
@@ -151,6 +152,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   const int64_t timeout_ms = 10;
   const int64_t period_ms = 10;
   const int64_t failure_threshold = 5;
+  boost::asio::io_context metric_context_;
 };
 
 TEST_F(GcsHealthCheckManagerTest, TestBasic) {

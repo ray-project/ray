@@ -50,7 +50,8 @@ std::shared_ptr<StoreClient> MaybeObserve(
     bool enabled,
     ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
     ray::observability::MetricInterface &storage_operation_count_counter,
-    ClockInterface &clock) {
+    ClockInterface &clock,
+    boost::asio::io_context &metric_context) {
   if (!enabled) {
     return delegate;
   }
@@ -58,7 +59,8 @@ std::shared_ptr<StoreClient> MaybeObserve(
       std::move(delegate),
       storage_operation_latency_in_ms_histogram,
       storage_operation_count_counter,
-      clock);
+      clock,
+      metric_context);
 }
 
 void ObservableStoreClient::AsyncPut(const std::string &table_name,
@@ -68,14 +70,18 @@ void ObservableStoreClient::AsyncPut(const std::string &table_name,
                                      Postable<void(bool)> callback) {
   const auto start = clock_.SteadyNow();
   const std::string table = NormalizeTableNameLabel(table_name);
-  storage_operation_count_counter_.Record(1, MetricTags("Put", table));
+  boost::asio::post(metric_context_, [this, table]() {
+    storage_operation_count_counter_.Record(1, MetricTags("Put", table));
+  });
   delegate_->AsyncPut(table_name,
                       key,
                       std::move(data),
                       overwrite,
                       std::move(callback).OnInvocation([this, start, table]() {
-                        storage_operation_latency_in_ms_histogram_.Record(
-                            ElapsedMs(clock_, start), MetricTags("Put", table));
+                        boost::asio::post(metric_context_, [this, start, table]() {
+                          storage_operation_latency_in_ms_histogram_.Record(
+                              ElapsedMs(clock_, start), MetricTags("Put", table));
+                        });
                       }));
 }
 
@@ -85,11 +91,15 @@ void ObservableStoreClient::AsyncGet(
     ToPostable<rpc::OptionalItemCallback<std::string>> callback) {
   const auto start = clock_.SteadyNow();
   const std::string table = NormalizeTableNameLabel(table_name);
-  storage_operation_count_counter_.Record(1, MetricTags("Get", table));
+  boost::asio::post(metric_context_, [this, table]() {
+    storage_operation_count_counter_.Record(1, MetricTags("Get", table));
+  });
   delegate_->AsyncGet(
       table_name, key, std::move(callback).OnInvocation([this, start, table]() {
-        storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
-                                                          MetricTags("Get", table));
+        boost::asio::post(metric_context_, [this, start, table]() {
+          storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
+                                                            MetricTags("Get", table));
+        });
       }));
 }
 
@@ -98,11 +108,15 @@ void ObservableStoreClient::AsyncGetAll(
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   const auto start = clock_.SteadyNow();
   const std::string table = NormalizeTableNameLabel(table_name);
-  storage_operation_count_counter_.Record(1, MetricTags("GetAll", table));
+  boost::asio::post(metric_context_, [this, table]() {
+    storage_operation_count_counter_.Record(1, MetricTags("GetAll", table));
+  });
   delegate_->AsyncGetAll(table_name,
                          std::move(callback).OnInvocation([this, start, table]() {
-                           storage_operation_latency_in_ms_histogram_.Record(
-                               ElapsedMs(clock_, start), MetricTags("GetAll", table));
+                           boost::asio::post(metric_context_, [this, start, table]() {
+                             storage_operation_latency_in_ms_histogram_.Record(
+                                 ElapsedMs(clock_, start), MetricTags("GetAll", table));
+                           });
                          }));
 }
 
@@ -112,11 +126,15 @@ void ObservableStoreClient::AsyncMultiGet(
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   const auto start = clock_.SteadyNow();
   const std::string table = NormalizeTableNameLabel(table_name);
-  storage_operation_count_counter_.Record(1, MetricTags("MultiGet", table));
+  boost::asio::post(metric_context_, [this, table]() {
+    storage_operation_count_counter_.Record(1, MetricTags("MultiGet", table));
+  });
   delegate_->AsyncMultiGet(
       table_name, keys, std::move(callback).OnInvocation([this, start, table]() {
-        storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
-                                                          MetricTags("MultiGet", table));
+        boost::asio::post(metric_context_, [this, start, table]() {
+          storage_operation_latency_in_ms_histogram_.Record(
+              ElapsedMs(clock_, start), MetricTags("MultiGet", table));
+        });
       }));
 }
 
@@ -125,11 +143,15 @@ void ObservableStoreClient::AsyncDelete(const std::string &table_name,
                                         Postable<void(bool)> callback) {
   const auto start = clock_.SteadyNow();
   const std::string table = NormalizeTableNameLabel(table_name);
-  storage_operation_count_counter_.Record(1, MetricTags("Delete", table));
+  boost::asio::post(metric_context_, [this, table]() {
+    storage_operation_count_counter_.Record(1, MetricTags("Delete", table));
+  });
   delegate_->AsyncDelete(
       table_name, key, std::move(callback).OnInvocation([this, start, table]() {
-        storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
-                                                          MetricTags("Delete", table));
+        boost::asio::post(metric_context_, [this, start, table]() {
+          storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
+                                                            MetricTags("Delete", table));
+        });
       }));
 }
 
@@ -138,11 +160,15 @@ void ObservableStoreClient::AsyncBatchDelete(const std::string &table_name,
                                              Postable<void(int64_t)> callback) {
   const auto start = clock_.SteadyNow();
   const std::string table = NormalizeTableNameLabel(table_name);
-  storage_operation_count_counter_.Record(1, MetricTags("BatchDelete", table));
+  boost::asio::post(metric_context_, [this, table]() {
+    storage_operation_count_counter_.Record(1, MetricTags("BatchDelete", table));
+  });
   delegate_->AsyncBatchDelete(
       table_name, keys, std::move(callback).OnInvocation([this, start, table]() {
-        storage_operation_latency_in_ms_histogram_.Record(
-            ElapsedMs(clock_, start), MetricTags("BatchDelete", table));
+        boost::asio::post(metric_context_, [this, start, table]() {
+          storage_operation_latency_in_ms_histogram_.Record(
+              ElapsedMs(clock_, start), MetricTags("BatchDelete", table));
+        });
       }));
 }
 
@@ -153,11 +179,15 @@ void ObservableStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   // other site because both metric stacks export a declared tag that a site
   // does not record with an empty value rather than omitting it, and an
   // unexplained TableName="" is worse on a dashboard than a named sentinel.
-  storage_operation_count_counter_.Record(1,
-                                          MetricTags("GetNextJobID", kJobCounterTable));
+  boost::asio::post(metric_context_, [this]() {
+    storage_operation_count_counter_.Record(1,
+                                            MetricTags("GetNextJobID", kJobCounterTable));
+  });
   delegate_->AsyncGetNextJobID(std::move(callback).OnInvocation([this, start]() {
-    storage_operation_latency_in_ms_histogram_.Record(
-        ElapsedMs(clock_, start), MetricTags("GetNextJobID", kJobCounterTable));
+    boost::asio::post(metric_context_, [this, start]() {
+      storage_operation_latency_in_ms_histogram_.Record(
+          ElapsedMs(clock_, start), MetricTags("GetNextJobID", kJobCounterTable));
+    });
   }));
 }
 
@@ -167,11 +197,15 @@ void ObservableStoreClient::AsyncGetKeys(
     Postable<void(std::vector<std::string>)> callback) {
   const auto start = clock_.SteadyNow();
   const std::string table = NormalizeTableNameLabel(table_name);
-  storage_operation_count_counter_.Record(1, MetricTags("GetKeys", table));
+  boost::asio::post(metric_context_, [this, table]() {
+    storage_operation_count_counter_.Record(1, MetricTags("GetKeys", table));
+  });
   delegate_->AsyncGetKeys(
       table_name, prefix, std::move(callback).OnInvocation([this, start, table]() {
-        storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
-                                                          MetricTags("GetKeys", table));
+        boost::asio::post(metric_context_, [this, start, table]() {
+          storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
+                                                            MetricTags("GetKeys", table));
+        });
       }));
 }
 
@@ -180,11 +214,15 @@ void ObservableStoreClient::AsyncExists(const std::string &table_name,
                                         Postable<void(bool)> callback) {
   const auto start = clock_.SteadyNow();
   const std::string table = NormalizeTableNameLabel(table_name);
-  storage_operation_count_counter_.Record(1, MetricTags("Exists", table));
+  boost::asio::post(metric_context_, [this, table]() {
+    storage_operation_count_counter_.Record(1, MetricTags("Exists", table));
+  });
   delegate_->AsyncExists(
       table_name, key, std::move(callback).OnInvocation([this, start, table]() {
-        storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
-                                                          MetricTags("Exists", table));
+        boost::asio::post(metric_context_, [this, start, table]() {
+          storage_operation_latency_in_ms_histogram_.Record(ElapsedMs(clock_, start),
+                                                            MetricTags("Exists", table));
+        });
       }));
 }
 

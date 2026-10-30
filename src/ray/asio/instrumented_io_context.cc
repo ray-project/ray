@@ -81,15 +81,25 @@ void ScheduleLagProbe(instrumented_io_context &io_context,
 instrumented_io_context::instrumented_io_context(
     const bool emit_metrics,
     const bool running_on_single_thread,
-    const std::optional<std::string> context_name)
+    const std::optional<std::string> context_name,
+    boost::asio::io_context &metric_context)
     : boost::asio::io_context(
           running_on_single_thread ? 1 : BOOST_ASIO_CONCURRENCY_HINT_DEFAULT),
-      event_stats_(std::make_shared<EventTracker>()),
+      event_stats_(std::make_shared<EventTracker>(metric_context)),
       emit_metrics_(emit_metrics),
       context_name_(context_name) {
   if (emit_metrics) {
     ScheduleLagProbe(*this, context_name_);
   }
+}
+
+instrumented_io_context::instrumented_io_context(
+    const bool emit_metrics,
+    const bool running_on_single_thread,
+    const std::optional<std::string> context_name)
+    : instrumented_io_context(
+          emit_metrics, running_on_single_thread, context_name, unused_metric_context_) {
+  RAY_CHECK(emit_metrics == false);
 }
 
 void instrumented_io_context::post(std::function<void()> handler,

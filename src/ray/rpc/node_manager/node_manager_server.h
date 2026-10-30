@@ -232,7 +232,8 @@ class NodeManagerGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
       std::shared_ptr<const AuthenticationToken> auth_token,
-      GrpcServerMetrics &server_metrics) override {
+      GrpcServerMetrics &server_metrics,
+      boost::asio::io_context &metric_context) override {
     RAY_NODE_MANAGER_RPC_HANDLERS
   }
 

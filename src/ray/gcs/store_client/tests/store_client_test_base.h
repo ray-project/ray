@@ -257,6 +257,7 @@ class StoreClientTestBase : public ::testing::Test {
   size_t io_service_num_{2};
   std::shared_ptr<IOServicePool> io_service_pool_;
 
+  boost::asio::io_context metric_context_;
   std::shared_ptr<StoreClient> store_client_;
 
   std::string table_name_{"test_table"};
