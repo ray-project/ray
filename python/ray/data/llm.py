@@ -232,8 +232,10 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
         task_type: The task type to use: 'generate' (default) or 'embed'. For
             'embed', rows carry a ``prompt`` (and optionally ``embed_params``,
             e.g. ``{"dimensions": 256}``) and results are in ``row["embeddings"]``.
-            The detokenize stage is disabled, and prompts are sent to SGLang as
-            text unless ``tokenize_stage`` is set explicitly.
+            The detokenize stage is disabled, the chat template stage is
+            disabled unless ``chat_template_stage`` is set explicitly, and
+            prompts are sent to SGLang as text unless ``tokenize_stage`` is set
+            explicitly.
         runtime_env: The runtime environment to use for the SGLang engine. See
             :ref:`this doc <handling_dependencies>` for more details.
         max_pending_requests: The maximum number of pending requests. If not specified,

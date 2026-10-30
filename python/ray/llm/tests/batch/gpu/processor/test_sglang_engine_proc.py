@@ -132,7 +132,6 @@ class TestEmbedTaskStages:
         )
 
     def _build(self, **kwargs):
-        kwargs.setdefault("chat_template_stage", False)
         config = SGLangEngineProcessorConfig(
             model_source="Qwen/Qwen3-Embedding-0.6B",
             task_type=SGLangTaskType.EMBED,
@@ -150,6 +149,13 @@ class TestEmbedTaskStages:
         engine_kwargs = stage.fn_constructor_kwargs["engine_kwargs"]
         assert engine_kwargs["task"] == SGLangTaskType.EMBED
         assert engine_kwargs["skip_tokenizer_init"] is False
+
+    def test_embed_explicit_chat_template_stage_is_kept(self):
+        processor = self._build(chat_template_stage=True)
+        assert processor.list_stage_names() == [
+            "ChatTemplateStage",
+            "SGLangEngineStage",
+        ]
 
     @pytest.mark.parametrize(
         "kwargs",
@@ -208,6 +214,7 @@ class TestEmbedTaskStages:
         with self._patch_hf_config():
             ProcessorBuilder.build(config)
         assert "skip_tokenizer_init" not in config.engine_kwargs
+        assert config.chat_template_stage is True
         assert config.tokenize_stage is True
         assert config.detokenize_stage is True
 

@@ -91,6 +91,10 @@ def _configure_embed_stages(
 
     The detokenize stage is dropped: embedding returns vectors, not tokens.
 
+    Embed rows carry a ``prompt``, so the chat template stage, which needs
+    ``messages``, is turned off unless ``chat_template_stage`` is set
+    explicitly.
+
     Prompts are sent to SGLang as text by default, so the tokenize stage is
     turned off and ``skip_tokenizer_init`` defaults to False. Setting
     ``tokenize_stage`` explicitly sends token IDs instead, which needs an
@@ -106,6 +110,8 @@ def _configure_embed_stages(
             "this setting or set it to False."
         )
     updates: Dict[str, Any] = {"detokenize_stage": False}
+    if "chat_template_stage" not in config.model_fields_set:
+        updates["chat_template_stage"] = False
 
     skip_tokenizer_init = config.engine_kwargs.get("skip_tokenizer_init")
     if _stage_explicitly_enabled(config, "tokenize_stage", TokenizerStageConfig):

@@ -321,8 +321,9 @@ Embedding models differ from text generation in the following ways:
 
 `SGLangEngineProcessorConfig` supports `task_type="embed"` as well, with the same
 `prompt` input and `embeddings` output. Rows may carry an optional `embed_params`
-dict, for example `{"dimensions": 256}` for Matryoshka models. The detokenize stage
-is disabled, and prompts are sent to SGLang as text, which SGLang tokenizes. To
+dict, for example `{"dimensions": 256}` for Matryoshka models. The detokenize
+stage is disabled, the chat template stage is off unless `chat_template_stage` is
+set explicitly, and prompts are sent to SGLang as text, which SGLang tokenizes. To
 tokenize in Ray Data instead, set `tokenize_stage=True`; this requires an SGLang
 version whose `Engine.async_encode` accepts `input_ids`.
 
