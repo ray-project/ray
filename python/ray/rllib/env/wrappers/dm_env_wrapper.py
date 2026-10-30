@@ -19,8 +19,8 @@ def _convert_spec_to_space(spec):
         return spaces.Discrete(spec.num_values)
     elif isinstance(spec, specs.BoundedArray):
         return spaces.Box(
-            low=np.asscalar(spec.minimum),
-            high=np.asscalar(spec.maximum),
+            low=np.broadcast_to(spec.minimum, spec.shape),
+            high=np.broadcast_to(spec.maximum, spec.shape),
             shape=spec.shape,
             dtype=spec.dtype,
         )
