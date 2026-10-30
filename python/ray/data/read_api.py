@@ -3886,20 +3886,29 @@ def read_mcap(
             are read by byte offset from the summary's index, and read tasks take
             records up to the read-task budget, at most 16 small ones each
             (``RAY_DATA_MCAP_RECORDS_PER_READ_TASK``). Requires the V2 datasource.
-        video: For a sample read, a :class:`~ray.data.datasource.VideoOptions`
-            that decodes the video topics inside the read task. Each video
-            topic's steps become a ``frames:<topic>`` tensor of shape ``(steps,
-            height, width, 3)`` in place of ``data:<topic>``. ``resize`` scales
-            frames to exactly ``(height, width)``, stretching them when the
-            aspect ratio differs. A sample row whose frames exceed
-            ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails the read. Requires ``av`` for
-            H.264, H.265, VP9 and AV1, and ``Pillow`` for JPEG and PNG.
-        video_topics: For a sample read with ``video``, topics that carry
-            compressed video or images under a schema name ``read_mcap`` does
-            not know. Topics with a known video schema need no entry: Foxglove's
-            ``CompressedVideo`` and ``CompressedImage`` in their ROS 1, ROS 2 and
-            protobuf names, and ROS's ``sensor_msgs`` ``CompressedImage``. A
-            listed topic's codec is read from its payloads.
+        video: A :class:`~ray.data.datasource.VideoOptions` that decodes the
+            video topics inside the read task. In a read of paths every selected
+            topic must be video (see ``video_topics``), and each row is one RGB
+            frame in a ``frame`` column, ``uint8`` of shape ``(height, width,
+            3)``, in place of ``data``. Each topic's frames come in ``log_time``
+            order, but a frame can come after a later frame of another topic: a
+            decoder may hold frames back, as the AV1 one does. Every message's
+            frame is kept; for frames at a lower rate, use a sample read with
+            ``steps.across(fps=...)`` over clips of each recording. In a sample
+            read, each video topic's steps become a ``frames:<topic>`` tensor of
+            shape ``(steps, height, width, 3)`` in place of ``data:<topic>``.
+            ``resize`` scales frames to exactly ``(height,
+            width)``, stretching them when the aspect ratio differs. A sample
+            row whose frames exceed ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails the
+            read. Requires the V2 datasource, ``av`` for H.264, H.265, VP9 and
+            AV1, and ``Pillow`` for JPEG and PNG.
+        video_topics: Topics that carry compressed video or images under a
+            schema name ``read_mcap`` does not know, for ``video``. Topics with
+            a known video schema need no entry: Foxglove's ``CompressedVideo``
+            and ``CompressedImage`` in their ROS 1, ROS 2 and protobuf names, and
+            ROS's ``sensor_msgs`` ``CompressedImage``. A listed topic's codec is
+            read from its payloads. With ``topics``, every entry must be one of
+            them. Requires the V2 datasource.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -4018,10 +4027,6 @@ def read_mcap(
             f"time_source={time_source!r} applies only to a sample read "
             "(samples=...)."
         )
-    if video is not None or video_topics:
-        raise ValueError(
-            "video and video_topics apply only to a sample read (samples=...)."
-        )
 
     if file_extensions is None:
         file_extensions = ["mcap"]
@@ -4061,6 +4066,8 @@ def read_mcap(
             include_row_id=include_row_id,
             include_paths=include_paths,
             read_granularity=read_granularity,
+            video=video,
+            video_topics=video_topics,
             filesystem=filesystem,
             partitioning=partitioning,
             partition_filter=partition_filter,
@@ -4089,11 +4096,17 @@ def read_mcap(
             partition_filter=partition_filter,
         )
 
-    if not log_time_order or include_row_id or read_granularity != "message":
+    if (
+        not log_time_order
+        or include_row_id
+        or read_granularity != "message"
+        or video
+        or video_topics
+    ):
         raise NotImplementedError(
             "`log_time_order=False`, `include_row_id`, a checkpoint keyed on "
-            "`row_id` and `read_granularity` on `read_mcap` require the V2 "
-            "datasource. Enable it with "
+            "`row_id`, `read_granularity`, `video` and `video_topics` on "
+            "`read_mcap` require the V2 datasource. Enable it with "
             "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
             "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
         )

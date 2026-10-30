@@ -12,6 +12,8 @@ records it needs.
 ``MCAPScanner`` holds the optimizer's pushdowns and builds the ``MCAPReader``,
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
+With ``video``, it asks a ``VideoPlanner`` (``mcap_video_planning``) for the type
+of the ``frame`` column that replaces ``data``.
 
 ``read_granularity`` picks what one row of a read of paths is: one message, or
 one Attachment or Metadata record (``mcap_records``). Records are listed and
@@ -165,7 +167,6 @@ class MCAPDatasourceV2(FileDataSourceV2):
         """
         super().__init__(name="MCAP", category=DatasourceCategory.FILE_BASED)
         _check_import(self, module="mcap", package="mcap")
-        assert video is None or samples_schema is not None, "video is for samples"
         self._samples_schema = samples_schema
         self._sample_files = tuple(sample_files)
         self._topic_plans: Tuple[TopicPlan, ...] = ()
@@ -339,21 +340,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
                 self._granularity, include_row_id=self._include_row_id
             )
         else:
-            data_type = (
-                infer_data_type(
-                    self._selection,
-                    self._filesystem,
-                    sample.paths.tolist(),
-                    self._listed_paths,
-                )
-                if len(sample) > 0
-                else None
-            )
-            schema = message_schema(
-                include_metadata=self._include_metadata,
-                include_row_id=self._include_row_id,
-                data_type=data_type,
-            )
+            schema = self._infer_message_schema(sample)
         partitioning = self.resolve_partitioning(sample)
         if partitioning is not None and len(sample) > 0:
             partition_kv = PathPartitionParser(partitioning)(sample.paths.tolist()[0])
@@ -411,8 +398,39 @@ class MCAPDatasourceV2(FileDataSourceV2):
             ),
             topic_plans=self._topic_plans,
             video=self._video,
+            video_topics=self._video_topics,
             decoded_topics=self._decoded_topics,
             max_lead_in_ns=max_lead_in_ns(),
+        )
+
+    def _infer_message_schema(self, sample: FileManifest) -> pa.Schema:
+        """The schema of message rows.
+
+        ``data`` holds decoded JSON values when every selected channel of the
+        sampled files is JSON-encoded, and the raw payload bytes (``binary``)
+        otherwise. The reader follows this one decision for every file, so a
+        selection that mixes encodings keeps every payload as bytes. With
+        ``video``, a ``frame`` column replaces ``data``.
+        """
+        data_type: Optional[pa.DataType] = None
+        frame_type: Optional[pa.DataType] = None
+        if self._video is not None:
+            planner = VideoPlanner(
+                self._selection, self._filesystem, self._video_topics, owner=self
+            )
+            frame_type = planner.frame_type(sample.paths.tolist(), self._video.resize)
+        elif len(sample) > 0:
+            data_type = infer_data_type(
+                self._selection,
+                self._filesystem,
+                sample.paths.tolist(),
+                self._listed_paths,
+            )
+        return message_schema(
+            include_metadata=self._include_metadata,
+            include_row_id=self._include_row_id,
+            data_type=data_type,
+            frame_type=frame_type,
         )
 
     def _sample_decoded_topics(self) -> Tuple[str, ...]:
