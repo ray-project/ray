@@ -345,8 +345,8 @@ class CondaPlugin(RuntimeEnvPlugin):
                 if not any(result == env[0] or result == env[1] for env in envs):
                     raise ValueError(
                         f"The given conda environment '{result}' "
-                        f"from the runtime env {runtime_env} doesn't "
-                        "exist from the output of `conda info --json`. "
+                        f"from the runtime env {redact_runtime_env(runtime_env)} "
+                        "doesn't exist from the output of `conda info --json`. "
                         "You can only specify an env that already exists. "
                         f"Please make sure to create an env {result} "
                     )

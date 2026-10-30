@@ -35,6 +35,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
 from ray.data._internal.util import _is_local_scheme
+from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -192,4 +193,5 @@ class OrcDatasourceV2(FileDataSourceV2):
             filesystem=filesystem or self._filesystem,
             partitioning=options.get("partitioning", self._partitioning),
             synthesized_columns=self._synthesized_columns,
+            target_block_size=DataContext.get_current().target_max_block_size,
         )

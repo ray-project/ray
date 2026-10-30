@@ -11,7 +11,7 @@ COPY python/requirements/llm/nccl_overrides.txt ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.31.0"
+ARG VLLM_SCRIPTS_REF="v0.32.0"
 
 # Keep in sync with DEEPEP_COMMIT_HASH in vllm's docker/Dockerfile. This is
 # DeepEP V2 ("NCCL Gin"), which needs NCCL >= 2.30.4 at build and run time;
@@ -47,7 +47,7 @@ uv pip install --system --no-cache-dir --no-deps \
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
-# TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
+# vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.32.0.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/vllm-device-aware-compile-cache.patch"
 VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH="$(pwd)/vllm-preserve-model-eos-tokens.patch"
 VLLM_DEFER_TRITON_PATCH="$(pwd)/vllm-defer-triton-validation.patch"

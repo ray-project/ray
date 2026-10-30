@@ -1,5 +1,24 @@
-import { GPUStats, TPUStats } from "../type/node";
-import { normalizeAccelerators } from "./accelerator";
+import { GPUStats, NPUStats, TPUStats } from "../type/node";
+import { hasAnyAccelerator, normalizeAccelerators } from "./accelerator";
+
+describe("hasAnyAccelerator", () => {
+  it("detects an NPU-only node", () => {
+    const npus: NPUStats[] = [
+      {
+        index: 0,
+        cardId: 2,
+        deviceId: 0,
+        name: "Ascend910",
+      },
+    ];
+
+    expect(hasAnyAccelerator(undefined, undefined, npus)).toBe(true);
+  });
+
+  it("returns false when all accelerator lists are empty", () => {
+    expect(hasAnyAccelerator([], [], [])).toBe(false);
+  });
+});
 
 describe("normalizeAccelerators", () => {
   it("handles undefined inputs", () => {
@@ -58,6 +77,38 @@ describe("normalizeAccelerators", () => {
       memoryUsed: 1024, // Converted to MiB
       memoryTotal: 4096, // Converted to MiB
       rawTpu: tpus[0],
+    });
+  });
+
+  it("normalizes Ascend NPUs and converts bytes to MiB", () => {
+    const npus: NPUStats[] = [
+      {
+        index: 0,
+        cardId: 2,
+        deviceId: 0,
+        physicalId: 4,
+        name: "Ascend910",
+        utilizationAicore: 97,
+        memoryUsed: 4270 * 1024 * 1024,
+        memoryTotal: 65536 * 1024 * 1024,
+        healthStatus: 0,
+        powerMw: 940700,
+        temperatureC: 71,
+        processesPids: [{ pid: 123, npuMemoryUsage: 2048 * 1024 * 1024 }],
+      },
+    ];
+
+    const result = normalizeAccelerators(undefined, undefined, npus);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      name: "Ascend910",
+      index: 0,
+      type: "NPU",
+      utilization: 97,
+      memoryUsed: 4270,
+      memoryTotal: 65536,
+      processesPids: [{ pid: 123, memoryUsage: 2048 }],
+      rawNpu: npus[0],
     });
   });
 

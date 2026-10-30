@@ -26,12 +26,12 @@ except ImportError:
     prometheus_client = None
 
 
-_TO_TEST_METRICS = ["tasks", "actors", "running_jobs"]
+_TO_TEST_METRICS = ["tasks", "actors", "running_jobs", "task_retry_submissions"]
 _COMPONENT_TAG_KEY = "Component"
 
 
 @pytest.fixture
-def _setup_cluster_for_test(request, ray_start_cluster):
+def _setup_cluster_for_test(request, ray_start_cluster, tmp_path):
     global _CARDINALITY_LEVEL
     _CARDINALITY_LEVEL = None
     core_metric_cardinality_level = request.param
@@ -58,8 +58,14 @@ def _setup_cluster_for_test(request, ray_start_cluster):
         async def run(self):
             print("actor")
 
+    @ray.remote(max_retries=1, retry_exceptions=True)
+    def fails_once(marker):
+        if not os.path.exists(marker):
+            open(marker, "w").close()
+            raise ValueError("first attempt")
+
     a = A.remote()
-    obj_refs = [t.remote(), a.run.remote()]
+    obj_refs = [t.remote(), a.run.remote(), fails_once.remote(str(tmp_path / "m"))]
 
     # Make a request to the dashboard to produce some dashboard metrics
     requests.get(f"http://{ray_context.dashboard_url}/nodes")
@@ -87,7 +93,10 @@ def _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric):
     def _validate():
         timeseries = PrometheusTimeseries()
         metric_samples = fetch_prometheus_metric_timeseries(prom_addresses, timeseries)
-        samples = metric_samples.get(f"ray_{metric}")
+        # Counters are exported with a _total suffix.
+        samples = metric_samples.get(f"ray_{metric}") or metric_samples.get(
+            f"ray_{metric}_total"
+        )
         assert samples, f"Metric {metric} not found in samples"
         for sample in samples:
             if (
@@ -99,7 +108,7 @@ def _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric):
                 assert (
                     sample.labels.get(WORKER_ID_TAG_KEY) is not None
                 ), f"Sample {sample} does not contain WorkerId tag"
-                if metric == "tasks" or metric == "actors":
+                if metric in ("tasks", "actors", "task_retry_submissions"):
                     assert (
                         sample.labels.get(TASK_OR_ACTOR_NAME_TAG_KEY) is not None
                     ), f"Sample {sample} does not contain Name tag"

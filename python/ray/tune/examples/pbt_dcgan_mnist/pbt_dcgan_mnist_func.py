@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-"""
-Example of training DCGAN on MNIST using PBT with Tune's function API.
-"""
+"""Example of training DCGAN on MNIST using PBT with Tune's function API."""
 import argparse
 import os
 import tempfile

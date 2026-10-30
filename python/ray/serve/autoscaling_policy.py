@@ -220,9 +220,7 @@ def _merge_user_state_with_internal_state(
 
 
 def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
-    """
-    Returns the desired number of replicas if the cold start fast path applies, otherwise returns None.
-    """
+    """Returns the desired number of replicas if the cold start fast path applies, otherwise returns None."""
     if ctx.current_num_replicas == 0 and ctx.total_num_requests > 0:
         return max(
             math.ceil(1 * ctx.config.get_upscaling_factor()),
@@ -237,8 +235,7 @@ def _apply_autoscaling_config(
         [AutoscalingContext], Tuple[Union[int, float], Dict[str, Any]]
     ]
 ) -> Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]:
-    """
-    Wraps a custom policy function to automatically apply:
+    """Wraps a custom policy function to automatically apply:
     - upscaling_factor / downscaling_factor
     - min_replicas / max_replicas bounds
     - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
@@ -274,8 +271,7 @@ def _apply_app_level_autoscaling_config(
     [Dict[DeploymentID, AutoscalingContext]],
     Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]],
 ]:
-    """
-    Wraps an application-level custom policy function to automatically apply per-deployment:
+    """Wraps an application-level custom policy function to automatically apply per-deployment:
     - upscaling_factor / downscaling_factor
     - min_replicas / max_replicas bounds
     - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s

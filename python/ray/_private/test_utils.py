@@ -94,7 +94,7 @@ def call_with_auth_token(rpc, request, **kwargs):
     import grpc
 
     from ray._private.authentication.authentication_constants import (
-        AUTH_MODE_MISMATCH_ERROR_MESSAGE,
+        TOKEN_AUTH_ERROR_MESSAGE,
     )
 
     try:
@@ -102,7 +102,7 @@ def call_with_auth_token(rpc, request, **kwargs):
     except grpc.RpcError as e:
         # The token comes from this process's token file whatever the cluster's
         # mode, and a cluster with auth disabled rejects it.
-        if AUTH_MODE_MISMATCH_ERROR_MESSAGE not in (e.details() or ""):
+        if TOKEN_AUTH_ERROR_MESSAGE not in (e.details() or ""):
             raise
         return rpc(request, **kwargs)
 

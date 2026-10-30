@@ -490,6 +490,17 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
         env={
             "PATH": os.environ["PATH"],
             "RAY_ADDRESS": webui_url,
+            # The CLI needs the test cluster's auth mode and token.
+            **{
+                key: os.environ[key]
+                for key in (
+                    "HOME",
+                    "RAY_AUTH_MODE",
+                    "RAY_AUTH_TOKEN",
+                    "RAY_AUTH_TOKEN_PATH",
+                )
+                if key in os.environ
+            },
         },
         cwd=working_dir,
         check=True,

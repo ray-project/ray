@@ -579,14 +579,6 @@ class AuthenticationError(RayError, ConnectionError):
         super().__init__(message)
 
     def __str__(self) -> str:
-        from ray._private.authentication.authentication_constants import (
-            AUTH_MODE_MISMATCH_ERROR_MESSAGE,
-        )
-
-        # The fix is to opt out of auth, so the help on getting a token would mislead.
-        if AUTH_MODE_MISMATCH_ERROR_MESSAGE in self.message:
-            return self.message
-
         # Check if RAY_AUTH_MODE is set to token and add a heads-up if not
         auth_mode_note = ""
 

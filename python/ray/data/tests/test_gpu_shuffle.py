@@ -70,7 +70,7 @@ def _enqueue_output(op: GPUShuffleOperator, bundle: RefBundle, partition_id: int
     """Queue an output the way ``_on_bundle_ready`` does, so dequeue accounting matches."""
     op._output_queue.add(bundle, key=partition_id)
     op._output_queue.finalize(key=partition_id)
-    op._phase_metrics.output_phase.on_output_queued(bundle)
+    op._phase_metrics.output_phase_metrics.on_output_queued(bundle)
 
 
 def _make_data_context(
@@ -347,7 +347,7 @@ class TestGPUShuffleOperatorConstructor:
         op = self._make_op()
         mock_bar = MagicMock()
         op.set_sub_progress_bar(bar_name, mock_bar)
-        op._phase_metrics.phases[phase].update_progress(increment=3)
+        op._phase_metrics.phase_metrics[phase].update_progress(increment=3)
         mock_bar.update.assert_called_once_with(increment=3, total=None)
 
     def test_initial_state(self):

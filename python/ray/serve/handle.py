@@ -433,14 +433,12 @@ class _DeploymentResponseBase(Generic[R]):
           called on the object ref, attempting to cancel the request and any downstream
           requests it makes.
 
-        If the request is successfully cancelled, subsequent operations on the ref will
-        raise an exception:
-
-            - If the request was cancelled before assignment, they'll raise
-              `asyncio.CancelledError` (or a `concurrent.futures.CancelledError` for
-              synchronous methods like `.result()`.).
-            - If the request was cancelled after assignment, they'll raise
-              `ray.exceptions.TaskCancelledError`.
+        If the request is successfully cancelled, subsequent operations on the response
+        raise `ray.serve.exceptions.RequestCancelledError`. This is the same whether the
+        request was cancelled before or after it was assigned to a replica, and whether
+        you `await` the response or call a synchronous method such as `.result()`.
+        `RequestCancelledError` is a subclass of `ray.exceptions.TaskCancelledError`,
+        so `except TaskCancelledError` also catches it.
         """
         if self._cancelled:
             return

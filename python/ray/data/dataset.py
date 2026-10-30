@@ -1022,8 +1022,7 @@ class Dataset:
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """
-        Add or overwrite multiple columns via expressions in a single projection.
+        """Add or overwrite multiple columns via expressions in a single projection.
 
         This is the multi-column counterpart of :meth:`with_column`. All
         expressions are evaluated within one projection over the existing
@@ -1153,8 +1152,7 @@ class Dataset:
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """
-        Add a new column to the dataset via an expression.
+        """Add a new column to the dataset via an expression.
 
         This method allows you to add a new column to a dataset by applying an
         expression. The expression can be composed of existing columns, literals,
@@ -3372,8 +3370,7 @@ class Dataset:
             raise ValueError("hash_column is not supported for random split")
 
         def random_split(batch: pa.Table):
-            """
-            Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
+            """Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
             or to test otherwise.
 
             This version ensures that the random choices are **stable per Ray task execution** by seeding
@@ -3442,8 +3439,13 @@ class Dataset:
     def union(self, *other: "Dataset") -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
-        The order of the blocks in the datasets is preserved, as is the
-        relative ordering between the datasets passed in the argument list.
+        The union doesn't append one dataset after another. By default, it
+        emits blocks in the order the input datasets produce them, so the
+        output order isn't deterministic. If you set
+        ``DataContext.execution_options.preserve_order`` to ``True``, it
+        interleaves blocks round-robin: one block from each dataset in
+        argument order, then the next block from each, until every dataset
+        runs out. Within each dataset, blocks keep their order.
 
         .. caution::
             Unioned datasets aren't lineage-serializable. As a result, they can't be
@@ -3452,10 +3454,13 @@ class Dataset:
         Examples:
 
             >>> import ray
-            >>> ds1 = ray.data.range(2)
-            >>> ds2 = ray.data.range(3)
-            >>> ds1.union(ds2).take_all()  # doctest: +SKIP
-            [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
+            >>> ctx = ray.data.DataContext.get_current()
+            >>> ctx.execution_options.preserve_order = True
+            >>> ds1 = ray.data.range(4, override_num_blocks=2)
+            >>> ds2 = ray.data.range(4, override_num_blocks=2)
+            >>> [row["id"] for row in ds1.union(ds2).take_all()]
+            [0, 1, 0, 1, 2, 3, 2, 3]
+            >>> ctx.execution_options.preserve_order = False
 
         Args:
             *other: The datasets to combine with this one. The datasets
@@ -4634,9 +4639,39 @@ class Dataset:
         self, fetch_if_missing: bool = True
     ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
         """Gets the underlying raw schema value not wrapped in Schema class."""
-        base_schema = self._cache.get_schema(self._logical_plan.dag)
+        config = self._logical_plan.context.checkpoint_config
+        generated_id = config.generated_id_column if config is not None else None
+        base_schema = self._cache.get_schema(
+            self._logical_plan.dag, generated_id=generated_id
+        )
         if base_schema is None:
             base_schema = self._logical_plan.dag.infer_schema()
+
+        # ``BindGeneratedIdColumn`` adds the configured generated ID column
+        # when the plan is optimized for execution, possibly after this
+        # dataset was built (Ray Train sets ``checkpoint_config`` on built
+        # datasets). Re-infer over the bound plan when the column is missing
+        # from the current answer, so the schema matches the rows execution
+        # produces — also when the schema was cached before the config was
+        # set.
+        schema_names = getattr(base_schema, "names", None)
+        if generated_id is not None and (
+            schema_names is None or generated_id not in schema_names
+        ):
+            # Lazy import: the rules package imports back into ``ray.data``.
+            from ray.data._internal.logical.rules.bind_generated_id_column import (
+                BindGeneratedIdColumn,
+            )
+
+            bound_plan = BindGeneratedIdColumn().apply(self._logical_plan)
+            if bound_plan is not self._logical_plan:
+                bound_schema = bound_plan.dag.infer_schema()
+                # ``None`` when an op erases the schema (e.g. a UDF). The
+                # current answer may come from executed blocks and is the
+                # best one available; never trade a known schema for None.
+                if bound_schema is not None:
+                    base_schema = bound_schema
+
         if base_schema is None and fetch_if_missing:
             # Lazily execute only the first block to minimize computation.
             # We achieve this by appending a Limit[1] operation to a copy of
@@ -4661,7 +4696,9 @@ class Dataset:
                         bundle.schema for bundle in iter_ref_bundles
                     )
         if base_schema is not None:
-            self._cache.set_schema(self._logical_plan.dag, base_schema)
+            self._cache.set_schema(
+                self._logical_plan.dag, base_schema, generated_id=generated_id
+            )
         return base_schema
 
     @ConsumptionAPI(
@@ -6649,8 +6686,7 @@ class Dataset:
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
-        """
-        Convenience method to write Ray Dataset to Kafka.
+        """Convenience method to write Ray Dataset to Kafka.
 
         Examples:
             >>> import ray  # doctest: +SKIP_EXAMPLE
@@ -6851,10 +6887,13 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node and format the batches. Defaults
-                to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -6865,11 +6904,14 @@ class Dataset:
                 ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
                 ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             _collate_fn: A custom function to collate each batch of data.
 
@@ -6943,10 +6985,14 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches
+                and applies ``collate_fn``. The pool has ``prefetch_batches`` threads,
+                up to a limit of 4. To change the limit, set the
+                ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS`` environment variable. If
+                0, Ray Data doesn't prefetch blocks and formats and collates each batch
+                without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -6973,12 +7019,14 @@ class Dataset:
                 experimental and is subject to change. You can't use this parameter in
                 conjunction with ``dtypes``.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
                 `TensorBatchType`. It is recommended to use this flag to pin
@@ -7052,7 +7100,14 @@ class Dataset:
             [5.1 4.9] [0 0]
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches
+                and applies ``collate_fn``. The pool has ``prefetch_batches`` threads,
+                up to a limit of 4. To change the limit, set the
+                ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS`` environment variable. If
+                0, Ray Data doesn't prefetch blocks and formats and collates each batch
+                without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch. Must be divisible
                 by the number of local devices. Defaults to 256.
             dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
@@ -7074,12 +7129,14 @@ class Dataset:
                 Note: This function is called in a multi-threaded context; avoid using
                 thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete. Defaults to False.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             synchronize_batches: Whether to synchronize batch shapes across all hosts.
                 Setting this to False can improve performance if you guarantee that all
@@ -7145,10 +7202,13 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -7156,12 +7216,14 @@ class Dataset:
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if ``None``, the
                 dtype is inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -7279,23 +7341,26 @@ class Dataset:
             additional_columns: Columns that correspond to sample weights or other metadata.
                 If this is a string, the weight data is a tensor. If this is a list, the
                 weight data is a ``dict`` that maps column names to their tensor representation.
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
                 size, then the last batch is smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer is drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
@@ -8020,8 +8085,7 @@ class Dataset:
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:
-        """
-        Serialize this dataset's lineage, not the actual data or the existing data
+        """Serialize this dataset's lineage, not the actual data or the existing data
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
@@ -8093,8 +8157,7 @@ class Dataset:
     @staticmethod
     @DeveloperAPI
     def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
-        """
-        Deserialize the provided lineage-serialized Dataset.
+        """Deserialize the provided lineage-serialized Dataset.
 
         This uses pickle, and assumes that the provided serialized bytes were
         serialized using :py:meth:`Dataset.serialize_lineage`.
@@ -8634,8 +8697,7 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
-        """
-        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
+        """Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
 
         Args:
             base_schema: The underlying Arrow or Pandas schema.
@@ -8802,7 +8864,14 @@ class _CacheMetadataIterator(OutputIterator):
             self._dataset._cache.set_num_rows(dag, self._num_rows)
             self._dataset._cache.set_size_bytes(dag, self._size_bytes)
             if schema:
-                self._dataset._cache.set_schema(dag, schema)
+                config = self._dataset._logical_plan.context.checkpoint_config
+                self._dataset._cache.set_schema(
+                    dag,
+                    schema,
+                    generated_id=(
+                        config.generated_id_column if config is not None else None
+                    ),
+                )
             raise
 
 
@@ -8833,6 +8902,9 @@ class _ExecutionCache:
         self._size_bytes: Optional[int] = None
         # Note schema can be cached via other means as well.
         self._schema: Optional["Schema"] = None
+        # The ``CheckpointConfig.generated_id_column`` binding in effect when
+        # ``_schema`` was written; ``None`` if no column was configured.
+        self._schema_generated_id: Optional[str] = None
 
         # --- Other ---
         self._stats: Optional[DatasetStats] = None
@@ -8856,12 +8928,27 @@ class _ExecutionCache:
         # backwards compatibility.
         return self._stats
 
-    def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
-        if self._cache_is_fresh(dag):
-            if self._bundle is not None and self._bundle.schema is not None:
-                return self._bundle.schema
-            return self._schema
-        return None
+    def get_schema(
+        self, dag: "LogicalOperator", *, generated_id: Optional[str] = None
+    ) -> Optional["Schema"]:
+        """Return the cached schema, or ``None`` on a miss.
+
+        ``generated_id`` is the ``CheckpointConfig.generated_id_column``
+        currently in effect. The column appears and disappears with the
+        config (Ray Train sets ``checkpoint_config`` on built datasets), so
+        a cached schema is valid only under the binding it was computed
+        with; any other binding is a miss.
+        """
+        if not self._cache_is_fresh(dag):
+            return None
+        if self._bundle is not None and self._bundle.schema is not None:
+            # A materialized bundle is exactly what iteration returns — no
+            # re-execution happens — so its schema holds regardless of any
+            # config set afterwards.
+            return self._bundle.schema
+        if generated_id != self._schema_generated_id:
+            return None
+        return self._schema
 
     def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
         if self._cache_is_fresh(dag):
@@ -8895,11 +8982,18 @@ class _ExecutionCache:
         self._operator = dag
         self._size_bytes = size_bytes
 
-    def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
+    def set_schema(
+        self,
+        dag: "LogicalOperator",
+        schema: "Schema",
+        *,
+        generated_id: Optional[str] = None,
+    ) -> None:
         if dag != self._operator:
             self._clear_dag_dependent_cache()
         self._operator = dag
         self._schema = schema
+        self._schema_generated_id = generated_id
 
     def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
         if dag != self._operator:
@@ -8917,6 +9011,7 @@ class _ExecutionCache:
         self._operator = None
         self._bundle = None
         self._schema = None
+        self._schema_generated_id = None
         self._num_rows = None
         self._size_bytes = None
 
@@ -8926,6 +9021,7 @@ class _ExecutionCache:
         new._bundle = self._bundle
         new._stats = self._stats
         new._schema = self._schema
+        new._schema_generated_id = self._schema_generated_id
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
         return new
@@ -8936,6 +9032,7 @@ class _ExecutionCache:
         new._bundle = copy.copy(self._bundle)
         new._stats = copy.copy(self._stats)
         new._schema = copy.copy(self._schema)
+        new._schema_generated_id = self._schema_generated_id
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
         return new

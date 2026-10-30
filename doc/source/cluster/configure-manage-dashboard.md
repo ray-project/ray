@@ -65,6 +65,16 @@ $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
 The dashboard is now visible at ``http://localhost:8265``.
 :::
 
+:::{tab-item} Manual configuration
+**Port forwarding** <br/> If you started the cluster manually with ``ray start``, forward a local port to the dashboard port on the head node over SSH:
+
+```shell
+ssh -L 8265:localhost:8265 <username>@<head-node-address>
+```
+
+Keep the SSH session open, and view the dashboard at ``http://localhost:8265``. If you started the head node with a non-default ``--dashboard-port``, use that port in place of the second ``8265``.
+:::
+
 :::{tab-item} KubeRay
 
 The KubeRay operator makes the dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access the dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
@@ -123,6 +133,8 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
       [[http.services.dashboard.loadBalancer.servers]]
         url = "http://localhost:8265"
 ```
+
+Ray reports the head node's own dashboard address by default, which users behind the proxy might not be able to reach. To report the proxied URL instead, set the ``RAY_OVERRIDE_DASHBOARD_URL`` environment variable in the process that connects to Ray, for example ``RAY_OVERRIDE_DASHBOARD_URL=www.my-website.com/ray/dashboard/``. Ray then uses that URL when it reports the dashboard address to users, such as in the message it logs when a driver connects. The variable changes only the reported URL. It doesn't change the address the dashboard listens on.
 
 ```{admonition} Warning
 :class: warning
@@ -185,9 +197,11 @@ The Ray Dashboard redacts secret values out of the {ref}`runtime environments <r
 
 Redaction applies only to requests from a browser. `ray list runtime-envs`, `ray job status`, and the Python SDK still return the plaintext values.
 
-Ray also masks `env_vars` values in the runtime environment agent and setup logs and in worker process command lines, which the dashboard shows on the Logs and Cluster pages. This masking applies to every client and doesn't depend on the setting below.
+Ray also masks `env_vars` values in runtime environment error messages, runtime environment agent and setup logs, and worker process command lines, which the dashboard shows on the Logs and Cluster pages. This masking applies to every client and doesn't depend on the setting below.
 
-To disable redaction, set the following environment variable on the Ray head node before starting Ray:
+The setting below also controls redaction in the events that the event aggregator sends to an external HTTP endpoint. Ray redacts these events by default, whatever the endpoint is, so the serialized runtime environment in task, actor, and job definition events shows `<redacted>` for each `env_vars` value. If your event consumer needs the plaintext values, disable redaction as shown below. This setting is shared, so disabling it also turns off redaction in the dashboard.
+
+To disable redaction, set the following environment variable on every node before starting Ray:
 
 ```bash
 export RAY_DASHBOARD_REDACT_RUNTIME_ENV=0

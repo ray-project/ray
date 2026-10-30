@@ -1603,9 +1603,7 @@ def _stream_client_output(
     progress_reporter: ProgressReporter,
     string_queue: Queue,
 ) -> Any:
-    """
-    Stream items from string queue to progress_reporter until remote_future resolves
-    """
+    """Stream items from string queue to progress_reporter until remote_future resolves"""
     if string_queue is None:
         return
 

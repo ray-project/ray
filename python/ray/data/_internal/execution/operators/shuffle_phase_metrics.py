@@ -205,7 +205,7 @@ class ShuffleOperatorMetrics:
         self._estimated_output_num_rows: Optional[int] = None
 
         self._aliased = len(specs) == 1
-        self.phases: Dict[str, ShufflePhaseMetrics] = {
+        self.phase_metrics: Dict[str, ShufflePhaseMetrics] = {
             spec.name: ShufflePhaseMetrics(
                 spec,
                 metrics=op_metrics if self._aliased else OpRuntimeMetrics(op),
@@ -214,44 +214,44 @@ class ShuffleOperatorMetrics:
             )
             for spec in specs
         }
-        self._phases_by_bar_name = {
-            phase.spec.progress_bar_name: phase for phase in self.phases.values()
+        self._phase_metrics_by_bar_name = {
+            pm.spec.progress_bar_name: pm for pm in self.phase_metrics.values()
         }
 
     @property
-    def output_phase(self) -> ShufflePhaseMetrics:
-        return next(p for p in self.phases.values() if p.is_output_phase)
+    def output_phase_metrics(self) -> ShufflePhaseMetrics:
+        return next(pm for pm in self.phase_metrics.values() if pm.is_output_phase)
 
     def stats(self) -> StatsDict:
         # With several keys the stats builder prefixes each with the operator
         # name, so bare phase names render as ``<op>Shuffle`` / ``<op>Finalize``.
-        return {phase.name: phase.block_stats for phase in self.phases.values()}
+        return {pm.name: pm.block_stats for pm in self.phase_metrics.values()}
 
     def extra_metrics(self) -> Dict[str, Any]:
         if self._aliased:
             # The lone phase is the operator's own metrics; nesting it here
             # would put the operator's dict inside itself.
-            (phase,) = self.phases.values()
-            return dict(phase.custom)
-        return {phase.name: phase.as_dict() for phase in self.phases.values()}
+            (pm,) = self.phase_metrics.values()
+            return dict(pm.custom)
+        return {pm.name: pm.as_dict() for pm in self.phase_metrics.values()}
 
-    def phase_metrics(self) -> Dict[str, OpRuntimeMetrics]:
+    def runtime_metrics_by_phase(self) -> Dict[str, OpRuntimeMetrics]:
         if self._aliased:
             return {}
-        return {phase.name: phase.metrics for phase in self.phases.values()}
+        return {pm.name: pm.metrics for pm in self.phase_metrics.values()}
 
     def progress_bar_names(self) -> List[str]:
-        return [phase.spec.progress_bar_name for phase in self.phases.values()]
+        return [pm.spec.progress_bar_name for pm in self.phase_metrics.values()]
 
     def set_progress_bar(self, name: str, bar: "BaseProgressBar") -> None:
-        phase = self._phases_by_bar_name.get(name)
-        if phase is not None:
-            phase.set_progress_bar(bar)
+        pm = self._phase_metrics_by_bar_name.get(name)
+        if pm is not None:
+            pm.set_progress_bar(bar)
 
     def update_output_estimates(
-        self, phase: ShufflePhaseMetrics, num_tasks_submitted: int
+        self, phase_metrics: ShufflePhaseMetrics, num_tasks_submitted: int
     ) -> None:
-        bundles, rows = phase.estimate_totals(
+        bundles, rows = phase_metrics.estimate_totals(
             num_tasks_submitted, self._op.upstream_op_num_outputs()
         )
         self._estimated_num_output_bundles = bundles

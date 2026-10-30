@@ -7,11 +7,10 @@ import grpc
 from grpc import aio as aiogrpc
 
 from ray._private.authentication.authentication_constants import (
-    AUTH_MODE_MISMATCH_ERROR_MESSAGE,
     AUTHORIZATION_HEADER_NAME,
+    TOKEN_AUTH_ERROR_MESSAGE,
 )
 from ray._private.authentication.authentication_utils import (
-    is_k8s_token_auth_enabled,
     is_token_auth_enabled,
     validate_request_token,
 )
@@ -38,9 +37,9 @@ def _authentication_error(metadata: tuple) -> Optional[str]:
 
     if not is_token_auth_enabled():
         # Reject clients that send a token so that they opt out too.
-        if auth_header is not None and not is_k8s_token_auth_enabled():
+        if auth_header is not None:
             logger.debug("Rejecting a request with a token because auth is disabled")
-            return AUTH_MODE_MISMATCH_ERROR_MESSAGE
+            return TOKEN_AUTH_ERROR_MESSAGE
         return None
 
     if not auth_header:
@@ -148,8 +147,8 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
 
     With RAY_AUTH_MODE=token, a request without a valid Bearer token in the
     "authorization" metadata header is rejected with UNAUTHENTICATED status. With
-    auth disabled and Kubernetes token auth off, a request that carries that
-    header is rejected with UNAUTHENTICATED and AuthModeMismatch.
+    auth disabled, a request that carries that header is rejected with
+    UNAUTHENTICATED and the same token auth error a client without a token gets.
     """
 
     async def intercept_service(
@@ -180,8 +179,8 @@ class SyncAuthenticationServerInterceptor(grpc.ServerInterceptor):
 
     With RAY_AUTH_MODE=token, a request without a valid Bearer token in the
     "authorization" metadata header is rejected with UNAUTHENTICATED status. With
-    auth disabled and Kubernetes token auth off, a request that carries that
-    header is rejected with UNAUTHENTICATED and AuthModeMismatch.
+    auth disabled, a request that carries that header is rejected with
+    UNAUTHENTICATED and the same token auth error a client without a token gets.
     """
 
     def intercept_service(

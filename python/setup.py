@@ -385,9 +385,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.31.0",
-                "nixl==1.4.1",
-                "nixl-cu13==1.4.1",
+                "vllm[audio]==0.32.0",
+                "nixl==1.5.0",
+                "nixl-cu13==1.5.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",

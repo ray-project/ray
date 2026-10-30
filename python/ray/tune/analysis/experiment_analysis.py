@@ -657,19 +657,20 @@ class ExperimentAnalysis:
                 continue
             if metric not in df:
                 idx = -1
+            elif mode and df[metric].isna().all():
+                # The trial has no value to pick, e.g. it diverged and only
+                # reported NaN. idxmax/idxmin raise on this in pandas>=3.
+                logger.warning(
+                    "Warning: Non-numerical value(s) encountered for {}".format(path)
+                )
+                continue
             elif mode == "max":
                 idx = df[metric].idxmax()
             elif mode == "min":
                 idx = df[metric].idxmin()
             else:
                 idx = -1
-            try:
-                rows[path] = df.iloc[idx].to_dict()
-            except TypeError:
-                # idx is nan
-                logger.warning(
-                    "Warning: Non-numerical value(s) encountered for {}".format(path)
-                )
+            rows[path] = df.iloc[idx].to_dict()
 
         return rows
 

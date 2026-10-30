@@ -680,6 +680,23 @@ class TestPrefixTreePrefixMatchOrSmallestTenants:
             "hello world", available, match_rate_threshold=0.5
         ) == ["tenant_3"]
 
+    def test_key_prefix_does_not_count_toward_match_rate(
+        self, tree: PrefixTree
+    ) -> None:
+        """Only text matched after the key prefix counts toward the match rate."""
+        tree.add_tenants(["tenant_1", "tenant_2"], 0)
+        tree.insert("\0m1\0hello world", "tenant_1", 1)
+        tree.insert("\0m10\0hi", "tenant_2", 2)
+        assert tree.prefix_match_or_smallest_tenants(
+            "hello there", match_rate_threshold=0.1, key_prefix="\0m1\0"
+        ) == ["tenant_1"]
+        # Matching the key prefix alone, or part of a key prefix that shares a
+        # prefix with another one, is a 0% match, even for empty text.
+        for text, key_prefix in [("zzzz", "\0m1\0"), ("zzzz", "\0m\0"), ("", "\0m1\0")]:
+            assert tree.prefix_match_or_smallest_tenants(
+                text, match_rate_threshold=0.1, key_prefix=key_prefix
+            ) == ["tenant_2"]
+
 
 class TestPrefixTreeComprehensive:
     """Comprehensive tests for the PrefixTree"""

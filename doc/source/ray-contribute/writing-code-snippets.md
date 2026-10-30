@@ -282,58 +282,53 @@ If your output is hard to test and you don't want to display a sample output, ex
     print("This output is hidden and untested")
 ```
 
+## How to add a page's examples to CI
+
+CI tests a documentation page's `doctest` and `testcode` examples only if `doc/BUILD.bazel` names the page. When you add the first runnable example to a page, add the page to its library's `doctest_each` list in `doc/BUILD.bazel`, or to the `team:none` list if no library owns it. The `doc_prose_doctest_targets` lint fails a PR that adds a runnable example to a page that no target names, and a PR that leaves a page with no runnable example in a list.
+
 ## How to test examples with GPUs
 
-To configure Bazel to run an example with GPUs, complete the following steps:
+Bazel `doctest` rules in `BUILD.bazel` files decide which files CI tests, and a rule with `gpu = True` runs its files on GPUs. To run an example with GPUs, move its file from the CPU rule to a GPU rule.
 
-1. Open the corresponding `BUILD` file. If your example is in the `doc/` folder, open `doc/BUILD`. If your example is in the `python/` folder, open a file such as `python/ray/train/BUILD`.
+For a documentation page under `doc/source/`, complete the following steps:
 
-2. Locate the `doctest` rule. It looks like this:
+1. Open `doc/BUILD.bazel` and find the `doctest_each` rule for the page's library. It lists each page with a runnable example and gives every page its own test target.
 
-   ```
-   doctest(
-       files = glob(
-           include=["source/**/*.rst"],
-       ),
-       size = "large",
-       tags = ["team:none"]
-   )
-   ```
+2. Remove the page from that list.
 
-3. Add the file that contains your example to the list of excluded files.
+3. Add the page to the library's GPU `doctest` rule. If the library doesn't have one, create it.
 
    ```
    doctest(
-       files = glob(
-           include=["source/**/*.rst"],
-           exclude=["source/data/requires-gpus.rst"]
-       ),
-       tags = ["team:none"]
+       name = "doctest[train-gpu]",
+       files = [
+           "source/train/user-guides/using-accelerators.md",
+       ],
+       gpu = True,
+       tags = ["team:ml"],
    )
    ```
 
-4. If it doesn't already exist, create a `doctest` rule with `gpu` set to `True`.
+For a docstring in a Python module, complete the following steps:
+
+1. Open the library's `BUILD.bazel` file, such as `python/ray/train/BUILD.bazel`.
+
+2. Add the module to the `exclude` list of the library's CPU `doctest` rule glob.
+
+3. Add the module to the library's GPU `doctest` rule. If the library doesn't have one, create it.
 
    ```
    doctest(
-       files = [],
-       tags = ["team:none"],
-       gpu = True
+       name = "py_doctest[train-gpu]",
+       files = [
+           "tensorflow/tensorflow_trainer.py",
+       ],
+       gpu = True,
+       tags = ["team:ml"],
    )
    ```
 
-5. Add the file that contains your example to the GPU rule.
-
-   ```
-   doctest(
-       files = ["source/data/requires-gpus.rst"]
-       size = "large",
-       tags = ["team:none"],
-       gpu = True
-   )
-   ```
-
-For a practical example, see `doc/BUILD` or `python/ray/train/BUILD`.
+For practical examples, see `doc/BUILD.bazel` and `python/ray/train/BUILD.bazel`.
 
 ## How to locally test examples
 

@@ -79,6 +79,7 @@ from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
@@ -1804,9 +1805,10 @@ def init(
             # None means there was a conflict.
             raise ValueError(
                 "Failed to merge the Job's runtime env "
-                f"{injected_job_config.runtime_env} with "
-                f"a ray.init's runtime env {driver_runtime_env} because "
-                "of a conflict. Specifying the same runtime_env fields "
+                f"{redact_runtime_env(injected_job_config.runtime_env)} with "
+                f"a ray.init's runtime env {redact_runtime_env(driver_runtime_env)} "
+                "because of a conflict. "
+                "Specifying the same runtime_env fields "
                 "or the same environment variable keys is not allowed. "
                 "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
                 "combine Job and Driver's runtime environment in the event of "

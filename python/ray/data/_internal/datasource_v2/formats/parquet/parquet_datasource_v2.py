@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -39,7 +39,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.util import _is_local_scheme
+from ray.data._internal.util import RetryingPyFileSystem, _is_local_scheme
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -84,7 +84,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
         arrow_parquet_args: Optional[dict] = None,
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[dict] = None,
-        extra_synthesized_columns: Sequence[SynthesizedColumn] = (),
     ):
         super().__init__(name="ParquetV2", category=DatasourceCategory.FILE_BASED)
         # Capture the ``local://`` check against the *original* paths;
@@ -98,7 +97,14 @@ class ParquetDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths: List[str] = resolved_paths
-        self._filesystem = resolved_filesystem
+        # Retry ``DataContext.retried_io_errors`` on every filesystem call --
+        # listing, schema inference and reads -- as V1's ``ParquetDatasource``
+        # does. Without this, the driver-side listing and footer reads fail on
+        # the first transient error.
+        self._filesystem = RetryingPyFileSystem.wrap(
+            resolved_filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
+        )
         self._partitioning = partitioning
         self._file_extensions = (
             list(file_extensions) if file_extensions is not None else None
@@ -135,12 +141,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
             synthesized_columns.append(PathColumn())
         if include_row_hash:
             synthesized_columns.append(RowHashColumn())
-        # Columns Ray Data itself requests (e.g. the checkpoint ID column
-        # behind ``CheckpointConfig(generated_id_column=...)``). Unlike
-        # ``path`` / ``row_hash`` they never replace a file column:
-        # ``infer_schema`` raises if a file already has one of their names.
-        self._extra_synthesized_columns = tuple(extra_synthesized_columns)
-        synthesized_columns.extend(self._extra_synthesized_columns)
         self._synthesized_columns = tuple(synthesized_columns)
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
@@ -357,15 +357,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
                 if schema.get_field_index(field_name) == -1:
                     pa_type = partition_pa_schema.field(field_name).type
                     schema = schema.append(pa.field(field_name, pa_type))
-
-        for column in self._extra_synthesized_columns:
-            if schema.get_field_index(column.name) != -1:
-                raise ValueError(
-                    f"Column {column.name!r} already exists in the Parquet data, "
-                    "so Ray Data can't add its synthesized column of the same "
-                    "name. Pick a different name, e.g. for "
-                    "`CheckpointConfig(generated_id_column=...)`."
-                )
 
         for column in self._synthesized_columns:
             # Synthesized columns (``path``, ``row_hash``) are appended

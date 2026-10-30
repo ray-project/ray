@@ -1,5 +1,4 @@
-"""This file defines base types and common structures for RLlib connectors.
-"""
+"""This file defines base types and common structures for RLlib connectors."""
 
 import abc
 import logging

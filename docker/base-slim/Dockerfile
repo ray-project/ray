@@ -120,17 +120,19 @@ rm /tmp/miniforge.sh
 /home/ray/anaconda3/bin/conda init bash
 
 eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
-# conda-forge certifi builds from 2026 on require python>=3.11. Downgrading the
-# Miniforge python to 3.10 without a certifi cap makes the solver drop certifi,
-# requests and conda itself, and the transaction fails with RemoveError.
-# conda-forge pip 26.2.2 (the eMudhra CA fix) also requires python>=3.11, so
-# 3.10 installs it from PyPI after the conda step.
+# Pin certifi and pip to their eMudhra CA fix releases. certifi matches the pin
+# in the lock files, so the lock install below leaves conda's copy in place.
+# conda-forge certifi 2026.10.19 allows python 3.10 only through a repodata
+# patch (conda-forge/conda-forge-repodata-patches-feedstock@d7dcb640); its other
+# 2026 builds require python>=3.11, and without a 3.10 build the solver drops
+# certifi, requests and conda itself and fails with RemoveError.
 # TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
-CONDA_PYTHON_EXTRA_SPECS=("pip=26.2.2")
+CONDA_PIP_SPEC=("pip=26.2.2")
 if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
-    CONDA_PYTHON_EXTRA_SPECS=("certifi<2026")
+    # conda-forge pip 26.2.2 requires python>=3.11; 3.10 installs it from PyPI below.
+    CONDA_PIP_SPEC=()
 fi
-/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "${CONDA_PYTHON_EXTRA_SPECS[@]}"
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "certifi=2026.10.19" "${CONDA_PIP_SPEC[@]}"
 /home/ray/anaconda3/bin/conda clean -a
 
 # conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.

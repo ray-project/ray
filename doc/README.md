@@ -53,8 +53,8 @@ This ensures consistent messaging across documentation pages.
 
 ## Checking for broken links
 
-To check if there are broken links, run the following (we are currently not running this
-in the CI since there are false positives).
+To check if there are broken links, run the following. CI runs the link check only after
+merge, as a soft-fail step that reports broken links without blocking.
 
 ```bash
 make linkcheck

@@ -236,8 +236,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
         task_type: TypeSGLangTaskType = SGLangTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
     ):
-        """
-        Initialize the SGLangEngineStageUDF.
+        """Initialize the SGLangEngineStageUDF.
 
         Args:
             data_column: The data column name.
@@ -273,8 +272,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
         self,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """
-        Normalize the engine kwargs.
+        """Normalize the engine kwargs.
 
         Args:
             engine_kwargs: The kwargs to normalize.
@@ -337,9 +335,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
 
 class SGLangEngineStage(StatefulStage):
-    """
-    A stage that runs SGLang engine.
-    """
+    """A stage that runs SGLang engine."""
 
     fn: Type[StatefulStageUDF] = SGLangEngineStageUDF
 

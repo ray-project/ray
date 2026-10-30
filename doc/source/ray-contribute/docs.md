@@ -17,7 +17,7 @@ This document walks you through everything you need to do to get started.
 
 The Ray documentation follows a house style guide that covers voice, word choice, sentence structure, headings, lists, links, and formatting. Read it before you write or edit a page. See {ref}`documentation-style`.
 
-The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale enforces an automated subset of the Google guide in CI. For more information, see [How to use Vale](vale).
+The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale checks an automated subset of the Google guide. Its CI check is temporarily off, so run Vale locally. For more information, see [How to use Vale](vale).
 
 (build-ray-docs)=
 
@@ -340,7 +340,7 @@ In the same way, you can convert `.ipynb` notebooks to `.md` notebooks with `--t
 ## How to use Vale
 ### What is Vale?
 
-[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). CI enforces it on the Ray Data documentation and the example gallery.
+[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). The CI check that runs Vale on the Ray Data documentation and the example gallery is temporarily off.
 
 Vale catches typos and grammatical errors. It also enforces stylistic rules such as "use contractions" and "use second person." For the full list of rules, see the [configuration in the Ray repository](https://github.com/ray-project/ray/tree/master/.vale/styles/Google).
 

@@ -157,6 +157,8 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             Another preprocessor that encodes categorical data.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -430,6 +432,8 @@ class OneHotEncoder(SerializablePreprocessorBase):
             If your categories are ordered, you may want to use
             :class:`OrdinalEncoder`.
     """  # noqa: E501
+
+    _supports_deferred_fit = True
 
     def __init__(
         self,
@@ -716,6 +720,8 @@ class MultiHotEncoder(SerializablePreprocessorBase):
     [1]: https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MultiLabelBinarizer.html
     """
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -891,6 +897,8 @@ class LabelEncoder(SerializablePreprocessorBase):
             If you're encoding ordered features, use :class:`OrdinalEncoder` instead of
             :class:`LabelEncoder`.
     """
+
+    _supports_deferred_fit = True
 
     def __init__(self, label_column: str, *, output_column: Optional[str] = None):
         super().__init__()
@@ -1070,6 +1078,8 @@ class Categorizer(SerializablePreprocessorBase):
 
     """  # noqa: E501
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -1221,8 +1231,7 @@ def _is_null(value: Any) -> bool:
 def unique_post_fn(
     drop_na_values: bool = False, batch_format: BatchFormat = None
 ) -> Callable:
-    """
-    Returns a post-processing function that generates an encoding map by
+    """Returns a post-processing function that generates an encoding map by
     sorting the unique values produced during aggregation or stats computation.
 
     Args:
@@ -1241,8 +1250,7 @@ def unique_post_fn(
     """
 
     def gen_value_index(values: List) -> Dict[Any, int]:
-        """
-        Generate an encoding map from a list of unique values using Python sorting.
+        """Generate an encoding map from a list of unique values using Python sorting.
 
         Args:
             values: List of unique values to encode (can include lists/tuples).

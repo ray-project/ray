@@ -1,5 +1,4 @@
-"""
-Proximal Policy Optimization (PPO)
+"""Proximal Policy Optimization (PPO)
 ==================================
 
 This file defines the distributed Algorithm class for proximal policy

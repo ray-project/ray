@@ -363,17 +363,16 @@ class ServerCallImpl : public ServerCall {
   Status ValidateAuthenticationToken() {
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
-    // If auth token is empty, we assume auth is disabled, and reject clients that
-    // send a token so that they opt out too. The only exception is when
-    // ENABLE_K8S_TOKEN_AUTH is true where the server auth token can be empty.
-    if ((!auth_token_ || auth_token_->empty()) &&
-        !::RayConfig::instance().ENABLE_K8S_TOKEN_AUTH()) {
+    // With auth disabled, reject clients that send a token so that they opt out too.
+    // The mode decides this, not an empty server token, which Kubernetes token auth
+    // also has.
+    if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
       if (it == metadata.end()) {
         return Status::OK();
       }
       RAY_LOG(DEBUG) << "Rejecting " << call_name_
                      << " with a token because auth is disabled";
-      return Status::Unauthenticated(kAuthModeMismatchErrorMessage);
+      return Status::Unauthenticated(kTokenAuthErrorMessage);
     }
 
     if (it == metadata.end()) {
