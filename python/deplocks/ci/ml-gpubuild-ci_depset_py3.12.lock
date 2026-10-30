@@ -1024,9 +1024,9 @@ einops==0.8.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   deepspeed
-etils==1.5.2 ; python_full_version < '3.14' \
-    --hash=sha256:6dc882d355e1e98a5d1a148d6323679dc47c9a5792939b9de72615aa4737eb0b \
-    --hash=sha256:ba6a3e1aff95c769130776aa176c11540637f5dd881f3b79172a5149b6b1c446
+etils==1.14.0 ; python_full_version < '3.14' \
+    --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
+    --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mujoco
@@ -1795,7 +1795,6 @@ importlib-resources==7.1.0 \
     --hash=sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   etils
     #   prophet
 iniconfig==2.3.0 \
     --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \

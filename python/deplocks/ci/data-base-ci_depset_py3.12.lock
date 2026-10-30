@@ -1225,9 +1225,9 @@ dask==2026.3.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
-databricks-sdk==0.72.0 \
-    --hash=sha256:54596db8f1f75330ddf5ec5527a9c0a6a98c4c4190870ed31449582797388d3b \
-    --hash=sha256:86f6a6c8ad5cc84a66d394f2151bfd326a207e11d83eb943cb8a447c762b905c
+databricks-sdk==0.103.0 \
+    --hash=sha256:bdc93a2382e5717edd39c2faa92e38606ccc48aead047fe2154243509861eb1a \
+    --hash=sha256:eb6c1cdbe8dfe76590d049cbd03e35c45855d1bbc968d565183fa27b80ac3a76
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/data-test-requirements.txt
@@ -1404,15 +1404,16 @@ draccus==0.10.0 ; python_full_version < '3.13' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   lerobot
-einops==0.8.2 ; python_full_version < '3.13' \
+einops==0.8.2 \
     --hash=sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193 \
     --hash=sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   etils
     #   lerobot
-etils==1.5.2 \
-    --hash=sha256:6dc882d355e1e98a5d1a148d6323679dc47c9a5792939b9de72615aa4737eb0b \
-    --hash=sha256:ba6a3e1aff95c769130776aa176c11540637f5dd881f3b79172a5149b6b1c446
+etils==1.14.0 \
+    --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
+    --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   array-record
@@ -2187,12 +2188,6 @@ importlib-metadata==6.11.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   diffusers
     #   opentelemetry-api
-importlib-resources==7.1.0 \
-    --hash=sha256:0722d4c6212489c530f2a145a34c0a7a3b4721bc96a15fada5930e2a0b760708 \
-    --hash=sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   etils
 iniconfig==2.3.0 \
     --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \
     --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12

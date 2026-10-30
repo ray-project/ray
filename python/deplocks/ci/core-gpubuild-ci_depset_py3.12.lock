@@ -1082,9 +1082,9 @@ cython==0.29.37 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-databricks-sdk==0.72.0 \
-    --hash=sha256:54596db8f1f75330ddf5ec5527a9c0a6a98c4c4190870ed31449582797388d3b \
-    --hash=sha256:86f6a6c8ad5cc84a66d394f2151bfd326a207e11d83eb943cb8a447c762b905c
+databricks-sdk==0.103.0 \
+    --hash=sha256:bdc93a2382e5717edd39c2faa92e38606ccc48aead047fe2154243509861eb1a \
+    --hash=sha256:eb6c1cdbe8dfe76590d049cbd03e35c45855d1bbc968d565183fa27b80ac3a76
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny

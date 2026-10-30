@@ -486,7 +486,13 @@ dask==2026.3.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
-databricks-sdk==0.72.0
+databricks-sdk==0.72.0 ; python_full_version < '3.12'
+    # via
+    #   -r python/requirements/ml/data-test-requirements.txt
+    #   -r python/requirements/test-requirements.txt
+    #   mlflow-skinny
+    #   mlflow-tracing
+databricks-sdk==0.103.0 ; python_full_version >= '3.12'
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -577,10 +583,17 @@ dulwich==0.24.1
 einops==0.8.2
     # via
     #   deepspeed
+    #   etils
     #   lerobot
 et-xmlfile==2.0.0
     # via openpyxl
-etils==1.5.2
+etils==1.5.2 ; python_full_version < '3.12'
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   array-record
+    #   mujoco
+    #   tensorflow-datasets
+etils==1.14.0 ; python_full_version >= '3.12'
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
