@@ -235,16 +235,17 @@ def _get_max_chunk_size(
 #   round-trip is unchanged. A column that is all-null in every block
 #   therefore stays null-typed rather than being promoted.
 # - Types with a null type nested inside (list<null>, struct<a: null>, ...)
-#   return None too. Before pandas 3.1, pd.ArrowDtype.__from_arrow__ casts
-#   a column even to its own type, and Arrow's cast resizes a nested null
-#   child to the number of rows. A list<null> [[None, None], [None]] then
-#   comes back as [[None, None], []]. _wrap_nested_null_columns makes these
-#   columns Arrow-backed without a cast.
+#   get _ArrowDtypeWithoutIdentityCast. Before pandas 3.1,
+#   pd.ArrowDtype.__from_arrow__ casts a column even to its own type, and
+#   Arrow's cast resizes a nested null child to the number of rows. A
+#   list<null> [[None, None], [None]] then comes back as [[None, None], []].
 def _arrow_backed_pandas_dtype(t: "pyarrow.DataType") -> Optional["pd.ArrowDtype"]:
     if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(t):
         return None
-    if pyarrow.types.is_null(t) or _has_nested_null_type(t):
+    if pyarrow.types.is_null(t):
         return None
+    if _has_nested_null_type(t):
+        return _ArrowDtypeWithoutIdentityCast(t)
     return pd.ArrowDtype(t)
 
 
@@ -256,18 +257,24 @@ def _has_nested_null_type(t: "pyarrow.DataType") -> bool:
     return False
 
 
-def _wrap_nested_null_columns(df: "pd.DataFrame", table: "pyarrow.Table") -> None:
-    """Replaces, in place, each nested-null column of ``df`` with ``table``'s
-    column wrapped as Arrow-backed. See ``_arrow_backed_pandas_dtype``."""
-    for i, field in enumerate(table.schema):
-        if isinstance(field.type, pyarrow.BaseExtensionType):
-            continue
-        if not _has_nested_null_type(field.type) or field.name not in df.columns:
-            continue
-        loc = df.columns.get_loc(field.name)
-        # A duplicated column name gives a slice or mask; leave those as is.
-        if isinstance(loc, int):
-            df.isetitem(loc, pd.arrays.ArrowExtensionArray(table.column(i)))
+class _ArrowDtypeWithoutIdentityCast(pd.ArrowDtype):
+    """``pd.ArrowDtype`` that skips the cast of a column to its own type, as
+    pandas 3.1 does. It compares equal to the plain ``pd.ArrowDtype`` of the
+    same Arrow type, and the column it builds carries that plain dtype."""
+
+    def __from_arrow__(
+        self, array: Union["pyarrow.Array", "pyarrow.ChunkedArray"]
+    ) -> "pd.arrays.ArrowExtensionArray":
+        if array.type != self.pyarrow_dtype:
+            array = array.cast(self.pyarrow_dtype, safe=True)
+        return pd.arrays.ArrowExtensionArray(array)
+
+    # pandas' ExtensionDtype.__eq__ returns False for an instance of another
+    # class, so without this a plain pd.ArrowDtype never equals this one.
+    def __eq__(self, other: object) -> bool:
+        return pd.ArrowDtype(self.pyarrow_dtype) == other
+
+    __hash__ = pd.ArrowDtype.__hash__
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
@@ -344,8 +351,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 else None
             ),
         )
-        if ctx.enable_arrow_backed_pandas_conversion:
-            _wrap_nested_null_columns(df, self._table)
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
         return df
