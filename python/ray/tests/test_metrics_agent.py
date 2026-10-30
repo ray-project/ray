@@ -1193,6 +1193,7 @@ def test_custom_metrics_default_tags(metric_mock):
 
 def test_custom_metrics_default_tags_serialization_and_isolation(metric_mock):
     import pickle
+
     import ray.cloudpickle as cloudpickle
 
     default_tags = {"a": "default_a", "b": "default_b"}
