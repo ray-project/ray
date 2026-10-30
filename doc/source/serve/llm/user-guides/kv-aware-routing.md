@@ -33,7 +33,7 @@ The best policy depends on your workload. You can configure different routers th
 The router scores replicas with the selection service from [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo), which Ray Serve LLM runs in-process inside the ingress replica. The selection service is responsible for request scoring, while Ray Serve manages replica discovery, request orchestration, request lifecycle, and KV event transport and synchronization. Install it in your cluster environment, for example in the image:
 
 ```bash
-pip install "ai-dynamo>=1.4.0"
+pip install "ai-dynamo>=1.5.0"
 ```
 
 ## Configuration
@@ -150,7 +150,7 @@ How a request flows through a KV-aware deployment.
 
 Token load estimates how much work remains on each engine replica. It captures the two main phases of LLM inference: compute-bound prefill and memory-bound decode. For each candidate replica, the selection service estimates token load in KV blocks, and the router sends the request to the replica with the lowest estimated load.
 
-- **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded blocks receive less because they must first be loaded back to the GPU.
+- **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded and disk-offloaded blocks receive less because they must first be loaded back to the GPU.
 - **Decode load**, the memory-bound term. During decoding, each step accesses the KV cache accumulated by active requests. This term captures the KV blocks associated with ongoing decode work, weighted by the estimated remaining output based on `max_tokens`.
 
 ### Tune the scoring weights
@@ -170,8 +170,32 @@ llm_config = LLMConfig(
 | `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT` | 1.0 | Controls how much GPU-resident KV cache overlap reduces the prefill cost. Increase it when KV cache reuse is more important, or set it to 0.0 to ignore KV cache overlap and route based on load alone. |
 | `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT_DECAY` | 0.0, off | Reduces the benefit of KV cache overlap as a replica’s prefill backlog grows relative to the least-loaded candidate. Increase it when cache affinity repeatedly favors a busy replica while others remain underutilized. |
 | `DYN_ROUTER_DECODE_ACTIVE_REQUEST_WEIGHT` | 0.0, off | Adds a cost for each request a replica is already serving. Increase it when many small requests tend to concentrate on the same replica. |
+| `DYN_ROUTER_HOST_CACHE_HIT_WEIGHT` | 0.75 | Cache credit for each matched block held in CPU memory, relative to 1.0 for a block in GPU memory. Applies with {ref}`native KV cache offloading <native-kv-cache-offloading>`. |
+| `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` | 0.25 | Cache credit for each matched block held in a local disk tier, relative to 1.0 for a block in GPU memory. Applies with a local disk tier; see [Route on disk-resident prefixes](#route-on-disk-resident-prefixes). |
 
 For the full set of selection-service settings, see NVIDIA's [standalone selection service](https://docs.nvidia.com/dynamo/knowledge-base/modular-components/router/standalone-selection) documentation.
+
+### Route on disk-resident prefixes
+
+With native offloading, vLLM's `TieringOffloadingSpec` can add a filesystem tier behind the CPU tier, so a replica can reload a prefix from local disk after it leaves CPU memory. Under `KVAwareRouter`, Ray Serve LLM turns on KV events for filesystem tiers that don't set `enable_kv_events`, so the router knows which replica holds each prefix on disk and credits it with `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT`:
+
+```python
+engine_kwargs={
+    "enable_prefix_caching": True,
+    "kv_offloading_backend": "native",
+    "kv_offloading_size": 8,  # GiB of CPU tier per replica
+    "kv_transfer_config": {
+        "kv_connector": "OffloadingConnector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {
+            "spec_name": "TieringOffloadingSpec",
+            "secondary_tiers": [{"type": "fs", "root_dir": "/mnt/local-nvme/kv-cache"}],
+        },
+    },
+}
+```
+
+vLLM's filesystem tier doesn't limit its disk usage or publish removal events yet. Watch the space under `root_dir`, and don't delete files under it while the replica runs: the router keeps crediting deleted blocks until that replica restarts.
 
 ### Tokenization at the ingress
 
