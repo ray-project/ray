@@ -497,9 +497,7 @@ def test_imap_iterator_result_thread_terminates(
     def f(x):
         return x * 2
 
-    imap_fn = (
-        pool_4_processes.imap_unordered if unordered else pool_4_processes.imap
-    )
+    imap_fn = pool_4_processes.imap_unordered if unordered else pool_4_processes.imap
     result_iter = imap_fn(f, (i for i in range(num_items)), chunksize=chunksize)
     results = list(result_iter)
     assert sorted(results) == [i * 2 for i in range(num_items)]
@@ -508,18 +506,19 @@ def test_imap_iterator_result_thread_terminates(
 
 
 def test_imap_chunksize_none_with_sequence(pool_4_processes):
-    """Ensure explicit chunksize=None works with sized sequences, including empty ones."""
+    """Ensure explicit chunksize=None works with sized and empty sequences."""
 
     def f(x):
         return x + 1
 
     assert list(pool_4_processes.imap(f, [1, 2, 3], chunksize=None)) == [2, 3, 4]
-    assert sorted(
-        pool_4_processes.imap_unordered(f, [1, 2, 3], chunksize=None)
-    ) == [2, 3, 4]
+    assert sorted(pool_4_processes.imap_unordered(f, [1, 2, 3], chunksize=None)) == [
+        2,
+        3,
+        4,
+    ]
     assert list(pool_4_processes.imap(f, [], chunksize=None)) == []
     assert list(pool_4_processes.imap_unordered(f, [], chunksize=None)) == []
-
 
 
 if __name__ == "__main__":
