@@ -237,9 +237,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
     @routes.get("/api/v0/logs/{media_type}", resp_type=ResponseType.STREAM)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        """
-        Fetches logs from the given criteria.
-        """
+        """Fetches logs from the given criteria."""
         record_extra_usage_tag(TagKey.CORE_STATE_API_GET_LOG, "1")
         options = GetLogOptions(
             timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),

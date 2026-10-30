@@ -36,8 +36,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _TorchTensorMetadata:
-    """
-    Metadata for torch.Tensors that can be sent between processes to determine
+    """Metadata for torch.Tensors that can be sent between processes to determine
     how large of a buffer to allocate on the receiver(s).
     """
 
@@ -58,8 +57,7 @@ class TorchTensorAcceleratorChannel(ChannelInterface):
         _gpu_data_channel: Optional["_TorchTensorAcceleratorChannel"] = None,
         _local_channel: Optional["IntraProcessChannel"] = None,
     ):
-        """
-        Can be used to send accelerator tensors nested inside other data. The data is
+        """Can be used to send accelerator tensors nested inside other data. The data is
         sent via shared memory while the accelerator tensors are sent through a P2P
         transport (e.g., NCCL for GPU).
 
@@ -213,8 +211,7 @@ class TorchTensorAcceleratorChannel(ChannelInterface):
         self._cpu_data_channel.write(cpu_data)
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
-        """
-        Send a value that may contain torch.Tensors that should be sent via
+        """Send a value that may contain torch.Tensors that should be sent via
         external transport.
 
         Case 1: Use `_local_channel` to send the data to local readers.
@@ -308,8 +305,7 @@ class TorchTensorAcceleratorChannel(ChannelInterface):
         return data
 
     def read(self, timeout: Optional[float] = None) -> Any:
-        """
-        Read a value that may contain torch.Tensors sent via external
+        """Read a value that may contain torch.Tensors sent via external
         transport.
 
         Case 1: If the reader is a local reader and is the same actor as the writer,
@@ -359,9 +355,7 @@ def _torch_tensor_allocator(
     shape: Union[int, Tuple[int]],
     dtype: "torch.dtype",
 ):
-    """
-    Allocate a tensor buffer matching the given metadata.
-    """
+    """Allocate a tensor buffer matching the given metadata."""
     import torch
 
     ctx = ChannelContext.get_current()
@@ -376,8 +370,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
         typ: "TorchTensorType",
         _meta_channel: Optional["Channel"] = None,
     ):
-        """
-        A helper channel for TorchTensorAcceleratorChannel that is used to transfer
+        """A helper channel for TorchTensorAcceleratorChannel that is used to transfer
         lists of torch.Tensors via accelerator. This class can only transfer
         torch.Tensors and cannot transfer other CPU data, such as Exception
         objects or tensors nested inside of a dictionary.
@@ -490,8 +483,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
     def _get_send_tensors_metadata(
         self, tensors: List["torch.Tensor"]
     ) -> Optional[List[_TorchTensorMetadata]]:
-        """
-        Helper method to get the metadata that should be sent to the reader so
+        """Helper method to get the metadata that should be sent to the reader so
         that they can allocate the proper-sized buffer(s). Throws error if
         static_shape=True was set and the given tensors do not match the
         inferred shapes.
@@ -554,8 +546,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
         tensors: List["torch.Tensor"],
         timeout: Optional[float] = None,
     ):
-        """
-        Write a list of tensors via accelerator:
+        """Write a list of tensors via accelerator:
 
         1) Send the tensor metadata, i.e. the shape and dtypes of all tensors
         via the shared-memory metadata channel.
@@ -595,8 +586,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
     def _get_recv_tensors_metadata(
         self, timeout: Optional[float] = None
     ) -> List[_TorchTensorMetadata]:
-        """
-        Get the shape(s) and dtype(s) of the tensors to receive from the
+        """Get the shape(s) and dtype(s) of the tensors to receive from the
         metadata channel. If static_shape=True was set, then we reuse the first
         metadata received.
         """
@@ -614,8 +604,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
         self,
         timeout: Optional[float] = None,
     ) -> Union["torch.Tensor", List["torch.Tensor"]]:
-        """
-        Receive a list of tensors.
+        """Receive a list of tensors.
 
         (1) Receive the tensor metadata via the shared-memory metadata channel.
         (2) Allocate buffers on our default device according to the received
@@ -855,9 +844,7 @@ def _init_communicator(
 
 
 def _destroy_communicator(group_id: str) -> None:
-    """
-    Destroy the communicator group with the given ID.
-    """
+    """Destroy the communicator group with the given ID."""
     ctx = ChannelContext.get_current()
     if group_id not in ctx.communicator_handles:
         return

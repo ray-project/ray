@@ -253,8 +253,7 @@ _PRINTED_WARNING = set()
 
 
 def get_call_location(back: int = 1):
-    """
-    Get the location (filename and line number) of a function caller, `back`
+    """Get the location (filename and line number) of a function caller, `back`
     frames up the stack.
 
     Args:
@@ -274,8 +273,7 @@ def get_call_location(back: int = 1):
 
 
 def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
-    """
-    Get the ray temp directory.
+    """Get the ray temp directory.
 
     If a temp dir was specified for this node, this function will
     retrieve the information from GCS. Otherwise, it will fallback to the

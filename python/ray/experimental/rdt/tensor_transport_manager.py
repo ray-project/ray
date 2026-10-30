@@ -56,14 +56,11 @@ class FetchRequest:
 
 
 class TensorTransportManager(ABC):
-    """
-    Interface with which to implement custom tensor transports.
-    """
+    """Interface with which to implement custom tensor transports."""
 
     @abstractmethod
     def tensor_transport_backend(self) -> str:
-        """
-        Returns the name of your tensor transport backend.
+        """Returns the name of your tensor transport backend.
         Ray uses this name to match your transport with the ``tensor_transport`` argument
         on the method.
 
@@ -74,8 +71,7 @@ class TensorTransportManager(ABC):
     @staticmethod
     @abstractmethod
     def is_one_sided() -> bool:
-        """
-        Indicates whether your transport uses one-sided communication where only the receiver
+        """Indicates whether your transport uses one-sided communication where only the receiver
         initiates the transfer.
 
         One-sided transports: The receiver can directly read the sender's memory without the sender
@@ -96,8 +92,7 @@ class TensorTransportManager(ABC):
     @staticmethod
     @abstractmethod
     def can_abort_transport() -> bool:
-        """
-        Indicates whether your transport can safely abort an in-progress transfer.
+        """Indicates whether your transport can safely abort an in-progress transfer.
 
         If ``True``, Ray calls `abort_transport` on both the source and destination actors when a
         send / recv error, allowing your transport to clean up gracefully.
@@ -129,8 +124,7 @@ class TensorTransportManager(ABC):
         obj_id: str,
         rdt_object: List[Any],
     ) -> TensorTransportMetadata:
-        """
-        Implement this method to create the TensorTransportMetadata you defined previously.
+        """Implement this method to create the TensorTransportMetadata you defined previously.
         Ray calls this on the source actor immediately after the actor task creates the result tensors.
         Implement this to:
 
@@ -153,8 +147,7 @@ class TensorTransportManager(ABC):
         dst_actor: "ray.actor.ActorHandle",
         backend: Optional[str] = None,
     ) -> CommunicatorMetadata:
-        """
-        Gets the CommunicatorMetadata for a send/recv. Ray calls this on the owner/driver process before
+        """Gets the CommunicatorMetadata for a send/recv. Ray calls this on the owner/driver process before
         orchestrating the transfer. You can typically implement this to return information both actors
         need to identify each other such as ranks in a collective group. Many forms of transports such
         as one-sided RDMA reads may be ok just returning empty CommunicatorMetadata here.
@@ -176,8 +169,7 @@ class TensorTransportManager(ABC):
         communicator_metadata: CommunicatorMetadata,
         target_buffers: Optional[List[Any]] = None,
     ) -> List[Any]:
-        """
-        Receives tensors on the destination actor. Ray calls this on the destination
+        """Receives tensors on the destination actor. Ray calls this on the destination
         actor during the transfer.
 
         Args:
@@ -246,8 +238,7 @@ class TensorTransportManager(ABC):
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
-        """
-        Sends tensors from the source actor to the destination actor. Ray calls this on the source actor
+        """Sends tensors from the source actor to the destination actor. Ray calls this on the source actor
         during the transfer. Implement this to perform the actual data transfer using your transport's
         send mechanism. For one-sided transports, you can simply avoid implementing this method or even
         raise a NotImplementedError to ensure it's not being called.
@@ -265,8 +256,7 @@ class TensorTransportManager(ABC):
         tensor_transport_meta: TensorTransportMetadata,
         tensors: List[Any],
     ):
-        """
-        Clean up resources for an RDT object. Ray calls this on the source actor
+        """Clean up resources for an RDT object. Ray calls this on the source actor
         after Ray's distributed reference counting protocol determines the object is out of scope.
 
         Use this to release any resources your transport allocated, such as deregistering memory buffers.
@@ -285,8 +275,7 @@ class TensorTransportManager(ABC):
         obj_id: str,
         communicator_metadata: CommunicatorMetadata,
     ):
-        """
-        Aborts an in-progress transfer. Ray calls this on both the source and destination actors
+        """Aborts an in-progress transfer. Ray calls this on both the source and destination actors
         when a system error occurs if `can_abort_transport` returns ``True``.
 
         Args:

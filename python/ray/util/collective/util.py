@@ -25,8 +25,7 @@ class NCCLUniqueIDStore:
         self.event = asyncio.Event()
 
     async def set_id(self, uid: bytes):
-        """
-        Initialize the NCCL unique ID for this store.
+        """Initialize the NCCL unique ID for this store.
 
         Args:
             uid: the unique ID generated via the NCCL generate_communicator_id API.

@@ -43,8 +43,7 @@ def enable_dask_on_ray(
     shuffle: Optional[str] = "tasks",
     use_shuffle_optimization: Optional[bool] = True,
 ) -> dask.config.set:
-    """
-    Enable Dask-on-Ray scheduler. This helper sets the Dask-on-Ray scheduler
+    """Enable Dask-on-Ray scheduler. This helper sets the Dask-on-Ray scheduler
     as the default Dask scheduler in the Dask config. By default, it will also
     cause the task-based shuffle to be used for any Dask shuffle operations
     (required for multi-node Ray clusters, not sharing a filesystem), and will
@@ -84,15 +83,12 @@ def enable_dask_on_ray(
 
 
 def disable_dask_on_ray():
-    """
-    Unsets the scheduler, shuffle method, and DataFrame optimizer.
-    """
+    """Unsets the scheduler, shuffle method, and DataFrame optimizer."""
     return dask.config.set(scheduler=None, shuffle=None, dataframe_optimize=None)
 
 
 def ray_dask_get(dsk: Any, keys: List[str], **kwargs: Any):
-    """
-    A Dask-Ray scheduler. This scheduler will send top-level (non-inlined) Dask
+    """A Dask-Ray scheduler. This scheduler will send top-level (non-inlined) Dask
     tasks to a Ray cluster for execution. The scheduler will wait for the
     tasks to finish executing, fetch the results, and repackage them into the
     appropriate Dask collections. This particular scheduler uses a threadpool
@@ -239,8 +235,7 @@ def _apply_async_wrapper(
     *extra_args: Any,
     **extra_kwargs: Any,
 ):
-    """
-    Wraps the given pool `apply_async` function, hotswapping `real_func` in as
+    """Wraps the given pool `apply_async` function, hotswapping `real_func` in as
     the function to be applied and adding `extra_args` and `extra_kwargs` to
     `real_func`'s call.
 
@@ -282,8 +277,7 @@ def _rayify_task_wrapper(
     ray_posttask_cbs: Optional[List[Callable]],
     scoped_ray_remote_args: dict,
 ):
-    """
-    The core Ray-Dask task execution wrapper, to be given to the thread pool's
+    """The core Ray-Dask task execution wrapper, to be given to the thread pool's
     `apply_async` function. Exactly the same as `execute_task`, except that it
     calls `_rayify_task` on the task instead of `_execute_task`.
 
@@ -336,8 +330,7 @@ def _rayify_task(
     ray_posttask_cbs: Optional[List[Callable]],
     ray_remote_args: dict,
 ):
-    """
-    Rayifies the given task, submitting it as a Ray task to the Ray cluster.
+    """Rayifies the given task, submitting it as a Ray task to the Ray cluster.
 
     Args:
         task: A Dask graph value, being either a literal, dependency
@@ -438,8 +431,7 @@ def dask_task_wrapper(
     ray_posttask_cbs: Optional[List[Callable]],
     *arg_object_refs: ray.ObjectRef,
 ):
-    """
-    A Ray remote function acting as a Dask task wrapper. This function will
+    """A Ray remote function acting as a Dask task wrapper. This function will
     repackage the given `arg_object_refs` into its original `deps` using
     `repack`, and then pass it to the provided Dask Task object , `task`.
 
@@ -524,8 +516,7 @@ def render_progress_bar(tracker, object_refs):
 
 
 def ray_get_unpack(object_refs: Any, progress_bar_actor: Optional[Any] = None) -> Any:
-    """
-    Unpacks object references, gets the object references, and repacks.
+    """Unpacks object references, gets the object references, and repacks.
     Traverses arbitrary data structures.
 
     Args:
@@ -562,8 +553,7 @@ def ray_get_unpack(object_refs: Any, progress_bar_actor: Optional[Any] = None) -
 
 
 def ray_dask_get_sync(dsk: Any, keys: List[str], **kwargs: Any):
-    """
-    A synchronous Dask-Ray scheduler. This scheduler will send top-level
+    """A synchronous Dask-Ray scheduler. This scheduler will send top-level
     (non-inlined) Dask tasks to a Ray cluster for execution. The scheduler will
     wait for the tasks to finish executing, fetch the results, and repackage
     them into the appropriate Dask collections. This particular scheduler

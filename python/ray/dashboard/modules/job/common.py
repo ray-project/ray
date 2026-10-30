@@ -276,9 +276,7 @@ class JobInfo:
 
 
 class JobInfoStorageClient:
-    """
-    Interface to put and get job data from the Internal KV store.
-    """
+    """Interface to put and get job data from the Internal KV store."""
 
     # Please keep this format in sync with JobDataKey()
     # in src/ray/gcs/gcs_server/gcs_job_manager.h.
@@ -291,8 +289,7 @@ class JobInfoStorageClient:
         export_event_log_dir_root: Optional[str] = None,
         session_name: str = "",
     ):
-        """
-        Initialize the JobInfoStorageClient which manages data in the internal KV store.
+        """Initialize the JobInfoStorageClient which manages data in the internal KV store.
         Export Submission Job events are written when the KV store is updated if
         the feature flag is on and a export_event_log_dir_root is passed.
         export_event_log_dir_root doesn't need to be passed if the caller
@@ -457,8 +454,7 @@ class JobInfoStorageClient:
     def _write_submission_job_export_event(
         self, job_id: str, job_info: JobInfo
     ) -> None:
-        """
-        Write Submission Job export event if _export_submission_job_event_logger
+        """Write Submission Job export event if _export_submission_job_event_logger
         exists. The logger will exist if the export API feature flag is enabled
         and a log directory was passed to JobInfoStorageClient.
         """

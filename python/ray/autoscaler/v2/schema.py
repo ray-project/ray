@@ -491,8 +491,7 @@ class IPPRStatus:
 
 @dataclass
 class AutoscalerInstance:
-    """
-    AutoscalerInstance represents an instance that's managed by the autoscaler.
+    """AutoscalerInstance represents an instance that's managed by the autoscaler.
     This includes two states:
         1. the instance manager state: information of the underlying cloud instance.
         2. the ray node state, e.g. resources, ray node status.

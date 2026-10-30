@@ -234,8 +234,7 @@ def _create_uv_run_parser():
 def _parse_args(
     parser: optparse.OptionParser, args: List[str]
 ) -> Tuple[optparse.Values, List[str]]:
-    """
-    Parse the command-line options found in 'args'.
+    """Parse the command-line options found in 'args'.
 
     Replacement for parser.parse_args that handles unknown arguments
     by keeping them in the command list instead of erroring and
@@ -256,8 +255,7 @@ def _parse_args(
 def _check_working_dir_files(
     uv_run_args: optparse.Values, runtime_env: Dict[str, Any]
 ) -> None:
-    """
-    Check that the files required by uv are local to the working_dir. This catches
+    """Check that the files required by uv are local to the working_dir. This catches
     the most common cases of how things are different in Ray, i.e. not the whole file
     system will be available on the workers, only the working_dir.
 
@@ -306,8 +304,7 @@ def _check_working_dir_files(
 
 
 def _get_uv_run_cmdline() -> Optional[List[str]]:
-    """
-    Return the command line of the first ancestor process that was run with
+    """Return the command line of the first ancestor process that was run with
     "uv run" and None if there is no such ancestor.
 
     uv spawns the python process as a child process, so we first check the

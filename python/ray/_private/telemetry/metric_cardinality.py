@@ -87,9 +87,7 @@ class MetricCardinality(str, Enum):
 
     @staticmethod
     def get_high_cardinality_labels_to_drop(metric_name: str) -> List[str]:
-        """
-        Get the high cardinality labels of the metric.
-        """
+        """Get the high cardinality labels of the metric."""
         if metric_name in _HIGH_CARDINALITY_LABELS:
             return _HIGH_CARDINALITY_LABELS[metric_name]
 

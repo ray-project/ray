@@ -7,9 +7,7 @@ from ray.dashboard.modules.job.utils import fast_tail_last_n_lines, file_tail_it
 
 
 class JobLogStorageClient:
-    """
-    Disk storage for stdout / stderr of driver script logs.
-    """
+    """Disk storage for stdout / stderr of driver script logs."""
 
     # Number of last N lines to put in job message upon failure.
     NUM_LOG_LINES_ON_ERROR = 10

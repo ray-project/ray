@@ -213,8 +213,7 @@ class SetupLoggerFactory:
 
 
 class ReferenceTable:
-    """
-    The URI reference table which is used for GC.
+    """The URI reference table which is used for GC.
     When the reference count is decreased to zero,
     the URI should be removed from this table and
     added to cache if needed.

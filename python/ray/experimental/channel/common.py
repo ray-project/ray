@@ -66,8 +66,7 @@ class CompiledDAGArgs(NamedTuple):
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
     def register_custom_serializer(self) -> None:
-        """
-        Register any custom serializers needed to pass data of this type. This
+        """Register any custom serializers needed to pass data of this type. This
         method should be run on the reader(s) and writer of a channel, which
         are the driver and/or Ray actors.
 
@@ -86,8 +85,7 @@ class ChannelOutputType:
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         driver_actor_id: Optional[str] = None,
     ) -> "ChannelInterface":
-        """
-        Instantiate a ChannelInterface class that can be used
+        """Instantiate a ChannelInterface class that can be used
         to pass data of this type.
 
         Args:
@@ -108,9 +106,7 @@ class ChannelOutputType:
         return False
 
     def get_custom_communicator(self) -> Optional[Communicator]:
-        """
-        Return the custom communicator group if one is specified.
-        """
+        """Return the custom communicator group if one is specified."""
         return None
 
     def set_communicator_id(self, group_id: str) -> None:
@@ -149,9 +145,7 @@ class ChannelContext:
 
     @property
     def torch_available(self) -> bool:
-        """
-        Check if torch package is available.
-        """
+        """Check if torch package is available."""
         if self._torch_available is not None:
             return self._torch_available
 
@@ -176,8 +170,7 @@ class ChannelContext:
 
 @PublicAPI(stability="alpha")
 class ChannelInterface:
-    """
-    Abstraction for a transport between a writer actor and some number of
+    """Abstraction for a transport between a writer actor and some number of
     reader actors.
     """
 
@@ -187,8 +180,7 @@ class ChannelInterface:
         readers: List[Optional[ray.actor.ActorHandle]],
         typ: Optional["ChannelOutputType"],
     ):
-        """
-        Create a channel that can be read and written by a Ray driver or actor.
+        """Create a channel that can be read and written by a Ray driver or actor.
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
@@ -199,20 +191,15 @@ class ChannelInterface:
         pass
 
     def ensure_registered_as_writer(self):
-        """
-        Check whether the process is a valid writer. This method must be idempotent.
-        """
+        """Check whether the process is a valid writer. This method must be idempotent."""
         raise NotImplementedError
 
     def ensure_registered_as_reader(self):
-        """
-        Check whether the process is a valid reader. This method must be idempotent.
-        """
+        """Check whether the process is a valid reader. This method must be idempotent."""
         raise NotImplementedError
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
-        """
-        Write a value to the channel.
+        """Write a value to the channel.
 
         Blocks if there are still pending readers for the previous value. The
         writer may not write again until the specified number of readers have
@@ -228,8 +215,7 @@ class ChannelInterface:
         raise NotImplementedError
 
     def read(self, timeout: Optional[float] = None) -> Any:
-        """
-        Read the latest value from the channel. This call will block until a
+        """Read the latest value from the channel. This call will block until a
         value is available to read.
 
         Subsequent calls to read() may *block* if the deserialized object is
@@ -248,8 +234,7 @@ class ChannelInterface:
         raise NotImplementedError
 
     def close(self) -> None:
-        """
-        Close this channel. This method must not block and it must be made
+        """Close this channel. This method must not block and it must be made
         idempotent. Any existing values in the channel may be lost after the
         channel is closed.
         """
@@ -430,8 +415,7 @@ class SynchronousReader(ReaderInterface):
 
 @DeveloperAPI
 class AwaitableBackgroundReader(ReaderInterface):
-    """
-    Asyncio-compatible channel reader.
+    """Asyncio-compatible channel reader.
 
     The reader is constructed with an async queue of futures whose values it
     will fulfill. It uses a threadpool to execute the blocking calls to read
@@ -516,8 +500,7 @@ class WriterInterface:
         output_idxs: List[Optional[Union[int, str]]],
         is_input: bool = False,
     ):
-        """
-        Initialize the writer.
+        """Initialize the writer.
 
         Args:
             output_channels: The output channels to write to.

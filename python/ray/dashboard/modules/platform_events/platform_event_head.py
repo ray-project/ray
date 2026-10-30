@@ -20,8 +20,7 @@ MAX_EVENTS_TO_CACHE = 1000
 
 
 class PlatformEventsHead(dashboard_utils.DashboardHeadModule):
-    """
-    Dashboard Head Module for managing and serving infrastructure platform events.
+    """Dashboard Head Module for managing and serving infrastructure platform events.
 
     This module acts as a generic, platform-agnostic REST controller and cache
     for events coming from the underlying hosting environment (e.g., Kubernetes).

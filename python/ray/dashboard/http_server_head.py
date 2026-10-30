@@ -196,8 +196,7 @@ class HttpServerDashboardHead:
 
     @routes.post("/api/authenticate")
     async def authenticate(self, req) -> aiohttp.web.Response:
-        """
-        Authenticate a user by validating their token and setting a secure HttpOnly cookie.
+        """Authenticate a user by validating their token and setting a secure HttpOnly cookie.
 
         This endpoint accepts a token via the Authorization header, validates it,
         and if valid, sets an HttpOnly cookie for subsequent requests from the web dashboard.

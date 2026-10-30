@@ -31,10 +31,7 @@ CLIENT_DOCS_URL = (
 @dataclass
 @PublicAPI
 class ClientContext(BaseContext):
-    """
-    Basic context manager for a ClientBuilder connection.
-
-    """
+    """Basic context manager for a ClientBuilder connection."""
 
     dashboard_url: Optional[str]
     python_version: str
@@ -63,8 +60,7 @@ class ClientContext(BaseContext):
             )
 
     def _disconnect_with_context(self, force_disconnect: bool) -> None:
-        """
-        Disconnect Ray. If it's a ray client and created with `allow_multiple`,
+        """Disconnect Ray. If it's a ray client and created with `allow_multiple`,
         it will do nothing. For other cases this either disconnects from the
         remote Client Server or shuts the current driver down.
         """
@@ -88,8 +84,7 @@ class ClientContext(BaseContext):
 
 @Deprecated
 class ClientBuilder:
-    """
-    Builder for a Ray Client connection. This class can be subclassed by
+    """Builder for a Ray Client connection. This class can be subclassed by
     custom builder classes to modify connection behavior to include additional
     features or altered semantics. One example is the ``_LocalClientBuilder``.
     """
@@ -140,8 +135,7 @@ class ClientBuilder:
         return self
 
     def connect(self) -> ClientContext:
-        """
-        Begin a connection to the address passed in via ray.client(...).
+        """Begin a connection to the address passed in via ray.client(...).
 
         Returns:
             ClientInfo: Dataclass with information about the setting. This
@@ -209,8 +203,7 @@ class ClientBuilder:
             self.env(json.loads(runtime_env_var))
 
     def _init_args(self, **kwargs) -> "ClientBuilder":
-        """
-        When a client builder is constructed through ray.init, for example
+        """When a client builder is constructed through ray.init, for example
         `ray.init(ray://..., namespace=...)`, all of the
         arguments passed into ray.init with non-default values are passed
         again into this method. Custom client builders can override this method
@@ -265,8 +258,7 @@ class ClientBuilder:
         return self
 
     def _client_deprecation_warn(self) -> None:
-        """
-        Generates a warning for user's if this ClientBuilder instance was
+        """Generates a warning for user's if this ClientBuilder instance was
         created directly or through ray.client, instead of relying on
         internal methods (ray.init, or auto init)
         """
@@ -308,9 +300,7 @@ class ClientBuilder:
 
 class _LocalClientBuilder(ClientBuilder):
     def connect(self) -> ClientContext:
-        """
-        Begin a connection to the address passed in via ray.client(...)
-        """
+        """Begin a connection to the address passed in via ray.client(...)"""
         if self._deprecation_warn_enabled:
             self._client_deprecation_warn()
         # Fill runtime env/namespace from environment if not already set.
@@ -332,8 +322,7 @@ class _LocalClientBuilder(ClientBuilder):
 
 
 def _split_address(address: str) -> Tuple[str, str]:
-    """
-    Splits address into a module string (scheme) and an inner_address.
+    """Splits address into a module string (scheme) and an inner_address.
 
     If the scheme is not present, then "ray://" is prepended to the address.
     """
@@ -378,8 +367,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
 def client(
     address: Optional[str] = None, _deprecation_warn_enabled: bool = True
 ) -> ClientBuilder:
-    """
-    Creates a ClientBuilder based on the provided address. The address can be
+    """Creates a ClientBuilder based on the provided address. The address can be
     of the following forms:
 
         * None: Connects to or creates a local cluster and connects to it.

@@ -133,8 +133,7 @@ def debug_status(
     verbose: bool = False,
     address: Optional[str] = None,
 ) -> str:
-    """
-    Return a debug string for the autoscaler.
+    """Return a debug string for the autoscaler.
 
     Args:
         status: The autoscaler status string for v1

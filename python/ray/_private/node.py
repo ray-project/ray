@@ -1285,8 +1285,7 @@ class Node:
         return result
 
     def start_reaper_process(self):
-        """
-        Start the reaper process.
+        """Start the reaper process.
 
         This must be the first process spawned and should only be called when
         ray processes should be cleaned up if this process dies.

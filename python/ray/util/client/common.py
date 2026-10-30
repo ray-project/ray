@@ -703,8 +703,7 @@ class ClientServerHandle:
 
 
 def _get_client_id_from_context(context: Any) -> str:
-    """
-    Get `client_id` from gRPC metadata. If the `client_id` is not present,
+    """Get `client_id` from gRPC metadata. If the `client_id` is not present,
     this function logs an error and sets the status_code.
     """
     metadata = dict(context.invocation_metadata())
@@ -716,8 +715,7 @@ def _get_client_id_from_context(context: Any) -> str:
 
 
 def _propagate_error_in_context(e: Exception, context: Any) -> bool:
-    """
-    Encode an error into the context of an RPC response. Returns True
+    """Encode an error into the context of an RPC response. Returns True
     if the error can be recovered from, false otherwise
     """
     try:
@@ -736,8 +734,7 @@ def _propagate_error_in_context(e: Exception, context: Any) -> bool:
 
 
 def _id_is_newer(id1: int, id2: int) -> bool:
-    """
-    We should only replace cache entries with the responses for newer IDs.
+    """We should only replace cache entries with the responses for newer IDs.
     Most of the time newer IDs will be the ones with higher value, except when
     the req_id counter rolls over. We check for this case by checking the
     distance between the two IDs. If the distance is significant, then it's
@@ -753,8 +750,7 @@ def _id_is_newer(id1: int, id2: int) -> bool:
 
 
 class ResponseCache:
-    """
-    Cache for blocking method calls. Needed to prevent retried requests from
+    """Cache for blocking method calls. Needed to prevent retried requests from
     being applied multiple times on the server, for example when the client
     disconnects. This is used to cache requests/responses sent through
     unary-unary RPCs to the RayletServicer.
@@ -787,8 +783,7 @@ class ResponseCache:
         self.cache: Dict[int, Tuple[int, Any]] = {}
 
     def check_cache(self, thread_id: int, request_id: int) -> Optional[Any]:
-        """
-        Check the cache for a given thread, and see if the entry in the cache
+        """Check the cache for a given thread, and see if the entry in the cache
         matches the current request_id. Returns None if the request_id has
         not been seen yet, otherwise returns the cached result.
 
@@ -840,9 +835,7 @@ class ResponseCache:
         return None
 
     def update_cache(self, thread_id: int, request_id: int, response: Any) -> None:
-        """
-        Inserts `response` into the cache for `request_id`.
-        """
+        """Inserts `response` into the cache for `request_id`."""
         with self.cv:
             cached_request_id, cached_resp = self.cache[thread_id]
             if cached_request_id != request_id or cached_resp is not None:
@@ -863,8 +856,7 @@ class ResponseCache:
 
 
 class OrderedResponseCache:
-    """
-    Cache for streaming RPCs, i.e. the DataServicer. Relies on explicit
+    """Cache for streaming RPCs, i.e. the DataServicer. Relies on explicit
     ack's from the client to determine when it can clean up cache entries.
     """
 
@@ -874,8 +866,7 @@ class OrderedResponseCache:
         self.cache: Dict[int, Any] = OrderedDict()
 
     def check_cache(self, req_id: int) -> Optional[Any]:
-        """
-        Check the cache for a given thread, and see if the entry in the cache
+        """Check the cache for a given thread, and see if the entry in the cache
         matches the current request_id. Returns None if the request_id has
         not been seen yet, otherwise returns the cached result.
         """
@@ -907,17 +898,14 @@ class OrderedResponseCache:
         return None
 
     def has_entry(self, req_id: int) -> bool:
-        """
-        Returns True if `req_id` has a cache entry, including a placeholder
+        """Returns True if `req_id` has a cache entry, including a placeholder
         for a response that is still being computed.
         """
         with self.cv:
             return req_id in self.cache
 
     def update_cache(self, req_id: int, resp: Any) -> None:
-        """
-        Inserts `response` into the cache for `request_id`.
-        """
+        """Inserts `response` into the cache for `request_id`."""
         with self.cv:
             self.cv.notify_all()
             if req_id not in self.cache:
@@ -929,8 +917,7 @@ class OrderedResponseCache:
             self.cache[req_id] = resp
 
     def invalidate(self, e: Exception) -> bool:
-        """
-        Invalidate any partially populated cache entries, replacing their
+        """Invalidate any partially populated cache entries, replacing their
         placeholders with the passed in exception. Useful to prevent a thread
         from waiting indefinitely on a failed call.
 
@@ -947,8 +934,7 @@ class OrderedResponseCache:
         return invalid
 
     def cleanup(self, last_received: int) -> None:
-        """
-        Cleanup all of the cached requests up to last_received. Assumes that
+        """Cleanup all of the cached requests up to last_received. Assumes that
         the cache entries were inserted in ascending order.
         """
         with self.cv:

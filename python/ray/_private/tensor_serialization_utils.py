@@ -7,9 +7,7 @@ if TYPE_CHECKING:
 
 
 class ZeroCopyTensorsWarning(UserWarning):
-    """
-    Warning for unsafe or failed zero-copy tensor serialization/deserialization.
-    """
+    """Warning for unsafe or failed zero-copy tensor serialization/deserialization."""
 
     pass
 
@@ -20,8 +18,7 @@ warnings.filterwarnings("once", category=ZeroCopyTensorsWarning)
 def _zero_copy_tensors_deserializer(
     np_array: "np.ndarray", dtype_str: str, shape: Tuple[int, ...], device_str: str
 ) -> "torch.Tensor":
-    """
-    Reconstructs a torch.Tensor from a zero-copy NumPy byte array.
+    """Reconstructs a torch.Tensor from a zero-copy NumPy byte array.
 
     Args:
         np_array: 1D uint8 NumPy array of the original tensor's raw bytes.

@@ -37,8 +37,7 @@ def _get_service_name(default_name: str) -> str:
 
 
 class OpenTelemetryMetricRecorder:
-    """
-    A class to record OpenTelemetry metrics. This is the main entry point for exporting
+    """A class to record OpenTelemetry metrics. This is the main entry point for exporting
     all ray telemetries to Prometheus server.
     It uses OpenTelemetry's Prometheus exporter to export metrics.
     """
@@ -120,8 +119,7 @@ class OpenTelemetryMetricRecorder:
     def _create_observable_callback(
         self, metric_name: str, metric_type: MetricType
     ) -> Callable[[dict], List[Observation]]:
-        """
-        Factory method to create callbacks for observable metrics.
+        """Factory method to create callbacks for observable metrics.
 
         Args:
             metric_name: name of the metric for which the callback is being created
@@ -237,9 +235,7 @@ class OpenTelemetryMetricRecorder:
                 self._gauge_observations_by_name[name] = {}
 
     def register_counter_metric(self, name: str, description: str) -> None:
-        """
-        Register an observable counter metric with the given name and description.
-        """
+        """Register an observable counter metric with the given name and description."""
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -264,9 +260,7 @@ class OpenTelemetryMetricRecorder:
                 self._counter_observations_by_name[name] = {}
 
     def register_sum_metric(self, name: str, description: str) -> None:
-        """
-        Register an observable sum metric with the given name and description.
-        """
+        """Register an observable sum metric with the given name and description."""
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -293,9 +287,7 @@ class OpenTelemetryMetricRecorder:
     def register_histogram_metric(
         self, name: str, description: str, buckets: List[float]
     ) -> None:
-        """
-        Register a histogram metric with the given name and description.
-        """
+        """Register a histogram metric with the given name and description."""
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -333,14 +325,11 @@ class OpenTelemetryMetricRecorder:
                 self._histogram_bucket_midpoints[name] = midpoints
 
     def get_histogram_bucket_midpoints(self, name: str) -> List[float]:
-        """
-        Get the bucket midpoints for a histogram metric with the given name.
-        """
+        """Get the bucket midpoints for a histogram metric with the given name."""
         return self._histogram_bucket_midpoints[name]
 
     def set_metric_value(self, name: str, tags: dict, value: float):
-        """
-        Set the value of a metric with the given name and tags.
+        """Set the value of a metric with the given name and tags.
 
         For observable metrics (gauge, counter, sum), this stores the value internally
         and returns immediately. The value will be exported asynchronously when
@@ -395,8 +384,7 @@ class OpenTelemetryMetricRecorder:
         name: str,
         data_points: List[dict],
     ) -> None:
-        """
-        Record pre-aggregated histogram data for multiple data points in a single batch.
+        """Record pre-aggregated histogram data for multiple data points in a single batch.
 
         This method takes pre-aggregated bucket counts and reconstructs individual
         observations using bucket midpoints. It acquires the lock once and performs
@@ -451,9 +439,7 @@ class OpenTelemetryMetricRecorder:
                         instrument.record(midpoint, attributes=filtered_tags)
 
     def record_and_export(self, records: List[Record], global_tags=None):
-        """
-        Record a list of telemetry records and export them to Prometheus.
-        """
+        """Record a list of telemetry records and export them to Prometheus."""
         global_tags = global_tags or {}
 
         for record in records:

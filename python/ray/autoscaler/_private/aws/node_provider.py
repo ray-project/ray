@@ -336,8 +336,7 @@ class AWSNodeProvider(NodeProvider):
     def _merge_tag_specs(
         tag_specs: List[Dict[str, Any]], user_tag_specs: List[Dict[str, Any]]
     ) -> None:
-        """
-        Merges user-provided node config tag specifications into a base
+        """Merges user-provided node config tag specifications into a base
         list of node provider tag specifications. The base list of
         node provider tag specs is modified in-place.
 

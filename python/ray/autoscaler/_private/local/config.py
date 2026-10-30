@@ -11,8 +11,7 @@ LOCAL_CLUSTER_NODE_TYPE = "local.cluster.node"
 
 
 def prepare_local(config: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
-    """
-    Prepare local cluster config for ingestion by cluster launcher and
+    """Prepare local cluster config for ingestion by cluster launcher and
     autoscaler.
     """
     config = copy.deepcopy(config)

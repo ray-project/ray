@@ -281,8 +281,7 @@ class ConsolePopen(subprocess.Popen):
 
 
 def _find_address_from_flag(flag: str):
-    """
-    Attempts to find all valid Ray addresses on this node, specified by the
+    """Attempts to find all valid Ray addresses on this node, specified by the
     flag.
 
     Params:
@@ -516,8 +515,7 @@ def get_node_to_connect_for_driver(
     temp_dir: str = None,
     timeout_seconds: int = ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
 ) -> GcsNodeInfo:
-    """
-    Get the node to connect to for the driver.
+    """Get the node to connect to for the driver.
     If node_ip_address, node_name, and/or temp_dir are provided, they will be used to filter the nodes to connect to.
     If node_ip_address, node_name, and/or temp_dir are not provided, or if multiple node matches the filters,
     the following logic will be applied to resolve the node to connect to:
@@ -599,9 +597,7 @@ def get_node_to_connect_for_driver(
 
 
 def get_node(gcs_address, node_id):
-    """
-    Get the node information from the global state accessor.
-    """
+    """Get the node information from the global state accessor."""
     global_state = ray._private.state.GlobalState()
     gcs_options = _get_gcs_client_options(gcs_address)
     global_state._initialize_global_state(gcs_options)

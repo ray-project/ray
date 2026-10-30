@@ -1021,8 +1021,7 @@ async def download_and_unpack_package(
 
 
 def get_top_level_dir_from_compressed_package(package_path: str):
-    """
-    If compressed package at package_path contains a single top-level
+    """If compressed package at package_path contains a single top-level
     directory, returns the name of the top-level directory. Otherwise,
     returns None.
 
@@ -1125,8 +1124,7 @@ def unzip_package(
     unlink_zip: bool,
     logger: Optional[logging.Logger] = default_logger,
 ) -> None:
-    """
-    Unzip the compressed package contained at package_path to target_dir.
+    """Unzip the compressed package contained at package_path to target_dir.
 
     If remove_top_level_directory is True and the top level consists of a
     a single directory (or possibly also a second hidden directory named
@@ -1238,8 +1236,7 @@ def unzip_package(
 
 
 def get_top_level_dir_from_tar_package(package_path: str):
-    """
-    If tar package at package_path contains a single top-level
+    """If tar package at package_path contains a single top-level
     directory, returns the name of the top-level directory. Otherwise,
     returns None.
     """

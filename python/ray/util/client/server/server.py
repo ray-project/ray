@@ -54,8 +54,7 @@ TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S", 30)
 
 
 def _use_response_cache(func):
-    """
-    Decorator for gRPC stubs. Before calling the real stubs, checks if there's
+    """Decorator for gRPC stubs. Before calling the real stubs, checks if there's
     an existing entry in the caches. If there is, then return the cached
     entry. Otherwise, call the real function and use the real cache
     """
@@ -852,8 +851,7 @@ def create_ray_handler(address, redis_password, redis_username=None):
 
 
 def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
-    """
-    Try to create a gcs client based on the command line args or by
+    """Try to create a gcs client based on the command line args or by
     autodetecting a running Ray cluster.
     """
     address = canonicalize_bootstrap_address_or_die(address)

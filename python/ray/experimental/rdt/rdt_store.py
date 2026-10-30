@@ -157,8 +157,7 @@ class _RDTObject:
 
 
 class RDTStore:
-    """
-    This class is thread-safe. The GPU object store is meant to be read and
+    """This class is thread-safe. The GPU object store is meant to be read and
     written by the following threads:
     1. The main thread, which is executing user code. This thread may get, put,
     and pop objects.
@@ -208,8 +207,7 @@ class RDTStore:
         rdt_object: Union[List[Any], Exception],
         is_primary: bool = False,
     ):
-        """
-        Add an RDT object to the RDT store.
+        """Add an RDT object to the RDT store.
 
         Args:
             obj_id: The object ID of the RDT object.
@@ -345,9 +343,7 @@ class RDTStore:
             return rdt_object.data
 
     def wait_tensor_freed(self, tensor: Any, timeout: Optional[float] = None) -> None:
-        """
-        Wait for the object to be freed from the RDT store.
-        """
+        """Wait for the object to be freed from the RDT store."""
         with self._object_freed_cv:
             if not self._object_freed_cv.wait_for(
                 lambda: id(tensor) not in self._tensor_to_object_ids,
@@ -358,9 +354,7 @@ class RDTStore:
                 )
 
     def get_num_objects(self) -> int:
-        """
-        Return the number of objects in the RDT store.
-        """
+        """Return the number of objects in the RDT store."""
         with self._lock:
             # Count total objects across all queues
             return sum(len(queue) for queue in self._rdt_store.values())
