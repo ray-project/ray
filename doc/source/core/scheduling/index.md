@@ -173,6 +173,7 @@ labels
 resources
 accelerators
 placement-group
+numa-aware-placement
 memory-management
 ray-oom-prevention
 ```
