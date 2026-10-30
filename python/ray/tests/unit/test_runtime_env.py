@@ -263,6 +263,41 @@ class TestURICache:
         # Total size is 20 > 10, so we delete "d".
         assert num_delete_fn_calls == 4
 
+    def test_delete_fn_returns_larger_size(self):
+        """Regression test for issue #66982.
+
+        When delete_fn returns a larger actual disk size than what was
+        recorded at add() time (e.g. working dirs that grew during job
+        execution), _total_size_bytes must not go negative. If it did,
+        the eviction algorithm would stop running because total_size
+        would appear well below the limit, leading to unbounded disk
+        usage.
+        """
+        # The size recorded at add() time (e.g. the unpacked bundle size).
+        add_sizes = {"uri1": 2, "uri2": 2, "uri3": 2}
+        # The actual on-disk size that delete_fn measures at eviction time
+        # (much larger because the job wrote temp files into the working dir).
+        actual_sizes = {"uri1": 100, "uri2": 100, "uri3": 100}
+
+        def delete_fn(uri, logger):
+            return actual_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=1, debug_mode=True)
+
+        for i in range(1, 4):
+            uri = f"uri{i}"
+            cache.add(uri, add_sizes[uri])
+            assert cache.get_total_size_bytes() == add_sizes[uri]
+            cache.mark_unused(uri)
+            # After eviction, _total_size_bytes should be 0 because we
+            # subtract the recorded size (2), NOT the actual disk size
+            # returned by delete_fn (100).
+            assert cache.get_total_size_bytes() == 0
+            assert cache.get_total_size_bytes() >= 0, (
+                f"_total_size_bytes went negative on {uri}: "
+                f"{cache.get_total_size_bytes()}"
+            )
+
 
 @pytest.fixture
 def enable_dev_mode(local_env_var_enabled, monkeypatch):
