@@ -639,6 +639,7 @@ py_test_module_list(
         "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
+        "rdt/test_rdt_tpu_sync.py",
     ],
     tags = [
         "exclusive",
