@@ -142,7 +142,7 @@ def test_map_batches_basic(
         ("Int64", 1, pa.int64()),
         ("UInt64", 1, pa.uint64()),
         ("boolean", True, pa.bool_()),
-        ("string", "value", pa.string()),
+        (pd.StringDtype(storage="python"), "value", pa.string()),
     ],
 )
 def test_map_batches_preserves_all_null_pandas_extension_dtype(
