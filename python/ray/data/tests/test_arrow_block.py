@@ -19,8 +19,8 @@ from ray.data._internal.arrow_block import (
     ArrowRow,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
-from ray.data._internal.util import GiB, MiB
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 
