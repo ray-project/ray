@@ -245,3 +245,47 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_unpack_dir_path_traversal_protection(tmp_path):
+    import io
+    import tarfile
+    from ray.tune.utils.file_transfer import _unpack_dir
+
+    def create_traversal_tar(name, linkname=None, is_sym=False):
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w") as tar:
+            if linkname:
+                tinfo = tarfile.TarInfo(name=name)
+                tinfo.type = tarfile.SYMTYPE if is_sym else tarfile.LNKTYPE
+                tinfo.linkname = linkname
+                tar.addfile(tinfo)
+            else:
+                tinfo = tarfile.TarInfo(name=name)
+                tinfo.size = 5
+                tar.addfile(tinfo, io.BytesIO(b"hello"))
+        return stream
+
+    target_dir = str(tmp_path / "target")
+    os.makedirs(target_dir, exist_ok=True)
+
+    stream = create_traversal_tar("../traversal_file.txt")
+    with pytest.raises(Exception):
+        _unpack_dir(stream, target_dir)
+
+    stream_sym = create_traversal_tar("symlink_to_outside", "/etc", is_sym=True)
+    with pytest.raises(Exception):
+        _unpack_dir(stream_sym, target_dir)
+
+    had_filter = hasattr(tarfile, "data_filter")
+    if had_filter:
+        orig_filter = tarfile.data_filter
+        delattr(tarfile, "data_filter")
+    try:
+        with pytest.raises(Exception):
+            _unpack_dir(stream, target_dir)
+        with pytest.raises(Exception):
+            _unpack_dir(stream_sym, target_dir)
+    finally:
+        if had_filter:
+            tarfile.data_filter = orig_filter
