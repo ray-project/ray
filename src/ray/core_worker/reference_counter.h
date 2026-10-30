@@ -264,6 +264,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::optional<MoveState> GetMoveState(const ObjectID &object_id) const override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  std::vector<std::optional<MoveState>> GetMoveStates(
+      const std::vector<ObjectID> &object_ids) const override ABSL_LOCKS_EXCLUDED(mutex_);
+
+  Status TryCommitMoves(const std::vector<ObjectID> &object_ids) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
     lineage_pinning_enabled_.store(lineage_pinning_enabled);
   }
@@ -545,6 +551,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool GetOwnerInternal(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  std::optional<MoveState> GetMoveStateInternal(const ObjectID &object_id) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Unsets the raylet address

@@ -763,6 +763,26 @@ class ReferenceCounterInterface {
   virtual std::optional<MoveState> GetMoveState(const ObjectID &object_id) const = 0;
 
   /**
+   * @brief Get the move states of the given objects, under a single lock.
+   *
+   * @return One entry per input ID, in the same order, as for GetMoveState.
+   */
+  virtual std::vector<std::optional<MoveState>> GetMoveStates(
+      const std::vector<ObjectID> &object_ids) const = 0;
+
+  /**
+   * @brief Move the given objects to their consuming actor task: every MOVABLE
+   * object becomes MOVED. All-or-nothing: if any object is already MOVED, nothing
+   * changes. NOT_MOVABLE objects and IDs without a reference are left alone. An ID
+   * repeated in the list is moved once.
+   *
+   * @param object_ids The by-reference argument IDs of the consuming task.
+   * @return InvalidArgument naming the first object that is already MOVED, OK
+   * otherwise.
+   */
+  virtual Status TryCommitMoves(const std::vector<ObjectID> &object_ids) = 0;
+
+  /**
    * @brief Set whether lineage pinning is enabled, i.e. whether objects owned by
    * this worker can be reconstructed from lineage if lost. This is used to
    * apply the job-level `disable_job_level_lineage_reconstruction` setting:

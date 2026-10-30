@@ -206,6 +206,22 @@ class SerializationContext:
             worker = ray._private.worker.global_worker
             worker.check_connected()
 
+            # Serializing a ref hands it to another process as a borrower, which a
+            # consume-once ref doesn't allow.
+            if not obj.is_nil() and worker.core_worker.get_move_state(obj) in (
+                "MOVABLE",
+                "MOVED",
+            ):
+                # raise PicklingError for the case when ref is wrapped in ` raise Exception(ref)`,
+                # since RayTaskError catches PicklingError. Another alternative would be to use
+                # ValueError, but it escapes RayTaskError and leads to actor death.
+                raise pickle.PicklingError(
+                    f"Object {obj.hex()} was created with _consume_once=True. It can "
+                    "only be passed directly as an argument to one actor task, not "
+                    "nested inside another object (including a ray.put value or a "
+                    "raised exception) or returned from a task."
+                )
+
             self.add_contained_object_ref(
                 obj,
                 allow_out_of_band_serialization=(
