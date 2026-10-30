@@ -380,6 +380,8 @@ class NodeResources {
   const NodeResourceSet &GetAvailable() const;
 
  private:
+  bool Covers(const NodeResourceSet &capacity, const ResourceSet &resource_set) const;
+
   NodeResourceSet available;
 };
 
@@ -441,6 +443,12 @@ NodeResources ResourceMapToNodeResources(
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory);
+
+/// Replaces gpu_memory with the GPU fraction it takes on one device of a node with these
+/// labels, rounded up. Returns nullopt when no single device of the node can hold it.
+std::optional<ResourceSet> ResolveGpuMemory(
+    const ResourceSet &resource_set,
+    const absl::flat_hash_map<std::string, std::string> &node_labels);
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(

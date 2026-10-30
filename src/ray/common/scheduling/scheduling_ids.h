@@ -40,6 +40,7 @@ inline constexpr char kGPU_ResourceLabel[] = "GPU";
 inline constexpr char kObjectStoreMemory_ResourceLabel[] = "object_store_memory";
 inline constexpr char kMemory_ResourceLabel[] = "memory";
 inline constexpr char kBundle_ResourceLabel[] = "bundle";
+inline constexpr char kGPUMemory_ResourceLabel[] = "gpu_memory";
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {
@@ -183,6 +184,12 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   /// Resource ID of object store memory.
   static ResourceID ObjectStoreMemory() {
     return ResourceID(PredefinedResourcesEnum::OBJECT_STORE_MEM);
+  }
+
+  /// VRAM bytes on one GPU, converted into a GPU fraction for each candidate node.
+  static ResourceID GPUMemory() {
+    static const ResourceID id(kGPUMemory_ResourceLabel);
+    return id;
   }
 
   /// Used to allow tests to dynamically change unit-instance resource IDs.

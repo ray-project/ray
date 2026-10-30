@@ -204,7 +204,11 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 
   NodeResources *resources = it->second.GetMutableLocalView();
 
-  resources->SubtractAvailableAndRemoveNegative(resource_request.GetResourceSet());
+  auto resolved = ResolveGpuMemory(resource_request.GetResourceSet(), resources->labels);
+  if (!resolved) {
+    return false;
+  }
+  resources->SubtractAvailableAndRemoveNegative(*resolved);
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of

@@ -142,7 +142,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     SetBundleId(lease_spec.PlacementGroupBundleId());
     SetOwnerAddress(lease_spec.CallerAddress());
     GrantLeaseId(lease_spec.LeaseId());
-    SetIsGpu(lease_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
+    SetIsGpu(lease_spec.RequiresGpu());
     SetIsActorWorker(lease_spec.IsActorCreationTask());
     granted_lease_ = granted_lease;
     root_detached_actor_id_ =

@@ -271,6 +271,11 @@ const ResourceSet &LeaseSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
+bool LeaseSpecification::RequiresGpu() const {
+  return required_resources_->Get(scheduling::ResourceID::GPU()) > 0 ||
+         required_resources_->Has(scheduling::ResourceID::GPUMemory());
+}
+
 const ResourceSet &LeaseSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
