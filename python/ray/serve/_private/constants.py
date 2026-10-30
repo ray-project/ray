@@ -1215,3 +1215,34 @@ SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS: List[float] = [
     5000,  # 5s
     10000,  # 10s
 ]
+
+# Tunables for the `queue_drain_rate` Retry-After policy (see
+# `BackpressureConfig.retry_after_policy`). The estimate is the queue depth at
+# rejection times the seconds per drain over a recent window of busy time: the
+# most recent busy stretch with at least `..._MIN_WINDOW_DRAINS` drains and at
+# least `..._MIN_WINDOW_BUSY_S` busy seconds.
+RAY_SERVE_BACKPRESSURE_BUSY_CLOCK_MIN_WINDOW_DRAINS = get_env_int_positive(
+    "RAY_SERVE_BACKPRESSURE_BUSY_CLOCK_MIN_WINDOW_DRAINS", 8
+)
+RAY_SERVE_BACKPRESSURE_BUSY_CLOCK_MIN_WINDOW_BUSY_S = get_env_float_positive(
+    "RAY_SERVE_BACKPRESSURE_BUSY_CLOCK_MIN_WINDOW_BUSY_S", 10.0
+)
+RAY_SERVE_BACKPRESSURE_DRAIN_RATE_SAMPLE_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_BACKPRESSURE_DRAIN_RATE_SAMPLE_INTERVAL_S", 1.0
+)
+# Number of counted (busy) sample intervals before the computed value is used.
+# Until then, rejections fall back to the static `retry_after_s`.
+RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES = get_env_int_positive(
+    "RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES", 3
+)
+# Retry-After values are multiplied by a factor drawn uniformly from
+# [1 - fraction, 1 + fraction] so that clients rejected together don't retry
+# together. Applies to both the static and computed policies.
+RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION = get_env_float_non_negative(
+    "RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION", 0.1
+)
+if RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION >= 1:
+    raise ValueError(
+        "RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION must be less than 1, "
+        f"got {RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION}."
+    )

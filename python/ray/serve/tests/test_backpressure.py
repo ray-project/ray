@@ -1,4 +1,6 @@
+import asyncio
 import sys
+import threading
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from urllib.parse import urljoin
 
@@ -11,19 +13,59 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
 from ray.serve.exceptions import BackPressureError
 
-# (deployment options, expected rejection status, expected Retry-After header).
-BACKPRESSURE_RESPONSE_CASES = [
+# Every value `retry_after_s=7` can produce: jittered by +/-10%, rounded up.
+JITTERED_RETRY_AFTER_7 = {"7", "8"}
+
+# (deployment options, expected rejection status, expected Retry-After values).
+STATIC_BACKPRESSURE_RESPONSE_CASES = [
     pytest.param({}, 503, None, id="default_503"),
     pytest.param(
         {"backpressure_config": {"status_code": 429, "retry_after_s": 7}},
         429,
-        "7",
+        JITTERED_RETRY_AFTER_7,
         id="429_with_retry_after",
     ),
 ]
+
+# Runtime env for the process that rejects in the cold-fallback cases. The
+# blocked requests in these tests keep work pending, so after a few sampling
+# intervals the estimator would warm up at a drain rate of 0 and compute 60s.
+# Setting the warmup threshold out of reach keeps it cold however slow the test
+# runs. Must be set on the process whose router (or replica) does the rejecting.
+COLD_ESTIMATOR_RUNTIME_ENV = {
+    "env_vars": {"RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES": str(10**9)}
+}
+
+# The rejecting router must run in a deployment that can take
+# `COLD_ESTIMATOR_RUNTIME_ENV`, so these only apply to composition tests (the
+# proxy's router runs in the proxy actor).
+COLD_FALLBACK_RESPONSE_CASES = [
+    pytest.param(
+        {
+            "backpressure_config": {
+                "status_code": 429,
+                "retry_after_policy": "queue_drain_rate",
+                "retry_after_s": 7,
+            }
+        },
+        429,
+        JITTERED_RETRY_AFTER_7,
+        id="queue_drain_rate_cold_fallback",
+    ),
+    pytest.param(
+        {"backpressure_config": {"retry_after_policy": "queue_drain_rate"}},
+        503,
+        None,
+        id="queue_drain_rate_cold_no_fallback",
+    ),
+]
+
+BACKPRESSURE_RESPONSE_CASES = (
+    STATIC_BACKPRESSURE_RESPONSE_CASES + COLD_FALLBACK_RESPONSE_CASES
+)
 
 
 def check_rejection_response(response, expected_status: int, expected_retry_after):
@@ -31,7 +73,7 @@ def check_rejection_response(response, expected_status: int, expected_retry_afte
     if expected_retry_after is None:
         assert "retry-after" not in response.headers
     else:
-        assert response.headers["retry-after"] == expected_retry_after
+        assert response.headers["retry-after"] in expected_retry_after
 
 
 def test_handle_backpressure(serve_instance):
@@ -78,12 +120,72 @@ def test_handle_backpressure(serve_instance):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
+def test_handle_backpressure_computed_retry_after(serve_instance):
+    """Once the router has observed requests draining, rejections carry the
+    computed value instead of the static fallback."""
+
+    @serve.deployment(
+        max_ongoing_requests=1,
+        max_queued_requests=2,
+        backpressure_config={
+            "retry_after_policy": "queue_drain_rate",
+            "retry_after_s": 30,
+        },
+    )
+    class Deployment:
+        async def __call__(self) -> str:
+            await asyncio.sleep(0.05)
+            return "ok"
+
+    handle = serve.run(Deployment.bind())
+    assert handle.remote().result() == "ok"
+    metrics_manager = handle._router._asyncio_router._metrics_manager
+    tracker = metrics_manager._drain_rate_tracker
+    wait_for_condition(lambda: tracker.sampling)
+
+    # Keep the router's queue busy until the estimator has a positive rate.
+    stop = threading.Event()
+
+    def send_load():
+        while not stop.is_set():
+            try:
+                handle.remote().result()
+            except BackPressureError:
+                pass
+
+    load_threads = [threading.Thread(target=send_load) for _ in range(3)]
+    for t in load_threads:
+        t.start()
+    try:
+        wait_for_condition(
+            lambda: tracker.estimator.warm and (tracker.estimator.drain_rate or 0) > 0,
+            timeout=30,
+        )
+        retry_after_values = set()
+        for response in [handle.remote() for _ in range(20)]:
+            try:
+                response.result()
+            except BackPressureError as e:
+                retry_after_values.add(e.retry_after_s)
+    finally:
+        stop.set()
+        for t in load_threads:
+            t.join()
+
+    assert retry_after_values
+    # The queue drains in well under a second, so the estimate is clamped to
+    # 1s and jittered to at most 2s; the 30s fallback would be 27-33s.
+    assert retry_after_values <= {1, 2}
+    # The counter is monotonic and readable immediately from the handle.
+    assert metrics_manager._get_drain_counter() > 0
+
+
 @pytest.mark.parametrize(
     "backpressure_options,expected_status,expected_retry_after",
-    BACKPRESSURE_RESPONSE_CASES,
+    STATIC_BACKPRESSURE_RESPONSE_CASES,
 )
 def test_http_backpressure(
-    serve_instance, backpressure_options, expected_status, expected_retry_after
+    serve_instance, request, backpressure_options, expected_status, expected_retry_after
 ):
     """Requests should be rejected with the configured response once the limit
     is reached (503 with no Retry-After header by default)."""
@@ -97,7 +199,13 @@ def test_http_backpressure(
             await signal_actor.wait.remote()
             return msg
 
-    serve.run(Deployment.options(**backpressure_options).bind())
+    # The proxy keeps one router per deployment ID across tests; a distinct name
+    # per case gives each case a fresh router.
+    serve.run(
+        Deployment.options(
+            name=f"Deployment_{request.node.callspec.id}", **backpressure_options
+        ).bind()
+    )
 
     def send_request(msg: str = "hi"):
         application_url = get_application_url()
@@ -142,6 +250,46 @@ def test_http_backpressure(
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
+@skip_if_haproxy("reads the native Serve ProxyActor's router state")
+def test_proxy_drain_counter_accessor(serve_instance):
+    """The proxy exposes its router's drain counter for a route over the actor
+    API, so tooling outside the proxy process can read it directly."""
+
+    @serve.deployment
+    class Echo:
+        def __call__(self) -> str:
+            return "ok"
+
+    serve.run(Echo.bind())
+    url = get_application_url()
+
+    # `serve_instance` runs a single HeadOnly proxy, so every request below
+    # goes through the proxy whose counter is read.
+    proxies = ray.get(serve_instance._controller.get_proxies.remote())
+    assert len(proxies) == 1
+    [proxy] = proxies.values()
+
+    def drain_counter() -> int:
+        return ray.get(proxy._get_backpressure_drain_counter_for_testing.remote("/"))
+
+    # Wait until the proxy routes requests for the app.
+    wait_for_condition(lambda: httpx.get(url).status_code == 200)
+
+    initial = drain_counter()
+    # Reading doesn't reset or advance the counter.
+    assert drain_counter() == initial
+
+    num_requests = 5
+    for _ in range(num_requests):
+        assert httpx.get(url).status_code == 200
+
+    # Each request was assigned to a replica by this proxy's router before its
+    # response was sent, so the counter has already advanced.
+    after = drain_counter()
+    assert after >= initial + num_requests
+    assert drain_counter() == after
+
+
 @pytest.mark.parametrize(
     "backpressure_options,expected_status,expected_retry_after",
     BACKPRESSURE_RESPONSE_CASES,
@@ -157,7 +305,8 @@ def test_model_composition_backpressure(
             await signal_actor.wait.remote()
             return "ok"
 
-    @serve.deployment
+    # Parent's router for Child does the rejecting.
+    @serve.deployment(ray_actor_options={"runtime_env": COLD_ESTIMATOR_RUNTIME_ENV})
     class Parent:
         def __init__(self, child):
             self.child = child
@@ -232,7 +381,8 @@ def test_model_composition_backpressure_with_fastapi(
             await signal_actor.wait.remote()
             return "ok"
 
-    @serve.deployment
+    # Parent's router for Child does the rejecting.
+    @serve.deployment(ray_actor_options={"runtime_env": COLD_ESTIMATOR_RUNTIME_ENV})
     @serve.ingress(app)
     class Parent:
         def __init__(self, child):
