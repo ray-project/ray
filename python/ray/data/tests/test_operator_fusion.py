@@ -1095,6 +1095,87 @@ def test_combine_repartition_aggregate(
     assert expected_optimized_plan in captured
 
 
+@pytest.mark.parametrize(
+    "repartition_kwargs",
+    [{"keys": ["a"]}, {"shuffle": True}],
+    ids=["keys", "shuffle"],
+)
+def test_combine_repartition_project_aggregate(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    capsys,
+    repartition_kwargs,
+):
+    # Counting by "a" only needs column "a", so projection pushdown inserts a
+    # Project between the Repartition and the Aggregate.
+    ds = ray.data.from_items([{"a": i % 10, "b": i} for i in range(100)])
+    ds = ds.repartition(5, **repartition_kwargs)
+    ds = ds.groupby("a").count()
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the Repartition was dropped and the Project moved below the Aggregate.
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Aggregate[Aggregate]\n"
+        "+- Project[Project]\n"
+        "   +- FromItems[FromItems]"
+    )
+    assert expected_optimized_plan in captured
+
+
+@pytest.mark.parametrize(
+    "repartition_kwargs",
+    [{"keys": ["a"]}, {"shuffle": True}],
+    ids=["keys", "shuffle"],
+)
+def test_combine_repartition_project_aggregate_result(
+    ray_start_regular_shared_2_cpus, repartition_kwargs
+):
+    items = [{"a": i % 10, "b": i} for i in range(100)]
+    ds = ray.data.from_items(items).repartition(5, **repartition_kwargs)
+
+    result = ds.groupby("a").count().take_all()
+
+    assert sorted((row["a"], row["count()"]) for row in result) == [
+        (a, 10) for a in range(10)
+    ]
+
+
+def test_combine_repartition_project_aggregate_keeps_per_block_limit():
+    from ray.data._internal.logical.operators import (
+        Aggregate,
+        InputData,
+        Project,
+        Repartition,
+    )
+    from ray.data._internal.logical.rules.combine_shuffles import CombineShuffles
+    from ray.data.aggregate import Count
+    from ray.data.expressions import col
+
+    def build_plan(per_block_limit):
+        read = InputData(input_data=[])
+        repartition = Repartition(num_outputs=5, keys=["a"], input_dependencies=[read])
+        project = Project(
+            exprs=[col("a")],
+            input_dependencies=[repartition],
+            per_block_limit=per_block_limit,
+        )
+        return Aggregate(key="a", aggs=[Count()], input_dependencies=[project])
+
+    # The Repartition is dropped when the Project has no per-block limit.
+    combined = CombineShuffles._combine(build_plan(per_block_limit=None))
+    assert isinstance(combined.input_dependencies[0], Project)
+    assert isinstance(combined.input_dependencies[0].input_dependencies[0], InputData)
+
+    # A per-block limit depends on the block boundaries the Repartition creates,
+    # so the plan must be left untouched.
+    kept = CombineShuffles._combine(build_plan(per_block_limit=3))
+    assert isinstance(kept.input_dependencies[0], Project)
+    assert isinstance(kept.input_dependencies[0].input_dependencies[0], Repartition)
+
+
 def test_combine_streaming_repartition_to_shuffle_repartition(
     ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
 ):
