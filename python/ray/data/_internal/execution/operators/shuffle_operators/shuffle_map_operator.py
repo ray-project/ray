@@ -151,13 +151,14 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # -- Output queue  ---------------------------------------------------
         self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
         self._partition_bundles_emitted: bool = False
+        self._num_partition_bundles_emitted: int = 0
 
         # -- Stats -----------------------------------------------------------
         self._total_input_bytes: int = 0
         self._phase_metrics = ShuffleOperatorMetrics(
             self, self._metrics, [PhaseSpec("map", "Map", is_output_phase=True)]
         )
-        self._map_metrics = self._phase_metrics.phases["map"]
+        self._map_metrics = self._phase_metrics.phase_metrics["map"]
 
     @property
     def _input_queues(self) -> List[BaseBundleQueue]:
@@ -367,6 +368,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             )
             self._output_queue.add(stamped)
             self._map_metrics.on_output_queued(stamped)
+            self._num_partition_bundles_emitted += 1
 
     def has_next(self) -> bool:
         return self._output_queue.has_next()
@@ -415,7 +417,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         return self._phase_metrics.stats()
 
     def num_outputs_total(self) -> Optional[int]:
-        # Once the maps finish, every partition is emitted as exactly one bundle.
+        # One bundle per partition once any map task ran, none if no input ever
+        # arrived; the exact count is known once the bundles are emitted.
+        if self._partition_bundles_emitted:
+            return self._num_partition_bundles_emitted
         return self._num_partitions
 
     def num_output_rows_total(self) -> Optional[int]:

@@ -118,6 +118,10 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._num_reduce_tasks_submitted: int = 0
+        # Partitions that skipped the reduce task (single input, no rows) and
+        # the bundles emitted for them; the task estimate covers the rest.
+        self._num_empty_partitions: int = 0
+        self._num_empty_partition_bundles: int = 0
 
         # -- Per-partition pairing across inputs -----------------------------
         # partition_id -> input_index -> that input's wrapper bundle. A reduce
@@ -147,7 +151,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
                 )
             ],
         )
-        self._reduce_metrics = self._phase_metrics.phases["reduce"]
+        self._reduce_metrics = self._phase_metrics.phase_metrics["reduce"]
 
         # =====================================================================
         # Disk-shuffle-specific state below.
@@ -193,6 +197,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             and isinstance(schema, pa.Schema)
             and estimated_rows == 0
         ):
+            self._on_empty_partition()
             if self._emit_empty_partitions:
                 self._emit_empty_partition(refs, schema)
             else:
@@ -298,6 +303,17 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             task_id=data_task.get_task_id(),
         )
 
+    def _on_empty_partition(self) -> None:
+        self._num_empty_partitions += 1
+        # The per-task average only describes partitions that run a task.
+        self._reduce_metrics.total_num_tasks = (
+            self._num_partitions - self._num_empty_partitions
+        )
+        if self._phase_metrics.estimated_num_output_bundles is not None:
+            self._phase_metrics.update_output_estimates(
+                self._reduce_metrics, self._num_reduce_tasks_submitted
+            )
+
     def _emit_empty_partition(self, refs: RefBundle, schema: pa.Schema) -> None:
         """Emit one empty output block for an empty partition.
 
@@ -326,6 +342,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             self.id,
         )
         self._num_reduce_tasks_submitted += 1
+        self._num_empty_partition_bundles += 1
         self._output_queue.append(out_bundle)
         self._reduce_metrics.on_output_queued(out_bundle)
 
@@ -402,14 +419,24 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         return self._phase_metrics.stats()
 
     def num_outputs_total(self) -> Optional[int]:
-        return self._phase_metrics.estimated_num_output_bundles
+        estimate = self._phase_metrics.estimated_num_output_bundles
+        if estimate is None:
+            # No reducer has finished; the total is only known once no
+            # partition is left that needs one.
+            if self._num_empty_partitions < self._num_partitions:
+                return None
+            return self._num_empty_partition_bundles
+        return estimate + self._num_empty_partition_bundles
 
     def num_output_rows_total(self) -> Optional[int]:
         # Multi-input reduces (e.g. join) and non-row-preserving reduces
         # (aggregation, fused map) can grow or shrink the row count, so it is
         # estimated from finished reducers instead of borrowed from the map op.
         if self._num_inputs > 1 or not self._preserves_row_count:
-            return self._phase_metrics.estimated_output_num_rows
+            estimate = self._phase_metrics.estimated_output_num_rows
+            if estimate is None and self._num_empty_partitions == self._num_partitions:
+                return 0
+            return estimate
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, DiskHashShuffleMapOp)
         return upstream.num_output_rows_total()

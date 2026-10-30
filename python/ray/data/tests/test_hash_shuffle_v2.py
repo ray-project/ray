@@ -673,6 +673,18 @@ def test_map_num_outputs_total_is_num_partitions(map_op_cls):
 
 
 @pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, DiskHashShuffleMapOp])
+def test_map_num_outputs_total_is_zero_without_input(
+    ray_start_regular_shared_2_cpus, map_op_cls
+):
+    """No map task ever ran, so no partition bundle is emitted."""
+    op = _make_map_op(map_op_cls)
+    op.start(ExecutionOptions(), noop_counter())
+    op.all_inputs_done()
+    assert not op.has_next()
+    assert op.num_outputs_total() == 0
+
+
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, DiskHashShuffleMapOp])
 def test_map_op_records_task_metrics_and_stats(
     ray_start_regular_shared_2_cpus, map_op_cls
 ):
@@ -773,6 +785,79 @@ def test_reduce_op_estimates_totals_from_finished_tasks(
     stats = op.get_stats()
     assert list(stats) == ["reduce"]
     assert len(stats["reduce"]) == 2
+
+
+def _make_single_input_reduce_op(num_partitions, **kwargs):
+    ctx = DataContext.get_current()
+    map_op = ShuffleMapOp(
+        InputDataBuffer(ctx, make_ref_bundles([[0]])),
+        ctx,
+        num_partitions=num_partitions,
+        partition_fn=lambda t: {},
+    )
+    return ShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=num_partitions,
+        reduce_fn=_concat_inputs_reduce_fn(),
+        disallow_block_splitting=True,
+        preserves_row_count=False,
+        **kwargs,
+    )
+
+
+_EMPTY_TABLE = pa.table({"v": pa.array([], pa.int64())})
+
+
+@pytest.mark.parametrize("should_emit_empty_partitions", [True, False])
+def test_reduce_op_totals_converge_with_empty_partitions(
+    ray_start_regular_shared_2_cpus, should_emit_empty_partitions
+):
+    """Empty partitions skip the reduce task, so the finished-task average must
+    not be scaled over them."""
+    op = _make_single_input_reduce_op(
+        4, should_emit_empty_partitions=should_emit_empty_partitions
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    op.add_input(_ipc_shard_bundle(1, pa.table({"v": [1]})), 0)
+    run_op_tasks_sync(op)
+    # One reducer finished and nothing is known about the other three
+    # partitions yet, so the estimate assumes one bundle and one row each.
+    assert op.num_outputs_total() == 4
+    assert op.num_output_rows_total() == 4
+
+    for partition_id in (0, 2, 3):
+        op.add_input(_ipc_shard_bundle(partition_id, _EMPTY_TABLE), 0)
+    op.all_inputs_done()
+    num_empty_bundles = 3 if should_emit_empty_partitions else 0
+    assert op.num_outputs_total() == 1 + num_empty_bundles
+    assert op.num_output_rows_total() == 1
+    outputs = []
+    while op.has_next():
+        outputs.append(op.get_next())
+    assert len(outputs) == 1 + num_empty_bundles
+    assert op.metrics.num_tasks_submitted == op.metrics.num_tasks_finished == 1
+
+
+@pytest.mark.parametrize("should_emit_empty_partitions", [True, False])
+def test_reduce_op_totals_resolve_when_every_partition_is_empty(
+    ray_start_regular_shared_2_cpus, should_emit_empty_partitions
+):
+    op = _make_single_input_reduce_op(
+        2, should_emit_empty_partitions=should_emit_empty_partitions
+    )
+    tables = _drain_reduce_op(
+        op,
+        [
+            (_ipc_shard_bundle(0, _EMPTY_TABLE), 0),
+            (_ipc_shard_bundle(1, _EMPTY_TABLE), 0),
+        ],
+    )
+    expected = 2 if should_emit_empty_partitions else 0
+    assert len(tables) == expected
+    assert op.num_outputs_total() == expected
+    assert op.num_output_rows_total() == 0
+    assert op.metrics.num_tasks_submitted == 0
 
 
 def test_reduce_op_none_target_emits_blocks_as_is(ray_start_regular_shared_2_cpus):
