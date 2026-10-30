@@ -1,5 +1,6 @@
 import sys
 from collections import Counter
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
@@ -321,6 +322,14 @@ class TestApproximateQuantile:
             {"id": 5, "value": 25.0},
         ]
         ds = ray.data.from_items(data)
+
+        result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
+        assert result["approx_quantile(value)"] == [15.0]
+
+    def test_approximate_quantile_decimal(self, ray_start_regular_shared_2_cpus):
+        values = [Decimal("5.00"), None, Decimal("15.00"), Decimal("25.00")]
+        table = pa.table({"value": pa.array(values, type=pa.decimal128(10, 2))})
+        ds = ray.data.from_arrow(table)
 
         result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
         assert result["approx_quantile(value)"] == [15.0]

@@ -1849,7 +1849,7 @@ class ApproximateQuantile(AggregateFnV2):
         column = table.column(self.get_target_column())
         sketch = self.zero(self._quantile_precision)
         values = pc.drop_null(column).to_numpy(zero_copy_only=False)
-        sketch.update(values.astype(np.float32))
+        sketch.update(values.astype(np.float32, copy=False))
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
