@@ -3,6 +3,7 @@ import logging
 import time
 
 import pytest
+from transformers import AutoTokenizer
 
 import ray
 from ray.data.llm import (
@@ -798,6 +799,352 @@ def test_vllm_autoscaling_no_starvation():
     assert all("id" in out for out in results)
     assert all(out.get("resp_1") for out in results)
     assert all(out.get("resp_2") for out in results)
+
+
+@pytest.mark.parametrize("backend", ["uni", "mp", "ray"])
+def test_generation_model(gpu_type, backend):
+    chat_template = """
+{% if messages[0]['role'] == 'system' %}
+    {% set offset = 1 %}
+{% else %}
+    {% set offset = 0 %}
+{% endif %}
+
+{{ bos_token }}
+{% for message in messages %}
+    {% if (message['role'] == 'user') != (loop.index0 % 2 == offset) %}
+        {{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
+    {% endif %}
+
+    {{ '<|im_start|>' + message['role'] + '\n' + message['content'] | trim + '<|im_end|>\n' }}
+{% endfor %}
+
+{% if add_generation_prompt %}
+    {{ '<|im_start|>assistant\n' }}
+{% endif %}
+    """
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B",
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+            distributed_executor_backend=backend,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(
+            enabled=True, chat_template=chat_template
+        ),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=True),
+    )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are a calculator"},
+                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+                detokenize=False,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
+def test_generation_model_tokenized_prompt(gpu_type):
+    tokenizer = AutoTokenizer.from_pretrained(
+        "Qwen/Qwen3.5-0.8B", trust_remote_code=True
+    )
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B",
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            enforce_eager=True,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    def preprocess(row):
+        prompt_text = f"Calculate {row['id']} ** 3"
+
+        return dict(
+            tokenized_prompt=tokenizer(prompt_text)["input_ids"],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=preprocess,
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
+def test_embedding_model(gpu_type, model_smolvlm_256m):
+    processor_config = vLLMEngineProcessorConfig(
+        model_source=model_smolvlm_256m,
+        task_type="embed",
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=False,
+            max_model_len=2048,
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are a calculator"},
+                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+            ],
+        ),
+        postprocess=lambda row: {
+            "resp": row["embeddings"],
+            "prompt": row["prompt"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+    assert all("prompt" in out for out in outs)
+
+
+def test_classification_model(gpu_type):
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="HuggingFaceTB/fineweb-edu-classifier",
+        task_type="classify",
+        engine_kwargs=dict(
+            max_model_len=512,  # Model only supports up to 512 tokens
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            prompt="This is a great educational content.",
+            tokenization_kwargs={"truncation": True, "max_length": 512},
+        ),
+        postprocess=lambda row: {
+            "probs": (
+                float(row["embeddings"][0])
+                if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+                else None
+            ),
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("probs" in out for out in outs)
+
+
+@pytest.mark.parametrize("input_raw_image_data", [True, False])
+@pytest.mark.parametrize("decouple_tokenizer", [True, False])
+def test_vision_model(
+    gpu_type, model_smolvlm_256m, image_asset, input_raw_image_data, decouple_tokenizer
+):
+    image_url, image_pil = image_asset
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_smolvlm_256m,
+        task_type="generate",
+        engine_kwargs=dict(
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+            # CI uses T4 GPU which does not support bfloat16.
+            dtype="half",
+            limit_mm_per_prompt={"image": 1},
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+            chat_template_content_format="openai",
+        ),
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=decouple_tokenizer),
+        detokenize_stage=DetokenizeStageConfig(enabled=decouple_tokenizer),
+    )
+    llm_processor = build_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Say {row['val']} words about this image.",
+                        },
+                        (
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": image_url},
+                                "uuid": "image-1-id",  # UUID will not be included in the output as it's only used for internal caching
+                            }
+                            if input_raw_image_data
+                            else {
+                                "type": "image_pil",
+                                "image_pil": image_pil,
+                                "uuid": "image-2-id",
+                            }
+                        ),
+                    ],
+                },
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+                detokenize=not decouple_tokenizer,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
+@pytest.mark.parametrize("input_raw_audio_data", [True, False])
+def test_audio_model(
+    gpu_type, model_qwen_2_5_omni_3b, audio_asset, input_raw_audio_data
+):
+    audio_url, audio_data = audio_asset
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_qwen_2_5_omni_3b,
+        task_type="generate",
+        engine_kwargs=dict(
+            enforce_eager=True,
+            limit_mm_per_prompt={"audio": 1},
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+            chat_template_content_format="openai",
+        ),
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    llm_processor = build_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Describe this audio in {row['val']} words.",
+                        },
+                        (
+                            {
+                                "type": "input_audio",
+                                "input_audio": {"data": audio_data, "format": "wav"},
+                            }
+                            if input_raw_audio_data
+                            else {
+                                "type": "audio_url",
+                                "audio_url": {"url": audio_url},
+                            }
+                        ),
+                    ],
+                },
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
 
 
 if __name__ == "__main__":

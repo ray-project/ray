@@ -59,12 +59,6 @@ py_test(
 
 test_srcs = glob(["**/*.py"])
 
-filegroup(
-    name = "llm_h100_compute_configs",
-    srcs = glob(["llm_tests/cluster_compute/*.yaml"]),
-    visibility = ["//ci/ray_ci:__pkg__"],
-)
-
 ####
 # SERVE smoke tests
 ####
@@ -292,6 +286,7 @@ py_binary(
         ["**/*.yaml"],
         exclude = ["ray_release/**/*.yaml"],
     ) + [
+        "//doc:llm_doc_tests",
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
     ] + glob(

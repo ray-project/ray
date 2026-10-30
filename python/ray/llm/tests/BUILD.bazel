@@ -39,25 +39,6 @@ py_test_module_list(
     ],
 )
 
-py_test_module_list(
-    size = "large",
-    env = {
-        "VLLM_FLASH_ATTN_VERSION": "2",
-    },
-    files = glob(
-        ["batch/gpu/**/test_*.py"],
-    ),
-    tags = [
-        "exclusive",
-        "gpu",
-        "team:llm",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
 # Serve test
 # Utils unit tests
 py_test_module_list(
@@ -135,36 +116,18 @@ py_test_module_list(
     ],
 )
 
-# Large GPU tests
-py_test_module_list(
-    size = "large",
-    data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/gpu/**/test_*.py"]),
-    tags = [
-        "exclusive",
-        "gpu",
-        "team:llm",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
 py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
     env = {
         "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
-        # Direct streaming wires LLMRouter as the ingress_request_router,
-        # which build_app.py rejects unless HAProxy is enabled.
         "RAY_SERVE_ENABLE_HA_PROXY": "1",
     },
-    files = ["serve/gpu/integration/test_openai_compatibility.py"],
+    files = ["serve/cpu/integration/test_openai_compatibility.py"],
     name_suffix = "_direct_streaming",
     tags = [
+        "cpu",
         "exclusive",
-        "gpu",
         "team:llm",
     ],
     deps = [

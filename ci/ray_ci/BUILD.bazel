@@ -79,17 +79,6 @@ py_binary(
 )
 
 py_binary(
-    name = "llm_tests_h100",
-    srcs = ["llm_tests_h100.py"],
-    data = ["//release:llm_h100_compute_configs"],
-    exec_compatible_with = ["//bazel:py3"],
-    deps = [
-        ":ray_ci_lib",
-        ci_require("anyscale"),
-    ],
-)
-
-py_binary(
     name = "build_in_docker",
     srcs = ["build_in_docker.py"],
     exec_compatible_with = ["//bazel:py3"],

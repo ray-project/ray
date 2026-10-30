@@ -57,17 +57,11 @@ def mock_sglang_wrapper():
 def mock_sgl_engine():
     """Mock the SGLang engine and its _generate_async method."""
     with (
+        patch.dict(sys.modules, {"sglang": MagicMock()}),
         patch(
             "ray.llm._internal.batch.stages.sglang_engine_stage.SGLangEngineWrapper._generate_async"
         ) as mock_generate_async,
     ):
-        try:
-            import sglang  # noqa: F401
-        except ImportError:
-            # Mock sglang module if it's not installed in test env.
-            mock_sgl = MagicMock()
-            mock_sgl.Engine = AsyncMock()
-            sys.modules["sglang"] = mock_sgl
         num_running_requests = 0
         request_lock = asyncio.Lock()
 

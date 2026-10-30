@@ -789,6 +789,10 @@ class BuildkiteSettingsTest(unittest.TestCase):
         ):
             test = Test({"name": "llm_test", "working_dir": working_dir})
             self.assertEqual(get_concurrency_group(test), ("llm-h100", 4))
+        test = Test(
+            {"name": "llm_doc_tests", "working_dir": "//doc", "group": "llm-doc"}
+        )
+        self.assertEqual(get_concurrency_group(test), ("llm-h100", 4))
 
     def testConcurrencyGroupSmokeTest(self):
         with tempfile.TemporaryDirectory() as tmpdir:

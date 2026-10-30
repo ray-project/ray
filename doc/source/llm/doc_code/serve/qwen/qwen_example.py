@@ -59,7 +59,7 @@ llm_config = LLMConfig(
     accelerator_type="H100",
     # You can customize the engine arguments (e.g. vLLM engine kwargs)
     engine_kwargs={
-        "tensor_parallel_size": 2,
+        "tensor_parallel_size": 1,
     },
 )
 
