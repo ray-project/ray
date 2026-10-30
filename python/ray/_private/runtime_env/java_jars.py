@@ -11,6 +11,7 @@ from ray._private.runtime_env.packaging import (
     is_jar_uri,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.redaction import redact_uri
 from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
@@ -39,7 +40,7 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
 
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
-            logger.warning(f"Tried to delete nonexistent URI: {uri}.")
+            logger.warning(f"Tried to delete nonexistent URI: {redact_uri(uri)}.")
             return 0
 
         return local_dir_size

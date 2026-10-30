@@ -14,6 +14,7 @@ from ray._private.runtime_env.constants import (
     RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.redaction import redact_uri
 from ray._private.runtime_env.uri_cache import URICache
 from ray.util.annotations import DeveloperAPI
 
@@ -251,12 +252,12 @@ async def create_for_plugin_if_needed(
 
     for uri in uris:
         if uri not in uri_cache:
-            logger.debug(f"Cache miss for URI {uri}.")
+            logger.debug(f"Cache miss for URI {redact_uri(uri)}.")
             size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
             uri_cache.add(uri, size_bytes, logger=logger)
         else:
             logger.info(
-                f"Runtime env {plugin.name} {uri} is already installed "
+                f"Runtime env {plugin.name} {redact_uri(uri)} is already installed "
                 "and will be reused. Search "
                 "all runtime_env_setup-*.log to find the corresponding setup log."
             )

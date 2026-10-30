@@ -30,7 +30,10 @@ from ray._private.runtime_env.plugin import (
 )
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.py_modules import PyModulesPlugin
-from ray._private.runtime_env.redaction import redact_serialized_runtime_env
+from ray._private.runtime_env.redaction import (
+    redact_serialized_runtime_env,
+    redact_uri,
+)
 from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
 from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
@@ -243,12 +246,16 @@ class ReferenceTable:
         }
 
     def _increase_reference_for_uris(self, uris):
-        default_logger.debug(f"Increase reference for uris {uris}.")
+        default_logger.debug(
+            f"Increase reference for uris {[redact_uri(uri) for uri, _ in uris]}."
+        )
         for uri, _ in uris:
             self._uri_reference[uri] += 1
 
     def _decrease_reference_for_uris(self, uris):
-        default_logger.debug(f"Decrease reference for uris {uris}.")
+        default_logger.debug(
+            f"Decrease reference for uris {[redact_uri(uri) for uri, _ in uris]}."
+        )
         unused_uris = list()
         for uri, uri_type in uris:
             if self._uri_reference[uri] > 0:
@@ -257,9 +264,11 @@ class ReferenceTable:
                     unused_uris.append((uri, uri_type))
                     del self._uri_reference[uri]
             else:
-                default_logger.warning(f"URI {uri} does not exist.")
+                default_logger.warning(f"URI {redact_uri(uri)} does not exist.")
         if unused_uris:
-            default_logger.info(f"Unused uris {unused_uris}.")
+            default_logger.info(
+                f"Unused uris {[redact_uri(uri) for uri, _ in unused_uris]}."
+            )
             self._unused_uris_callback(unused_uris)
         return unused_uris
 

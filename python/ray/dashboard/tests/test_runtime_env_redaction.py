@@ -79,6 +79,59 @@ def test_redact_runtime_env_does_not_mutate_input():
 
 
 @pytest.mark.parametrize(
+    "uri,expected",
+    [
+        (f"https://user:{SECRET}@host:8443/pkg.zip", "https://host:8443/pkg.zip"),
+        (
+            f"s3://bucket/pkg.zip?X-Amz-Signature={SECRET}#frag",
+            "s3://bucket/pkg.zip",
+        ),
+        ("gcs://_ray_pkg_abc123.zip", "gcs://_ray_pkg_abc123.zip"),
+        ("/local/dir?not-a-query", "/local/dir?not-a-query"),
+        (f"https://user:{SECRET}@[bad/pkg.zip", REDACTED_PLACEHOLDER),
+    ],
+)
+def test_redact_runtime_env_strips_uri_credentials(uri, expected):
+    redacted = redact_runtime_env(
+        {"working_dir": uri, "py_modules": [uri], "java_jars": [uri]}
+    )
+
+    assert redacted == {
+        "working_dir": expected,
+        "py_modules": [expected],
+        "java_jars": [expected],
+    }
+
+
+def test_redact_runtime_env_strips_package_url_credentials():
+    runtime_env = {
+        "pip": {
+            "packages": [
+                "requests",
+                f"pkg @ git+https://{SECRET}@github.com/org/repo.git@v1#egg=pkg",
+            ],
+            "pip_install_options": [f"--index-url=https://u:{SECRET}@pypi.corp/simple"],
+        },
+        "uv": [f"--extra-index-url https://u:{SECRET}@pypi.corp/simple"],
+        "conda": {
+            "dependencies": ["python=3.12", {"pip": [f"https://h/a.whl?s={SECRET}"]}]
+        },
+    }
+
+    redacted = redact_runtime_env(runtime_env)
+
+    assert SECRET not in json.dumps(redacted)
+    assert redacted["pip"]["packages"] == [
+        "requests",
+        "pkg @ git+https://github.com/org/repo.git@v1",
+    ]
+    assert redacted["pip"]["pip_install_options"] == [
+        "--index-url=https://pypi.corp/simple"
+    ]
+    assert redacted["conda"]["dependencies"][0] == "python=3.12"
+
+
+@pytest.mark.parametrize(
     "runtime_env",
     [
         {},

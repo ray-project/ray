@@ -304,6 +304,22 @@ def test_subprocess_error_with_last_n_lines():
     assert "321" in s
 
 
+def test_subprocess_error_redacts_urls_in_output():
+    exception = SubprocessCalledProcessError(
+        1,
+        ["pip", "install", "--index-url=https://u:cmdtoken@host/simple"],
+        output="Looking in indexes: https://u:outtoken@host/simple",
+        stderr="GET https://host/pkg.whl?X-Amz-Signature=errtoken failed",
+    )
+
+    exception_str = str(exception)
+
+    for secret in ("cmdtoken", "outtoken", "errtoken"):
+        assert secret not in exception_str
+    assert "https://host/simple" in exception_str
+    assert "https://host/pkg.whl" in exception_str
+
+
 @pytest.mark.asyncio
 async def test_check_output_cmd():
     cmd = "dir" if sys.platform.startswith("win") else "pwd"

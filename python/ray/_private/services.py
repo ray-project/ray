@@ -2481,9 +2481,10 @@ def start_ray_client_server(
         # This avoids leaking it via process arguments.
         env_updates[ray_constants.RAY_REDIS_PASSWORD_ENV] = redis_password
     if serialized_runtime_env_context:
-        command.append(
-            f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
-        )
+        # Passed via the environment because it holds `env_vars` values.
+        env_updates[
+            ray_constants.SERIALIZED_RUNTIME_ENV_CONTEXT_ENV_VAR
+        ] = serialized_runtime_env_context
     if server_type == "proxy":
         assert len(runtime_env_agent_address) > 0
     if runtime_env_agent_address:
