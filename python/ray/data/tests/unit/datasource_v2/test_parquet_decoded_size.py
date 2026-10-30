@@ -662,6 +662,7 @@ _STRINGS = pa.array([f"v{i % 5}" for i in range(N)])
 _LISTS = pa.array([[1, 2]] * N, pa.list_(pa.int64()))
 
 
+@requires_pyarrow_23
 @pytest.mark.parametrize(
     "column, schema_type, format_kwargs, high",
     [
@@ -727,3 +728,9 @@ def test_added_columns_are_bounded(tmp_path):
     estimate = _estimate(path, added=added) - _estimate(path)
     assert estimate == math.ceil(N * added[0]) + added[1]
     assert 1 <= estimate / held <= 1.1
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
