@@ -206,6 +206,13 @@ def create_ragged_ndarray(values: Sequence[Any]) -> np.ndarray:
 
         ``create_ragged_ndarray`` avoids the limitations of ``np.array`` by creating an
         empty array and filling it with pointers to the variable-length arrays.
+
+    Args:
+        values: The arrays to store, which can have different shapes.
+
+    Returns:
+        A 1-D NumPy array with ``dtype=object`` whose elements are the input
+        arrays.
     """  # noqa: E501
     # Create an empty object-dtyped 1D array.
     arr = np.empty(len(values), dtype=object)
