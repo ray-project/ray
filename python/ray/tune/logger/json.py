@@ -54,6 +54,11 @@ class JsonLoggerCallback(LoggerCallback):
         self._trial_files[trial].flush()
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
+        # Release the trial's config snapshot even when the trial never
+        # opened a result file: finished trials must not be retained, as the
+        # config dict pins the whole Trial object (see #64231).
+        self._trial_configs.pop(trial, None)
+
         if trial not in self._trial_files:
             return
 
