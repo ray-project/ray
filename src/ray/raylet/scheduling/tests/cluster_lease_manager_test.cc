@@ -573,6 +573,91 @@ class ClusterLeaseManagerTestWithoutCPUsAtHead : public ClusterLeaseManagerTest 
       : ClusterLeaseManagerTest(/*num_cpus_at_head=*/0.0) {}
 };
 
+// The GCS scheduler test verifies who sends Cancel(L2). Here the production
+// resource/lease managers verify its effect while L2 waits for a compatible worker.
+TEST_F(ClusterLeaseManagerTest, CancelRedundantActorLeaseUnblocksIndependentRequest) {
+  rpc::Address owner;
+  owner.set_node_id(id_.Binary());
+  owner.set_worker_id(WorkerID::FromRandom().Binary());
+  auto task = GenActorCreationTask(
+      JobID::FromInt(1), 1, false, "", "", owner, {{"CPU", 4}}, {{"CPU", 4}});
+  LeaseSpecification spec1(task.GetMessage());
+  const auto l1 = LeaseID::FromRandom();
+  const auto l2 = LeaseID::FromRandom();
+  spec1.GetMutableMessage().set_lease_id(l1.Binary());
+  LeaseSpecification spec2(spec1.GetMessage());
+  spec2.GetMutableMessage().set_lease_id(l2.Binary());
+  auto w1 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, spec1.GetRuntimeEnvHash());
+  rpc::RequestWorkerLeaseReply reply1, reply2, reply_b;
+  int replies1 = 0, replies2 = 0, replies_b = 0;
+  auto queue = [&](const LeaseSpecification &spec,
+                   rpc::RequestWorkerLeaseReply &reply,
+                   int &replies) {
+    lease_manager_.QueueAndScheduleLease(RayLease(spec),
+                                         false,
+                                         false,
+                                         {internal::ReplyCallback(
+                                             [&replies](Status status, auto, auto) {
+                                               EXPECT_TRUE(status.ok());
+                                               ++replies;
+                                             },
+                                             &reply)});
+  };
+  queue(spec1, reply1, replies1);
+  pool_.PushWorker(w1);
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(replies1, 1);
+  ASSERT_FALSE(lease_manager_.CancelLease(l1));  // Already granted.
+  queue(spec2, reply2, replies2);
+  ASSERT_EQ(replies2, 0);
+  ASSERT_TRUE(local_lease_manager_->IsLeaseQueued(spec2.GetSchedulingClass(), l2));
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
+  // W1 completes actor creation and retains its lifetime allocation.
+  w1->AssignActorId(spec1.ActorId());
+  local_lease_manager_->CleanupLease(w1);
+  EXPECT_EQ(w1->GetLifetimeAllocatedInstances()->Sum(scheduling::ResourceID::CPU()), 4);
+
+  // A different runtime environment has an immediately available worker. Its
+  // progress must be limited by CPU, not by L2's pending worker-pool callback.
+  auto task_b = GenActorCreationTask(
+      JobID::FromInt(1), 0, false, "", "", owner, {{"CPU", 4}}, {{"CPU", 4}});
+  auto message_b = task_b.GetMessage();
+  message_b.mutable_runtime_env_info()->set_serialized_runtime_env(
+      R"({"env_vars":{"INDEPENDENT_B":"1"}})");
+  LeaseSpecification spec_b(message_b);
+  spec_b.GetMutableMessage().set_lease_id(LeaseID::FromRandom().Binary());
+  ASSERT_NE(spec_b.GetRuntimeEnvHash(), spec1.GetRuntimeEnvHash());
+  ASSERT_NE(spec_b.ActorId(), spec1.ActorId());
+  auto wb = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1235, clock_, spec_b.GetRuntimeEnvHash());
+  pool_.PushWorker(wb);
+  queue(spec_b, reply_b, replies_b);
+  pool_.TriggerCallbacks();
+  EXPECT_EQ(replies_b, 0);
+  EXPECT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
+
+  ASSERT_TRUE(lease_manager_.CancelLease(l2));
+  EXPECT_EQ(replies2, 1);
+  EXPECT_TRUE(reply2.canceled());
+  EXPECT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 4);
+  EXPECT_EQ(leased_workers_.at(l1)->WorkerId(), w1->WorkerId());
+  EXPECT_FALSE(lease_manager_.CancelLease(l2));  // Idempotent resource release.
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(replies_b, 1);
+  EXPECT_EQ(reply_b.worker_address().worker_id(), wb->WorkerId().Binary());
+  EXPECT_EQ(leased_workers_.at(spec_b.LeaseId())->WorkerId(), wb->WorkerId());
+  EXPECT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
+  wb->AssignActorId(spec_b.ActorId());
+  local_lease_manager_->CleanupLease(wb);
+  local_lease_manager_->ReleaseWorkerResources(w1);
+  local_lease_manager_->ReleaseWorkerResources(wb);
+  leased_workers_.clear();
+  EXPECT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 8);
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterLeaseManagerTest, BasicTest) {
   /*
     Test basic scheduler functionality:

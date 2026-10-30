@@ -87,3 +87,23 @@ ray_cc_test(
         "//src/ray/util:counter_map",
     ],
 )
+
+ray_cc_test(
+    name = "gcs_actor_scheduler_lease_test",
+    size = "small",
+    srcs = ["gcs_actor_scheduler_lease_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/gcs:gcs_node_manager",
+        "//src/ray/gcs:gcs_table_storage",
+        "//src/ray/gcs/actor:gcs_actor",
+        "//src/ray/gcs/actor:gcs_actor_scheduler",
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/observability:fake_ray_event_recorder",
+        "//src/ray/pubsub:fake_publisher",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+    ],
+)
