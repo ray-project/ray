@@ -1915,12 +1915,10 @@ class ReporterAgent(
 
         if gpus_available:
             for gpu in gpus:
-                gpus_utilization, gram_used, gram_total = 0, 0, 0
-                # Consume GPU may not report its utilization.
-                if gpu["utilization_gpu"] is not None:
-                    gpus_utilization += gpu["utilization_gpu"]
-                gram_used += gpu["memory_used"]
-                gram_total += gpu["memory_total"]
+                # No utilization record if the device doesn't report it.
+                gpus_utilization = gpu["utilization_gpu"]
+                gram_used = gpu["memory_used"]
+                gram_total = gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
                 gpu_uuid = gpu.get("uuid")
@@ -1942,11 +1940,6 @@ class ReporterAgent(
                         value=1,
                         tags=gpu_tags,
                     )
-                    gpus_utilization_record = Record(
-                        gauge=METRICS_GAUGES["node_gpus_utilization"],
-                        value=gpus_utilization,
-                        tags=gpu_tags,
-                    )
                     gram_used_record = Record(
                         gauge=METRICS_GAUGES["node_gram_used"],
                         value=gram_used,
@@ -1959,10 +1952,17 @@ class ReporterAgent(
                     )
                     gpu_records_to_add = [
                         gpus_available_record,
-                        gpus_utilization_record,
                         gram_used_record,
                         gram_available_record,
                     ]
+                    if gpus_utilization is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpus_utilization"],
+                                value=gpus_utilization,
+                                tags=gpu_tags,
+                            )
+                        )
                     # Optional GPU power and temperature (e.g. NVIDIA, AMD)
                     if gpu_power_mw is not None:
                         gpu_records_to_add.append(
