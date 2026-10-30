@@ -1,4 +1,5 @@
 import collections
+import functools
 import inspect
 import logging
 import warnings
@@ -74,6 +75,7 @@ from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveReadSpec,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_topic_spec import TopicSpec
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -85,12 +87,14 @@ from ray.data._internal.logical.operators import (
     ListFiles,
     Read,
     ReadFiles,
+    StreamingRepartition,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
+    _is_local_scheme,
     get_compute_strategy_for_read_api,
     get_table_block_metadata_schema,
     merge_resources_to_ray_remote_args,
@@ -562,16 +566,7 @@ def _read_datasource_v2(
 
     ctx = DataContext.get_current()
 
-    if not datasource.supports_distributed_reads:
-        import ray.util.client
-
-        if ray.util.client.ray.is_connected():
-            raise ValueError(
-                "Because you're using Ray Client, read tasks scheduled on the "
-                "Ray cluster can't access your local files. To fix this issue, "
-                "store files in cloud storage or a distributed filesystem like "
-                "NFS."
-            )
+    _refuse_local_files_under_ray_client(datasource)
 
     ray_remote_args = _resolve_read_remote_args(
         datasource,
@@ -3399,11 +3394,258 @@ def read_tfrecords(
     )
 
 
+def _reject_options_of_listed_reads(**options: Any) -> None:
+    """Fail when a sample read is given an option that only a read of paths has.
+
+    An option counts as given when it differs from ``read_mcap``'s default.
+    """
+    defaults = {
+        "log_time_order": True,
+        "include_row_id": False,
+        "include_paths": False,
+        "ignore_missing_paths": False,
+    }
+    given = sorted(
+        name for name, value in options.items() if value != defaults.get(name)
+    )
+    if given:
+        raise ValueError(
+            "A sample read (samples=...) takes its files and times from the "
+            f"samples, so it does not take {given}."
+        )
+
+
+def _read_mcap_samples(
+    samples: Dataset,
+    *,
+    topics: Any,
+    time_source: str,
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+    num_cpus: Optional[float],
+    num_gpus: Optional[float],
+    memory: Optional[float],
+    concurrency: Optional[int],
+    label_selector: Optional[Dict[str, str]],
+    fallback_strategy: Optional[List[Dict[str, Any]]],
+    max_calls: Optional[int],
+    resources: Optional[Dict[str, float]],
+    accelerator_type: Optional[str],
+    runtime_env: Optional[Dict[str, Any]],
+    ray_remote_args: Optional[Dict[str, Any]],
+) -> Dataset:
+    """Read one row per sample of ``samples``, as ``read_mcap(samples=...)``.
+
+    The samples dataset feeds the read tasks in place of a listing. A map turns
+    each sample into a manifest row that names its file
+    (``mcap_samples.sample_manifest``), and the rows are cut into blocks of N
+    samples, one read task each::
+
+        samples -> map to manifest rows -> blocks of N samples -> ReadFiles
+
+    N sizes a task by the bytes its samples read (``mcap_sample_tasks``), unless
+    ``RAY_DATA_MCAP_SAMPLES_PER_TASK`` fixes it.
+    """
+    import pyarrow as pa
+
+    from ray._common.utils import env_integer
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+        MCAPDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_tasks import (
+        PROBE_SAMPLES,
+    )
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
+        check_samples_schema,
+        sample_manifest,
+    )
+
+    ctx = DataContext.get_current()
+    if not ctx.use_datasource_v2:
+        raise NotImplementedError(
+            "read_mcap(samples=...) requires the V2 datasource. Enable it with "
+            "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
+    if time_source == "header":
+        raise NotImplementedError(
+            "time_source='header' is not supported yet: give the clips and "
+            "anchors in log time."
+        )
+    if time_source != "log":
+        raise ValueError(f"time_source must be 'log' or 'header', got {time_source!r}")
+    if not isinstance(topics, collections.abc.Mapping) or not topics:
+        raise ValueError(
+            "A sample read needs topics={topic: TopicSpec(...)}: where each "
+            "topic's steps fall around a sample's anchor."
+        )
+    not_specs = sorted(
+        t for t, spec in topics.items() if not isinstance(spec, TopicSpec)
+    )
+    if not_specs:
+        raise ValueError(f"topics must map each topic to a TopicSpec: {not_specs}")
+    schema = _without_checkpoint(samples).schema()
+    if schema is None:
+        raise ValueError("The samples dataset has no schema: is it empty?")
+    samples_schema = schema.base_schema
+    if not isinstance(samples_schema, pa.Schema):
+        first = _first_samples(samples, 1)
+        if first is None:
+            raise ValueError(
+                "The samples dataset is empty and its blocks are not Arrow "
+                "tables, so its column types are unknown."
+            )
+        samples_schema = first.schema
+    anchor_topics = [topic for topic, spec in topics.items() if spec.needs_anchor]
+    check_samples_schema(samples_schema, list(topics), anchor_topics)
+
+    probe = _first_samples(samples, PROBE_SAMPLES)
+    datasource = MCAPDatasourceV2(
+        [],
+        topics=dict(topics),
+        filesystem=filesystem,
+        samples_schema=samples_schema,
+        local_sample_files=_names_local_files(probe),
+    )
+    _refuse_local_files_under_ray_client(datasource)
+    row_schema = datasource.infer_schema(None)
+    scanner = datasource.create_scanner(schema=row_schema, filesystem=filesystem)
+    samples_per_task = env_integer("RAY_DATA_MCAP_SAMPLES_PER_TASK", 0)
+    if samples_per_task <= 0:
+        samples_per_task = _estimate_samples_per_task(probe, datasource, filesystem)
+    # Cutting the manifest into tasks is cheap, so it runs without generator
+    # backpressure: otherwise a big samples block is cut only as fast as reads
+    # finish, and few read tasks run at once (as ``ListFiles`` does).
+    unthrottled = {"_generator_backpressure_num_objects": -1}
+    rows = samples.map_batches_internal(
+        functools.partial(sample_manifest, needs_anchor=bool(anchor_topics)),
+        batch_format="pyarrow",
+        zero_copy_batch=True,
+        **unthrottled,
+    )
+    manifest = Dataset._from_parent(
+        rows,
+        LogicalPlan(
+            StreamingRepartition(
+                target_num_rows_per_block=samples_per_task,
+                strict=True,
+                ray_remote_args=unthrottled,
+                input_dependencies=[rows._logical_plan.dag],
+            ),
+            rows.context,
+        ),
+    )
+    read_op = ReadFiles(
+        datasource_name=datasource.name,
+        scanner=scanner,
+        schema=row_schema,
+        parallelism=-1,
+        ray_remote_args=_resolve_read_remote_args(
+            datasource,
+            ray_remote_args=ray_remote_args,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            ctx=ctx,
+        ),
+        compute=get_compute_strategy_for_read_api(None, concurrency),
+        # Each row comes from one sample and keeps its columns, so a checkpoint
+        # skips finished samples before their files are read.
+        checkpoint_on_input=True,
+        input_dependencies=[manifest._logical_plan.dag],
+    )
+    return Dataset._from_parent(manifest, LogicalPlan(read_op, manifest.context))
+
+
+def _without_checkpoint(dataset: Dataset) -> Dataset:
+    """``dataset`` without the checkpoint config, for planning to inspect.
+
+    Planning's reads of the samples are no write, so under the checkpoint
+    config their plans would only warn that they cannot checkpoint.
+    """
+    context = dataset.context.copy()
+    context.checkpoint_config = None
+    return Dataset(
+        LogicalPlan(dataset._logical_plan.dag, context), context, dataset._in_stats
+    )
+
+
+def _first_samples(samples: Dataset, num_samples: int) -> Optional["pyarrow.Table"]:
+    """The first ``num_samples`` samples as one Arrow table, or None if there
+    are none."""
+    probe = _without_checkpoint(samples.limit(num_samples))
+    batches = probe.iter_batches(batch_size=num_samples, batch_format="pyarrow")
+    return next(iter(batches), None)
+
+
+def _refuse_local_files_under_ray_client(datasource: Any) -> None:
+    """Fail a read of local files through Ray Client, whose read tasks run on
+    the cluster and can't see the client's disk."""
+    if datasource.supports_distributed_reads:
+        return
+    import ray.util.client
+
+    if ray.util.client.ray.is_connected():
+        raise ValueError(
+            "Because you're using Ray Client, read tasks scheduled on the "
+            "Ray cluster can't access your local files. To fix this issue, "
+            "store files in cloud storage or a distributed filesystem like "
+            "NFS."
+        )
+
+
+def _names_local_files(probe: Optional["pyarrow.Table"]) -> bool:
+    """Whether the probed samples name files with the ``local://`` scheme, which
+    only the driver's node can read."""
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
+        FILES_COLUMN,
+    )
+
+    if probe is None:
+        return False
+    files = [
+        path for paths in probe.column(FILES_COLUMN).to_pylist() for path in paths or ()
+    ]
+    return bool(files) and _is_local_scheme(files)
+
+
+def _estimate_samples_per_task(
+    probe: Optional["pyarrow.Table"],
+    datasource: Any,
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> int:
+    """Samples per read task, so a task reads about the read-task budget,
+    estimated from the probed samples (``mcap_sample_tasks``)."""
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+        _BIN_PACKING_BYTES,
+    )
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
+        SamplePaths,
+    )
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_tasks import (
+        DEFAULT_SAMPLES_PER_TASK,
+        samples_per_task,
+    )
+
+    if probe is None:
+        return DEFAULT_SAMPLES_PER_TASK
+    return samples_per_task(
+        probe, datasource.topic_plans, SamplePaths(filesystem), _BIN_PACKING_BYTES
+    )
+
+
 @PublicAPI(stability="alpha")
 def read_mcap(
-    paths: Union[str, List[str]],
+    paths: Optional[Union[str, List[str]]] = None,
     *,
-    topics: Optional[Union[List[str], Set[str]]] = None,
+    samples: Optional[Dataset] = None,
+    topics: Optional[Union[List[str], Set[str], Dict[str, TopicSpec]]] = None,
+    time_source: Literal["log", "header"] = "log",
     time_range: Optional[Union[Tuple[int, int], TimeRange]] = None,
     message_types: Optional[Union[List[str], Set[str]]] = None,
     include_metadata: bool = True,
@@ -3510,6 +3752,21 @@ def read_mcap(
         ...     include_paths=True # doctest: +SKIP
         ... ) # doctest: +SKIP
 
+        Read one training sample per row: each topic's steps around the
+        sample's anchor, with the samples' own columns passed through.
+
+        >>> from ray.data.datasource import TopicSpec  # doctest: +SKIP
+        >>> from ray.data.datasource.mcap import steps  # doctest: +SKIP
+        >>> samples = ray.data.read_parquet("s3://bucket/samples/")  # doctest: +SKIP
+        >>> ds = ray.data.read_mcap(  # doctest: +SKIP
+        ...     samples=samples,  # doctest: +SKIP
+        ...     topics={  # doctest: +SKIP
+        ...         "/cam/head": TopicSpec(steps.before(0.5, fps=10)),  # doctest: +SKIP
+        ...         "/joint_states": TopicSpec(steps.before(1, fps=50), pad="zeros"),  # doctest: +SKIP
+        ...         "/action": TopicSpec(steps.after(1, fps=5), pad="raise"),  # doctest: +SKIP
+        ...     },  # doctest: +SKIP
+        ... )  # doctest: +SKIP
+
         Store ``schema_data`` as plain bytes, as the legacy reader does.
 
         >>> import pyarrow as pa # doctest: +SKIP
@@ -3520,9 +3777,32 @@ def read_mcap(
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
-            A list of paths can contain both files and directories.
+            A list of paths can contain both files and directories. Leave it out
+            when ``samples`` names the files.
+        samples: A :class:`~ray.data.Dataset` of training samples to read, one
+            output row each, in place of ``paths``. Each sample has ``files``, a
+            list of one MCAP path, and its clip ``clip_start`` and ``clip_end``:
+            integer nanoseconds of log time, the clip's end exclusive. A sample
+            also needs an ``anchor`` inside its clip when a topic measures from
+            it. ``topics`` then maps each topic to a
+            :class:`~ray.data.datasource.TopicSpec`: where the topic's steps fall,
+            around the anchor or inside the clip, and which message fills each. A
+            row keeps the sample's columns and adds, per topic, ``data:<topic>``
+            with each step's payload, ``times:<topic>`` with each step's log time
+            and ``valid:<topic>``,
+            which is ``False`` for a padded step. A ``sample_id`` column names
+            a sample in errors. A read task takes as many samples as read about
+            ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of chunks (128 MiB by default),
+            estimated from the first samples, or the count
+            ``RAY_DATA_MCAP_SAMPLES_PER_TASK`` sets. It reads each file's samples
+            in anchor order, so a samples dataset sorted by file and anchor
+            shares chunks between samples. Requires the V2 datasource.
         topics: Optional list or set of topic names to include. If specified, only
-            messages from these topics will be read.
+            messages from these topics will be read. With ``samples``, a dict from
+            each topic to its :class:`~ray.data.datasource.TopicSpec`, in the order
+            the row's columns take.
+        time_source: The clock of a sample's clip and anchor. Only ``"log"``, the
+            messages' ``log_time``, is supported so far.
         time_range: Optional time range for filtering messages by timestamp. Can be either
             a tuple of (start_time, end_time) in nanoseconds (for backwards compatibility)
             or a TimeRange object. Both values must be non-negative and start_time < end_time.
@@ -3611,6 +3891,76 @@ def read_mcap(
         :class:`~ray.data.Dataset` producing records read from the specified MCAP files.
     """
     _validate_shuffle_arg(shuffle)
+    checkpoint_config = DataContext.get_current().checkpoint_config
+    if checkpoint_config is not None and checkpoint_config.has_generated_id_column:
+        from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+        raise InvalidCheckpointingConfig(
+            "`CheckpointConfig(generated_id_column=...)` works only with "
+            "`read_parquet`. For `read_mcap`, use "
+            '`CheckpointConfig(id_column="row_id")`. Its `row_id` column gives '
+            "each message an id that stays the same on every run."
+        )
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+        ROW_ID_COLUMN,
+    )
+
+    if samples is not None:
+        if (
+            checkpoint_config is not None
+            and checkpoint_config.id_column == ROW_ID_COLUMN
+        ):
+            from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+            raise InvalidCheckpointingConfig(
+                "A sample read's rows have no `row_id`. Key the checkpoint on a "
+                'column of the samples instead, such as `id_column="sample_id"`.'
+            )
+        _reject_options_of_listed_reads(
+            paths=paths,
+            time_range=time_range,
+            message_types=message_types,
+            log_time_order=log_time_order,
+            include_row_id=include_row_id,
+            partition_filter=partition_filter,
+            partitioning=partitioning,
+            include_paths=include_paths,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+            file_extensions=file_extensions,
+        )
+        return _read_mcap_samples(
+            samples,
+            topics=topics,
+            time_source=time_source,
+            filesystem=filesystem,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            concurrency=concurrency,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            ray_remote_args=ray_remote_args,
+        )
+    if paths is None:
+        raise ValueError(
+            "read_mcap needs the paths to read, or a dataset of samples to read "
+            "(samples=...)."
+        )
+    if isinstance(topics, collections.abc.Mapping):
+        raise ValueError(
+            "topics maps each topic to a TopicSpec only in a sample read: pass "
+            "samples=... too, or list the topics to read."
+        )
+    if time_source != "log":
+        raise ValueError(
+            f"time_source={time_source!r} applies only to a sample read "
+            "(samples=...)."
+        )
 
     if file_extensions is None:
         file_extensions = ["mcap"]
@@ -3625,20 +3975,6 @@ def read_mcap(
         time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
 
     ctx = DataContext.get_current()
-    checkpoint_config = ctx.checkpoint_config
-    if checkpoint_config is not None and checkpoint_config.has_generated_id_column:
-        from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
-
-        raise InvalidCheckpointingConfig(
-            "`CheckpointConfig(generated_id_column=...)` works only with "
-            "`read_parquet`. For `read_mcap`, use "
-            '`CheckpointConfig(id_column="row_id")`. Its `row_id` column gives '
-            "each message an id that stays the same on every run."
-        )
-    from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
-        ROW_ID_COLUMN,
-    )
-
     if checkpoint_config is not None and checkpoint_config.id_column == ROW_ID_COLUMN:
         # A checkpoint keyed on ``row_id`` needs the column in the read output.
         include_row_id = True
