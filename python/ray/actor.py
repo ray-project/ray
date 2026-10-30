@@ -919,6 +919,10 @@ class ActorMethod:
         self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
+        """Raise a TypeError, because actor methods can't be called directly.
+
+        Call ``.remote()`` on the method instead.
+        """
         raise TypeError(
             "Actor methods cannot be called directly. Instead "
             f"of running 'object.{self._method_name}()', try "
@@ -939,6 +943,7 @@ class ActorMethod:
         return self._bind(args, kwargs)
 
     def remote(self, *args, **kwargs):
+        """Call this actor method remotely with the given arguments."""
         return self._remote(args, kwargs)
 
     def options(self, **options: Any):
@@ -1504,6 +1509,8 @@ class _ActorClassMetadata:
 
 @PublicAPI
 class ActorClassInheritanceException(TypeError):
+    """Raised when a class tries to inherit from an actor class."""
+
     pass
 
 

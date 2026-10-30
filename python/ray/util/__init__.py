@@ -36,6 +36,14 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
     If `all_namespaces` is set to True, all actors in the cluster will be
     returned regardless of namespace, and the returned entries will be of the
     form {"namespace": namespace, "name": name}.
+
+    Args:
+        all_namespaces: Whether to list named actors in all namespaces instead
+            of only the current one.
+
+    Returns:
+        A list of actor names, or, if ``all_namespaces`` is True, a list of
+        dicts with ``"name"`` and ``"namespace"`` keys.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
