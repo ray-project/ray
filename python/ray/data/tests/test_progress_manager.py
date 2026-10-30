@@ -2,6 +2,7 @@ import builtins
 from unittest.mock import MagicMock, patch
 
 import pytest
+from rich.progress import TaskID
 
 import ray
 from ray.data._internal.progress import get_progress_manager
@@ -236,7 +237,7 @@ def test_rich_sub_progress_bar_redraws_on_total_only_update():
     """Totals often arrive without an increment (estimates refined as tasks
     finish); the Rich bar must apply them like the tqdm bar does."""
     progress = MagicMock()
-    bar = RichSubProgressBar("Finalize", progress=progress, tid=1)
+    bar = RichSubProgressBar("Finalize", progress=progress, tid=TaskID(1))
 
     bar.update(total=30)
     assert progress.update.call_args.kwargs["total"] == 30
