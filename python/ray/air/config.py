@@ -298,7 +298,13 @@ class ScalingConfig:
         }
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
-        """Returns a PlacementGroupFactory to specify resources for Tune."""
+        """Returns a PlacementGroupFactory to specify resources for Tune.
+
+        Returns:
+            A ``PlacementGroupFactory`` with an empty head bundle, one bundle
+            that combines the trainer's resources with the first worker's, and
+            one bundle for each other worker.
+        """
         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
         trainer_bundle = self._trainer_resources_not_none
@@ -322,6 +328,12 @@ class ScalingConfig:
         modifies a trial's PlacementGroupFactory but doesn't propagate
         the changes to ScalingConfig. TrainTrainable needs to reconstruct
         a ScalingConfig from on the trial's PlacementGroupFactory.
+
+        Args:
+            pgf: The placement group factory to convert.
+
+        Returns:
+            The ``ScalingConfig`` that the placement group factory describes.
         """
 
         # pgf.bundles = [{trainer + worker}, {worker}, ..., {worker}]
