@@ -3,9 +3,10 @@ import copy
 import logging
 import os
 import traceback
-from typing import Any, Collection, Dict, List, Optional, Union
+from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.ray_constants import env_float
 from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
@@ -97,6 +98,14 @@ _SERIALIZATION_FAILURE_MARKERS = (
     "PicklingError",
     "ray/cloudpickle/cloudpickle.py",
 )
+
+
+def _get_tpu_node_info() -> Tuple[Optional[str], Optional[int]]:
+    """Return the TPU slice name and integer host worker ID for the current node."""
+    return (
+        get_current_pod_name(),
+        TPUAcceleratorManager.get_current_node_tpu_worker_id(),
+    )
 
 
 class WorkerGroup(ExecutionGroup):
@@ -1081,28 +1090,29 @@ class WorkerGroup(ExecutionGroup):
         Sort workers by their TPU Pod name to ensure deterministic
         topology mapping for TPU multi-slice. The TPU Pod name is based on
         TPU_NAME env var, which is unique and indexed within the Ray worker group
-        requesting TPUs. Within each pod, group workers by node ID and sort
-        workers on the same node by their lowest assigned TPU ID.
+        requesting TPUs. Within each pod, order hosts by TPU worker ID and sort
+        workers on the same host by their lowest assigned TPU ID.
         """
-        pod_name_refs = [
-            worker.execute_async(get_current_pod_name) for worker in workers
-        ]
-        pod_names = ray.get(pod_name_refs)
+        node_infos = ray.get(
+            [worker.execute_async(_get_tpu_node_info) for worker in workers]
+        )
 
-        pod_to_workers = collections.defaultdict(list)
-        for worker, pod_name in sorted(
-            zip(workers, pod_names), key=lambda pair: pair[1] or ""
-        ):
-            pod_to_workers[pod_name or ""].append(worker)
-
-        sorted_workers = []
-        for pod_workers in pod_to_workers.values():
-            sorted_workers.extend(
-                WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(
-                    pod_workers, resource_name="TPU"
-                )
+        # Stable sort by (slice name, TPU_WORKER_ID); hosts without an ID keep
+        # input order after hosts with an explicit ID.
+        workers = [
+            worker
+            for worker, _ in sorted(
+                zip(workers, node_infos),
+                key=lambda pair: (
+                    pair[1][0] or "",
+                    float("inf") if pair[1][1] is None else pair[1][1],
+                ),
             )
-        return sorted_workers
+        ]
+
+        return WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(
+            workers, resource_name="TPU"
+        )
 
     @staticmethod
     def _assign_worker_ranks(
@@ -1247,17 +1257,14 @@ class WorkerGroup(ExecutionGroup):
 
         # Sort workers on the same node by the lowest accelerator id
         # More details: https://github.com/ray-project/ray/issues/40803
-        def get_lowest_accelerator_id(worker) -> Union[int, str]:
+        def get_lowest_accelerator_id(worker) -> Tuple[int, Union[int, str]]:
             acc_ids = worker.metadata.accelerator_ids.get(resource_name, [])
-            if not acc_ids:
-                return 0
-
-            # Attempt to convert accelerator IDs to integers and find the minimum ID.
-            # Fallback to return the minimum string-based ID
+            # Numeric IDs sort numerically ("2" < "10") and before non-numeric IDs
+            # (e.g. GPU UUIDs); the leading tag keeps int and str from being compared.
             try:
-                return min(int(acc_id) for acc_id in acc_ids)
+                return (0, min((int(acc_id) for acc_id in acc_ids), default=0))
             except ValueError:
-                return min(acc_ids)
+                return (1, min(str(acc_id) for acc_id in acc_ids))
 
         for node_id in node_id_to_workers:
             node_id_to_workers[node_id].sort(key=get_lowest_accelerator_id)

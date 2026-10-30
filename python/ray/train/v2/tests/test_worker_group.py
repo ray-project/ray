@@ -1427,26 +1427,44 @@ def test_assign_worker_ranks(
 
 
 def test_assign_worker_ranks_tpu():
-    """Verify TPU worker rank assignment sorts by pod name, groups by node ID,
-    and sorts workers on the same node by their lowest assigned TPU ID."""
+    """Verify TPU worker rank assignment sorts by pod name, orders hosts within
+    each slice by integer TPU_WORKER_ID (falling back to node_id insertion
+    order when unset), and sorts workers on the same host by their lowest
+    assigned integer TPU ID."""
     worker_cls = ray.remote(num_cpus=0)(RayTrainWorker)
+    # (pod_name, tpu_worker_id, node_id, node_ip, tpu_ids)
+    # Intentionally scramble:
+    # - Slice order: "slice-1" before "slice-0"
+    # - Host order within slice-0: node1 (TPU_WORKER_ID=1) listed before
+    #   node0 (TPU_WORKER_ID=0), plus a fallback robustness case where
+    #   TPU_WORKER_ID="unset" parses to None without triggering GCE metadata HTTP calls
+    # - Device order within node0: ["10"], ["2", "3"], ["0"] (numeric: 0 < 2 < 10)
     specs = [
-        ("slice-1", "node2", "10.0.0.3", ["1"]),
-        ("slice-0", "node0", "10.0.0.1", ["2"]),
-        ("slice-0", "node1", "10.0.0.2", ["1"]),
-        ("slice-0", "node0", "10.0.0.1", ["0"]),
-        ("slice-1", "node2", "10.0.0.3", ["0"]),
-        ("slice-0", "node1", "10.0.0.2", ["0"]),
-        ("slice-0", "node0", "10.0.0.1", ["1", "3"]),
+        ("slice-1", "0", "node2", "10.0.0.3", ["1"]),
+        ("slice-0", "1", "node1", "10.0.0.2", ["1"]),
+        ("slice-0", "unset", "node_unlabeled", "10.0.0.4", ["0"]),
+        ("slice-0", "0", "node0", "10.0.0.1", ["10"]),
+        ("slice-0", "0", "node0", "10.0.0.1", ["0"]),
+        ("slice-1", "0", "node2", "10.0.0.3", ["0"]),
+        ("slice-0", "1", "node1", "10.0.0.2", ["0"]),
+        ("slice-0", "0", "node0", "10.0.0.1", ["2", "3"]),
     ]
-    actors = [
-        worker_cls.options(runtime_env={"env_vars": {"TPU_NAME": pod_name}}).remote()
-        for pod_name, _, _, _ in specs
-    ]
+    host_actors = {}
+    for pod_name, tpu_worker_id, node_id, _, _ in specs:
+        if node_id not in host_actors:
+            host_actors[node_id] = worker_cls.options(
+                runtime_env={
+                    "env_vars": {
+                        "TPU_NAME": pod_name,
+                        "TPU_WORKER_ID": tpu_worker_id,
+                    }
+                }
+            ).remote()
+
     try:
         workers = [
             Worker(
-                actor=actor,
+                actor=host_actors[node_id],
                 metadata=ActorMetadata(
                     node_id=node_id,
                     node_ip=node_ip,
@@ -1456,9 +1474,7 @@ def test_assign_worker_ranks_tpu():
                 ),
                 resources={"TPU": len(tpu_ids)},
             )
-            for i, (actor, (_, node_id, node_ip, tpu_ids)) in enumerate(
-                zip(actors, specs)
-            )
+            for i, (_, _, node_id, node_ip, tpu_ids) in enumerate(specs)
         ]
 
         result = WorkerGroup._assign_worker_ranks(workers)
@@ -1471,6 +1487,7 @@ def test_assign_worker_ranks_tpu():
             )
             for w in result
         ] == [
+            # slice-0, node0 (TPU_WORKER_ID=0): TPU IDs ["0"], ["2", "3"], ["10"]
             (
                 "node0",
                 ["0"],
@@ -1478,32 +1495,33 @@ def test_assign_worker_ranks_tpu():
                     local_rank=0,
                     local_world_size=3,
                     world_rank=0,
-                    world_size=7,
+                    world_size=8,
                     node_rank=0,
                 ),
             ),
             (
                 "node0",
-                ["1", "3"],
+                ["2", "3"],
                 DistributedContext(
                     local_rank=1,
                     local_world_size=3,
                     world_rank=1,
-                    world_size=7,
+                    world_size=8,
                     node_rank=0,
                 ),
             ),
             (
                 "node0",
-                ["2"],
+                ["10"],
                 DistributedContext(
                     local_rank=2,
                     local_world_size=3,
                     world_rank=2,
-                    world_size=7,
+                    world_size=8,
                     node_rank=0,
                 ),
             ),
+            # slice-0, node1 (TPU_WORKER_ID=1): TPU IDs ["0"], ["1"]
             (
                 "node1",
                 ["0"],
@@ -1511,7 +1529,7 @@ def test_assign_worker_ranks_tpu():
                     local_rank=0,
                     local_world_size=2,
                     world_rank=3,
-                    world_size=7,
+                    world_size=8,
                     node_rank=1,
                 ),
             ),
@@ -1522,19 +1540,32 @@ def test_assign_worker_ranks_tpu():
                     local_rank=1,
                     local_world_size=2,
                     world_rank=4,
-                    world_size=7,
+                    world_size=8,
                     node_rank=1,
                 ),
             ),
+            # slice-0, node_unlabeled (fallback when TPU_WORKER_ID is None)
+            (
+                "node_unlabeled",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=5,
+                    world_size=8,
+                    node_rank=2,
+                ),
+            ),
+            # slice-1, node2 (TPU_WORKER_ID=0): TPU IDs ["0"], ["1"]
             (
                 "node2",
                 ["0"],
                 DistributedContext(
                     local_rank=0,
                     local_world_size=2,
-                    world_rank=5,
-                    world_size=7,
-                    node_rank=2,
+                    world_rank=6,
+                    world_size=8,
+                    node_rank=3,
                 ),
             ),
             (
@@ -1543,15 +1574,35 @@ def test_assign_worker_ranks_tpu():
                 DistributedContext(
                     local_rank=1,
                     local_world_size=2,
-                    world_rank=6,
-                    world_size=7,
-                    node_rank=2,
+                    world_rank=7,
+                    world_size=8,
+                    node_rank=3,
                 ),
             ),
         ]
     finally:
-        for actor in actors:
+        for actor in host_actors.values():
             ray.kill(actor)
+
+
+def test_sort_workers_by_accelerator_id_mixed_and_empty_ids():
+    """Verify intra-node accelerator sorting handles empty, numeric (multi-digit),
+    and non-numeric string accelerator IDs on the same node without TypeError."""
+    workers = [
+        _make_worker("node0", "10.0.0.1", ["GPU-b"]),
+        _make_worker("node0", "10.0.0.1", ["10"]),
+        _make_worker("node0", "10.0.0.1", []),
+        _make_worker("node0", "10.0.0.1", ["2"]),
+        _make_worker("node0", "10.0.0.1", ["GPU-a"]),
+    ]
+    sorted_workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
+    assert [w.metadata.gpu_ids for w in sorted_workers] == [
+        [],
+        ["2"],
+        ["10"],
+        ["GPU-a"],
+        ["GPU-b"],
+    ]
 
 
 if __name__ == "__main__":
