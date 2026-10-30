@@ -48,7 +48,8 @@ def test_iceberg_resolution(catalog, mode):
 
 def test_target_properties_and_caller_settings_are_preserved():
     properties = {
-        "token": "rest-secret",
+        "auth": {"type": "noop"},
+        "header.Authorization": "Bearer rest-secret",
         "type": "hive",
         "uri": "https://wrong",
         "warehouse": "wrong",
@@ -62,7 +63,7 @@ def test_target_properties_and_caller_settings_are_preserved():
         iceberg_rest_uri="https://iceberg/iceberg",
         iceberg_rest_catalog_kwargs=properties,
     )
-    properties["token"] = "caller-change"
+    properties["header.Authorization"] = "caller-change"
     first = catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
     first_kwargs = first.catalog_kwargs
     assert first_kwargs is not None
@@ -72,11 +73,11 @@ def test_target_properties_and_caller_settings_are_preserved():
         "uri": "https://iceberg/iceberg/",
         "warehouse": "cat",
     }
-    first_kwargs["token"] = "resolved-change"
+    first_kwargs["header.Authorization"] = "resolved-change"
     second = catalog.resolve("other.db.tbl", reader=ReaderFormat.ICEBERG)
     second_kwargs = second.catalog_kwargs
     assert second_kwargs is not None
-    assert second_kwargs["token"] == "rest-secret"
+    assert second_kwargs["header.Authorization"] == "Bearer rest-secret"
     assert second_kwargs["warehouse"] == "other"
     assert catalog.iceberg_rest_catalog_kwargs == original
 
@@ -88,10 +89,24 @@ def test_target_properties_and_caller_settings_are_preserved():
             "auth": {
                 "type": "basic",
                 "basic": {"username": "u", "password": "rest-secret"},
-            }
+            },
+            "token": "unused-token",
+            "credential": "unused-secret",
         },
-        {"credential": "client:rest-secret"},
-        {"token": "rest-secret"},
+        {
+            "auth": {
+                "type": "oauth2",
+                "oauth2": {
+                    "client_id": "client",
+                    "client_secret": "rest-secret",
+                    "token_url": "https://oauth/token",
+                },
+            },
+        },
+        {
+            "auth": {"type": "noop"},
+            "header.Authorization": "Bearer rest-secret",
+        },
     ],
 )
 def test_explicit_iceberg_auth_is_preserved(auth):
@@ -106,6 +121,22 @@ def test_explicit_iceberg_auth_is_preserved(auth):
     assert catalog_kwargs is not None
     for key, value in auth.items():
         assert catalog_kwargs[key] == value
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [None, {}, {"type": None}, {"type": ""}, {"type": " "}, {"type": 1}, [], "secret"],
+)
+def test_invalid_auth_is_secret_safe(auth):
+    catalog = GravitinoCatalog(
+        uri="http://gravitino:8090",
+        metalake="test",
+        iceberg_rest_uri="http://iceberg",
+        iceberg_rest_catalog_kwargs={"auth": auth},
+    )
+    with pytest.raises(ValueError, match="auth must be a dictionary") as caught:
+        catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
+    assert "secret" not in str(caught.value)
 
 
 def test_iceberg_requires_explicit_rest_uri():
@@ -303,10 +334,35 @@ def test_anonymous_catalog_roundtrip(catalog):
 
 
 @pytest.mark.parametrize(
-    "rest_auth,expected",
+    "inherited_auth",
     [
-        ({}, None),
-        ({"token": "rest-token"}, "Bearer rest-token"),
+        pytest.param({"token": "inherited-token"}, id="inherited-token"),
+        pytest.param(
+            {
+                "auth": {
+                    "type": "basic",
+                    "basic": {
+                        "username": "inherited-user",
+                        "password": "inherited-password",
+                    },
+                }
+            },
+            id="inherited-basic",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "rest_auth,expected,rejected",
+    [
+        ({}, None, False),
+        (
+            {
+                "auth": {"type": "noop"},
+                "header.Authorization": "Bearer rest-token",
+            },
+            "Bearer rest-token",
+            False,
+        ),
         (
             {
                 "auth": {
@@ -315,17 +371,22 @@ def test_anonymous_catalog_roundtrip(catalog):
                 }
             },
             "Basic " + base64.b64encode(b"rest-user:rest-password").decode(),
+            False,
         ),
+        ({"token": "rest-secret"}, None, True),
+        ({"credential": "client:rest-secret"}, None, True),
     ],
 )
-def test_actual_pyiceberg_auth_configuration(rest_auth, expected, monkeypatch):
+def test_actual_pyiceberg_auth_configuration(
+    rest_auth, expected, rejected, inherited_auth, monkeypatch
+):
     """Exercise the installed PyIceberg API rather than only asserting kwargs."""
     from pyiceberg.catalog import load_catalog
 
-    # An inherited token must not override explicit authentication or noop.
+    # Inherited authentication must not override explicit authentication or noop.
     monkeypatch.setattr(
         "pyiceberg.catalog._ENV_CONFIG.get_catalog_config",
-        lambda name: {"token": "inherited-token"},
+        lambda name: inherited_auth,
     )
     observed = []
 
@@ -350,6 +411,12 @@ def test_actual_pyiceberg_auth_configuration(rest_auth, expected, monkeypatch):
             iceberg_rest_uri=f"http://127.0.0.1:{server.server_port}/iceberg/",
             iceberg_rest_catalog_kwargs=rest_auth,
         )
+        if rejected:
+            with pytest.raises(ValueError, match="requires explicit auth") as caught:
+                catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
+            assert "rest-secret" not in str(caught.value)
+            assert observed == []
+            return
         resolved = catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
         iceberg = load_catalog("compatibility", **resolved.catalog_kwargs)
         try:

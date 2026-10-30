@@ -617,7 +617,7 @@ class GravitinoCatalog(Catalog):
     SDK.
 
     Resolving tables requires PyIceberg 0.10.0 or later for REST authentication,
-    including the default anonymous ``noop`` configuration. Install it with
+    including the default ``noop`` authentication manager. Install it with
     ``pip install -U "pyiceberg>=0.10.0"``.
 
     Args:
@@ -632,10 +632,17 @@ class GravitinoCatalog(Catalog):
             tables; endpoint discovery is not implemented.
         iceberg_rest_catalog_kwargs: Optional PyIceberg authentication and
             storage properties for the REST endpoint. Supply authentication
-            explicitly here. If ``auth``, ``credential``, and ``token`` are
-            all absent, the provider sets ``auth={"type": "noop"}``.
-            Don't rely on PyIceberg configuration files or environment
-            variables as a fallback for these authentication properties.
+            explicitly in an ``auth`` dictionary with a non-empty ``type`` and
+            all settings required by that authentication manager. If ``auth``,
+            ``token``, and ``credential`` are all absent, the provider sets
+            ``auth={"type": "noop"}``. Legacy top-level ``token`` or
+            ``credential`` properties require an explicit ``auth``
+            dictionary and do not override that authentication manager. For a
+            static Bearer token, use ``auth={"type": "noop"}`` with
+            ``header.Authorization="Bearer <token>"``. Other properties still
+            follow PyIceberg's configuration merging rules; this is not general
+            configuration isolation. Don't rely on configuration files or
+            environment variables to supply authentication settings.
 
     Example:
         >>> import ray
@@ -768,8 +775,21 @@ class GravitinoCatalog(Catalog):
         catalog_kwargs.setdefault(
             "header.X-Iceberg-Access-Delegation", "vended-credentials"
         )
-        if not any(key in catalog_kwargs for key in ("auth", "credential", "token")):
+        if "auth" not in catalog_kwargs:
+            if any(key in catalog_kwargs for key in ("token", "credential")):
+                raise ValueError(
+                    "Top-level token or credential requires explicit auth. "
+                    "For a static Bearer token, use auth={'type': 'noop'} "
+                    "with header.Authorization."
+                )
             catalog_kwargs["auth"] = {"type": "noop"}
+        auth = catalog_kwargs["auth"]
+        if (
+            not isinstance(auth, dict)
+            or not isinstance(auth.get("type"), str)
+            or not auth["type"].strip()
+        ):
+            raise ValueError("auth must be a dictionary with a non-empty string type.")
         return ResolvedSource(
             catalog_kwargs=catalog_kwargs,
             table_identifier=f"{schema_name}.{table_name}",
