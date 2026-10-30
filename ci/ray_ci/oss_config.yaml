@@ -26,6 +26,5 @@ state_machine:
 release_image_step:
   ray_cpu: anyscalecpubuild
   ray_cuda: anyscalecudabuild
-  ray_ml: anyscalemlbuild
   ray_llm: anyscalellmbuild
   ray_torch_cuda: anyscaletorchcudabuild

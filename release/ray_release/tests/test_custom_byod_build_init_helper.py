@@ -33,63 +33,63 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
     config = get_global_config()
     custom_byod_images = [
         (
-            "ray-project/ray-ml:abc123-custom-123456789abc123456789",
-            "ray-project/ray-ml:abc123-base",
+            "ray-project/ray-torch:abc123-custom-123456789abc123456789",
+            "ray-project/ray-torch:abc123-base",
             "custom_script.sh",
             None,
             None,
         ),
         (
-            "ray-project/ray-ml:abc123-custom1",
-            "ray-project/ray-ml:abc123-base",
+            "ray-project/ray-torch:abc123-custom1",
+            "ray-project/ray-torch:abc123-base",
             "",
             None,
             None,
         ),
         (
-            "ray-project/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc123456789",
-            "ray-project/ray-ml:abc123-py37-cpu-base",
+            "ray-project/ray-torch:abc123-py37-cpu-custom-abcdef123456789abc123456789",
+            "ray-project/ray-torch:abc123-py37-cpu-base",
             "custom_script.sh",
             None,
             None,
         ),  # longer than 40 chars
         (
-            "ray-project/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321",
-            "ray-project/ray-ml:abc123-py37-cpu-base",
+            "ray-project/ray-torch:abc123-py37-cpu-custom-abcdef123456789abc987654321",
+            "ray-project/ray-torch:abc123-py37-cpu-base",
             "custom_script.sh",
             "python_depset.lock",
             None,
         ),
         (
-            "custom_ecr/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321",
+            "custom_ecr/ray-torch:abc123-py37-cpu-custom-abcdef123456789abc987654321",
             "anyscale/ray:2.50.0-py37-cpu",
             "custom_script.sh",
             "python_depset.lock",
             None,
         ),
         (
-            "ray-project/ray-ml:abc123-envonly-abcdef123456789abc000000000",
-            "ray-project/ray-ml:abc123-base",
+            "ray-project/ray-torch:abc123-envonly-abcdef123456789abc000000000",
+            "ray-project/ray-torch:abc123-base",
             None,
             None,
             {"MY_ENV": "my_value", "OTHER_ENV": "other_value"},
         ),
     ]
     custom_image_test_names_map = {
-        "ray-project/ray-ml:abc123-custom-123456789abc123456789": ["test_1"],
-        "ray-project/ray-ml:abc123-custom1": ["test_2"],
-        "ray-project/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc123456789": [
+        "ray-project/ray-torch:abc123-custom-123456789abc123456789": ["test_1"],
+        "ray-project/ray-torch:abc123-custom1": ["test_2"],
+        "ray-project/ray-torch:abc123-py37-cpu-custom-abcdef123456789abc123456789": [
             "test_1",
             "test_2",
         ],
-        "ray-project/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321": [
+        "ray-project/ray-torch:abc123-py37-cpu-custom-abcdef123456789abc987654321": [
             "test_1",
             "test_2",
         ],
-        "custom_ecr/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321": [
+        "custom_ecr/ray-torch:abc123-py37-cpu-custom-abcdef123456789abc987654321": [
             "test_3",
         ],
-        "ray-project/ray-ml:abc123-envonly-abcdef123456789abc000000000": [
+        "ray-project/ray-torch:abc123-envonly-abcdef123456789abc000000000": [
             "test_4",
         ],
     }
@@ -147,15 +147,15 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             assert len(content["steps"]) == 5
             assert (
                 content["steps"][0]["label"]
-                == f":tapioca: build custom: ray-ml:custom ({step_keys[0]}) test_1"
+                == f":tapioca: build custom: ray-torch:custom ({step_keys[0]}) test_1"
             )
             assert (
                 content["steps"][1]["label"]
-                == f":tapioca: build custom: ray-ml:py37-cpu-custom ({step_keys[2]}) test_1 test_2"
+                == f":tapioca: build custom: ray-torch:py37-cpu-custom ({step_keys[2]}) test_1 test_2"
             )
             assert (
                 content["steps"][2]["label"]
-                == f":tapioca: build custom: ray-ml:py37-cpu-custom ({step_keys[3]}) test_1 test_2"
+                == f":tapioca: build custom: ray-torch:py37-cpu-custom ({step_keys[3]}) test_1 test_2"
             )
             assert (
                 "export RAY_WANT_COMMIT_IN_IMAGE=abc123"
@@ -209,17 +209,10 @@ _ECR = get_global_config()["byod_ecr"]
     [
         # Anyscale-prefixed base images → "forge"
         ("anyscale/ray:abc123-custom", "anyscale/ray:abc123-base", "forge"),
-        ("custom_ecr/ray-ml:abc123-custom", "anyscale/ray:2.50.0-py310-cpu", "forge"),
-        # ray-ml: python dimension only
         (
-            "ray-project/ray-ml:a-c",
-            "ray-project/ray-ml:a-py310-gpu",
-            "anyscalemlbuild--python310",
-        ),
-        (
-            "ray-project/ray-ml:a-c",
-            "ray-project/ray-ml:a-py311-gpu",
-            "anyscalemlbuild--python311",
+            "custom_ecr/ray-torch:abc123-custom",
+            "anyscale/ray:2.50.0-py310-cpu",
+            "forge",
         ),
         # ray cpu → anyscalecpubuild (python only)
         (
@@ -274,13 +267,10 @@ _ECR = get_global_config()["byod_ecr"]
         ),
         # No python version → bare config key (cuda is default for ray without suffix)
         ("ray-project/ray:a-c", "ray-project/ray:a-base", "anyscalecudabuild"),
-        ("ray-project/ray-ml:a-c", "ray-project/ray-ml:a-base", "anyscalemlbuild"),
     ],
     ids=[
         "forge-bare",
         "forge-versioned",
-        "ray-ml-py310",
-        "ray-ml-py311",
         "ray-cpu-py310",
         "ray-cpu-py313",
         "ray-cuda-cu123",
@@ -291,7 +281,6 @@ _ECR = get_global_config()["byod_ecr"]
         "dashed-build-id",
         "unknown-platform",
         "no-python-ray",
-        "no-python-ray-ml",
     ],
 )
 def test_get_prerequisite_step(image, base_image, expected):
@@ -335,11 +324,11 @@ def test_get_step_name():
     ]
     assert (
         _get_step_name(
-            "ray-project/ray-ml:a1b2c3d4-py39-cpu-abcdef123456789abc123456789",
+            "ray-project/ray-torch:a1b2c3d4-py39-cpu-abcdef123456789abc123456789",
             "abc123",
             test_names,
         )
-        == ":tapioca: build custom: ray-ml:py39-cpu (abc123) test_1 test_2"
+        == ":tapioca: build custom: ray-torch:py39-cpu (abc123) test_1 test_2"
     )
 
 

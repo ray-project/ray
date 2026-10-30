@@ -21,7 +21,6 @@ class GlobalConfig(TypedDict):
     ci_pipeline_buildkite_secret: str
     release_image_step_ray_cpu: str
     release_image_step_ray_cuda: str
-    release_image_step_ray_ml: str
     release_image_step_ray_llm: str
     release_image_step_ray_torch_cuda: str
 
@@ -108,9 +107,6 @@ def _init_global_config(config_file: str):
         ),
         release_image_step_ray_cuda=config_content.get("release_image_step", {}).get(
             "ray_cuda"
-        ),
-        release_image_step_ray_ml=config_content.get("release_image_step", {}).get(
-            "ray_ml"
         ),
         release_image_step_ray_llm=config_content.get("release_image_step", {}).get(
             "ray_llm"
