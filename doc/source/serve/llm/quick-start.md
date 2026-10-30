@@ -29,7 +29,7 @@ You can deploy LLM models using either the builder pattern or bind pattern.
 :::{tab-item} Builder Pattern
 :sync: builder
 
-```{literalinclude} ../../llm/doc_code/serve/qwen/qwen_example.py
+```{literalinclude} doc_code/qwen/qwen_example.py
 :language: python
 :start-after: __qwen_example_start__
 :end-before: __qwen_example_end__
@@ -234,7 +234,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
 :::{tab-item} Inline Config
 :sync: inline
 
-```{literalinclude} ../../llm/doc_code/serve/qwen/llm_config_example.yaml
+```{literalinclude} doc_code/qwen/llm_config_example.yaml
 :language: yaml
 ```
 :::

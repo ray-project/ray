@@ -50,7 +50,7 @@ examples:
     use_cases:
       - large language models
       - generative ai
-    link: ../llm/examples/batch/vllm-with-structural-output
+    link: examples/llm/vllm-with-structural-output
   - title: Batch Inference with LoRA Adapter
     skill_level: beginner
     frameworks:
@@ -58,7 +58,7 @@ examples:
     use_cases:
       - large language models
       - generative ai
-    link: ../llm/examples/batch/vllm-with-lora
+    link: examples/llm/vllm-with-lora
   - title: Multimodal LLM Batch Inference
     skill_level: beginner
     frameworks:
