@@ -568,8 +568,7 @@ def _reconcile_field(
     if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
         return ArrowPythonObjectType()
 
-    # 2. Tensor fields. A null arm is handled by unify_schemas, which demotes
-    # the unified tensor field to objects.
+    # 2. Tensor fields. A null arm becomes null rows of the tensor type.
     tensor_types = get_arrow_extension_tensor_types()
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
 
@@ -674,7 +673,7 @@ def unify_schemas(
         # Look at test_pyarrow_conversion_error_handling for an example.
         pyarrow_exception = e
     else:
-        return _demote_tensor_fields_with_null_arm(unified, schemas_to_unify)
+        return unified
 
     # Reconcile diverging fields
     overrides = _reconcile_diverging_fields(schemas_to_unify, promote_types)
@@ -697,39 +696,11 @@ def unify_schemas(
 
     # Final unification with overrides applied
     try:
-        unified = _unify_schemas_pyarrow(updated_schemas, promote_types)
+        return _unify_schemas_pyarrow(updated_schemas, promote_types)
     except Exception as e:
         schemas_str = "\n-----\n".join(str(s) for s in updated_schemas)
         logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
         raise
-    # The overrides replaced the null arms, so demote against the original schemas.
-    return _demote_tensor_fields_with_null_arm(unified, schemas_to_unify)
-
-
-def _demote_tensor_fields_with_null_arm(
-    unified: "pyarrow.Schema", schemas: List["pyarrow.Schema"]
-) -> "pyarrow.Schema":
-    """Turns each tensor field of ``unified`` that is null in one of ``schemas``
-    into an object field. PyArrow unifies null with a tensor type, but a tensor
-    array cannot hold null rows: ``to_numpy()`` fails on them."""
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
-    null_fields = {
-        field.name
-        for schema in schemas
-        for field in schema
-        if pyarrow.types.is_null(field.type)
-    }
-    if not null_fields:
-        return unified
-    tensor_types = get_arrow_extension_tensor_types()
-    fields = [
-        field.with_type(ArrowPythonObjectType())
-        if field.name in null_fields and isinstance(field.type, tensor_types)
-        else field
-        for field in unified
-    ]
-    return pyarrow.schema(fields, metadata=unified.metadata)
 
 
 def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":

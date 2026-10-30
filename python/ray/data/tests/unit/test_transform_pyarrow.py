@@ -844,11 +844,11 @@ def test_arrow_concat_object_with_tensor_becomes_objects(object_with_tensor_bloc
 
 
 @pytest.mark.parametrize("last_shape", [(2,), (3,)])
-def test_arrow_concat_tensor_with_null_becomes_objects(last_shape):
+def test_arrow_concat_tensor_with_null_keeps_tensor_type(last_shape):
     """A column that is a tensor in one block and null in another concatenates
-    to an object column that keeps the None rows, since a tensor array cannot
-    hold null rows. Holds whether or not the tensor blocks share a shape."""
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+    to a tensor column whose null rows read back as None. Holds whether or not
+    the tensor blocks share a shape."""
+    from ray.data.extensions import get_arrow_extension_tensor_types
 
     tensors = pa.table({"a": ArrowTensorArray.from_numpy(np.array([[1, 2], [3, 4]]))})
     nulls = pa.table({"a": pa.nulls(2)})
@@ -857,17 +857,19 @@ def test_arrow_concat_tensor_with_null_becomes_objects(last_shape):
         {"a": ArrowTensorArray.from_numpy(np.ones((1,) + last_shape, dtype=np.int64))}
     )
 
-    result = concat([tensors, nulls, last])
+    result = concat([tensors, nulls, last], preserve_order=True)
 
-    rows = result.column("a").to_pylist()
-    assert result.schema.field("a").type == ArrowPythonObjectType()
-    assert [None if row is None else row.tolist() for row in rows] == [
-        [1, 2],
-        [3, 4],
-        None,
-        None,
-        [1] * last_shape[0],
-    ]
+    column = result.column("a")
+    assert isinstance(result.schema.field("a").type, get_arrow_extension_tensor_types())
+    assert column.null_count == 2
+    expected = [[1, 2], [3, 4], None, None, [1] * last_shape[0]]
+    assert [None if row is None else row.tolist() for row in column.to_pylist()] == (
+        expected
+    )
+    # A batch with a null row is one ndarray per row, with None for the null row.
+    as_numpy = column.combine_chunks().to_numpy(zero_copy_only=False)
+    assert as_numpy.dtype == object
+    assert [None if row is None else row.tolist() for row in as_numpy] == expected
 
 
 def test_unify_schemas(unify_schemas_basic_schemas, unify_schemas_multicol_schemas):
@@ -1002,20 +1004,19 @@ def test_unify_schemas_objects_win_over_tensors_and_nulls(other_type):
 
 
 @pytest.mark.parametrize("other_shape", [(2, 2), (3, 3)])
-def test_unify_schemas_tensor_with_null_becomes_objects(other_shape):
-    """A column that is a tensor in one schema and null in another unifies to
-    the object type, because a tensor array cannot hold null rows. Holds whether
-    the tensor schemas share a shape or need reconciling first."""
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
+def test_unify_schemas_tensor_with_null_keeps_tensor_type(other_shape):
+    """A null arm does not change what tensor schemas unify to: the null rows
+    fit in the tensor column. Holds whether the tensor schemas share a shape or
+    need reconciling first."""
     tensor = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])
     # A second shape makes PyArrow's own unification fail, so the override path runs.
     other = pa.schema([("col", ArrowTensorType(other_shape, pa.int32()))])
     nulls = pa.schema([("col", pa.null())])
-    objects = pa.schema([("col", ArrowPythonObjectType())])
 
-    assert unify_schemas([tensor, nulls, other]) == objects
-    assert unify_schemas([nulls, tensor, other]) == objects
+    without_nulls = unify_schemas([tensor, other])
+
+    assert unify_schemas([tensor, nulls, other]) == without_nulls
+    assert unify_schemas([nulls, tensor, other]) == without_nulls
 
 
 def test_unify_schemas_missing_tensor_fields(

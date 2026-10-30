@@ -590,5 +590,29 @@ def test_batches_merge_blocks_holding_tensor_object_and_null_rows(
     assert rows[2][1] is None
 
 
+def test_batches_keep_tensor_column_with_missing_rows(ray_start_regular_shared):
+    """A UDF that returns None for some rows of a tensor column keeps the column
+    a tensor column. A batch without a missing row is one stacked array, a batch
+    with one is an ndarray per row with None for the missing row, and pandas
+    sees the missing rows as NA."""
+    from ray.data.extensions import get_arrow_extension_tensor_types
+
+    def decode(batch):
+        row = int(batch["id"][0])
+        return {"img": [None if row == 5 else np.full((2, 2), row, np.float32)]}
+
+    ds = ray.data.range(8).map_batches(decode, batch_size=1)
+    batches = list(ds.iter_batches(batch_size=4, batch_format="numpy"))
+
+    assert isinstance(
+        ds.schema().base_schema.field("img").type, get_arrow_extension_tensor_types()
+    )
+    stacked = [b["img"] for b in batches if b["img"].dtype != object]
+    with_none = [b["img"] for b in batches if b["img"].dtype == object]
+    assert [arr.shape for arr in stacked] == [(4, 2, 2)]
+    assert len(with_none) == 1 and sum(row is None for row in with_none[0]) == 1
+    assert list(ds.to_pandas()["img"].isna()) == [i == 5 for i in range(8)]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
