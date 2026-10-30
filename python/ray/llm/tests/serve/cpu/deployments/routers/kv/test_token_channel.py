@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import gc
 import sys
 from types import SimpleNamespace
@@ -95,6 +96,19 @@ def test_bad_endpoint_falls_back():
         assert not sender._sockets
         # Every genuine failure is reported, not just the first.
         assert mock_logger.warning.call_count == 5
+    finally:
+        sender.close()
+
+
+def test_socket_creation_failure_falls_back():
+    """A socket that fails to open (e.g. too many open sockets) must degrade to
+    engine tokenization, not raise."""
+    sender = TokenSender()
+    try:
+        with patch.object(
+            token_channel, "_new_socket", side_effect=zmq.ZMQError(errno.EMFILE)
+        ):
+            assert sender.push("tcp://127.0.0.1:5555", "k", _payload([1, 2])) is False
     finally:
         sender.close()
 
