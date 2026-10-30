@@ -7,6 +7,7 @@ hand-built payloads PyArrow never writes.
 
 import numpy as np
 import pytest
+from packaging.version import parse as parse_version
 
 import ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics as pss
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
@@ -14,9 +15,16 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     footer_bytes,
     read_size_statistics,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
+
+# PyArrow 17 writes no SizeStatistics; 23 does (18 to 22 unchecked).
+requires_pyarrow_23 = pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("23.0.0"),
+    reason="PyArrow 17 writes no SizeStatistics",
+)
 
 
 # A minimal parquet.thrift covering only the traversal path and the dictionary
@@ -184,6 +192,7 @@ def test_dictionary_page_header_matches_thriftpy2_oracle(tmp_path, oracle):
 # ---------------------------------------------------------------------------
 
 
+@requires_pyarrow_23
 @pytest.mark.parametrize(
     "values, arrow_type, expected",
     [
@@ -213,6 +222,7 @@ def test_size_statistics_match_ground_truth(tmp_path, values, arrow_type, expect
     assert stats[0] == [pss.LeafSizeStats(*expected)]
 
 
+@requires_pyarrow_23
 def test_only_byte_array_leaves_record_unencoded_bytes(written_files):
     """Sub-field 1 is BYTE_ARRAY-only, so numeric leaves must not require it."""
     metadata = written_files["mixed"]
