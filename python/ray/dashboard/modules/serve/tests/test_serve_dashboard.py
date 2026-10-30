@@ -492,6 +492,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
                     == deployment.deployment_config.num_replicas
                 )
                 assert len(deployment.replicas) == deployment.target_num_replicas
+                assert (
+                    deployment.num_running_replicas_at_target_version
+                    == deployment.target_num_replicas
+                )
             assert (
                 deployment.required_resources
                 == expected_values[app]["required_resources"][deployment.name]

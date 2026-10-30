@@ -7115,7 +7115,12 @@ class DeploymentStateManager:
                     id.name,
                     self.get_deployment(id),  # type: ignore[arg-type]
                 ),
-                target_num_replicas=deployment_state._target_state.target_num_replicas,
+                target_num_replicas=deployment_state.target_num_replicas,
+                num_running_replicas_at_target_version=(
+                    deployment_state.get_num_running_replicas(
+                        deployment_state.target_version
+                    )
+                ),
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
                 target_version=deployment_state.target_version.version_id,
                 replicas=deployment_state.list_replica_details(),

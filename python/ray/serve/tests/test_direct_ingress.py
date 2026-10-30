@@ -2642,6 +2642,7 @@ def test_get_serve_instance_details_json_serializable(
                                 "max_surge_percent": 0,
                             },
                             "target_num_replicas": 1,
+                            "num_running_replicas_at_target_version": 1,
                             "required_resources": {"CPU": 1},
                             "target_version": replica.version,
                             "replicas": [
