@@ -30,6 +30,7 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
+    HashPartitioning,
     LogicalOperator,
     LogicalPlan,
     PhysicalPlan,
@@ -147,6 +148,26 @@ def plan_count_op(logical_op, physical_children, data_context):
 _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
+def _join_output_partitioning(logical_op: Join) -> Optional[HashPartitioning]:
+    """Which columns a SHUFFLE_V2 join's output is hash-partitioned by.
+
+    The join merges each key pair into one column named after the left key
+    (e.g. ``on="id", right_on="rid"`` outputs only ``id``), so the output is
+    partitioned by the left key columns. Right outer/semi/anti joins keep the
+    right key's name instead; return ``None`` for them (not handled).
+    """
+    if JoinType(logical_op.join_type) in (
+        JoinType.RIGHT_OUTER,
+        JoinType.RIGHT_SEMI,
+        JoinType.RIGHT_ANTI,
+    ):
+        return None
+    return HashPartitioning(
+        columns=tuple(logical_op.left_key_columns),
+        num_partitions=logical_op.num_partitions,
+    )
+
+
 def _plan_join_shuffle_v2(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
@@ -204,6 +225,7 @@ def _plan_join_shuffle_v2(
         disallow_block_splitting=False,
         reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
         name=f"{prefix}JoinShuffleReduce(num_partitions={num_partitions})",
+        output_partitioning=_join_output_partitioning(logical_op),
         **reduce_kwargs,
     )
 
@@ -342,6 +364,9 @@ class Planner:
         physical_dag, op_map = self._plan_recursively(
             logical_plan.dag, logical_plan.context
         )
+        # Drop ops folded away during planning (see try_plan_local_aggregate).
+        live_ops = set(physical_dag.post_order_iter())
+        op_map = {op: lo for op, lo in op_map.items() if op in live_ops}
         physical_plan = PhysicalPlan(physical_dag, op_map, logical_plan.context)
         return physical_plan, callbacks
 
