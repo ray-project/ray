@@ -2,6 +2,7 @@ import asyncio
 import copy
 import logging
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -145,5 +146,12 @@ class NsightPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
+        if not self.nsight_cmd:
+            return
         logger.info("Running nsight profiler")
-        context.py_executable = " ".join(self.nsight_cmd) + " python"
+        # sys.executable (RuntimeEnvContext's default) is a raw path; other
+        # values may contain shell commands that must be preserved verbatim.
+        py_executable = context.py_executable
+        if py_executable == sys.executable:
+            py_executable = shlex.quote(py_executable)
+        context.py_executable = " ".join(self.nsight_cmd) + f" {py_executable}"
