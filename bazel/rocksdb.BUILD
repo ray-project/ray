@@ -84,6 +84,12 @@ cmake(
     # remote cache -- breaking the aarch64 core wheel build. Make uses the
     # preinstalled toolchain (like jemalloc/openssl) and needs no bootstrap.
     generate_args = ["-G", "Unix Makefiles"],
+    # Unlike Ninja, Make builds serially unless told otherwise, and
+    # rules_foreign_cc runs a bare `cmake --build .`. Without this, all of
+    # RocksDB's sources compile one at a time, which took ~3 hours on a cold
+    # cache and was the build's critical path. Bounded rather than unlimited
+    # (`-j`) to avoid running out of memory on smaller machines.
+    build_args = ["--parallel", "8"],
     lib_source = ":all_srcs",
     out_static_libs = ["librocksdb.a"],
     visibility = ["//visibility:public"],
