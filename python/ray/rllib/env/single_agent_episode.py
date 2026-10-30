@@ -494,6 +494,13 @@ class SingleAgentEpisode:
 
     @property
     def custom_data(self):
+        """A dict for storing your own data on this episode.
+
+        For example, a callback can collect values here over the episode's steps
+        and log them as custom metrics when the episode ends. RLlib doesn't read
+        this data. `cut()` deep-copies it into the successor chunk, and
+        `get_state()` includes it.
+        """
         return self._custom_data
 
     @property
@@ -1649,7 +1656,13 @@ class SingleAgentEpisode:
         return sum(self.get_rewards())
 
     def get_duration_s(self) -> float:
-        """Returns the duration of this Episode (chunk) in seconds."""
+        """Returns the duration of this Episode (chunk) in seconds.
+
+        Returns:
+            The seconds between the start of this episode chunk and its most
+            recently added env step, measured with `time.perf_counter()`. 0.0 if
+            no env step has been added yet.
+        """
         if self._last_step_time is None:
             return 0.0
         return self._last_step_time - self._start_time
@@ -1781,6 +1794,10 @@ class SingleAgentEpisode:
 
     @property
     def observation_space(self):
+        """The observation space of this episode.
+
+        Setting it also sets the space of the episode's observations buffer.
+        """
         return self._observation_space
 
     @observation_space.setter
@@ -1789,6 +1806,10 @@ class SingleAgentEpisode:
 
     @property
     def action_space(self):
+        """The action space of this episode.
+
+        Setting it also sets the space of the episode's actions buffer.
+        """
         return self._action_space
 
     @action_space.setter
