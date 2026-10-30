@@ -1465,6 +1465,38 @@ def to_numpy(
         )
 
 
+def converts_to_non_object_numpy(schema: "pyarrow.Schema") -> bool:
+    """Whether copying each column's NumPy array copies all of its data.
+
+    True when every column converts to a non-object NumPy array. Nullable
+    boolean columns are the one exception: they convert to object arrays, but
+    the elements are immutable ``bool``/``None``, so the copy is still complete.
+    Other types (lists, structs, strings, variable-shaped tensors, etc.) convert
+    to object arrays, and copying those only copies references to the original
+    elements.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
+    fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
+
+    def is_non_object(t: "pyarrow.DataType") -> bool:
+        return (
+            pa.types.is_integer(t)
+            or pa.types.is_floating(t)
+            or pa.types.is_boolean(t)
+            or pa.types.is_null(t)
+            or pa.types.is_timestamp(t)
+            or pa.types.is_date(t)
+            or pa.types.is_duration(t)
+            or isinstance(t, fixed_shape_tensor_types)
+            or _is_native_tensor_type(t)
+        )
+
+    return all(is_non_object(field.type) for field in schema)
+
+
 def try_combine_chunked_columns(
     table: "pyarrow.Table",
     min_chunks_to_combine: int = MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,

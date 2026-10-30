@@ -207,7 +207,12 @@ class Batcher(BatcherInterface):
     # zero-copy views, we sacrifice what should be a small performance hit for better
     # readability.
 
-    def __init__(self, batch_size: Optional[int], ensure_copy: bool = False):
+    def __init__(
+        self,
+        batch_size: Optional[int],
+        ensure_copy: bool = False,
+        numpy_copy_follows: bool = False,
+    ):
         """
         Construct a batcher that yields batches of batch_sizes rows.
 
@@ -215,12 +220,17 @@ class Batcher(BatcherInterface):
             batch_size: The size of batches to yield.
             ensure_copy: Whether batches are always copied from the underlying base
                 blocks (not zero-copy views).
+            numpy_copy_follows: Whether the caller converts each batch to NumPy and
+                copies it afterwards. If so, ``ensure_copy`` skips the block copy
+                for Arrow batches whose columns all convert to non-object NumPy
+                arrays, since the later copy already copies all of their data.
         """
         self._batch_size = batch_size
         self._buffer = []
         self._buffer_size = 0
         self._done_adding = False
         self._ensure_copy = ensure_copy
+        self._numpy_copy_follows = numpy_copy_follows
 
     def add(self, block: Block):
         """Add a block to the block buffer.
@@ -260,7 +270,7 @@ class Batcher(BatcherInterface):
         if self._batch_size is None:
             assert len(self._buffer) == 1
             block = self._buffer[0]
-            if needs_copy:
+            if needs_copy and not self._numpy_copy_suffices(block):
                 # Copy block if needing to ensure fresh batch copy.
                 block = BlockAccessor.for_block(block)
                 block = block.slice(0, block.num_rows(), copy=True)
@@ -302,11 +312,19 @@ class Batcher(BatcherInterface):
         self._buffer_size -= self._batch_size
         needs_copy = needs_copy and not output.will_build_yield_copy()
         batch = output.build()
-        if needs_copy:
+        if needs_copy and not self._numpy_copy_suffices(batch):
             # Need to ensure that the batch is a fresh copy.
             batch = BlockAccessor.for_block(batch)
             batch = batch.slice(0, batch.num_rows(), copy=True)
         return batch
+
+    def _numpy_copy_suffices(self, batch: Block) -> bool:
+        """Whether the NumPy copy made after batching fully copies ``batch``."""
+        return (
+            self._numpy_copy_follows
+            and isinstance(batch, pa.Table)
+            and transform_pyarrow.converts_to_non_object_numpy(batch.schema)
+        )
 
 
 class ShufflingBatcher(BatcherInterface):

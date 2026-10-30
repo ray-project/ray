@@ -8,12 +8,14 @@ import pytest
 import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    converts_to_non_object_numpy,
 )
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
@@ -230,6 +232,39 @@ def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(tensor_format_c
         [("int", pa.float64()), ("tensor", expected_tensor_type)]
     )
     assert ds.count() == num_rows
+
+
+def _variable_shaped_tensor():
+    ragged = np.empty(2, dtype=object)
+    ragged[0], ragged[1] = np.zeros(1), np.zeros(2)
+    return ArrowTensorArray.from_numpy(ragged)
+
+
+@pytest.mark.parametrize(
+    "make_column,expected",
+    [
+        (lambda: pa.array([1, 2]), True),
+        (lambda: pa.array([1, None]), True),
+        (lambda: pa.array([1.0, 2.0]), True),
+        (lambda: pa.array([True, False]), True),
+        (lambda: pa.array([None, None]), True),
+        (lambda: pa.array([0, 1], type=pa.timestamp("us", tz="UTC")), True),
+        (lambda: pa.array([0, 1], type=pa.date32()), True),
+        (lambda: pa.array([0, 1], type=pa.duration("s")), True),
+        (lambda: ArrowTensorArray.from_numpy(np.zeros((2, 2, 2))), True),
+        (lambda: pa.array(["a", "b"]), False),
+        (lambda: pa.array([[1], [2]]), False),
+        (lambda: pa.array([{"x": 1}, {"x": 2}]), False),
+        (_variable_shaped_tensor, False),
+    ],
+)
+def test_converts_to_non_object_numpy(make_column, expected):
+    table = pa.table({"col": make_column()})
+    assert converts_to_non_object_numpy(table.schema) == expected
+
+    # The result has to match what the NumPy conversion actually returns.
+    batch = BlockAccessor.for_block(table).to_batch_format("numpy")
+    assert (batch["col"].dtype != object) == expected
 
 
 if __name__ == "__main__":
