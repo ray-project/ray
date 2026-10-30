@@ -1,5 +1,8 @@
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
+zones:
+    - us-west-2a
+
 head_node:
     instance_type: m6i.16xlarge
 

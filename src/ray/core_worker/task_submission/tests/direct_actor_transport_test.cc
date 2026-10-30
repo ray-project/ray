@@ -58,7 +58,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         subscriber.get(),
         /*is_node_dead=*/[](const NodeID &) { return false; },
         /*free_object_on_nodes_async=*/
-        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &, int64_t, bool) {},
         fake_owned_object_count_gauge,
         fake_owned_object_size_gauge,
         /*lineage_pinning_enabled=*/false);

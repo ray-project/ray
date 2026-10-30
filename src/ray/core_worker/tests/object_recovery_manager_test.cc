@@ -147,7 +147,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             /*is_node_dead=*/
             [this](const NodeID &node_id) { return dead_nodes_.contains(node_id); },
             /*free_object_on_nodes_async=*/
-            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &, int64_t, bool) {},
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
             /*lineage_pinning_enabled=*/lineage_enabled)),

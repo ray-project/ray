@@ -855,7 +855,10 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
       locations_set.insert(*it->second.pinned_at_node_id_);
     }
     if (!locations_set.empty()) {
-      free_object_on_nodes_async_(it->first, locations_set);
+      free_object_on_nodes_async_(it->first,
+                                  locations_set,
+                                  it->second.object_size_,
+                                  freed_objects_.contains(it->first));
     }
   }
 
