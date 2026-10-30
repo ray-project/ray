@@ -70,6 +70,13 @@ DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
 # for backward compatibility for user-customized dashboards that might rely on it
 NODE_TAG_KEYS = ["ip", "Version", "SessionName", "IsHeadNode", "RayNodeType"]
 GPU_TAG_KEYS = NODE_TAG_KEYS + ["GpuDeviceName", "GpuIndex", "GpuUuid"]
+NPU_TAG_KEYS = NODE_TAG_KEYS + [
+    "NpuDeviceName",
+    "NpuIndex",
+    "NpuPhysicalId",
+    "NpuCardId",
+    "NpuDeviceId",
+]
 
 # TpuDeviceName and TpuIndex are expected to be equal to the number of TPU
 # chips in the cluster. TpuType and TpuTopology are proportional to the number

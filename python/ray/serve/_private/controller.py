@@ -1218,8 +1218,7 @@ class ServeController:
         name_to_deployment_args_list: Dict[str, List[bytes]],
         name_to_application_args: Dict[str, bytes],
     ) -> None:
-        """
-        Takes in a list of dictionaries that contain deployment arguments.
+        """Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwritten.
 
         Args:
@@ -1279,8 +1278,7 @@ class ServeController:
         deployment_args_list: List[bytes],
         application_args: bytes,
     ) -> None:
-        """
-        Deploy a single application
+        """Deploy a single application
         (as deploy_applications(), but it only takes a single name and deployment args).
         This primarily exists as a shim to avoid
         changing Java code in https://github.com/ray-project/ray/pull/49168,
@@ -1700,8 +1698,7 @@ class ServeController:
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
-        """
-        Create HTTP and gRPC target groups for a specific application.
+        """Create HTTP and gRPC target groups for a specific application.
 
         This function can return empty list if there are no running replicas.
         Or replicas have not fully initialized yet, where their ports are not
@@ -1788,8 +1785,7 @@ class ServeController:
     def _get_target_groups_for_app_with_no_running_replicas(
         self, route_prefix: str, app_name: str
     ) -> List[TargetGroup]:
-        """
-        For applications that have no running replicas, we return target groups
+        """For applications that have no running replicas, we return target groups
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """

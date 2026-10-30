@@ -208,7 +208,7 @@ These metrics are available in the Ray dashboard in the Serve page and the Serve
 </div>
 ```
 
-The Cluster view is a visualization of the hierarchical relationship of machines (nodes) and Workers (processes). Each host machine consists of many Workers, that you can see by clicking the + button. See also the assignment of GPU resources to specific Actors or Tasks.
+The Cluster view is a visualization of the hierarchical relationship of machines (nodes) and Workers (processes). Each host machine consists of many Workers, that you can see by clicking the + button. See also the assignment of GPU and NPU resources to specific Actors or Tasks.
 
 Click the node ID to see the node detail page.
 
@@ -299,7 +299,7 @@ Additionally, users can see a snapshot of hardware utilization from the {ref}`Cl
 Ray requires users to specify the number of {ref}`resources <logical-resources>` their Tasks and Actors use through arguments such as `num_cpus`, `num_gpus`, `memory`, and `resource`. These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
 
 - See the logical and physical resource utilization over time from the {ref}`Metrics view <dash-metrics-view>`.
-- The snapshot of physical resource utilization (CPU, GPU, memory, disk, network) is also available from the {ref}`Cluster view <dash-node-view>`.
+- The snapshot of physical resource utilization (CPU, GPU, NPU, memory, disk, network) is also available from the {ref}`Cluster view <dash-node-view>`.
 
 ```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/logical_resource.png
 :align: center
@@ -311,7 +311,7 @@ The {ref}`logical resources <logical-resources>` usage.
 :align: center
 ```
 
-The physical resources (hardware) usage. Ray provides CPU, GPU, Memory, GRAM, disk, and network usage for each machine in a Cluster.
+The physical resources (hardware) usage. Ray provides CPU, GPU, NPU, memory, accelerator memory (GRAM or HBM), disk, and network usage for each machine in a Cluster.
 
 (dash-logs-view)=
 
@@ -326,6 +326,8 @@ The physical resources (hardware) usage. Ray provides CPU, GPU, Memory, GRAM, di
 The Logs view lists the Ray logs in your Cluster. It is organized by node and log file name. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
 
 To understand the logging structure of Ray, see {ref}`logging directory and file structure <logging-directory-structure>`.
+
+On TPU nodes, the Logs view also lists the `libtpu` device logs in a `tpu_logs` directory. See {ref}`kuberay-tpu-logs`.
 
 
 The Logs view provides search functionality to help you find specific log messages.

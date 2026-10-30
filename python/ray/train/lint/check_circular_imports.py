@@ -8,8 +8,7 @@ TRAIN_PACKAGES = set()
 
 
 def find_train_packages(base_train_dir: Path, patch_train_dir: Path) -> None:
-    """
-    Find and initialize the global TRAIN_PACKAGES with all train package names from base_train_dir
+    """Find and initialize the global TRAIN_PACKAGES with all train package names from base_train_dir
     and patch_train_dir combined.
     """
     global TRAIN_PACKAGES
@@ -48,8 +47,7 @@ def does_overlap(main_module: str, module: str) -> bool:
 
 
 class Import:
-    """
-    Represents an import statement.
+    """Represents an import statement.
     For example, 'from X import A, B' has module 'X' and names ['A', 'B'].
     Also supports 'import X'.
     """
@@ -63,8 +61,7 @@ class Import:
 
 
 class ImportCollector(ast.NodeVisitor):
-    """
-    An AST node visitor that collects all module-level imports from a Python source file.
+    """An AST node visitor that collects all module-level imports from a Python source file.
     It traverses the AST and records module-level import statements (`import ...` and `from ... import ...`) that are not
     inside function or class definitions, and that are not guarded by `if TYPE_CHECKING` or `if typing.TYPE_CHECKING`
     blocks.
@@ -188,8 +185,7 @@ def collect_imports(
 
 
 def to_module_name_and_is_package(py_file: Path) -> Tuple[str, bool]:
-    """
-    Convert a Python file path to its corresponding module name and determine if it is a package.
+    """Convert a Python file path to its corresponding module name and determine if it is a package.
 
     Args:
         py_file: The path to the Python file.
@@ -211,8 +207,7 @@ def to_module_name_and_is_package(py_file: Path) -> Tuple[str, bool]:
 def get_file_module_imports(
     files: List[Path], module_match_string: Optional[str] = None
 ) -> Dict[str, List[Import]]:
-    """
-    Collect and return the module-level imports for a list of Python files.
+    """Collect and return the module-level imports for a list of Python files.
 
     Args:
         files: A list of Path objects representing Python files to analyze.
@@ -243,8 +238,7 @@ def get_file_module_imports(
 
 
 def convert_to_file_paths(imports: List[Import]) -> List[Path]:
-    """
-    Convert a list of import strings to a list of file paths.
+    """Convert a list of import strings to a list of file paths.
 
     Args:
         imports: A list of Import objects
@@ -264,8 +258,7 @@ def convert_to_file_paths(imports: List[Import]) -> List[Path]:
 
 
 def expand_to_include_reexports(import_map: Dict[str, List[Import]]) -> None:
-    """
-    Expands the set of imports for a given import map to include the modules resulting from reexports.
+    """Expands the set of imports for a given import map to include the modules resulting from reexports.
     So if in the base train module, there is "from x import a, b" and x is a package, then this function
     will explore the __init__.py of x and include the modules a and b were reexported from in the import map.
     """
@@ -294,8 +287,7 @@ def expand_to_include_reexports(import_map: Dict[str, List[Import]]) -> None:
 def check_violations(
     base_train_patching_imports: Dict[str, List[Import]], patch_dir: Path
 ) -> List[str]:
-    """
-    Check for circular import violations between base and patch train modules.
+    """Check for circular import violations between base and patch train modules.
 
     Args:
         base_train_patching_imports: A dictionary mapping base train module names to their imports.

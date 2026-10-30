@@ -1,5 +1,4 @@
-"""
-This example shows how to take full control over what models and action distribution
+"""This example shows how to take full control over what models and action distribution
 are being built inside an RL Module. With this pattern, we can bypass a Catalog and
 explicitly define our own models within a given RL Module.
 

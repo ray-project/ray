@@ -1,6 +1,4 @@
-"""
-Shared utilities for stages.
-"""
+"""Shared utilities for stages."""
 
 from typing import Any, Dict, List, Union
 
