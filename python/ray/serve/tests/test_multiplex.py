@@ -13,7 +13,6 @@ from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
-from ray.serve._private.test_utils import skip_if_haproxy
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
@@ -306,7 +305,6 @@ class TestBasicAPI:
         assert serve.get_multiplexed_model_id() == "1"
 
 
-@skip_if_haproxy("model multiplexing is not supported for direct ingress deployments")
 def test_request_routing_info(serve_instance):
     """Test RequestRoutingInfo is passed to the controller & router"""
 
@@ -383,7 +381,6 @@ def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
     return True
 
 
-@skip_if_haproxy("model multiplexing is not supported for direct ingress deployments")
 def test_multiplexed_e2e(serve_instance):
     """Test multiplexed function end to end"""
 
@@ -419,7 +416,6 @@ def test_multiplexed_e2e(serve_instance):
         )
 
 
-@skip_if_haproxy("model multiplexing is not supported for direct ingress deployments")
 def test_multiplexed_lru_policy(serve_instance):
     """Test multiplexed function LRU policy"""
 
@@ -454,7 +450,6 @@ def test_multiplexed_lru_policy(serve_instance):
     )
 
 
-@skip_if_haproxy("model multiplexing is not supported for direct ingress deployments")
 def test_multiplexed_multiple_replicas(serve_instance):
     """Test multiplexed traffic can be sent to multiple replicas"""
     signal = SignalActor.remote()
@@ -519,7 +514,6 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
     assert handle.options(multiplexed_model_id="foo").remote().result() == "foo"
 
 
-@skip_if_haproxy("model multiplexing is not supported for direct ingress deployments")
 def test_replica_upgrade_to_cleanup_resource(serve_instance):
     """When replica is upgraded, we need to make sure model resources are released."""
 
@@ -574,7 +568,6 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
     assert record_handle.get_call_record.remote().result() == {"1"}
 
 
-@skip_if_haproxy("model multiplexing is not supported for direct ingress deployments")
 def test_multiplexed_with_batching_splits_by_model_id(serve_instance):
     """Test that batching with multiplexing splits batches by model ID.
 
@@ -718,7 +711,6 @@ def test_multiplexed_with_batching_same_model_batches_together(serve_instance):
     assert len(batch_sizes) == 1
 
 
-@skip_if_haproxy("model multiplexing is not supported for direct ingress deployments")
 def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_instance):
     # Two signals for two-phase synchronization
     signal_barrier = SignalActor.remote()

@@ -65,8 +65,7 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def __init__(self, *, config: "AlgorithmConfig", **kwargs):
-        """
-        Initializes an EnvRunnerServerForExternalInference instance.
+        """Initializes an EnvRunnerServerForExternalInference instance.
 
         Args:
             config: The AlgorithmConfig to use for setup.

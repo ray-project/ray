@@ -66,8 +66,7 @@ class TrainingWorkerError(Exception):
 
 @dataclass
 class ResourceConfig:
-    """
-    Resource configuration for resource_ids to share between workers.
+    """Resource configuration for resource_ids to share between workers.
 
     Args:
         resource_name: The name of the resource to configure

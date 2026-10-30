@@ -146,16 +146,16 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
 /// The actor must have been created with name specified.
 ///
 /// \param[in] actor_name The name of the named actor.
-/// \param[in] namespace The namespace of the actor.
+/// \param[in] ray_namespace The namespace of the actor.
 /// \return An ActorHandle to the actor if the actor of specified name exists in
-/// specifiled namespace or an empty optional object.
+/// specified namespace or an empty optional object.
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
                                          const std::string &ray_namespace);
 
 /// Intentionally exit the current actor.
 /// It is used to disconnect an actor and exit the worker.
-/// \Throws RayException if the current process is a driver or the current worker is not
+/// \throws RayException if the current process is a driver or the current worker is not
 /// an actor.
 void ExitActor();
 

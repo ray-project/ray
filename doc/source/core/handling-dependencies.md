@@ -63,14 +63,7 @@ If you prepared an environment with {ref}`the Ray cluster launcher <using-the-cl
 
 On a long-running Ray cluster, you can also use runtime environments to set dependencies per task, per actor, and per job.
 
-```{testcode}
-:hide:
-
-import ray
-ray.shutdown()
-```
-
-```{testcode}
+```python
 import ray
 
 runtime_env = {"pip": ["emoji"]}
@@ -85,7 +78,7 @@ def f():
 print(ray.get(f.remote()))
 ```
 
-```{testoutput}
+```text
 Python is 👍
 ```
 
@@ -125,9 +118,7 @@ You can specify a runtime environment for your whole job, whether you run a scri
 :end-before: __ray_init_end__
 ```
 
-```{testcode}
-:skipif: True
-
+```python
 # Option 2: Using Ray Jobs API (Python SDK)
 from ray.job_submission import JobSubmissionClient
 
@@ -202,14 +193,7 @@ Your Ray application might depend on source files or data files. During developm
 
 The following example shows how to get your local files onto the cluster.
 
-```{testcode}
-:hide:
-
-import ray
-ray.shutdown()
-```
-
-```{testcode}
+```python
 import os
 import ray
 
@@ -230,7 +214,7 @@ def f():
 print(ray.get(f.remote()))
 ```
 
-```{testoutput}
+```text
 Hello World!
 ```
 
@@ -252,14 +236,7 @@ Ray ordinarily expects all imported packages to be preinstalled on every node of
 
 With runtime environments, however, you can dynamically specify packages for Ray to download and install automatically in a virtual environment for your Ray job, or for specific Ray tasks or actors.
 
-```{testcode}
-:hide:
-
-import ray
-ray.shutdown()
-```
-
-```{testcode}
+```python
 import ray
 import requests
 
@@ -274,7 +251,7 @@ def reqs():
 print(ray.get(reqs.remote()))
 ```
 
-```{testoutput}
+```text
 200
 ```
 
@@ -323,9 +300,7 @@ dependencies = [
 
 Then create a `test.py` file such as the following:
 
-```{testcode}
-:skipif: True
-
+```python
 import emoji
 import ray
 
@@ -371,9 +346,13 @@ Keep the following best practices and tips in mind when you use uv:
 
 Ray implements `uv run` support with a low-level runtime environment plugin called `py_executable`. This plugin specifies the Python executable, including its arguments, that Ray starts workers in. For uv, Ray sets `py_executable` to `uv run` with the same parameters that you used to run the driver. Ray also uses the `working_dir` runtime environment to propagate the driver's working directory, including the `pyproject.toml`, to the workers. As a result, uv can set up the right dependencies and environment for the workers to run in. In some advanced use cases, you might want to use the `py_executable` mechanism directly in your programs:
 
-- **Applications with heterogeneous dependencies**: Ray supports a different runtime environment for each task or actor. This is useful for deploying different inference engines, models, or microservices in different [Ray Serve deployments](https://docs.ray.io/en/latest/serve/production-guide/handling-dependencies.html#dependencies-per-deployment), and for heterogeneous data pipelines in Ray Data. To implement this, specify a different `py_executable` for each runtime environment, and use `uv run` with a different `--project` parameter for each. Alternatively, use a different `working_dir` for each environment.
+- **Applications with heterogeneous dependencies**: Ray supports a different runtime environment for each task or actor. This is useful for deploying different inference engines, models, or microservices in different [Ray Serve deployments](../serve/production-guide/handling-dependencies.md#dependencies-per-deployment), and for heterogeneous data pipelines in Ray Data. To implement this, specify a different `py_executable` for each runtime environment, and use `uv run` with a different `--project` parameter for each. Alternatively, use a different `working_dir` for each environment.
 
 - **Customizing the command the worker runs in**: You might want to pass uv special arguments on the workers that the driver doesn't use. Or you might want to run processes with `poetry run`, a build system such as Bazel, a profiler, or a debugger. In these cases, specify the executable the worker runs in through `py_executable`. The executable can even be a shell script stored in `working_dir`, if you want to wrap multiple processes in more complex ways.
+
+:::{caution}
+Don't set `py_executable` to a bare `uv run` to enable the uv integration. When you launch the driver with `uv run`, Ray sets `py_executable` for you. A bare `uv run` makes uv resolve the worker's environment from whatever directory the worker starts in. If that environment doesn't include Ray, workers crash on startup. Tasks and jobs then hang without a clear error, and their logs might not load.
+:::
 
 :::{note}
 All child tasks and actors inherit the uv environment. To mix environments, for example `pip` runtime environments with `uv run`, set the Python executable back to one that doesn't run in the isolated uv environment, as in the following example:
@@ -393,9 +372,7 @@ dependencies = [
 ]
 ```
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 @ray.remote(runtime_env={"pip": ["wikipedia"], "py_executable": "python"})
@@ -428,9 +405,7 @@ A typical iteration cycle involves the following steps:
 
 To make sure your local changes show up across all Ray workers and import correctly, use the `py_modules` field.
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 import my_module
 
@@ -655,7 +630,7 @@ Because `ray job submit` submits a driver that calls `ray.init`, sometimes both 
 
 The following example shows a merge without conflicts:
 
-```{testcode}
+```python
 # `ray job submit --runtime_env=...`
 {"pip": ["requests", "chess"],
 "env_vars": {"A": "a", "B": "b"}}
@@ -670,7 +645,7 @@ The following example shows a merge without conflicts:
 
 The following examples show conflicts:
 
-```{testcode}
+```python
 # Example 1, env_vars conflicts
 # `ray job submit --runtime_env=...`
 {"pip": ["requests", "chess"],
@@ -708,7 +683,7 @@ The parent's `runtime_env` is the `runtime_env` of the parent actor or task, or 
 
 The following example shows a child's actual `runtime_env` after inheritance:
 
-```{testcode}
+```python
 # Parent's `runtime_env`
 {"pip": ["requests", "chess"],
 "env_vars": {"A": "a", "B": "b"}}
@@ -805,9 +780,7 @@ A local path can be a directory, or a file where the API reference allows one, s
 
 For example, suppose you want to use the contents of your local `/some_path/example_dir` directory as your `working_dir`. To specify this directory as a local path, include the following in your `runtime_env` dictionary:
 
-```{testcode}
-:skipif: True
-
+```python
 runtime_env = {..., "working_dir": "/some_path/example_dir", ...}
 ```
 
@@ -843,25 +816,19 @@ tar -tJf archive.tar.xz
 
 Suppose you upload the compressed `example_dir` directory to AWS S3 at the S3 URI `s3://example_bucket/example.zip`. Include the following in your `runtime_env` dictionary:
 
-```{testcode}
-:skipif: True
-
+```python
 runtime_env = {..., "working_dir": "s3://example_bucket/example.zip", ...}
 ```
 
 You can also use `.tar.gz`, `.tgz`, or `.tar.xz` archives:
 
-```{testcode}
-:skipif: True
-
+```python
 runtime_env = {..., "working_dir": "s3://example_bucket/example.tar.gz", ...}
 ```
 
 For example, specify an XZ-compressed archive the same way:
 
-```{testcode}
-:skipif: True
-
+```python
 runtime_env = {..., "working_dir": "s3://example_bucket/example.tar.xz", ...}
 ```
 
@@ -946,7 +913,7 @@ If you specify this link in the `runtime_env` dictionary, your Ray cluster alway
 
 The second option is slower to implement, but it's recommended for production environments. Create the URL manually by matching your use case to one of the following examples. This approach gives you finer-grained control over which repository branch and commit to use when you generate your dependency zip file, which prevents the consistency issues that the preceding warning describes. To create the URL, pick the URL template that fits your use case from the following examples, and fill in all parameters in brackets, such as `[username]` and `[repository]`, with the values from your repository. For instance, suppose your GitHub username is `example_user`, the repository's name is `example_repository`, and the desired commit hash is `abcdefg`. If `example_repository` is public and you want to retrieve the `abcdefg` commit, which matches the first example use case, the URL is the following:
 
-```{testcode}
+```python
 runtime_env = {"working_dir": ("https://github.com"
                                "/example_user/example_repository/archive/abcdefg.zip")}
 ```
@@ -955,14 +922,14 @@ The following examples show use cases and their corresponding URLs.
 
 To retrieve a package from a specific commit hash on a public GitHub repository, use the following URL:
 
-```{testcode}
+```python
 runtime_env = {"working_dir": ("https://github.com"
                                "/[username]/[repository]/archive/[commit hash].zip")}
 ```
 
 To retrieve a package from a private GitHub repository with a personal access token during development, use the following URL:
 
-```{testcode}
+```python
 runtime_env = {"working_dir": ("https://[username]:[personal access token]@github.com"
                                "/[username]/[private repository]/archive/[commit hash].zip")}
 ```
@@ -971,14 +938,14 @@ For production, learn how to {ref}`authenticate private dependencies safely <run
 
 To retrieve a package from a public GitHub repository's latest commit, use the following URL:
 
-```{testcode}
+```python
 runtime_env = {"working_dir": ("https://github.com"
                                "/[username]/[repository]/archive/HEAD.zip")}
 ```
 
 To retrieve a package from a specific commit hash on a public Bitbucket repository, use the following URL:
 
-```{testcode}
+```python
 runtime_env = {"working_dir": ("https://bitbucket.org"
                                "/[owner]/[repository]/get/[commit hash].tar.gz")}
 ```
@@ -993,7 +960,7 @@ After you specify the URL in your `runtime_env` dictionary, pass the dictionary 
 ## Debugging
 If Ray can't set up the `runtime_env`, for example because of network issues or download failures, Ray fails to schedule the tasks and actors that require it. If you call `ray.get`, it raises `RuntimeEnvSetupError` with a detailed error message.
 
-```{testcode}
+```python
 import ray
 import time
 
@@ -1023,7 +990,7 @@ except ray.exceptions.RuntimeEnvSetupError:
   print("Actor fails with RuntimeEnvSetupError")
 ```
 
-```{testoutput}
+```text
 Task fails with RuntimeEnvSetupError
 Actor fails with RuntimeEnvSetupError
 ```
@@ -1035,19 +1002,11 @@ To stream `runtime_env` debugging logs, set the environment variable `RAY_RUNTIM
 
 The following example shows the log output:
 
-```{testcode}
-:hide:
-
-ray.shutdown()
-```
-
-```{testcode}
+```python
 ray.init(runtime_env={"pip": ["requests"]})
 ```
 
-```{testoutput}
-:options: +MOCK
-
+```text
 (pid=runtime_env) 2022-02-28 14:12:33,653       INFO pip.py:188 -- Creating virtualenv at /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv, current python dir /Users/user/anaconda3/envs/ray-py38
 (pid=runtime_env) 2022-02-28 14:12:33,653       INFO utils.py:76 -- Run cmd[1] ['/Users/user/anaconda3/envs/ray-py38/bin/python', '-m', 'virtualenv', '--app-data', '/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv_app_data', '--reset-app-data', '--no-periodic-update', '--system-site-packages', '--no-download', '/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv']
 (pid=runtime_env) 2022-02-28 14:12:34,267       INFO utils.py:97 -- Output of cmd[1]: created virtual environment CPython3.8.11.final.0-64 in 473ms

@@ -125,6 +125,9 @@ class LLMRouter(_LLMRouter):
         self._event_log = []
         self._errors = []
         self._token_pushes = []
+        renderer = self._tokenizer._renderer.renderer
+        self._chat_render = mock.AsyncMock(wraps=renderer.render_chat_async)
+        renderer.render_chat_async = self._chat_render
 
     def _push_prompt_tokens(self, *, token_endpoint, replica_id, request_token_ids):
         key = super()._push_prompt_tokens(
@@ -167,11 +170,13 @@ class LLMRouter(_LLMRouter):
 
     def reset_token_pushes(self):
         self._token_pushes.clear()
+        self._chat_render.reset_mock()
 
     def get_token_push_report(self):
         return dict(
             node_ip=ray.util.get_node_ip_address(),
             pushes=list(self._token_pushes),
+            tokenizations=self._chat_render.await_count,
         )
 
     def get_kv_event_worker_replicas(self):

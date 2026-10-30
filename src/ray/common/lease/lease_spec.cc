@@ -105,6 +105,12 @@ bool LeaseSpecification::GetNodeAffinitySchedulingStrategySoft() const {
   return GetSchedulingStrategy().node_affinity_scheduling_strategy().soft();
 }
 
+bool LeaseSpecification::HasHardNodeAffinity() const {
+  return (IsNodeAffinitySchedulingStrategy() &&
+          !GetNodeAffinitySchedulingStrategySoft()) ||
+         ray::HasHardNodeAffinity(GetLabelSelector());
+}
+
 std::vector<ObjectID> LeaseSpecification::GetDependencyIds() const {
   std::vector<ObjectID> ids;
   ids.reserve(dependencies_.size());

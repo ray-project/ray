@@ -39,8 +39,7 @@ enum class SchedulingType {
   BUNDLE_SPREAD = 5,
   BUNDLE_STRICT_PACK = 6,
   BUNDLE_STRICT_SPREAD = 7,
-  AFFINITY_WITH_BUNDLE = 8,
-  NODE_LABEL = 9,
+  NODE_LABEL = 8,
 };
 
 // Topology-level scheduling strategies for placement groups.
@@ -103,20 +102,6 @@ struct SchedulingOptions {
     scheduling_options.node_affinity_spill_on_unavailable_ = spill_on_unavailable;
     scheduling_options.node_affinity_fail_on_unavailable_ = fail_on_unavailable;
     return scheduling_options;
-  }
-
-  // construct option for affinity with bundle scheduling policy.
-  static SchedulingOptions AffinityWithBundle(const BundleID &bundle_id) {
-    auto scheduling_context =
-        std::make_unique<AffinityWithBundleSchedulingContext>(bundle_id);
-    return SchedulingOptions(
-        SchedulingType::AFFINITY_WITH_BUNDLE,
-        /*spread_threshold*/ 0,
-        /*avoid_local_node*/ false,
-        /*require_node_available*/ true,
-        /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
-        /*target_topology_assignment*/ std::nullopt,
-        std::move(scheduling_context));
   }
 
   static SchedulingOptions NodeLabelScheduling(

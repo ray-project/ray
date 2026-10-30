@@ -16,3 +16,4 @@ ignorecase: false
 vocab: false
 swap:
   HuggingFace: Hugging Face
+  WandB: W&B

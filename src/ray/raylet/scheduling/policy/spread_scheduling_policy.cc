@@ -22,7 +22,7 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID SpreadSchedulingPolicy::Schedule(
+NodeSchedulingResult SpreadSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.spread_threshold_ == 0 &&
             options.scheduling_type_ == SchedulingType::SPREAD)
@@ -36,6 +36,7 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
 
   // Spread among available nodes first.
   // If there is no available nodes, we spread among feasible nodes.
+  bool saw_feasible_but_unavailable = false;
   for (bool available_nodes_only :
        (options.require_node_available_ ? std::vector<bool>{true}
                                         : std::vector<bool>{true, false})) {
@@ -53,15 +54,19 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
       if (available_nodes_only &&
           !node.GetLocalView().IsAvailable(resource_request,
                                            /*ignore_pull_manager_at_capacity=*/false)) {
+        saw_feasible_but_unavailable = true;
         continue;
       }
 
       spread_scheduling_next_index_ = ((round_index + 1) % round.size());
-      return node_id;
+      return NodeSchedulingResult::Scheduled(node_id);
     }
   }
 
-  return scheduling::NodeID::Nil();
+  if (saw_feasible_but_unavailable) {
+    return NodeSchedulingResult::NoNodeAvailable();
+  }
+  return NodeSchedulingResult::Infeasible();
 }
 
 }  // namespace raylet_scheduling_policy

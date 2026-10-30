@@ -27,6 +27,10 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.authentication import authentication_utils as auth_utils
+from ray._private.authentication.authentication_constants import (
+    K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE,
+)
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -47,6 +51,7 @@ from ray._raylet import (
 from ray.core.generated import autoscaler_pb2
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+from ray.exceptions import AuthenticationError
 
 import psutil
 
@@ -103,6 +108,11 @@ class Node:
             default_worker: Whether it's running from a ray worker or not
             ray_init_cluster: Whether it's a cluster created by ray.init()
         """
+        if (
+            auth_utils.is_k8s_token_auth_enabled()
+            or ray_params._system_config.get("ENABLE_K8S_TOKEN_AUTH")
+        ) and not auth_utils.is_token_auth_enabled():
+            raise ValueError(K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE)
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(
@@ -1004,6 +1014,9 @@ class Node:
                     client.internal_kv_get(b"dummy", None)
                 self._gcs_client = client
                 break
+            except AuthenticationError:
+                # A rejected token stays rejected; retrying only delays the error.
+                raise
             except Exception:
                 if gcs_process is not None and gcs_process.poll() is not None:
                     # GCS has exited.

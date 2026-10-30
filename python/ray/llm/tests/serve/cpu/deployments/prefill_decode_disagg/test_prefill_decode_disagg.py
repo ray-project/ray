@@ -326,6 +326,9 @@ class TestPDOrchestratorMixin:
             async def render_chat_async(self, *args, **kwargs):
                 raise AssertionError("vLLM should skip chat rendering and tokenization")
 
+            def validate_token_ids(self, token_ids, *, parameter=None):
+                pass
+
         class ChatParams:
             def with_defaults(self, *args, **kwargs):
                 return self

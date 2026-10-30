@@ -54,9 +54,9 @@ botocore==1.34.162 \
     # via
     #   boto3
     #   s3transfer
-certifi==2026.5.20 \
-    --hash=sha256:3c52e209ba0a4ad7aebe60436a4ab349c39e1e602e8c134221e546902ad25897 \
-    --hash=sha256:69dea482ab64caa7b9f6aba1c6bf48bb6a5448d1c0f1b17ab42ad8c763a5344d
+certifi==2026.10.19 \
+    --hash=sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae \
+    --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
     # via requests
 charset-normalizer==3.4.7 \
     --hash=sha256:007d05ec7321d12a40227aae9e2bc6dca73f3cb21058999a1df9e193555a9dcc \
@@ -1346,9 +1346,9 @@ sphinxcontrib-jsmath==1.0.1 \
     --hash=sha256:2ec2eaebfb78f3f2078e73666b1415417a116cc848b72e5172e596c871103178 \
     --hash=sha256:a9925e4a4587247ed2191a22df5f6970656cb8ca2bd6284309578f2153e0c4b8
     # via sphinx
-sphinxcontrib-openapi==0.9.0 \
-    --hash=sha256:19037dc091e741b2f84e9c17ff201f70f2ac5c192c883e055bb2d96e9facfbdf \
-    --hash=sha256:c3c445a13c99706d8837b21b78e1caa8be5eb16b8f83a297a1fdf19f1c31d487
+sphinxcontrib-openapi==0.10.0 \
+    --hash=sha256:378624ec4e84aae7c1c5441d3c84295081972069e5a8188e84b2274e577fc9c5 \
+    --hash=sha256:beec8bf4ece8f28fb1b378e60914b92fed6e38009a60d915ed2cd0c023a54f6d
     # via -r doc/requirements-doc.txt
 sphinxcontrib-qthelp==2.0.0 \
     --hash=sha256:4fe7d0ac8fc171045be623aba3e2a8f613f8682731f9153bb2e40ece16b9bbab \

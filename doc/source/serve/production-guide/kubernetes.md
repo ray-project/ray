@@ -30,7 +30,7 @@ Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
 * Deploy a KubeRay operator
 
 ## Setting up a RayService custom resource (CR)
-Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/ray-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml)).
+Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/kuberay-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml)).
 
 Under the `spec` section in the `RayService` CR, set the following fields:
 
@@ -47,7 +47,7 @@ To enhance the reliability of your application, particularly when dealing with l
 
 When the `RayService` is created, the `KubeRay` controller first creates a Ray cluster using the provided configuration. Then, once the cluster is running, it deploys the Serve application to the cluster using the [REST API](serve-in-production-deploying). The controller also creates a Kubernetes Service that can be used to route traffic to the Serve application.
 
-To see an example, deploy the [Text ML example](serve-in-production-example). The Serve config for the example is embedded into [this sample `RayService` CR](https://github.com/ray-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml). Save this CR locally to a file named `ray-service.text-ml.yaml`:
+To see an example, deploy the [Text ML example](serve-in-production-example). The Serve config for the example is embedded into [this sample `RayService` CR](https://github.com/kuberay-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml). Save this CR locally to a file named `ray-service.text-ml.yaml`:
 
 :::{note}
 - The example `RayService` uses very low `numCpus` values for demonstration purposes. In production, provide more resources to the Serve application. Learn more about how to configure KubeRay clusters [here](kuberay-config).
@@ -55,7 +55,7 @@ To see an example, deploy the [Text ML example](serve-in-production-example). Th
 :::
 
 ```console
-$ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/2ba0dd7bea387ac9df3681666bab3d622e89846c/ray-operator/config/samples/ray-service.text-ml.yaml
+$ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/kuberay-project/kuberay/2ba0dd7bea387ac9df3681666bab3d622e89846c/ray-operator/config/samples/ray-service.text-ml.yaml
 ```
 
 To deploy the example, we simply `kubectl apply` the CR. This creates the underlying Ray cluster, consisting of a head and worker node pod (see {doc}`Ray Clusters Key Concepts </cluster/key-concepts>` for more details on Ray clusters), as well as the service that can be used to query our application:
@@ -80,6 +80,8 @@ rayservice-sample-serve-svc                   ClusterIP   192.168.145.219   <non
 ```
 
 Note that the `rayservice-sample-serve-svc` above is the one that can be used to send queries to the Serve application -- this will be used in the next section.
+
+The KubeRay operator creates the `rayservice-sample-head-svc` and `rayservice-sample-serve-svc` Services only after every Serve application on the cluster reaches the `RUNNING` status. Until then, `kubectl get services` lists only the RayCluster's own head Service, such as `rayservice-sample-raycluster-7wlx2-head-svc`.
 
 ## Querying the application
 
@@ -231,7 +233,7 @@ In most use cases, it is recommended to enable Kubernetes autoscaling to fully u
 :::
 
 ## Load balancer
-Set up ingress to expose your Serve application with a load balancer. See [this configuration](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service-alb-ingress.yaml)
+Set up ingress to expose your Serve application with a load balancer. See [this configuration](https://github.com/kuberay-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service-alb-ingress.yaml)
 
 :::{note}
 - Ray Serve runs HTTP proxy on every node, allowing you to use `/-/routes` as the endpoint for node health checks.

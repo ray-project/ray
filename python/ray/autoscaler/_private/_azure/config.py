@@ -11,8 +11,7 @@ from uuid import UUID
 from azure.common.credentials import get_cli_profile
 from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
 from azure.identity import AzureCliCredential
-from azure.mgmt.resource import ResourceManagementClient
-from azure.mgmt.resource.resources.models import DeploymentMode
+from azure.mgmt.resource.resources import ResourceManagementClient
 
 from ray.autoscaler._private.util import (
     generate_rsa_key_pair,
@@ -26,6 +25,34 @@ CONTRIBUTOR_ROLE_DEFINITION_ID = "b24988ac-6180-42a0-ab88-20f7382dd24c"
 UNIQUE_ID_LEN = 4
 
 logger = logging.getLogger(__name__)
+
+try:
+    from azure.mgmt.resource.deployments import DeploymentsMgmtClient
+    from azure.mgmt.resource.deployments.models import DeploymentMode
+except ImportError:
+    # azure-mgmt-resource<25 still bundles the deployments API; 25.0.0 moved it to
+    # the separate azure-mgmt-resource-deployments package.
+    DeploymentsMgmtClient = None
+    try:
+        from azure.mgmt.resource.resources.models import DeploymentMode
+    except ImportError as e:
+        raise ImportError(
+            "The installed Azure SDK is incompatible with the Ray Azure autoscaler. "
+            "Install azure-mgmt-resource-deployments (pip install "
+            "azure-mgmt-resource-deployments==2.0.0)."
+        ) from e
+
+
+def get_deployments_client(resource_client, credential, subscription_id):
+    """Return the client that performs ARM deployment operations.
+
+    With azure-mgmt-resource-deployments installed this is its dedicated
+    DeploymentsMgmtClient. Without it (azure-mgmt-resource<25), deployment
+    operations are exposed by the resource client itself, so that is returned.
+    """
+    if DeploymentsMgmtClient is None:
+        return resource_client
+    return DeploymentsMgmtClient(credential, subscription_id)
 
 
 def get_azure_sdk_function(client: Any, function_name: str) -> Callable:
@@ -60,7 +87,11 @@ def _configure_resource_group(config):
     subscription_id = config["provider"].get("subscription_id")
     if subscription_id is None:
         subscription_id = get_cli_profile().get_subscription_id()
-    resource_client = ResourceManagementClient(AzureCliCredential(), subscription_id)
+    credential = AzureCliCredential()
+    resource_client = ResourceManagementClient(credential, subscription_id)
+    deployments_client = get_deployments_client(
+        resource_client, credential, subscription_id
+    )
     config["provider"]["subscription_id"] = subscription_id
     logger.info("Using subscription id: %s", subscription_id)
 
@@ -128,8 +159,10 @@ def _configure_resource_group(config):
     existing_vnets = list(
         list_by_rg(
             resource_group,
-            f"substringof('{unique_id}', name) and "
-            "resourceType eq 'Microsoft.Network/virtualNetworks'",
+            filter=(
+                f"substringof('{unique_id}', name) and "
+                "resourceType eq 'Microsoft.Network/virtualNetworks'"
+            ),
         )
     )
     if len(existing_vnets) > 0:
@@ -176,7 +209,9 @@ def _configure_resource_group(config):
                 str(e),
             )
 
-        subnet = get_by_id(vnid, vnet_api_version).properties["subnets"][0]
+        subnet = get_by_id(resource_id=vnid, api_version=vnet_api_version).properties[
+            "subnets"
+        ][0]
         template_vnet = next(
             (
                 rs
@@ -213,7 +248,9 @@ def _configure_resource_group(config):
             get_identity = get_azure_sdk_function(
                 client=resource_client.resources, function_name="get_by_id"
             )
-            existing_msi = get_identity(msi_resource_id, "2023-01-31")
+            existing_msi = get_identity(
+                resource_id=msi_resource_id, api_version="2023-01-31"
+            )
             existing_principal_id = getattr(existing_msi, "properties", {}).get(
                 "principalId"
             )
@@ -248,8 +285,8 @@ def _configure_resource_group(config):
         initial_query_failed = False
         try:
             get_role_assignment(
-                role_assignment_resource_id,
-                "2022-04-01",
+                resource_id=role_assignment_resource_id,
+                api_version="2022-04-01",
             )
         except ResourceNotFoundError:
             role_assignment_known_missing = True
@@ -321,7 +358,7 @@ def _configure_resource_group(config):
     }
 
     create_or_update = get_azure_sdk_function(
-        client=resource_client.deployments, function_name="create_or_update"
+        client=deployments_client.deployments, function_name="create_or_update"
     )
     outputs = (
         create_or_update(
@@ -475,7 +512,7 @@ def _delete_role_assignments_for_principal(
         assignments = list(
             list_by_rg(
                 resource_group,
-                "resourceType eq 'Microsoft.Authorization/roleAssignments'",
+                filter="resourceType eq 'Microsoft.Authorization/roleAssignments'",
             )
         )
         logger.debug(
@@ -546,7 +583,7 @@ def _wait_for_role_assignment_deletion(
 
     for attempt in range(1, max_attempts + 1):
         try:
-            get_role_assignment(resource_id, "2022-04-01")
+            get_role_assignment(resource_id=resource_id, api_version="2022-04-01")
         except ResourceNotFoundError:
             return True
         except Exception as exc:  # noqa: BLE001

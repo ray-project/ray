@@ -384,6 +384,20 @@ You can find Ray Prometheus metrics in the ``{cluster_name}-ray-prometheus`` met
     `cat ~/ray_bootstrap_config.yaml | jq '.cluster_name'`
     >> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.out' 2>> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.err'" &
 
+With :ref:`token authentication <token-auth>` on, Ray's metrics endpoints reject any scrape that doesn't carry the cluster's token, and no Ray metrics reach CloudWatch.
+To send the token, add the following command to ``head_setup_commands``, after the command that copies ``prometheus.yml``.
+The command adds an ``authorization`` block to the ``ray`` scrape job:
+
+.. code-block:: yaml
+
+  # Send the Ray auth token with every scrape of Ray's metrics endpoints.
+  - >-
+    printf '  authorization:\n    type: Bearer\n    credentials_file: /home/ubuntu/.ray/auth_token\n'
+    | sudo tee -a /opt/aws/amazon-cloudwatch-agent/etc/prometheus.yml
+
+Set ``credentials_file`` to the absolute path of the token file in the home directory of the user that runs Ray, such as ``/home/ubuntu/.ray/auth_token`` for ``ssh_user: ubuntu``.
+The CloudWatch agent runs as root, so ``~/.ray/auth_token`` doesn't point at that file.
+
 6. Update CloudWatch Agent, Dashboard and Alarm config files.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

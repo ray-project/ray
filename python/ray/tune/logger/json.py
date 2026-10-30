@@ -61,6 +61,14 @@ class JsonLoggerCallback(LoggerCallback):
         del self._trial_files[trial]
 
     def update_config(self, trial: "Trial", config: Dict):
+        """Writes a trial's config to ``params.json`` and ``params.pkl``.
+
+        Both files go in the trial's directory.
+
+        Args:
+            trial: The trial the config belongs to.
+            config: The trial's config.
+        """
         self._trial_configs[trial] = config
 
         config_out = Path(trial.local_path, EXPR_PARAM_FILE)

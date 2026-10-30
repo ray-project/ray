@@ -59,39 +59,34 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig, ProcessorConfig):
             is used (``1 <= m <= n``).
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import HttpRequestProcessorConfig, build_processor
-
-            config = HttpRequestProcessorConfig(
-                url="https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": "Bearer sk-..."},
-                concurrency=1,
-            )
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    payload=dict(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": "You are a calculator"},
-                            {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                        ],
-                        temperature=0.3,
-                        max_tokens=20,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["http_response"]["choices"][0]["message"]["content"],
-                ),
-            )
-
-            ds = ray.data.range(10)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data.llm import HttpRequestProcessorConfig, build_processor
+        >>> config = HttpRequestProcessorConfig(
+        ...     url="https://api.openai.com/v1/chat/completions",
+        ...     headers={"Authorization": "Bearer sk-..."},
+        ...     concurrency=1,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         payload=dict(
+        ...             model="gpt-4o-mini",
+        ...             messages=[
+        ...                 {"role": "system", "content": "You are a calculator"},
+        ...                 {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+        ...             ],
+        ...             temperature=0.3,
+        ...             max_tokens=20,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["http_response"]["choices"][0]["message"]["content"],
+        ...     ),
+        ... )
+        >>> ds = ray.data.range(10)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
 
     pass
@@ -175,53 +170,47 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig, ProcessorConfig):
 
     Examples:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
-
-            config = vLLMEngineProcessorConfig(
-                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                engine_kwargs=dict(
-                    enable_prefix_caching=True,
-                    enable_chunked_prefill=True,
-                    max_num_batched_tokens=4096,
-                ),
-                concurrency=1,
-                batch_size=64,
-            )
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[
-                        {"role": "system", "content": "You are a calculator"},
-                        {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                    ],
-                    sampling_params=dict(
-                        temperature=0.3,
-                        max_tokens=20,
-                        detokenize=False,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["generated_text"],
-                ),
-            )
-
-            # The processor requires specific input columns, which depend on
-            # your processor config. You can use the following API to check
-            # the required input columns:
-            processor.log_input_column_names()
-            # Example log:
-            # The first stage of the processor is ChatTemplateStage.
-            # Required input columns:
-            #     messages: A list of messages in OpenAI chat format.
-
-            ds = ray.data.range(300)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        >>> config = vLLMEngineProcessorConfig(
+        ...     model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     engine_kwargs=dict(
+        ...         enable_prefix_caching=True,
+        ...         enable_chunked_prefill=True,
+        ...         max_num_batched_tokens=4096,
+        ...     ),
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[
+        ...             {"role": "system", "content": "You are a calculator"},
+        ...             {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+        ...         ],
+        ...         sampling_params=dict(
+        ...             temperature=0.3,
+        ...             max_tokens=20,
+        ...             detokenize=False,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["generated_text"],
+        ...     ),
+        ... )
+        >>> # The processor requires specific input columns, which depend on
+        >>> # your processor config. You can use the following API to check
+        >>> # the required input columns:
+        >>> processor.log_input_column_names()
+        >>> # Example log:
+        >>> # The first stage of the processor is ChatTemplateStage.
+        >>> # Required input columns:
+        >>> #     messages: A list of messages in OpenAI chat format.
+        >>> ds = ray.data.range(300)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
 
     pass
@@ -278,41 +267,36 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
             Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import SGLangEngineProcessorConfig, build_processor
-
-            config = SGLangEngineProcessorConfig(
-                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                engine_kwargs=dict(
-                    dtype="half",
-                ),
-                concurrency=1,
-                batch_size=64,
-            )
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[
-                        {"role": "system", "content": "You are a calculator"},
-                        {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                    ],
-                    sampling_params=dict(
-                        temperature=0.3,
-                        max_new_tokens=20,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["generated_text"],
-                ),
-            )
-
-            ds = ray.data.range(300)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data.llm import SGLangEngineProcessorConfig, build_processor
+        >>> config = SGLangEngineProcessorConfig(
+        ...     model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     engine_kwargs=dict(
+        ...         dtype="half",
+        ...     ),
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[
+        ...             {"role": "system", "content": "You are a calculator"},
+        ...             {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+        ...         ],
+        ...         sampling_params=dict(
+        ...             temperature=0.3,
+        ...             max_new_tokens=20,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["generated_text"],
+        ...     ),
+        ... )
+        >>> ds = ray.data.range(300)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
 
     pass
@@ -343,82 +327,73 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig, ProcessorC
 
     Examples:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray import serve
-            from ray.data.llm import ServeDeploymentProcessorConfig, build_processor
-            from ray.serve.llm import (
-                LLMConfig,
-                ModelLoadingConfig,
-                build_llm_deployment,
-            )
-            from ray.serve.llm.openai_api_models import CompletionRequest
-
-            llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="facebook/opt-1.3b",
-                    model_source="facebook/opt-1.3b",
-                ),
-                accelerator_type="A10G",
-                deployment_config=dict(
-                    name="facebook",
-                    autoscaling_config=dict(
-                        min_replicas=1,
-                        max_replicas=1,
-                    ),
-                ),
-                engine_kwargs=dict(
-                    enable_prefix_caching=True,
-                    enable_chunked_prefill=True,
-                    max_num_batched_tokens=4096,
-                ),
-            )
-
-            APP_NAME = "facebook_opt_app"
-            DEPLOYMENT_NAME = "facebook_deployment"
-            override_serve_options = dict(name=DEPLOYMENT_NAME)
-
-            llm_app = build_llm_deployment(
-                llm_config, override_serve_options=override_serve_options
-            )
-            app = serve.run(llm_app, name=APP_NAME)
-
-            config = ServeDeploymentProcessorConfig(
-                deployment_name=DEPLOYMENT_NAME,
-                app_name=APP_NAME,
-                dtype_mapping={
-                    "CompletionRequest": CompletionRequest,
-                },
-                concurrency=1,
-                batch_size=64,
-            )
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    method="completions",
-                    dtype="CompletionRequest",
-                    request_kwargs=dict(
-                        model="facebook/opt-1.3b",
-                        prompt=f"This is a prompt for {row['id']}",
-                        stream=False,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["choices"][0]["text"],
-                ),
-            )
-
-            # The processor requires specific input columns, which depend on
-            # your processor config. You can use the following API to check
-            # the required input columns:
-            processor.log_input_column_names()
-
-            ds = ray.data.range(10)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray import serve
+        >>> from ray.data.llm import ServeDeploymentProcessorConfig, build_processor
+        >>> from ray.serve.llm import (
+        ...     LLMConfig,
+        ...     ModelLoadingConfig,
+        ...     build_llm_deployment,
+        ... )
+        >>> from ray.serve.llm.openai_api_models import CompletionRequest
+        >>> llm_config = LLMConfig(
+        ...     model_loading_config=ModelLoadingConfig(
+        ...         model_id="facebook/opt-1.3b",
+        ...         model_source="facebook/opt-1.3b",
+        ...     ),
+        ...     accelerator_type="A10G",
+        ...     deployment_config=dict(
+        ...         name="facebook",
+        ...         autoscaling_config=dict(
+        ...             min_replicas=1,
+        ...             max_replicas=1,
+        ...         ),
+        ...     ),
+        ...     engine_kwargs=dict(
+        ...         enable_prefix_caching=True,
+        ...         enable_chunked_prefill=True,
+        ...         max_num_batched_tokens=4096,
+        ...     ),
+        ... )
+        >>> APP_NAME = "facebook_opt_app"
+        >>> DEPLOYMENT_NAME = "facebook_deployment"
+        >>> override_serve_options = dict(name=DEPLOYMENT_NAME)
+        >>> llm_app = build_llm_deployment(
+        ...     llm_config, override_serve_options=override_serve_options
+        ... )
+        >>> app = serve.run(llm_app, name=APP_NAME)
+        >>> config = ServeDeploymentProcessorConfig(
+        ...     deployment_name=DEPLOYMENT_NAME,
+        ...     app_name=APP_NAME,
+        ...     dtype_mapping={
+        ...         "CompletionRequest": CompletionRequest,
+        ...     },
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         method="completions",
+        ...         dtype="CompletionRequest",
+        ...         request_kwargs=dict(
+        ...             model="facebook/opt-1.3b",
+        ...             prompt=f"This is a prompt for {row['id']}",
+        ...             stream=False,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["choices"][0]["text"],
+        ...     ),
+        ... )
+        >>> # The processor requires specific input columns, which depend on
+        >>> # your processor config. You can use the following API to check
+        >>> # the required input columns:
+        >>> processor.log_input_column_names()
+        >>> ds = ray.data.range(10)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
 
     pass
@@ -600,112 +575,94 @@ def build_processor(
     Examples:
         Basic usage:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
-
-            config = vLLMEngineProcessorConfig(
-                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                engine_kwargs=dict(
-                    enable_prefix_caching=True,
-                    enable_chunked_prefill=True,
-                    max_num_batched_tokens=4096,
-                ),
-                concurrency=1,
-                batch_size=64,
-            )
-
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[
-                        {"role": "system", "content": "You are a calculator"},
-                        {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                    ],
-                    sampling_params=dict(
-                        temperature=0.3,
-                        max_tokens=20,
-                        detokenize=False,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["generated_text"],
-                    **row,  # This will return all the original columns in the dataset.
-                ),
-            )
-
-            ds = ray.data.range(300)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        >>> config = vLLMEngineProcessorConfig(
+        ...     model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     engine_kwargs=dict(
+        ...         enable_prefix_caching=True,
+        ...         enable_chunked_prefill=True,
+        ...         max_num_batched_tokens=4096,
+        ...     ),
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[
+        ...             {"role": "system", "content": "You are a calculator"},
+        ...             {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+        ...         ],
+        ...         sampling_params=dict(
+        ...             temperature=0.3,
+        ...             max_tokens=20,
+        ...             detokenize=False,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["generated_text"],
+        ...         **row,  # This will return all the original columns in the dataset.
+        ...     ),
+        ... )
+        >>> ds = ray.data.range(300)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
 
         Using map_kwargs to control preprocess/postprocess resources:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
-
-            config = vLLMEngineProcessorConfig(
-                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                concurrency=1,
-                batch_size=64,
-            )
-
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[{"role": "user", "content": row["prompt"]}],
-                    sampling_params=dict(temperature=0.3, max_tokens=20),
-                ),
-                postprocess=lambda row: dict(resp=row["generated_text"]),
-                preprocess_map_kwargs={"num_cpus": 0.5},
-                postprocess_map_kwargs={"num_cpus": 0.25},
-            )
-
-            ds = ray.data.range(300)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray
+        >>> from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        >>> config = vLLMEngineProcessorConfig(
+        ...     model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[{"role": "user", "content": row["prompt"]}],
+        ...         sampling_params=dict(temperature=0.3, max_tokens=20),
+        ...     ),
+        ...     postprocess=lambda row: dict(resp=row["generated_text"]),
+        ...     preprocess_map_kwargs={"num_cpus": 0.5},
+        ...     postprocess_map_kwargs={"num_cpus": 0.25},
+        ... )
+        >>> ds = ray.data.range(300)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
 
         Using builder_kwargs to pass chat_template_kwargs:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
-
-            config = vLLMEngineProcessorConfig(
-                model_source="Qwen/Qwen3-0.6B",
-                chat_template_stage={"enabled": True},
-                concurrency=1,
-                batch_size=64,
-            )
-
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[
-                        {"role": "user", "content": row["prompt"]},
-                    ],
-                    sampling_params=dict(
-                        temperature=0.6,
-                        max_tokens=100,
-                    ),
-                ),
-                builder_kwargs=dict(
-                    chat_template_kwargs={"enable_thinking": True},
-                ),
-            )
-
-            ds = ray.data.from_items([{"prompt": "What is 2+2?"}])
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray
+        >>> from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        >>> config = vLLMEngineProcessorConfig(
+        ...     model_source="Qwen/Qwen3-0.6B",
+        ...     chat_template_stage={"enabled": True},
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[
+        ...             {"role": "user", "content": row["prompt"]},
+        ...         ],
+        ...         sampling_params=dict(
+        ...             temperature=0.6,
+        ...             max_tokens=100,
+        ...         ),
+        ...     ),
+        ...     builder_kwargs=dict(
+        ...         chat_template_kwargs={"enable_thinking": True},
+        ...     ),
+        ... )
+        >>> ds = ray.data.from_items([{"prompt": "What is 2+2?"}])
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
     from ray.llm._internal.batch.processor import ProcessorBuilder
 

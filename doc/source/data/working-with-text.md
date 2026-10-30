@@ -177,9 +177,7 @@ To save text, call a method such as {meth}`~ray.data.Dataset.write_parquet`. Ray
 
 For the full list of supported file formats, see the {ref}`Saving Data API <saving-data-api>`.
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")

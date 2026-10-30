@@ -2,11 +2,12 @@ import collections
 import inspect
 import logging
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union, overload
 
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
 from starlette.types import ASGIApp
+from typing_extensions import TypedDict, Unpack
 
 import ray
 from ray import cloudpickle
@@ -32,6 +33,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     MULTIPLEXED_FUNCTION_MARKER_ATTR,
+    ROUTER_APPLICATION_MARKER_ATTR,
     Default,
     copy_class_metadata,
     ensure_serialization_context,
@@ -518,6 +520,67 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     return decorator
 
 
+def _router_application(cls: Type[Any]) -> Type[Any]:
+    """Mark a deployment class as an application-level router.
+
+    HAProxy asks the ingress of an application whose class carries this marker for
+    ``{"application", "replica_id"}`` and sends the request to that replica.
+    Routing decisions must be returned as non-streaming JSON responses.
+
+    Internal-only, unstable hook for Serve LLM direct streaming.
+    """
+    if not isinstance(cls, type):
+        raise TypeError(
+            "@serve._router_application can only decorate a class, got "
+            f"{type(cls).__name__}."
+        )
+    setattr(cls, ROUTER_APPLICATION_MARKER_ATTR, True)
+    return cls
+
+
+# Keyword options accepted by `deployment`. Kept in sync with its signature
+# below; used only to type the `@overload`s.
+class _DeploymentOptions(TypedDict, total=False):
+    name: Default[str]
+    version: Default[str]
+    num_replicas: Default[Optional[Union[int, str]]]
+    ray_actor_options: Default[Dict]
+    placement_group_bundles: Default[List[Dict[str, float]]]
+    placement_group_strategy: Default[str]
+    placement_group_bundle_label_selector: Default[List[Dict[str, str]]]
+    max_replicas_per_node: Default[int]
+    user_config: Default[Optional[Any]]
+    max_ongoing_requests: Default[int]
+    max_queued_requests: Default[int]
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]]
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]]
+    graceful_shutdown_wait_loop_s: Default[float]
+    graceful_shutdown_timeout_s: Default[float]
+    health_check_period_s: Default[float]
+    health_check_timeout_s: Default[float]
+    logging_config: Default[Union[Dict, LoggingConfig, None]]
+    request_router_config: Default[Union[Dict, RequestRouterConfig, None]]
+    max_constructor_retry_count: Default[int]
+    gang_scheduling_config: Default[Union[Dict, GangSchedulingConfig, None]]
+    deployment_actors: Default[Optional[List[Union[Dict, DeploymentActorConfig]]]]
+    rolling_update_percentage: Default[float]
+    max_surge_percent: Default[int]
+
+
+@overload
+def deployment(
+    _func_or_class: Callable, /, **options: Unpack[_DeploymentOptions]
+) -> Deployment:
+    ...
+
+
+@overload
+def deployment(
+    _func_or_class: None = None, /, **options: Unpack[_DeploymentOptions]
+) -> Callable[[Callable], Deployment]:
+    ...
+
+
 @PublicAPI(stability="stable")
 def deployment(
     _func_or_class: Optional[Callable] = None,
@@ -552,7 +615,8 @@ def deployment(
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
-) -> Callable[[Callable], Deployment]:
+    max_surge_percent: Default[int] = DEFAULT.VALUE,
+) -> Union[Deployment, Callable[[Callable], Deployment]]:
     """Decorator that converts a Python class to a `Deployment`.
 
     Example:
@@ -641,6 +705,17 @@ def deployment(
         rolling_update_percentage: The fraction of replicas to update at a
             time during a rolling update. Must be in ``(0.0, 1.0]``.
             Defaults to ``0.2`` (20%).
+        max_surge_percent: Extra replicas allowed during a rolling restart,
+            as a percentage of the target count. Must be in ``[0, 100]``;
+            rounds up to whole replicas or gangs. With a positive value, old
+            replicas keep serving until replacements are ready. Stopping
+            replicas do not count toward the limit, so live actors and resource
+            usage can exceed the target plus surge while old replicas drain.
+            Lightweight configuration changes to replicas on the new code wait
+            until restarts finish. During a surge, replacement ranks may be at
+            or above ``world_size``. Ranks are reassigned after the deployment
+            becomes healthy. Defaults to ``0``, which stops old replicas before
+            starting replacements.
 
     Returns:
         `Deployment`
@@ -724,6 +799,7 @@ def deployment(
         gang_scheduling_config=gang_scheduling_config,
         deployment_actors=deployment_actors,
         rolling_update_percentage=rolling_update_percentage,
+        max_surge_percent=max_surge_percent,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

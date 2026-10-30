@@ -140,7 +140,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     }
 
     RAY_CHECK_LE(head_nodes.size(), 1UL);
-    if (head_nodes.size() == 1) {
+    if (head_nodes.size() == 1 && head_nodes[0] != node_id) {
       OnNodeFailure(head_nodes[0],
                     [this, node_id, node_info, on_done = std::move(on_done)]() {
                       gcs_table_storage_->NodeTable().Put(

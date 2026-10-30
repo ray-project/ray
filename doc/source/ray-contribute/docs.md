@@ -17,7 +17,7 @@ This document walks you through everything you need to do to get started.
 
 The Ray documentation follows a house style guide that covers voice, word choice, sentence structure, headings, lists, links, and formatting. Read it before you write or edit a page. See {ref}`documentation-style`.
 
-The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale enforces an automated subset of the Google guide in CI. For more information, see [How to use Vale](vale).
+The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale checks an automated subset of the Google guide. Its CI check is temporarily off, so run Vale locally. For more information, see [How to use Vale](vale).
 
 (build-ray-docs)=
 
@@ -144,19 +144,19 @@ The Ray documentation also fully supports executable formats such as [Jupyter No
 
 If you take Ray Tune as an example, you can see that our documentation consists of several types of documentation, all of which you can contribute to:
 
-- [a project landing page](https://docs.ray.io/en/latest/tune/index.html),
-- [a getting started guide](https://docs.ray.io/en/latest/tune/getting-started.html),
-- [a key concepts page](https://docs.ray.io/en/latest/tune/key-concepts.html),
-- [user guides for key features](https://docs.ray.io/en/latest/tune/tutorials/overview.html),
-- [practical examples](https://docs.ray.io/en/latest/tune/examples/index.html),
-- [a detailed FAQ](https://docs.ray.io/en/latest/tune/faq.html),
-- [and API references](https://docs.ray.io/en/latest/tune/api/api.html).
+- [a project landing page](../tune/index.md),
+- [a getting started guide](../tune/getting-started.md),
+- [a key concepts page](../tune/key-concepts.md),
+- [user guides for key features](../tune/tutorials/index.md),
+- [practical examples](../tune/examples/index.md),
+- [a detailed FAQ](../tune/faq.md),
+- {doc}`and API references </tune/api/api>`.
 
 This structure is reflected in the [Ray documentation source code](https://github.com/ray-project/ray/tree/master/doc/source/tune) as well, so you should have no problem finding what you're looking for. All other Ray projects share a similar structure, but depending on the project there might be minor differences.
 
 Each type of documentation listed above has its own purpose, but ultimately our documentation comes down to _two types_ of documents:
 
-- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as [tabbed content blocks](https://docs.ray.io/en/latest/ray-core/walkthrough.html#starting-ray), this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.md) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
+- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as {ref}`tabbed content blocks <start-ray>`, this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.md) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
 - Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in the browser like `.md` or `.rst` files, but have the added benefit that users can run the code themselves.
 
 ## Fixing typos and improving explanations
@@ -221,7 +221,7 @@ Sometimes you might want to add a completely new document to the Ray documentati
 
 For this to work, you must add the new document explicitly to a parent document's toctree, which determines the structure of the Ray documentation. See [the Sphinx documentation](https://www.sphinx-doc.org/en/master/usage/restructuredtext/directives.html#directive-toctree) for more information.
 
-Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](https://docs.ray.io/en/latest/tune/tutorials/overview.html) as a panel, and the same goes for [all Tune examples](https://docs.ray.io/en/latest/tune/examples/index.html). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
+Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](../tune/tutorials/index.md) as a panel, and the same goes for [all Tune examples](../tune/examples/index.md). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
 
 (creating-notebook-example)=
 
@@ -231,7 +231,7 @@ This section covers authoring a notebook. To publish a finished example and set 
 
 To add a new executable example to the Ray documentation, you can start from our [MyST notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) or [Jupyter notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.ipynb). You could also download the document you're reading right now and start modifying it. Click the download button at the top of this page to get the `.ipynb` file. All the example notebooks in Ray Tune are automatically tested by our CI system, provided you place them in the [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples). If you have questions about how to test your notebook when contributing to other Ray sub-projects, ask in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub when opening your pull request.
 
-To work from an existing example, look at the [Ray Tune Hyperopt example (`.ipynb`)](https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/hyperopt_example.ipynb) or the [Ray Serve guide for text classification (`.md`)](https://github.com/ray-project/ray/blob/master/doc/source/serve/tutorials/text-classification.md). We recommend that you start with an `.md` file and convert it to an `.ipynb` notebook at the end of the process. We'll walk you through this process below.
+To work from an existing example, look at the [Ray Tune Hyperopt example (`.ipynb`)](https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/hyperopt-example.ipynb) or the [Ray Serve guide for text classification (`.md`)](https://github.com/ray-project/ray/blob/master/doc/source/serve/tutorials/text-classification.md). We recommend that you start with an `.md` file and convert it to an `.ipynb` notebook at the end of the process. We'll walk you through this process below.
 
 What makes these notebooks different from other documents is that they combine code and text in one document, and you can launch them in the browser. We also make sure our CI system tests them before we add them to our documentation. To make this work, notebooks need to define a _kernel specification_ to tell a notebook server how to interpret and run the code. For instance, here's the kernel specification of a Python notebook:
 
@@ -340,7 +340,7 @@ In the same way, you can convert `.ipynb` notebooks to `.md` notebooks with `--t
 ## How to use Vale
 ### What is Vale?
 
-[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). CI enforces it on the Ray Data documentation and the example gallery.
+[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). The CI check that runs Vale on the Ray Data documentation and the example gallery is temporarily off.
 
 Vale catches typos and grammatical errors. It also enforces stylistic rules such as "use contractions" and "use second person." For the full list of rules, see the [configuration in the Ray repository](https://github.com/ray-project/ray/tree/master/.vale/styles/Google).
 

@@ -42,7 +42,7 @@ helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0 --set bat
 ```sh
 # Configure the RayCluster with label `ray.io/gang-scheduling-enabled: "true"`
 # to enable gang scheduling.
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-1.4/ray-operator/config/samples/ray-cluster.scheduler-plugins.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/release-1.4/ray-operator/config/samples/ray-cluster.scheduler-plugins.yaml
 ```
 
 ## Step 5: Verify the RayCluster's Pods and PodGroup

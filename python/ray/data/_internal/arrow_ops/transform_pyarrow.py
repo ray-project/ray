@@ -1,6 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -158,8 +159,7 @@ def _hash_partition_vectorized(
     projected_table: "pyarrow.Table",
     num_partitions: int,
 ) -> np.ndarray:
-    """
-    For each row, calculates hash(row_values) % num_partitions in a vectorized
+    """For each row, calculates hash(row_values) % num_partitions in a vectorized
     manner using Polars, falling back to :func:`_hash_partition` when Polars is
     unavailable or cannot handle the input.
 
@@ -227,6 +227,24 @@ def _group_indices(
     return grouped_indices, offsets
 
 
+@lru_cache()
+def _get_nullable_dtypes() -> Dict["pyarrow.DataType", Any]:
+    """Build the pandas dtype map only when the hash fallback is used."""
+    import pandas as pd
+
+    return {
+        pyarrow.bool_(): pd.BooleanDtype(),
+        pyarrow.int8(): pd.Int8Dtype(),
+        pyarrow.int16(): pd.Int16Dtype(),
+        pyarrow.int32(): pd.Int32Dtype(),
+        pyarrow.int64(): pd.Int64Dtype(),
+        pyarrow.uint8(): pd.UInt8Dtype(),
+        pyarrow.uint16(): pd.UInt16Dtype(),
+        pyarrow.uint32(): pd.UInt32Dtype(),
+        pyarrow.uint64(): pd.UInt64Dtype(),
+    }
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
@@ -247,12 +265,15 @@ def _hash_partition(
         # row-by-row loop.
         import pandas as pd
 
-        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
-        # in pandas. This avoids int64 -> float64 promotion for nullable integer
-        # columns, which would cause the same value to hash differently across
-        # blocks depending on whether the block contains nulls.
+        # Use pandas' nullable integer and boolean dtypes so null and non-null
+        # values hash consistently across blocks.
+        nullable_dtypes = _get_nullable_dtypes()
+
+        def types_mapper(dtype):
+            return nullable_dtypes.get(dtype) or pd.ArrowDtype(dtype)
+
         hashes = pd.util.hash_pandas_object(
-            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+            table.to_pandas(types_mapper=types_mapper), index=False
         ).values
         # pandas 3.0+ returns a read-only hash array for Arrow-backed columns;
         # avoid in-place np.mod(..., out=hashes). See #64552.
@@ -464,8 +485,7 @@ def _reconcile_diverging_fields(
     unique_schemas: List["pyarrow.Schema"],
     promote_types: bool,
 ) -> Dict[str, Any]:
-    """
-    Identify and reconcile fields whose presence or types differ across the provided schemas.
+    """Identify and reconcile fields whose presence or types differ across the provided schemas.
 
     Args:
         unique_schemas: List of PyArrow schemas to find diverging fields in.
@@ -524,8 +544,7 @@ def _reconcile_field(
     field_types: List[pyarrow.DataType],
     promote_types: bool = False,
 ) -> Optional[pyarrow.DataType]:
-    """
-    Reconcile a single divergent field across schemas.
+    """Reconcile a single divergent field across schemas.
 
     Returns reconciled type or None if default PyArrow handling is sufficient.
     ``pa.null()`` entries are stripped first — null unifies with any type.
@@ -626,8 +645,7 @@ def reorder_columns_by_schema(
 def unify_schemas(
     schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
-    """
-    Unify schemas handling Ray-specific types (tensors, objects, etc.).
+    """Unify schemas handling Ray-specific types (tensors, objects, etc.).
 
     Falls back to PyArrow's unify_schemas when possible, with custom
     handling for tensor arrays, object types, and recursive struct unification.
@@ -688,9 +706,7 @@ def unify_schemas(
 
 
 def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
-    """
-    Concatenate provided chunked arrays into a single chunked array.
-    """
+    """Concatenate provided chunked arrays into a single chunked array."""
     from ray.data.extensions import get_arrow_extension_tensor_types
 
     tensor_types = get_arrow_extension_tensor_types()
@@ -729,8 +745,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
 def _extract_unified_struct_types(
     schema: "pyarrow.Schema",
 ) -> Dict[str, "pyarrow.StructType"]:
-    """
-    Extract all struct fields from a schema and map their names to types.
+    """Extract all struct fields from a schema and map their names to types.
 
     Args:
         schema: Arrow schema to extract struct types from.
@@ -750,8 +765,7 @@ def _backfill_missing_fields(
     unified_struct_type: "pyarrow.StructType",
     block_length: int,
 ) -> "pyarrow.StructArray":
-    """
-    Align a struct column's fields to match the unified schema's struct type.
+    """Align a struct column's fields to match the unified schema's struct type.
 
     Args:
         column: The column data to align.
@@ -801,11 +815,8 @@ def _backfill_missing_fields(
         field.name: column.field(i) for i, field in enumerate(column.type)
     }
 
-    # Assert that the current fields are a subset of the unified struct type's field names
-    unified_field_names = {field.name for field in unified_struct_type}
-    assert set(current_fields.keys()).issubset(
-        unified_field_names
-    ), f"Fields {set(current_fields.keys())} are not a subset of unified struct fields {unified_field_names}."
+    # Ignore fields outside the target schema. A reader may pin the schema to
+    # an inference sample while later files contain additional struct fields.
 
     # Early exit if no fields are missing in the schema
     if column.type == unified_struct_type:
@@ -872,13 +883,12 @@ def _backfill_missing_fields(
 def _align_struct_fields(
     blocks: List["pyarrow.Table"], schema: "pyarrow.Schema"
 ) -> List["pyarrow.Table"]:
-    """
-    Align struct columns across blocks to match the provided schema.
+    """Align struct columns across blocks to match the provided schema.
 
-    Struct columns in each block are backfilled with nulls for any fields
-    present in the unified schema but missing in that block. Non-struct
-    columns missing from a block are also appended as null columns, and
-    columns are reordered to match the schema.
+    Struct columns in each block are backfilled with nulls for fields present
+    in the unified schema but missing in that block. Struct fields absent from
+    the target schema are dropped. Non-struct columns missing from a block are
+    also appended as null columns, and columns are reordered to match the schema.
 
     Args:
         blocks: List of Arrow tables to align.

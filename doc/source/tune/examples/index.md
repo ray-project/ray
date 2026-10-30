@@ -32,23 +32,23 @@ Below are examples for using Ray Tune for a variety of use cases and sorted by c
 PyTorch Example <tune-pytorch-cifar>
 PyTorch Lightning Example <tune-pytorch-lightning>
 XGBoost Example <tune-xgboost>
-LightGBM Example <lightgbm_example>
-Hugging Face Transformers Example <pbt_transformers>
-Ray RLlib Example <pbt_ppo_example>
-Keras Example <tune_mnist_keras>
+LightGBM Example <lightgbm-example>
+Hugging Face Transformers Example <pbt-transformers>
+Ray RLlib Example <pbt-ppo-example>
+Keras Example <tune-mnist-keras>
 PyTorch with ASHA </_collections/tune/examples/tune_pytorch_asha/README>
 ```
 
 Ray Tune integrates with many popular machine learning frameworks. Here you find a few practical examples showing you how to tune your models. At the end of these guides you will often find links to even more examples.
 
 ```{list-table}
-* - {doc}`How to use Tune with Keras and TensorFlow models <tune_mnist_keras>`
+* - {doc}`How to use Tune with Keras and TensorFlow models <tune-mnist-keras>`
 * - {doc}`How to use Tune with PyTorch models <tune-pytorch-cifar>`
 * - {doc}`How to tune PyTorch Lightning models <tune-pytorch-lightning>`
-* - {doc}`Tuning RL experiments with Ray Tune and Ray Serve <pbt_ppo_example>`
+* - {doc}`Tuning RL experiments with Ray Tune and Ray Serve <pbt-ppo-example>`
 * - {doc}`Tuning XGBoost parameters with Tune <tune-xgboost>`
-* - {doc}`Tuning LightGBM parameters with Tune <lightgbm_example>`
-* - {doc}`Tuning Hugging Face Transformers with Tune <pbt_transformers>`
+* - {doc}`Tuning LightGBM parameters with Tune <lightgbm-example>`
+* - {doc}`Tuning Hugging Face Transformers with Tune <pbt-transformers>`
 * - {doc}`Hyperparameter tuning with PyTorch and ASHA </_collections/tune/examples/tune_pytorch_asha/README>`
 ```
 
@@ -81,23 +81,23 @@ Ray Tune integrates with some popular Experiment tracking and management tools, 
 ```{toctree}
 :hidden:
 
-Ax Example <ax_example>
-HyperOpt Example <hyperopt_example>
-Bayesopt Example <bayesopt_example>
-BOHB Example <bohb_example>
-Nevergrad Example <nevergrad_example>
-Optuna Example <optuna_example>
+Ax Example <ax-example>
+HyperOpt Example <hyperopt-example>
+Bayesopt Example <bayesopt-example>
+BOHB Example <bohb-example>
+Nevergrad Example <nevergrad-example>
+Optuna Example <optuna-example>
 ```
 
 Tune integrates with a wide variety of hyperparameter optimization frameworks and their respective search algorithms. See the following detailed examples for each integration:
 
 ```{list-table}
-* - {doc}`ax_example`
-* - {doc}`hyperopt_example`
-* - {doc}`bayesopt_example`
-* - {doc}`bohb_example`
-* - {doc}`nevergrad_example`
-* - {doc}`optuna_example`
+* - {doc}`ax-example`
+* - {doc}`hyperopt-example`
+* - {doc}`bayesopt-example`
+* - {doc}`bohb-example`
+* - {doc}`nevergrad-example`
+* - {doc}`optuna-example`
 ```
 
 (tune-examples-others)=
@@ -105,13 +105,13 @@ Tune integrates with a wide variety of hyperparameter optimization frameworks an
 ## Others
 
 ```{list-table}
-* - {doc}`Simple example for doing a basic random and grid search <includes/tune_basic_example>`
-* - {doc}`Example of using a simple tuning function with AsyncHyperBandScheduler <includes/async_hyperband_example>`
-* - {doc}`Example of using a trainable function with HyperBandScheduler and the AsyncHyperBandScheduler <includes/hyperband_function_example>`
-* - {doc}`Configuring and running (synchronous) PBT and understanding the underlying algorithm behavior with a simple example <pbt_visualization/pbt_visualization>`
-* - {doc}`includes/pbt_function`
-* - {doc}`includes/pb2_example`
-* - {doc}`includes/logging_example`
+* - {doc}`Simple example for doing a basic random and grid search <includes/tune-basic-example>`
+* - {doc}`Example of using a simple tuning function with AsyncHyperBandScheduler <includes/async-hyperband-example>`
+* - {doc}`Example of using a trainable function with HyperBandScheduler and the AsyncHyperBandScheduler <includes/hyperband-function-example>`
+* - {doc}`Configuring and running (synchronous) PBT and understanding the underlying algorithm behavior with a simple example <pbt-visualization/index>`
+* - {doc}`includes/pbt-function`
+* - {doc}`includes/pb2-example`
+* - {doc}`includes/logging-example`
 ```
 
 (tune-examples-exercises)=

@@ -12,7 +12,6 @@ from ray.serve._private.application_state import StatusOverview
 from ray.serve._private.build_app import BuiltApplication
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentStatus,
     DeploymentStatusInfo,
     RequestRoutingInfo,
 )
@@ -26,6 +25,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.utils import _callable_uses_multiplexing, get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
@@ -153,72 +153,6 @@ class ServeControllerClient:
                 )
             self._shutdown = True
 
-    def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
-        """Waits for the named deployment to enter "HEALTHY" status.
-
-        Raises RuntimeError if the deployment enters the "UNHEALTHY" status
-        instead.
-
-        Raises TimeoutError if this doesn't happen before timeout_s.
-        """
-        start = time.time()
-        while time.time() - start < timeout_s or timeout_s < 0:
-            status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
-
-            if status_bytes is None:
-                raise RuntimeError(
-                    f"Waiting for deployment {name} to be HEALTHY, "
-                    "but deployment doesn't exist."
-                )
-
-            status = DeploymentStatusInfo.from_proto(
-                DeploymentStatusInfoProto.FromString(status_bytes)
-            )
-
-            if status.status == DeploymentStatus.HEALTHY:
-                break
-            elif status.status == DeploymentStatus.UNHEALTHY:
-                raise RuntimeError(
-                    f"Deployment {name} is UNHEALTHY: " f"{status.message}"
-                )
-            else:
-                # Guard against new unhandled statuses being added.
-                assert status.status == DeploymentStatus.UPDATING
-
-            logger.debug(
-                f"Waiting for {name} to be healthy, current status: "
-                f"{status.status}."
-            )
-            time.sleep(CLIENT_POLLING_INTERVAL_S)
-        else:
-            raise TimeoutError(
-                f"Deployment {name} did not become HEALTHY after {timeout_s}s."
-            )
-
-    def _wait_for_deployment_deleted(
-        self, name: str, app_name: str, timeout_s: int = 60
-    ):
-        """Waits for the named deployment to be shut down and deleted.
-
-        Raises TimeoutError if this doesn't happen before timeout_s.
-        """
-        start = time.time()
-        while time.time() - start < timeout_s:
-            curr_status_bytes = ray.get(
-                self._controller.get_deployment_status.remote(name)
-            )
-            if curr_status_bytes is None:
-                break
-            curr_status = DeploymentStatusInfo.from_proto(
-                DeploymentStatusInfoProto.FromString(curr_status_bytes)
-            )
-            logger.debug(
-                f"Waiting for {name} to be deleted, current status: {curr_status}."
-            )
-            time.sleep(CLIENT_POLLING_INTERVAL_S)
-        else:
-            raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
-
     def _wait_for_deployment_created(
         self, deployment_name: str, app_name: str, timeout_s: int = -1
     ):
@@ -296,7 +230,9 @@ class ServeControllerClient:
 
     @_ensure_connected
     def wait_for_proxies_serving(
-        self, wait_for_applications_running: bool = True
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
     ) -> None:
         """Wait for the proxies to be ready to serve requests."""
         proxy_handles = cast(
@@ -308,7 +244,8 @@ class ServeControllerClient:
 
         serving_refs = [
             handle.serving.remote(
-                wait_for_applications_running=wait_for_applications_running
+                wait_for_applications_running=wait_for_applications_running,
+                expected_routing_config_version=expected_routing_config_version,
             )
             for handle in proxy_handles.values()
         ]
@@ -369,6 +306,7 @@ class ServeControllerClient:
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    router_application=is_ingress and app.is_router_application,
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -392,6 +330,9 @@ class ServeControllerClient:
                 ]
                 deployment_args_proto.uses_multiplexing = deployment_args[
                     "uses_multiplexing"
+                ]
+                deployment_args_proto.router_application = deployment_args[
+                    "router_application"
                 ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
@@ -435,8 +376,15 @@ class ServeControllerClient:
         # Wait for the proxies to be serving before declaring the applications
         # ready, so the "is ready" log line only prints once requests can
         # actually be routed to the applications.
+        expected_routing_config_version = None
+        if wait_for_applications_running:
+            expected_routing_config_version = ray.get(
+                self._controller.get_routing_config_version.remote()
+            )
+
         self.wait_for_proxies_serving(
-            wait_for_applications_running=wait_for_applications_running
+            wait_for_applications_running=wait_for_applications_running,
+            expected_routing_config_version=expected_routing_config_version,
         )
 
         for app in ready_apps:
@@ -495,7 +443,13 @@ class ServeControllerClient:
                     f"Serve application isn't running after {timeout_s}s."
                 )
 
-            self.wait_for_proxies_serving(wait_for_applications_running=True)
+            expected_routing_config_version = ray.get(
+                self._controller.get_routing_config_version.remote()
+            )
+            self.wait_for_proxies_serving(
+                wait_for_applications_running=True,
+                expected_routing_config_version=expected_routing_config_version,
+            )
 
     def _check_ingress_deployments(
         self, built_apps: Sequence[BuiltApplication]
@@ -507,6 +461,7 @@ class ServeControllerClient:
         """
         for app in built_apps:
             app.validate_single_fastapi_ingress()
+            app.validate_router_application()
 
     @_ensure_connected
     def delete_apps(self, names: List[str], blocking: bool = True):

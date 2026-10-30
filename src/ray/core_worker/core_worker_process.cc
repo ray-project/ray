@@ -569,6 +569,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       gcs_client,
       *task_by_state_gauge_,
       *total_lineage_bytes_gauge_,
+      *task_retry_submissions_counter_,
       /*free_actor_object_callback=*/
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
@@ -762,7 +763,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                     /*contained_object_ids=*/{},
                                     object_id,
                                     /*pin_object=*/pin_object));
-      });
+      },
+      *object_recovery_attempts_counter_);
 
   // Set event context for current core worker thread.
   RayEventContext::Instance().SetEventContext(
@@ -930,6 +932,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
+  object_recovery_attempts_counter_ = std::unique_ptr<ray::stats::Count>(
+      new ray::stats::Count(GetObjectRecoveryAttemptsCountMetric()));
+  task_retry_submissions_counter_ = std::unique_ptr<ray::stats::Count>(
+      new ray::stats::Count(GetTaskRetrySubmissionsCountMetric()));
   scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
 
   // Dependencies for the RayTaskEventRecorder.

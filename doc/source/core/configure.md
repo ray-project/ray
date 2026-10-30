@@ -78,9 +78,7 @@ ray start [--head] --num-cpus=<NUM_CPUS> --resources='{"Resource1": 4, "Resource
 
 If you started Ray from the command line, connect to the Ray cluster as follows:
 
-```{testcode}
-:skipif: True
-
+```python
 # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
 ray.init(address=<address>)
 ```

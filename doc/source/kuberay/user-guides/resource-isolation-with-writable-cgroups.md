@@ -45,7 +45,7 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the lates
 
 Create a RayCluster with writable cgroups enabled:
 ```bash
-$ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster-resource-isolation.gke.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster-resource-isolation.gke.yaml
 ```
 
 The applied manifest enables Ray resource isolation by setting `--enable-resource-isolation` in the `ray start` command. It also includes annotations on the Head and Worker Pods to enable writable cgroups, allowing for hierarchical cgroup management within the container:
@@ -192,4 +192,4 @@ Observe the new processes:
 
 ## Configuring system reserved CPU and memory
 
-You can configure system reserved resources for CPU and memory by setting flags `--system-reserved-cpu` and `--system-reserved-memory` respectively. See [this KubeRay example](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster-resource-isolation-with-overrides.gke.yaml) for how to configure these flags in RayCluster.
+You can configure system reserved resources for CPU and memory by setting flags `--system-reserved-cpu` and `--system-reserved-memory` respectively. See [this KubeRay example](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster-resource-isolation-with-overrides.gke.yaml) for how to configure these flags in RayCluster.

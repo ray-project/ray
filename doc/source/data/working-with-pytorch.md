@@ -220,9 +220,7 @@ transformed_image  ArrowTensorTypeV2(shape=(3, 10, 10), dtype=float)
 
 :::{tab-item} torchtext
 
-```{testcode}
-:skipif: True
-
+```python
 from typing import Dict, List
 import numpy as np
 from torchtext import transforms
@@ -245,7 +243,7 @@ transformed_ds = ds.map_batches(tokenize_text, batch_size="auto")
 print(transformed_ds.schema())
 ```
 
-```{testoutput}
+```text
 Column          Type
 ------          ----
 text            string
@@ -329,9 +327,7 @@ Torch tensors that are on GPU devices can't be serialized and written to disk. B
 
 :::{tab-item} Parquet
 
-```{testcode}
-:skipif: True
-
+```python
 import torch
 import ray
 
@@ -345,9 +341,7 @@ ds.write_parquet("s3://my-bucket/tensor")
 
 :::{tab-item} NumPy
 
-```{testcode}
-:skipif: True
-
+```python
 import torch
 import ray
 
@@ -376,9 +370,7 @@ The Ray Data {class}`Dataset <ray.data.Dataset>` abstraction replaces PyTorch Da
 
 To convert a built-in PyTorch dataset, such as one from `torchvision`, to a Ray Dataset, use the {meth}`from_torch() <ray.data.from_torch>` API.
 
-```{testcode}
-:skipif: True
-
+```python
 import torchvision
 import ray
 
@@ -389,14 +381,7 @@ ds = ray.data.from_torch(mnist)
 print(ds.schema())
 ```
 
-<!--
-The following `testoutput` is mocked to avoid illustrating download logs like
-"Downloading http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz".
--->
-
-```{testoutput}
-:options: +MOCK
-
+```text
 Column  Type
 ------  ----
 item    <class 'object'>

@@ -17,23 +17,27 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(
+NodeSchedulingResult NodeAffinitySchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type_ == SchedulingType::NODE_AFFINITY);
 
   scheduling::NodeID target_node_id = scheduling::NodeID(options.node_affinity_node_id_);
-  if (nodes_.contains(target_node_id) && is_node_alive_(target_node_id) &&
-      nodes_.at(target_node_id).GetLocalView().IsFeasible(resource_request)) {
+  const auto it = nodes_.find(target_node_id);
+  const bool target_node_is_feasible =
+      it != nodes_.end() && is_node_alive_(target_node_id) &&
+      it->second.GetLocalView().IsFeasible(resource_request);
+  if (target_node_is_feasible) {
     if (!options.node_affinity_spill_on_unavailable_ &&
         !options.node_affinity_fail_on_unavailable_) {
-      return target_node_id;
-    } else if (nodes_.at(target_node_id).GetLocalView().IsAvailable(resource_request)) {
-      return target_node_id;
+      return NodeSchedulingResult::Scheduled(target_node_id);
+    } else if (it->second.GetLocalView().IsAvailable(resource_request)) {
+      return NodeSchedulingResult::Scheduled(target_node_id);
     }
   }
 
   if (!options.node_affinity_soft_) {
-    return scheduling::NodeID::Nil();
+    return target_node_is_feasible ? NodeSchedulingResult::NoNodeAvailable()
+                                   : NodeSchedulingResult::Infeasible();
   }
 
   options.scheduling_type_ = SchedulingType::HYBRID;

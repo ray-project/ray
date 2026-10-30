@@ -15,23 +15,24 @@ import logging
 import os
 from dataclasses import dataclass, field
 from functools import cache
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ray._common.usage.usage_lib import usage_stats_enabled
 from ray._private.worker import global_worker
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.usage.actor import get_or_create_usage_collection_actor
-from ray.data._internal.usage.util import (
-    anonymize_op_name,
-    query_prometheus_counter,
-)
+from ray.data._internal.usage.util import anonymize_op_name, query_prometheus_counter
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.distribution_tracker import (
+        DistributionTracker,
+    )
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.issue_detection.issue_detector import IssueType
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
@@ -43,6 +44,9 @@ _SPILLED_BYTES_METRIC = "ray_spill_manager_objects_bytes"
 _NODE_FAILURE_METRIC = "ray_node_failure_total"
 _OOM_KILL_METRIC = "ray_memory_manager_worker_eviction_total"
 _UNEXPECTED_WORKER_KILL_METRIC = "ray_node_manager_unexpected_worker_failure_total"
+# Core worker counters for lost-object recovery and task retries.
+_OBJECT_RECOVERY_ATTEMPTS_METRIC = "ray_object_recovery_attempts_total"
+_TASK_RETRY_SUBMISSIONS_METRIC = "ray_task_retry_submissions_total"
 
 
 @dataclass(frozen=True)
@@ -83,17 +87,51 @@ class WorkloadInfo:
     plan_str_with_ids: Optional[str] = None
 
 
+# Execution settings by name, as collected from ``_EXECUTION_SETTINGS``. Values
+# are ``None`` or JSON scalars.
+ContextInfo = Dict[str, Any]
+
+
 @dataclass(frozen=True)
 class EnvInfo:
     pyarrow: Optional[str]
+    context: ContextInfo = field(default_factory=dict)
 
 
 # Metric names shared by the poller (metric-value keys), the execution callback,
-# and the PipelinePerf fields below. Keep these equal to the field names.
+# and the PipelinePerf / LineageReconstructionInfo fields below. Keep these
+# equal to the field names.
 METRIC_BYTES_SPILLED = "bytes_spilled"
 METRIC_NODE_DEATHS = "node_deaths"
 METRIC_OOM_KILLS = "oom_kills"
 METRIC_UNEXPECTED_WORKER_KILLS = "unexpected_worker_kills"
+METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS = "object_reconstruction_attempts"
+METRIC_TASK_RETRIES = "task_retries"
+
+
+@dataclass(frozen=True)
+class MemoryStats:
+    """Summary statistics over a stream of memory samples, in bytes."""
+
+    num_samples: int
+    min: Optional[float]
+    max: Optional[float]
+    mean: Optional[float]
+    sum: Optional[float]
+    variance: Optional[float]
+
+
+@dataclass(frozen=True)
+class LineageReconstructionInfo:
+    # Lost objects that lineage reconstruction tried to rebuild. Counted per
+    # object, so one re-run task producing many lost blocks counts many times.
+    # Counted by Ray Data when ``env.context.enable_ray_data_reconstruction`` is
+    # set (Ray Core lineage reconstruction is then off for the job), else by Ray
+    # Core.
+    object_reconstruction_attempts: Optional[int] = None
+    # Failed tasks whose error was caused by a lost object (e.g. lineage
+    # reconstruction failed or the object's owner died).
+    num_object_lost_task_failures: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +140,13 @@ class PipelinePerf:
     oom_kills: Optional[int] = None
     unexpected_worker_kills: Optional[int] = None
     node_deaths: Optional[int] = None
+    # Task re-submissions, from both failure retries and lineage reconstruction.
+    task_retries: Optional[int] = None
+    # Ray Data's object store usage, sampled once per scheduling loop step.
+    object_store_memory_bytes: Optional[MemoryStats] = None
+    # Peak USS (heap) memory of each finished task, across all operators.
+    task_max_uss_bytes: Optional[MemoryStats] = None
+    lineage_reconstruction: Optional[LineageReconstructionInfo] = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +180,15 @@ OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 # A callable that returns the anonymized name for a logical operator.
 # Allows subclasses to add custom anonymization logic.
 OpNameFn = Callable[[LogicalOperator], str]
+
+# Settings the ``StreamingExecutor`` ran with, recorded with each execution and
+# keyed by name. Each maps to how to read it off the executor. Only add fields
+# whose values are not user-defined data (no paths, names, or free-form strings).
+_EXECUTION_SETTINGS: Dict[str, Callable[["StreamingExecutor"], Any]] = {
+    "enable_ray_data_reconstruction": lambda executor: (
+        executor.ray_data_reconstruction_enabled
+    ),
+}
 
 
 def usage_collection_disabled() -> bool:
@@ -210,6 +264,26 @@ def cluster_unexpected_worker_kills() -> Optional[int]:
     """
     return query_prometheus_counter(
         _session_scoped_metric_query(_UNEXPECTED_WORKER_KILL_METRIC, _session_name())
+    )
+
+
+def cluster_object_reconstruction_attempts() -> Optional[int]:
+    """Cluster-wide cumulative lineage reconstruction attempts for lost objects
+    from Prometheus, scoped to this session. None if the query failed.
+    """
+    return query_prometheus_counter(
+        _session_scoped_metric_query(
+            _OBJECT_RECOVERY_ATTEMPTS_METRIC, _session_name(), {"Type": "Reconstruct"}
+        )
+    )
+
+
+def cluster_task_retries() -> Optional[int]:
+    """Cluster-wide cumulative task retries from Prometheus, scoped to this
+    session. None if the query failed.
+    """
+    return query_prometheus_counter(
+        _session_scoped_metric_query(_TASK_RETRY_SUBMISSIONS_METRIC, _session_name())
     )
 
 
@@ -297,6 +371,23 @@ def _logical_op_name_with_id(
     return name
 
 
+def collect_memory_stats(
+    tracker: Optional["DistributionTracker"],
+) -> Optional[MemoryStats]:
+    """Convert a ``DistributionTracker`` into ``MemoryStats``. None if the
+    tracker has no samples."""
+    if tracker is None or tracker.num_samples == 0:
+        return None
+    return MemoryStats(
+        num_samples=tracker.num_samples,
+        min=tracker.min,
+        max=tracker.max,
+        mean=tracker.mean,
+        sum=tracker.mean * tracker.num_samples,
+        variance=tracker.variance,
+    )
+
+
 def collect_issues(
     detected_issues: Optional[List[Tuple["IssueType", str]]],
 ) -> List[Issue]:
@@ -310,9 +401,33 @@ def collect_issues(
     ]
 
 
-def collect_env() -> EnvInfo:
-    """Process-wide environment info."""
-    return EnvInfo(pyarrow=_safe_version("pyarrow"))
+def collect_env(executor: "StreamingExecutor") -> EnvInfo:
+    return EnvInfo(
+        pyarrow=_safe_version("pyarrow"),
+        context=collect_context(executor, _EXECUTION_SETTINGS),
+    )
+
+
+def collect_context(
+    executor: "StreamingExecutor",
+    readers: Dict[str, Callable[["StreamingExecutor"], Any]],
+) -> ContextInfo:
+    """Read each field in ``readers`` off ``executor``. Values other than
+    ``None`` and JSON scalars are recorded as their string form. A field the
+    executor doesn't have is recorded as ``None``."""
+    result: ContextInfo = {}
+    for name, read in readers.items():
+        try:
+            value = read(executor)
+        except AttributeError:
+            logger.debug(f"Failed to read context field {name}", exc_info=True)
+            value = None
+        result[name] = (
+            value
+            if value is None or isinstance(value, (bool, int, float, str))
+            else str(value)
+        )
+    return result
 
 
 def _safe_version(pkg: str) -> Optional[str]:

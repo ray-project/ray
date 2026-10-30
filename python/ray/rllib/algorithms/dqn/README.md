@@ -34,34 +34,34 @@ training and is uniformly sampled from to generate gradient updates for the Q-va
 
 1) Vanilla DQN (DQN).
 
-    **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
+    **[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#dqn)**
 
     **[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dqn/dqn.py)**
 
 2) Double DQN.
 
-    **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
+    **[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#dqn)**
 
     **[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dqn/dqn.py)**
 
 3) Dueling DQN
 
-    **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
+    **[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#dqn)**
 
     **[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dqn/dqn.py)**
 
 3) Distributional DQN
 
-    **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
+    **[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#dqn)**
 
     **[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dqn/dqn.py)**
 
 4) APEX DQN
 
-    **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
+    **[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#dqn)**
 
 5) Rainbow DQN
 
-    **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
+    **[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#dqn)**
 
     **[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dqn/dqn.py)**

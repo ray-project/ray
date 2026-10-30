@@ -190,15 +190,15 @@ RLlib rewrote the Connector API from scratch for the new API stack. It calls con
 
 ### Ray Serve and RLlib
 
-- [Using Ray Serve with RLlib](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_serve/ray_serve_with_rllib.py): Integrates RLlib with [Ray Serve](https://docs.ray.io/en/latest/serve/index.html), demonstrating how to deploy trained {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` instances as RESTful services. This setup is ideal for deploying models in production environments with API-based interactions.
+- [Using Ray Serve with RLlib](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_serve/ray_serve_with_rllib.py): Integrates RLlib with [Ray Serve](../serve/index.md), demonstrating how to deploy trained {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` instances as RESTful services. This setup is ideal for deploying models in production environments with API-based interactions.
 
 ### Ray Tune and RLlib
 
-- [Custom experiment](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_tune/custom_experiment.py): Configures a custom experiment with [Ray Tune](https://docs.ray.io/en/latest/tune/index.html), demonstrating advanced options for custom training and evaluation phases.
+- [Custom experiment](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_tune/custom_experiment.py): Configures a custom experiment with [Ray Tune](../tune/index.md), demonstrating advanced options for custom training and evaluation phases.
 
-- [Custom logger](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_tune/custom_logger.py): Shows how to implement a custom logger within [Ray Tune](https://docs.ray.io/en/latest/tune/index.html), so you can define specific logging behaviors and outputs during training.
+- [Custom logger](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_tune/custom_logger.py): Shows how to implement a custom logger within [Ray Tune](../tune/index.md), so you can define specific logging behaviors and outputs during training.
 
-- [Custom progress reporter](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_tune/custom_progress_reporter.py): Demonstrates a custom progress reporter in [Ray Tune](https://docs.ray.io/en/latest/tune/index.html) to track and display specific training metrics or status updates in a customized format.
+- [Custom progress reporter](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_tune/custom_progress_reporter.py): Demonstrates a custom progress reporter in [Ray Tune](../tune/index.md) to track and display specific training metrics or status updates in a customized format.
 
 ### RLModules
 

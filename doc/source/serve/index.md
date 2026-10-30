@@ -11,10 +11,10 @@ myst:
 ```{toctree}
 :hidden:
 
-getting_started
+getting-started
 key-concepts
 develop-and-deploy
-model_composition
+model-composition
 multi-app
 model-multiplexing
 model-registries

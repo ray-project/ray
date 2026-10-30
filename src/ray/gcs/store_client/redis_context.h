@@ -151,6 +151,10 @@ std::string NormalizeRedisCommandLabel(std::string_view verb);
 inline constexpr std::string_view kNoTable = "NONE";
 inline constexpr std::string_view kAllTables = "ALL";
 
+/// How long to wait for an async Redis connect to finish before applying TCP
+/// keepalive. Only used on Windows.
+inline constexpr int64_t kRedisConnectWaitTimeoutSeconds = 5;
+
 /// Metrics for async Redis commands accepted by hiredis. Held by reference:
 /// the referents must outlive the RedisContext and pending submission calls,
 /// whose request metric recording can finish after the reply callback has run.

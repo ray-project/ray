@@ -22,52 +22,40 @@ class TorchVisionPreprocessor(SerializablePreprocessorBase):
     to image columns.
 
     Examples:
-
         Torch models expect inputs of shape :math:`(B, C, H, W)` in the range
         :math:`[0.0, 1.0]`. To convert images to this format, add ``ToTensor`` to your
         preprocessing pipeline.
 
-        .. testcode::
-
-            from torchvision import transforms
-
-            import ray
-            from ray.data.preprocessors import TorchVisionPreprocessor
-
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Resize((224, 224)),
-            ])
-            preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
-
-            dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
-            dataset = preprocessor.transform(dataset)
-
+        >>> from torchvision import transforms
+        >>> import ray
+        >>> from ray.data.preprocessors import TorchVisionPreprocessor
+        >>> transform = transforms.Compose([
+        ...     transforms.ToTensor(),
+        ...     transforms.Resize((224, 224)),
+        ... ])
+        >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
+        >>> dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+        >>> dataset = preprocessor.transform(dataset)
 
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
 
-        .. testcode::
-
-            import numpy as np
-            import torch
-
-            def to_tensor(batch: np.ndarray) -> torch.Tensor:
-                tensor = torch.as_tensor(batch, dtype=torch.float)
-                # (B, H, W, C) -> (B, C, H, W)
-                tensor = tensor.permute(0, 3, 1, 2).contiguous()
-                # [0., 255.] -> [0., 1.]
-                tensor = tensor.div(255)
-                return tensor
-
-            transform = transforms.Compose([
-                transforms.Lambda(to_tensor),
-                transforms.Resize((224, 224))
-            ])
-            preprocessor = TorchVisionPreprocessor(["image"], transform=transform, batched=True)
-
-            dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
-            dataset = preprocessor.transform(dataset)
+        >>> import numpy as np
+        >>> import torch
+        >>> def to_tensor(batch: np.ndarray) -> torch.Tensor:
+        ...     tensor = torch.as_tensor(batch, dtype=torch.float)
+        ...     # (B, H, W, C) -> (B, C, H, W)
+        ...     tensor = tensor.permute(0, 3, 1, 2).contiguous()
+        ...     # [0., 255.] -> [0., 1.]
+        ...     tensor = tensor.div(255)
+        ...     return tensor
+        >>> transform = transforms.Compose([
+        ...     transforms.Lambda(to_tensor),
+        ...     transforms.Resize((224, 224))
+        ... ])
+        >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform, batched=True)
+        >>> dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+        >>> dataset = preprocessor.transform(dataset)
 
     Args:
         columns: The columns to apply the TorchVision transform to.

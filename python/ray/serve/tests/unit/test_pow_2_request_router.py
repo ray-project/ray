@@ -1392,6 +1392,28 @@ async def test_get_queue_len_cancelled_on_timeout(pow_2_router):
 
 
 @pytest.mark.asyncio
+async def test_get_queue_len_cancelled_with_routing_task(pow_2_router):
+    """
+    Verify that `get_queue_len` is cancelled if the routing task probing the replica
+    is cancelled, e.g. because its request was cancelled or fulfilled by another task.
+    """
+    s = pow_2_router
+    # Long enough that only the cancellation can end the probe.
+    s.queue_len_response_deadline_s = 100
+    loop = get_or_create_event_loop()
+    r1 = FakeRunningReplica("r1", reset_after_response=True)
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+    await async_wait_for_condition(lambda: not r1._has_queue_len_response.is_set())
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    await async_wait_for_condition(lambda: r1.num_get_queue_len_calls == 2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await async_wait_for_condition(lambda: r1.get_queue_len_was_cancelled)
+
+
+@pytest.mark.asyncio
 async def test_queue_len_response_deadline_backoff(pow_2_router):
     """
     Verify that the response deadline is exponentially backed off up to the max.

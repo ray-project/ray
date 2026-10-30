@@ -1,3 +1,4 @@
+import sys
 from collections import Counter
 
 import numpy as np
@@ -13,6 +14,7 @@ from ray.data.aggregate import (
     TopKUnique,
     Unique,
     ZeroPercentage,
+    _to_hashable,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -561,23 +563,70 @@ class TestUnique:
 
         assert Counter(result["unique(id)"]) == Counter(answer)
 
+    def test_unique_tensor_column(
+        self, ray_start_regular_shared_2_cpus, restore_data_context
+    ):
+        """Arrow has no `unique` kernel for extension types such as tensors, so
+        their values are collected in Python (each array is one value)."""
+        # One partial aggregate per block (Ray otherwise batches small inputs).
+        restore_data_context.shuffle_input_batch_bytes = 0
+        arrays = [np.array([1, 2]), np.array([3, 4]), np.array([1, 2])]
+        ds = ray.data.from_items([{"t": a} for a in arrays], override_num_blocks=3)
+
+        result = ds.aggregate(Unique(on="t"))
+
+        assert {tuple(value) for value in result["unique(t)"]} == {(1, 2), (3, 4)}
+
+    @pytest.mark.parametrize(
+        "encode_lists, expected",
+        [
+            pytest.param(None, {("a", "b"), ("c",)}, id="whole_lists"),
+            pytest.param(True, {"a", "b", "c"}, id="flattened"),
+        ],
+    )
+    def test_unique_list_column_without_polars(
+        self, monkeypatch, encode_lists, expected
+    ):
+        """Uniqueness of a list-typed column falls back to Python when the
+        optional `polars` package isn't installed."""
+        monkeypatch.setitem(sys.modules, "polars", None)  # `import polars` now fails
+        aggregator = Unique(on="t", encode_lists=encode_lists)
+        table = pa.table({"t": [["a", "b"], ["c"], ["a", "b"]]})
+
+        partial = _as_pylist(aggregator.aggregate_block(table))
+        merged = aggregator._combine_column(pa.chunked_array([pa.array([partial])]))
+
+        assert {_to_hashable(value) for value in _as_pylist(merged)} == expected
+
+    def test_unique_hash_mode_still_requires_polars(self, monkeypatch):
+        """HASH list encoding returns polars hashes, which a Python fallback can't
+        reproduce, so it keeps raising when `polars` isn't installed."""
+        monkeypatch.setitem(sys.modules, "polars", None)  # `import polars` now fails
+        aggregator = Unique(on="t", encode_lists=Unique.ListEncodingMode.HASH)
+        table = pa.table({"t": [["a", "b"], ["c"]]})
+
+        with pytest.raises(ImportError):
+            aggregator.aggregate_block(table)
+
+
+def _as_pylist(values):
+    if isinstance(values, (pa.Array, pa.ChunkedArray)):
+        return values.to_pylist()
+    return values
+
 
 class TestTopKUnique:
     """Test cases for TopKUnique aggregation."""
 
     @pytest.fixture(autouse=True)
-    def force_per_block_partial_aggregation(self):
+    def force_per_block_partial_aggregation(self, restore_data_context):
         """Makes multi-block datasets produce one partial aggregate per block.
 
         By default Ray batches shuffle inputs into a single map task (up to
         ``shuffle_input_batch_bytes``), which reduces each group to one partial
         aggregate on small test data and leaves the cross-partial merge untested.
         """
-        ctx = ray.data.DataContext.get_current()
-        original = ctx.shuffle_input_batch_bytes
-        ctx.shuffle_input_batch_bytes = 1
-        yield
-        ctx.shuffle_input_batch_bytes = original
+        restore_data_context.shuffle_input_batch_bytes = 0
 
     def test_topk_unique_basic(self, ray_start_regular_shared_2_cpus):
         """Test basic exact top-k by global frequency."""
@@ -708,6 +757,19 @@ class TestTopKUnique:
         """k must be positive."""
         with pytest.raises(ValueError, match="`k` must be a positive integer"):
             TopKUnique(on="v", k=0)
+
+    def test_topk_unique_tensor_column(self, ray_start_regular_shared_2_cpus):
+        """Arrow has no `value_counts` kernel for extension types such as
+        tensors, so these are counted in Python (each array is one value)."""
+        arrays = [np.array([1, 2])] * 3 + [np.array([3, 4])] * 2 + [np.array([5, 6])]
+        ds = ray.data.from_items([{"t": a} for a in arrays], override_num_blocks=3)
+
+        result = ds.aggregate(TopKUnique(on="t", k=2))
+
+        assert [tuple(value) for value in result["topk_unique(t)"]] == [
+            (1, 2),
+            (3, 4),
+        ]
 
     # ----- Column-wise merge (VectorizedAggregateFnV2._combine_column) -----
 

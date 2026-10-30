@@ -62,7 +62,7 @@ kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
-Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.6.0. To use this feature, the `RayCronJob` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
+Install the KubeRay operator, following [these instructions](operator-installation.md). The minimum version for this guide is v1.6.0. To use this feature, the `RayCronJob` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
@@ -78,7 +78,7 @@ helm install kuberay-operator kuberay/kuberay-operator \
 ### Step 3: Install a RayCronJob
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cronjob.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cronjob.sample.yaml
 ```
 
 ### Step 4: Monitor the RayCronJob
@@ -136,7 +136,7 @@ To stop the recurring jobs and delete the resource, run:
 
 ```bash
 # Step 6.1: Delete the RayCronJob
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cronjob.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cronjob.sample.yaml
 
 # Step 6.2: Delete the KubeRay operator
 helm uninstall kuberay-operator

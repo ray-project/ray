@@ -61,7 +61,7 @@ from ray.data._internal.stats import (
 )
 from ray.data._internal.util import MemoryProfiler
 from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.datasource import Datasink
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
@@ -1410,7 +1410,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
     )
 
 
-def test_dataset_stats_shuffle(ray_start_regular_shared):
+def test_dataset_stats_shuffle(ray_start_regular_shared, restore_data_context):
+    context = DataContext.get_current()
+    context.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
     mds = ds.materialize()

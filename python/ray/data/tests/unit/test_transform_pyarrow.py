@@ -14,6 +14,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     _group_indices,
     _has_unhashable_pandas_types,
     _has_unhashable_polars_types,
+    _hash_partition,
     _hash_partition_vectorized,
     concat,
     hash_partition,
@@ -342,6 +343,25 @@ def test_hash_partition_polars_consistent_across_blocks():
     key_to_partition = dict(zip(t1["k"].to_pylist(), h1.tolist()))
     for key, pid in zip(t2["k"].to_pylist(), h2.tolist()):
         assert key_to_partition.setdefault(key, pid) == pid, key
+
+
+@pytest.mark.parametrize(
+    "dtype,values",
+    [
+        (pa.bool_(), [True, False, True]),
+        (pa.int32(), [1, 2, 3]),
+        (pa.int64(), [1, 2**53 + 1, 3]),
+        (pa.uint64(), [1, 2**63 + 1, 3]),
+    ],
+)
+def test_hash_partition_nullable_dtype_consistent_across_blocks(dtype, values):
+    without_null = pa.table({"k": pa.array(values, type=dtype)})
+    with_null = pa.table({"k": pa.array([None] + values, type=dtype)})
+
+    expected = _hash_partition(without_null, num_partitions=2)
+    actual = _hash_partition(with_null, num_partitions=2)[1:]
+
+    np.testing.assert_array_equal(actual, expected)
 
 
 def test_hash_partition_falls_back_when_polars_fails(monkeypatch):
@@ -1789,6 +1809,68 @@ def test_align_struct_fields_nested(nested_struct_blocks, nested_struct_schema):
     assert result2["outer"].to_pylist() == [
         {"inner": {"x": 3, "y": None, "z": 1.5}},
         {"inner": {"x": 4, "y": None, "z": 2.5}},
+    ]
+
+
+def test_align_struct_fields_drops_extra_nested_fields():
+    """Extra physical struct fields are dropped when aligning to a schema."""
+    physical_schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field(
+                            "inner",
+                            pa.struct(
+                                [
+                                    pa.field("a", pa.int64()),
+                                    pa.field("extra", pa.string()),
+                                ]
+                            ),
+                        ),
+                        pa.field("extra_outer", pa.bool_()),
+                    ]
+                ),
+            )
+        ]
+    )
+    target_schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field(
+                            "inner",
+                            pa.struct(
+                                [
+                                    pa.field("a", pa.int64()),
+                                    pa.field("late", pa.string()),
+                                ]
+                            ),
+                        )
+                    ]
+                ),
+            )
+        ]
+    )
+    block = pa.Table.from_pylist(
+        [
+            {"outer": {"inner": {"a": 1, "extra": "discard"}, "extra_outer": True}},
+            {"outer": None},
+            {"outer": {"inner": None, "extra_outer": False}},
+        ],
+        schema=physical_schema,
+    )
+
+    aligned = _align_struct_fields([block], target_schema)[0]
+
+    assert aligned.schema == target_schema
+    assert aligned.to_pylist() == [
+        {"outer": {"inner": {"a": 1, "late": None}}},
+        {"outer": None},
+        {"outer": {"inner": None}},
     ]
 
 

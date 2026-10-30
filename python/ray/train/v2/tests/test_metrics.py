@@ -13,7 +13,7 @@ from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
 )
-from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric
+from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric, ValueMetric
 from ray.train.v2._internal.metrics.controller import ControllerMetrics
 from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2.api.config import RunConfig
@@ -80,6 +80,23 @@ def test_time_metric(monkeypatch, mock_gauge):
     assert metric.get_value() == 3.0
 
     # Test reset
+    metric.reset()
+    assert metric.get_value() == 0.0
+
+
+def test_value_metric(monkeypatch, mock_gauge):
+    metric = ValueMetric(
+        name="test_value",
+        description="Test value metric",
+        base_tags={"run_name": "test_run"},
+    )
+
+    # Recording replaces the value rather than accumulating it
+    metric.record(3.0)
+    assert metric.get_value() == 3.0
+    metric.record(1.0)
+    assert metric.get_value() == 1.0
+
     metric.reset()
     assert metric.get_value() == 0.0
 

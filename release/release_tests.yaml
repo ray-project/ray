@@ -162,7 +162,7 @@
     - __suffix__: aws
 
 - name: hello_world_custom_byod_depset_only
-  python: "3.10"
+  python: "3.11"
   team: reef
   group: hello_world
   frequency: nightly
@@ -171,7 +171,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
 
@@ -235,6 +235,26 @@
     anyscale_sdk_2026: true
     byod:
       type: gpu-cu130
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    num_retries: 3
+    script: python hello_world.py
+
+- name: "hello_world_cu133_py{{python}}"
+  python: "{{python}}"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu-cu133
     cluster_compute: hello_world_compute_config.yaml
 
   run:
@@ -330,7 +350,7 @@
 
 # Ray Train distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_gpu_4x4
-  python: "3.10"
+  python: "3.11"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -340,7 +360,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -378,7 +398,7 @@
   alert: default
 
 - name: air_benchmark_tune_torch_mnist
-  python: "3.10"
+  python: "3.11"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -388,7 +408,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -458,107 +478,6 @@
 
   alert: default
 
-
-#######################
-# AIR examples
-#######################
-
-
-# Test additional CPU nodes for preprocessing.
-- name: air_example_dreambooth_finetuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/dreambooth
-
-  # https://github.com/ray-project/ray/issues/49847
-  frequency: manual
-  team: ml
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: dreambooth_compute_aws.yaml
-
-  run:
-    timeout: 1800
-    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh
-    artifact_path: /tmp/artifacts/example_out.jpg
-
-  # variations: A10G not available on GCE, yet.
-
-- name: air_example_dreambooth_finetuning_lora
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/dreambooth
-
-  # https://github.com/ray-project/ray/issues/49846
-  frequency: manual
-  team: ml
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: dreambooth_compute_aws.yaml
-
-  run:
-    timeout: 1800
-    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
-    artifact_path: /tmp/artifacts/example_out.jpg
-
-- name: air_example_gptj_deepspeed_fine_tuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/gptj_deepspeed_finetuning
-  frequency: manual
-  team: ml
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-      post_build_script: byod_gptj_test.sh
-    cluster_compute: gptj_deepspeed_compute_aws.yaml
-
-  run:
-    timeout: 4500
-    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
-
-- name: air_example_dolly_v2_lightning_fsdp_finetuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-  frequency: manual
-  team: ml
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-      post_build_script: byod_dolly_test.sh
-    cluster_compute: dolly_v2_fsdp_compute_aws.yaml
-
-  run:
-    timeout: 4700
-    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
-
-  # variations: TODO(jungong): add GCP variation.
-
-- name: air_example_vicuna_13b_lightning_deepspeed_finetuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
-  frequency: manual
-  team: ml
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-      post_build_script: byod_vicuna_test.sh
-    cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
-
-  run:
-    timeout: 4700
-    script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
 
 #######################
 # Tune tests
@@ -1275,7 +1194,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1285,7 +1204,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1306,7 +1225,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1316,7 +1235,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1337,7 +1256,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1346,7 +1265,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -1363,7 +1282,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   team: reef
 
@@ -1372,7 +1291,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -1437,8 +1356,31 @@
     wait_for_nodes:
       num_nodes: 2
 
+- name: "jobs_check_cuda_version_torch_cu133_py{{python}}"
+  python: "{{python}}"
+  group: Jobs tests
+  team: reef
+  frequency: nightly
+  working_dir: jobs_tests
+  matrix:
+    setup:
+      python: ["3.11", "3.14"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      # 'type: torch-cu133' means: use the cu133 'ray-torch' image.
+      type: torch-cu133
+    cluster_compute: compute_tpl_gpu_node_cu130.yaml
+  run:
+    timeout: 600
+    # torch comes from the cu130 index (no cu133 wheels), so torch.version.cuda
+    # is 13.0 on the 13.3 image; check the major only.
+    script: python workloads/jobs_check_cuda_version.py --expected-cuda-version 13
+    wait_for_nodes:
+      num_nodes: 2
+
 - name: jobs_specify_num_gpus
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   team: serve
 
@@ -1447,7 +1389,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -1650,7 +1592,7 @@
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: pytest_serve_autoscaling_load_test
-  python: "3.10"
+  python: "3.11"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1660,7 +1602,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1847,7 +1789,7 @@
           --router-type capacity_queue
 
 - name: pytest_serve_resnet_benchmark
-  python: "3.10"
+  python: "3.11"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1857,7 +1799,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_serve_resnet_py3.11.lock
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -2264,7 +2207,7 @@
   alert: default
 
 - name: train_async_checkpointing_validation_benchmark
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/async_checkpointing_validation_benchmark
   frequency: nightly
@@ -2272,7 +2215,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_aws.yaml
   run:
     timeout: 10800
@@ -2282,7 +2225,7 @@
   alert: default
 
 - name: train_preemption_benchmark
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/preemption
   frequency: nightly
@@ -2290,7 +2233,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_aws.yaml
   run:
     timeout: 10800
@@ -2324,7 +2267,7 @@
 
 
 - name: torch_local_mode
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/local_mode
 
@@ -2333,7 +2276,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_gpu_2x4_aws.yaml
 
@@ -2443,7 +2386,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
@@ -2456,7 +2399,8 @@
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_xgboost_lightgbm_py3.11.lock
     anyscale_sdk_2026: true
     cluster_compute: compute_aws_{{size}}.yaml
 
@@ -2473,7 +2417,7 @@
   alert: default
 
 - name: train_elastic_e2e_with_node_killing
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/elastic_training
 
@@ -2482,7 +2426,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_gpu_aws.yaml
 
@@ -2499,7 +2443,7 @@
   alert: default
 
 - name: elastic_benchmark
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2508,7 +2452,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_8x4_aws.yaml
 
@@ -2891,40 +2835,6 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
-- name: compiled_graphs_GPU
-  python: "3.10"
-  group: core-daily-test
-  team: core
-  frequency: manual
-  working_dir: microbenchmark
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: experimental/compute_t4_gpu.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/compiled_graph_gpu_microbenchmark.py
-
-- name: compiled_graphs_GPU_multinode
-  python: "3.10"
-  group: core-daily-test
-  team: core
-  frequency: manual
-  working_dir: microbenchmark
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
-
 - name: "compiled_graphs_GPU_cu130_py{{python}}"
   python: "{{python}}"
   group: core-daily-test
@@ -2968,7 +2878,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: rdt_single_node_T4_microbenchmark
-  python: "3.10"
+  python: "3.11"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2977,12 +2887,34 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
     timeout: 1800
     # NIXL currently only works on T4's for <100mb tensors so not enabling.
+    script: python experimental/rdt_single_node_microbenchmark.py
+
+# Exercises the cu133 ray-torch image on real GPUs. The NCCL tensor transport
+# goes through cupy.cuda.nccl, so this fails if the cupy-cuda13x swap is
+# broken. There is no cu133 torch wheel index, so torch comes from the cu130
+# index (CUDA 13.x minor-version compatible). One 4xT4 node, so NCCL transfers
+# stay intra-node.
+- name: rdt_single_node_T4_microbenchmark_torch_cu133
+  python: "3.11"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: torch-cu133
+    cluster_compute: experimental/compute_t4_gpu.yaml
+
+  run:
+    timeout: 1800
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark
@@ -3024,7 +2956,7 @@
 #     script: python experimental/rdt_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
-  python: "3.10"
+  python: "3.11"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -3033,7 +2965,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:
@@ -4278,7 +4210,7 @@
 # Observability tests
 #####################
 - name: agent_stress_test
-  python: "3.10"
+  python: "3.11"
   group: core-observability-test
   working_dir: dashboard
 
@@ -4287,7 +4219,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
       runtime_env:
         RAY_INTERNAL_MEM_PROFILE_COMPONENTS: "dashboard_agent"
       post_build_script: byod_agent_stress_test.sh
@@ -4710,6 +4642,27 @@
     timeout: 3600
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_prefix_cache.yaml
+
+# Routing cost of PrefixCacheAffinityRouter with replicas that reply immediately,
+# on a CPU node: throughput, latency and router event loop stalls.
+- name: llm_serve_prefix_router_overhead_benchmark
+  frequency: weekly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      # For ray.llm's dependencies. The benchmark uses no GPU.
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_cpu_single_node.yaml
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python prefix_router_overhead_benchmark.py
 
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
@@ -5242,7 +5195,30 @@
 
   run:
     timeout: 3600
-    script: pytest -vs . --ignore=test_token_channel_cross_node.py
+    script: pytest -vs . --ignore=test_token_channel_cross_node.py --ignore=test_frontend_config.py
+
+- name: llm_serve_kv_router_frontend_config
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/kv_router_test
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
+      post_build_script: byod_llm_kv_router_test.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs test_frontend_config.py
 
 - name: llm_serve_kv_router_cross_node
   frequency: manual
@@ -5292,6 +5268,27 @@
     timeout: 3600
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3_kv_router.yaml --skip-hf-token true
+
+# LoRA traffic through PrefixCacheAffinityRouter to fake replicas on a CPU node:
+# tracks where the router places adapters and requests.
+- name: llm_serve_prefix_router_lora_benchmark
+  frequency: weekly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      # For ray.llm's dependencies. The benchmark uses no GPU.
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_cpu_single_node.yaml
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python prefix_router_lora_benchmark.py
 
 ##############
 # LLM Batch
@@ -5367,6 +5364,10 @@
   cluster:
     byod:
       runtime_env:
+        HF_HOME: "/home/ray/.cache/huggingface"
+        RAY_LLM_BENCHMARK_DATASET_PATH: "/tmp/ray_llm_benchmark_dataset"
+        RAY_DATA_LLM_BENCHMARK_METRICS_WAIT_TIMEOUT_S: "35"
+        RAY_DATA_LLM_BENCHMARK_METRICS_POLL_INTERVAL_S: "1"
         VLLM_DISABLE_COMPILE_CACHE: "1"
       type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
@@ -5415,7 +5416,7 @@
   frequency: weekly
   group: ray-examples
   team: ml
-  working_dir: //doc/source/train/examples/transformers/transformer_reinforcement_learning
+  working_dir: //doc/source/train/examples/transformers/transformer-reinforcement-learning
 
   cluster:
     byod:

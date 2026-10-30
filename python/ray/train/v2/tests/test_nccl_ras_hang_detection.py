@@ -4,8 +4,8 @@ Each test deliberately induces one class of NCCL desync inside a real
 ``TorchTrainer`` (``backend="nccl"``, ``use_gpu=True``) with the
 :class:`NCCLRASCallback` registered, and asserts the callback's whole-job
 behavior: query RAS on a worker -> parse -> classify per communicator -> capture
-diagnostics (per-rank stack traces and per-node `nvidia-smi` snapshots) -> raise
-:class:`NCCLHangError`.
+diagnostics (per-rank stack traces and PyTorch Flight Recorder dumps plus
+per-node `nvidia-smi` snapshots) -> raise :class:`NCCLHangError`.
 """
 import os
 import shutil
@@ -41,6 +41,7 @@ RAS_ENV = {
     "RAY_TRAIN_NCCL_RAS_ACTION": "fail",
     "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S": "2",
     "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S": "4",
+    "TORCH_FR_BUFFER_SIZE": "2000",
 }
 
 
@@ -330,14 +331,21 @@ def assert_hang_diagnostics(err, storage_path, num_workers):
     """Every rank has a stack trace and this single-node cluster a GPU snapshot."""
     assert "hang_detector/stack_traces" in str(err)
     assert "hang_detector/nvidia_smi" in str(err)
+    assert "hang_detector/flight_recorder" in str(err)
 
     stack_traces = os.listdir(diagnostics_dir(storage_path, "stack_traces"))
     assert set(stack_traces) == {f"rank_{i}.log" for i in range(num_workers)}
+
     # One file per node, not per rank, and these workers share a node.
     node_ip = ray.util.get_node_ip_address()
     assert os.listdir(diagnostics_dir(storage_path, "nvidia_smi")) == [
         f"node_{node_ip}.log"
     ]
+
+    flight_recorder_dir = diagnostics_dir(storage_path, "flight_recorder")
+    assert set(os.listdir(flight_recorder_dir)) == {
+        f"rank_{i}.json" for i in range(num_workers)
+    }
 
 
 @pytest.mark.parametrize("train_func, expectation", TWO_WORKER_SCENARIOS)

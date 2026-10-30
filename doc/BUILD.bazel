@@ -1,4 +1,3 @@
-load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:python.bzl", "doctest", "doctest_each", "py_test_run_all_subdirectory")
 
@@ -19,6 +18,10 @@ filegroup(
     srcs = glob(["source/*.py"]),
     visibility = ["//ci/pipeline:__pkg__"],
 )
+
+# Consumed by //python/ray/dashboard:test_http_job_server, which checks the
+# Ray Jobs API spec against the JobHead routes and responses.
+exports_files(["source/cluster/running-applications/job-submission/openapi.yml"])
 
 # --------------------------------------------------------------------
 # Tests from the doc directory.
@@ -319,7 +322,6 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
-        "source/serve/doc_code/vllm_example.py",
         "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/capacity_queue_request_router_app.py",
     ],
@@ -561,7 +563,7 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb",
+        "doc/source/train/examples/pytorch/pytorch-resnet-finetune.ipynb",
     ],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     main = "test_myst_doc.py",
@@ -574,108 +576,87 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Test all doc/external code
-# --------------------------------------------------------------------
-
-# py_test_run_all_subdirectory(
-#     size = "enormous",
-#     include = ["external/*.py"],
-#     exclude = ["external/test_hashes.py"],
-#     extra_srcs = [],
-#     tags = [
-#         "exclusive",
-#         "external",
-#         "team:ml",
-#     ],
-# )
-
-py_test(
-    name = "test_external_hashes",
-    srcs = ["external/test_hashes.py"],
-    data = glob(
-        ["external/*.py"],
-        exclude = ["external/test_hashes.py"],
-    ),
-    exec_compatible_with = ["//bazel:py3"],
-    main = "external/test_hashes.py",
-    tags = ["team:ml"],
-    deps = [
-        ci_require("pytest"),
-        ci_require("bazel-runfiles"),
-    ],
-)
-
-# --------------------------------------------------------------------
 # Tests code snippets in user guides.
 # --------------------------------------------------------------------
 
-doctest(
+# Prose that no library owns. Its targets are tagged team:none, which only the
+# postmerge "doc: doctest" step in .buildkite/others.rayci.yml selects.
+# Not listed: ray-contribute/getting-involved.md and
+# ray-contribute/writing-code-snippets.md, whose `>>>` samples teach doctest
+# syntax rather than run.
+doctest_each(
     size = "large",
-    files = glob(
-        include = [
-            "source/**/*.md",
-            "source/**/*.rst",
-        ],
-        exclude = [
-            "source/ray-contribute/getting-involved.md",
-            "source/ray-contribute/testing-tips.md",
-            "source/ray-contribute/writing-code-snippets.md",
-            "source/ray-observability/user-guides/ray-tracing.md",
-            "source/ray-observability/user-guides/cli-sdk.md",
-            "source/templates/04_finetuning_llms_with_deepspeed/README.md",
-            "source/core/**/*.md",
-            "source/core/**/*.rst",
-            "source/data/**/*.md",
-            "source/data/**/*.rst",
-            "source/rllib/**/*.md",
-            "source/rllib/**/*.rst",
-            "source/serve/**/*.md",
-            "source/serve/**/*.rst",
-            "source/train/**/*.md",
-            "source/train/**/*.rst",
-            "source/tune/**/*.md",
-            "source/tune/**/*.rst",
-        ],
-    ),
+    files = [
+        "source/cluster/configure-manage-dashboard.md",
+        "source/ray-observability/getting-started.md",
+        "source/ray-observability/key-concepts.md",
+        "source/ray-observability/user-guides/debug-apps/debug-failures.md",
+        "source/ray-observability/user-guides/debug-apps/general-debugging.md",
+        "source/ray-observability/user-guides/debug-apps/optimize-performance.md",
+        "source/ray-overview/getting-started.md",
+        "source/ray-references/glossary.md",
+    ],
     # NOTE(edoakes): the global glossary and some tutorials use Ray Data,
     # so we use its pytest plugin file (which is a superset of the default).
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:none"],
 )
 
-doctest(
-    name = "doctest[core]",
+# Per-file targets list only the pages that collect a doctest, so each target
+# tests something. A page whose blocks are all `:skipif: True`, or that has no
+# `>>>` or `testcode` block, collects nothing and would pass vacuously. When you
+# add a runnable block to a page, add the page here. The
+# doc_prose_doctest_targets lint (doc/test_prose_doctest_targets.py) enforces
+# it. The doc_example rule in .buildkite/test.rules.txt routes all prose, so it
+# needs no edit.
+doctest_each(
     size = "large",
-    files = glob(
-        include = [
-            "source/core/**/*.md",
-            "source/core/**/*.rst",
-        ],
-        exclude = [
-            "source/core/handling-dependencies.md",
-            # The `doc_code/` snippet for `nested-tasks.md` is tested.
-            "source/core/tasks/nested-tasks.md",
-        ],
-    ),
+    files = [
+        "source/core/actors/async-api.md",
+        "source/core/actors/concurrency-group-api.md",
+        "source/core/actors/index.md",
+        "source/core/actors/named-actors.md",
+        "source/core/actors/task-orders.md",
+        "source/core/actors/terminating-actors.md",
+        "source/core/configure.md",
+        "source/core/internals/task-lifecycle.md",
+        "source/core/miscellaneous.md",
+        "source/core/objects/index.md",
+        "source/core/objects/serialization.md",
+        "source/core/scheduling/accelerators.md",
+        "source/core/scheduling/memory-management.md",
+        "source/core/starting-ray.md",
+        "source/core/tips-for-first-time.md",
+        "source/core/user-spawn-processes.md",
+    ],
     tags = ["team:core"],
 )
 
 doctest_each(
     # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
     env = {"TF_USE_LEGACY_KERAS": "1"},
-    files = glob(
-        include = [
-            "source/data/**/*.md",
-            "source/data/**/*.rst",
-        ],
-        exclude = [
-            # These tests run on GPU (see below).
-            "source/data/batch-inference.md",
-            "source/data/transforming-data.md",
-            # These don't contain code snippets.
-            "source/data/api/**/*.rst",
-        ],
-    ),
+    # Not listed: the GPU pages in doctest[data-gpu] below.
+    files = [
+        "source/data/aggregating-data.md",
+        "source/data/execution-configurations.md",
+        "source/data/index.md",
+        "source/data/inspecting-data.md",
+        "source/data/internals.md",
+        "source/data/iterating-over-data.md",
+        "source/data/joining-data.md",
+        "source/data/key-concepts.md",
+        "source/data/loading-data.md",
+        "source/data/mixing-data.md",
+        "source/data/monitoring-your-workload.md",
+        "source/data/performance-tips.md",
+        "source/data/quickstart.md",
+        "source/data/saving-data.md",
+        "source/data/shuffling-data.md",
+        "source/data/working-with-images.md",
+        "source/data/working-with-pytorch.md",
+        "source/data/working-with-tensors.md",
+        "source/data/working-with-text.md",
+    ],
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
 )
@@ -691,57 +672,49 @@ doctest(
     tags = ["team:data"],
 )
 
-doctest(
-    name = "doctest[rllib]",
+doctest_each(
     size = "large",
     data = ["//python/ray/rllib:cartpole-v1_large"],
-    files = glob(
-        include = [
-            "source/rllib/**/*.md",
-            "source/rllib/**/*.rst",
-        ],
-        exclude = [
-            "source/rllib/getting-started.md",
-        ],
-    ),
+    files = [
+        "source/rllib/algorithm-config.md",
+        "source/rllib/api/callback.rst",
+        "source/rllib/api/utils.rst",
+        "source/rllib/callback.md",
+        "source/rllib/checkpoints.md",
+        "source/rllib/env.md",
+        "source/rllib/env-to-module-connector.md",
+        "source/rllib/hierarchical-envs.md",
+        "source/rllib/index.md",
+        "source/rllib/key-concepts.md",
+        "source/rllib/learner.md",
+        "source/rllib/learner-connector.md",
+        "source/rllib/metrics-logger.md",
+        "source/rllib/multi-agent-envs.md",
+        "source/rllib/new-api-stack-migration-guide.md",
+        "source/rllib/offline.md",
+        "source/rllib/rl-modules.md",
+        "source/rllib/scaling-guide.md",
+        "source/rllib/single-agent-episode.md",
+    ],
     tags = ["team:rllib"],
 )
 
-doctest(
-    name = "doctest[serve]",
-    files = glob(
-        include = [
-            "source/serve/**/*.md",
-            "source/serve/**/*.rst",
-        ],
-        exclude = [
-            "source/serve/advanced-guides/inplace-updates.md",
-            "source/serve/production-guide/fault-tolerance.md",
-        ],
-    ),
-    tags = ["team:serve"],
-)
-
-doctest(
-    name = "doctest[train]",
+doctest_each(
     # TODO: [V2] Migrate
     env = {
         "RAY_TRAIN_V2_ENABLED": "0",
         "TF_USE_LEGACY_KERAS": "1",
     },
-    files = glob(
-        include = [
-            "source/train/**/*.md",
-            "source/train/**/*.rst",
-        ],
-        exclude = [
-            # CI does not have Horovod installed.
-            "source/train/horovod.md",
-            # These tests run on GPU (see below).
-            "source/train/user-guides/data-loading-preprocessing.md",
-            "source/train/user-guides/using-accelerators.md",
-        ],
-    ),
+    # Not listed: the GPU pages in doctest[train-gpu] below.
+    files = [
+        "source/train/common/torch-configure-run.md",
+        "source/train/distributed-tensorflow-keras.md",
+        "source/train/getting-started-jax.md",
+        "source/train/getting-started-lightgbm.md",
+        "source/train/getting-started-xgboost.md",
+        "source/train/overview.md",
+        "source/train/user-guides/persistent-storage.md",
+    ],
     tags = ["team:ml"],
 )
 
@@ -753,16 +726,6 @@ doctest(
         "source/train/user-guides/using-accelerators.md",
     ],
     gpu = True,
-    tags = ["team:ml"],
-)
-
-doctest(
-    name = "doctest[tune]",
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    files = [
-        "source/tune/**/*.md",
-        "source/tune/**/*.rst",
-    ],
     tags = ["team:ml"],
 )
 

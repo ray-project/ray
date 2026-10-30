@@ -69,9 +69,7 @@ Ray scopes named actors by namespace. If you don't assign a namespace, Ray place
 
 ::::{tab-set}
 :::{tab-item} Python
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 @ray.remote

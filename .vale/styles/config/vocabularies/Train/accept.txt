@@ -13,3 +13,11 @@ GRPOTrainer
 GRPOConfig
 GRPO
 TRL
+JAX
+Flax
+Optax
+Orbax
+TensorBoard
+torchrun
+[Aa]llreduce
+[Rr]esharding

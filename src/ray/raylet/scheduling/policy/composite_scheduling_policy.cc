@@ -20,7 +20,7 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID CompositeSchedulingPolicy::Schedule(
+NodeSchedulingResult CompositeSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   switch (options.scheduling_type_) {
   case SchedulingType::SPREAD:
@@ -31,8 +31,6 @@ scheduling::NodeID CompositeSchedulingPolicy::Schedule(
     return hybrid_policy_.Schedule(resource_request, options);
   case SchedulingType::NODE_AFFINITY:
     return node_affinity_policy_.Schedule(resource_request, options);
-  case SchedulingType::AFFINITY_WITH_BUNDLE:
-    return affinity_with_bundle_policy_.Schedule(resource_request, options);
   case SchedulingType::NODE_LABEL:
     return node_label_scheduling_policy_.Schedule(resource_request, options);
   default:

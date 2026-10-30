@@ -25,9 +25,9 @@ With Ray 2.56 and later, high throughput config options are available for Ray Se
 
 ## Example: Serving Qwen on GKE
 
-The following example demonstrates how to deploy Qwen 3.5 on four replicas with NVIDIA L4 GPUs using KubeRay on Google Kubernetes Engine (GKE) with [this sample RayService](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml).
+The following example demonstrates how to deploy Qwen 3.5 on four replicas with NVIDIA L4 GPUs using KubeRay on Google Kubernetes Engine (GKE) with [this sample RayService](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml).
 
-A corresponding sample for high-performance serving with [Gemma 4 E2B with NVIDIA B200s is also available here](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-gemma4.yaml).
+A corresponding sample for high-performance serving with [Gemma 4 E2B with NVIDIA B200s is also available here](https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-gemma4.yaml).
 
 ### 1. Configure the environment
 
@@ -84,7 +84,7 @@ kubectl create secret generic hf-secret \
 Deploy the example high-throughput LLM service:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml
 ```
 
 To enable these optimizations on your own Ray Service, add these environment variables to both the head and worker group specifications:

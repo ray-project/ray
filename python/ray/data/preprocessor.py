@@ -170,6 +170,13 @@ class Preprocessor(abc.ABC):
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
 
+    # Whether this preprocessor's `_fit` only registers aggregations on the
+    # stat computation plan (no eager dataset scan, no callable stats), so a
+    # `Chain` may defer and batch its statistics computation. Subclasses whose
+    # `_fit` satisfies that contract should set this to True. See
+    # `DataContext.enable_aggregation_based_preprocessors`.
+    _supports_deferred_fit = False
+
     def _check_has_fitted_state(self):
         """Checks if the Preprocessor has fitted state.
 
@@ -228,6 +235,11 @@ class Preprocessor(abc.ABC):
         return fitted_ds
 
     def _fit_execute(self, dataset: "Dataset"):
+        if getattr(self, "_defer_fit_execute", False):
+            # A Chain is batching this preprocessor's statistics computation
+            # with its other members'; the registered plan is executed by the
+            # Chain instead. See `ray.data.preprocessors.chain.Chain`.
+            return self
         self.stats_ |= self._stat_computation_plan.compute(dataset)
         return self
 
@@ -700,21 +712,20 @@ class SerializablePreprocessorBase(Preprocessor, abc.ABC):
         If the serialized version differs from the current ``VERSION``,
         implement migration logic to handle schema changes:
 
-        .. testcode::
-
-            def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
-                # Handle version migration
-                if version == 1 and self.VERSION == 2:
-                    # Migrate from version 1 to 2
-                    if "old_field" in fields:
-                        fields["new_field"] = migrate_old_field(fields.pop("old_field"))
-
-                # Set all fields
-                for key, value in fields.items():
-                    setattr(self, key, value)
-
-                # Reinitialize derived state
-                self._stat_computation_plan = StatComputationPlan()
+        >>> from typing import Any, Dict
+        >>> def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        ...     # Handle version migration
+        ...     if version == 1 and self.VERSION == 2:
+        ...         # Migrate from version 1 to 2
+        ...         if "old_field" in fields:
+        ...             fields["new_field"] = migrate_old_field(fields.pop("old_field"))
+        ...
+        ...     # Set all fields
+        ...     for key, value in fields.items():
+        ...         setattr(self, key, value)
+        ...
+        ...     # Reinitialize derived state
+        ...     self._stat_computation_plan = StatComputationPlan()
 
         Args:
             fields: Dictionary of field names to values

@@ -19,7 +19,9 @@
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/runtime_env_common.h"
+#include "ray/common/runtime_env_redaction.h"
 
 namespace ray {
 namespace core {
@@ -351,7 +353,11 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 
     // Ray currently doesn't reuse worker to run tasks or actors with different runtime
     // envs.
-    RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env);
+    RAY_CHECK(serialized_runtime_env_ == serialized_runtime_env) << absl::StrFormat(
+        "Serialized_runtime_env mismatch: %s vs %s. "
+        "Ray does not reuse workers to run tasks or actors with different runtime envs.",
+        RedactSerializedRuntimeEnv(serialized_runtime_env_),
+        RedactSerializedRuntimeEnv(serialized_runtime_env));
     if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
       RAY_CHECK(runtime_env_ != nullptr);
     }

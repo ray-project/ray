@@ -1,4 +1,9 @@
+# Ray resolves external dependencies through WORKSPACE. Bazel 7 defaults to that
+# already, so --enable_workspace is redundant here today; Bazel 8 flipped the
+# default to false and refuses to fetch anything with both switches off, so
+# stating it keeps a newer Bazel able to evaluate this tree.
 common --noenable_bzlmod
+common --enable_workspace
 
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config

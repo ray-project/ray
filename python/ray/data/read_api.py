@@ -71,6 +71,9 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
+from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
+    HiveReadSpec,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -152,6 +155,8 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
+_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
 INT32_MAX = 2**31 - 1
 
 
@@ -503,6 +508,8 @@ def _read_datasource_v2(
     compute: Optional[ComputeStrategy] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     block_udf: Optional[Callable[[Any], Any]] = None,
+    block_udf_modified_columns: Optional[Set[str]] = None,
+    sample_all_files_for_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
     fallback_strategy: Optional[List[Dict[str, Any]]] = None,
@@ -524,23 +531,29 @@ def _read_datasource_v2(
     - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
       via ``scanner.create_reader().read(manifest)``.
 
-    Schema inference happens once on the driver by sampling the first
-    file — no caching layer needed.
+    Schema inference samples up to 16 files by default. The opt-in full-schema
+    path retains the discovered file infos so ``ListFiles`` reads that same set.
 
     This function is the whole framework <-> datasource contract: every
     attribute it reads is declared on ``DataSourceV2`` or, behind the one
     ``isinstance`` check below, on ``FileDataSourceV2``. The object is not
     referenced after it returns (``ReadFiles`` keeps only ``datasource.name``).
     """
+    import builtins
     import time
 
     from ray.data._internal.datasource_v2.common.listing_utils import (
+        DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE,
         _build_pruners,
         sample_files,
     )
     from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
         DataSourceWithMetadata,
         FileDataSourceV2,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_SIZE_COLUMN_NAME,
+        PATH_COLUMN_NAME,
     )
     from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
         PartitionHints,
@@ -600,17 +613,69 @@ def _read_datasource_v2(
     # listed or opened here, so an empty table still reads and no partitioning is
     # derived from paths.
     sample = None
+    listing_started = time.perf_counter() if sample_all_files_for_schema else None
     if datasource.schema_needs_file_sample:
-        # Sample a few files for schema inference. Listed again (cheaply) during
-        # execution inside the ListFiles op — no caching layer needed.
-        sample = sample_files(indexer, datasource.paths, filesystem, pruners)
+        # Full-schema mode retains the discovered files for execution. The
+        # default bounded sample is listed again by ListFiles as before.
+        sample = sample_files(
+            indexer,
+            datasource.paths,
+            filesystem,
+            pruners,
+            max_files=None if sample_all_files_for_schema else 16,
+        )
         if len(sample) == 0:
             raise ValueError(
                 f"no files found under {datasource.paths!r}. Check the path and any "
                 "configured `partition_filter` or `file_extensions` filters."
             )
+        if (
+            sample_all_files_for_schema
+            and len(sample) > _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT
+        ):
+            logger.warning(
+                "Full schema inference discovered %d candidate files, exceeding "
+                "the %d-file warning threshold. Reading every file's schema "
+                "before returning the Dataset may make planning slow.",
+                len(sample),
+                _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
+            )
 
+    listing_elapsed = (
+        time.perf_counter() - listing_started if listing_started is not None else None
+    )
+    schema_started = time.perf_counter() if sample_all_files_for_schema else None
     schema = datasource.infer_schema(sample)
+    schema_elapsed = (
+        time.perf_counter() - schema_started if schema_started is not None else None
+    )
+    prelisted_file_infos = None
+    if sample_all_files_for_schema:
+        assert sample is not None
+        import pyarrow as pa
+
+        sample_block = sample.as_block()
+        assert isinstance(sample_block, pa.Table)
+        file_infos = sample_block.select([PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME])
+        prelisted_file_infos = []
+        for i in builtins.range(
+            0, file_infos.num_rows, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE
+        ):
+            stop = min(i + DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE, file_infos.num_rows)
+            indices = pa.array(builtins.range(i, stop), type=pa.int64())
+            # Keep the chunking in Arrow to avoid converting every path to
+            # Python objects.
+            prelisted_file_infos.append(file_infos.take(indices))
+        assert listing_elapsed is not None and schema_elapsed is not None
+        logger.info(
+            "Full schema inference for %s: %d candidate files, %.2fs listing, "
+            "%.2fs schema merge, %d retained Arrow file-info bytes",
+            datasource.name,
+            len(sample),
+            listing_elapsed,
+            schema_elapsed,
+            sum(block.nbytes for block in prelisted_file_infos),
+        )
     # NOTE: ``block_udf``'s schema effect (e.g. a
     # ``tensor_column_schema``-derived cast) is probed lazily in
     # ``ReadFiles.infer_schema``, not here. We keep the *pre-UDF* schema
@@ -670,6 +735,7 @@ def _read_datasource_v2(
         file_indexer=indexer,
         filesystem=filesystem,
         source_paths=list(datasource.paths),
+        prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
         partition_filter=partition_filter,
@@ -686,6 +752,7 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        block_udf_modified_columns=block_udf_modified_columns,
         input_dependencies=[list_files_op],
     )
 
@@ -1535,15 +1602,12 @@ def read_bigquery(
         The maximum query response size is 10GB.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            # Users will need to authenticate beforehand (https://cloud.google.com/sdk/gcloud/reference/auth/login)
-            ds = ray.data.read_bigquery(
-                project_id="my_project",
-                query="SELECT * FROM `bigquery-public-data.samples.gsod` LIMIT 1000",
-            )
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> # Users will need to authenticate beforehand (https://cloud.google.com/sdk/gcloud/reference/auth/login)
+        >>> ds = ray.data.read_bigquery(
+        ...     project_id="my_project",
+        ...     query="SELECT * FROM `bigquery-public-data.samples.gsod` LIMIT 1000",
+        ... )
 
     Args:
         project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
@@ -1615,6 +1679,7 @@ def read_parquet(
     tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
+    merge_schema: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
     include_row_hash: bool = False,
@@ -1681,26 +1746,19 @@ def read_parquet(
         The Parquet reader also supports projection and filter pushdown, allowing column
         selection and row filtering to be pushed down to the file scan.
 
-        .. testcode::
-
-            from ray.data.expressions import col, lit
-
-            # Create a Dataset by reading a Parquet file, with column selection and
-            # row filtering pushed down to the file scan.
-            ds = (
-                ray.data.read_parquet(
-                    "s3://anonymous@ray-example-data/iris.parquet",
-                )
-                .filter(expr=col("sepal.length") > lit(5.0))
-                .select_columns(["sepal.length", "variety"])
-            )
-
-            ds.show(2)
-
-        .. testoutput::
-
-            {'sepal.length': 5.1, 'variety': 'Setosa'}
-            {'sepal.length': 5.4, 'variety': 'Setosa'}
+        >>> from ray.data.expressions import col, lit
+        >>> # Create a Dataset by reading a Parquet file, with column selection and
+        >>> # row filtering pushed down to the file scan.
+        >>> ds = (
+        ...     ray.data.read_parquet(
+        ...         "s3://anonymous@ray-example-data/iris.parquet",
+        ...     )
+        ...     .filter(expr=col("sepal.length") > lit(5.0))
+        ...     .select_columns(["sepal.length", "variety"])
+        ... )
+        >>> ds.show(2)
+        {'sepal.length': 5.1, 'variety': 'Setosa'}
+        {'sepal.length': 5.4, 'variety': 'Setosa'}
 
         For further arguments you can pass to PyArrow as a keyword argument, see the
         `PyArrow API reference <https://arrow.apache.org/docs/python/generated/\
@@ -1746,6 +1804,11 @@ def read_parquet(
             with a custom callback to read only selected partitions of a dataset.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to HIVE partitioning.
+        merge_schema: If ``True``, infer the schema from every eligible Parquet
+            file before returning the Dataset. Defaults to ``False``, which
+            infers from up to 16 files. Requires the V2 datasource and cannot be
+            combined with an explicit ``schema``. See the notes below for cost
+            and file-discovery behavior.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
@@ -1800,6 +1863,22 @@ def read_parquet(
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
 
+    .. note::
+
+        ``merge_schema=True`` lists all eligible files and reads every footer during
+        planning, which can be expensive for large or remote datasets. Execution
+        reads footer metadata again. With more than 10,000 candidate files, the
+        reader warns before footer merging. Retained path and size metadata adds
+        O(files) data to serialized lineage.
+
+        Follow-up work for distributed planning-time footer reads and metadata
+        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+
+        The Dataset retains those candidate paths across actions. Files appended
+        after discovery aren't included. Concurrent directory traversal isn't an
+        atomic snapshot, and replacing a file at the same path is outside this
+        guarantee.
+
     .. tip::
 
         If you're reading large Parquet files and getting out-of-memory errors, try
@@ -1842,6 +1921,15 @@ def read_parquet(
             stacklevel=2,
         )
 
+    # Tensor decoding is a known transform of just the declared tensor
+    # columns. If a caller also supplies a custom block UDF, its effects are
+    # unknown and the read operator must retain the full predicate barrier.
+    block_udf_modified_columns = (
+        set(tensor_column_schema)
+        if tensor_column_schema is not None
+        and arrow_parquet_args.get("_block_udf") is None
+        else None
+    )
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -1850,12 +1938,16 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
-    # Internal: Ray Data's own reads of checkpoint files pass ``False`` so they
-    # don't get the generated ID column the checkpoint config asks for on
-    # data reads.
-    add_generated_id_column = arrow_parquet_args.pop("_add_generated_id_column", True)
 
     ctx = DataContext.get_current()
+    if merge_schema and schema is not None:
+        raise ValueError("`merge_schema=True` cannot be combined with `schema`.")
+    if merge_schema and not ctx.use_datasource_v2:
+        raise NotImplementedError(
+            "`merge_schema=True` on `read_parquet` requires the V2 datasource. "
+            "Enable it with `ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
     if ctx.use_datasource_v2:
         # ``tensor_column_schema`` is folded into ``_block_udf`` by
         # ``_resolve_parquet_args`` above; passing that transform through
@@ -1896,14 +1988,11 @@ def read_parquet(
                 parquet_format_kwargs["dictionary_columns"] = parquet_format_kwargs.pop(
                     "read_dictionary"
                 )
-        checkpoint_config = ctx.checkpoint_config
-        generated_id_column_name: Optional[str] = (
-            checkpoint_config.generated_id_column
-            if add_generated_id_column and checkpoint_config is not None
-            else None
-        )
         select_columns_after_read: Optional[List[str]] = None
         if columns is not None:
+            # ``list()`` below would split a bare string into characters.
+            if isinstance(columns, str):
+                raise TypeError("`columns` must be a list of strings.")
             # V1 ``columns=[...]`` implicitly retained the synthetic
             # ``"path"`` / ``"row_hash"`` columns when ``include_paths``
             # / ``include_row_hash`` were set (see
@@ -1916,11 +2005,6 @@ def read_parquet(
                 select_columns_after_read.append("path")
             if include_row_hash and "row_hash" not in select_columns_after_read:
                 select_columns_after_read.append("row_hash")
-            if (
-                generated_id_column_name is not None
-                and generated_id_column_name not in select_columns_after_read
-            ):
-                select_columns_after_read.append(generated_id_column_name)
             warnings.warn(
                 "`columns=` on `read_parquet` is deprecated. Use "
                 "`ray.data.read_parquet(path).select_columns([...])` instead.",
@@ -1936,7 +2020,6 @@ def read_parquet(
         from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
             ParquetDatasourceV2,
         )
-        from ray.data.checkpoint.generated_id import GeneratedIdColumn
 
         datasource_v2 = ParquetDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
@@ -1951,11 +2034,6 @@ def read_parquet(
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
             parquet_format_kwargs=parquet_format_kwargs,
-            extra_synthesized_columns=(
-                (GeneratedIdColumn(generated_id_column_name),)
-                if generated_id_column_name is not None
-                else ()
-            ),
         )
         ds = _read_datasource_v2(
             datasource_v2,
@@ -1973,6 +2051,8 @@ def read_parquet(
             concurrency=concurrency,
             partition_filter=partition_filter,
             block_udf=_block_udf,
+            block_udf_modified_columns=block_udf_modified_columns,
+            sample_all_files_for_schema=merge_schema,
         )
         if select_columns_after_read is not None:
             ds = ds.select_columns(select_columns_after_read)
@@ -2888,6 +2968,7 @@ def read_orc(
     file_extensions: Optional[List[str]] = ORCDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    merge_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
     fallback_strategy: Optional[List[Dict[str, Any]]] = None,
@@ -2898,6 +2979,16 @@ def read_orc(
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from records stored in ORC files.
+
+    Note:
+        The DataSourceV2 reader is selected through the ``use_datasource_v2``
+        setting of :class:`~ray.data.context.DataContext`.
+        By default, it samples file schemas and may omit columns absent from the
+        sample. Use ``merge_schema=True`` to infer from all eligible files.
+        If you encounter a DataSourceV2 limitation, use the V1 reader by
+        setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
+        or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray. This shared setting also affects ``read_parquet()``.
 
     Examples:
         Read an ORC file in remote storage or local storage.
@@ -2951,6 +3042,10 @@ def read_orc(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        merge_schema: If ``True``, infer the schema from every eligible ORC file
+            before returning the Dataset. Defaults to ``False``, which infers from
+            up to 16 files. Requires the V2 datasource. See the notes below for cost
+            and file-discovery behavior.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -2965,7 +3060,67 @@ def read_orc(
             named remote parameters instead.
     Returns:
         :class:`~ray.data.Dataset` holding records from the ORC files.
+
+    .. note::
+
+        ``merge_schema=True`` lists all eligible files and reads their schemas
+        on the driver during planning, which can be expensive for large or remote
+        datasets. The reader uses the merged schema, but Ray doesn't retain per-file
+        ORC metadata from schema inference for reuse during execution.
+        With more than 10,000 candidate files, Ray warns before schema merging.
+        Retained path and size metadata adds O(files) data to serialized lineage.
+
+        Follow-up work for distributed planning-time schema reads and metadata
+        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+
+        The Dataset retains those candidate paths across actions. Files appended
+        after discovery aren't included. Concurrent directory traversal isn't an
+        atomic snapshot, and replacing a file at the same path is outside this
+        guarantee. This option uses the existing schema unifier and reader; it
+        doesn't add support for otherwise unsupported schema changes. In particular,
+        evolved nested struct fields can fail at read time on PyArrow 17 (see
+        https://github.com/ray-project/ray/issues/67064).
     """
+
+    ctx = DataContext.get_current()
+    if merge_schema and not ctx.use_datasource_v2:
+        raise NotImplementedError(
+            "`merge_schema=True` on `read_orc` requires the V2 datasource. "
+            "Enable it with `ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
+
+    if ctx.use_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+            OrcDatasourceV2,
+        )
+
+        datasource = OrcDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+            sample_all_files_for_schema=merge_schema,
+        )
 
     datasource = ORCDatasource(
         paths,
@@ -3971,6 +4126,188 @@ def read_binary_files(
 
 
 @PublicAPI(stability="alpha")
+def read_hive(
+    table: Optional[str] = None,
+    *,
+    connection_factory: Callable[[], Connection],
+    query: Optional[str] = None,
+    schema: Optional["pyarrow.Schema"] = None,
+    user: Optional[str] = None,
+    limit: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    resources: Optional[Dict[str, float]] = None,
+    label_selector: Optional[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+    runtime_env: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read a HiveServer2 table or trusted SQL query into a Dataset.
+
+    Install the optional ``impyla`` package on the driver and Ray workers.
+    Configure authentication, transport, and TLS certificate verification in
+    ``connection_factory``. ``GSSAPI`` also requires ``impyla[kerberos]`` and
+    Kerberos credentials on those nodes.
+    The real-server integration test covers ``PLAIN`` with HiveServer2 in
+    server mode ``NONE``. It doesn't cover ``NOSASL`` or ``GSSAPI``.
+
+    .. note::
+
+        Query reads require an explicit Arrow schema. DataSourceV2 planning
+        needs it on the driver before the read worker executes the query.
+        See `issue #66840 <https://github.com/ray-project/ray/issues/66840>`_
+        for optional schema inference from the same query execution.
+        Table reads select every column. If a table has unsupported column
+        types, use ``query`` to select supported columns and provide a matching
+        schema.
+
+        Each Dataset execution runs at most one HiveServer2 data query in one
+        Ray task. Ray doesn't retry failed reads. With the default error
+        tolerance, a read error or worker loss fails that Dataset execution.
+        This API preserves ``DataContext.max_errored_blocks``. If you allow
+        block errors, execution can skip failed output and return an
+        incomplete result. This scanner doesn't push
+        Dataset filters, projections, or ``Dataset.limit()`` into HiveServer2.
+        The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
+        The HiveServer2 reader ignores ``override_num_blocks`` with a warning
+        to preserve streaming. Output blocks follow Ray's normal block-sizing
+        policy. This parameter doesn't parallelize the HiveServer2 query.
+
+        The reader attempts to cancel the HiveServer2 operation and close its
+        cursor and connection when reading ends. Closing a Dataset iterator
+        can force Ray to stop the read worker before Python cleanup runs.
+        Immediate operation cancellation or explicit connection cleanup isn't
+        guaranteed.
+
+    Examples:
+
+        Read a table or a query result. These examples assume
+        ``analytics.events`` has exactly two columns, ``id BIGINT`` and
+        ``name STRING``, in that order. The ``SELECT *`` example assumes
+        HiveServer2 returns ``events.id`` and ``events.name`` as result labels.
+        Match the labels returned by your HiveServer2 instance.
+
+        >>> import os  # doctest: +SKIP_EXAMPLE
+        >>> import pyarrow as pa
+        >>> import ray
+        >>> def create_connection():
+        ...     from impala.dbapi import connect
+        ...     return connect(
+        ...         host="hive.example.com",
+        ...         port=10000,
+        ...         auth_mechanism="PLAIN",
+        ...         user="reader",
+        ...         password=os.environ["HIVE_NONE_PLACEHOLDER"],
+        ...         retries=1,
+        ...     )
+        >>> table_ds = ray.data.read_hive(
+        ...     "analytics.events", connection_factory=create_connection
+        ... )
+        >>> query_ds = ray.data.read_hive(
+        ...     query="SELECT * FROM analytics.events",
+        ...     schema=pa.schema(
+        ...         [("events.id", pa.int64()), ("events.name", pa.string())]
+        ...     ),
+        ...     connection_factory=create_connection,
+        ... )
+        >>> # Use explicit SQL aliases to choose unqualified result labels.
+        >>> aliased_query_ds = ray.data.read_hive(
+        ...     query=(
+        ...         "SELECT id AS event_id, name AS event_name "
+        ...         "FROM analytics.events"
+        ...     ),
+        ...     schema=pa.schema(
+        ...         [("event_id", pa.int64()), ("event_name", pa.string())]
+        ...     ),
+        ...     connection_factory=create_connection,
+        ... )
+
+    Args:
+        table: The Hive table to read, optionally qualified as
+            ``database.table``. Specify exactly one of ``table`` and ``query``.
+        connection_factory: A serializable function that takes no arguments and
+            returns a new Impyla HiveServer2 connection on each call. Ray calls
+            it on the driver for table metadata and on the read worker for data.
+            Query reads with an explicit schema only call it on the read worker.
+            Ray closes each returned connection. Configure authentication, TLS
+            verification, and client retries in the factory. Read credentials
+            inside the factory to avoid capturing them in its serialized state.
+            Dependencies, credentials, and certificate files must be available
+            wherever the factory runs.
+        query: A trusted, row-producing SQL query. Specify exactly one of
+            ``table`` and ``query``. The query is sent to HiveServer2 as given
+            and must return a result set.
+        schema: The Arrow schema for a query read. Column names must match the
+            HiveServer2 result labels, case-insensitively and in order. Hive may
+            prefix ``SELECT *`` result labels with the table name or alias. Use
+            those labels in the schema or alias the columns in your query. Table
+            reads infer their schema from HiveServer2 metadata; ``schema`` is
+            only supported for query reads. Field types must use a supported
+            Arrow mapping. Hive ``TIMESTAMP`` maps to ``pa.timestamp("us")``
+            without a time zone; sub-microsecond precision is truncated.
+        user: The HiveServer2 session user or proxy user passed to
+            ``connection.cursor(user=user)``. If omitted, Impyla uses the
+            operating system username. Configure the authentication user
+            separately in ``connection_factory``.
+        limit: The maximum number of rows to read from a table. ``0`` skips
+            the data query. The limit is sent to HiveServer2 as SQL. This
+            argument isn't supported for query reads.
+        num_cpus: The number of CPUs to reserve for the read task.
+        memory: The heap memory in bytes to reserve for the read task.
+        resources: Custom resources to reserve for the read task, expressed as
+            a mapping from resource name to quantity.
+        label_selector: Labels required on the node where the read task runs.
+        fallback_strategy: Alternative label requirements that Ray tries in
+            order if ``label_selector`` can't be satisfied.
+        runtime_env: The runtime environment to use for the read task.
+        override_num_blocks: An output block-count hint. The HiveServer2
+            reader ignores this hint and logs a warning when you supply a
+            value. Output blocks follow Ray's normal block-sizing policy.
+            This parameter doesn't add HiveServer2 query parallelism.
+
+    Returns:
+        A :class:`Dataset` containing the HiveServer2 read result.
+    """
+    if override_num_blocks is not None and (
+        isinstance(override_num_blocks, bool)
+        or not isinstance(override_num_blocks, int)
+        or override_num_blocks < 1
+    ):
+        raise ValueError("override_num_blocks must be a positive integer")
+
+    from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
+        HiveDatasourceV2,
+    )
+
+    spec = HiveReadSpec(
+        connection_factory=connection_factory,
+        user=user,
+        table=table,
+        query=query,
+        schema=schema,
+        limit=limit,
+    )
+    if override_num_blocks is not None:
+        logger.warning(
+            "The `override_num_blocks` argument is ignored by read_hive to "
+            "preserve streaming. Output blocks follow Ray's normal "
+            "block-sizing policy."
+        )
+    dataset = _read_datasource_v2(
+        HiveDatasourceV2(spec),
+        parallelism=1,
+        num_cpus=num_cpus,
+        memory=memory,
+        resources=resources,
+        label_selector=label_selector,
+        fallback_strategy=fallback_strategy,
+        runtime_env=runtime_env,
+        ray_remote_args={"max_retries": 0},
+    )
+    return dataset
+
+
+@PublicAPI(stability="alpha")
 def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
@@ -4010,50 +4347,44 @@ def read_sql(
         executed in a single task.
 
     Examples:
-
         For examples of reading from larger databases like MySQL and PostgreSQL, see
         :ref:`Read SQL databases <reading_sql>`.
 
-        .. testcode::
-
-            import sqlite3
-
-            import ray
-
-            # Create a simple database
-            connection = sqlite3.connect("example.db")
-            connection.execute("CREATE TABLE movie(title, year, score)")
-            connection.execute(
-                \"\"\"
-                INSERT INTO movie VALUES
-                    ('Monty Python and the Holy Grail', 1975, 8.2),
-                    ("Monty Python Live at the Hollywood Bowl", 1982, 7.9),
-                    ("Monty Python's Life of Brian", 1979, 8.0),
-                    ("Rocky II", 1979, 7.3)
-                \"\"\"
-            )
-            connection.commit()
-            connection.close()
-
-            def create_connection():
-                return sqlite3.connect("example.db")
-
-            # Get all movies
-            ds = ray.data.read_sql("SELECT * FROM movie", create_connection)
-            # Get movies after the year 1980
-            ds = ray.data.read_sql(
-                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-            )
-            # Get the number of movies per year
-            ds = ray.data.read_sql(
-                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-            )
-
-        .. testcode::
-            :hide:
-
-            import os
-            os.remove("example.db")
+        >>> import os
+        >>> import sqlite3
+        >>> import tempfile
+        >>> import ray
+        >>> # Create a simple database
+        >>> db_dir = tempfile.TemporaryDirectory()
+        >>> db_path = os.path.join(db_dir.name, "example.db")
+        >>> connection = sqlite3.connect(db_path)
+        >>> _ = connection.execute("CREATE TABLE movie(title, year, score)")
+        >>> _ = connection.execute(
+        ...     \"\"\"
+        ...     INSERT INTO movie VALUES
+        ...         ('Monty Python and the Holy Grail', 1975, 8.2),
+        ...         ("Monty Python Live at the Hollywood Bowl", 1982, 7.9),
+        ...         ("Monty Python's Life of Brian", 1979, 8.0),
+        ...         ("Rocky II", 1979, 7.3)
+        ...     \"\"\"
+        ... )
+        >>> connection.commit()
+        >>> connection.close()
+        >>> def create_connection():
+        ...     return sqlite3.connect(db_path)
+        >>> # Get all movies
+        >>> ds = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        >>> ds.count()
+        4
+        >>> # Get movies after the year 1980
+        >>> ds = ray.data.read_sql(
+        ...     "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+        ... )
+        >>> # Get the number of movies per year
+        >>> ds = ray.data.read_sql(
+        ...     "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+        ... )
+        >>> db_dir.cleanup()
 
     Args:
         sql: The SQL query to execute.
@@ -4153,21 +4484,16 @@ def read_snowflake(
 ) -> Dataset:
     """Read data from a Snowflake data set.
 
-    Example:
-
-        .. testcode::
-            :skipif: True
-
-            import ray
-
-            connection_parameters = dict(
-                user=...,
-                account="ABCDEFG-ABC12345",
-                password=...,
-                database="SNOWFLAKE_SAMPLE_DATA",
-                schema="TPCDS_SF100TCL"
-            )
-            ds = ray.data.read_snowflake("SELECT * FROM CUSTOMERS", connection_parameters)
+    Examples:
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> connection_parameters = dict(
+        ...     user=...,
+        ...     account="ABCDEFG-ABC12345",
+        ...     password=...,
+        ...     database="SNOWFLAKE_SAMPLE_DATA",
+        ...     schema="TPCDS_SF100TCL"
+        ... )
+        >>> ds = ray.data.read_snowflake("SELECT * FROM CUSTOMERS", connection_parameters)
 
     Args:
         sql: The SQL query to execute.
@@ -4282,47 +4608,35 @@ def read_databricks_tables(
         `Databricks statement execution API <https://docs.databricks.com/api/statement-execution/v1/execute-statement>`_.
 
     Examples:
-
         Read using environment variables:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-
-            ds = ray.data.read_databricks_tables(
-                warehouse_id='...',
-                catalog='catalog_1',
-                schema='db_1',
-                query='select id from table_1 limit 750000',
-            )
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> ds = ray.data.read_databricks_tables(
+        ...     warehouse_id='...',
+        ...     catalog='catalog_1',
+        ...     schema='db_1',
+        ...     query='select id from table_1 limit 750000',
+        ... )
 
         Read using a custom credential provider:
 
-        .. testcode::
-            :skipif: True
-
-            from ray.data._internal.datasource.databricks_credentials import (
-                DatabricksCredentialProvider,
-            )
-
-            class MyCredentialProvider(DatabricksCredentialProvider):
-                def get_token(self) -> str:
-                    return "my-token"  # Fetch token from custom source
-
-                def get_host(self) -> str:
-                    return "my-host.databricks.com"
-
-                def invalidate(self) -> None:
-                    pass  # Clear cached credentials if applicable
-
-            ds = ray.data.read_databricks_tables(
-                warehouse_id='...',
-                catalog='catalog_1',
-                schema='db_1',
-                query='select id from table_1 limit 750000',
-                credential_provider=MyCredentialProvider(),
-            )
+        >>> from ray.data._internal.datasource.databricks_credentials import (
+        ...     DatabricksCredentialProvider,
+        ... )
+        >>> class MyCredentialProvider(DatabricksCredentialProvider):
+        ...     def get_token(self) -> str:
+        ...         return "my-token"  # Fetch token from custom source
+        ...     def get_host(self) -> str:
+        ...         return "my-host.databricks.com"
+        ...     def invalidate(self) -> None:
+        ...         pass  # Clear cached credentials if applicable
+        >>> ds = ray.data.read_databricks_tables(
+        ...     warehouse_id='...',
+        ...     catalog='catalog_1',
+        ...     schema='db_1',
+        ...     query='select id from table_1 limit 750000',
+        ...     credential_provider=MyCredentialProvider(),
+        ... )
 
     Args:
         warehouse_id: The ID of the Databricks warehouse. The query statement is
@@ -4448,8 +4762,7 @@ def read_hudi(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from an
+    """Create a :class:`~ray.data.Dataset` from an
     `Apache Hudi table <https://hudi.apache.org>`_.
 
     Examples:
@@ -5094,8 +5407,7 @@ def read_delta_sharing_tables(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Read data from a Delta Sharing table.
+    """Read data from a Delta Sharing table.
     Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
 
     This function reads data from a Delta Sharing table specified by the URL.
@@ -5107,17 +5419,12 @@ def read_delta_sharing_tables(
     a valid delta_share profile in the working directory.
 
     Examples:
-
-        .. testcode::
-            :skipif: True
-
-            import ray
-
-            ds = ray.data.read_delta_sharing_tables(
-                url=f"your-profile.json#your-share-name.your-schema-name.your-table-name",
-                limit=100000,
-                version=1,
-            )
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> ds = ray.data.read_delta_sharing_tables(
+        ...     url="your-profile.json#your-share-name.your-schema-name.your-table-name",
+        ...     limit=100000,
+        ...     version=1,
+        ... )
 
     Args:
         url: A URL under the format
@@ -5651,8 +5958,7 @@ def read_lance(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from one or more
+    """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
@@ -5778,8 +6084,7 @@ def read_clickhouse(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+    """Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
 
     Examples:
         >>> import ray
@@ -6253,46 +6558,36 @@ def read_kafka(
     have one read task for each partition.
 
     Examples:
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> # Read from a single topic with offset range
+        >>> ds = ray.data.read_kafka(
+        ...     topics="my-topic",
+        ...     bootstrap_servers="localhost:9092",
+        ...     start_offset=0,
+        ...     end_offset=1000,
+        ... )
+        >>> # Read from a topic using datetime range
+        >>> from datetime import datetime
+        >>> ds = ray.data.read_kafka(
+        ...     topics="my-topic",
+        ...     bootstrap_servers="localhost:9092",
+        ...     start_offset=datetime(2025, 1, 1),
+        ...     end_offset=datetime(2025, 1, 2),
+        ... )
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-
-            # Read from a single topic with offset range
-            ds = ray.data.read_kafka(
-                topics="my-topic",
-                bootstrap_servers="localhost:9092",
-                start_offset=0,
-                end_offset=1000,
-            )
-
-            # Read from a topic using datetime range
-            from datetime import datetime
-            ds = ray.data.read_kafka(
-                topics="my-topic",
-                bootstrap_servers="localhost:9092",
-                start_offset=datetime(2025, 1, 1),
-                end_offset=datetime(2025, 1, 2),
-            )
-
-        .. testcode::
-            :skipif: True
-
-            # Read using per-partition start offsets; partition 2 falls back
-            # to "earliest" because it is not listed
-            ds = ray.data.read_kafka(
-                topics="my-topic",
-                bootstrap_servers="localhost:9092",
-                start_offset={
-                    "my-topic": {
-                        0: 1500,
-                        1: "earliest",
-                    }
-                },
-                end_offset="latest",
-            )
-
+        >>> # Read using per-partition start offsets; partition 2 falls back
+        >>> # to "earliest" because it is not listed
+        >>> ds = ray.data.read_kafka(
+        ...     topics="my-topic",
+        ...     bootstrap_servers="localhost:9092",
+        ...     start_offset={
+        ...         "my-topic": {
+        ...             0: 1500,
+        ...             1: "earliest",
+        ...         }
+        ...     },
+        ...     end_offset="latest",
+        ... )
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name

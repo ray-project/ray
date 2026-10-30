@@ -1,10 +1,17 @@
+import time
 import unittest
+from unittest import mock
 
+import gymnasium as gym
+import numpy as np
 import pytest
+import torch
 
 import ray
 import ray.rllib.algorithms.impala as impala
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.columns import Columns
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import check
 
@@ -99,6 +106,50 @@ class TestIMPALA(unittest.TestCase):
         # `Learner.shutdown()` joins the thread, so it must be dead by the
         # time `algo.stop()` returns — no extra `join()` needed here.
         self.assertFalse(learner_thread.is_alive())
+
+    def test_learner_thread_does_not_call_barrier_per_update(self):
+        """Tests that the learner thread doesn't sync the Learners after each update.
+
+        With GPU Learners, each `torch.distributed.barrier()` is an NCCL all-reduce
+        that leaks host memory, and Ray Train initializes a process group even for a
+        single Learner. DDP's gradient all-reduce already keeps Learners in lockstep.
+        """
+        config = (
+            impala.IMPALAConfig()
+            .environment("CartPole-v1")
+            .learners(num_learners=0)
+            .training(broadcast_interval=1)
+        )
+        env = gym.make("CartPole-v1")
+        learner_group = config.build_learner_group(
+            spaces={DEFAULT_MODULE_ID: (env.observation_space, env.action_space)}
+        )
+        self.addCleanup(learner_group.shutdown)
+        learner = learner_group._learner
+        # Replace the gradient update in the learner thread with a stub.
+        num_updates = []
+        learner._learner_thread._update_method = lambda **kwargs: num_updates.append(1)
+        batch = SampleBatch(
+            {
+                Columns.OBS: np.zeros((10, 4), dtype=np.float32),
+                Columns.ACTIONS: np.zeros((10,), dtype=np.int64),
+            }
+        ).as_multi_agent()
+
+        num_calls = 5
+        with mock.patch.object(
+            torch.distributed, "is_initialized", return_value=True
+        ), mock.patch.object(torch.distributed, "barrier") as barrier:
+            for _ in range(num_calls):
+                # Each call waits for the learner thread's next aggregation.
+                learner_group.update(batch=batch, timesteps={})
+            for _ in range(500):
+                if len(num_updates) >= num_calls:
+                    break
+                time.sleep(0.01)
+
+        self.assertEqual(len(num_updates), num_calls)
+        barrier.assert_not_called()
 
 
 if __name__ == "__main__":

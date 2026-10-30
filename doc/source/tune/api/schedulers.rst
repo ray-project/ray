@@ -67,7 +67,7 @@ setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by
 Compared to the original version of HyperBand, this implementation provides better
 parallelism and avoids straggler issues during eliminations.
 **We recommend using this over the standard HyperBand scheduler.**
-An example of this can be found here: :doc:`/tune/examples/includes/async_hyperband_example`.
+An example of this can be found here: :doc:`/tune/examples/includes/async-hyperband-example`.
 
 Even though the original paper mentions a bracket count of 3, discussions with the authors concluded
 that the value should be left to 1 bracket.
@@ -185,8 +185,8 @@ perturb them** slightly in the hopes of discovering even better hyperparameter s
 the trials to explore the new hyperparameter configuration starting from a partially
 trained model (e.g. by copying model weights from one of the top-performing trials).
 
-Take a look at :doc:`/tune/examples/pbt_visualization/pbt_visualization` to get an idea
-of how PBT operates. :doc:`/tune/examples/pbt_guide` gives more examples
+Take a look at :doc:`/tune/examples/pbt-visualization/index` to get an idea
+of how PBT operates. :doc:`/tune/examples/pbt-guide` gives more examples
 of PBT usage.
 
 .. autosummary::
@@ -202,8 +202,8 @@ Population Based Training Replay (tune.schedulers.PopulationBasedTrainingReplay)
 --------------------------------------------------------------------------------
 
 Tune includes a utility to replay hyperparameter schedules of Population Based Training runs.
-You just specify an existing experiment directory and the ID of the trial you would
-like to replay. The scheduler accepts only one trial, and it will update its
+You just specify the policy file of the trial you would like to replay.
+The scheduler accepts only one trial, and it will update its
 config according to the obtained schedule.
 
 .. code-block:: python
@@ -212,8 +212,7 @@ config according to the obtained schedule.
     from ray.tune.schedulers import PopulationBasedTrainingReplay
 
     replay = PopulationBasedTrainingReplay(
-        experiment_dir="~/ray_results/pbt_experiment/",
-        trial_id="XXXXX_00001"
+        policy_file="~/ray_results/pbt_experiment/pbt_policy_XXXXX_00001.txt"
     )
     tuner = tune.Tuner(
         train_fn,
@@ -274,7 +273,7 @@ Low-performing trials clone the checkpoints of top performers and perturb the co
 in the hope of discovering an even better variation.
 
 The primary motivation for PB2 is the ability to find promising hyperparameters with only a small population size.
-With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/includes/pb2_ppo_example>` to compare PB2 vs. PBT,
+With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/includes/pb2-ppo-example>` to compare PB2 vs. PBT,
 with a population size of ``4`` (as in the paper).
 The example uses the ``BipedalWalker`` environment so does not require any additional licenses.
 
@@ -297,7 +296,7 @@ straggler mitigation.
 This is to be used in conjunction with the Tune BOHB search algorithm.
 See :ref:`TuneBOHB <suggest-TuneBOHB>` for package requirements, examples, and details.
 
-An example of this in use can be found here: :doc:`/tune/examples/includes/bohb_example`.
+An example of this in use can be found here: :doc:`/tune/examples/includes/bohb-example`.
 
 
 .. autosummary::
@@ -323,7 +322,7 @@ It wraps around another scheduler and uses its decisions.
     The function should be able to :ref:`load and save checkpoints <tune-function-trainable-checkpointing>`
     (the latter preferably every iteration).
 
-An example of this in use can be found here: :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
+An example of this in use can be found here: :doc:`/tune/examples/includes/xgboost-dynamic-resources-example`.
 
 .. autosummary::
     :nosignatures:

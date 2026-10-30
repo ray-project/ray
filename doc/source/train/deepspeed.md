@@ -6,25 +6,25 @@ myst:
 
 (train-deepspeed)=
 
-# Get Started with DeepSpeed
+# Get started with DeepSpeed
 
-The {class}`~ray.train.torch.TorchTrainer` can help you easily launch your [DeepSpeed](https://www.deepspeed.ai/) training across a distributed Ray cluster. DeepSpeed is an optimization library that enables efficient large-scale model training through techniques like ZeRO (Zero Redundancy Optimizer).
+Use {class}`~ray.train.torch.TorchTrainer` to launch your [DeepSpeed](https://www.deepspeed.ai/) training across a distributed Ray cluster. DeepSpeed is an optimization library for efficient large-scale model training. It uses techniques such as the Zero Redundancy Optimizer (ZeRO).
 
-## Benefits of Using Ray Train with DeepSpeed
+(benefits-of-using-ray-train-with-deepspeed)=
 
-- **Simplified Distributed Setup**: Ray Train handles all the distributed environment setup for you
-- **Multi-Node Scaling**: Easily scale to multiple nodes with minimal code changes
-- **Checkpoint Management**: Built-in checkpoint saving and loading across distributed workers
-- **Seamless Integration**: Works with your existing DeepSpeed code
+## Why use Ray Train with DeepSpeed?
+
+Ray Train works with your existing DeepSpeed code and handles all the distributed environment setup for you. You can scale to multiple nodes with minimal code changes, and Ray Train provides built-in checkpoint saving and loading across distributed workers.
 
 ## Code example
 
-You can use your existing DeepSpeed training code with Ray Train's TorchTrainer. The integration is minimal and preserves your familiar DeepSpeed workflow:
+Use your existing DeepSpeed training code with the Ray Train `TorchTrainer`. The integration is minimal and preserves your DeepSpeed workflow:
 
-```{testcode}
-:skipif: True
+```python
+import tempfile
 
 import deepspeed
+import ray
 from deepspeed.accelerator import get_accelerator
 
 def train_func():
@@ -33,12 +33,14 @@ def train_func():
     train_dataset = ...
     eval_dataset = ...
     deepspeed_config = {...} # Your DeepSpeed config
+    collate_fn = ...
+    num_epochs = ...
 
     # Prepare everything for distributed training
     model, optimizer, train_dataloader, lr_scheduler = deepspeed.initialize(
         model=model,
         model_parameters=model.parameters(),
-        training_data=tokenized_datasets["train"],
+        training_data=train_dataset,
         collate_fn=collate_fn,
         config=deepspeed_config,
     )
@@ -48,11 +50,18 @@ def train_func():
 
     # Start training
     for epoch in range(num_epochs):
-        # Training logic
+        # Training logic that computes `loss`
         ...
 
-        # Report metrics to Ray Train
-        ray.train.report(metrics={"loss": loss})
+        # Save a checkpoint so that Ray Train can resume training after a failure.
+        # Each worker saves its own ZeRO shards, and Ray Train merges them into
+        # one checkpoint directory in persistent storage.
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            model.save_checkpoint(temp_checkpoint_dir)
+            ray.train.report(
+                metrics={"loss": loss.item(), "epoch": epoch},
+                checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
+            )
 
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
@@ -70,9 +79,9 @@ result = trainer.fit()
 ```
 
 
-## Complete Examples
+## Complete examples
 
-Below are complete examples of ZeRO-3 training with DeepSpeed. Each example shows a full implementation of fine-tuning a Bidirectional Encoder Representations from Transformers (BERT) model on the Microsoft Research Paraphrase Corpus (MRPC) dataset.
+The following examples show ZeRO-3 training with DeepSpeed. Each example is a full implementation that fine-tunes a Bidirectional Encoder Representations from Transformers (BERT) model on the Microsoft Research Paraphrase Corpus (MRPC) dataset.
 
 Install the requirements:
 
@@ -82,7 +91,7 @@ pip install deepspeed torch datasets transformers torchmetrics "ray[train]"
 
 :::::{tab-set}
 ::::{tab-item} Example with Ray Data
-:::{dropdown} Show Code
+:::{dropdown} Show code
 ```{literalinclude} /../../python/ray/train/examples/deepspeed/deepspeed_torch_trainer.py
 :language: python
 :start-after: __deepspeed_torch_basic_example_start__
@@ -92,7 +101,7 @@ pip install deepspeed torch datasets transformers torchmetrics "ray[train]"
 ::::
 
 ::::{tab-item} Example with PyTorch DataLoader
-:::{dropdown} Show Code
+:::{dropdown} Show code
 ```{literalinclude} /../../python/ray/train/examples/deepspeed/deepspeed_torch_trainer_no_raydata.py
 :language: python
 :start-after: __deepspeed_torch_basic_example_no_raydata_start__
@@ -103,33 +112,19 @@ pip install deepspeed torch datasets transformers torchmetrics "ray[train]"
 :::::
 
 :::{tip}
-To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities like {meth}`~ray.train.torch.prepare_model` or {meth}`~ray.train.torch.prepare_data_loader` in your training function. Instead, keep using [deepspeed.initialize()](https://deepspeed.readthedocs.io/en/latest/initialize.html) as usual to prepare everything for distributed training.
+To run DeepSpeed with pure PyTorch, you don't need additional Ray Train utilities such as {meth}`~ray.train.torch.prepare_model` or {meth}`~ray.train.torch.prepare_data_loader` in your training function. Keep using [`deepspeed.initialize()`](https://deepspeed.readthedocs.io/en/latest/initialize.html) to prepare everything for distributed training.
 :::
 
 
 ## Fine-tune LLMs with DeepSpeed
 
-See this step-by-step guide for how to fine-tune large language models (LLMs) with Ray Train and DeepSpeed: {doc}`Fine-tune an LLM with Ray Train and DeepSpeed </_collections/train/examples/pytorch/deepspeed_finetune/README>`.
+For a step-by-step guide to fine-tuning large language models (LLMs) with Ray Train and DeepSpeed, see {doc}`Fine-tune an LLM with Ray Train and DeepSpeed </_collections/train/examples/pytorch/deepspeed_finetune/README>`.
 
 
-## Run DeepSpeed with Other Frameworks
+## Run DeepSpeed with other frameworks
 
-Many deep learning frameworks have integrated with DeepSpeed, including Lightning, Transformers, Accelerate, and more. You can run all these combinations in Ray Train.
+Many deep learning frameworks integrate with DeepSpeed, including Lightning, Transformers, and Accelerate. You can run all these combinations in Ray Train.
 
-Check the below examples for more details:
+To get started with each framework, see the {ref}`Accelerate <train-hf-accelerate>`, {ref}`Transformers <train-pytorch-transformers>`, and {ref}`Lightning <train-pytorch-lightning>` user guides.
 
-```{list-table}
-:header-rows: 1
-
-* - Framework
-  - Example
-* - Accelerate ({ref}`User Guide <train-hf-accelerate>`)
-  - [Fine-tune Llama-2 series models with DeepSpeed, Accelerate, and Ray Train.](https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed)
-* - Transformers ({ref}`User Guide <train-pytorch-transformers>`)
-  - {doc}`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <examples/deepspeed/gptj_deepspeed_fine_tuning>`
-* - Lightning ({ref}`User Guide <train-pytorch-lightning>`)
-  - {doc}`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <examples/lightning/vicuna_13b_lightning_deepspeed_finetune>`
-```
-
-
-For more information about DeepSpeed configuration options, refer to the [official DeepSpeed documentation](https://www.deepspeed.ai/docs/config-json/).
+For DeepSpeed configuration options, see the [DeepSpeed documentation](https://www.deepspeed.ai/docs/config-json/).

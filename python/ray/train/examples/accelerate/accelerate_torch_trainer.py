@@ -1,6 +1,5 @@
 # __accelerate_torch_basic_example_start__
-"""
-Minimal Ray Train and Accelerate example adapted from
+"""Minimal Ray Train and Accelerate example adapted from
 https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
 Fine-tune a BERT model with Hugging Face Accelerate and Ray Train and Ray Data

@@ -7,8 +7,11 @@ Deploy on a Ray cluster whose worker nodes have gVisor's ``runsc`` on PATH:
 or as an Anyscale service (see ``doc/source/core/sandboxes.md``). Bearer
 auth is enforced when the environment variable named by
 ``SandboxAPISettings.token_env_var`` (default ``RAY_SANDBOX_API_TOKEN``) is
-set; an Anyscale service can leave it unset because the platform edge already
-requires the service's own bearer token.
+set, and ``build_app`` refuses to build without it unless
+``allow_unauthenticated`` is set: Serve's proxies listen on every node's
+address, so a platform edge's own token doesn't cover callers inside the
+cluster's network. Clients may request only the network modes in
+``allowed_network_modes`` and ``rootless=False`` only with ``allow_rootful``.
 
 The service holds no state: every sandbox lives in a named detached
 ``SandboxHost`` actor and every replica resolves them by name, so replicas
@@ -25,6 +28,7 @@ from typing import Any, Awaitable, Dict, List, Optional
 from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
 
+from ray.experimental.sandbox.config import DEFAULT_PUBLIC_ALLOWLIST
 from ray.experimental.sandbox.http.host import HostSettings, SandboxSpec
 from ray.experimental.sandbox.http.resolver import (
     RayActorHandleResolver,
@@ -42,6 +46,7 @@ from ray.experimental.sandbox.http.schemas import (
     SandboxInfo,
     SandboxList,
     StartExecRequest,
+    _require_token_env,
 )
 from ray.util.annotations import PublicAPI
 
@@ -195,6 +200,7 @@ def create_app(
             "ttl_seconds": None,
             "expires_at": None,
             "network": "none",
+            "cidr_allowlist": None,
             "labels": {},
             "error": None,
         }
@@ -248,6 +254,19 @@ def create_app(
 
     @v1.post("/sandboxes", response_model=SandboxInfo, status_code=202)
     async def create_sandbox(request: CreateSandboxRequest) -> JSONResponse:
+        # "host" hands the sandbox the node's network and every Ray port on
+        # it, so the server, not the client, decides who may have it.
+        if request.network not in settings.allowed_network_modes:
+            raise _ApiError(
+                403,
+                "forbidden",
+                f"network={request.network!r} is not enabled on this server; "
+                f"allowed: {', '.join(settings.allowed_network_modes)}",
+            )
+        if not request.rootless and not settings.allow_rootful:
+            raise _ApiError(
+                403, "forbidden", "rootless=false is not enabled on this server"
+            )
         if (
             request.ttl_seconds is not None
             and request.ttl_seconds > settings.max_ttl_seconds
@@ -323,6 +342,7 @@ def create_app(
             "workdir": request.workdir,
             "ttl_seconds": effective_ttl,
             "network": request.network,
+            "cidr_allowlist": request.cidr_allowlist,
             "dns": request.dns,
             "shell": request.shell,
             "rootless": request.rootless,
@@ -330,6 +350,7 @@ def create_app(
             "capabilities": capabilities,
             "cpu_limit": cpu_limit,
             "memory_limit_mb": memory_limit_mb,
+            "disk_limit_mb": resources.disk_limit_mb if resources else None,
             "image_pull_timeout_seconds": request.image_pull_timeout_seconds,
             "start_timeout_seconds": request.start_timeout_seconds,
             "labels": request.labels,
@@ -356,6 +377,14 @@ def create_app(
         # cluster the new actor may legitimately be queued for a while.
         handle.boot.remote()
         created_at = datetime.now(timezone.utc)
+        # The allowlist in force, as the host reports it once it runs.
+        cidr_allowlist = None
+        if request.network == "public":
+            cidr_allowlist = list(
+                request.cidr_allowlist
+                if request.cidr_allowlist is not None
+                else DEFAULT_PUBLIC_ALLOWLIST
+            )
         info = {
             "sandbox_id": sandbox_id,
             "status": "pending",
@@ -364,6 +393,7 @@ def create_app(
             "ttl_seconds": effective_ttl,
             "expires_at": (created_at + timedelta(seconds=effective_ttl)).isoformat(),
             "network": request.network,
+            "cidr_allowlist": cidr_allowlist,
             "labels": request.labels,
             "error": None,
         }
@@ -554,11 +584,29 @@ def build_app(args: Optional[Dict[str, Any]] = None) -> Any:
 
         serve run ray.experimental.sandbox.http.app:build_app
 
-    or from an Anyscale service config via ``import_path``.
+    or from an Anyscale service config via ``import_path``. Set the API token
+    (``token_env_var``, default ``RAY_SANDBOX_API_TOKEN``) where the
+    application is built: building fails without it unless
+    ``allow_unauthenticated`` is set.
+
+    Args:
+        args: Builder arguments, each a :class:`SandboxAPISettings` field.
+
+    Returns:
+        The API's ingress deployment, bound and ready to run.
+
+    Raises:
+        ValueError: If the token is unset and ``allow_unauthenticated`` is
+            not.
     """
+    settings = SandboxAPISettings(**(args or {}))
+    # The app captures the token here, where it's built, and carries it to
+    # its replicas.
+    if not settings.allow_unauthenticated:
+        _require_token_env(settings)
+
     from ray import serve
 
-    settings = SandboxAPISettings(**(args or {}))
     fastapi_app = create_app(settings)
 
     # The API is long-poll based (requests deliberately hold a slot for up

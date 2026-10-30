@@ -8,7 +8,7 @@ myst:
 
 # Training function utilities
 
-Call these `ray.train` APIs from inside your training function to report metrics and checkpoints, read the training context, and get dataset shards. The collective operations live in `ray.train.collective`.
+Call these `ray.train` APIs from inside your training function to save and load checkpoints, read the training context, and get dataset shards. The collective operations live in `ray.train.collective`.
 
 ```{eval-rst}
 .. currentmodule:: ray

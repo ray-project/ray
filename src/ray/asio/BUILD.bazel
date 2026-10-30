@@ -62,6 +62,7 @@ ray_cc_library(
     hdrs = ["io_service_pool.h"],
     visibility = [
         "//src/ray/gcs/store_client:__pkg__",
+        "//src/ray/gcs/store_client/tests:__pkg__",
         "//src/ray/pubsub/tests:__pkg__",
         "//src/ray/stats:__pkg__",
     ],

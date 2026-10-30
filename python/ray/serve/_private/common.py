@@ -444,6 +444,12 @@ class DeploymentStatusInfo:
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+                    message=message,
+                )
             # Deployment transitions to healthy
             elif trigger == DeploymentStatusInternalTrigger.HEALTHY:
                 return self._updated_copy(
@@ -568,6 +574,14 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
+            # Deployment actors can't be recreated and won't be retried
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+                    message=message,
+                )
+
         elif self.status == DeploymentStatus.UNHEALTHY:
             # The deployment recovered
             if trigger == DeploymentStatusInternalTrigger.HEALTHY:
@@ -596,6 +610,12 @@ class DeploymentStatusInfo:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
                     message=message,
                 )
 

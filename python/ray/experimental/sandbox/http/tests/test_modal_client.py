@@ -4,8 +4,8 @@
 these tests run an unmodified ``modal`` client against the facade instead, on
 the same fake resolver and runtime as the REST tests, so a mismatch between
 the vendored contract and the SDK shows up here. They also cover importing
-the facade and the SDK in one process. Skipped when ``modal`` or ``grpclib``
-is not installed (neither is in the default CI image).
+the facade and the SDK in one process. Skipped when ``modal`` is not
+installed (it is not in the default CI image).
 """
 
 from __future__ import annotations
@@ -15,8 +15,10 @@ import sys
 import threading
 from typing import Any, Iterator, Tuple
 
+import grpc
 import pytest
 
+from ray.experimental.sandbox.http import grpc_facade
 from ray.experimental.sandbox.http.tests.conftest import (
     FakeExecResult,
     FakeResolver,
@@ -25,22 +27,19 @@ from ray.experimental.sandbox.http.tests.conftest import (
 
 try:
     import modal
-    from grpclib.server import Server
     from modal.exception import (
         AuthError,
+        ConflictError,
         InvalidError,
         SandboxFilesystemNotFoundError,
     )
 
-    from ray.experimental.sandbox.http.grpc_facade import build_servicers
-
-    _HAVE_DEPS = True
+    _HAVE_MODAL = True
 except ImportError:
-    _HAVE_DEPS = False
+    _HAVE_MODAL = False
 
 pytestmark = pytest.mark.skipif(
-    not _HAVE_DEPS,
-    reason="modal and grpclib are not installed (optional; absent in CI)",
+    not _HAVE_MODAL, reason="modal is not installed (optional; absent in CI)"
 )
 
 _next_port = iter(range(50961, 50991))
@@ -65,14 +64,19 @@ class _FacadeThread:
 
     def _run(self) -> None:
         asyncio.set_event_loop(self._loop)
-        servicers = build_servicers(
+        facade = grpc_facade.RaySandboxFacade(
             handle_resolver=self._resolver,
             advertise_url=f"http://127.0.0.1:{self._port}",
         )
-        self._server = Server(servicers)
-        self._loop.run_until_complete(self._server.start("127.0.0.1", self._port))
+        self._loop.run_until_complete(self._start(facade))
         self._started.set()
         self._loop.run_forever()
+
+    async def _start(self, facade: Any) -> None:
+        self._server = grpc.aio.server(options=grpc_facade._SERVER_OPTIONS)
+        grpc_facade.add_servicers_to_server(facade, self._server)
+        self._server.add_insecure_port(f"127.0.0.1:{self._port}")
+        await self._server.start()
 
     def __enter__(self) -> "_FacadeThread":
         self._thread.start()
@@ -80,19 +84,17 @@ class _FacadeThread:
         return self
 
     def __exit__(self, *exc_info: Any) -> None:
-        async def _stop() -> None:
-            self._server.close()
-            # From Python 3.12 this also waits for clients to disconnect, and
-            # the SDK keeps its idle connection open; the server has already
-            # stopped listening and cancelled its requests.
-            try:
-                await asyncio.wait_for(self._server.wait_closed(), timeout=1)
-            except asyncio.TimeoutError:
-                pass
-
-        asyncio.run_coroutine_threadsafe(_stop(), self._loop).result(10)
+        stopped = self._server.stop(None)
+        asyncio.run_coroutine_threadsafe(stopped, self._loop).result(10)
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join(10)
+
+
+@pytest.fixture(autouse=True)
+def _original_sandbox_api(monkeypatch) -> None:
+    """The facade serves the SDK's original sandbox API, which modal 1.6
+    stopped using by default (``MODAL_SANDBOX_V2``)."""
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
 
 
 @pytest.fixture
@@ -172,15 +174,54 @@ def test_network_policies_map_onto_the_runtime(facade) -> None:
 
     blocked = _create(client, block_network=True)
     open_egress = _create(client)
+    allowlisted = _create(client, outbound_cidr_allowlist=["1.1.1.1/32"])
     assert _host(resolver, blocked)._spec["network"] == "none"
-    assert _host(resolver, open_egress)._spec["network"] == "public"
+    open_spec = _host(resolver, open_egress)._spec
+    assert (open_spec["network"], open_spec["cidr_allowlist"]) == ("public", None)
+    allow_spec = _host(resolver, allowlisted)._spec
+    assert (allow_spec["network"], allow_spec["cidr_allowlist"]) == (
+        "public",
+        ["1.1.1.1/32"],
+    )
     # Refused rather than granted wider than the client asked for.
-    with pytest.raises(InvalidError, match="allowlist"):
-        _create(client, outbound_cidr_allowlist=["1.1.1.1/32"])
-    with pytest.raises(InvalidError, match="allowlist"):
+    with pytest.raises(InvalidError, match="domain allowlists"):
         _create(client, outbound_domain_allowlist=["pypi.org"])
-    blocked.terminate()
-    open_egress.terminate()
+    for sandbox in (blocked, open_egress, allowlisted):
+        sandbox.terminate()
+
+
+def test_runtime_network_policy_updates(facade) -> None:
+    resolver, client = facade
+    runtime = FakeSandboxRuntime()
+    resolver.next_runtime = runtime
+
+    allowlisted = _create(client, outbound_cidr_allowlist=["1.1.1.1/32"])
+    allowlisted._experimental_set_outbound_network_policy(
+        outbound_cidr_allowlist=["1.0.0.1/32"]
+    )
+    # Open access is what a sandbox gets by default: the public internet.
+    allowlisted._experimental_set_outbound_network_policy()
+    assert [call["cidrs"] for call in runtime.allowlist_calls] == [
+        ["1.0.0.1/32"],
+        ["internet"],
+    ]
+    # Every public sandbox has a ruleset, so one created with open egress can
+    # be narrowed later.
+    open_runtime = FakeSandboxRuntime()
+    resolver.next_runtime = open_runtime
+    open_egress = _create(client)
+    open_egress._experimental_set_outbound_network_policy(
+        outbound_cidr_allowlist=["1.1.1.1/32"]
+    )
+    assert [call["cidrs"] for call in open_runtime.allowlist_calls] == [["1.1.1.1/32"]]
+    # A sandbox without network access has no ruleset to change.
+    blocked = _create(client, block_network=True)
+    with pytest.raises(ConflictError, match="only network='public' sandboxes"):
+        blocked._experimental_set_outbound_network_policy(
+            outbound_cidr_allowlist=["1.1.1.1/32"]
+        )
+    for sandbox in (allowlisted, open_egress, blocked):
+        sandbox.terminate()
 
 
 _TOKEN = "facade-sdk-token"

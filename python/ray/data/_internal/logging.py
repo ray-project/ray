@@ -1,3 +1,4 @@
+import copy
 import logging
 import logging.config
 import os
@@ -43,11 +44,24 @@ DEFAULT_CONFIG = {
             "level": "INFO",
             "filters": ["console_filter"],
         },
+        "error_file": {
+            "class": "ray.data._internal.logging.SessionFileHandler",
+            "formatter": "ray",
+            "filename": "ray-data-errors.log",
+            "level": "ERROR",
+        },
+        "error_file_json": {
+            "class": "ray.data._internal.logging.SessionFileHandler",
+            "formatter": "ray_json",
+            "filename": "ray-data-errors.log",
+            "level": "ERROR",
+            "filters": ["core_context_filter"],
+        },
     },
     "loggers": {
         "ray.data": {
             "level": "DEBUG",
-            "handlers": ["file", "console"],
+            "handlers": ["file", "console", "error_file"],
             "propagate": False,
         },
     },
@@ -55,7 +69,10 @@ DEFAULT_CONFIG = {
 
 # Dictionary of substitutions to be performed when using JSON mode. Handlers with names
 # corresponding to keys will be replaced by those corresponding to values.
-RAY_DATA_LOG_HANDLER_JSON_SUBSTITUTIONS = {"file": "file_json"}
+RAY_DATA_LOG_HANDLER_JSON_SUBSTITUTIONS = {
+    "file": "file_json",
+    "error_file": "error_file_json",
+}
 
 # Env. variable to specify the encoding of the file logs when using the default config.
 RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
@@ -84,13 +101,11 @@ class HiddenRecordFilter:
     are printed by default, and you don't want to print a specific error, you can set
     the "hide" attribute to avoid printing the message.
 
-    .. testcode::
-
-        import logging
-        logger = logging.getLogger("ray.data.spam")
-
-        # This warning won't be printed to the console.
-        logger.warning("ham", extra={"hide": True})
+    Examples:
+        >>> import logging
+        >>> logger = logging.getLogger("ray.data.spam")
+        >>> # This warning won't be printed to the console.
+        >>> logger.warning("ham", extra={"hide": True})
     """
 
     def filter(self, record):
@@ -190,7 +205,9 @@ def _get_logging_config() -> Optional[dict]:
     if config_path is not None:
         config = _load_logging_config(config_path)
     else:
-        config = DEFAULT_CONFIG
+        # Copy so the JSON substitutions below never mutate the shared default;
+        # this function is called repeatedly (e.g. per task on workers).
+        config = copy.deepcopy(DEFAULT_CONFIG)
         if log_encoding is not None and log_encoding.upper() == "JSON":
             for logger in config["loggers"].values():
                 for (
