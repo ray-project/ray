@@ -31,9 +31,8 @@ _CURRENT_DEVICE = "__import__('torch').cuda.current_device()"
 
 
 def apply() -> None:
-    import vllm.envs as envs
-
     import torch
+    import vllm.envs as envs
     from torch.compiler import config as compiler_config
 
     if hasattr(compiler_config, "compile_on_one_rank"):
