@@ -124,14 +124,20 @@ class Normalizer(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to scale to unit norm."""
         return self._columns
 
     @property
     def norm(self) -> str:
+        """The norm to use: ``"l1"``, ``"l2"``, or ``"max"``."""
         return self._norm
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):
