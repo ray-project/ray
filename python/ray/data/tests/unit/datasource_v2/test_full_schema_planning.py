@@ -20,44 +20,39 @@ from ray.util.scheduling_strategies import (
 
 
 @pytest.mark.parametrize(
-    "case,allowed",
+    "case_args,allowed",
     [
-        ("default", True),
-        ("none", False),
-        ("zero", False),
-        ("low", False),
-        ("equal", True),
-        ("pg", False),
-        ("inherit", False),
-        ("hard", False),
-        ("soft", True),
-        ("resources", False),
-        ("unsupported", False),
+        pytest.param({}, True, id="default-True"),
+        pytest.param({"num_cpus": None}, False, id="none-False"),
+        pytest.param({"num_cpus": 0}, False, id="zero-False"),
+        pytest.param({"num_cpus": 0.49}, False, id="low-False"),
+        pytest.param({"num_cpus": 0.5}, True, id="equal-True"),
+        pytest.param(
+            {"scheduling_strategy": Mock(PlacementGroupSchedulingStrategy)},
+            False,
+            id="pg-False",
+        ),
+        pytest.param({"scheduling_strategy": None}, False, id="inherit-False"),
+        pytest.param(
+            {"scheduling_strategy": Mock(NodeAffinitySchedulingStrategy, soft=False)},
+            False,
+            id="hard-False",
+        ),
+        pytest.param(
+            {"scheduling_strategy": Mock(NodeAffinitySchedulingStrategy, soft=True)},
+            True,
+            id="soft-True",
+        ),
+        pytest.param({"resources": {"storage": 1}}, False, id="resources-False"),
+        pytest.param({"max_retries": -1}, False, id="unsupported-False"),
     ],
 )
-def test_schema_task_admission(case, allowed):
-    cases = {
-        "default": {},
-        "none": {"num_cpus": None},
-        "zero": {"num_cpus": 0},
-        "low": {"num_cpus": 0.49},
-        "equal": {"num_cpus": 0.5},
-        "pg": {"scheduling_strategy": Mock(spec=PlacementGroupSchedulingStrategy)},
-        "inherit": {"scheduling_strategy": None},
-        "hard": {
-            "scheduling_strategy": Mock(spec=NodeAffinitySchedulingStrategy, soft=False)
-        },
-        "soft": {
-            "scheduling_strategy": Mock(spec=NodeAffinitySchedulingStrategy, soft=True)
-        },
-        "resources": {"resources": {"storage": 1}},
-        "unsupported": {"max_retries": -1},
-    }
+def test_schema_task_admission(case_args, allowed):
     args: Dict[str, Any] = {
         "runtime_env": {"env_vars": {"X": "1"}},
         "label_selector": {"pool": "read"},
         "fallback_strategy": [{"label_selector": {"pool": "backup"}}],
-        **cases[case],
+        **case_args,
     }
     original = args.copy()
     options = inference._schema_task_options(args, 0.5)
