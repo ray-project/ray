@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import dataclasses
 import enum
 import json
@@ -6,8 +7,9 @@ import logging
 import os
 import time
 import traceback
+import urllib.parse
 from datetime import datetime
-from typing import AsyncIterator, Dict, Optional, Tuple
+from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 import aiohttp.web
 from aiohttp.client import ClientResponse
@@ -27,6 +29,7 @@ from ray._private.runtime_env.packaging import (
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
+from ray._raylet import RAY_INTERNAL_DASHBOARD_NAMESPACE
 from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,
@@ -216,6 +219,92 @@ class JobAgentSubmissionClient:
             if not ignore_error:
                 raise
 
+    async def forward_actor_request(
+        self,
+        method: str,
+        subpath: str,
+        json_body: Optional[Dict] = None,
+        params: Optional[Dict[str, str]] = None,
+        prefix: str = "/api/job_agent/actors",
+        timeout: Optional[aiohttp.ClientTimeout] = None,
+    ) -> Tuple[int, str, str]:
+        url = f"{self._agent_address}{prefix}{subpath}"
+        req_kwargs = {
+            "json": json_body,
+            "params": params,
+            "headers": self._get_headers(),
+        }
+        if timeout is not None:
+            req_kwargs["timeout"] = timeout
+        async with self._session.request(
+            method,
+            url,
+            **req_kwargs,
+        ) as resp:
+            text = await resp.text()
+            content_type = (
+                resp.headers.get("Content-Type", "application/json")
+                .split(";")[0]
+                .strip()
+            )
+            return resp.status, text, content_type
+
+    async def stream_actor_request(
+        self,
+        method: str,
+        subpath: str,
+        json_body: Optional[Dict] = None,
+        params: Optional[Dict[str, str]] = None,
+        req: Optional[Request] = None,
+    ) -> AsyncIterator[Tuple[int, str, bytes]]:
+        """Yields `(status, content_type, chunk)` tuples for an agent actor request.
+
+        A non-200 response is yielded once with its whole body. A 200 response is
+        yielded with an empty chunk as soon as its headers arrive, then once per body
+        chunk until the body ends or the client of `req` disconnects. Stopping early
+        closes the connection to the agent, which cancels the call there.
+        """
+        url = f"{self._agent_address}/api/job_agent/actors{subpath}"
+        async with self._session.request(
+            method,
+            url,
+            json=json_body,
+            params=params,
+            headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=None),
+        ) as resp:
+            content_type = resp.headers.get("Content-Type", "application/json").strip()
+            if resp.status != 200:
+                yield resp.status, content_type, await resp.read()
+                return
+            yield resp.status, content_type, b""
+            ait = resp.content.iter_chunks().__aiter__()
+            next_chunk_task: Optional[asyncio.Task] = None
+            try:
+                while True:
+                    if req is not None and (
+                        req.transport is None or req.transport.is_closing()
+                    ):
+                        break
+                    if next_chunk_task is None:
+                        next_chunk_task = asyncio.ensure_future(ait.__anext__())
+                    done, _ = await asyncio.wait({next_chunk_task}, timeout=0.05)
+                    if not done:
+                        continue
+                    try:
+                        chunk, _ = next_chunk_task.result()
+                    except StopAsyncIteration:
+                        break
+                    finally:
+                        next_chunk_task = None
+                    if chunk:
+                        yield resp.status, content_type, chunk
+            finally:
+                if next_chunk_task is not None and not next_chunk_task.done():
+                    next_chunk_task.cancel()
+                    with contextlib.suppress(BaseException):
+                        await next_chunk_task
+
 
 def _job_details_to_dict(job: JobDetails, redact: bool) -> Dict:
     """Serialize `job` for an HTTP response, optionally redacting its runtime env."""
@@ -260,6 +349,9 @@ class JobHead(SubprocessModule):
         # longer available (the corresponding agent process is dead)
         # {node_id: JobAgentSubmissionClient}
         self._agents: Dict[NodeID, JobAgentSubmissionClient] = dict()
+        # Latest activity observed on an `/api/actors` client actor, kept so that
+        # `last_activity_at` doesn't move backwards once the actor is gone.
+        self._last_client_actor_activity_at = 0.0
 
     async def get_target_agent(
         self, timeout_s: float = WAIT_AVAILABLE_AGENT_TIMEOUT
@@ -511,6 +603,204 @@ class JobHead(SubprocessModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
+    @staticmethod
+    async def _parse_json_object_body(
+        req: Request,
+    ) -> Tuple[Optional[Dict], Optional[Response]]:
+        if not req.can_read_body:
+            return None, None
+        raw_body = await req.read()
+        if not raw_body:
+            return None, None
+        try:
+            body = json.loads(raw_body)
+        except Exception as exc:
+            return None, Response(
+                text=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {
+                            "exc_type": "ValueError",
+                            "exc_message": f"Invalid JSON request body: {exc}",
+                        },
+                    }
+                ),
+                content_type="application/json",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+        if not isinstance(body, dict):
+            return None, Response(
+                text=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {
+                            "exc_type": "ValueError",
+                            "exc_message": "Request body must be a JSON object.",
+                        },
+                    }
+                ),
+                content_type="application/json",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+        return body, None
+
+    async def _proxy_actor_request(self, req: Request, subpath: str) -> StreamResponse:
+        body, err_resp = await self._parse_json_object_body(req)
+        if err_resp is not None:
+            return err_resp
+        params = dict(req.query) if req.query else None
+        is_mutating = req.method in ("POST", "DELETE")
+        stream = req.method == "POST"
+        sresp: Optional[StreamResponse] = None
+        try:
+            agent = await self.get_target_agent()
+            if not stream:
+                status, text, content_type = await agent.forward_actor_request(
+                    req.method, subpath, json_body=body, params=params
+                )
+                if is_mutating and status == 200:
+                    self._last_client_actor_activity_at = max(
+                        self._last_client_actor_activity_at,
+                        datetime.now().timestamp(),
+                    )
+                return Response(text=text, status=status, content_type=content_type)
+            # Relay the agent's response as it arrives: SSE frames from generators,
+            # or keepalive whitespace followed by the JSON result of other calls.
+            # Closing the relay early (on a client disconnect) closes the connection
+            # to the agent, which cancels the call there.
+            relay = agent.stream_actor_request(
+                req.method, subpath, json_body=body, params=params, req=req
+            )
+            try:
+                async for status, content_type, chunk in relay:
+                    if sresp is None:
+                        if status != 200:
+                            return Response(
+                                body=chunk,
+                                status=status,
+                                content_type=content_type.split(";")[0].strip(),
+                            )
+                        sresp = StreamResponse(
+                            status=status,
+                            headers={
+                                "Content-Type": content_type,
+                                "Cache-Control": "no-cache",
+                            },
+                        )
+                        await sresp.prepare(req)
+                    if chunk:
+                        await sresp.write(chunk)
+            finally:
+                if is_mutating and sresp is not None:
+                    self._last_client_actor_activity_at = max(
+                        self._last_client_actor_activity_at,
+                        datetime.now().timestamp(),
+                    )
+                await relay.aclose()
+            await sresp.write_eof()
+            return sresp
+        except Exception:
+            if sresp is not None:
+                # The response has started, so it can only end. This is normally
+                # the client or the agent disconnecting mid-response.
+                logger.debug(
+                    f"Actor request {req.method} {subpath} ended early", exc_info=True
+                )
+                return sresp
+            logger.exception(f"Failed actor request {req.method} {subpath}")
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+    @routes.post("/api/actors", resp_type=ResponseType.STREAM)
+    async def create_actor(self, req: Request) -> StreamResponse:
+        return await self._proxy_actor_request(req, "")
+
+    @routes.get("/api/actors")
+    async def list_actors(self, req: Request) -> StreamResponse:
+        return await self._proxy_actor_request(req, "")
+
+    @routes.get("/api/actors/{actor_name}")
+    async def get_actor(self, req: Request) -> StreamResponse:
+        name = urllib.parse.quote(req.match_info["actor_name"], safe="")
+        return await self._proxy_actor_request(req, f"/{name}")
+
+    @routes.get("/api/actors/{actor_name}/logs")
+    async def get_actor_logs(self, req: Request) -> StreamResponse:
+        name = urllib.parse.quote(req.match_info["actor_name"], safe="")
+        return await self._proxy_actor_request(req, f"/{name}/logs")
+
+    @routes.delete("/api/actors/{actor_name}")
+    async def delete_actor(self, req: Request) -> StreamResponse:
+        name = urllib.parse.quote(req.match_info["actor_name"], safe="")
+        return await self._proxy_actor_request(req, f"/{name}")
+
+    @routes.post(
+        "/api/actors/{actor_name}/methods/{method}",
+        resp_type=ResponseType.STREAM,
+    )
+    async def call_actor_method(self, req: Request) -> StreamResponse:
+        name = urllib.parse.quote(req.match_info["actor_name"], safe="")
+        method = urllib.parse.quote(req.match_info["method"], safe="")
+        return await self._proxy_actor_request(req, f"/{name}/methods/{method}")
+
+    async def _proxy_cluster_request(self, req: Request, subpath: str) -> Response:
+        body, err_resp = await self._parse_json_object_body(req)
+        if err_resp is not None:
+            return err_resp
+        params = dict(req.query) if req.query else None
+        try:
+            agent = await self.get_target_agent()
+            status, text, content_type = await agent.forward_actor_request(
+                req.method,
+                subpath,
+                json_body=body,
+                params=params,
+                prefix="/api/job_agent/cluster",
+                timeout=(
+                    aiohttp.ClientTimeout(total=None) if req.method == "POST" else None
+                ),
+            )
+            return Response(text=text, status=status, content_type=content_type)
+        except Exception:
+            logger.exception(f"Failed cluster request {req.method} {subpath}")
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+    @routes.get("/api/cluster/node_groups")
+    async def list_node_groups(self, req: Request) -> Response:
+        return await self._proxy_cluster_request(req, "/node_groups")
+
+    @routes.get("/api/cluster/node_groups/{group}")
+    async def get_node_group(self, req: Request) -> Response:
+        group = urllib.parse.quote(req.match_info["group"], safe="")
+        return await self._proxy_cluster_request(req, f"/node_groups/{group}")
+
+    @routes.post(
+        "/api/cluster/node_groups/{group}/nodes",
+        resp_type=ResponseType.STREAM,
+    )
+    async def add_nodes(self, req: Request) -> Response:
+        group = urllib.parse.quote(req.match_info["group"], safe="")
+        return await self._proxy_cluster_request(req, f"/node_groups/{group}/nodes")
+
+    @routes.get("/api/cluster/nodes")
+    async def list_nodes(self, req: Request) -> Response:
+        return await self._proxy_cluster_request(req, "/nodes")
+
+    @routes.get("/api/cluster/nodes/{node_id}")
+    async def get_node(self, req: Request) -> Response:
+        node_id = urllib.parse.quote(req.match_info["node_id"], safe="")
+        return await self._proxy_cluster_request(req, f"/nodes/{node_id}")
+
+    @routes.delete("/api/cluster/nodes/{node_id}")
+    async def destroy_node(self, req: Request) -> Response:
+        node_id = urllib.parse.quote(req.match_info["node_id"], safe="")
+        return await self._proxy_cluster_request(req, f"/nodes/{node_id}")
+
     @routes.get("/api/jobs/{job_or_submission_id}")
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
@@ -728,8 +1018,24 @@ class JobHead(SubprocessModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
+    async def _list_client_actors(self, timeout: float) -> List[Dict]:
+        """Lists the live `/api/actors` actors, or returns [] if the agent can't."""
+
+        async def _list() -> List[Dict]:
+            agent = await self.get_target_agent(timeout)
+            status, text, _ = await agent.forward_actor_request("GET", "")
+            actors = json.loads(text) if status == 200 else []
+            return [a for a in actors if isinstance(a, dict)]
+
+        try:
+            return await asyncio.wait_for(_list(), timeout=timeout)
+        except Exception as e:
+            logger.warning(f"Failed to list client actors for cluster activity: {e!r}")
+            return []
+
     async def _get_job_activity_info(self, timeout: int) -> RayActivityResponse:
-        # Returns if there is Ray activity from drivers (job).
+        # Returns if there is Ray activity from drivers (job) or from client actors
+        # served by `/api/actors`.
         # Drivers in namespaces that start with _ray_internal_ are not
         # considered activity.
         # This includes the _ray_internal_dashboard job that gets automatically
@@ -743,11 +1049,12 @@ class JobHead(SubprocessModule):
 
             num_active_drivers = 0
             latest_job_end_time = 0
+            dashboard_driver_seen = False
             for job_table_entry in reply.values():
                 is_dead = bool(job_table_entry.is_dead)
-                in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
-                    "_ray_internal_"
-                )
+                namespace = job_table_entry.config.ray_namespace
+                in_internal_namespace = namespace.startswith("_ray_internal_")
+                dashboard_driver_seen |= namespace == RAY_INTERNAL_DASHBOARD_NAMESPACE
                 latest_job_end_time = (
                     max(latest_job_end_time, job_table_entry.end_time)
                     if job_table_entry.end_time
@@ -767,20 +1074,51 @@ class JobHead(SubprocessModule):
                     f"before or equal to the current timestamp {current_timestamp}"
                 )
 
+            # `/api/actors` root actors are created by the head node's dashboard
+            # agent from its `_ray_internal_dashboard` driver, so they keep
+            # the cluster busy without any user driver. Ask the agent only if such a
+            # driver has existed, so that this probe never makes an idle agent
+            # connect to Ray.
+            client_actors = []
+            if dashboard_driver_seen:
+                client_actors = await self._list_client_actors(timeout)
+            for actor in client_actors:
+                # An actor with a call in flight is active right now.
+                seen = (
+                    current_timestamp
+                    if actor.get("active_calls")
+                    else actor.get("last_active")
+                )
+                if isinstance(seen, (int, float)):
+                    self._last_client_actor_activity_at = max(
+                        self._last_client_actor_activity_at,
+                        min(seen, current_timestamp),
+                    )
+
+            reasons = []
+            if num_active_drivers:
+                reasons.append(f"Number of active drivers: {num_active_drivers}")
+            if client_actors:
+                names = sorted(str(a.get("name")) for a in client_actors)
+                shown = ", ".join(names[:10])
+                if len(names) > 10:
+                    shown += f", and {len(names) - 10} more"
+                reasons.append(f"Number of live client actors: {len(names)} ({shown})")
             is_active = (
                 RayActivityStatus.ACTIVE
-                if num_active_drivers > 0
+                if num_active_drivers > 0 or client_actors
                 else RayActivityStatus.INACTIVE
+            )
+            last_activity_at = max(
+                latest_job_end_time, self._last_client_actor_activity_at
             )
             return RayActivityResponse(
                 is_active=is_active,
-                reason=f"Number of active drivers: {num_active_drivers}"
-                if num_active_drivers
-                else None,
+                reason="; ".join(reasons) or None,
                 timestamp=current_timestamp,
-                # If latest_job_end_time == 0, no jobs have finished yet so don't
-                # populate last_activity_at
-                last_activity_at=latest_job_end_time if latest_job_end_time else None,
+                # If no job has finished and no client actor has been active yet,
+                # don't populate last_activity_at.
+                last_activity_at=last_activity_at if last_activity_at else None,
             )
         except Exception as e:
             logger.exception("Failed to get activity status of Ray drivers.")
