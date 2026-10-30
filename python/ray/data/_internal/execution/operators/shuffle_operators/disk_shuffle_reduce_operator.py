@@ -39,6 +39,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.stats import StatsDict, _OutputBlockStatsCollector
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
@@ -131,7 +133,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._output_queue: deque = deque()
 
         # -- Stats -----------------------------------------------------------
-        self._output_blocks_stats: List[BlockStats] = []
+        self._output_blocks_stats: _OutputBlockStatsCollector = _OutputBlockStatsCollector()
 
         # =====================================================================
         # Disk-shuffle-specific state below.
@@ -394,7 +396,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
                 bundle.destroy_if_owned()
         self._pending_inputs.clear()
 
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
+    def get_stats(self) -> StatsDict:
         return {self._name: self._output_blocks_stats}
 
     def num_output_rows_total(self) -> Optional[int]:
