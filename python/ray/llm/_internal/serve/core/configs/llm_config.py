@@ -27,6 +27,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     is_remote_path,
 )
 from ray.llm._internal.common.utils.download_utils import (
+    MODEL_EXPRESS_LOAD_FORMATS,
     STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
 )
@@ -348,8 +349,11 @@ class LLMConfig(BaseModelExtended):
         assert engine_config is not None
         pg = engine_config.get_or_create_pg()
         runtime_env = engine_config.get_runtime_env_with_local_env_vars()
-        if self.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS:
+        load_format = self.engine_kwargs.get("load_format", None)
+        if load_format in STREAMING_LOAD_FORMATS:
             worker_node_download_model = NodeModelDownloadable.NONE
+        elif load_format in MODEL_EXPRESS_LOAD_FORMATS:
+            worker_node_download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
             worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
