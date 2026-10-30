@@ -124,7 +124,7 @@ class JobAgentSubmissionClient:
         dashboard_agent_address: str,
     ):
         self._agent_address = dashboard_agent_address
-        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None))
+        self._session = aiohttp.ClientSession()
 
     def _get_headers(self):
         """Get auth headers if token authentication is enabled."""
@@ -225,14 +225,20 @@ class JobAgentSubmissionClient:
         json_body: Optional[Dict] = None,
         params: Optional[Dict[str, str]] = None,
         prefix: str = "/api/job_agent/actors",
+        timeout: Optional[aiohttp.ClientTimeout] = None,
     ) -> Tuple[int, str, str]:
         url = f"{self._agent_address}{prefix}{subpath}"
+        req_kwargs = {
+            "json": json_body,
+            "params": params,
+            "headers": self._get_headers(),
+        }
+        if timeout is not None:
+            req_kwargs["timeout"] = timeout
         async with self._session.request(
             method,
             url,
-            json=json_body,
-            params=params,
-            headers=self._get_headers(),
+            **req_kwargs,
         ) as resp:
             text = await resp.text()
             content_type = (
@@ -264,6 +270,7 @@ class JobAgentSubmissionClient:
             json=json_body,
             params=params,
             headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=None),
         ) as resp:
             content_type = (
                 resp.headers.get("Content-Type", "application/json")
@@ -596,18 +603,54 @@ class JobHead(SubprocessModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
-    async def _proxy_actor_request(self, req: Request, subpath: str) -> StreamResponse:
+    @staticmethod
+    async def _parse_json_object_body(
+        req: Request,
+    ) -> Tuple[Optional[Dict], Optional[Response]]:
+        if not req.can_read_body:
+            return None, None
+        raw_body = await req.read()
+        if not raw_body:
+            return None, None
         try:
-            body = await req.json() if req.can_read_body else None
-        except Exception:
-            body = None
+            body = json.loads(raw_body)
+        except Exception as exc:
+            return None, Response(
+                text=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {
+                            "exc_type": "ValueError",
+                            "exc_message": f"Invalid JSON request body: {exc}",
+                        },
+                    }
+                ),
+                content_type="application/json",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+        if not isinstance(body, dict):
+            return None, Response(
+                text=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {
+                            "exc_type": "ValueError",
+                            "exc_message": "Request body must be a JSON object.",
+                        },
+                    }
+                ),
+                content_type="application/json",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+        return body, None
+
+    async def _proxy_actor_request(self, req: Request, subpath: str) -> StreamResponse:
+        body, err_resp = await self._parse_json_object_body(req)
+        if err_resp is not None:
+            return err_resp
         params = dict(req.query) if req.query else None
         is_mutating = req.method in ("POST", "DELETE")
-        stream = (
-            (req.query.get("stream", "0") in ("1", "true", "True"))
-            or (isinstance(body, dict) and bool(body.get("stream", False)))
-            or req.method == "POST"
-        )
+        stream = req.method == "POST"
         sresp: Optional[StreamResponse] = None
         try:
             agent = await self.get_target_agent()
@@ -706,10 +749,9 @@ class JobHead(SubprocessModule):
         return await self._proxy_actor_request(req, f"/{name}/methods/{method}")
 
     async def _proxy_cluster_request(self, req: Request, subpath: str) -> Response:
-        try:
-            body = await req.json() if req.can_read_body else None
-        except Exception:
-            body = None
+        body, err_resp = await self._parse_json_object_body(req)
+        if err_resp is not None:
+            return err_resp
         params = dict(req.query) if req.query else None
         try:
             agent = await self.get_target_agent()
@@ -719,6 +761,9 @@ class JobHead(SubprocessModule):
                 json_body=body,
                 params=params,
                 prefix="/api/job_agent/cluster",
+                timeout=(
+                    aiohttp.ClientTimeout(total=None) if req.method == "POST" else None
+                ),
             )
             return Response(text=text, status=status, content_type=content_type)
         except Exception:

@@ -10,6 +10,7 @@ Demonstrates:
 """
 
 import sys
+import threading
 import time
 from typing import TYPE_CHECKING, Iterator, Optional
 
@@ -29,25 +30,35 @@ class AdaptivePoolCoordinator:
             def process(self, items: list) -> int:
                 return sum(x * (self.worker_id + 1) for x in items)
 
+        self._lock = threading.Lock()
         self._worker_cls = BatchWorker
         self._workers = [BatchWorker.remote(i) for i in range(initial_workers)]
 
     def scale(self, target: int) -> dict:
         target = int(target)
-        while len(self._workers) < target:
-            self._workers.append(self._worker_cls.remote(len(self._workers)))
-        while len(self._workers) > target:
-            ray.kill(self._workers.pop())
-        return {"event": "scaled", "num_workers": len(self._workers)}
+        to_terminate = []
+        with self._lock:
+            while len(self._workers) < target:
+                self._workers.append(self._worker_cls.remote(len(self._workers)))
+            while len(self._workers) > target:
+                to_terminate.append(self._workers.pop())
+            num_workers = len(self._workers)
+        for worker in to_terminate:
+            worker.__ray_terminate__.remote()
+        return {"event": "scaled", "num_workers": num_workers}
 
     def stream_batches(self, batches: list) -> Iterator[dict]:
-        yield {"event": "ready", "num_workers": len(self._workers)}
+        with self._lock:
+            initial_count = len(self._workers)
+        yield {"event": "ready", "num_workers": initial_count}
         for step_idx, batch in enumerate(batches):
-            partials = ray.get([w.process.remote(batch) for w in self._workers])
+            with self._lock:
+                workers = list(self._workers)
+            partials = ray.get([w.process.remote(batch) for w in workers])
             yield {
                 "event": "computed",
                 "step": step_idx,
-                "num_workers": len(self._workers),
+                "num_workers": len(workers),
                 "batch_total": sum(partials),
             }
             time.sleep(0.05)
@@ -77,6 +88,7 @@ def run_demo(address: Optional[str] = None) -> dict:
         AdaptivePoolCoordinator,
         1,
         name="pool_coordinator",
+        max_concurrency=2,
         get_if_exists=False,
     )
     emitted_events = []

@@ -53,6 +53,10 @@ class LiveCounterClient:
         reconnected = self.cluster.get_actor(self.actor_name)
         return reconnected.snapshot(tag)
 
+    def logs(self) -> str:
+        assert self.actor is not None
+        return self.actor.logs()
+
     def stop(self) -> dict:
         assert self.actor is not None
         self.actor.kill()
@@ -67,6 +71,7 @@ def run_demo(address: Optional[str] = None) -> Any:
     v2 = counter.add(27)
     snap = counter.snapshot("final")
     assert snap == {"tag": "final", "value": 42}
+    assert "counter updated to 42" in counter.logs()
     counter.stop()
     return {"v1": v1, "v2": v2}
 

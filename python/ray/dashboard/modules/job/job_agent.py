@@ -4,7 +4,7 @@ import dataclasses
 import json
 import logging
 import traceback
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
 from aiohttp.web import Request, Response
@@ -12,7 +12,10 @@ from aiohttp.web import Request, Response
 import ray
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.modules.job.actor_manager import ActorManager
+from ray.dashboard.modules.job.actor_manager import (
+    ActorManager,
+    MaxNodesExceededError,
+)
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
     JobLogsResponse,
@@ -46,12 +49,62 @@ def _actor_not_found_response(name: str) -> Response:
     )
 
 
+def _bad_request_json(exc_type: str, exc_message: str) -> Response:
+    return Response(
+        text=json.dumps(
+            {
+                "ok": False,
+                "error": {
+                    "exc_type": exc_type,
+                    "exc_message": exc_message,
+                },
+            }
+        ),
+        content_type="application/json",
+        status=aiohttp.web.HTTPBadRequest.status_code,
+    )
+
+
+async def _parse_json_object_body(
+    req: Request, *, required: bool = False
+) -> Tuple[Optional[Dict[str, Any]], Optional[Response]]:
+    raw_body = (await req.read()) if req.can_read_body else b""
+    if not raw_body:
+        if required:
+            return None, _bad_request_json(
+                "ValueError", "Request body is required and must be a JSON object."
+            )
+        return {}, None
+    try:
+        body = json.loads(raw_body)
+    except Exception as exc:
+        return None, _bad_request_json(
+            "ValueError", f"Invalid JSON request body: {exc}"
+        )
+    if not isinstance(body, dict):
+        return None, _bad_request_json(
+            "ValueError", "Request body must be a JSON object."
+        )
+    return body, None
+
+
 def _cluster_response(fn: Any, *args: Any, **kwargs: Any) -> Response:
     try:
         res = fn(*args, **kwargs)
         return Response(text=json.dumps(res), content_type="application/json")
     except Exception as exc:
         exc_name = type(exc).__name__
+        if isinstance(exc, NotImplementedError):
+            return Response(
+                text=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {"exc_type": exc_name, "exc_message": str(exc)},
+                    }
+                ),
+                content_type="application/json",
+                status=aiohttp.web.HTTPNotImplemented.status_code,
+            )
         if isinstance(exc, KeyError) or exc_name.endswith("NotFoundError"):
             msg = exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
             return Response(
@@ -79,15 +132,9 @@ def _cluster_response(fn: Any, *args: Any, **kwargs: Any) -> Response:
                 status=aiohttp.web.HTTPRequestTimeout.status_code,
             )
         if (
-            isinstance(exc, ValueError)
+            isinstance(exc, MaxNodesExceededError)
             or exc_name == "MaxNodesExceededError"
-            or exc_name.endswith("DiedError")
         ):
-            status = (
-                aiohttp.web.HTTPConflict.status_code
-                if exc_name == "MaxNodesExceededError" or "max_nodes" in str(exc)
-                else aiohttp.web.HTTPBadRequest.status_code
-            )
             return Response(
                 text=json.dumps(
                     {
@@ -96,8 +143,10 @@ def _cluster_response(fn: Any, *args: Any, **kwargs: Any) -> Response:
                     }
                 ),
                 content_type="application/json",
-                status=status,
+                status=aiohttp.web.HTTPConflict.status_code,
             )
+        if isinstance(exc, ValueError) or exc_name.endswith("DiedError"):
+            return _bad_request_json(exc_name, str(exc))
         raise
 
 
@@ -309,7 +358,18 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 ticks += 1
                 if ticks % 10 == 0:
                     await sresp.write(b" ")
-            res = call_task.result()
+            try:
+                res = call_task.result()
+            except Exception as exc:
+                logger.exception("Unhandled error in streaming JSON actor request")
+                res = {
+                    "ok": False,
+                    "error": {
+                        "exc_type": type(exc).__name__,
+                        "exc_message": str(exc),
+                        "traceback": traceback.format_exc(),
+                    },
+                }
             if res is None and not_found_name is not None:
                 res = _actor_not_found(not_found_name)
             await sresp.write(json.dumps(res).encode("utf-8"))
@@ -327,10 +387,15 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     @routes.post("/api/job_agent/actors")
     @optional_utils.init_ray_and_catch_exceptions()
     async def create_actor(self, req: Request) -> aiohttp.web.StreamResponse:
-        spec = await req.json()
-        return await self._stream_json_with_keepalive(
-            req, self.get_actor_manager().create_actor(spec)
-        )
+        spec, err_resp = await _parse_json_object_body(req, required=True)
+        if err_resp is not None:
+            return err_resp
+        actor_mgr = self.get_actor_manager()
+        try:
+            actor_mgr.validate_actor_spec(spec)
+        except ValueError as exc:
+            return _bad_request_json("ValueError", str(exc))
+        return await self._stream_json_with_keepalive(req, actor_mgr.create_actor(spec))
 
     @routes.get("/api/job_agent/actors")
     @optional_utils.init_ray_and_catch_exceptions()
@@ -378,26 +443,48 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     async def call_actor_method(self, req: Request) -> aiohttp.web.StreamResponse:
         name = req.match_info["actor_name"]
         method = req.match_info["method"]
-        body = await req.json() if req.can_read_body else {}
+        body, err_resp = await _parse_json_object_body(req)
+        if err_resp is not None:
+            return err_resp
+        raw_query_stream = req.query.get("stream")
+        if raw_query_stream is not None and raw_query_stream.lower() not in (
+            "0",
+            "1",
+            "false",
+            "true",
+        ):
+            return _bad_request_json(
+                "ValueError",
+                (
+                    f"Invalid stream query parameter {raw_query_stream!r}; "
+                    "expected '0', '1', 'true', or 'false'."
+                ),
+            )
+        body_stream = body.get("stream", False)
+        if body_stream is not None and not isinstance(body_stream, bool):
+            return _bad_request_json(
+                "ValueError",
+                f"stream must be a bool, got {body_stream!r}.",
+            )
         actor_mgr = self.get_actor_manager()
         meta = await actor_mgr._lookup_actor(name)
         if meta is None:
             return _actor_not_found_response(name)
         stream = (
-            req.query.get("stream", "0") in ("1", "true", "True")
-            or bool(body.get("stream", False))
+            (raw_query_stream is not None and raw_query_stream.lower() in ("1", "true"))
+            or bool(body_stream)
             or method in meta.get("generator_methods", ())
         )
         if stream:
             sresp = aiohttp.web.StreamResponse(
                 status=aiohttp.web.HTTPOk.status_code,
                 headers={
-                    "Content-Type": "text/event-stream",
+                    "Content-Type": "text/event-stream; charset=utf-8",
                     "Cache-Control": "no-cache",
                 },
             )
             await sresp.prepare(req)
-            agen = actor_mgr.stream_actor_method(name, method, body)
+            agen = actor_mgr.stream_actor_method(name, method, body, meta=meta)
             ait = agen.__aiter__()
             next_item_task: Optional[asyncio.Task] = None
             try:
@@ -413,6 +500,19 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                         item = next_item_task.result()
                     except StopAsyncIteration:
                         break
+                    except Exception as exc:
+                        logger.exception("Unhandled error in SSE actor stream")
+                        err_item = {
+                            "ok": False,
+                            "error": {
+                                "exc_type": type(exc).__name__,
+                                "exc_message": str(exc),
+                                "traceback": traceback.format_exc(),
+                            },
+                        }
+                        frame = f"data: {json.dumps(err_item)}\n\n".encode("utf-8")
+                        await sresp.write(frame)
+                        break
                     finally:
                         next_item_task = None
                     if item is None:
@@ -422,12 +522,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                         await sresp.write(frame)
                 if req.transport is not None and not req.transport.is_closing():
                     await sresp.write_eof()
-            except (
-                ConnectionResetError,
-                aiohttp.ClientConnectionError,
-                asyncio.TimeoutError,
-                TimeoutError,
-            ):
+            except (ConnectionResetError, aiohttp.ClientConnectionError):
                 pass
             finally:
                 if next_item_task is not None and not next_item_task.done():
@@ -440,7 +535,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         return await self._stream_json_with_keepalive(
             req,
-            actor_mgr.call_actor_method(name, method, body),
+            actor_mgr.call_actor_method(name, method, body, meta=meta),
             not_found_name=name,
         )
 
@@ -459,9 +554,11 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def add_nodes(self, req: Request) -> Response:
         group = req.match_info["group"]
-        body = await req.json() if req.can_read_body else {}
-        wait_ready = bool(body.get("wait_ready", False))
-        if wait_ready:
+        body, err_resp = await _parse_json_object_body(req)
+        if err_resp is not None:
+            return err_resp
+        wait_ready = body.get("wait_ready", False)
+        if wait_ready is True:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 None,
@@ -477,17 +574,23 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             self.get_actor_manager().add_nodes,
             group,
             count=body.get("count", 1),
-            wait_ready=False,
+            wait_ready=wait_ready,
             timeout_s=body.get("timeout_s"),
         )
 
     @routes.get("/api/job_agent/cluster/nodes")
     @optional_utils.init_ray_and_catch_exceptions()
     async def list_nodes(self, req: Request) -> Response:
-        include_dead = req.query.get("include_dead", "false").lower() in (
-            "1",
-            "true",
-        )
+        raw_include_dead = req.query.get("include_dead", "false").lower()
+        if raw_include_dead not in ("0", "1", "false", "true"):
+            return _bad_request_json(
+                "ValueError",
+                (
+                    f"Invalid include_dead query parameter "
+                    f"{req.query.get('include_dead')!r}; expected 'true' or 'false'."
+                ),
+            )
+        include_dead = raw_include_dead in ("1", "true")
         return _cluster_response(
             self.get_actor_manager().list_nodes,
             state=req.query.get("state"),
@@ -505,11 +608,13 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def destroy_node(self, req: Request) -> Response:
         node_id = req.match_info["node_id"]
-        body = await req.json() if req.can_read_body else {}
+        body, err_resp = await _parse_json_object_body(req)
+        if err_resp is not None:
+            return err_resp
         return _cluster_response(
             self.get_actor_manager().destroy_node,
             node_id,
-            reason=body.get("reason", "destroyed by ray_client"),
+            reason=body.get("reason"),
             grace_period_s=body.get("grace_period_s"),
         )
 

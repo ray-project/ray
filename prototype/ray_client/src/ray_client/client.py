@@ -53,11 +53,26 @@ _AUTH_HINT = (
 
 
 def _resolve_address(address: Optional[str]) -> str:
-    explicit = address if address and address != "auto" else None
-    api_env = os.environ.get("RAY_API_SERVER_ADDRESS")
-    api_env = api_env if api_env and api_env != "auto" else None
-    ray_env = os.environ.get("RAY_ADDRESS")
-    ray_env = ray_env if ray_env and ray_env != "auto" else None
+    if address is not None:
+        if not isinstance(address, str) or not address.strip():
+            raise RayClientError(f"Invalid Ray Dashboard HTTP address: {address!r}.")
+        addr_stripped = address.strip()
+        explicit = addr_stripped if addr_stripped != "auto" else None
+    else:
+        explicit = None
+
+    api_env_raw = os.environ.get("RAY_API_SERVER_ADDRESS")
+    api_env = (
+        api_env_raw.strip()
+        if api_env_raw and api_env_raw.strip() and api_env_raw.strip() != "auto"
+        else None
+    )
+    ray_env_raw = os.environ.get("RAY_ADDRESS")
+    ray_env = (
+        ray_env_raw.strip()
+        if ray_env_raw and ray_env_raw.strip() and ray_env_raw.strip() != "auto"
+        else None
+    )
 
     if explicit is not None:
         raw, from_ray_address_env = explicit, False
@@ -97,7 +112,11 @@ def _resolve_address(address: Optional[str]) -> str:
         )
     else:
         raw = f"http://{raw}"
-    return raw.rstrip("/")
+    normalized = raw.rstrip("/")
+    parsed = urllib.parse.urlsplit(normalized)
+    if not parsed.netloc:
+        raise RayClientError(f"Invalid Ray Dashboard HTTP address: {raw!r}.")
+    return normalized
 
 
 def _load_auth_token() -> Optional[str]:
@@ -172,6 +191,50 @@ def _validate_ttl_seconds(ttl_seconds: Any) -> Optional[float]:
     if not math.isfinite(val) or val <= 0:
         raise ValueError(f"ttl_seconds must be > 0 or None, got {ttl_seconds!r}.")
     return val
+
+
+def _validate_timeout(timeout: Any, name: str = "timeout") -> Optional[float]:
+    if timeout is None:
+        return None
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise ValueError(
+            f"{name} must be a positive finite number or None, got {timeout!r}."
+        )
+    return float(timeout)
+
+
+def _validate_max_concurrency(max_concurrency: Any) -> int:
+    if (
+        isinstance(max_concurrency, bool)
+        or not isinstance(max_concurrency, int)
+        or max_concurrency < 1
+    ):
+        raise ValueError(
+            f"max_concurrency must be a positive integer, got {max_concurrency!r}."
+        )
+    return max_concurrency
+
+
+def _validate_label_selector(
+    label_selector: Any, name: str = "label_selector"
+) -> Optional[Dict[str, str]]:
+    if label_selector is None:
+        return None
+    if not isinstance(label_selector, dict):
+        raise ValueError(f"{name} must be a dict[str, str], got {label_selector!r}.")
+    out: Dict[str, str] = {}
+    for k, v in label_selector.items():
+        if not isinstance(k, str) or not k.strip() or not isinstance(v, str):
+            raise ValueError(
+                f"{name} keys must be non-empty strings and values must be strings, got {k!r}: {v!r}."
+            )
+        out[k] = v
+    return out
 
 
 def _validate_get_if_exists(get_if_exists: Any) -> Union[bool, str]:
@@ -281,15 +344,16 @@ def _normalize_resources(
 
 
 def _validate_node_id_and_label_selector(
-    node_id: Any, label_selector: Optional[Dict[str, str]]
-) -> Optional[str]:
+    node_id: Any, label_selector: Any
+) -> Tuple[Optional[str], Optional[Dict[str, str]]]:
+    validated_selector = _validate_label_selector(label_selector, "label_selector")
     if node_id is not None:
         if not isinstance(node_id, str) or not node_id.strip():
             raise ValueError(f"node_id must be a non-empty string, got {node_id!r}.")
         node_id = node_id.strip()
-    if node_id is not None and label_selector:
+    if node_id is not None and validated_selector:
         raise ValueError("Cannot specify both 'node_id' and 'label_selector'.")
-    return node_id
+    return node_id, validated_selector
 
 
 class JobResult:
@@ -419,6 +483,7 @@ class JobResult:
                 `timeout` seconds.
             RayClientError: If polling the job status or logs fails.
         """
+        timeout = _validate_timeout(timeout, "timeout")
         deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
         delay = 0.1
         log_offset = 0
@@ -586,6 +651,7 @@ class RayCluster:
 
     Raises:
         ImportError: If `requests` is not installed.
+        ValueError: If `timeout` is not a positive finite number.
         RayClientError: If `address` uses an unsupported scheme or auth token loading fails.
     """
 
@@ -601,6 +667,9 @@ class RayCluster:
             raise ImportError(
                 "RayCluster requires the 'requests' package: pip install requests"
             )
+        if timeout is None:
+            raise ValueError("timeout must be a positive finite number.")
+        self._timeout = float(_validate_timeout(timeout, "timeout"))
         self._address = _resolve_address(address)
         self._headers = dict(headers or {})
         token = _load_auth_token()
@@ -608,7 +677,6 @@ class RayCluster:
             self._headers["Authorization"] = f"Bearer {token}"
         self._verify = verify
         self._default_runtime_env = copy.deepcopy(default_runtime_env) or {}
-        self._timeout = timeout
         self._thread_local = threading.local()
         self._sessions_lock = threading.Lock()
         self._sessions: List["requests.Session"] = []
@@ -799,18 +867,20 @@ class RayCluster:
         sub_id = submission_id or target
         deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
         close_called = False
+        completed_normally = False
 
         def _run_on_close() -> None:
             nonlocal close_called
             if not close_called:
                 close_called = True
-                if on_close is not None:
+                if on_close is not None and not completed_normally:
                     on_close()
 
         def _gen() -> Iterator[Any]:
+            nonlocal completed_normally
             try:
                 try:
-                    for raw_line in resp.iter_lines(decode_unicode=True):
+                    for raw_line in resp.iter_lines():
                         if deadline is not None and time.monotonic() >= deadline:
                             raise RayJobTimeoutError(
                                 f"Stream '{target}' timed out after {timeout}s.",
@@ -818,11 +888,7 @@ class RayCluster:
                             )
                         if not raw_line:
                             continue
-                        line = (
-                            raw_line.decode("utf-8")
-                            if isinstance(raw_line, bytes)
-                            else raw_line
-                        ).strip()
+                        line = raw_line.decode("utf-8").strip()
                         if not line or line.startswith(":"):
                             continue
                         if line.startswith("data:"):
@@ -837,12 +903,14 @@ class RayCluster:
                                 logs=str(payload.get("logs") or ""),
                             )
                         if payload.get("done"):
+                            completed_normally = True
                             break
                         if "item" in payload:
                             yield payload["item"]
-                        elif "stream" in payload:
-                            for item in payload["stream"]:
-                                yield item
+                    if not completed_normally:
+                        raise RayClientError(
+                            f"SSE stream '{target}' closed prematurely before receiving completion frame."
+                        )
                 except requests.exceptions.RequestException as exc:
                     if timeout is not None and (
                         _is_timeout_exception(exc)
@@ -919,6 +987,7 @@ class RayCluster:
         is_actor_method: bool = False,
         require_stream: bool = False,
     ) -> Any:
+        timeout = _validate_timeout(timeout, "timeout")
         sub_id = submission_id or target
         req_body = dict(body)
         if timeout is not None:
@@ -1096,7 +1165,7 @@ class RayCluster:
         label_selector: Optional[Dict[str, str]] = None,
         allow_generator: bool = False,
     ) -> Tuple[Dict[str, Any], List[Any], Dict[str, Any]]:
-        validated_node_id = _validate_node_id_and_label_selector(
+        validated_node_id, validated_selector = _validate_node_id_and_label_selector(
             node_id, label_selector
         )
         (
@@ -1144,8 +1213,8 @@ class RayCluster:
             "num_gpus": resolved_gpus,
             "memory": resolved_memory,
             "resources": resolved_resources,
-            "label_selector": dict(label_selector) if label_selector else None,
-            "max_concurrency": 10,
+            "label_selector": validated_selector,
+            "max_concurrency": 1,
             "ttl_seconds": 300.0,
             "get_if_exists": False,
         }
@@ -1267,6 +1336,7 @@ class RayCluster:
             RayJobTimeoutError: If execution exceeds `timeout`.
             RayClientError: If the HTTP request fails.
         """
+        timeout = _validate_timeout(timeout, "timeout")
         spec, bound_args, bound_kwargs = self._build_driver_actor_spec(
             fn,
             args,
@@ -1352,6 +1422,7 @@ class RayCluster:
             RayJobTimeoutError: If `wait=True` and the job does not finish within `timeout`.
             RayClientError: If the HTTP submission request fails.
         """
+        timeout = _validate_timeout(timeout, "timeout")
         if not isinstance(entrypoint, str) or not entrypoint.strip():
             raise ValueError(
                 f"entrypoint must be a non-empty command string, got {entrypoint!r}."
@@ -1361,6 +1432,9 @@ class RayCluster:
                 isinstance(k, str) and isinstance(v, str) for k, v in metadata.items()
             ):
                 raise TypeError(f"metadata must be a dict[str, str], got {metadata!r}.")
+        entrypoint_label_selector = _validate_label_selector(
+            entrypoint_label_selector, "entrypoint_label_selector"
+        )
 
         (
             entrypoint_num_cpus,
@@ -1520,7 +1594,8 @@ class RayCluster:
             resources: Optional Ray 3.0 unified resource map (e.g. `{"CPU": 2, "GPU": 1}`).
             label_selector: Optional node label selector dictionary. Cannot be combined
                 with `node_id`.
-            max_concurrency: Optional maximum concurrent calls on the actor.
+            max_concurrency: Optional maximum concurrent calls on the actor (defaults
+                to `@ray.remote` option or 1).
             ttl_seconds: Optional idle TTL in seconds before the actor is automatically
                 reaped (`None` disables idle reaping; omitting preserves an existing
                 actor's TTL on reattachment).
@@ -1538,17 +1613,21 @@ class RayCluster:
             RayClientSerializationError: If constructor arguments or referenced globals
                 are not round-trip JSON.
             ValueError: If options (`ttl_seconds`, `get_if_exists`, `node_id`,
-                `label_selector`, or resources) are invalid or conflict.
+                `label_selector`, `max_concurrency`, `timeout`, or resources) are invalid
+                or conflict.
             RayJobExecutionError: If actor creation or `__init__` fails on the cluster.
             RayJobTimeoutError: If actor creation exceeds `timeout`.
             RayClientError: If the HTTP request fails.
         """
+        timeout = _validate_timeout(timeout, "timeout")
         has_explicit_ttl = ttl_seconds is not _UNSET
         validated_ttl = _validate_ttl_seconds(ttl_seconds) if has_explicit_ttl else None
         validated_get_if_exists = _validate_get_if_exists(get_if_exists)
         if not isinstance(detached, bool):
             raise ValueError(f"detached must be a bool, got {detached!r}.")
-        node_id = _validate_node_id_and_label_selector(node_id, label_selector)
+        node_id, label_selector = _validate_node_id_and_label_selector(
+            node_id, label_selector
+        )
         raw_resources = resources
         num_cpus, num_gpus, memory, resources = _normalize_resources(
             num_cpus, num_gpus, None, resources
@@ -1582,7 +1661,7 @@ class RayCluster:
                 and label_selector is None
                 and default_opts.get("node_id") is not None
             ):
-                node_id = _validate_node_id_and_label_selector(
+                node_id, _ = _validate_node_id_and_label_selector(
                     default_opts["node_id"], None
                 )
             if (
@@ -1590,14 +1669,20 @@ class RayCluster:
                 and label_selector is None
                 and default_opts.get("label_selector") is not None
             ):
-                label_selector = dict(default_opts["label_selector"])
+                _, label_selector = _validate_node_id_and_label_selector(
+                    None, default_opts["label_selector"]
+                )
             if (
                 max_concurrency is None
                 and default_opts.get("max_concurrency") is not None
             ):
-                max_concurrency = int(default_opts["max_concurrency"])
+                max_concurrency = _validate_max_concurrency(
+                    default_opts["max_concurrency"]
+                )
         resolved_cpus: Union[int, float] = 1 if num_cpus is None else num_cpus
-        resolved_concurrency: int = 10 if max_concurrency is None else max_concurrency
+        resolved_concurrency: int = (
+            1 if max_concurrency is None else _validate_max_concurrency(max_concurrency)
+        )
 
         if isinstance(cls_or_path, str):
             module_path, class_name = _parse_entrypoint_str(cls_or_path, "Actor")
@@ -1652,7 +1737,7 @@ class RayCluster:
             "num_gpus": num_gpus,
             "memory": memory,
             "resources": resources,
-            "label_selector": dict(label_selector) if label_selector else None,
+            "label_selector": label_selector,
             "max_concurrency": resolved_concurrency,
             "ttl_seconds": validated_ttl,
             "get_if_exists": validated_get_if_exists,
@@ -1733,10 +1818,7 @@ class RayCluster:
         Raises:
             RayClientError: If the HTTP request fails.
         """
-        res = self._json("GET", "/api/cluster/node_groups")
-        if isinstance(res, dict) and "node_groups" in res:
-            return list(res["node_groups"])
-        return list(res)
+        return list(self._json("GET", "/api/cluster/node_groups"))
 
     def get_node_group(self, group_name: str) -> Dict[str, Any]:
         """Inspects a node group by name (`GET /api/cluster/node_groups/{group_name}`).
@@ -1754,10 +1836,7 @@ class RayCluster:
         """
         if not isinstance(group_name, str) or not group_name.strip():
             raise ValueError("group_name must be a non-empty string.")
-        res = self._json("GET", f"/api/cluster/node_groups/{group_name.strip()}")
-        if isinstance(res, dict) and isinstance(res.get("node_group"), dict):
-            return dict(res["node_group"])
-        return dict(res)
+        return dict(self._json("GET", f"/api/cluster/node_groups/{group_name.strip()}"))
 
     def add_nodes(
         self,
@@ -1766,7 +1845,6 @@ class RayCluster:
         *,
         wait_ready: bool = False,
         timeout: Optional[float] = None,
-        timeout_s: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Adds detached nodes to a cluster node group (`POST /api/cluster/node_groups/{group}/nodes`).
 
@@ -1776,13 +1854,12 @@ class RayCluster:
             wait_ready: If `True`, waits on the server until the new nodes transition to
                 `ALIVE`.
             timeout: Optional timeout in seconds when waiting for nodes to become ready.
-            timeout_s: Alias for `timeout`.
 
         Returns:
             List of node dictionaries for the newly requested nodes.
 
         Raises:
-            ValueError: If `group_name`, `count`, or `timeout` is invalid.
+            ValueError: If `group_name`, `count`, `wait_ready`, or `timeout` is invalid.
             RayClientError: If the node group does not exist, exceeds `max_nodes`, or
                 the HTTP request fails.
         """
@@ -1790,27 +1867,19 @@ class RayCluster:
             raise ValueError("group_name must be a non-empty string.")
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError(f"count must be a positive integer, got {count!r}.")
-        eff_timeout = timeout if timeout is not None else timeout_s
-        if eff_timeout is not None:
-            if (
-                isinstance(eff_timeout, bool)
-                or not isinstance(eff_timeout, (int, float))
-                or not math.isfinite(eff_timeout)
-                or eff_timeout <= 0
-            ):
-                raise ValueError(
-                    f"timeout must be a positive finite number, got {eff_timeout!r}."
-                )
+        if not isinstance(wait_ready, bool):
+            raise ValueError(f"wait_ready must be a bool, got {wait_ready!r}.")
+        eff_timeout = _validate_timeout(timeout, "timeout")
         body: Dict[str, Any] = {
             "count": count,
-            "wait_ready": bool(wait_ready),
+            "wait_ready": wait_ready,
         }
         if eff_timeout is not None:
             body["timeout_s"] = float(eff_timeout)
         req_timeout: Any = (
             (min(self._timeout, float(eff_timeout) + 5.0), float(eff_timeout) + 5.0)
             if eff_timeout is not None
-            else None
+            else ((self._timeout, None) if wait_ready else None)
         )
         res = self._json(
             "POST",
@@ -1819,17 +1888,15 @@ class RayCluster:
             idempotent=False,
             timeout=req_timeout,
         )
-        if isinstance(res, dict) and "nodes" in res:
-            return list(res["nodes"])
         return list(res)
+
+    _VALID_NODE_STATES = frozenset({"PENDING", "ALIVE", "TERMINATING_SOON", "DEAD"})
 
     def list_nodes(
         self,
         *,
         group_name: Optional[str] = None,
         states: Optional[Union[str, Sequence[str]]] = None,
-        node_group: Optional[str] = None,
-        state: Optional[Union[str, Sequence[str]]] = None,
         include_dead: bool = False,
     ) -> List[Dict[str, Any]]:
         """Lists cluster nodes (`GET /api/cluster/nodes`).
@@ -1838,48 +1905,51 @@ class RayCluster:
             group_name: Optional node group name filter.
             states: Optional state filter string (e.g. `"ALIVE"`) or sequence of state
                 strings (e.g. `["PENDING", "ALIVE"]`).
-            node_group: Alias for `group_name`.
-            state: Alias for `states`.
             include_dead: Whether to include `DEAD` nodes when `states` is not specified.
 
         Returns:
             List of node metadata dictionaries.
 
         Raises:
-            ValueError: If `group_name` or `states` is invalid.
+            ValueError: If `group_name`, `states`, or `include_dead` is invalid.
             RayClientError: If the HTTP request fails.
         """
-        eff_states = states if states is not None else state
-        eff_group = group_name if group_name is not None else node_group
+        if not isinstance(include_dead, bool):
+            raise ValueError(f"include_dead must be a bool, got {include_dead!r}.")
         params: List[Tuple[str, str]] = []
-        if eff_states is not None:
-            if isinstance(eff_states, str):
-                if not eff_states.strip():
+        if states is not None:
+            if isinstance(states, str):
+                parts = [s.strip().upper() for s in states.split(",") if s.strip()]
+                if not parts:
                     raise ValueError("states must not be an empty string.")
-                state_val = eff_states.strip()
-            elif isinstance(eff_states, Sequence):
-                parts = [str(s).strip() for s in eff_states if str(s).strip()]
+            elif isinstance(states, Sequence):
+                if not all(isinstance(s, str) for s in states):
+                    raise TypeError(
+                        f"states must be a string or sequence of strings, got {states!r}."
+                    )
+                parts = [s.strip().upper() for s in states if s.strip()]
                 if not parts:
                     raise ValueError("states sequence must not be empty.")
-                state_val = ",".join(parts)
             else:
                 raise TypeError(
-                    f"states must be a string or sequence of strings, got {eff_states!r}."
+                    f"states must be a string or sequence of strings, got {states!r}."
                 )
-            params.append(("state", state_val))
-        if eff_group is not None:
-            if not isinstance(eff_group, str) or not eff_group.strip():
+            if not set(parts).issubset(self._VALID_NODE_STATES):
+                raise ValueError(
+                    f"Invalid node state filter {states!r}; expected one or more of "
+                    f"{sorted(self._VALID_NODE_STATES)}."
+                )
+            params.append(("state", ",".join(parts)))
+        if group_name is not None:
+            if not isinstance(group_name, str) or not group_name.strip():
                 raise ValueError("group_name must be a non-empty string.")
-            params.append(("node_group", eff_group.strip()))
+            params.append(("node_group", group_name.strip()))
         if include_dead:
             params.append(("include_dead", "true"))
         endpoint = "/api/cluster/nodes"
         if params:
             endpoint = f"{endpoint}?{urllib.parse.urlencode(params)}"
-        res = self._json("GET", endpoint)
-        if isinstance(res, dict) and "nodes" in res:
-            return list(res["nodes"])
-        return list(res)
+        return list(self._json("GET", endpoint))
 
     def get_node(self, node_id: str) -> Dict[str, Any]:
         """Inspects a specific cluster node (`GET /api/cluster/nodes/{node_id}`).
@@ -1897,15 +1967,12 @@ class RayCluster:
         """
         if not isinstance(node_id, str) or not node_id.strip():
             raise ValueError("node_id must be a non-empty string.")
-        res = self._json("GET", f"/api/cluster/nodes/{node_id.strip()}")
-        if isinstance(res, dict) and isinstance(res.get("node"), dict):
-            return dict(res["node"])
-        return dict(res)
+        return dict(self._json("GET", f"/api/cluster/nodes/{node_id.strip()}"))
 
     def destroy_node(
         self,
         node_id: str,
-        reason: str = "destroyed by ray_client",
+        reason: str,
         *,
         grace_period_s: float = 0.0,
     ) -> Dict[str, Any]:
@@ -1948,9 +2015,6 @@ class RayCluster:
             json_data=body,
             idempotent=False,
         )
-
-
-RayClient = RayCluster
 
 
 def run(

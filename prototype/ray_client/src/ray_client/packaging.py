@@ -53,7 +53,6 @@ from ray_client.exceptions import RayClientError, RayClientSerializationError
 # larger package can never be uploaded through the Dashboard API.
 MAX_PACKAGE_BYTES = 100 * 1024 * 1024
 RAY_PKG_PREFIX = "_ray_pkg_"
-USER_FN_FILENAME = "_ray_client_user_fn.py"
 # gitignore-syntax patterns applied to every working_dir, like Ray's
 # RAY_RUNTIME_ENV_DEFAULT_EXCLUDES plus the usual Python caches.
 DEFAULT_EXCLUDES = (
@@ -499,15 +498,16 @@ def _compile_and_assemble_module(
     qualname: str = "",
     target_linenos: Optional[Set[int]] = None,
 ) -> Tuple[str, str, Dict[str, Any]]:
+    compile_filename = filename or f"<{target_name}>"
     try:
         deferred_code = compile(
             body,
-            USER_FN_FILENAME,
+            compile_filename,
             "exec",
             flags=__future__.CO_FUTURE_ANNOTATIONS,
             dont_inherit=True,
         )
-        eager_code = compile(body, USER_FN_FILENAME, "exec", dont_inherit=True)
+        eager_code = compile(body, compile_filename, "exec", dont_inherit=True)
     except SyntaxError as exc:
         raise RayClientSerializationError(
             f"'{target_name}' cannot run as a standalone module: {exc}"
@@ -799,14 +799,7 @@ def extract_class_source_and_globals(
         )
     if cls_node.decorator_list:
         lines = raw_source.splitlines(keepends=True)
-        class_line_idx = next(
-            (
-                idx
-                for idx, ln in enumerate(lines)
-                if ln.lstrip().startswith(f"class {raw_cls.__name__}")
-            ),
-            0,
-        )
+        class_line_idx = max(0, cls_node.lineno - (2 if indented else 1))
         cls_lineno += class_line_idx
         raw_source = "".join(lines[class_line_idx:])
         indented = raw_source[0].isspace()
@@ -843,21 +836,6 @@ def extract_class_source_and_globals(
         qualname=getattr(raw_cls, "__qualname__", "") or raw_cls.__name__,
         target_linenos={orig_lineno, cls_lineno},
     )
-
-
-def _write_deterministic_entry(
-    zf: zipfile.ZipFile,
-    arcname: str,
-    data: bytes,
-    entry_sizes: Optional[List[Tuple[int, str]]] = None,
-) -> None:
-    info = zipfile.ZipInfo(filename=arcname, date_time=(1980, 1, 1, 0, 0, 0))
-    info.compress_type = zipfile.ZIP_DEFLATED
-    info.create_system = 3
-    info.external_attr = (0o100000 | 0o644) << 16
-    zf.writestr(info, data)
-    if entry_sizes is not None:
-        entry_sizes.append((zf.getinfo(arcname).compress_size, arcname))
 
 
 def _default_excludes() -> Tuple[str, ...]:
@@ -966,7 +944,6 @@ def _write_dir_entry(zf: zipfile.ZipFile, arcname: str) -> None:
 def build_working_dir_package(
     working_dir: Union[str, Path],
     excludes: Optional[List[str]] = None,
-    extra_files: Optional[Dict[str, bytes]] = None,
 ) -> Tuple[bytes, str]:
     """Packages a local `working_dir` into a deterministic zip and returns `(zip_bytes, gcs_uri)`."""
     root = Path(working_dir).resolve()
@@ -974,52 +951,46 @@ def build_working_dir_package(
         raise ValueError(f"working_dir '{working_dir}' is not a directory.")
     exclude_rules = _compile_ignore_rules([*_default_excludes(), *(excludes or ())], "")
     include_gitignore = os.environ.get(IGNORE_GITIGNORE_ENV_VAR, "0") != "1"
-    extra = dict(extra_files or {})
     entries = list(_iter_working_dir(root, exclude_rules, include_gitignore))
 
     cache_key: Optional[Any] = None
-    if not extra:
-        try:
-            stat_sig = tuple(
-                (
-                    arcname,
-                    None
-                    if path is None
-                    else (
-                        path.stat().st_mtime_ns,
-                        path.stat().st_size,
-                        path.stat().st_mode,
-                    ),
-                )
-                for arcname, path in entries
+    try:
+        stat_sig = tuple(
+            (
+                arcname,
+                None
+                if path is None
+                else (
+                    (st := path.stat()).st_mtime_ns,
+                    st.st_size,
+                    st.st_mode,
+                ),
             )
-            cache_key = (
-                str(root),
-                tuple(excludes or ()),
-                _default_excludes(),
-                include_gitignore,
-                MAX_PACKAGE_BYTES,
-                stat_sig,
-            )
-            with _WORKING_DIR_CACHE_LOCK:
-                cached = _WORKING_DIR_CACHE.get(cache_key)
-                if cached is not None:
-                    return cached
-        except OSError:
-            cache_key = None
+            for arcname, path in entries
+        )
+        cache_key = (
+            str(root),
+            tuple(excludes or ()),
+            _default_excludes(),
+            include_gitignore,
+            MAX_PACKAGE_BYTES,
+            stat_sig,
+        )
+        with _WORKING_DIR_CACHE_LOCK:
+            cached = _WORKING_DIR_CACHE.get(cache_key)
+            if cached is not None:
+                return cached
+    except OSError:
+        cache_key = None
 
     buf = io.BytesIO()
     entry_sizes: List[Tuple[int, str]] = []
     with zipfile.ZipFile(buf, mode="w") as zf:
         for arcname, path in entries:
-            if arcname in extra:
-                continue
             if path is None:
                 _write_dir_entry(zf, arcname)
             else:
                 _write_file_entry(zf, buf, arcname, path, entry_sizes)
-        for arcname, data in sorted(extra.items()):
-            _write_deterministic_entry(zf, arcname, data, entry_sizes)
     zip_bytes = buf.getvalue()
     if len(zip_bytes) >= MAX_PACKAGE_BYTES:
         raise _package_too_large(len(zip_bytes), entry_sizes)
@@ -1030,45 +1001,3 @@ def build_working_dir_package(
                 _WORKING_DIR_CACHE.pop(next(iter(_WORKING_DIR_CACHE)))
             _WORKING_DIR_CACHE[cache_key] = (zip_bytes, gcs_uri)
     return zip_bytes, gcs_uri
-
-
-def build_driver_package(
-    fn_or_cls: Any,
-    working_dir: Optional[Union[str, Path]] = None,
-    excludes: Optional[List[str]] = None,
-    *,
-    allow_generator: bool = True,
-) -> Tuple[bytes, str, str, str, Dict[str, Any]]:
-    """Extracts source and packages a function or actor class with optional `working_dir` files.
-
-    Returns `(zip_bytes, gcs_uri, target_name, module_source, captured_globals)`.
-    """
-    if inspect.isclass(fn_or_cls) or hasattr(fn_or_cls, "__ray_metadata__"):
-        target_name, module_source, captured = extract_class_source_and_globals(
-            fn_or_cls
-        )
-    else:
-        target_name, module_source, captured = extract_function_source_and_globals(
-            fn_or_cls, allow_generator=allow_generator
-        )
-
-    src_bytes = module_source.encode("utf-8")
-    if working_dir is not None:
-        zip_bytes, gcs_uri = build_working_dir_package(
-            working_dir,
-            excludes=excludes,
-            extra_files={USER_FN_FILENAME: src_bytes},
-        )
-    else:
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, mode="w") as zf:
-            _write_deterministic_entry(zf, USER_FN_FILENAME, src_bytes)
-        zip_bytes = buf.getvalue()
-        gcs_uri = f"gcs://{RAY_PKG_PREFIX}{hashlib.sha1(zip_bytes).hexdigest()}.zip"
-    return zip_bytes, gcs_uri, target_name, module_source, captured
-
-
-# Documented customization entrypoints
-extract_function = extract_function_source_and_globals
-extract_class = extract_class_source_and_globals
-build_working_dir_zip = build_working_dir_package

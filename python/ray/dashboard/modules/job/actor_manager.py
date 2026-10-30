@@ -105,6 +105,54 @@ def _validate_get_if_exists(get_if_exists: Any) -> Union[bool, str]:
     )
 
 
+class MaxNodesExceededError(ValueError):
+    """Raised when adding nodes would exceed a node group's max_nodes limit."""
+
+
+def _validate_timeout(timeout: Any, name: str = "timeout") -> Optional[float]:
+    if timeout is None:
+        return None
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise ValueError(
+            f"{name} must be a positive finite number or None, got {timeout!r}."
+        )
+    return float(timeout)
+
+
+def _validate_max_concurrency(max_concurrency: Any) -> int:
+    if (
+        isinstance(max_concurrency, bool)
+        or not isinstance(max_concurrency, int)
+        or max_concurrency < 1
+    ):
+        raise ValueError(
+            f"max_concurrency must be a positive integer, got {max_concurrency!r}."
+        )
+    return max_concurrency
+
+
+def _validate_label_selector(label_selector: Any) -> Optional[Dict[str, str]]:
+    if label_selector is None:
+        return None
+    if not isinstance(label_selector, dict):
+        raise ValueError(
+            f"label_selector must be a dict[str, str], got {label_selector!r}."
+        )
+    out: Dict[str, str] = {}
+    for k, v in label_selector.items():
+        if not isinstance(k, str) or not k.strip() or not isinstance(v, str):
+            raise ValueError(
+                f"label_selector keys must be non-empty strings and values must be strings, got {k!r}: {v!r}."
+            )
+        out[k] = v
+    return out
+
+
 def _normalize_module_source(module_source: Optional[str]) -> Optional[str]:
     if module_source is None:
         return None
@@ -777,8 +825,7 @@ class _ClientRootActor:
                 elapsed = time.monotonic() - self._last_active_mono
                 ttl = self._ttl_seconds
         if shutting_down:
-            with self._cleanup_lock:
-                raise RuntimeError(f"Actor '{self._name}' is shutting down.")
+            raise RuntimeError(f"Actor '{self._name}' is shutting down.")
         remaining_ttl: Optional[float] = None
         if ttl is not None and ttl > 0:
             if active_calls > 0:
@@ -995,7 +1042,12 @@ def _is_client_root_actor_handle(handle: Any) -> bool:
     cls_name = getattr(desc, "class_name", None)
     if isinstance(cls_name, str):
         return cls_name.endswith("_ClientRootActor")
-    return True
+    alt_cls_name = getattr(handle, "_class_name", None) or getattr(
+        getattr(handle, "_actor_cls", None), "__name__", None
+    )
+    if isinstance(alt_cls_name, str):
+        return alt_cls_name.endswith("_ClientRootActor")
+    return False
 
 
 def _destroy_actor_handle(
@@ -1029,8 +1081,10 @@ class ActorManager:
     def __init__(self) -> None:
         self._actors: Dict[str, Dict[str, Any]] = {}
         self._creating_handles: Dict[str, Any] = {}
+        self._non_root_names: Set[str] = set()
         self._lock = asyncio.Lock()
         self._name_locks: Dict[str, asyncio.Lock] = {}
+        self._name_lock_waiters: Dict[str, int] = {}
         self._reaper_task: Optional[asyncio.Task] = None
 
     async def _get_name_lock(self, name: str) -> asyncio.Lock:
@@ -1038,17 +1092,26 @@ class ActorManager:
             lock = self._name_locks.get(name)
             if lock is None:
                 lock = self._name_locks[name] = asyncio.Lock()
+            self._name_lock_waiters[name] = self._name_lock_waiters.get(name, 0) + 1
             return lock
 
+    def _release_name_lock_ref_locked(self, name: str) -> None:
+        rem = self._name_lock_waiters.get(name, 1) - 1
+        if rem <= 0:
+            self._name_lock_waiters.pop(name, None)
+        else:
+            self._name_lock_waiters[name] = rem
+        self._prune_name_lock_locked(name)
+
     def _prune_name_lock_locked(self, name: str) -> None:
-        if name in self._actors or name in self._creating_handles:
+        if (
+            name in self._actors
+            or name in self._creating_handles
+            or self._name_lock_waiters.get(name, 0) > 0
+        ):
             return
         lock = self._name_locks.get(name)
-        if (
-            lock is not None
-            and not lock.locked()
-            and not getattr(lock, "_waiters", None)
-        ):
+        if lock is not None and not lock.locked():
             self._name_locks.pop(name, None)
 
     def _ensure_reaper(self) -> None:
@@ -1069,7 +1132,8 @@ class ActorManager:
                         isinstance(ttl, (int, float))
                         and ttl > 0
                         and meta.get("active_calls", 0) == 0
-                        and (now_mono - meta.get("last_active_mono", now_mono)) >= ttl
+                        and (now_mono - meta.get("last_active_mono", now_mono))
+                        >= (ttl + 1.5)
                     ):
                         candidates.append((name, meta))
             for name, meta in candidates:
@@ -1143,8 +1207,17 @@ class ActorManager:
                 return None
         try:
             handle = ray.get_actor(name, namespace=CLIENT_ACTOR_NAMESPACE)
+        except Exception:
+            async with self._lock:
+                self._non_root_names.discard(name)
+            return None
+        try:
             if not _is_client_root_actor_handle(handle):
+                async with self._lock:
+                    self._non_root_names.add(name)
                 return None
+            async with self._lock:
+                self._non_root_names.discard(name)
             info = await asyncio.wait_for(handle.get_info.remote(), timeout=timeout)
             if not isinstance(info, dict) or not info.get("ok", True):
                 return None
@@ -1170,6 +1243,8 @@ class ActorManager:
                 "last_active_mono": now_mono - elapsed,
                 "active_calls": 0,
                 "generator_methods": set(info.get("generator_methods") or []),
+                "_cached_info": info,
+                "_cached_info_mono": now_mono,
             }
             async with self._lock:
                 if name in self._creating_handles:
@@ -1190,25 +1265,35 @@ class ActorManager:
         timeout: float = 2.0,
     ) -> bool:
         wait_timeout = min(2.0, max(0.01, float(timeout)))
+        deadline = time.monotonic() + wait_timeout
         async with self._lock:
             meta = self._actors.pop(name, None)
             creating_handle = self._creating_handles.pop(name, None)
+            if meta is not None or creating_handle is not None or already_killed:
+                self._non_root_names.discard(name)
             self._prune_name_lock_locked(name)
         handle = meta["handle"] if meta is not None else creating_handle
         if handle is None and not already_killed:
             try:
                 handle = ray.get_actor(name, namespace=namespace)
             except Exception:
+                async with self._lock:
+                    self._non_root_names.discard(name)
                 return False
+            if not _is_client_root_actor_handle(handle):
+                async with self._lock:
+                    self._non_root_names.add(name)
+                return False
+            async with self._lock:
+                self._non_root_names.discard(name)
         if handle is not None:
             try:
                 if (
                     meta is not None or creating_handle is None
                 ) and _is_client_root_actor_handle(handle):
+                    rem = max(0.01, deadline - time.monotonic())
                     with contextlib.suppress(Exception):
-                        await asyncio.wait_for(
-                            handle.shutdown.remote(), timeout=wait_timeout
-                        )
+                        await asyncio.wait_for(handle.shutdown.remote(), timeout=rem)
             finally:
                 try:
                     _destroy_actor_handle(handle, reason="recreated by ray_client")
@@ -1219,7 +1304,8 @@ class ActorManager:
                     pass
         elif not already_killed:
             return False
-        await _wait_actor_deregistered(name, namespace, timeout=wait_timeout)
+        rem = max(0.01, deadline - time.monotonic())
+        await _wait_actor_deregistered(name, namespace, timeout=rem)
         return True
 
     async def _cleanup_failed_creation(
@@ -1241,61 +1327,110 @@ class ActorManager:
         with contextlib.suppress(BaseException):
             await asyncio.shield(run_background_task(_do_cleanup()))
 
-    async def create_actor(self, spec: Dict[str, Any]) -> Dict[str, Any]:
-        self._ensure_reaper()
-        kind = spec.get("kind") or ("function" if "fn_name" in spec else "class")
+    def validate_actor_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+        raw_kind = spec.get("kind")
+        if raw_kind is not None and raw_kind not in ("class", "function"):
+            raise ValueError(f"kind must be 'class' or 'function', got {raw_kind!r}.")
+        kind = raw_kind or ("function" if "fn_name" in spec else "class")
         target_name = (
             spec.get("fn_name")
             if kind == "function"
             else (spec.get("class_name") or spec.get("name"))
         )
-        if not target_name:
-            return {
-                "ok": False,
-                "error": {
-                    "exc_type": "ValueError",
-                    "exc_message": "Actor spec must specify 'class_name' or 'fn_name'.",
-                },
-            }
-        has_explicit_ttl = "ttl_seconds" in spec
-        try:
-            ttl_seconds = _validate_ttl_seconds(
-                spec["ttl_seconds"] if has_explicit_ttl else 1800.0
+        if (
+            not target_name
+            or not isinstance(target_name, str)
+            or not target_name.strip()
+        ):
+            raise ValueError("Actor spec must specify 'class_name' or 'fn_name'.")
+        if "name" in spec and spec["name"] is not None:
+            if not isinstance(spec["name"], str) or not spec["name"].strip():
+                raise ValueError("Actor name must be a non-empty string.")
+        if (
+            "detached" in spec
+            and spec["detached"] is not None
+            and not isinstance(spec["detached"], bool)
+        ):
+            raise ValueError(f"detached must be a bool, got {spec['detached']!r}.")
+        if spec.get("args") is not None and not isinstance(spec["args"], list):
+            raise ValueError(f"args must be a list, got {spec['args']!r}.")
+        if spec.get("kwargs") is not None and not isinstance(spec["kwargs"], dict):
+            raise ValueError(f"kwargs must be a dict, got {spec['kwargs']!r}.")
+        if spec.get("runtime_env") is not None and not isinstance(
+            spec["runtime_env"], dict
+        ):
+            raise ValueError(
+                f"runtime_env must be a dict, got {spec['runtime_env']!r}."
             )
-            get_if_exists = _validate_get_if_exists(spec.get("get_if_exists", True))
-            node_id = spec.get("node_id")
-            if node_id is not None:
-                if not isinstance(node_id, str) or not node_id.strip():
-                    raise ValueError(
-                        f"node_id must be a non-empty string, got {node_id!r}."
-                    )
-                node_id = node_id.strip()
-            if node_id is not None and spec.get("label_selector"):
-                raise ValueError("Cannot specify both 'node_id' and 'label_selector'.")
-            (
-                num_cpus,
-                num_gpus,
-                memory,
-                custom_resources,
-            ) = _normalize_spec_resources(spec, kind)
+        if spec.get("captured_globals") is not None and not isinstance(
+            spec["captured_globals"], dict
+        ):
+            raise ValueError(
+                f"captured_globals must be a dict, got {spec['captured_globals']!r}."
+            )
+        has_explicit_ttl = "ttl_seconds" in spec
+        ttl_seconds = _validate_ttl_seconds(
+            spec["ttl_seconds"] if has_explicit_ttl else 1800.0
+        )
+        get_if_exists = _validate_get_if_exists(spec.get("get_if_exists", True))
+        node_id = spec.get("node_id")
+        if node_id is not None:
+            if not isinstance(node_id, str) or not node_id.strip():
+                raise ValueError(
+                    f"node_id must be a non-empty string, got {node_id!r}."
+                )
+            node_id = node_id.strip()
+        label_selector = _validate_label_selector(spec.get("label_selector"))
+        if node_id is not None and label_selector:
+            raise ValueError("Cannot specify both 'node_id' and 'label_selector'.")
+        max_concurrency = (
+            _validate_max_concurrency(spec["max_concurrency"])
+            if spec.get("max_concurrency") is not None
+            else 1
+        )
+        create_timeout = _validate_timeout(spec.get("timeout"), "timeout")
+        (
+            num_cpus,
+            num_gpus,
+            memory,
+            custom_resources,
+        ) = _normalize_spec_resources(spec, kind)
+        return {
+            "kind": kind,
+            "target_name": target_name,
+            "has_explicit_ttl": has_explicit_ttl,
+            "ttl_seconds": ttl_seconds,
+            "get_if_exists": get_if_exists,
+            "node_id": node_id,
+            "label_selector": label_selector,
+            "max_concurrency": max_concurrency,
+            "create_timeout": create_timeout,
+            "num_cpus": num_cpus,
+            "num_gpus": num_gpus,
+            "memory": memory,
+            "custom_resources": custom_resources,
+        }
+
+    async def create_actor(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+        self._ensure_reaper()
+        try:
+            validated = self.validate_actor_spec(spec)
         except ValueError as exc:
             return {"ok": False, "error": _format_exception_dict(exc)}
 
-        create_timeout = spec.get("timeout")
-        if create_timeout is not None:
-            if (
-                isinstance(create_timeout, bool)
-                or not isinstance(create_timeout, (int, float))
-                or not math.isfinite(create_timeout)
-                or create_timeout <= 0
-            ):
-                return {
-                    "ok": False,
-                    "error": {
-                        "exc_type": "ValueError",
-                        "exc_message": "timeout must be a positive finite number or None.",
-                    },
-                }
+        kind = validated["kind"]
+        target_name = validated["target_name"]
+        has_explicit_ttl = validated["has_explicit_ttl"]
+        ttl_seconds = validated["ttl_seconds"]
+        get_if_exists = validated["get_if_exists"]
+        node_id = validated["node_id"]
+        label_selector = validated["label_selector"]
+        max_concurrency = validated["max_concurrency"]
+        create_timeout = validated["create_timeout"]
+        num_cpus = validated["num_cpus"]
+        num_gpus = validated["num_gpus"]
+        memory = validated["memory"]
+        custom_resources = validated["custom_resources"]
 
         name = spec.get("name") or f"{target_name}_{uuid.uuid4().hex[:8]}"
         # One-shot driver functions (`cluster.run`) default to owner-bound
@@ -1303,10 +1438,7 @@ class ActorManager:
         # worker reuse across consecutive runs; persistent actors default to
         # `detached=True`.
         detached = bool(spec.get("detached", kind != "function"))
-        max_concurrency = (
-            spec["max_concurrency"] if spec.get("max_concurrency") is not None else 10
-        )
-        spec = dict(spec, node_id=node_id)
+        spec = dict(spec, node_id=node_id, label_selector=label_selector)
         spec_hash = _compute_spec_hash(
             spec, kind, target_name, num_cpus, max_concurrency
         )
@@ -1357,10 +1489,12 @@ class ActorManager:
                 )
             else:
                 await name_lock.acquire()
-        except asyncio.TimeoutError:
+        except BaseException as exc:
             async with self._lock:
-                self._prune_name_lock_locked(name)
-            return _timeout_error()
+                self._release_name_lock_ref_locked(name)
+            if isinstance(exc, asyncio.TimeoutError):
+                return _timeout_error()
+            raise
 
         try:
             if get_if_exists in (True, "recreate"):
@@ -1377,10 +1511,18 @@ class ActorManager:
                 should_terminate_existing = False
                 if existing is not None:
                     try:
-                        info = await asyncio.wait_for(
-                            existing["handle"].get_info.remote(),
-                            timeout=_remaining_timeout(_CONTROL_TIMEOUT_S),
-                        )
+                        cached_info = existing.get("_cached_info")
+                        cached_mono = existing.get("_cached_info_mono", 0.0)
+                        if (
+                            isinstance(cached_info, dict)
+                            and (time.monotonic() - cached_mono) < 0.05
+                        ):
+                            info = cached_info
+                        else:
+                            info = await asyncio.wait_for(
+                                existing["handle"].get_info.remote(),
+                                timeout=_remaining_timeout(_CONTROL_TIMEOUT_S),
+                            )
                         if not isinstance(info, dict) or not info.get("ok", True):
                             should_terminate_existing = True
                         else:
@@ -1412,25 +1554,22 @@ class ActorManager:
                                     },
                                 }
                             else:
-                                effective_ttl = (
-                                    ttl_seconds
-                                    if has_explicit_ttl
-                                    else existing.get("ttl_seconds")
-                                )
-                                if hasattr(existing["handle"], "set_ttl"):
+                                if has_explicit_ttl and hasattr(
+                                    existing["handle"], "set_ttl"
+                                ):
                                     info = await asyncio.wait_for(
-                                        existing["handle"].set_ttl.remote(
-                                            effective_ttl
-                                        ),
+                                        existing["handle"].set_ttl.remote(ttl_seconds),
                                         timeout=_remaining_timeout(_CONTROL_TIMEOUT_S),
                                     )
-                                if has_explicit_ttl:
                                     existing["ttl_seconds"] = ttl_seconds
                                 existing["generator_methods"] = set(
                                     info.get("generator_methods") or []
                                 )
+                                now_mono = time.monotonic()
                                 existing["last_active"] = time.time()
-                                existing["last_active_mono"] = time.monotonic()
+                                existing["last_active_mono"] = now_mono
+                                existing["_cached_info"] = info
+                                existing["_cached_info_mono"] = now_mono
                                 return {
                                     **info,
                                     "ok": True,
@@ -1448,11 +1587,19 @@ class ActorManager:
                 elif get_if_exists == "recreate":
                     should_terminate_existing = True
                 else:
-                    with contextlib.suppress(Exception):
+                    try:
                         stale_handle = ray.get_actor(name, namespace=namespace)
-                        should_terminate_existing = _is_client_root_actor_handle(
-                            stale_handle
-                        )
+                    except Exception:
+                        async with self._lock:
+                            self._non_root_names.discard(name)
+                    else:
+                        if _is_client_root_actor_handle(stale_handle):
+                            async with self._lock:
+                                self._non_root_names.discard(name)
+                            should_terminate_existing = True
+                        else:
+                            async with self._lock:
+                                self._non_root_names.add(name)
                 if should_terminate_existing:
                     try:
                         term_timeout = _remaining_timeout(2.0)
@@ -1463,6 +1610,17 @@ class ActorManager:
                         namespace,
                         timeout=term_timeout if term_timeout is not None else 2.0,
                     )
+                if name in self._non_root_names:
+                    return {
+                        "ok": False,
+                        "error": {
+                            "exc_type": "ValueError",
+                            "exc_message": (
+                                f"Actor '{name}' already exists in namespace '{namespace}' "
+                                "as a non-ray_client actor and cannot be replaced."
+                            ),
+                        },
+                    }
 
             handle = None
             try:
@@ -1486,12 +1644,9 @@ class ActorManager:
                     if spec.get(opt_key) is not None:
                         options[opt_key] = spec[opt_key]
                 if spec.get("node_id") is not None:
-                    if os.environ.get("RAY_BACKEND") == "rust":
-                        options["node_id"] = spec["node_id"]
-                    else:
-                        options["label_selector"] = {
-                            ray._raylet.RAY_NODE_ID_KEY: spec["node_id"]
-                        }
+                    options["label_selector"] = {
+                        ray._raylet.RAY_NODE_ID_KEY: spec["node_id"]
+                    }
                 elif (
                     num_cpus == 0
                     and not any(spec.get(k) for k in placement_keys)
@@ -1502,15 +1657,13 @@ class ActorManager:
                     # on the head node, where this agent runs. It then starts even on
                     # a `num-cpus=0` head and never takes a CPU from worker nodes.
                     head_node_id = ray.get_runtime_context().get_node_id()
-                    if os.environ.get("RAY_BACKEND") == "rust":
-                        options["node_id"] = head_node_id
-                    else:
-                        options["label_selector"] = {
-                            ray._raylet.RAY_NODE_ID_KEY: head_node_id
-                        }
+                    options["label_selector"] = {
+                        ray._raylet.RAY_NODE_ID_KEY: head_node_id
+                    }
 
                 handle = _RemoteClientRootActor.options(**options).remote(spec)
                 async with self._lock:
+                    self._non_root_names.discard(name)
                     self._creating_handles[name] = handle
                 info_ref = handle.get_info.remote()
                 if deadline is not None:
@@ -1574,19 +1727,29 @@ class ActorManager:
         finally:
             name_lock.release()
             async with self._lock:
-                self._prune_name_lock_locked(name)
+                self._release_name_lock_ref_locked(name)
 
     async def list_actors(self) -> List[Dict[str, Any]]:
         self._ensure_reaper()
         with contextlib.suppress(Exception):
             named = ray.util.list_named_actors(all_namespaces=True)
-            for entry in named:
-                if (
-                    isinstance(entry, dict)
-                    and entry.get("namespace") == CLIENT_ACTOR_NAMESPACE
-                    and entry.get("name") not in self._actors
-                ):
-                    await self._lookup_actor(entry["name"])
+            active_ns_names = [
+                entry["name"]
+                for entry in named
+                if isinstance(entry, dict)
+                and entry.get("namespace") == CLIENT_ACTOR_NAMESPACE
+                and isinstance(entry.get("name"), str)
+            ]
+            async with self._lock:
+                self._non_root_names.intersection_update(active_ns_names)
+                known_names = (
+                    set(self._actors)
+                    | set(self._creating_handles)
+                    | set(self._non_root_names)
+                )
+            uncached_names = [n for n in active_ns_names if n not in known_names]
+            if uncached_names:
+                await asyncio.gather(*(self._lookup_actor(n) for n in uncached_names))
 
         async with self._lock:
             snapshot = list(self._actors.items())
@@ -1594,6 +1757,17 @@ class ActorManager:
         async def _query_one(
             name: str, meta: Dict[str, Any]
         ) -> Optional[Dict[str, Any]]:
+            cached_info = meta.pop("_cached_info", None)
+            cached_mono = meta.pop("_cached_info_mono", 0.0)
+            if (
+                isinstance(cached_info, dict)
+                and (time.monotonic() - cached_mono) < 0.25
+            ):
+                info = dict(cached_info)
+                info["active_calls"] = max(
+                    info.get("active_calls", 0), meta.get("active_calls", 0)
+                )
+                return info
             try:
                 info = await asyncio.wait_for(
                     meta["handle"].get_info.remote(), timeout=_CONTROL_TIMEOUT_S
@@ -1674,19 +1848,34 @@ class ActorManager:
         name: str,
         method_name: str,
         payload: Dict[str, Any],
+        *,
+        meta: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Calls `method_name` on actor `name` and returns the result payload.
 
         Returns None if the actor doesn't exist. Every other failure is returned as
         an `{"ok": False, "error": ...}` payload, so only cancellation propagates.
         """
-        meta = await self._lookup_actor(name)
+        if meta is None:
+            meta = await self._lookup_actor(name)
         if meta is None:
             return None
-        args = payload.get("args") or []
-        kwargs = payload.get("kwargs") or {}
-        timeout = payload.get("timeout")
         one_shot = meta.get("kind") == "function"
+        try:
+            raw_args = payload.get("args")
+            if raw_args is not None and not isinstance(raw_args, list):
+                raise ValueError(f"args must be a list, got {raw_args!r}.")
+            raw_kwargs = payload.get("kwargs")
+            if raw_kwargs is not None and not isinstance(raw_kwargs, dict):
+                raise ValueError(f"kwargs must be a dict, got {raw_kwargs!r}.")
+            args = raw_args or []
+            kwargs = raw_kwargs or {}
+            timeout = _validate_timeout(payload.get("timeout"), "timeout")
+        except ValueError as exc:
+            if one_shot:
+                await self._reap_one_shot(name, clean=False)
+            return {"ok": False, "error": _format_exception_dict(exc)}
+
         target_name = meta.get("class_name") or name
         task_name = (
             target_name
@@ -1737,8 +1926,11 @@ class ActorManager:
         name: str,
         method_name: str,
         payload: Dict[str, Any],
+        *,
+        meta: Optional[Dict[str, Any]] = None,
     ):
-        meta = await self._lookup_actor(name)
+        if meta is None:
+            meta = await self._lookup_actor(name)
         if meta is None:
             yield {
                 "ok": False,
@@ -1750,11 +1942,24 @@ class ActorManager:
             }
             return
 
-        args = payload.get("args") or []
-        kwargs = payload.get("kwargs") or {}
-        timeout = payload.get("timeout")
-        deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
         one_shot = meta.get("kind") == "function"
+        try:
+            raw_args = payload.get("args")
+            if raw_args is not None and not isinstance(raw_args, list):
+                raise ValueError(f"args must be a list, got {raw_args!r}.")
+            raw_kwargs = payload.get("kwargs")
+            if raw_kwargs is not None and not isinstance(raw_kwargs, dict):
+                raise ValueError(f"kwargs must be a dict, got {raw_kwargs!r}.")
+            args = raw_args or []
+            kwargs = raw_kwargs or {}
+            timeout = _validate_timeout(payload.get("timeout"), "timeout")
+        except ValueError as exc:
+            if one_shot:
+                await self._reap_one_shot(name, clean=False)
+            yield {"ok": False, "error": _format_exception_dict(exc)}
+            return
+
+        deadline = (time.monotonic() + float(timeout)) if timeout is not None else None
         target_name = meta.get("class_name") or name
         task_name = (
             target_name
@@ -1855,7 +2060,7 @@ class ActorManager:
                 )
         finally:
             async with self._lock:
-                self._prune_name_lock_locked(name)
+                self._release_name_lock_ref_locked(name)
         if not killed and not killed_creating:
             return None
         return {"ok": True, "name": name, "killed": True}
@@ -1909,16 +2114,19 @@ class ActorManager:
         state = d.get("state") or d.get("status") or "ALIVE"
         if hasattr(state, "value"):
             state = state.value
-        return {
-            **d,
-            "id": nid,
-            "node_id": nid,
-            "group": group,
-            "group_name": group,
-            "node_group": group,
-            "status": str(state),
-            "state": str(state),
+        out = {
+            k: v
+            for k, v in d.items()
+            if k not in ("node_id", "group", "node_group", "status")
         }
+        out.update(
+            {
+                "id": nid,
+                "group_name": group,
+                "state": str(state),
+            }
+        )
+        return out
 
     def _all_nodes(self, *, include_dead: bool = False) -> List[Dict[str, Any]]:
         cluster_mod = getattr(ray, "cluster", None)
@@ -1949,11 +2157,7 @@ class ActorManager:
             nodes.append(
                 {
                     "id": nid,
-                    "node_id": nid,
-                    "group": group,
                     "group_name": group,
-                    "node_group": group,
-                    "status": state,
                     "state": state,
                     "ip_address": entry.get("NodeManagerAddress", ""),
                     "resources": resources,
@@ -1974,7 +2178,6 @@ class ActorManager:
                 groups[g_name] = {
                     "name": g_name,
                     "max_nodes": 1 if g_name == "head" else None,
-                    "idle_timeout_s": None,
                     "resources": dict(n["resources"]),
                     "labels": {
                         k: v
@@ -1986,7 +2189,6 @@ class ActorManager:
             groups["default"] = {
                 "name": "default",
                 "max_nodes": None,
-                "idle_timeout_s": None,
                 "resources": {},
                 "labels": {},
             }
@@ -2001,6 +2203,8 @@ class ActorManager:
                 return g
         raise KeyError(f"Node group '{name}' does not exist.")
 
+    _VALID_NODE_STATES = frozenset({"PENDING", "ALIVE", "TERMINATING_SOON", "DEAD"})
+
     def list_nodes(
         self,
         *,
@@ -2008,13 +2212,20 @@ class ActorManager:
         node_group: Optional[str] = None,
         include_dead: bool = False,
     ) -> List[Dict[str, Any]]:
+        if not isinstance(include_dead, bool):
+            raise ValueError(f"include_dead must be a bool, got {include_dead!r}.")
         if node_group is not None:
             self.get_node_group(node_group)
-        allowed = (
-            {s.strip().upper() for s in state.split(",") if s.strip()}
-            if state is not None
-            else None
-        )
+        allowed: Optional[Set[str]] = None
+        if state is not None:
+            if not isinstance(state, str):
+                raise ValueError(f"state must be a string, got {state!r}.")
+            allowed = {s.strip().upper() for s in state.split(",") if s.strip()}
+            if not allowed or not allowed.issubset(self._VALID_NODE_STATES):
+                raise ValueError(
+                    f"Invalid node state filter {state!r}; expected one or more of "
+                    f"{sorted(self._VALID_NODE_STATES)}."
+                )
         need_dead = include_dead or (allowed is not None and "DEAD" in allowed)
         nodes = self._all_nodes(include_dead=need_dead)
         if node_group is not None:
@@ -2042,68 +2253,71 @@ class ActorManager:
         wait_ready: bool = False,
         timeout_s: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
+        if not isinstance(group, str) or not group.strip():
+            raise ValueError("group must be a non-empty string.")
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError(f"count must be a positive integer, got {count!r}.")
-        if timeout_s is not None and (
-            isinstance(timeout_s, bool)
-            or not isinstance(timeout_s, (int, float))
-            or not math.isfinite(timeout_s)
-            or timeout_s <= 0
-        ):
-            raise ValueError(
-                f"timeout_s must be a positive finite number, got {timeout_s!r}."
-            )
+        if not isinstance(wait_ready, bool):
+            raise ValueError(f"wait_ready must be a bool, got {wait_ready!r}.")
+        _validate_timeout(timeout_s, "timeout_s")
         grp = self.get_node_group(group)
         if group == "head":
-            raise ValueError("Cannot add nodes to the 'head' node group (max_nodes=1).")
+            raise MaxNodesExceededError(
+                "Cannot add nodes to the 'head' node group (max_nodes=1)."
+            )
+        max_nodes = grp.get("max_nodes")
+        if max_nodes is not None:
+            current_count = len(self.list_nodes(node_group=group))
+            if current_count + count > int(max_nodes):
+                raise MaxNodesExceededError(
+                    f"Adding {count} node(s) to group '{group}' ({current_count} active) "
+                    f"would exceed max_nodes={max_nodes}."
+                )
         cluster_mod = getattr(ray, "cluster", None)
-        if cluster_mod is not None:
-            if hasattr(cluster_mod, "get_node_group"):
-                ng_obj = cluster_mod.get_node_group(group)
-                if hasattr(ng_obj, "add_nodes"):
-                    added_nodes = ng_obj.add_nodes(count, detached=True)
-                    if wait_ready:
-                        deadline = (
-                            (time.monotonic() + float(timeout_s))
-                            if timeout_s is not None
+        if cluster_mod is None or not hasattr(cluster_mod, "get_node_group"):
+            raise NotImplementedError(
+                "Cluster node provisioning requires Ray 3.0 (ray.cluster)."
+            )
+        ng_obj = cluster_mod.get_node_group(group)
+        if not hasattr(ng_obj, "add_nodes"):
+            raise NotImplementedError(
+                "Cluster node provisioning requires Ray 3.0 (ray.cluster)."
+            )
+        added_nodes = ng_obj.add_nodes(count, detached=True)
+        if wait_ready:
+            deadline = (
+                (time.monotonic() + float(timeout_s)) if timeout_s is not None else None
+            )
+            try:
+                for n in added_nodes:
+                    ready_fn = getattr(n, "ready", None)
+                    if callable(ready_fn):
+                        rem = (
+                            max(0.0, deadline - time.monotonic())
+                            if deadline is not None
                             else None
                         )
-                        try:
-                            for n in added_nodes:
-                                ready_fn = getattr(n, "ready", None)
-                                if callable(ready_fn):
-                                    rem = (
-                                        max(0.0, deadline - time.monotonic())
-                                        if deadline is not None
-                                        else None
-                                    )
-                                    ready_fn().result(timeout=rem)
-                        except BaseException:
-                            for n in added_nodes:
-                                destroy_fn = getattr(n, "destroy", None)
-                                if callable(destroy_fn):
-                                    with contextlib.suppress(Exception):
-                                        destroy_fn(
-                                            reason="add_nodes wait_ready failed or timed out"
-                                        )
-                            raise
-                    return [self._node_to_dict(n) for n in added_nodes]
-            if hasattr(cluster_mod, "add_nodes"):
-                cluster_mod.add_nodes(group, count)
-        elif grp.get("resources"):
-            with contextlib.suppress(Exception):
-                ray.autoscaler.sdk.request_resources(
-                    bundles=[dict(grp["resources"])] * count
-                )
-        return self.list_nodes(node_group=group)[:count]
+                        ready_fn().result(timeout=rem)
+            except BaseException:
+                for n in added_nodes:
+                    destroy_fn = getattr(n, "destroy", None)
+                    if callable(destroy_fn):
+                        with contextlib.suppress(Exception):
+                            destroy_fn(
+                                reason="add_nodes wait_ready failed or timed out"
+                            )
+                raise
+        return [self._node_to_dict(n) for n in added_nodes]
 
     def destroy_node(
         self,
         node_id: str,
-        reason: str = "destroyed by ray_client",
+        reason: str,
         *,
         grace_period_s: Optional[float] = None,
     ) -> Dict[str, Any]:
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("node_id must be a non-empty string.")
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("reason must be a non-empty string.")
         if grace_period_s is not None and (
@@ -2119,27 +2333,27 @@ class ActorManager:
         if node.get("group_name") == "head":
             raise ValueError("Cannot destroy the head node.")
         cluster_mod = getattr(ray, "cluster", None)
-        if cluster_mod is not None:
-            if hasattr(cluster_mod, "get_node"):
-                node_obj = cluster_mod.get_node(node_id)
-                if hasattr(node_obj, "destroy"):
-                    destroy_kwargs: Dict[str, Any] = {"reason": reason}
-                    if grace_period_s is not None:
-                        destroy_kwargs["grace_period_s"] = float(grace_period_s)
-                    node_obj.destroy(**destroy_kwargs)
-            elif hasattr(cluster_mod, "destroy_node"):
-                cluster_mod.destroy_node(node_id, reason=reason)
-        new_state = (
-            "TERMINATING_SOON"
-            if (grace_period_s is not None and grace_period_s > 0)
-            else "DEAD"
-        )
+        if cluster_mod is None or not hasattr(cluster_mod, "get_node"):
+            raise NotImplementedError(
+                "Cluster node destruction requires Ray 3.0 (ray.cluster)."
+            )
+        node_obj = cluster_mod.get_node(node_id)
+        if not hasattr(node_obj, "destroy"):
+            raise NotImplementedError(
+                "Cluster node destruction requires Ray 3.0 (ray.cluster)."
+            )
+        destroy_kwargs: Dict[str, Any] = {"reason": reason}
+        if grace_period_s is not None:
+            destroy_kwargs["grace_period_s"] = float(grace_period_s)
+        node_obj.destroy(**destroy_kwargs)
+        updated = self._node_to_dict(node_obj)
+        new_state = "DEAD" if node.get("state") == "PENDING" else updated["state"]
         return {
             **node,
+            **updated,
             "ok": True,
             "destroyed": True,
             "state": new_state,
-            "status": new_state,
             "reason": reason,
         }
 

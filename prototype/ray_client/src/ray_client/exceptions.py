@@ -64,7 +64,6 @@ class RayJobExecutionError(RayClientError):
         job: Optional["JobResult"] = None,
     ) -> None:
         self.submission_id = submission_id
-        self.target = submission_id
         self.status = status
         self.message = message
         self.exc_type = exc_type
@@ -99,7 +98,3 @@ class RayJobExecutionError(RayClientError):
                 self.job,
             ),
         )
-
-
-RayTimeoutError = RayJobTimeoutError
-RayExecutionError = RayJobExecutionError

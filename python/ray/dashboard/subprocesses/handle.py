@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import multiprocessing
 import os
@@ -364,6 +365,7 @@ class SubprocessModuleHandle:
             url,
             data=body,
             headers=filter_hop_by_hop_headers(request.headers),
+            timeout=aiohttp.ClientTimeout(total=None),
         ) as backend_resp:
             proxy_resp = aiohttp.web.StreamResponse(
                 status=backend_resp.status,
@@ -396,12 +398,13 @@ class SubprocessModuleHandle:
             except (
                 ConnectionResetError,
                 aiohttp.ClientConnectionError,
-                asyncio.CancelledError,
             ):
                 pass
             finally:
                 if next_chunk_task is not None and not next_chunk_task.done():
                     next_chunk_task.cancel()
+                    with contextlib.suppress(BaseException):
+                        await next_chunk_task
             return proxy_resp
 
     async def proxy_websocket(

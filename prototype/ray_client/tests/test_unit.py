@@ -27,16 +27,15 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from unittest.mock import patch
 
+import ray_client
 from ray_client import (
     ActorHandle,
     JobResult,
-    RayClient,
     RayClientError,
     RayClientSerializationError,
     RayCluster,
     RayJobExecutionError,
     RayJobTimeoutError,
-    RayTimeoutError,
     packaging,
     run,
 )
@@ -44,12 +43,12 @@ from ray_client._ignore import _compile_ignore_rules, _is_ignored
 from ray_client.client import (
     _normalize_resources,
     _validate_get_if_exists,
+    _validate_max_concurrency,
     _validate_node_id_and_label_selector,
     _validate_ttl_seconds,
 )
 from ray_client.packaging import (
     IGNORE_GITIGNORE_ENV_VAR,
-    build_driver_package,
     build_working_dir_package,
     extract_class_source_and_globals,
     extract_function_source_and_globals,
@@ -58,6 +57,7 @@ from ray_client.packaging import (
 try:
     from ray.dashboard.modules.job.actor_manager import (
         ActorManager,
+        MaxNodesExceededError,
         _ClientRootActor,
         _compute_spec_hash,
         _is_client_root_actor_handle,
@@ -66,110 +66,74 @@ try:
         _normalize_module_source,
     )
 except (ImportError, OSError):
+    import ast
+    import math
+    from typing import Union
+
     ActorManager = None  # type: ignore[assignment]
+    MaxNodesExceededError = ValueError  # type: ignore[assignment,misc]
     _ClientRootActor = None  # type: ignore[assignment]
     _LogTeeStream = None  # type: ignore[assignment]
     _is_client_root_actor_handle = None  # type: ignore[assignment]
+    _am_path = (
+        Path(__file__).resolve().parents[3]
+        / "python"
+        / "ray"
+        / "dashboard"
+        / "modules"
+        / "job"
+        / "actor_manager.py"
+    )
+    _am_tree = ast.parse(_am_path.read_text(encoding="utf-8"))
+    _am_keep = {
+        "_normalize_module_source",
+        "_validate_resource_num",
+        "_normalize_spec_resources",
+        "_compute_spec_hash",
+        "_load_user_target",
+    }
+    _am_mod = ast.Module(
+        body=[
+            n
+            for n in _am_tree.body
+            if isinstance(n, ast.FunctionDef) and n.name in _am_keep
+        ],
+        type_ignores=[],
+    )
+    _am_ns: Dict[str, Any] = {
+        "Any": Any,
+        "Dict": Dict,
+        "Optional": Optional,
+        "Tuple": Tuple,
+        "Union": Union,
+        "contextlib": contextlib,
+        "hashlib": hashlib,
+        "importlib": importlib,
+        "json": json,
+        "math": math,
+        "os": os,
+        "ray": types.SimpleNamespace(),
+        "sys": sys,
+        "types": types,
+        "uuid": uuid,
+    }
+    exec(compile(_am_mod, str(_am_path), "exec"), _am_ns)
+    _normalize_module_source = _am_ns["_normalize_module_source"]
+    _compute_spec_hash = _am_ns["_compute_spec_hash"]
+    _raw_load_user_target = _am_ns["_load_user_target"]
 
-    def _normalize_module_source(module_source: Optional[str]) -> Optional[str]:
-        if module_source is None:
-            return None
-        src = module_source.lstrip("\n")
-        if src.startswith(
-            ("import ray  # noqa: F401\n", "from __future__ import annotations\n")
-        ):
-            lines = src.splitlines(keepends=True)
-            idx = 0
-            while idx < len(lines) and lines[idx].startswith(
-                (
-                    "from __future__ import annotations",
-                    "import ",
-                    "from ",
-                    "_RayHint =",
-                )
-            ):
-                idx += 1
-            return "".join(lines[:idx]) + "".join(lines[idx:]).lstrip("\n")
-        return src
-
-    def _compute_spec_hash(
-        spec: Dict[str, Any],
-        kind: str,
-        target_name: str,
-        num_cpus: Any,
-        max_concurrency: Any,
-    ) -> str:
-        norm_cpus, norm_gpus, norm_memory, norm_resources = _normalize_resources(
-            spec.get("num_cpus"),
-            spec.get("num_gpus"),
-            spec.get("memory"),
-            spec.get("resources"),
-            default_cpus=(
-                num_cpus
-                if isinstance(num_cpus, (int, float))
-                else (0 if kind == "function" else 1)
-            ),
-        )
-        canonical = {
-            "kind": kind,
-            "target_name": target_name,
-            "module_source": _normalize_module_source(spec.get("module_source")),
-            "module": spec.get("module"),
-            "captured_globals": spec.get("captured_globals") or {},
-            "args": spec.get("args") or [],
-            "kwargs": spec.get("kwargs") or {},
-            "runtime_env": spec.get("runtime_env") or {},
-            "num_cpus": (
-                float(norm_cpus) if isinstance(norm_cpus, (int, float)) else norm_cpus
-            ),
-            "num_gpus": (
-                float(norm_gpus) if isinstance(norm_gpus, (int, float)) else norm_gpus
-            ),
-            "memory": norm_memory,
-            "resources": norm_resources or {},
-            "label_selector": spec.get("label_selector") or {},
-            "node_id": spec.get("node_id"),
-            "max_concurrency": (
-                int(max_concurrency)
-                if isinstance(max_concurrency, int)
-                else max_concurrency
-            ),
-        }
-        payload = json.dumps(
-            canonical, sort_keys=True, separators=(",", ":"), default=repr
-        ).encode("utf-8")
-        return hashlib.sha256(payload).hexdigest()
-
-    def _load_user_target(
-        actor_name: str,
-        target_name: str,
-        module_source: Optional[str],
-        module_path: Optional[str],
-        captured_globals: Dict[str, Any],
-    ) -> Any:
-        cwd = os.getcwd()
-        if not sys.path or sys.path[0] != cwd:
-            with contextlib.suppress(ValueError):
-                sys.path.remove(cwd)
-            sys.path.insert(0, cwd)
-        if module_source is not None:
-            mod_name = (
-                f"_ray_client_actor_{actor_name}_{target_name}_{uuid.uuid4().hex[:6]}"
-            )
-            module = types.ModuleType(mod_name)
-            module.__file__ = f"<{mod_name}>"
-            sys.modules[mod_name] = module
-            module.__dict__.update(captured_globals)
-            src = module_source.replace("import ray", "pass")
-            exec(compile(src, module.__file__, "exec"), module.__dict__)
-            return getattr(module, target_name)
-        if module_path is not None:
-            importlib.invalidate_caches()
-            module = importlib.import_module(module_path)
-            return getattr(module, target_name)
-        raise ValueError(
-            f"Spec for '{target_name}' must provide either 'module_source' or 'module'."
-        )
+    def _load_user_target(*args: Any, **kwargs: Any) -> Any:
+        had_ray = "ray" in sys.modules
+        orig_ray = sys.modules.get("ray")
+        if orig_ray is None:
+            sys.modules["ray"] = types.ModuleType("ray")
+        try:
+            return _raw_load_user_target(*args, **kwargs)
+        finally:
+            if not had_ray:
+                sys.modules.pop("ray", None)
+            elif orig_ray is None:
+                sys.modules["ray"] = None  # type: ignore[assignment]
 
 
 GLOBAL_SCALE = 42
@@ -197,25 +161,24 @@ class _MockClusterState:
         self.packages: Dict[str, bytes] = {}
         self.actors: Dict[str, Dict[str, Any]] = {}
         self.jobs: Dict[str, Dict[str, Any]] = {}
-        self.worker_groups: Dict[str, int] = {}
         self.nodes: Dict[str, Dict[str, Any]] = {
             "node_head": {
-                "node_id": "node_head",
-                "node_group": "head",
-                "state": "RUNNING",
-                "alive": True,
-                "node_ip": "127.0.0.1",
+                "id": "node_head",
+                "group_name": "head",
+                "state": "ALIVE",
+                "ip_address": "127.0.0.1",
                 "resources": {"CPU": 4.0},
                 "labels": {"ray.io/node-group": "head"},
+                "detached": True,
             },
             "node_worker_1": {
-                "node_id": "node_worker_1",
-                "node_group": "gpu-workers",
-                "state": "RUNNING",
-                "alive": True,
-                "node_ip": "10.0.0.2",
+                "id": "node_worker_1",
+                "group_name": "gpu-workers",
+                "state": "ALIVE",
+                "ip_address": "10.0.0.2",
                 "resources": {"CPU": 8.0, "GPU": 1.0},
                 "labels": {"ray.io/node-group": "gpu-workers"},
+                "detached": True,
             },
         }
         self.last_created_actor_spec: Optional[Dict[str, Any]] = None
@@ -285,6 +248,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     + json.dumps({"ok": True, "item": item}, allow_nan=False)
                     + "\n\n"
                 )
+            frames.append("data: " + json.dumps({"ok": True, "done": True}) + "\n\n")
         except Exception as exc:
             frames.append(
                 "data: "
@@ -303,7 +267,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             )
         payload = "".join(frames).encode("utf-8")
         self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -482,26 +446,25 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             with self.state.lock:
                 groups: Dict[str, Dict[str, Any]] = {}
                 for node in self.state.nodes.values():
-                    g = node["node_group"]
-                    entry = groups.setdefault(
+                    g = node["group_name"]
+                    groups.setdefault(
                         g,
                         {
                             "name": g,
-                            "count": 0,
+                            "max_nodes": 1 if g == "head" else 10,
                             "resources": dict(node.get("resources") or {}),
                             "labels": dict(node.get("labels") or {}),
                         },
                     )
-                    entry["count"] += 1
                 items = list(groups.values())
-            self._send_json(200, {"ok": True, "node_groups": items})
+            self._send_json(200, items)
             return
 
         if path.startswith("/api/cluster/node_groups/"):
             group = path[len("/api/cluster/node_groups/") :]
             with self.state.lock:
                 matching = [
-                    n for n in self.state.nodes.values() if n["node_group"] == group
+                    n for n in self.state.nodes.values() if n["group_name"] == group
                 ]
             if not matching:
                 self._send_json(
@@ -512,13 +475,10 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             self._send_json(
                 200,
                 {
-                    "ok": True,
-                    "node_group": {
-                        "name": group,
-                        "count": len(matching),
-                        "resources": dict(first.get("resources") or {}),
-                        "labels": dict(first.get("labels") or {}),
-                    },
+                    "name": group,
+                    "max_nodes": 1 if group == "head" else 10,
+                    "resources": dict(first.get("resources") or {}),
+                    "labels": dict(first.get("labels") or {}),
                 },
             )
             return
@@ -526,13 +486,26 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
         if path == "/api/cluster/nodes":
             query = dict(urllib.parse.parse_qsl(parsed.query))
             group_filter = query.get("node_group")
+            state_filter = query.get("state")
+            include_dead = query.get("include_dead", "false").lower() in ("1", "true")
+            allowed_states = (
+                {s.strip().upper() for s in state_filter.split(",") if s.strip()}
+                if state_filter is not None
+                else None
+            )
             with self.state.lock:
-                items = [
-                    dict(n)
-                    for n in self.state.nodes.values()
-                    if group_filter is None or n["node_group"] == group_filter
-                ]
-            self._send_json(200, {"ok": True, "nodes": items})
+                items = []
+                for n in self.state.nodes.values():
+                    if group_filter is not None and n["group_name"] != group_filter:
+                        continue
+                    n_state = str(n.get("state", "ALIVE")).upper()
+                    if allowed_states is not None:
+                        if n_state not in allowed_states:
+                            continue
+                    elif not include_dead and n_state == "DEAD":
+                        continue
+                    items.append(dict(n))
+            self._send_json(200, items)
             return
 
         if path.startswith("/api/cluster/nodes/"):
@@ -544,7 +517,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     404, {"ok": False, "error": f"Node '{node_id}' not found"}
                 )
                 return
-            self._send_json(200, {"ok": True, "node": dict(node)})
+            self._send_json(200, dict(node))
             return
 
         self._send_json(404, {"error": "unknown endpoint"})
@@ -559,19 +532,6 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Length", "0")
             self.end_headers()
-            return
-        self._send_json(404, {"error": "unknown endpoint"})
-
-    def do_PATCH(self) -> None:  # noqa: N802
-        parsed = urllib.parse.urlsplit(self.path)
-        path = parsed.path
-        body = self._read_json()
-        if path.startswith("/api/cluster/worker_groups/"):
-            group = path[len("/api/cluster/worker_groups/") :]
-            replicas = int(body["replicas"])
-            with self.state.lock:
-                self.state.worker_groups[group] = replicas
-            self._send_json(200, {"ok": True, "group": group, "replicas": replicas})
             return
         self._send_json(404, {"error": "unknown endpoint"})
 
@@ -596,12 +556,65 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/cluster/nodes/"):
             node_id = path[len("/api/cluster/nodes/") :]
+            body = self._read_json()
+            reason = body.get("reason")
+            if not isinstance(reason, str) or not reason.strip():
+                self._send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": {
+                            "exc_type": "ValueError",
+                            "exc_message": "reason must be a non-empty string.",
+                        },
+                    },
+                )
+                return
+            grace_period_s = body.get("grace_period_s", 0.0)
             with self.state.lock:
-                existed = self.state.nodes.pop(node_id, None) is not None
-            self._send_json(
-                200 if existed else 404,
-                {"ok": existed, "node_id": node_id, "destroyed": existed},
-            )
+                node = self.state.nodes.get(node_id)
+                if node is None:
+                    self._send_json(
+                        404,
+                        {
+                            "ok": False,
+                            "error": {
+                                "exc_type": "KeyError",
+                                "exc_message": f"Node '{node_id}' does not exist.",
+                            },
+                        },
+                    )
+                    return
+                if node.get("group_name") == "head":
+                    self._send_json(
+                        400,
+                        {
+                            "ok": False,
+                            "error": {
+                                "exc_type": "ValueError",
+                                "exc_message": "Cannot destroy the head node.",
+                            },
+                        },
+                    )
+                    return
+                new_state = (
+                    "TERMINATING_SOON"
+                    if (
+                        node.get("state") == "ALIVE"
+                        and isinstance(grace_period_s, (int, float))
+                        and grace_period_s > 0
+                    )
+                    else "DEAD"
+                )
+                node["state"] = new_state
+                res_payload = {
+                    **node,
+                    "ok": True,
+                    "destroyed": True,
+                    "state": new_state,
+                    "reason": reason,
+                }
+            self._send_json(200, res_payload)
             return
         self._send_json(404, {"error": "unknown endpoint"})
 
@@ -649,21 +662,16 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     nid = f"node_{group}_{uuid.uuid4().hex[:6]}"
                     info = {
                         "id": nid,
-                        "node_id": nid,
                         "group_name": group,
-                        "node_group": group,
                         "state": "ALIVE",
-                        "alive": True,
-                        "node_ip": "10.0.0.9",
+                        "ip_address": "10.0.0.9",
                         "resources": {"CPU": 8.0},
                         "labels": {"ray.io/node-group": group},
+                        "detached": True,
                     }
                     self.state.nodes[nid] = info
                     added.append(info)
-            self._send_json(
-                200,
-                {"ok": True, "name": group, "added": len(added), "nodes": added},
-            )
+            self._send_json(200, added)
             return
 
         if path == "/api/actors":
@@ -679,6 +687,14 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                 self.state.check_ttls_locked()
 
                 try:
+                    if (
+                        not target_name
+                        or not isinstance(target_name, str)
+                        or not target_name.strip()
+                    ):
+                        raise ValueError(
+                            "Actor spec must specify 'class_name' or 'fn_name'."
+                        )
                     has_explicit_ttl = "ttl_seconds" in body
                     ttl_seconds = _validate_ttl_seconds(
                         body["ttl_seconds"] if has_explicit_ttl else 1800.0
@@ -697,9 +713,9 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         default_cpus=0 if kind == "function" else 1,
                     )
                     max_concurrency = (
-                        int(body["max_concurrency"])
+                        _validate_max_concurrency(body["max_concurrency"])
                         if body.get("max_concurrency") is not None
-                        else 10
+                        else 1
                     )
                     spec_hash = _compute_spec_hash(
                         body,
@@ -708,7 +724,20 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                         num_cpus,
                         max_concurrency,
                     )
+                except (ValueError, TypeError) as exc:
+                    self._send_json(
+                        400,
+                        {
+                            "ok": False,
+                            "error": {
+                                "exc_type": type(exc).__name__,
+                                "exc_message": str(exc),
+                            },
+                        },
+                    )
+                    return
 
+                try:
                     if name in self.state.actors:
                         if get_if_exists is False:
                             raise ValueError(
@@ -1167,7 +1196,7 @@ col0
         exec(compile(source.replace("import ray", "pass"), "<src>", "exec"), namespace)
         self.assertEqual(namespace[fn_name](None), expected)
 
-    def test_deterministic_working_dir_zip_and_build_driver_package(self):
+    def test_deterministic_working_dir_zip(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "keep.py").write_text("X = 1\n", encoding="utf-8")
@@ -1197,16 +1226,6 @@ col0
                     (zf.getinfo("keep.py").external_attr >> 16) & 0o777, 0o644
                 )
                 self.assertEqual(zf.getinfo("run.sh").create_system, 3)
-
-            drv_bytes, drv_uri, target_name, _, captured = build_driver_package(
-                top_level_fn, working_dir=root, excludes=["*.log", "data/big.bin"]
-            )
-            self.assertTrue(drv_uri.startswith("gcs://_ray_pkg_"))
-            self.assertEqual(target_name, "top_level_fn")
-            self.assertEqual(captured, {"GLOBAL_SCALE": 42})
-            with zipfile.ZipFile(io.BytesIO(drv_bytes)) as zf:
-                self.assertIn("_ray_client_user_fn.py", zf.namelist())
-                self.assertIn("keep.py", zf.namelist())
 
     def test_generator_allowance_shadowed_defaults_and_conditional_globals(self):
         def gen_fn():
@@ -1391,7 +1410,20 @@ col0
                 self.assertEqual(set(zf.namelist()), {"small.py"})
 
     def test_auth_headers_and_address_resolution(self):
-        self.assertIs(RayClient, RayCluster)
+        for removed_alias in (
+            "RayClient",
+            "ActorProxy",
+            "RayTimeoutError",
+            "RayExecutionError",
+        ):
+            self.assertFalse(hasattr(ray_client, removed_alias))
+        for bad_addr in ("   ", "http://", "https://", "http:///api"):
+            with self.assertRaises(RayClientError):
+                RayCluster(address=bad_addr)
+        for bad_timeout in (None, 0, -1.0, float("nan"), float("inf"), True):
+            with self.assertRaises((ValueError, TypeError)):
+                RayCluster(timeout=bad_timeout)  # type: ignore[arg-type]
+
         env_overrides = {
             "RAY_AUTH_TOKEN": "env_secret_token",
             "RAY_ADDRESS": "10.0.0.5:8265",
@@ -1720,6 +1752,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         a1 = cluster.actor(Accumulator, 10, name="acc_a", ttl_seconds=60.0)
         self.assertIsNotNone(self.state.last_created_actor_spec)
         self.assertEqual(self.state.last_created_actor_spec["num_cpus"], 1)
+        self.assertEqual(self.state.last_created_actor_spec["max_concurrency"], 1)
         self.assertIsNone(self.state.last_created_actor_spec.get("ephemeral"))
         a2 = cluster.actor(Accumulator, 100, name="acc_b", ttl_seconds=60.0)
         self.assertIsInstance(a1, ActorHandle)
@@ -1842,7 +1875,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             assert hints["d"] is datetime.date
             return osp.join("a", "b")
 
-        fn_name, mod_src, captured = packaging.extract_function(annotated_fn)
+        fn_name, mod_src, captured = extract_function_source_and_globals(annotated_fn)
         self.assertEqual(captured, {})
         self.assertIn("from os import path as osp", mod_src)
         self.assertIn("import datetime", mod_src)
@@ -1879,7 +1912,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             }
             exec(compile(cell_source, cell_filename, "exec"), cell_ns)
             nb_cls = cell_ns["NotebookTrainer"]
-            cls_name, cls_src, cls_captured = packaging.extract_class(nb_cls)
+            cls_name, cls_src, cls_captured = extract_class_source_and_globals(nb_cls)
             self.assertEqual(cls_name, "NotebookTrainer")
             self.assertEqual(cls_captured, {"GLOBAL_SCALE": 42})
             loaded_cls = _load_user_target(
@@ -1994,7 +2027,14 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
                 ray = types.SimpleNamespace(remote=_fake_ray_remote)  # type: ignore[assignment]
 
-            @ray.remote(num_cpus=2, num_gpus=1, max_concurrency=4)
+            @ray.remote(
+                num_cpus=2,
+                num_gpus=1,
+                max_concurrency=4,
+                runtime_env={
+                    "env_vars": {"FAKE_HEADER": "class DecoratedActor:\n@ray.remote"}
+                },
+            )
             class DecoratedActor:
                 def ping(self) -> str:
                     return "pong"
@@ -2775,6 +2815,14 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 yield {"i": 1}
                 yield {"i": 2}
 
+            with self.state.lock:
+                self.state.delete_actor_calls = 0
+            self.assertEqual(
+                list(cluster.run(stream_three)),
+                [{"i": 0}, {"i": 1}, {"i": 2}],
+            )
+            self.assertEqual(self.state.delete_actor_calls, 0)
+
             gen = cluster.run(stream_three)
             self.assertEqual(next(gen), {"i": 0})
             gen.close()
@@ -2847,7 +2895,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     "ray_client.client.time.monotonic",
                     side_effect=[0.0, 0.0, 10.0, 10.0],
                 ):
-                    with self.assertRaises(RayTimeoutError):
+                    with self.assertRaises(RayJobTimeoutError):
                         trickle_cluster.actor(SimpleSvc, name="slow_act", timeout=0.1)
             finally:
                 trickle_srv.shutdown()
@@ -2980,10 +3028,11 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             user_child_handle = _FakeRootHandle(
                 mode="ready", cls_desc="user_mod.UserChildActor"
             )
+            user_child_alive = [True]
             creating_ready_handle = _FakeRootHandle(mode="ready")
 
             def _fake_ray_get_actor(name: str, namespace: Optional[str] = None) -> Any:
-                if name == "user_detached_child":
+                if name == "user_detached_child" and user_child_alive[0]:
                     return user_child_handle
                 if name == "in_progress_actor":
                     return creating_ready_handle
@@ -3003,9 +3052,94 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             ) as mock_rt:
                 mock_rt.return_value.get_node_id.return_value = "node_head"
 
-                # Bug 5: _lookup_actor ignores non-_ClientRootActor handles in ray_client namespace
+                # Bug 5: _lookup_actor, kill_actor, and create_actor(get_if_exists=True/"recreate")
+                # ignore non-_ClientRootActor handles in ray_client namespace while alive,
+                # and allow recreate once the non-root actor is killed externally or replaced.
                 looked_up = await mgr._lookup_actor("user_detached_child")
                 self.assertIsNone(looked_up)
+                self.assertFalse(
+                    await mgr._terminate_actor_for_recreate(
+                        "user_detached_child", "ray_client"
+                    )
+                )
+                self.assertIsNone(await mgr.kill_actor("user_detached_child"))
+                for gie_mode in (True, "recreate"):
+                    collision_res = await mgr.create_actor(
+                        {
+                            "name": "user_detached_child",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "get_if_exists": gie_mode,
+                        }
+                    )
+                    self.assertFalse(collision_res["ok"])
+                    self.assertEqual(collision_res["error"]["exc_type"], "ValueError")
+                    self.assertIn(
+                        "non-ray_client actor", collision_res["error"]["exc_message"]
+                    )
+                self.assertEqual(len(killed_handles), 0)
+
+                user_child_alive[0] = False
+                current_mode[0] = "ready"
+                recreate_after_external_kill = await mgr.create_actor(
+                    {
+                        "name": "user_detached_child",
+                        "kind": "class",
+                        "class_name": "MyService",
+                        "module_source": "class MyService:\n    pass\n",
+                        "get_if_exists": "recreate",
+                    }
+                )
+                self.assertTrue(recreate_after_external_kill["ok"])
+                self.assertTrue(recreate_after_external_kill["created"])
+                self.assertNotIn("user_detached_child", mgr._non_root_names)
+                await mgr.kill_actor("user_detached_child")
+                killed_handles.clear()
+
+                # If a name in _non_root_names is now occupied by a broken _ClientRootActor,
+                # _lookup_actor and _terminate_actor_for_recreate discard it from _non_root_names.
+                mgr._non_root_names.add("user_detached_child")
+                broken_root_handle = _FakeRootHandle(mode="init_error")
+                with patch(
+                    "ray.dashboard.modules.job.actor_manager.ray.get_actor",
+                    side_effect=lambda n, namespace=None: (
+                        broken_root_handle
+                        if n == "user_detached_child" and not killed_handles
+                        else (_ for _ in ()).throw(ValueError(n))
+                    ),
+                ):
+                    recreate_broken_root = await mgr.create_actor(
+                        {
+                            "name": "user_detached_child",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                            "get_if_exists": "recreate",
+                        }
+                    )
+                self.assertTrue(recreate_broken_root["ok"])
+                self.assertNotIn("user_detached_child", mgr._non_root_names)
+                await mgr.kill_actor("user_detached_child")
+                killed_handles.clear()
+
+                mgr._non_root_names.add("dead_non_root")
+                with patch(
+                    "ray.dashboard.modules.job.actor_manager.ray.util.list_named_actors",
+                    return_value=[],
+                ):
+                    await mgr.list_actors()
+                self.assertNotIn("dead_non_root", mgr._non_root_names)
+                for bad_spec in (
+                    {"class_name": "A", "kind": "bogus"},
+                    {"class_name": "A", "args": "not_a_list"},
+                    {"class_name": "A", "kwargs": [1]},
+                    {"class_name": "A", "runtime_env": "not_a_dict"},
+                    {"class_name": "A", "captured_globals": [1]},
+                ):
+                    with self.assertRaises(ValueError):
+                        mgr.validate_actor_spec(bad_spec)
+                current_mode[0] = "hang"
 
                 # Finding 1.7: _lookup_actor returns None while actor is in _creating_handles
                 mgr._creating_handles["in_progress_actor"] = creating_ready_handle
@@ -3101,8 +3235,8 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 self.assertNotIn("recreate_cancel_act", mgr._actors)
                 killed_handles.clear()
 
-                # Bug 1c: kill_actor(name) and concurrent create_actor(name, timeout=...)
-                # while create_actor is awaiting get_info do NOT deadlock on name_lock
+                # Bug 1c: kill_actor(name), concurrent create_actor(name, timeout=...), and
+                # cancelled waiter while create_actor is awaiting get_info do NOT deadlock or leak name_lock
                 stuck_task = asyncio.create_task(
                     mgr.create_actor(
                         {
@@ -3114,6 +3248,20 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     )
                 )
                 await asyncio.sleep(0.02)
+                cancelled_waiter = asyncio.create_task(
+                    mgr.create_actor(
+                        {
+                            "name": "stuck_actor",
+                            "kind": "class",
+                            "class_name": "MyService",
+                            "module_source": "class MyService:\n    pass\n",
+                        }
+                    )
+                )
+                await asyncio.sleep(0.01)
+                cancelled_waiter.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await cancelled_waiter
                 contended_res = await asyncio.wait_for(
                     mgr.create_actor(
                         {
@@ -3138,6 +3286,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 self.assertFalse(stuck_res["ok"])
                 self.assertNotIn("stuck_actor", mgr._actors)
                 self.assertNotIn("stuck_actor", mgr._name_locks)
+                self.assertNotIn("stuck_actor", mgr._name_lock_waiters)
 
                 # Item 1 & Item 2: verify detached vs non-detached options and task name options
                 current_mode[0] = "ready"
@@ -3163,6 +3312,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 )
                 self.assertTrue(res_cls["ok"])
                 self.assertEqual(recorded_actor_options[-1].get("lifetime"), "detached")
+                self.assertEqual(recorded_actor_options[-1].get("max_concurrency"), 1)
 
                 await mgr.call_actor_method("svc_1", "compute", {"args": [1]})
                 await mgr.call_actor_method("svc_1", "__call__", {"args": [1]})
@@ -3251,7 +3401,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     "class",
                     "MyService",
                     2,
-                    10,
+                    1,
                 )
                 self.assertEqual(res_unified["spec_hash"], hash_explicit)
 
@@ -3269,7 +3419,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 self.assertFalse(res_conflict["ok"])
                 self.assertEqual(res_conflict["error"]["exc_type"], "ValueError")
 
-                # Item 4: node_id placement on Ray 2.x (label_selector) vs RAY_BACKEND=rust (node_id)
+                # Item 4: node_id placement via label_selector
                 recorded_actor_options.clear()
                 res_node_v2 = await mgr.create_actor(
                     {
@@ -3286,22 +3436,6 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     opts_node_v2.get("label_selector"),
                     {"ray.io/node-id": "node_abc123"},
                 )
-
-                with patch.dict(os.environ, {"RAY_BACKEND": "rust"}):
-                    res_node_rust = await mgr.create_actor(
-                        {
-                            "name": "svc_node_rust",
-                            "kind": "class",
-                            "class_name": "MyService",
-                            "module_source": "class MyService:\n    pass\n",
-                            "node_id": "node_abc123",
-                        }
-                    )
-                self.assertTrue(res_node_rust["ok"])
-                self.assertEqual(
-                    recorded_actor_options[-1].get("node_id"), "node_abc123"
-                )
-                self.assertEqual(res_node_v2["spec_hash"], res_node_rust["spec_hash"])
 
                 # Conflicting node_id and label_selector returns ValueError
                 res_node_conflict = await mgr.create_actor(
@@ -3353,32 +3487,53 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
                     nodes_all = mgr.list_nodes()
                     self.assertEqual(len(nodes_all), 2)
+                    self.assertNotIn("node_id", nodes_all[0])
+                    self.assertNotIn("node_group", nodes_all[0])
+                    self.assertNotIn("status", nodes_all[0])
                     nodes_gpu = mgr.list_nodes(node_group="gpu-pool")
                     self.assertEqual([n["id"] for n in nodes_gpu], ["n_worker"])
                     self.assertEqual(mgr.get_node("n_worker")["ip_address"], "10.0.0.5")
                     with self.assertRaises(KeyError):
                         mgr.get_node("missing_node")
-                    with self.assertRaises(ValueError):
+                    from ray.dashboard.modules.job.job_agent import _cluster_response
+
+                    with self.assertRaises(MaxNodesExceededError):
                         mgr.add_nodes("head", 1)
+                    with self.assertRaises(NotImplementedError):
+                        mgr.add_nodes("gpu-pool", 1)
+                    self.assertEqual(
+                        _cluster_response(mgr.add_nodes, "gpu-pool", 1).status, 501
+                    )
                     with self.assertRaises(ValueError):
-                        mgr.destroy_node("n_head")
-                    destroyed = mgr.destroy_node("n_worker", "scale down")
-                    self.assertTrue(destroyed["destroyed"])
+                        mgr.destroy_node("n_head", "try head")
+                    with self.assertRaises(ValueError):
+                        mgr.destroy_node("n_worker", "")
+                    with self.assertRaises(NotImplementedError):
+                        mgr.destroy_node("n_worker", "scale down")
+                    self.assertEqual(
+                        _cluster_response(
+                            mgr.destroy_node, "n_worker", "scale down"
+                        ).status,
+                        501,
+                    )
+                    with self.assertRaises(ValueError):
+                        mgr.list_nodes(state="INVALID_STATE")
 
                 recorded_destroys: List[Tuple[str, str, Optional[float]]] = []
                 ready_waits: List[Optional[float]] = []
 
                 class _FakeNodeObj:
-                    def __init__(self, nid: str, group_name: str):
+                    def __init__(self, nid: str, group_name: str, state: str = "ALIVE"):
                         self.id = nid
                         self.group_name = group_name
                         self.resources = {"CPU": 8.0}
                         self.labels = {"ray.io/node-group": group_name}
                         self.detached = True
+                        self._state = state
 
                     def status(self):
                         return types.SimpleNamespace(
-                            state=types.SimpleNamespace(value="ALIVE"),
+                            state=types.SimpleNamespace(value=self._state),
                             death_reason=None,
                             termination_deadline=None,
                         )
@@ -3399,8 +3554,21 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                         grace_period_s: Optional[float] = None,
                     ):
                         recorded_destroys.append((self.id, reason, grace_period_s))
+                        self._state = (
+                            "TERMINATING_SOON"
+                            if (
+                                self._state != "PENDING"
+                                and grace_period_s is not None
+                                and grace_period_s > 0
+                            )
+                            else "DEAD"
+                        )
 
-                fake_node_n1 = _FakeNodeObj("n1", "workers")
+                fake_node_head = _FakeNodeObj("n_head", "head", state="ALIVE")
+                fake_node_n1 = _FakeNodeObj("n1", "workers", state="ALIVE")
+                fake_node_pending = _FakeNodeObj(
+                    "n_pending", "workers", state="PENDING"
+                )
 
                 class _FakeNodeGroupObj:
                     def __init__(self, name: str, max_nodes: int = 10):
@@ -3427,14 +3595,22 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     return fake_groups[g_name]
 
                 def _get_node(nid: str):
+                    if nid == "n_head":
+                        return fake_node_head
                     if nid == "n1":
                         return fake_node_n1
+                    if nid == "n_pending":
+                        return fake_node_pending
                     raise KeyError(nid)
 
                 fake_cluster_mod = types.SimpleNamespace(
                     list_node_groups=lambda: list(fake_groups.values()),
                     get_node_group=_get_ng,
-                    list_nodes=lambda: [fake_node_n1],
+                    list_nodes=lambda: [
+                        fake_node_head,
+                        fake_node_n1,
+                        fake_node_pending,
+                    ],
                     get_node=_get_node,
                 )
                 with patch(
@@ -3450,6 +3626,41 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                         mgr.get_node_group("head")["name"],
                         "head",
                     )
+                    from ray.dashboard.modules.job.actor_manager import (
+                        MaxNodesExceededError as _AMMaxNodesExceededError,
+                    )
+                    from ray.dashboard.modules.job.job_agent import _cluster_response
+
+                    with self.assertRaises(_AMMaxNodesExceededError):
+                        mgr.add_nodes("head", 1)
+                    with self.assertRaises(_AMMaxNodesExceededError):
+                        mgr.add_nodes("workers", 9)
+
+                    # Verify JobAgent _cluster_response HTTP status mappings (400, 404, 408, 409, 501)
+                    self.assertEqual(
+                        _cluster_response(mgr.add_nodes, "workers", 0).status, 400
+                    )
+                    self.assertEqual(
+                        _cluster_response(
+                            mgr.add_nodes, "workers", 1, wait_ready="false"
+                        ).status,
+                        400,
+                    )
+                    self.assertEqual(
+                        _cluster_response(mgr.get_node_group, "missing").status, 404
+                    )
+                    self.assertEqual(
+                        _cluster_response(
+                            mgr.add_nodes, "workers", 1, wait_ready=True, timeout_s=99.0
+                        ).status,
+                        408,
+                    )
+                    self.assertEqual(
+                        _cluster_response(mgr.add_nodes, "head", 1).status, 409
+                    )
+                    recorded_destroys.clear()
+                    ready_waits.clear()
+
                     added_res = mgr.add_nodes(
                         "workers", 2, wait_ready=True, timeout_s=3.0
                     )
@@ -3461,17 +3672,22 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     self.assertTrue(destroyed_n1["destroyed"])
                     self.assertEqual(destroyed_n1["state"], "TERMINATING_SOON")
                     self.assertEqual(recorded_destroys, [("n1", "drain test", 15.0)])
+                    destroyed_pending = mgr.destroy_node(
+                        "n_pending", "cancel pending", grace_period_s=15.0
+                    )
+                    self.assertTrue(destroyed_pending["destroyed"])
+                    self.assertEqual(destroyed_pending["state"], "DEAD")
                     with self.assertRaises(TimeoutError):
                         mgr.add_nodes("workers", 2, wait_ready=True, timeout_s=99.0)
                     # Both newly created nodes must be cleaned up on wait_ready failure
                     self.assertEqual(
-                        [d[0] for d in recorded_destroys[1:]],
+                        [d[0] for d in recorded_destroys[2:]],
                         ["n_added_0", "n_added_1"],
                     )
                     with self.assertRaises(ValueError):
                         mgr.add_nodes("workers", 0)
                     with self.assertRaises(KeyError):
-                        mgr.destroy_node("missing")
+                        mgr.destroy_node("missing", "cleanup")
 
             if mgr._reaper_task is not None:
                 mgr._reaper_task.cancel()
@@ -3701,7 +3917,23 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     with self.assertRaisesRegex(RayClientError, "Expected SSE stream"):
                         pinned_act.stream("non_stream", 7)
 
-            # Validation errors for invalid or conflicting node_id
+                # If SSE stream closes prematurely without {"ok": true, "done": true}, raise RayClientError
+                truncated_sse_resp = types.SimpleNamespace(
+                    status_code=200,
+                    headers={"Content-Type": "text/event-stream; charset=utf-8"},
+                    iter_lines=lambda: iter([b'data: {"ok": true, "item": 100}']),
+                    close=lambda: None,
+                )
+                with patch.object(cluster, "request", return_value=truncated_sse_resp):
+                    s_iter = pinned_act.stream("gen_items", 2)
+                    self.assertEqual(next(s_iter), 100)
+                    with self.assertRaisesRegex(
+                        RayClientError,
+                        "closed prematurely before receiving completion frame",
+                    ):
+                        next(s_iter)
+
+            # Validation errors for invalid or conflicting node_id, max_concurrency, timeout, label_selector
             with self.assertRaisesRegex(ValueError, "Cannot specify both 'node_id'"):
                 cluster.run(get_val, 1, node_id="node_head", label_selector={"a": "b"})
             with self.assertRaisesRegex(ValueError, "Cannot specify both 'node_id'"):
@@ -3710,6 +3942,14 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 )
             with self.assertRaisesRegex(ValueError, "node_id must be a non-empty"):
                 cluster.run(get_val, 1, node_id="")
+            for bad_mc in (0, -1, True, 1.5):
+                with self.assertRaisesRegex(ValueError, "max_concurrency"):
+                    cluster.actor(StreamService, max_concurrency=bad_mc)  # type: ignore[arg-type]
+            for bad_timeout in (0, -1.0, float("nan"), float("inf"), True):
+                with self.assertRaisesRegex(ValueError, "timeout"):
+                    cluster.run(get_val, 1, timeout=bad_timeout)  # type: ignore[arg-type]
+            with self.assertRaisesRegex(ValueError, "entrypoint_label_selector"):
+                cluster.submit_job("python -V", entrypoint_label_selector={"": "v"})
 
             # 3. Cluster node management APIs on RayCluster
             groups = cluster.list_node_groups()
@@ -3717,32 +3957,46 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
             gpu_group = cluster.get_node_group("gpu-workers")
             self.assertEqual(gpu_group["name"], "gpu-workers")
-            self.assertEqual(gpu_group["count"], 1)
+            self.assertEqual(gpu_group["max_nodes"], 10)
 
             all_nodes = cluster.list_nodes()
             self.assertEqual(len(all_nodes), 2)
-            gpu_nodes = cluster.list_nodes(node_group="gpu-workers")
-            self.assertEqual([n["node_id"] for n in gpu_nodes], ["node_worker_1"])
+            gpu_nodes = cluster.list_nodes(group_name="gpu-workers")
+            self.assertEqual([n["id"] for n in gpu_nodes], ["node_worker_1"])
 
             n_info = cluster.get_node("node_worker_1")
-            self.assertEqual(n_info["node_ip"], "10.0.0.2")
+            self.assertEqual(n_info["ip_address"], "10.0.0.2")
 
-            added = cluster.add_nodes("gpu-workers", 2, wait_ready=True, timeout_s=5.0)
+            added = cluster.add_nodes("gpu-workers", 2, wait_ready=True, timeout=5.0)
             self.assertEqual(len(added), 2)
-            self.assertEqual(len(cluster.list_nodes(node_group="gpu-workers")), 3)
+            self.assertEqual(len(cluster.list_nodes(group_name="gpu-workers")), 3)
 
             with self.assertRaises(ValueError):
                 cluster.add_nodes("gpu-workers", -1)
             with self.assertRaises(ValueError):
+                cluster.add_nodes("gpu-workers", 1, wait_ready="false")  # type: ignore[arg-type]
+            with self.assertRaises(ValueError):
                 cluster.add_nodes("", 1)
             with self.assertRaises(ValueError):
                 cluster.get_node("")
+            with self.assertRaises(ValueError):
+                cluster.list_nodes(states="INVALID_STATE")
+            with self.assertRaises(ValueError):
+                cluster.list_nodes(include_dead="yes")  # type: ignore[arg-type]
+            with self.assertRaises(ValueError):
+                cluster.destroy_node(added[0]["id"], "")
 
-            destroyed_res = cluster.destroy_node(added[0]["node_id"], "scale down")
+            destroyed_res = cluster.destroy_node(added[0]["id"], "scale down")
             self.assertTrue(destroyed_res["destroyed"])
-            self.assertEqual(len(cluster.list_nodes(node_group="gpu-workers")), 2)
+            self.assertEqual(len(cluster.list_nodes(group_name="gpu-workers")), 2)
+            self.assertEqual(
+                len(cluster.list_nodes(group_name="gpu-workers", include_dead=True)), 3
+            )
+            self.assertEqual(
+                len(cluster.list_nodes(group_name="gpu-workers", states="DEAD")), 1
+            )
             with self.assertRaises(RayClientError):
-                cluster.destroy_node("nonexistent_node_id")
+                cluster.destroy_node("nonexistent_node_id", "cleanup")
 
 
 if __name__ == "__main__":

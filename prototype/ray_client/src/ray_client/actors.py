@@ -232,6 +232,3 @@ class _ActorMethodProxy:
         return self._actor.stream(
             self._method, *args, kwargs=merged_kwargs or None, timeout=timeout
         )
-
-
-ActorProxy = ActorHandle

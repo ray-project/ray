@@ -20,6 +20,7 @@ from typing import Callable, Iterator, List, Optional
 from ray_client import (
     ActorHandle,
     JobResult,
+    RayClientError,
     RayCluster,
     RayJobExecutionError,
     RayJobTimeoutError,
@@ -465,6 +466,7 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             Trainer,
             kwargs={"lr": 1e-3, "tag": "v1"},
             name="live_trainer",
+            max_concurrency=2,
             ttl_seconds=60.0,
             get_if_exists="recreate",
         )
@@ -486,6 +488,7 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                     Trainer,
                     kwargs={"lr": 1e-3, "tag": "v1"},
                     name="live_trainer",
+                    max_concurrency=2,
                     ttl_seconds=60.0,
                     get_if_exists=True,
                 )
@@ -498,6 +501,7 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                     Trainer,
                     kwargs={"lr": 5e-4, "tag": "v2"},
                     name="live_trainer",
+                    max_concurrency=2,
                     ttl_seconds=60.0,
                     get_if_exists=True,
                 )
@@ -512,6 +516,7 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 Trainer,
                 kwargs={"lr": 1e-3, "tag": "v2"},
                 name="live_trainer",
+                max_concurrency=2,
                 ttl_seconds=60.0,
                 get_if_exists="recreate",
             )
@@ -524,6 +529,7 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 Trainer,
                 kwargs={"lr": 1e-3, "tag": "v2"},
                 name="live_trainer",
+                max_concurrency=2,
                 ttl_seconds=60.0,
                 get_if_exists="recreate",
             )
@@ -597,7 +603,9 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         self.assertIn("closed:ctx_scoped_1", recorder.get_events())
         self.assertIn("closed:ctx_scoped_2", recorder.get_events())
 
-        # 7. Concurrent get_if_exists="recreate" calls and replacing an external detached actor
+        # 7. User detached actors in "ray_client" namespace are protected from
+        #    list_actors(), get_actor(), kill_actor(), and get_if_exists="recreate",
+        #    while concurrent get_if_exists="recreate" calls on a _ClientRootActor converge cleanly.
         def spawn_external_detached_actor(name: str) -> str:
             import ray
 
@@ -610,11 +618,52 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             assert ray.get(act.ping.remote()) == "external"
             return name
 
-        self.cluster.run(spawn_external_detached_actor, "recreate_race_target")
-        # User detached child actor in "ray_client" namespace is ignored by list_actors() / get_actor()
-        self.assertNotIn(
-            "recreate_race_target", [a["name"] for a in self.cluster.list_actors()]
+        def verify_and_cleanup_external_detached_actor(name: str) -> str:
+            import ray
+
+            act = ray.get_actor(name, namespace="ray_client")
+            res = ray.get(act.ping.remote())
+            ray.kill(act, no_restart=True)
+            return res
+
+        self.cluster.run(spawn_external_detached_actor, "external_user_actor")
+        try:
+            # User detached child actor in "ray_client" namespace is ignored by list_actors() / get_actor() / kill_actor()
+            self.assertNotIn(
+                "external_user_actor", [a["name"] for a in self.cluster.list_actors()]
+            )
+            with self.assertRaises(RayClientError):
+                self.cluster.get_actor("external_user_actor")
+            self.assertFalse(self.cluster.kill_actor("external_user_actor"))
+            # get_if_exists="recreate" must refuse to overwrite/kill the non-root detached actor
+            with self.assertRaises(RayJobExecutionError):
+                self.cluster.actor(
+                    Trainer,
+                    kwargs={"lr": 1e-3, "tag": "should_not_replace"},
+                    name="external_user_actor",
+                    get_if_exists="recreate",
+                )
+            self.assertEqual(
+                self.cluster.run(
+                    verify_and_cleanup_external_detached_actor, "external_user_actor"
+                ),
+                "external",
+            )
+        finally:
+            try:
+                self.cluster.run(
+                    verify_and_cleanup_external_detached_actor, "external_user_actor"
+                )
+            except Exception:
+                pass
+
+        seed_actor = self.cluster.actor(
+            Trainer,
+            kwargs={"lr": 5e-4, "tag": "seed"},
+            name="recreate_race_target",
+            get_if_exists="recreate",
         )
+        self.assertEqual(seed_actor.get_state()["tag"], "seed")
         with ThreadPoolExecutor(max_workers=2) as pool:
             f1 = pool.submit(
                 self.cluster.actor,
@@ -962,8 +1011,12 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         #     and node_id placement on run() and actor()
         nodes = self.cluster.list_nodes()
         self.assertGreaterEqual(len(nodes), 1)
-        head_node_id = nodes[0]["node_id"]
-        self.assertEqual(self.cluster.get_node(head_node_id)["node_id"], head_node_id)
+        self.assertNotIn("node_id", nodes[0])
+        self.assertNotIn("node_group", nodes[0])
+        self.assertNotIn("status", nodes[0])
+        self.assertNotIn("idle_timeout_s", nodes[0])
+        head_node_id = nodes[0]["id"]
+        self.assertEqual(self.cluster.get_node(head_node_id)["id"], head_node_id)
 
         groups = self.cluster.list_node_groups()
         self.assertGreaterEqual(len(groups), 1)
@@ -971,6 +1024,36 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         self.assertEqual(
             self.cluster.get_node_group(first_group_name)["name"], first_group_name
         )
+
+        if getattr(ray, "cluster", None) is None:
+            with self.assertRaisesRegex(RayClientError, "501"):
+                self.cluster.add_nodes("default", count=1)
+        with self.assertRaisesRegex(RayClientError, "400"):
+            self.cluster.destroy_node(head_node_id, reason="live_test")
+        with self.assertRaises(ValueError):
+            self.cluster.destroy_node(head_node_id, reason="")
+
+        bad_actor_resp = self.cluster.request(
+            "POST",
+            "/api/actors",
+            json_data={
+                "module_source": "class A:\n    pass\n",
+                "class_name": "A",
+                "max_concurrency": 0,
+            },
+            timeout=5.0,
+        )
+        self.assertEqual(bad_actor_resp.status_code, 400)
+        self.assertIn("max_concurrency", bad_actor_resp.json()["error"]["exc_message"])
+
+        bad_nodes_resp = self.cluster.request(
+            "GET", "/api/cluster/nodes?state=BOGUS", timeout=5.0
+        )
+        self.assertEqual(bad_nodes_resp.status_code, 400)
+        bad_dead_resp = self.cluster.request(
+            "GET", "/api/cluster/nodes?include_dead=maybe", timeout=5.0
+        )
+        self.assertEqual(bad_dead_resp.status_code, 400)
 
         def get_current_node_id() -> str:
             import ray

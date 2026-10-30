@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ray-client"
 version = "0.1.0"
-description = "Lightweight, zero-ray-dependency HTTP client for running functions as drivers on a Ray cluster."
+description = "HTTP client for submitting CLI jobs, driver functions, stateful actors, and node group operations on a Ray cluster."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"  # ast.unparse (client side); the cluster runner uses Ray's interpreter
