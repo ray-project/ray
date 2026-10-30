@@ -436,17 +436,33 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
             if array.num_chunks > 1:
                 # TODO(Clark): Remove concat and construct from list with
                 # shape.
-                # iterchunks() yields pa.Array (not pa.ChunkedArray), so
-                # to_numpy() defaults to zero_copy_only=True and raises if a copy
-                # is needed (e.g. nulls). pa.ChunkedArray.to_numpy() defaults to
-                # False because non-contiguous chunks always require a copy.
-                # https://arrow.apache.org/docs/python/generated/pyarrow.Array.html#pyarrow.Array.to_numpy
-                values = np.concatenate(
-                    [
-                        chunk.to_numpy(zero_copy_only=False)
-                        for chunk in array.iterchunks()
+                # Empty chunks add no rows, but would stop the chunks below from
+                # sharing one row shape.
+                chunks = [chunk for chunk in array.iterchunks() if len(chunk) > 0]
+                chunks = chunks or [array.chunk(0)]
+                values = [tensor_array_to_numpy(chunk) for chunk in chunks]
+                if len({chunk_values.shape[1:] for chunk_values in values}) > 1 or any(
+                    chunk_values.dtype == object for chunk_values in values
+                ):
+                    # A chunk that took the dense fast path can only be joined
+                    # with dense chunks of the same row shape. Next to a ragged
+                    # chunk, or a dense chunk of another row shape, convert it
+                    # back to one ndarray per row. Comparing row shapes alone
+                    # isn't enough: with 0-d rows a dense chunk and a per-row
+                    # chunk are both 1-d.
+                    # iterchunks() yields pa.Array (not pa.ChunkedArray), so
+                    # to_numpy() defaults to zero_copy_only=True and raises if a
+                    # copy is needed (e.g. nulls).
+                    # https://arrow.apache.org/docs/python/generated/pyarrow.Array.html#pyarrow.Array.to_numpy
+                    values = [
+                        chunk_values
+                        if chunk_values.dtype == object
+                        else chunk.to_numpy(zero_copy_only=False)
+                        for chunk, chunk_values in zip(chunks, values)
                     ]
-                )
+                # Chunks live in separate buffers, so joining them copies once,
+                # but into one contiguous array rather than row by row.
+                values = values[0] if len(values) == 1 else np.concatenate(values)
             else:
                 # chunk(0) returns pa.Array with zero_copy_only=True by default
                 values = tensor_array_to_numpy(array.chunk(0))
