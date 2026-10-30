@@ -874,15 +874,19 @@ def process_completed_tasks(
 
         # Apply the escape hatch after aggregating across all policies so it
         # fires regardless of which policy drove the limit to 0.
+        guard_unblocked = False
         if max_bytes_to_read == 0 and output_backpressure_guard.should_unblock(op):
             max_bytes_to_read = 1
             # Confirmed further down, once this op's output is really read.
             guard_released_ops.add(op)
+            guard_unblocked = True
 
         # When the guard bumped the limit above 0, clear the policy attribution too
         in_backpressure = max_bytes_to_read == 0
         op.notify_in_task_output_backpressure(
-            in_backpressure, limiting_policy if in_backpressure else None
+            in_backpressure,
+            limiting_policy if in_backpressure else None,
+            guard_unblocked=guard_unblocked,
         )
 
         if max_bytes_to_read is not None:

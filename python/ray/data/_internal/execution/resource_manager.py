@@ -500,6 +500,53 @@ class ResourceManager:
             else:
                 yield from self.get_downstream_eligible_ops(next_op)
 
+    def downstream_starved(self, op: PhysicalOperator) -> bool:
+        """Whether an eligible downstream of ``op`` has run dry.
+
+        "Run dry" means no running tasks *and* nothing queued: the downstream has
+        nothing to work on. Withholding inputs from ``op`` (or refusing to grow it)
+        must never be what starves the pipeline, so this is the safety valve shared
+        by `ActorPoolDrainPolicy` (release the drain) and by the autoscaler
+        (allow the operator to grow again).
+
+        A downstream that is *itself* being drained is deliberately idle -- it
+        withheld its inputs on purpose -- so it is not counted as starved. Counting
+        it would make two adjacent drains suppress each other: the upstream would
+        read its draining downstream as "dry", refuse to reclaim its own parked
+        actors, and even open its upscale gate while its output is still blocked.
+        """
+        for downstream in self.get_downstream_eligible_ops(op):
+            if downstream.actor_pool_drain_in_progress:
+                continue
+            if (
+                downstream.num_active_tasks() == 0
+                and self._topology[downstream].total_enqueued_input_blocks() == 0
+            ):
+                return True
+        return False
+
+    def downstream_can_absorb(self, op: PhysicalOperator) -> bool:
+        """Whether growing ``op`` can raise the pipeline's throughput.
+
+        Growing an operator whose output is *not being taken* only re-creates the
+        backlog that parked its tasks in the first place: the extra actors produce
+        blocks nobody reads (this is what makes drain/re-grow cycles oscillate).
+        So growth is refused while the operator's output is blocked -- unless an
+        eligible downstream has run dry, in which case the operator is exactly the
+        one that has to produce.
+
+        Note this is deliberately about *this* operator's output, not about the
+        downstream's queue depth: an operator can be blocked on its own output
+        budget while its downstream still has room, and growing it would not help
+        either way.
+        """
+        if self.downstream_starved(op):
+            return True
+        return not (
+            op.in_task_output_backpressure
+            or op.task_output_backpressure_guard_unblocked
+        )
+
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if self._op_resource_allocator is not None:
             return self._op_resource_allocator.max_task_output_bytes_to_read(op)

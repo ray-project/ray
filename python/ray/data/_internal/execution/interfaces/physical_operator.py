@@ -680,6 +680,8 @@ class PhysicalOperator(Operator):
         self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
         self._task_output_backpressure_policy: Optional[str] = None
+        self._task_output_backpressure_guard_unblocked = False
+        self._actor_pool_drain_in_progress = False
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._is_execution_marked_finished = False
@@ -1213,8 +1215,45 @@ class PhysicalOperator(Operator):
             self._in_task_submission_backpressure = in_backpressure
         self._task_submission_backpressure_policy = policy_name
 
+    @property
+    def in_task_output_backpressure(self) -> bool:
+        """Whether this operator is currently backpressured on task output."""
+        return self._in_task_output_backpressure
+
+    @property
+    def task_output_backpressure_guard_unblocked(self) -> bool:
+        """Whether the liveness guard unblocked this operator's output.
+
+        The guard bumps a fully-throttled limit to 1 byte, which clears
+        ``in_task_output_backpressure`` even though the operator is still
+        backpressured. Consumers tracking whether the operator is making progress
+        should treat this as still backpressured -- except when the guard fired
+        because an external consumer was starving for data, which is a state to
+        feed rather than one to hold back.
+        """
+        return self._task_output_backpressure_guard_unblocked
+
+    @property
+    def actor_pool_drain_in_progress(self) -> bool:
+        """Whether new inputs are withheld so this operator's tasks can drain.
+
+        Set by ``ActorPoolDrainPolicy``. Consumed by the actor autoscaler, which
+        may shrink a draining operator's pool even while its tasks are still in
+        flight: those tasks are parked on the output budget, so they keep the
+        pool's utilization high without producing anything.
+        """
+        return self._actor_pool_drain_in_progress
+
+    def notify_actor_pool_drain(self, in_progress: bool) -> None:
+        """Called by ``ActorPoolDrainPolicy`` to flag (or clear) a drain."""
+        self._actor_pool_drain_in_progress = in_progress
+
     def notify_in_task_output_backpressure(
-        self, in_backpressure: bool, policy_name: Optional[str] = None
+        self,
+        in_backpressure: bool,
+        policy_name: Optional[str] = None,
+        *,
+        guard_unblocked: bool = False,
     ) -> None:
         """Called periodically from the executor to update internal output backpressure
         status for stats collection purposes.
@@ -1222,12 +1261,16 @@ class PhysicalOperator(Operator):
         Args:
             in_backpressure: Value this operator's output backpressure should be set to.
             policy_name: Name of the backpressure policy that triggered.
+            guard_unblocked: Whether the liveness guard bumped the limit above 0,
+                so that an `in_backpressure=False` it caused can be told apart
+                from a genuine release.
         """
         # only update on change to in_backpressure
         if self._in_task_output_backpressure != in_backpressure:
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
         self._task_output_backpressure_policy = policy_name
+        self._task_output_backpressure_guard_unblocked = guard_unblocked
 
     @property
     def in_task_output_backpressure(self) -> bool:

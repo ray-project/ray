@@ -11,7 +11,7 @@ from .default_actor_autoscaler import DefaultActorAutoscaler, _get_max_scale_up
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
-    from ray.data.context import AutoscalingConfig
+    from ray.data.context import AutoscalingConfig, DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ def create_actor_autoscaler(
     topology: "Topology",
     resource_manager: "ResourceManager",
     config: "AutoscalingConfig",
+    data_context: "DataContext",
 ) -> ActorAutoscaler:
     actor_autoscaler_version = os.environ.get(
         ACTOR_AUTOSCALER_ENV_KEY, DEFAULT_ACTOR_AUTOSCALER_VERSION
@@ -39,6 +40,7 @@ def create_actor_autoscaler(
             topology,
             resource_manager,
             config=config,
+            data_context=data_context,
         )
 
     elif actor_autoscaler_version == ActorAutoscalerVersion.DEFAULT:
@@ -46,6 +48,7 @@ def create_actor_autoscaler(
             topology,
             resource_manager,
             config=config,
+            data_context=data_context,
         )
 
     else:

@@ -17,7 +17,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.streaming_executor_state import OpState
-from ray.data.context import AutoscalingConfig
+from ray.data.context import AutoscalingConfig, DataContext
 
 
 class MockAutoscalingActorPool(AutoscalingActorPool):
@@ -173,6 +173,7 @@ def _make_autoscaler(
         _inputs_complete=False,
         internal_input_queue_num_blocks=MagicMock(return_value=1),
         metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+        actor_pool_drain_in_progress=False,
     )
     op_state = MagicMock(
         spec=OpState,
@@ -196,6 +197,7 @@ def _make_autoscaler(
             # deltas, which any per-iteration cap would truncate.
             actor_pool_max_upscaling_delta=None,
         ),
+        data_context=DataContext.get_current(),
     )
 
 
@@ -498,6 +500,7 @@ def test_create_actor_autoscaler_selection(monkeypatch, env_value, expected_type
         topology={},
         resource_manager=MagicMock(),
         config=AutoscalingConfig(),
+        data_context=DataContext.get_current(),
     )
     assert type(autoscaler) is expected_type
 
@@ -510,6 +513,7 @@ def test_create_actor_autoscaler_rejects_unknown_version(monkeypatch):
             topology={},
             resource_manager=MagicMock(),
             config=AutoscalingConfig(),
+            data_context=DataContext.get_current(),
         )
 
 

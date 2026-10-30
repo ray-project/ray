@@ -87,6 +87,20 @@ class ActorPoolInfo:
         )
 
 
+def drain_floor(actor_pool: "AutoscalingActorPool") -> int:
+    """Size a drained pool is walked down to.
+
+    Without an adaptive ceiling that is ``min_size``, i.e. the historical
+    behaviour. Once ``ActorPoolDrainPolicy`` has stepped the ceiling down (the
+    operator keeps producing output its downstream cannot read), the ceiling
+    becomes the floor: it is what keeps the pool from being re-grown straight back
+    into the stall on the next scheduling pass.
+    """
+    if actor_pool.dynamic_max_size() is None:
+        return actor_pool.min_size()
+    return actor_pool.effective_max_size()
+
+
 @DeveloperAPI
 class AutoscalingActorPool(ABC):
     """Abstract interface of an autoscaling actor pool.
@@ -101,6 +115,10 @@ class AutoscalingActorPool(ABC):
 
     def __init__(self, config: AutoscalingActorConfig):
         self._config = config
+        # Adaptive ceiling on the pool size, maintained by `ActorPoolDrainPolicy`
+        # (see `set_dynamic_max_size`). ``None`` means "no cap beyond the
+        # configured `max_size`".
+        self._dynamic_max_size: Optional[int] = None
 
     @abstractmethod
     def num_running_actors(self) -> int:
@@ -265,6 +283,34 @@ class AutoscalingActorPool(ABC):
     def max_size(self) -> int:
         """Max size of the actor pool."""
         return self._config.max_size
+
+    def dynamic_max_size(self) -> Optional[int]:
+        """Adaptive ceiling on the pool size, or ``None`` when unset.
+
+        Maintained by `ActorPoolDrainPolicy`: while an operator keeps producing
+        output that its downstream cannot read, its pools are stepped down
+        (multiplicatively) and stepped back up (additively) as the blockage
+        clears. Unlike the configured `max_size`, this ceiling is expected to
+        move at runtime.
+        """
+        return self._dynamic_max_size
+
+    def set_dynamic_max_size(self, size: Optional[int]) -> None:
+        """Set (or clear, with ``None``) the adaptive ceiling of this pool.
+
+        Clamped into ``[min_size, max_size]``.
+        """
+        if size is None:
+            self._dynamic_max_size = None
+            return
+        self._dynamic_max_size = max(self.min_size(), min(self.max_size(), int(size)))
+
+    def effective_max_size(self) -> int:
+        """Ceiling to apply to scaling decisions: ``min(max_size, dynamic cap)``."""
+        cap = self._dynamic_max_size
+        if cap is None:
+            return self.max_size()
+        return max(self.min_size(), min(self.max_size(), cap))
 
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""

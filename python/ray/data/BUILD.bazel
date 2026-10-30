@@ -2323,6 +2323,20 @@ py_test(
 )
 
 py_test(
+    name = "test_actor_pool_drain_policy",
+    size = "small",
+    srcs = ["tests/test_actor_pool_drain_policy.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_backpressure_e2e",
     size = "large",
     srcs = ["tests/test_backpressure_e2e.py"],

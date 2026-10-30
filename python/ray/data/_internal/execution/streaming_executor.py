@@ -351,6 +351,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._topology,
             self._resource_manager,
             config=self._data_context.autoscaling_config,
+            data_context=self._data_context,
         )
         self._no_progress_guard = NoProgressGuard(
             self._topology,

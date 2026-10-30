@@ -1774,6 +1774,131 @@ class TestReservationOpResourceAllocator:
         assert alloc._op_budgets[o2].memory == 0
 
 
+def _resource_manager_with_fake_downstream(
+    *, downstream_active_tasks: int, downstream_queued_blocks: int
+):
+    """A real ``ResourceManager`` over a faked two-op chain.
+
+    The upstream op's output state (and the downstream's queued/active state) can
+    be set directly, which is what ``downstream_starved`` / ``downstream_can_absorb``
+    look at.
+    """
+    upstream = MagicMock(spec=PhysicalOperator)
+    upstream.throttling_disabled = MagicMock(return_value=False)
+    upstream.has_execution_finished = MagicMock(return_value=False)
+    upstream.actor_pool_drain_in_progress = False
+    downstream = MagicMock(spec=PhysicalOperator)
+    downstream.throttling_disabled = MagicMock(return_value=False)
+    downstream.has_execution_finished = MagicMock(return_value=False)
+    downstream.num_active_tasks = MagicMock(return_value=downstream_active_tasks)
+    # `spec=` auto-mocks the property as a truthy MagicMock, which would read as
+    # "draining" and hide the downstream from `downstream_starved`.
+    downstream.actor_pool_drain_in_progress = False
+    downstream.output_dependencies = []
+    upstream.output_dependencies = [downstream]
+
+    topology = {
+        upstream: MagicMock(),
+        downstream: MagicMock(
+            total_enqueued_input_blocks=MagicMock(return_value=downstream_queued_blocks)
+        ),
+    }
+    resource_manager = ResourceManager(
+        topology,
+        ExecutionOptions(),
+        MagicMock(),
+        DataContext.get_current(),
+        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+    )
+    return resource_manager, upstream
+
+
+def test_downstream_starved_when_downstream_has_no_work():
+    resource_manager, upstream = _resource_manager_with_fake_downstream(
+        downstream_active_tasks=0, downstream_queued_blocks=0
+    )
+    assert resource_manager.downstream_starved(upstream)
+    # A starving downstream must always be able to pull more: this operator is the
+    # one that has to produce, even while its own output is parked.
+    upstream.in_task_output_backpressure = True
+    upstream.task_output_backpressure_guard_unblocked = False
+    assert resource_manager.downstream_can_absorb(upstream)
+
+
+def test_downstream_can_absorb_refuses_while_output_is_parked():
+    resource_manager, upstream = _resource_manager_with_fake_downstream(
+        downstream_active_tasks=2, downstream_queued_blocks=5
+    )
+    assert not resource_manager.downstream_starved(upstream)
+
+    upstream.in_task_output_backpressure = True
+    upstream.task_output_backpressure_guard_unblocked = False
+    # Extra actors would only re-create the backlog that parked these tasks.
+    assert not resource_manager.downstream_can_absorb(upstream)
+
+    # Output being taken again: growth is allowed.
+    upstream.in_task_output_backpressure = False
+    assert resource_manager.downstream_can_absorb(upstream)
+
+
+def test_downstream_can_absorb_refuses_while_the_guard_is_unblocked():
+    """The guard lets a byte through exactly because nothing is being read, which
+    is still a state where more actors would not help."""
+    resource_manager, upstream = _resource_manager_with_fake_downstream(
+        downstream_active_tasks=1, downstream_queued_blocks=3
+    )
+    upstream.in_task_output_backpressure = False
+    upstream.task_output_backpressure_guard_unblocked = True
+    assert not resource_manager.downstream_can_absorb(upstream)
+
+
+def test_downstream_can_absorb_for_a_terminal_operator():
+    """A terminal operator has no downstream to starve, so only its own output
+    state decides whether growing it can help."""
+    resource_manager, upstream = _resource_manager_with_fake_downstream(
+        downstream_active_tasks=2, downstream_queued_blocks=5
+    )
+    # Make the faked chain look like a sink: nothing depends on it.
+    upstream.output_dependencies = []
+
+    upstream.in_task_output_backpressure = False
+    upstream.task_output_backpressure_guard_unblocked = False
+    assert resource_manager.downstream_can_absorb(upstream)
+    assert not resource_manager.downstream_starved(upstream)
+
+    upstream.in_task_output_backpressure = True
+    assert not resource_manager.downstream_can_absorb(upstream)
+
+
+def test_a_draining_downstream_is_not_starved():
+    """A downstream that withholds its own inputs is idle on purpose, not starved.
+
+    Counting it as starved makes two adjacent drains suppress each other: the
+    upstream would refuse to reclaim its own parked actors, and even open its
+    upscale gate while its output is still blocked.
+    """
+    resource_manager, upstream = _resource_manager_with_fake_downstream(
+        downstream_active_tasks=2, downstream_queued_blocks=5
+    )
+    downstream = upstream.output_dependencies[0]
+    # The downstream drained: no running tasks, nothing queued -- because it
+    # withheld its inputs, not because nothing is upstream of it.
+    downstream.num_active_tasks = MagicMock(return_value=0)
+    resource_manager._topology[downstream].total_enqueued_input_blocks = MagicMock(
+        return_value=0
+    )
+    assert resource_manager.downstream_starved(upstream)
+
+    # Now mark it as draining: it must stop counting as starved.
+    downstream.actor_pool_drain_in_progress = True
+    assert not resource_manager.downstream_starved(upstream)
+
+    # ... and the upscale gate must stay closed while this op's output is parked.
+    upstream.in_task_output_backpressure = True
+    upstream.task_output_backpressure_guard_unblocked = False
+    assert not resource_manager.downstream_can_absorb(upstream)
+
+
 if __name__ == "__main__":
     import sys
 
