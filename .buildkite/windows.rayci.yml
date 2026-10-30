@@ -73,15 +73,16 @@ steps:
       - block-windows-tests
 
   - label: ":ray: core: :windows: python tests"
+    key: diag-win-spill
     tags:
       - core_python
       - windows
     job_env: WINDOWS
     instance_type: windows
-    parallelism: 5
+    parallelism: 1
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_object_spilling_2_debug_mode core
         --build-name windowsbuild
         --operating-system windows
         --except-tags no_windows
@@ -91,7 +92,6 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
     depends_on:
       - windowsbuild
-      - block-windows-tests
 
   - label: ":ray-serve: serve: :windows: tests"
     tags:

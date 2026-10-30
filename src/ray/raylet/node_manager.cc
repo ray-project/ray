@@ -1877,6 +1877,8 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   auto lease_id = LeaseID::FromBinary(request.lease_spec().lease_id());
+  RAY_LOG(WARNING) << "[diag] HandleRequestWorkerLease " << lease_id << " "
+                   << request.lease_spec().function_descriptor().ShortDebugString();
   // If the lease is already granted, this is a retry and forward the address of the
   // already leased worker to use
   if (leased_workers_.contains(lease_id)) {

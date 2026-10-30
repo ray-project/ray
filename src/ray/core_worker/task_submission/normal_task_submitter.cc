@@ -320,9 +320,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   // Counter for generating unique lease IDs.
   static uint32_t lease_id_counter = 0;
   const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
-  RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
-                 << NodeID::FromBinary(raylet_address->node_id()) << " for "
-                 << function_or_actor_name;
+  RAY_LOG(WARNING) << "[diag] Requesting lease " << lease_id << " from raylet "
+                   << NodeID::FromBinary(raylet_address->node_id()) << " for "
+                   << function_or_actor_name;
 
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
