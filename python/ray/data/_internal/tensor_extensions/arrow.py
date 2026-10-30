@@ -1022,6 +1022,15 @@ class ArrowTensorArray(pa.ExtensionArray):
             A single ndarray representing the entire array of tensors.
         """
 
+        if self.null_count > 0:
+            # Null rows reserve no bytes in the data buffer, so a single dense
+            # view over the whole buffer reads past its end or into another
+            # row's bytes. Fall back to one array per row with None for nulls
+            # (matching take()/take_all() and list columns).
+            return create_ragged_ndarray(
+                [fixed_shape_extension_scalar_to_ndarray(scalar) for scalar in self]
+            )
+
         # Buffers layout: [None, offset_buffer, None, data_buffer]
         buffers = self.buffers()
         data_buffer = buffers[3]
@@ -1413,6 +1422,38 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
         shapes = shapes_array.to_pylist()
         offsets = data_array.offsets.to_pylist()
+
+        if (
+            self.null_count > 0
+            or data_array.null_count > 0
+            or shapes_array.null_count > 0
+        ):
+            # A row is missing if it is null at the struct level or in either
+            # child. Neither child inherits the struct's validity bitmap, so a
+            # struct-level null (common after take()/join) leaves a non-null
+            # shape child, and a child-only null leaves a valid-looking shape
+            # whose offsets address another row's bytes. Checking any single
+            # level silently returns that other row's data.
+            #
+            # A null shape child already reads as None out of `shapes`, so only
+            # the struct and data masks are worth materializing here.
+            nulls = [
+                struct_null or data_null
+                for struct_null, data_null in zip(
+                    self.is_null().to_pylist(),
+                    data_array.is_null().to_pylist(),
+                )
+            ]
+            return create_ragged_ndarray(
+                [
+                    None
+                    if is_null or shape is None
+                    else _to_ndarray_helper(
+                        shape, data_value_type, offset, data_array_buffer
+                    )
+                    for is_null, shape, offset in zip(nulls, shapes, offsets)
+                ]
+            )
 
         return create_ragged_ndarray(
             [
