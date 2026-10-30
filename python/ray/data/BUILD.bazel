@@ -1159,8 +1159,30 @@ py_test(
 
 py_test(
     name = "test_orc",
+    size = "medium",
+    srcs = [
+        "tests/datasource/orc_decode_trace.py",
+        "tests/datasource/test_orc.py",
+    ],
+    main = "tests/datasource/test_orc.py",
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_orc_stripe_reconstruction",
     size = "small",
-    srcs = ["tests/datasource/test_orc.py"],
+    srcs = [
+        "tests/datasource/orc_decode_trace.py",
+        "tests/datasource/test_orc_stripe_reconstruction.py",
+    ],
+    main = "tests/datasource/test_orc_stripe_reconstruction.py",
     tags = [
         "exclusive",
         "team:data",

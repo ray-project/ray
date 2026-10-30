@@ -40,9 +40,12 @@ class FileChunk:
     # one unit, so a partitioner can split the run at exact boundaries.
     unit_sizes: Tuple[int, ...] = ()
     unit_rows: Tuple[int, ...] = ()
+    # Optional physical positions, retained even for a singleton ORC stripe.
+    unit_start_rows: Tuple[int, ...] = ()
+    file_num_units: Optional[int] = None
 
     def __post_init__(self):
-        for name in ("unit_sizes", "unit_rows"):
+        for name in ("unit_sizes", "unit_rows", "unit_start_rows"):
             breakdown = getattr(self, name)
             assert not breakdown or len(breakdown) == len(self.unit_ids), (
                 f"{name} has {len(breakdown)} entries for {len(self.unit_ids)} "
@@ -62,6 +65,16 @@ class FileChunk:
             fully_matched=bool(metadata["fully_matched"]),
             unit_sizes=tuple(metadata["unit_sizes"]),
             unit_rows=tuple(metadata["unit_rows"]),
+            unit_start_rows=(
+                tuple(metadata["unit_start_rows"])
+                if metadata.get("unit_start_rows") is not None
+                else ()
+            ),
+            file_num_units=(
+                int(metadata["file_num_units"])
+                if metadata.get("file_num_units") is not None
+                else None
+            ),
         )
 
 
@@ -69,6 +82,21 @@ class FileChunk:
 PATH_COLUMN_NAME = "__path"
 FILE_SIZE_COLUMN_NAME = "__file_size"
 FILE_CHUNK_METADATA_COLUMN_NAME = "__file_chunk_metadata"
+
+# Explicit nullable types keep whole files, singleton runs and coalesced runs
+# compatible across concat and streaming-generator serialization.
+_CHUNK_TYPE = pa.struct(
+    [
+        pa.field("unit_ids", pa.list_(pa.int64())),
+        pa.field("num_rows", pa.int64()),
+        pa.field("size_bytes", pa.int64()),
+        pa.field("fully_matched", pa.bool_()),
+        pa.field("unit_sizes", pa.list_(pa.int64())),
+        pa.field("unit_rows", pa.list_(pa.int64())),
+        pa.field("unit_start_rows", pa.list_(pa.int64())),
+        pa.field("file_num_units", pa.int64()),
+    ]
+)
 
 
 class FileManifest:
@@ -197,9 +225,11 @@ class FileManifest:
 
         block = pa.table(
             {
-                PATH_COLUMN_NAME: paths,
-                FILE_SIZE_COLUMN_NAME: sizes,
-                FILE_CHUNK_METADATA_COLUMN_NAME: chunk_metadatas,
+                PATH_COLUMN_NAME: pa.array(paths, type=pa.string()),
+                FILE_SIZE_COLUMN_NAME: pa.array(sizes, type=pa.int64()),
+                FILE_CHUNK_METADATA_COLUMN_NAME: pa.array(
+                    chunk_metadatas, type=_CHUNK_TYPE
+                ),
             }
         )
         return cls(block)

@@ -54,6 +54,11 @@ _ALLOWLIST = {
         "ORCFile is used only to inspect schema metadata; materialized batches are "
         "read and gated in OrcFileReader."
     ),
+    "orc_metadata.py": (
+        "ORCFile only inspects the Arrow schema; PyORC only enumerates physical "
+        "layout metadata. No data rows are materialized here; selected batches "
+        "are checked before filtering in OrcFileReader."
+    ),
 }
 
 

@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import GeneratorType
+from typing import Protocol, cast
 from unittest.mock import Mock
 
 import pyarrow as pa
@@ -26,12 +27,22 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
+
+
+class _IntermediateFooterWriter(Protocol):
+    """The native writer exposes this method, but its stubs omit it."""
+
+    def write_intermediate_footer(self) -> object:
+        ...
 
 
 def _write_orc(path: Path, table: pa.Table, **kwargs) -> None:
@@ -1572,10 +1583,10 @@ def test_orc_reader_initial_estimate_is_cached(
         assert list(reader.read(_manifest(path))) == []
     estimate.assert_called_once()
     expected = 16 if available else _ARROW_DEFAULT_BATCH_SIZE
-    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
-        expected,
-        expected,
-    ]
+    assert reader._sampled_batch_size == expected
+    # The stripe-aware reader stops before decoding when the limit is zero.
+    assert orc_read_requests["scans"] == []
+    assert orc_read_requests["stripes"] == []
 
 
 @pytest.mark.parametrize("batch_size,target", [(7, 65536), (None, None)])
@@ -1677,6 +1688,102 @@ def test_orc_reader_batch_sizing_retry_keeps_scan_parameters(
     assert observed_sizes[0] == observed_sizes[1] > 1
     assert reader._sampled_batch_size == 1
     assert pa.concat_tables(batches).equals(table)
+
+
+@pytest.mark.parametrize("all_stripes", [False, True])
+@pytest.mark.parametrize(
+    "batch_size,target_block_size", [(None, 128), (3, 128), (None, None)]
+)
+def test_orc_stripe_reader_preserves_batch_sizing(
+    tmp_path, monkeypatch, orc_read_requests, all_stripes, batch_size, target_block_size
+):
+    import pyorc
+
+    path = tmp_path / "stripes.orc"
+    counts = (5, 7, 4)
+    starts = (0, 5, 12)
+    payload = b"x" * 512
+    with path.open("wb") as stream:
+        writer = pyorc.Writer(
+            stream,
+            "struct<id:bigint,payload:binary>",
+            batch_size=1,
+            stripe_size=1 << 30,
+            compression=pyorc.CompressionKind.NONE,
+        )
+        for start, count in zip(starts, counts):
+            writer.writerows((index, payload) for index in range(start, start + count))
+            cast(_IntermediateFooterWriter, writer).write_intermediate_footer()
+        writer.close()
+    with path.open("rb") as stream:
+        stripes = list(pyorc.Reader(stream).iter_stripes())
+        assert [(len(stripe), stripe.row_offset) for stripe in stripes] == list(
+            zip(counts, starts)
+        )
+
+    table = pa.table({"id": range(sum(counts)), "payload": [payload] * sum(counts)})
+    unit_ids = (0, 1, 2) if all_stripes else (0, 2)
+    chunk = FileChunk(
+        unit_ids=unit_ids,
+        num_rows=sum(counts[index] for index in unit_ids),
+        size_bytes=path.stat().st_size,
+        unit_rows=tuple(counts[index] for index in unit_ids),
+        unit_start_rows=tuple(starts[index] for index in unit_ids),
+        file_num_units=len(counts),
+    )
+    manifest = FileManifest.construct_manifest(
+        paths=[str(path)],
+        sizes=[path.stat().st_size],
+        chunk_metadatas=[chunk.to_metadata()],
+    )
+    expected = pa.concat_tables(
+        [table.slice(starts[index], counts[index]) for index in unit_ids]
+    )
+    estimate = Mock(return_value=3)
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_file_reader.estimate_batch_size",
+        estimate,
+    )
+    reader = OrcScanner(
+        schema=table.schema, batch_size=batch_size, target_block_size=target_block_size
+    ).create_reader()
+
+    first_size = (
+        batch_size
+        if batch_size is not None
+        else (3 if target_block_size is not None else _ARROW_DEFAULT_BATCH_SIZE)
+    )
+    first = list(reader.read(manifest))
+    assert pa.concat_tables(first).equals(expected)
+    assert all(batch.num_rows <= first_size for batch in first)
+    feedback_size = first_size
+    if target_block_size is not None:
+        last = first[-1]
+        feedback_size = max(
+            math.ceil(target_block_size / (last.nbytes / last.num_rows)), 1
+        )
+        assert reader._sampled_batch_size == feedback_size
+    else:
+        assert reader._sampled_batch_size is None
+    second_size = (
+        feedback_size
+        if batch_size is None and target_block_size is not None
+        else first_size
+    )
+    second = list(reader.read(manifest))
+    assert pa.concat_tables(second).equals(expected)
+    assert all(batch.num_rows <= second_size for batch in second)
+    scans_per_read = 1 if all_stripes else len(unit_ids)
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == (
+        [first_size] * scans_per_read + [second_size] * scans_per_read
+    )
+    assert [index for index, _ in orc_read_requests["stripes"]] == (
+        [] if all_stripes else list(unit_ids) * 2
+    )
+    if batch_size is None and target_block_size is not None:
+        estimate.assert_called_once()
+    else:
+        estimate.assert_not_called()
 
 
 def test_orc_reader_local_width_changes_keep_scan_fixed(tmp_path, orc_read_requests):

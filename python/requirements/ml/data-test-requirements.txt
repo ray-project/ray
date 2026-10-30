@@ -38,6 +38,7 @@ datasketches; python_version < '3.14'
 testcontainers[kafka,azurite]
 obstore
 pyarrow
+pyorc==0.11.0
 torch
 tensorflow; python_version < '3.14'
 jax

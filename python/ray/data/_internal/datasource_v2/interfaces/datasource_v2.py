@@ -24,6 +24,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Tuple,
     Union,
 )
 
@@ -278,6 +279,20 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
     listing. Parquet, CSV and every other plain file format belong here; a
     source that finds its own data extends :class:`DataSourceWithMetadata` instead.
     """
+
+    def prepare_read(
+        self,
+        sample: Optional[FileManifest],
+        indexer: FileIndexer,
+        hints: "PartitionHints",
+    ) -> Tuple[pa.Schema, FileIndexer, Optional["FilePartitioner"]]:
+        """Prepare one read without mutating this datasource.
+
+        Formats may retain bounded sample metadata in a read-local indexer.
+        A missing partitioner override preserves the usual scanner-then-
+        get_file_partitioner order. Existing infer_schema callers are unchanged.
+        """
+        return self.infer_schema(sample), indexer, None
 
     @property
     @abstractmethod

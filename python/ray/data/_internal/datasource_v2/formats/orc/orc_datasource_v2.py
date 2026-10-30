@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, List, Literal, Optional, Union
+import logging
+import pickle
+from threading import Lock
+from typing import TYPE_CHECKING, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -23,7 +26,16 @@ from ray.data._internal.datasource_v2.common.size_estimators import (
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
+from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+    OrcLayoutSeed,
+    pyorc_available,
+    read_orc_schema_and_layout,
+)
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+    OrcStripeIndexer,
+    OrcStripePartitioner,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -47,6 +59,10 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
+
+
+_MAX_SEED_BYTES = 16 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -99,7 +115,8 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def _get_file_indexer(self) -> FileIndexer:
-        return NonSamplingFileIndexer(ignore_missing_paths=self._ignore_missing_paths)
+        cls = OrcStripeIndexer if pyorc_available() else NonSamplingFileIndexer
+        return cls(ignore_missing_paths=self._ignore_missing_paths)
 
     @override
     def get_file_partitioner(
@@ -107,6 +124,8 @@ class OrcDatasourceV2(FileDataSourceV2):
     ) -> Optional[FilePartitioner]:
         if hints is None:
             return None
+        if pyorc_available():
+            return OrcStripePartitioner(hints)
         reader = OrcFileReader(format=FileFormat.ORC, filesystem=self._filesystem)
         return RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)
 
@@ -117,21 +136,78 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        import pyarrow.orc as orc
+        return self._infer_schema(sample)
 
+    @override
+    def prepare_read(
+        self,
+        sample: Optional[FileManifest],
+        indexer: FileIndexer,
+        hints: PartitionHints,
+    ) -> Tuple[pa.Schema, FileIndexer, Optional[FilePartitioner]]:
+        if not isinstance(indexer, OrcStripeIndexer):
+            return super().prepare_read(sample, indexer, hints)
+        assert sample is not None
+        # Full-schema mode may pass every file. Only the bounded bootstrap
+        # subset prepares layouts on the driver; the rest remain worker IO.
+        layout_paths = tuple(dict.fromkeys(sample.paths[:16].tolist()))
+        layout_path_set = frozenset(layout_paths)
+        layouts: Dict[str, OrcLayoutSeed] = {}
+        seed_lock = Lock()
+        retained = 0
+
+        def read_schema(path: str) -> pa.Schema:
+            nonlocal retained
+            if path not in layout_path_set:
+                return self._read_schema(path)
+            schema, seed = read_orc_schema_and_layout(path, self._filesystem)
+            size = len(pickle.dumps(seed, protocol=5))
+            with seed_lock:
+                if path not in layouts:
+                    if retained + size <= _MAX_SEED_BYTES:
+                        layouts[path] = seed
+                        retained += size
+                    else:
+                        logger.debug(
+                            "ORC bootstrap layout not retained for %s: seed budget exceeded",
+                            path,
+                        )
+            return schema
+
+        schema = self._infer_schema(sample, read_schema)
+        seeds = [layouts[path] for path in layout_paths if path in layouts]
+        bootstrap_bytes = None
+        if len(sample) < 16 and len(seeds) == len(layout_paths):
+            bootstrap_bytes = sum(
+                seed.size
+                if len(seed.layout.stripes) <= 1
+                else sum(s.size_bytes for s in seed.layout.stripes)
+                for seed in seeds
+            )
+        prepared_indexer = OrcStripeIndexer(
+            ignore_missing_paths=self._ignore_missing_paths,
+            seeds=seeds,
+            local_only=not self._supports_distributed_reads,
+        )
+        return (
+            schema,
+            prepared_indexer,
+            OrcStripePartitioner(hints, bootstrap_bytes=bootstrap_bytes),
+        )
+
+    def _infer_schema(
+        self,
+        sample: Optional[FileManifest],
+        read_schema: Optional[Callable[[str], pa.Schema]] = None,
+    ) -> pa.Schema:
         assert sample is not None
         if len(sample) == 0:
             return pa.schema([])
         sample_paths = sample.paths.tolist()
-        filesystem = self._filesystem
 
-        def _read_schema(path: str) -> pa.Schema:
-            if filesystem is None:
-                return orc.ORCFile(path).schema
-            with filesystem.open_input_file(path) as source:
-                return orc.ORCFile(source).schema
-
-        schema = infer_schema_from_files(sample_paths, _read_schema, format_name="ORC")
+        schema = infer_schema_from_files(
+            sample_paths, read_schema or self._read_schema, format_name="ORC"
+        )
 
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
@@ -159,6 +235,14 @@ class OrcDatasourceV2(FileDataSourceV2):
                 schema = schema.set(index, field)
 
         return schema
+
+    def _read_schema(self, path: str) -> pa.Schema:
+        import pyarrow.orc as orc
+
+        if self._filesystem is None:
+            return orc.ORCFile(path).schema
+        with self._filesystem.open_input_file(path) as source:
+            return orc.ORCFile(source).schema
 
     @override
     def resolve_partitioning(
