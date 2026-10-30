@@ -827,6 +827,7 @@ def _bin_totals(manifests):
     ]
 
 
+@requires_pyarrow_23
 @pytest.mark.parametrize(
     "label",
     # Opposite ends of the fixed ratio's error: dictionary-encoded strings,
@@ -863,6 +864,7 @@ def test_dictionary_strings_sized_on_disk_would_share_one_bin(tmp_path):
     assert len(_pack_through_footer_reader([path], target)) > 1
 
 
+@requires_pyarrow_23
 def test_files_share_bins_by_decoded_size(tmp_path):
     table = _cases()["mixed-int-string"]
     paths = [
@@ -884,3 +886,9 @@ def test_files_share_bins_by_decoded_size(tmp_path):
         for rg_id in meta["unit_ids"]
     ]
     assert len(covered) == len(set(covered)) == 4 * 4
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
