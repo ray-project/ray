@@ -1046,7 +1046,7 @@ class GlobalState:
 
         return result
 
-    def get_actor_info(self, actor_id: ray.ActorID) -> Optional[bytes]:
+    def get_actor_info(self, actor_id: ray.ActorID) -> Optional[str]:
         """Get the serialized ActorTableData for an actor id."""
         accessor = self._connect_and_get_accessor()
         return accessor.get_actor_info(actor_id)
