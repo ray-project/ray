@@ -229,7 +229,8 @@ void ReferenceCounter::AddOwnedObject(
     LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    const std::optional<std::string> &tensor_transport) {
+    const std::optional<std::string> &tensor_transport,
+    MoveState move_state) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -239,7 +240,8 @@ void ReferenceCounter::AddOwnedObject(
                                    lineage_eligibility,
                                    add_local_ref,
                                    pinned_at_node_id,
-                                   tensor_transport))
+                                   tensor_transport,
+                                   move_state))
       << "Tried to create an owned object that already exists: " << object_id;
 }
 
@@ -269,7 +271,8 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     outer_it->second.lineage_eligibility_,
                                     /*add_local_ref=*/false,
                                     std::optional<NodeID>(),
-                                    /*tensor_transport=*/std::nullopt));
+                                    /*tensor_transport=*/std::nullopt,
+                                    MoveState::NOT_MOVABLE));
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
@@ -305,7 +308,8 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     outer_it->second.lineage_eligibility_,
                                     /*add_local_ref=*/true,
                                     std::optional<NodeID>(),
-                                    /*tensor_transport=*/std::nullopt));
+                                    /*tensor_transport=*/std::nullopt,
+                                    MoveState::NOT_MOVABLE));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -355,7 +359,8 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    const std::optional<std::string> &tensor_transport) {
+    const std::optional<std::string> &tensor_transport,
+    MoveState move_state) {
   if (object_id_refs_.contains(object_id)) {
     return false;
   }
@@ -379,6 +384,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                                    pinned_at_node_id,
                                    tensor_transport))
                 .first;
+  it->second.move_state_ = move_state;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -1872,6 +1878,15 @@ std::optional<std::string> ReferenceCounter::GetTensorTransport(
     return std::nullopt;
   }
   return it->second.tensor_transport_;
+}
+
+std::optional<MoveState> ReferenceCounter::GetMoveState(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return std::nullopt;
+  }
+  return it->second.move_state_;
 }
 
 }  // namespace core
