@@ -801,6 +801,86 @@ class MultiObjectiveTest(unittest.TestCase):
         self.assertTrue(os.path.exists(storage_file_path))
 
 
+@pytest.mark.parametrize("failed_first", [True, False])
+@pytest.mark.parametrize("failure", ["error", "error_with_result", "missing_result"])
+def test_bayesopt_warmup_completes_after_failure(failed_first, failure):
+    from ray.tune.search.bayesopt import BayesOptSearch
+
+    searcher = BayesOptSearch(
+        space={"x": (0.0, 1.0)},
+        metric="loss",
+        mode="min",
+        random_search_steps=2,
+        points_to_evaluate=[{"x": 0.1}, {"x": 0.2}, {"x": 0.3}],
+    )
+    searcher.suggest("good")
+    searcher.suggest("bad")
+    trial_ids = ["bad", "good"] if failed_first else ["good", "bad"]
+    for trial_id in trial_ids:
+        if trial_id == "good":
+            searcher.on_trial_complete(trial_id, {"loss": 1.0})
+        elif failure == "missing_result":
+            searcher.on_trial_complete(trial_id)
+        else:
+            result = {"loss": 999.0} if failure == "error_with_result" else None
+            searcher.on_trial_complete(trial_id, result, error=True)
+
+    assert searcher.suggest("later") == {"x": 0.3}
+    assert searcher.optimizer.space.params.tolist() == [[0.1]]
+    assert searcher.optimizer.space.target.tolist() == [-1.0]
+    searcher.on_trial_complete("later", {"loss": 2.0})
+    assert searcher.optimizer.space.target.tolist() == [-1.0, -2.0]
+
+
+def test_bayesopt_warmup_all_trials_fail():
+    from ray.tune.search.bayesopt import BayesOptSearch
+
+    searcher = BayesOptSearch(
+        space={"x": (0.0, 1.0)},
+        metric="loss",
+        mode="min",
+        random_search_steps=2,
+        random_state=42,
+    )
+    for trial_id in ["bad-1", "bad-2"]:
+        assert searcher.suggest(trial_id) is not None
+        searcher.on_trial_complete(trial_id, error=True)
+
+    config = searcher.suggest("later")
+    assert config is not None and 0.0 <= config["x"] <= 1.0
+    assert len(searcher.optimizer.space) == 0
+    searcher.on_trial_complete("later", {"loss": 2.0})
+    assert searcher.optimizer.space.target.tolist() == [-2.0]
+
+
+def test_bayesopt_warmup_failure_restore(tmp_path):
+    from ray.tune.search.bayesopt import BayesOptSearch
+
+    searcher = BayesOptSearch(
+        space={"x": (0.0, 1.0)},
+        metric="loss",
+        mode="min",
+        random_search_steps=2,
+        points_to_evaluate=[{"x": 0.1}, {"x": 0.2}, {"x": 0.3}],
+    )
+    searcher.suggest("bad")
+    searcher.suggest("good")
+    searcher.on_trial_complete("bad", error=True)
+    checkpoint = str(tmp_path / "searcher.pkl")
+    searcher.save(checkpoint)
+    restored = BayesOptSearch()
+    restored.restore(checkpoint)
+
+    # Repeated or unknown completions must not advance the warm-up barrier.
+    restored.on_trial_complete("bad", {"loss": 999.0})
+    restored.on_trial_complete("unknown", {"loss": 999.0})
+    assert len(restored.optimizer.space) == 0
+    restored.on_trial_complete("good", {"loss": 1.0})
+    assert restored.suggest("later") == {"x": 0.3}
+    assert restored.optimizer.space.params.tolist() == [[0.2]]
+    assert restored.optimizer.space.target.tolist() == [-1.0]
+
+
 class BayesOptHashPrecisionTest(unittest.TestCase):
     def testDictHashPrecisionDistinguishesNearFloats(self):
         from ray.tune.search.bayesopt.bayesopt_search import _dict_hash
