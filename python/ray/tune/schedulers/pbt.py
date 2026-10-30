@@ -1051,7 +1051,8 @@ class PopulationBasedTraining(FIFOScheduler):
 
         Returns:
             The last score of each trial in ``trials`` that has a score and
-            hasn't finished.
+            hasn't finished. Scores are mode-adjusted: the metric value is
+            negated when ``mode`` is ``"min"``, so higher is always better.
         """
         scores = []
         for trial in trials:

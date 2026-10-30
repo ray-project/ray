@@ -138,7 +138,7 @@ class MedianStoppingRule(FIFOScheduler):
             ``TrialScheduler.STOP`` to stop the trial early, or
             ``TrialScheduler.PAUSE`` instead when ``hard_stop`` is False.
             When too few other trials have reached step `t` to compare against,
-            ``TrialScheduler.PAUSE`` if at least ``min_time_slice`` has passed
+            ``TrialScheduler.PAUSE`` if more than ``min_time_slice`` has passed
             since the trial last paused and other trials are waiting to run.
             Otherwise ``TrialScheduler.CONTINUE``.
         """
