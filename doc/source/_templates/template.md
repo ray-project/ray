@@ -7,11 +7,11 @@ myst:
 <!--
 Template for an end-to-end guide in the Ray documentation.
 
-Copy this file into the directory of the library your guide covers, rename it, and replace every <placeholder>. Then add the page to a toctree or an examples.yml gallery. Delete this comment before you open a pull request, but keep the maintainer comment under the title.
+Copy this file into the directory of the library your guide covers, rename it, and replace every <placeholder>. Then add the page to a toctree. For Ray Data, Ray Serve, and Ray Train, you can list the page in the library's examples.yml gallery instead. Delete this comment before you open a pull request, but keep the maintainer comment under the title.
 
 Ray CI doesn't run the code in this guide. Run every step yourself, record the Ray version you used in the maintainer comment below the title, and update that version whenever you re-verify the guide.
 
-Write the guide as plain MyST Markdown. Don't add Jupyter front matter such as `jupytext` or `kernelspec`, `{code-cell}` blocks, or a companion `.ipynb` file. Ray doesn't execute them, and the Ray documentation is retiring in-tree notebooks. To publish an example that Ray tests and keeps current, use the template-collections flow in doc/source/ray-contribute/publishing-examples.md instead.
+Write the guide as plain MyST Markdown. Don't add Jupyter front matter such as `jupytext` or `kernelspec`, `{code-cell}` blocks, or a companion `.ipynb` file. The docs build doesn't execute them, and the Ray documentation is retiring in-tree notebooks. To publish an example that Ray tests and keeps current, use the template-collections flow in doc/source/ray-contribute/publishing-examples.md instead.
 
 Follow the Ray documentation style guide in doc/source/ray-contribute/writing-style.md.
 -->

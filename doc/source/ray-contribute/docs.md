@@ -211,7 +211,7 @@ def trainable(config):  # Pass a "config" dictionary into your trainable.
         train.report({"score": score})  # Send the score to Tune.
 ```
 
-This code is imported by `literalinclude` from a file called `doc_code/key_concepts.py`. Every Python file in the `doc_code` directory is automatically tested by our CI system, but make sure to run scripts that you change (or new scripts) locally first. You don't need to run the testing framework locally.
+This code is imported by `literalinclude` from a file called `doc_code/key_concepts.py`. CI runs the `doc_code` scripts that the targets in `doc/BUILD.bazel` select, which excludes some files and some directories. Check that a target covers your script, and run scripts that you change or add locally first. You don't need to run the testing framework locally.
 
 When CI can't run your code, such as pseudo-code that demonstrates a concept or a step that needs a cluster or credentials, put it in a plain fenced code block with a language, such as `` ```python ``. CI doesn't run plain code blocks, so run the code yourself before you open a pull request. For a full guide that CI doesn't test, see {ref}`writing-e2e-guide`.
 
@@ -229,7 +229,7 @@ Depending on the type of document you're adding, you might also have to make cha
 
 An _end-to-end guide_ walks the reader through a complete task, from installing dependencies to a working result. Write it as a MyST Markdown page, like any other page in the Ray documentation.
 
-To start, copy the [end-to-end guide template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) into the directory of the library your guide covers. The template shows the page structure and the syntax Ray uses for admonitions, tabs, dropdowns, and cross-references. Then add the page to a toctree, or to the library's `examples.yml` gallery.
+To start, copy the [end-to-end guide template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) into the directory of the library your guide covers. The template shows the page structure and the syntax Ray uses for admonitions, tabs, dropdowns, and cross-references. Then add the page to a toctree. Ray Data, Ray Serve, and Ray Train also have an `examples.yml` gallery, and for those libraries you can list the page there instead.
 
 Ray CI doesn't run the code in a guide like this, so the guide is only as current as the last time someone ran it. Run every step yourself before you open a pull request, and record the Ray version you used in the HTML comment that the template puts under the title. The comment is for maintainers and doesn't render on the page. When you update the guide later, run it again and update the version.
 
@@ -240,6 +240,8 @@ Don't write the guide as a notebook. Leave out Jupyter front matter such as `jup
 ```bash
 jupyter nbconvert your-example.ipynb --to markdown
 ```
+
+The converted file shows cell outputs as indented blocks and writes images to a `your-example_files/` directory. Move any images you keep to an `images/` directory next to your guide.
 
 If you have questions about your guide, ask in [the Ray community Slack](https://www.ray.io/join-slack) or on your pull request.
 
