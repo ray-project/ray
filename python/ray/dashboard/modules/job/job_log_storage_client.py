@@ -1,5 +1,5 @@
 import os
-from typing import AsyncIterator, List, Tuple
+from typing import AsyncIterator, List
 
 import ray
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
@@ -46,7 +46,7 @@ class JobLogStorageClient:
             max_chars=self.MAX_LOG_SIZE,
         )
 
-    def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
+    def get_log_file_path(self, job_id: str) -> str:
         """
         Get the file path to the logs of a given job. Example:
             /tmp/ray/session_date/logs/job-driver-{job_id}.log

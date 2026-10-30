@@ -125,7 +125,15 @@ class ArrowPythonObjectType(pa.ExtensionType):
 class ArrowPythonObjectScalar(pa.ExtensionScalar):
     """Scalar class for ArrowPythonObjectType"""
 
-    def as_py(self, **kwargs) -> typing.Any:
+    def as_py(self, **kwargs: typing.Any) -> typing.Any:
+        """Unpickle the Python object that this scalar holds.
+
+        Args:
+            **kwargs: Unused.
+
+        Returns:
+            The unpickled object, or ``None`` if the scalar is null.
+        """
         # Handle None/null values
         if self.value is None:
             return None
@@ -141,9 +149,19 @@ class ArrowPythonObjectScalar(pa.ExtensionScalar):
 class ArrowPythonObjectArray(pa.ExtensionArray):
     """Array class for ArrowPythonObjectType"""
 
+    @staticmethod
     def from_objects(
         objects: typing.Union[np.ndarray, typing.Iterable[typing.Any]],
     ) -> "ArrowPythonObjectArray":
+        """Create an array of Python objects by pickling each object.
+
+        Args:
+            objects: The objects to store. A NumPy array is converted to a list
+                first.
+
+        Returns:
+            An array that holds the pickled objects.
+        """
         if isinstance(objects, np.ndarray):
             objects = objects.tolist()
         type_ = ArrowPythonObjectType()

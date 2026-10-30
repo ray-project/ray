@@ -902,7 +902,7 @@ class TensorArray(
         """The number of bytes needed to store this object in memory."""
         return self._tensor.nbytes
 
-    def isna(self) -> "TensorArray":
+    def isna(self) -> np.ndarray:
         """A 1-D array indicating if each value is missing.
 
         In most cases, this should return a NumPy ndarray. For
