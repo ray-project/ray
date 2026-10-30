@@ -2378,15 +2378,23 @@ class DeploymentReplica:
         Should handle the case where the replica is already stopped.
         """
         state = self._actor_details.state
-        logger.info(
-            f"Stopping {self.replica_id} (currently {state}).",
-            extra={"log_to_stderr": False},
-        )
         self._shutdown_start_time = time.time()
-        # Skip graceful shutdown for replica that is STARTING and has not yet been allocated to a node.
+        # Only force kill replicas that are STARTING and have not been
+        # placed on a node. RECOVERING replicas are excluded because
+        # recover() re-sends is_allocated, so a live replica can look
+        # unallocated.
         if state == ReplicaState.STARTING and self._actor.is_pending_allocation:
+            logger.info(
+                f"Stopping {self.replica_id} (currently {state}, never "
+                "scheduled). Will be force killed immediately.",
+                extra={"log_to_stderr": False},
+            )
             timeout_s = 0.0
         else:
+            logger.info(
+                f"Stopping {self.replica_id} (currently {state}).",
+                extra={"log_to_stderr": False},
+            )
             timeout_s = self._actor.graceful_stop()
             if not graceful:
                 timeout_s = 0.0

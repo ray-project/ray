@@ -4955,6 +4955,10 @@ def test_recovering_replica_gets_graceful_shutdown(mock_deployment_state_manager
     # is_pending_allocation is True, because the actor is alive.
     assert recovering_replica._actor.stopped
 
+    # Verify the replica is not force killed on the next tick.
+    new_dsm.update()
+    assert recovering_replica._actor.force_stopped_counter == 0
+
 
 def test_pending_initialization_replica_gets_graceful_shutdown(
     mock_deployment_state_manager,
@@ -4986,6 +4990,10 @@ def test_pending_initialization_replica_gets_graceful_shutdown(
 
     # graceful_stop() should have been called since the actor is on a node.
     assert replica._actor.stopped
+
+    # Verify the replica is not force killed on the next tick.
+    dsm.update()
+    assert replica._actor.force_stopped_counter == 0
 
 
 class TestAutoscaling:
