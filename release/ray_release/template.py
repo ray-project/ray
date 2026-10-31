@@ -102,7 +102,7 @@ def load_test_cluster_compute(
 ) -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
     working_dir = get_working_dir(test, test_definition_root)
-    f = os.path.join(working_dir, cluster_compute_file)
+    f = os.path.normpath(os.path.join(working_dir, cluster_compute_file))
     env = _populate_cluster_compute_variables(test)
     return _load_and_render_yaml_template(f, env=env)
 

@@ -16,7 +16,7 @@ from ray.util.state import list_actors
 from test_utils import get_total_gpu_memory_mb, wait_for_gpu_memory_to_clear
 
 
-MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_ID = "Qwen/Qwen3.5-0.8B"
 RAY_MODEL_ID = "qwen-0.5b-sglang"
 # Headroom over the pre-deploy GPU baseline that still counts as "cleared".
 _GPU_MEMORY_CLEAR_TOLERANCE_MB = 2000
@@ -330,7 +330,7 @@ def sglang_embedding_client():
     llm_config = LLMConfig(
         model_loading_config={
             "model_id": RAY_MODEL_ID,
-            "model_source": MODEL_ID,
+            "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
         },
         deployment_config={
             "autoscaling_config": {
@@ -340,7 +340,7 @@ def sglang_embedding_client():
         },
         server_cls=SGLangServer,
         engine_kwargs={
-            "model_path": MODEL_ID,
+            "model_path": "Qwen/Qwen2.5-0.5B-Instruct",
             "tp_size": 1,
             "mem_fraction_static": 0.8,
             "is_embedding": True,
@@ -381,6 +381,7 @@ def test_sglang_embeddings(sglang_embedding_client):
     assert emb_batch_resp.data[1].embedding
 
 
+@pytest.mark.requires_2GPU
 def test_sglang_serve_e2e_multi_gpu():
     """Verify SGLang multi-GPU deployment works with tp_size=2.
 
@@ -443,6 +444,7 @@ def test_sglang_serve_e2e_multi_gpu():
         _shutdown_and_wait_for_gpu_clear(baseline_gpu_mb)
 
 
+@pytest.mark.requires_4GPU
 def test_sglang_serve_e2e_pipeline_parallel():
     """Verify SGLang multi-GPU deployment works with tp_size=2, pp_size=2.
 
@@ -508,6 +510,7 @@ def test_sglang_serve_e2e_pipeline_parallel():
         _shutdown_and_wait_for_gpu_clear(baseline_gpu_mb)
 
 
+@pytest.mark.requires_2GPU
 def test_sglang_serve_e2e_multi_replica():
     """Verify SGLang serves correctly with two replicas.
 

@@ -57,7 +57,7 @@ async def test_engine_metrics():
     """
 
     engine_args = AsyncEngineArgs(
-        model="Qwen/Qwen2.5-0.5B-Instruct",
+        model="Qwen/Qwen3.5-0.8B",
         dtype="auto",
         disable_log_stats=False,
         enforce_eager=True,
@@ -86,7 +86,7 @@ async def test_engine_metrics_with_lora():
     """
 
     engine_args = AsyncEngineArgs(
-        model="Qwen/Qwen2.5-0.5B-Instruct",  # Using smaller model for testing
+        model="Qwen/Qwen3.5-0.8B",  # Using smaller model for testing
         disable_log_stats=False,
         enforce_eager=True,
         enable_prefix_caching=True,
@@ -120,7 +120,7 @@ async def test_engine_metrics_with_spec_decode():
     """
 
     engine_args = AsyncEngineArgs(
-        model="Qwen/Qwen2.5-0.5B-Instruct",
+        model="Qwen/Qwen3.5-0.8B",
         dtype="auto",
         disable_log_stats=False,
         enforce_eager=True,
@@ -229,6 +229,7 @@ def test_lora_requests():
 
 
 @direct_streaming_only
+@pytest.mark.requires_2GPU
 def test_pd_lora_requests():
     """Serve cold and cached LoRA requests through direct-streaming P/D."""
     model_id = "llama-test"
@@ -328,6 +329,7 @@ def is_default_app_running():
 
 
 @pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V2-Lite"])
+@pytest.mark.requires_2GPU
 def test_deepseek_model(model_name):
     """
     Test that the deepseek model can be loaded successfully.
@@ -530,6 +532,7 @@ def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
 
 @direct_streaming_only
 @pytest.mark.timeout(900)
+@pytest.mark.requires_4GPU
 def test_diffusion_gemma_structured_read():
     """DiffusionGemma structured reads (vllm-project/vllm#57250) are driven by
     per-request vllm_xargs, which vLLM's native app passes to the engine in
@@ -691,7 +694,7 @@ def test_nested_engine_kwargs_structured_outputs():
     """Regression test for https://github.com/ray-project/ray/pull/60380"""
     llm_config = LLMConfig(
         model_loading_config=dict(
-            model_id="Qwen/Qwen2.5-0.5B-Instruct",
+            model_id="Qwen/Qwen3.5-0.8B",
         ),
         deployment_config=dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
@@ -795,6 +798,7 @@ def _prefix_group_text(group_id: str) -> str:
 
 
 @direct_streaming_only
+@pytest.mark.requires_4GPU
 class TestPrefixAffinityDirectStreaming:
     """Regression tests for https://github.com/ray-project/ray/pull/66489: on
     the pick-only path, ``on_request_routed`` never ran, so the
@@ -906,6 +910,7 @@ class TestPrefixAffinityDirectStreaming:
     ],
     ids=["image", "audio"],
 )
+@pytest.mark.requires_2GPU
 def test_pd_multimodal_with_tokenize_once(model, modality):
     """Multimodal P/D chat must work with pd_tokenize_once enabled."""
     if modality == "image":

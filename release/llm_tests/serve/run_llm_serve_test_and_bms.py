@@ -40,7 +40,7 @@ logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
 
 
-CLOUD = "serve_release_tests_cloud"
+CLOUD = "rkn-gpu-cloud"
 JOB_NAME = "serve_llm_release_test_vllm_perf"
 JOB_TIMEOUT_S = 1800
 SERVICE_NAME = "serve_llm_release_test_service"
@@ -113,7 +113,7 @@ def main(
         submitted_job_id, s3_storage_path = submit_benchmark_vllm_job(
             image_uri,
             serve_config_file,
-            env_vars["HUGGING_FACE_HUB_TOKEN"],
+            env_vars.get("HUGGING_FACE_HUB_TOKEN", ""),
         )
 
     # Start Ray LLM Service while vLLM job is running
@@ -169,11 +169,10 @@ def main(
 
             logger.info(f"Performance test results: {results}")
 
-            accelerator = llm_config.get("accelerator_type", "NoGpu")
             tensor_parallel_size = llm_config["engine_kwargs"].get(
-                "tensor_parallel_size", 0 if accelerator == "NoGpu" else 1
+                "tensor_parallel_size", 1
             )
-            tag = f"{accelerator}-TP{tensor_parallel_size}"
+            tag = f"TP{tensor_parallel_size}"
             for result in results:
                 record = FirehoseRecord(
                     record_name=RecordName.RAYLLM_PERF_TEST,
@@ -218,6 +217,15 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
         name=JOB_NAME,
         image_name=image_uri,
     )
+    engine_kwargs = get_llm_config(serve_config_file).get("engine_kwargs", {})
+    num_gpus = engine_kwargs.get("tensor_parallel_size", 1) * engine_kwargs.get(
+        "pipeline_parallel_size", 1
+    )
+    instance_types = {
+        1: "23CPU-240GB-1xH100",
+        2: "46CPU-480GB-2xH100",
+        4: "92CPU-960GB-4xH100",
+    }
 
     job_config = anyscale.job.JobConfig(
         name=job_name,
@@ -226,9 +234,13 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
         cloud=CLOUD,
         compute_config=anyscale.compute_config.ComputeConfig(
             head_node=anyscale.anyscale.compute_config.HeadNodeConfig(
-                instance_type="g5.12xlarge",  # 4 GPUS,
+                instance_type=instance_types[num_gpus],
             ),
-            worker_nodes=[],  # To force running on head node only.
+            worker_nodes=[],
+            cloud=CLOUD,
+            advanced_instance_config={
+                "metadata": {"labels": {"kueue.x-k8s.io/queue-name": "default-queue"}}
+            },
         ),
         image_uri=image_uri,
         env_vars={

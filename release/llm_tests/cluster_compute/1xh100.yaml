@@ -1,0 +1,11 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+  metadata:
+    labels:
+      kueue.x-k8s.io/queue-name: default-queue
+
+head_node:
+  instance_type: 23CPU-240GB-1xH100
+
+worker_nodes: []
