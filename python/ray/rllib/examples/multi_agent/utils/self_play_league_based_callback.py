@@ -3,8 +3,10 @@ from collections import defaultdict
 from pprint import pprint
 
 import numpy as np
+import ray
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
@@ -226,13 +228,19 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
                     multi_rl_module["main_0"].set_state(main_state)
                     multi_rl_module["league_exploiter_1"].set_state(main_state)
                     multi_rl_module["main_exploiter_1"].set_state(main_state)
-                    # We need to sync the just copied local weights to all the
-                    # remote workers and remote Learner workers as well.
-                    algorithm.env_runner_group.sync_weights(
-                        policies=["main_0", "league_exploiter_1", "main_exploiter_1"]
-                    )
+                    # Install the cloned weights before activating the mapping.
+                    # sync_weights() uses an asynchronous default and its global
+                    # sequence gate may skip newly initialized modules.
                     algorithm.learner_group.set_weights(multi_rl_module.get_state())
+                    modules_to_install = [
+                        "main_0",
+                        "league_exploiter_1",
+                        "main_exploiter_1",
+                    ]
                 else:
+                    # The new local module starts from its own default weights.
+                    # Snapshot the existing behavior policy before add_module.
+                    source_module_state = multi_rl_module[module_id].get_state()
                     algorithm.add_module(
                         module_id=new_mod_id,
                         module_spec=RLModuleSpec.from_module(main_module),
@@ -245,23 +253,39 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
                             "learner_group": {
                                 "learner": {
                                     "rl_module": {
-                                        new_mod_id: multi_rl_module[
-                                            module_id
-                                        ].get_state(),
+                                        new_mod_id: source_module_state,
                                     }
                                 }
                             }
                         }
                     )
+                    modules_to_install = [new_mod_id]
+
+                # Both first-time league initialization and later cloning must
+                # finish installing their source weights before the mapping update.
+                # The standard sync_weights() path is async and may skip modules
+                # when WEIGHTS_SEQ_NO already matches, so force a module-only state.
+                if initializing_exploiters:
+                    module_states = {
+                        mid: multi_rl_module[mid].get_state()
+                        for mid in modules_to_install
+                    }
+                else:
+                    module_states = {new_mod_id: source_module_state}
+                new_module_state = {COMPONENT_RL_MODULE: ray.put(module_states)}
+
+                # Install weights and activate the mapping in one call per
+                # EnvRunner. Separate foreach calls could target different
+                # healthy sets as workers recover between dispatches.
+                def install_and_activate(env_runner):
+                    env_runner.set_state(new_module_state)
+                    env_runner.config.multi_agent(
+                        policy_mapping_fn=agent_to_module_mapping_fn,
+                        policies_to_train=_trainable_policies,
+                    )
 
                 algorithm.env_runner_group.foreach_env_runner(
-                    lambda env_runner: env_runner.config.multi_agent(
-                        policy_mapping_fn=agent_to_module_mapping_fn,
-                        # This setting doesn't really matter for EnvRunners (no
-                        # training going on there, but we'll update this as well
-                        # here for good measure).
-                        policies_to_train=_trainable_policies,
-                    ),
+                    install_and_activate,
                     local_env_runner=True,
                 )
                 # Set all Learner workers' should_module_be_updated to the new
