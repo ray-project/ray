@@ -23,7 +23,7 @@ from ray.serve._private.request_router.replica_wrapper import (
 )
 from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.conftest import *  # noqa
+from ray.serve.tests.conftest import *  # noqa: F403
 
 
 @ray.remote(num_cpus=0)
@@ -193,7 +193,7 @@ async def test_to_object_ref_not_supported(
         ),
     )
     err_msg = "Converting by-value DeploymentResponses to ObjectRefs is not supported."
-    replica_result = replica.try_send_request(pr, with_rejection=False)
+    replica_result = await replica.try_send_request(pr, with_rejection=False)
     if is_streaming:
         with pytest.raises(RuntimeError, match=err_msg):
             replica_result.to_object_ref_gen()
@@ -223,7 +223,7 @@ async def test_send_request(
             _on_separate_loop=on_separate_loop,
         ),
     )
-    replica_result = replica.try_send_request(pr, with_rejection=False)
+    replica_result = await replica.try_send_request(pr, with_rejection=False)
     if is_streaming:
         for i in range(5):
             assert await replica_result.__anext__() == f"Hello-{i}"
@@ -260,7 +260,7 @@ async def test_send_request_with_rejection(
             _on_separate_loop=on_separate_loop,
         ),
     )
-    replica_result = replica.try_send_request(pr, with_rejection=True)
+    replica_result = await replica.try_send_request(pr, with_rejection=True)
     info = await replica_result.get_rejection_response()
     assert info.accepted == accepted
     assert info.num_ongoing_requests == 10
@@ -302,7 +302,7 @@ async def test_send_request_with_rejection_cancellation(
 
     # Send request should hang because the downstream actor method call blocks
     # before sending the system message.
-    replica_result = replica.try_send_request(pr, with_rejection=True)
+    replica_result = await replica.try_send_request(pr, with_rejection=True)
     request_task = get_or_create_event_loop().create_task(
         replica_result.get_rejection_response()
     )
