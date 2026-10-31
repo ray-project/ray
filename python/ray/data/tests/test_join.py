@@ -1031,6 +1031,575 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     )
 
 
+def _optimized_plan(ds: Dataset):
+    """Optimize the never-executed plan and check re-optimizing it is a no-op
+    (execution rewires the dataset's DAG to the optimized one).
+    """
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.tests.test_util import assert_plans_structurally_equal
+
+    plan = LogicalOptimizer().optimize(ds._logical_plan)
+    assert_plans_structurally_equal(LogicalOptimizer().optimize(plan), plan)
+    return plan
+
+
+def _assert_filter_with(op, expected_predicate) -> None:
+    """Assert ``op`` is an expression Filter with exactly ``expected_predicate``."""
+    from ray.data._internal.logical.operators import Filter
+
+    assert isinstance(op, Filter), f"Expected a Filter, got {op}"
+    assert op.predicate_expr is not None, f"Expected an expression Filter, got {op}"
+    assert op.predicate_expr.structurally_equals(
+        expected_predicate
+    ), f"Expected predicate {expected_predicate!r}, got {op.predicate_expr!r}"
+
+
+def _assert_num_filters(plan, expected: int) -> None:
+    from ray.data._internal.logical.operators import Filter
+    from ray.data.tests.test_util import get_operators_of_type
+
+    filters = get_operators_of_type(plan, Filter)
+    assert (
+        len(filters) == expected
+    ), f"Expected {expected} Filters in {plan.dag.dag_str}"
+
+
+def _unique_key_join_inputs():
+    """Left ids 0-31, right ids 0-19: left rows above 19 have no match."""
+    left_ds = ray.data.from_items([{"id": i, "left_val": i * 10} for i in range(32)])
+    right_ds = ray.data.from_items([{"id": i, "right_val": i * 100} for i in range(20)])
+    return left_ds, right_ds
+
+
+def _duplicate_key_join_inputs():
+    """Both sides keyed by ``i % 4``, so each key matches 4 x 4 row pairs."""
+    left_ds = ray.data.from_items([{"k": i % 4, "left_val": i} for i in range(16)])
+    right_ds = ray.data.from_items([{"k": i % 4, "right_val": i} for i in range(16)])
+    return left_ds, right_ds
+
+
+@pytest.mark.parametrize(
+    "join_type,right_pushes",
+    [("inner", True), ("left_outer", False)],
+    ids=["inner", "left_outer"],
+)
+def test_join_predicate_pushdown_splits_conjuncts(
+    ray_start_regular_shared_2_cpus, join_type, right_pushes
+):
+    """One-sided conjuncts go to their side (if the join type allows); the rest
+    stays as a residual filter above the join (#66832).
+    """
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+    from ray.data.tests.test_util import get_operators_of_type
+
+    left_ds, right_ds = _unique_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,
+        on=("id",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    left_pred = col("left_val") >= 50
+    right_pred = col("right_val") < 1500
+    cross_pred = (col("left_val") + col("right_val")) > 1000
+    filtered_ds = joined.filter(expr=left_pred & right_pred & cross_pred)
+
+    plan = _optimized_plan(filtered_ds)
+    (join,) = get_operators_of_type(plan, Join)
+    left_input, right_input = join.input_dependencies
+    _assert_filter_with(left_input, left_pred)
+    if right_pushes:
+        _assert_filter_with(right_input, right_pred)
+        residual = cross_pred
+        _assert_num_filters(plan, 3)
+    else:
+        assert not isinstance(right_input, Filter)
+        residual = right_pred & cross_pred
+        _assert_num_filters(plan, 2)
+    _assert_filter_with(plan.dag, residual)
+    assert plan.dag.input_dependencies[0] is join
+
+    expected_pd = left_ds.to_pandas().merge(
+        right_ds.to_pandas(),
+        on="id",
+        how="inner" if join_type == "inner" else "left",
+    )
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 50)
+        & (expected_pd["right_val"] < 1500)
+        & (expected_pd["left_val"] + expected_pd["right_val"] > 1000)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 5  # ids 10-14
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_chained_one_sided_filters_both_push(ray_start_regular_shared_2_cpus):
+    """Two chained one-sided filters are fused into one two-sided AND, which is
+    split again at the join so both halves push (#66832).
+    """
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    left_ds, right_ds = _unique_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    left_pred = col("left_val") >= 50
+    right_pred = col("right_val") < 1500
+    filtered_ds = joined.filter(expr=left_pred).filter(expr=right_pred)
+
+    plan = _optimized_plan(filtered_ds)
+    join = plan.dag
+    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+    _assert_filter_with(join.input_dependencies[0], left_pred)
+    _assert_filter_with(join.input_dependencies[1], right_pred)
+    _assert_num_filters(plan, 2)
+
+    expected_pd = left_ds.to_pandas().merge(right_ds.to_pandas(), on="id")
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 50) & (expected_pd["right_val"] < 1500)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 10  # ids 5-14
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+@pytest.mark.parametrize(
+    "join_type,right_derives",
+    [("inner", True), ("left_outer", False)],
+    ids=["inner", "left_outer"],
+)
+def test_join_derives_one_sided_predicates_from_disjunction(
+    ray_start_regular_shared_2_cpus, join_type, right_derives
+):
+    """TPC-H q7 shape: the OR stays above the join, but each allowed side gets
+    the weaker predicate it implies (#66832).
+    """
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+    from ray.data.tests.test_util import get_operators_of_type
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    predicate = ((col("left_val") == 1) & (col("right_val") == 5)) | (
+        (col("left_val") == 5) & (col("right_val") == 1)
+    )
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    (join,) = get_operators_of_type(plan, Join)
+    left_input, right_input = join.input_dependencies
+    _assert_filter_with(left_input, (col("left_val") == 1) | (col("left_val") == 5))
+    if right_derives:
+        _assert_filter_with(
+            right_input, (col("right_val") == 5) | (col("right_val") == 1)
+        )
+        _assert_num_filters(plan, 3)
+    else:
+        assert not isinstance(right_input, Filter)
+        _assert_num_filters(plan, 2)
+    _assert_filter_with(plan.dag, predicate)
+    assert plan.dag.input_dependencies[0] is join
+
+    # The derived one-sided filters alone would also let (1, 1) and (5, 5) through.
+    expected_pd = left_ds.to_pandas().merge(
+        right_ds.to_pandas(),
+        on="k",
+        how="inner" if join_type == "inner" else "left",
+    )
+    expected_pd = expected_pd[
+        ((expected_pd["left_val"] == 1) & (expected_pd["right_val"] == 5))
+        | ((expected_pd["left_val"] == 5) & (expected_pd["right_val"] == 1))
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 2
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_no_derivation_when_a_branch_is_other_sided(
+    ray_start_regular_shared_2_cpus,
+):
+    """``left_only | right_only`` implies nothing about either side alone."""
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    predicate = (col("left_val") == 1) | (col("right_val") == 5)
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, predicate)
+    join = plan.dag.input_dependencies[0]
+    assert isinstance(join, Join)
+    assert not any(isinstance(op, Filter) for op in join.input_dependencies)
+    _assert_num_filters(plan, 1)
+
+    expected_pd = left_ds.to_pandas().merge(right_ds.to_pandas(), on="k")
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] == 1) | (expected_pd["right_val"] == 5)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 7  # 4 + 4 pairs sharing k == 1, minus (1, 5)
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_derived_predicates_chain_through_nested_joins(
+    ray_start_regular_shared_2_cpus,
+):
+    """A derived predicate that is still two-sided at an inner join is derived
+    again there, so every base table gets its own filter.
+    """
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    a_ds = ray.data.from_items([{"k": i, "a": i} for i in range(8)])
+    b_ds = ray.data.from_items([{"k": i, "b": i} for i in range(8)])
+    c_ds = ray.data.from_items([{"k": i, "c": i} for i in range(8)])
+    join_kwargs = dict(
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    joined = a_ds.join(b_ds, **join_kwargs).join(c_ds, **join_kwargs)
+    predicate = ((col("a") == 1) & (col("b") == 1) & (col("c") == 1)) | (
+        (col("a") == 2) & (col("b") == 2) & (col("c") == 2)
+    )
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, predicate)
+    outer_join = plan.dag.input_dependencies[0]
+    assert isinstance(outer_join, Join)
+    inner_side, c_side = outer_join.input_dependencies
+    _assert_filter_with(c_side, (col("c") == 1) | (col("c") == 2))
+    _assert_filter_with(
+        inner_side,
+        ((col("a") == 1) & (col("b") == 1)) | ((col("a") == 2) & (col("b") == 2)),
+    )
+    inner_join = inner_side.input_dependencies[0]
+    assert isinstance(inner_join, Join)
+    a_side, b_side = inner_join.input_dependencies
+    _assert_filter_with(a_side, (col("a") == 1) | (col("a") == 2))
+    _assert_filter_with(b_side, (col("b") == 1) | (col("b") == 2))
+    _assert_num_filters(plan, 5)
+
+    expected_pd = (
+        a_ds.to_pandas().merge(b_ds.to_pandas(), on="k").merge(c_ds.to_pandas(), on="k")
+    )
+    expected_pd = expected_pd[expected_pd["k"].isin([1, 2])].reset_index(drop=True)
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_derived_predicate_fuses_with_pushed_conjunct_on_same_side(
+    ray_start_regular_shared_2_cpus,
+):
+    """A derived predicate lands in the same Filter as the conjunct pushed to that
+    side, in predicate order, instead of stacking a second Filter.
+    """
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    exact = col("left_val") >= 5
+    disjunction = ((col("left_val") == 1) & (col("right_val") == 5)) | (
+        (col("left_val") == 5) & (col("right_val") == 1)
+    )
+    filtered_ds = joined.filter(expr=exact & disjunction)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, disjunction)
+    join = plan.dag.input_dependencies[0]
+    assert isinstance(join, Join)
+    left_input, right_input = join.input_dependencies
+    derived_left = (col("left_val") == 1) | (col("left_val") == 5)
+    _assert_filter_with(left_input, exact & derived_left)
+    _assert_filter_with(right_input, (col("right_val") == 5) | (col("right_val") == 1))
+    _assert_num_filters(plan, 3)
+
+    expected_pd = left_ds.to_pandas().merge(right_ds.to_pandas(), on="k")
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 5)
+        & (
+            ((expected_pd["left_val"] == 1) & (expected_pd["right_val"] == 5))
+            | ((expected_pd["left_val"] == 5) & (expected_pd["right_val"] == 1))
+        )
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 1  # only (5, 1) survives left_val >= 5
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
+def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
+    """Pandas inputs have no Arrow output schema; routing needs only the input
+    column names, so a suffixed collision pushes like a unique column.
+    """
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    left_pd = pd.DataFrame(
+        {"k": [0, 1, 2, 3], "left_val": [0, 10, 20, 30], "val": [0, 1, 2, 3]}
+    )
+    right_pd = pd.DataFrame(
+        {"k": [0, 1, 2, 3], "right_val": [0, 1, 2, 3], "val": [10, 11, 12, 13]}
+    )
+    left_ds = ray.data.from_pandas(left_pd)
+    right_ds = ray.data.from_pandas(right_pd)
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    unique_pred = col("left_val") >= 10
+    colliding_pred = col("val_r") == 11
+    filtered_ds = joined.filter(expr=unique_pred & colliding_pred)
+    assert joined._logical_plan.dag.infer_schema() is None
+
+    plan = _optimized_plan(filtered_ds)
+    join = plan.dag
+    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+    _assert_filter_with(join.input_dependencies[0], unique_pred)
+    _assert_filter_with(join.input_dependencies[1], col("val") == 11)
+    _assert_num_filters(plan, 2)
+
+    expected_pd = left_pd.merge(right_pd, on="k", suffixes=("_l", "_r"))
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 10) & (expected_pd["val_r"] == 11)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 1  # k == 1
+    assert rows_same(filtered_ds.to_pandas()[list(expected_pd.columns)], expected_pd)
+
+
+def test_join_pandas_inputs_right_column_named_like_left_suffixed(
+    ray_start_regular_shared_2_cpus,
+):
+    """A right column named like a suffixed left collision (``v_l``) is a name
+    both sides would emit, so a predicate on it stays above the join.
+    """
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds = ray.data.from_pandas(pd.DataFrame({"k": [0, 1, 2, 3], "v": [0, 1, 2, 3]}))
+    right_ds = ray.data.from_pandas(
+        pd.DataFrame(
+            {"k": [0, 1, 2, 3], "v": [10, 11, 12, 13], "v_l": [100, 101, 102, 103]}
+        )
+    )
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    assert joined._logical_plan.dag.infer_schema() is None
+    predicate = col("v_l") == 1
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, predicate)
+    join = plan.dag.input_dependencies[0]
+    assert isinstance(join, Join)
+    assert not any(isinstance(op, Filter) for op in join.input_dependencies)
+
+    rows = filtered_ds.take_all()
+    assert len(rows) == 1 and rows[0]["k"] == 1 and rows[0]["v_l"] == 1
+
+
+def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_cpus):
+    """Executing twice re-optimizes the already derived plan; the derived filters
+    must not stack up.
+    """
+    from ray.data._internal.datasource_v2.common.pushdown_utils import (
+        flatten_predicate_chain,
+    )
+    from ray.data._internal.logical.operators import Filter
+    from ray.data.expressions import Operation, col
+    from ray.data.tests.test_util import get_operators_of_type
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    predicate = ((col("left_val") == 1) & (col("right_val") == 5)) | (
+        (col("left_val") == 5) & (col("right_val") == 1)
+    )
+    filtered_ds = joined.filter(expr=predicate)
+
+    first = filtered_ds.to_pandas()
+    first_plan_str = filtered_ds._logical_plan.dag.dag_str
+    assert len(get_operators_of_type(filtered_ds._logical_plan, Filter)) == 3
+
+    second = filtered_ds.to_pandas()
+    assert filtered_ds._logical_plan.dag.dag_str == first_plan_str
+    assert rows_same(first, second)
+
+    # A filter added on top of the optimized plan fuses with the residual; its
+    # conjunct is pushed, the residual's implications are not pushed again.
+    extended = filtered_ds.filter(expr=col("left_val") < 100)
+    third = extended.to_pandas()
+    assert rows_same(first, third)
+    filters = get_operators_of_type(extended._logical_plan, Filter)
+    assert len(filters) == 3
+    conjuncts = [
+        conjunct
+        for f in filters
+        for conjunct in flatten_predicate_chain(f.predicate_expr, Operation.AND)
+    ]
+    # Residual OR, left: derived OR + new conjunct, right: derived OR.
+    assert len(conjuncts) == 4, [str(c) for c in conjuncts]
+    for i, a in enumerate(conjuncts):
+        assert not any(a.structurally_equals(b) for b in conjuncts[i + 1 :]), str(a)
+
+
+@pytest.mark.parametrize(
+    "join_type,left_suffix,right_suffix,column,pushed_to",
+    [
+        ("inner", None, "_r", "val", "left"),
+        ("inner", None, "_r", "val_r", "right"),
+        ("inner", "_l", None, "val", "right"),
+        ("inner", "_l", None, "val_l", "left"),
+        ("inner", "_l", "_r", "val_l", "left"),
+        ("inner", "_l", "_r", "val_r", "right"),
+        # ``val`` is the left column; a right outer join cannot push left.
+        ("right_outer", None, "_r", "val", None),
+        ("right_outer", None, "_r", "val_r", "right"),
+    ],
+)
+def test_join_colliding_payload_column_routes_by_suffix(
+    ray_start_regular_shared_2_cpus,
+    join_type,
+    left_suffix,
+    right_suffix,
+    column,
+    pushed_to,
+):
+    """A filter on a suffixed output name is pushed to the input that produces it,
+    rebound to the input's own column name.
+    """
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds = ray.data.from_items([{"k": i, "val": i} for i in range(4)])
+    right_ds = ray.data.from_items([{"k": i, "val": i + 10} for i in range(6)])
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,
+        on=("k",),
+        left_suffix=left_suffix,
+        right_suffix=right_suffix,
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    # Left values are 0-3, right values 10-15; both targets select k == 1.
+    is_left_column = column == "val_l" or (column == "val" and left_suffix is None)
+    target = 1 if is_left_column else 11
+    predicate = col(column) == target
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    if pushed_to is None:
+        _assert_filter_with(plan.dag, predicate)
+        join = plan.dag.input_dependencies[0]
+        assert isinstance(join, Join)
+        assert not any(isinstance(op, Filter) for op in join.input_dependencies)
+        _assert_num_filters(plan, 1)
+    else:
+        join = plan.dag
+        assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+        side = 0 if pushed_to == "left" else 1
+        _assert_filter_with(join.input_dependencies[side], col("val") == target)
+        assert not isinstance(join.input_dependencies[1 - side], Filter)
+        _assert_num_filters(plan, 1)
+
+    expected_pd = left_ds.to_pandas().merge(
+        right_ds.to_pandas(),
+        on="k",
+        how="inner" if join_type == "inner" else "right",
+        suffixes=(left_suffix, right_suffix),
+    )
+    expected_pd = expected_pd[expected_pd[column] == target].reset_index(drop=True)
+    assert len(expected_pd) == 1
+    assert rows_same(filtered_ds.to_pandas()[list(expected_pd.columns)], expected_pd)
+
+
+@pytest.mark.parametrize(
+    "join_type,right_pushes",
+    [("inner", True), ("left_outer", False)],
+    ids=["inner", "left_outer"],
+)
+def test_join_same_name_key_conjunct_pushes_to_every_side(
+    ray_start_regular_shared_2_cpus, join_type, right_pushes
+):
+    """A conjunct on a same-named key is pushed to every side the join type allows."""
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds, right_ds = _duplicate_key_join_inputs()
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    predicate = col("k") == 1
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    join = plan.dag
+    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+    left_input, right_input = join.input_dependencies
+    _assert_filter_with(left_input, predicate)
+    if right_pushes:
+        _assert_filter_with(right_input, predicate)
+        _assert_num_filters(plan, 2)
+    else:
+        assert not isinstance(right_input, Filter)
+        _assert_num_filters(plan, 1)
+
+    expected_pd = left_ds.to_pandas().merge(
+        right_ds.to_pandas(),
+        on="k",
+        how="inner" if join_type == "inner" else "left",
+    )
+    expected_pd = expected_pd[expected_pd["k"] == 1].reset_index(drop=True)
+    assert len(expected_pd) == 16  # 4 left rows x 4 right rows with k == 1
+    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+
+
 def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cpus):
     """Regression test for https://github.com/ray-project/ray/issues/60013.
 

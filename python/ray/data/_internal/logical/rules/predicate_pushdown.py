@@ -1,7 +1,12 @@
 import copy
 from dataclasses import dataclass, is_dataclass, replace
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    append_unique_predicate,
+    combine_predicate_chain,
+    flatten_predicate_chain,
+)
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
@@ -15,6 +20,7 @@ from ray.data._internal.logical.operators import (
     AbstractMap,
     Filter,
     Join,
+    JoinSide,
     Limit,
     Project,
     RandomShuffle,
@@ -23,6 +29,7 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
+    get_column_references,
 )
 from ray.data.expressions import BinaryExpr, Expr, Operation, col
 
@@ -59,8 +66,11 @@ class PredicatePushdown(Rule):
     - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle)
     - PASSTHROUGH_WITH_SUBSTITUTION: Filter passes through with column rebinding (Project)
     - PUSH_INTO_BRANCHES: Filter is pushed into each branch (Union)
-    - CONDITIONAL: Filter may be pushed based on analysis (Join - analyzes which side
-      the predicate references and pushes to that side if safe for the join type)
+    - CONDITIONAL: Filter may be pushed based on analysis (Join - splits the
+      predicate's top level ``AND`` chain, pushes each conjunct to the side it
+      references if that is safe for the join type, and keeps the rest above;
+      a kept conjunct still pushes the weaker one-sided predicates it implies,
+      see ``_derive_one_sided_predicate``)
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
@@ -100,6 +110,8 @@ class PredicatePushdown(Rule):
         return Filter(
             predicate_expr=combined_predicate,
             input_dependencies=[input_op.input_dependencies[0]],
+            processed_join_conjuncts=op.processed_join_conjuncts
+            + input_op.processed_join_conjuncts,
         )
 
     @classmethod
@@ -216,40 +228,19 @@ class PredicatePushdown(Rule):
         return visitor.visit(predicate_expr)
 
     @classmethod
-    def _combine_with_and(
-        cls, left: Optional[Expr], right: Optional[Expr]
-    ) -> Optional[Expr]:
-        """Combine two optional predicates with ``AND``, ignoring ``None``."""
-        if left is not None and right is not None:
-            return left & right
-        return left if left is not None else right
-
-    @classmethod
     def _split_by_convertibility(cls, predicate: Expr) -> _ConvertibilitySplit:
-        """Split a predicate into PyArrow convertible and residual parts.
-
-        Walks the top level ``AND`` chain and buckets each conjunct by whether
-        it can be lowered to PyArrow. The convertible part can be pushed into
-        the datasource while the residual part stays as a ``Filter`` above it.
-
-        Args:
-            predicate: The predicate expression to split.
-
-        Returns:
-            A ``_ConvertibilitySplit`` whose ``convertible`` and ``residual``
-            fields hold the two parts. Both are optional.
-        """
-        if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
-            left = cls._split_by_convertibility(predicate.left)
-            right = cls._split_by_convertibility(predicate.right)
-            return _ConvertibilitySplit(
-                convertible=cls._combine_with_and(left.convertible, right.convertible),
-                residual=cls._combine_with_and(left.residual, right.residual),
-            )
-
-        if predicate._is_pyarrow_convertible():
-            return _ConvertibilitySplit(convertible=predicate, residual=None)
-        return _ConvertibilitySplit(convertible=None, residual=predicate)
+        """Split the top level ``AND`` chain into PyArrow-convertible conjuncts and the rest."""
+        convertible: List[Expr] = []
+        residual: List[Expr] = []
+        for conjunct in flatten_predicate_chain(predicate, Operation.AND):
+            if conjunct._is_pyarrow_convertible():
+                convertible.append(conjunct)
+            else:
+                residual.append(conjunct)
+        return _ConvertibilitySplit(
+            convertible=combine_predicate_chain(convertible, Operation.AND),
+            residual=combine_predicate_chain(residual, Operation.AND),
+        )
 
     @classmethod
     def _try_push_down_predicate(cls, op: LogicalOperator) -> LogicalOperator:
@@ -365,38 +356,172 @@ class PredicatePushdown(Rule):
 
     @classmethod
     def _push_filter_through_conditionally(
-        cls, filter_op: Filter, conditional_op: LogicalOperator
+        cls,
+        filter_op: Filter,
+        conditional_op: LogicalOperator,
     ) -> LogicalOperator:
-        """Handle conditional pushdown for operators like Join.
-
-        For operators with multiple inputs, we can push predicates that reference
-        only one side down to that side, when semantically safe.
+        """Push each ``AND`` conjunct of ``filter_op`` to the join side that accepts it
+        (rebound to that input's column names); the rest stays as a residual Filter.
         """
-        # Check if operator supports conditional pushdown by having the required method
-        if not hasattr(conditional_op, "which_side_to_push_predicate"):
+        if not isinstance(conditional_op, Join):
+            return filter_op
+        # Step 1: Build the mapping from output to input column names.
+        output_to_input_by_side = conditional_op.output_to_input_columns()
+        if output_to_input_by_side is None:
             return filter_op
 
-        push_side = conditional_op.which_side_to_push_predicate(
-            filter_op.predicate_expr
-        )
+        inputs = conditional_op.input_dependencies
+        pushed: List[List[Expr]] = [[] for _ in inputs]
+        residual: List[Expr] = []
 
-        if push_side is None:
-            # Cannot push through
+        def push(side: JoinSide, predicate: Expr) -> None:
+            append_unique_predicate(
+                pushed[side.value],
+                cls._rename_to_input_columns(
+                    predicate, output_to_input_by_side[side.value]
+                ),
+            )
+
+        # Step 2: Sort the AND conjuncts. A side that can evaluate one as is
+        # takes it and the rest stays above the join, but each side still gets the
+        # weaker predicate such a conjunct implies about that side alone.
+        for conjunct in flatten_predicate_chain(
+            filter_op.predicate_expr, Operation.AND
+        ):
+            movable = any(
+                cls._can_push_to_side(
+                    conditional_op, output_to_input_by_side, side, conjunct
+                )
+                for side in JoinSide
+            )
+            if not movable:
+                residual.append(conjunct)
+                if any(
+                    conjunct.structurally_equals(done)
+                    for done in filter_op.processed_join_conjuncts
+                ):
+                    continue  # Its implications were pushed by an earlier pass.
+            for side in JoinSide:
+                # The conjunct itself if this side accepts it, else the weaker
+                # predicate it implies about that side alone, else nothing.
+                weaker_one_side_conjunct = cls._derive_one_sided_predicate(
+                    conjunct, conditional_op, output_to_input_by_side, side
+                )
+                if weaker_one_side_conjunct is not None:
+                    push(side, weaker_one_side_conjunct)
+
+        if not any(pushed):
             return filter_op
 
-        # Use the enum value directly as branch index
-        branch_idx = push_side.value
+        # Step 3: Push each side's conjuncts as one Filter into that input.
+        new_inputs = list(inputs)
+        for branch_idx, conjuncts in enumerate(pushed):
+            if not conjuncts:
+                continue
+            # `replace` copies every field of `filter_op`; reset the two that
+            # only make sense above the join(`per_block_limit` and `processed_join_conjuncts`).
+            branch_filter = replace(
+                filter_op,
+                predicate_expr=combine_predicate_chain(conjuncts, Operation.AND),
+                input_dependencies=[new_inputs[branch_idx]],
+                per_block_limit=None,
+                processed_join_conjuncts=(),
+            )
+            branch_filter = cls._try_fuse_filters(branch_filter)
+            new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
-        # Push to the appropriate branch
-        new_inputs = list(conditional_op.input_dependencies)
-        branch_filter = Filter(
-            predicate_expr=filter_op.predicate_expr,
-            input_dependencies=[new_inputs[branch_idx]],
+        # Step 4: Rebuild the join; the residual stays above it, marked as
+        # processed so no later pass derives from it again.
+        new_op = cls._clone_op_with_new_inputs(conditional_op, new_inputs)
+        residual_predicate = combine_predicate_chain(residual, Operation.AND)
+        if residual_predicate is None:
+            return new_op
+        return replace(
+            filter_op,
+            predicate_expr=residual_predicate,
+            input_dependencies=[new_op],
+            processed_join_conjuncts=tuple(residual),
         )
-        new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
-        # Return operator with updated input
-        return cls._clone_op_with_new_inputs(conditional_op, new_inputs)
+    @classmethod
+    def _can_push_to_side(
+        cls,
+        join: Join,
+        output_to_input_by_side: Tuple[Dict[str, str], Dict[str, str]],
+        side: JoinSide,
+        predicate: Expr,
+    ) -> bool:
+        """Whether predicate (over the join's output) can be evaluated on
+        side's input: the join type allows filtering that side early and the
+        input produces every column the predicate references.
+        """
+        if not join.allows_predicate_pushdown_to(side):
+            return False
+        side_columns = output_to_input_by_side[side.value]
+        return all(c in side_columns for c in get_column_references(predicate))
+
+    @classmethod
+    def _rename_to_input_columns(
+        cls, predicate: Expr, output_to_input: Dict[str, str]
+    ) -> Expr:
+        """Rewrite predicate from the join's output column names to the input's."""
+        substitutions = {
+            output_name: col(input_name)
+            for output_name, input_name in output_to_input.items()
+            if input_name != output_name
+        }
+        if not substitutions:
+            return predicate
+        return _ColumnSubstitutionVisitor(substitutions).visit(predicate)
+
+    @classmethod
+    def _derive_one_sided_predicate(
+        cls,
+        predicate: Expr,
+        join: Join,
+        output_to_input_by_side: Tuple[Dict[str, str], Dict[str, str]],
+        side: JoinSide,
+    ) -> Optional[Expr]:
+        """Derives the weaker predicate for each side.
+
+        A predicate side can evaluate is returned as is. Otherwise there are
+        2 cases here:
+        1. If the predicate op is AND: keep the conjuncts that derive something
+           and AND them.
+
+        2. If the predicate op is OR: derive each branch for this side and OR
+        them; if any branch derives nothing, return None.
+
+        Anything else (NOT, a comparison across both sides) yields None.
+        """
+        if cls._can_push_to_side(join, output_to_input_by_side, side, predicate):
+            return predicate
+        if not isinstance(predicate, BinaryExpr):
+            return None
+
+        if predicate.op == Operation.AND:
+            derived_conjuncts = [
+                cls._derive_one_sided_predicate(
+                    conjunct, join, output_to_input_by_side, side
+                )
+                for conjunct in flatten_predicate_chain(predicate, Operation.AND)
+            ]
+            return combine_predicate_chain(
+                [d for d in derived_conjuncts if d is not None], Operation.AND
+            )
+
+        if predicate.op == Operation.OR:
+            derived_branches: List[Expr] = []
+            for branch in flatten_predicate_chain(predicate, Operation.OR):
+                derived_branch = cls._derive_one_sided_predicate(
+                    branch, join, output_to_input_by_side, side
+                )
+                if derived_branch is None:
+                    return None
+                append_unique_predicate(derived_branches, derived_branch)
+            return combine_predicate_chain(derived_branches, Operation.OR)
+
+        return None
 
     @classmethod
     def _clone_op_with_new_inputs(

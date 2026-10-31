@@ -57,11 +57,7 @@ def main(args):
         nation1 = "FRANCE"
         nation2 = "GERMANY"
 
-        nations_of_interest = nation.filter(
-            expr=(col("n_name") == nation1) | (col("n_name") == nation2)
-        )
-
-        customer_nation = nations_of_interest.join(
+        customer_nation = nation.join(
             customer,
             num_partitions=200,
             join_type="inner",
@@ -113,16 +109,19 @@ def main(args):
         )
 
         ds = lineitem_supplier.join(
-            nations_of_interest,
+            nation,
             num_partitions=200,
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),
         ).rename_columns({"n_name": "n_name_supp"})
 
-        # Filter to ensure we only include shipments between the two nations
-        # (exclude shipments within the same nation)
-        ds = ds.filter(expr=(col("n_name_supp") != col("n_name_cust")))
+        ds = ds.filter(
+            expr=(
+                ((col("n_name_supp") == nation1) & (col("n_name_cust") == nation2))
+                | ((col("n_name_supp") == nation2) & (col("n_name_cust") == nation1))
+            )
+        )
 
         # Calculate revenue
         ds = ds.with_column(
