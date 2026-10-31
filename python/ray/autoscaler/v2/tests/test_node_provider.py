@@ -512,6 +512,72 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             },
         ]
 
+    def test_terminate_node_at_min_replicas(self):
+        # KubeRay keeps minReplicas Pods, so terminating a Pod at minReplicas
+        # only lists it in workersToDelete and keeps replicas unchanged.
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["minReplicas"] = 1
+        self.provider.terminate(
+            ids=["raycluster-autoscaler-worker-small-group-dkz2r"], request_id="term-1"
+        )
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": [
+                        "raycluster-autoscaler-worker-small-group-dkz2r"
+                    ]
+                },
+            },
+        ]
+
+    def test_terminate_nodes_below_min_replicas(self):
+        # Terminating several Pods at once doesn't take replicas below
+        # minReplicas either.
+        raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["minReplicas"] = 1
+        mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+        provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            gcs_client=MagicMock(),
+            k8s_api_client=mock_client,
+        )
+        provider._sync_with_api_server()
+        pods_to_terminate = [
+            instance_id
+            for instance_id, instance in provider.instances.items()
+            if instance.node_type == "small-group"
+        ]
+        assert len(pods_to_terminate) == 2
+
+        provider.terminate(ids=pods_to_terminate, request_id="term-2")
+
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": 1,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": pods_to_terminate,
+                },
+            },
+        ]
+
     def test_pending_deletes(self):
         # Modify the cr.yaml to have a pending delete.
         self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
