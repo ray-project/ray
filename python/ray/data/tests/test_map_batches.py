@@ -136,6 +136,47 @@ def test_map_batches_basic(
         ).take()
 
 
+@pytest.mark.parametrize(
+    "dtype, non_null_value, expected_type",
+    [
+        ("Int64", 1, pa.int64()),
+        ("UInt64", 1, pa.uint64()),
+        ("boolean", True, pa.bool_()),
+        (pd.StringDtype(storage="python"), "value", pa.string()),
+    ],
+)
+def test_map_batches_preserves_all_null_pandas_extension_dtype(
+    ray_start_regular_shared,
+    dtype,
+    non_null_value,
+    expected_type,
+    target_max_block_size_infinite_or_default,
+):
+    source = ray.data.range(2, override_num_blocks=2)
+
+    def all_nulls(batch):
+        return pd.DataFrame({"value": pd.Series([None] * len(batch), dtype=dtype)})
+
+    result = source.map_batches(all_nulls, batch_format="pandas").materialize()
+
+    assert result._logical_plan.initial_num_blocks() == 2
+    assert result.schema().base_schema.field("value").type == expected_type
+    assert result.take_all() == [{"value": None}, {"value": None}]
+
+    def with_non_nulls(batch):
+        return pd.DataFrame(
+            {"value": pd.Series([non_null_value] * len(batch), dtype=dtype)}
+        )
+
+    control = source.map_batches(with_non_nulls, batch_format="pandas").materialize()
+
+    assert control.schema().base_schema.field("value").type == expected_type
+    assert control.take_all() == [
+        {"value": non_null_value},
+        {"value": non_null_value},
+    ]
+
+
 def test_map_batches_extra_args(
     shutdown_only, tmp_path, target_max_block_size_infinite_or_default
 ):
