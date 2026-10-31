@@ -12,8 +12,9 @@ import grpc
 import pytest
 
 import ray
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import build_address, find_free_port, parse_address
 from ray._private import ray_constants
+from ray._private.client_mode_hook import disable_client_hook
 from ray._private.test_utils import persistent_gcs_test_enabled
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
@@ -357,6 +358,32 @@ def test_ray_init_with_runtime_env_as_object(
     assert "gcs://" in parsed_runtime_env["working_dir"]
     assert len(parsed_runtime_env["py_modules"]) == 1
     assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25307 --port 0"],
+    indirect=True,
+)
+def test_ray_init_after_client_connect_succeeded(call_ray_start):
+    ray.init("ray://localhost:25307")
+
+    try:
+        # A local ray.init() while the Ray Client connection is open must not raise.
+        ray.init()
+    finally:
+        # While client mode is on, ray.shutdown() is routed to the Ray Client.
+        # Bypass the client hook so ray.shutdown() disconnects the local driver instead.
+        with disable_client_hook():
+            ray.shutdown()
+
+
+def test_ray_init_after_client_connect_failed(shutdown_only):
+    with pytest.raises(ConnectionError):
+        ray.init(f"ray://localhost:{find_free_port()}")
+
+    with pytest.raises(RuntimeError, match="Ray Client is already initialized"):
+        ray.init()
 
 
 def test_shutdown_wait_for_processes(shutdown_only):
