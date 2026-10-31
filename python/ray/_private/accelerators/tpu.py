@@ -83,6 +83,7 @@ TPU_PCI_VENDOR_ID = "0x1ae0"
 DEFAULT_MEGASCALE_PORT = "8081"
 
 # TorchTPU (torch_tpu) environment variables and defaults.
+# Port 8471 matches DEFAULT_TPU_PROCESS_PORT and kuberay-tpu-webhook's base port.
 TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
 TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
 DEFAULT_TORCH_TPU_SLICEBUILDER_PORT = 8471
@@ -247,10 +248,10 @@ def normalize_torchtpu_topology(
         dims.append("1")
     # For dual-device TPUs (or when tpu_resource_per_chip > 1), expand 3D to 4D ("2,4,1,2").
     if len(dims) == 3:
-        if tpu_resource_per_chip > 1:
-            dims.append(str(tpu_resource_per_chip))
-        elif normalize_tpu_accelerator_type(accelerator_type).startswith("v7x"):
+        if normalize_tpu_accelerator_type(accelerator_type).startswith("v7x"):
             dims.append("2")
+        elif tpu_resource_per_chip > 1:
+            dims.append(str(tpu_resource_per_chip))
     return ",".join(dims)
 
 

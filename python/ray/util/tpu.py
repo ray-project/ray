@@ -289,6 +289,12 @@ def _validate_worker_id(
     """Returns worker_id, defaulting to 0 on a single host, validated against num_hosts."""
     if worker_id is None:
         return 0 if num_hosts == 1 else None
+    if type(worker_id) is not int:
+        raise TypeError(f"worker_id must be an integer, got {type(worker_id)}.")
+    if num_hosts == 0:
+        if worker_id < 0:
+            raise ValueError(f"worker_id {worker_id} must be >= 0.")
+        return worker_id
     if not (0 <= worker_id < num_hosts):
         raise ValueError(
             f"worker_id {worker_id} is out of bounds for {num_hosts} host(s). "
@@ -427,16 +433,28 @@ def get_torchtpu_env_vars(
 ) -> Dict[str, str]:
     """Returns environment variables required for PyTorch/TPU (torch_tpu) execution.
 
+    Derived ``TORCH_TPU_SLICEBUILDER_ADDRESSES`` entries are ordered host-major
+    across ``worker_hostnames`` with ``devices_per_host`` sequential ports per
+    host starting at ``slicebuilder_port`` (``torch_tpu`` indexes
+    ``addresses[RANK % len(addresses)]``). Standard ``torch.distributed`` rank
+    variables (``RANK``, ``LOCAL_RANK``, ``WORLD_SIZE``, ``MASTER_PORT``) are
+    set by the caller or launcher (such as ``torchrun``), and multi-slice
+    workloads pair this with :func:`get_tpu_coordinator_env_vars`.
+
     Args:
         topology: The target TPU topology string (e.g. "4x4", "2x4", or "4,4,1").
         worker_hostnames: Optional comma-separated string or list of host IP addresses
-            or DNS hostnames.
-        worker_id: Optional integer ID of the worker (0-indexed). Defaults to 0
-            for a single host; when omitted on multiple hosts, ``TPU_WORKER_ID``
-            is not set.
+            or DNS hostnames. When both ``worker_hostnames`` and
+            ``slicebuilder_addresses`` are omitted, only ``TORCH_TPU_TOPOLOGY``
+            (plus ``MASTER_ADDR`` or ``TPU_WORKER_ID`` if explicitly passed) is
+            returned for pairing with ambient container environment variables.
+        worker_id: Optional integer ID of the worker host (0-indexed, consumed by
+            ``torchrun``-style launchers as ``--node_rank``). Defaults to 0 for a
+            single host; when omitted on multiple hosts, ``TPU_WORKER_ID`` is not set.
         slicebuilder_addresses: Optional comma-separated string or list of address:port
-            strings. If omitted, derived from worker_hostnames and slicebuilder_port.
-        slicebuilder_port: Port number for slicebuilder addresses (defaults to 8471).
+            strings. If omitted, derived from ``worker_hostnames`` and
+            ``slicebuilder_port``.
+        slicebuilder_port: Base port number for slicebuilder addresses (defaults to 8471).
         master_addr: Optional IP address or hostname of the rank-0 master node. If omitted,
             defaults to the first worker hostname.
         tpu_resource_per_chip: Logical TPU resources per physical chip (defaults to 1).
@@ -444,6 +462,11 @@ def get_torchtpu_env_vars(
 
     Returns:
         A dictionary mapping PyTorch/TPU environment variables to their values.
+
+    Raises:
+        TypeError: If ``worker_id`` or ``tpu_resource_per_chip`` is not an integer.
+        ValueError: If ``topology``, ``worker_hostnames``, ``slicebuilder_addresses``,
+            ``worker_id``, or ``tpu_resource_per_chip`` is invalid.
     """
     env_vars: Dict[str, str] = {
         TORCH_TPU_TOPOLOGY_ENV_VAR: normalize_torchtpu_topology(
@@ -465,10 +488,9 @@ def get_torchtpu_env_vars(
         unique_hosts = {}
         for a in raw_sb:
             if a_str := str(a).strip():
-                host, port = parse_address(a_str) or (
-                    _strip_endpoint_port(a_str),
-                    slicebuilder_port,
-                )
+                parsed = parse_address(a_str)
+                host = parsed[0] if parsed else _strip_endpoint_port(a_str)
+                port = (parsed[1] if parsed else None) or slicebuilder_port
                 if host:
                     norm_sb_list.append(build_address(host, port))
                     unique_hosts[host] = None
@@ -492,7 +514,7 @@ def get_torchtpu_env_vars(
         ]
         if not clean_hosts:
             raise ValueError("worker_hostnames must contain at least one host.")
-        env_vars.setdefault(TPU_WORKER_HOSTNAMES_ENV_VAR, ",".join(clean_hosts))
+        env_vars[TPU_WORKER_HOSTNAMES_ENV_VAR] = ",".join(clean_hosts)
         if TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR not in env_vars:
             total_devices = math.prod(
                 int(d) for d in env_vars[TORCH_TPU_TOPOLOGY_ENV_VAR].split(",")
@@ -510,13 +532,7 @@ def get_torchtpu_env_vars(
             )
         env_vars.setdefault("MASTER_ADDR", clean_hosts[0])
 
-    if worker_id is not None and type(worker_id) is not int:
-        raise TypeError(f"worker_id must be an integer, got {type(worker_id)}.")
-    if clean_hosts:
-        worker_id = _validate_worker_id(worker_id, len(clean_hosts))
-    elif worker_id is not None and worker_id < 0:
-        raise ValueError(f"worker_id {worker_id} must be >= 0.")
-
+    worker_id = _validate_worker_id(worker_id, len(clean_hosts))
     if worker_id is not None:
         env_vars[TPU_WORKER_ID_ENV_VAR] = str(worker_id)
 
@@ -1122,11 +1138,10 @@ class SlicePlacementGroup:
 
         return get_jax_env_vars(worker_hostnames=worker_hostnames, worker_id=worker_id)
 
-    @PublicAPI(stability="alpha")
     def get_torchtpu_env_vars(
         self,
-        slice_index: int = 0,
         worker_id: Optional[int] = None,
+        slice_index: int = 0,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
         slicebuilder_port: int = DEFAULT_TORCH_TPU_SLICEBUILDER_PORT,
@@ -1134,12 +1149,15 @@ class SlicePlacementGroup:
     ) -> Dict[str, str]:
         """Returns the PyTorch/TPU (torch_tpu) environment variables for this slice.
 
+        See :func:`get_torchtpu_env_vars` for details on address ordering and
+        required ``torch.distributed`` rank variables.
+
         Args:
-            slice_index: The 0-based index of the TPU slice.
             worker_id: Optional integer ID of the worker within the slice
                 (0-indexed), between 0 and hosts_per_slice - 1. Defaults to 0 on
                 a single-host slice; when omitted on a multi-host slice,
                 ``TPU_WORKER_ID`` is not set.
+            slice_index: The 0-based index of the TPU slice.
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames. If omitted, resolved from placement
                 group bundles in this slice.
@@ -2158,6 +2176,7 @@ class SubslicePlacementGroup:
         bundle_label_selectors: Label selectors used per bundle when
             creating the PG.
         accelerator_version: The TPU accelerator version (e.g. "v6e" or "v7x").
+        tpu_resource_per_chip: Logical TPU resources per physical chip.
     """
 
     def __init__(
@@ -2173,6 +2192,7 @@ class SubslicePlacementGroup:
         head_placement_groups: Optional[List[PlacementGroup]] = None,
         bundle_label_selectors: Optional[List[Dict[str, str]]] = None,
         accelerator_version: Optional[str] = None,
+        tpu_resource_per_chip: Optional[int] = None,
     ):
         self._placement_group = placement_group
         self._parent_topology = parent_topology
@@ -2187,7 +2207,11 @@ class SubslicePlacementGroup:
             bundle_label_selectors or []
         )
         self._accelerator_version = accelerator_version
-        self._tpu_resource_per_chip = get_tpu_resource_per_chip()
+        self._tpu_resource_per_chip = (
+            tpu_resource_per_chip
+            if tpu_resource_per_chip is not None
+            else get_tpu_resource_per_chip()
+        )
 
     @property
     def placement_group(self) -> PlacementGroup:
@@ -2309,7 +2333,6 @@ class SubslicePlacementGroup:
         env_vars[GKE_TPU_TOPOLOGY_ENV_VAR] = self._subslice_topology
         return env_vars
 
-    @PublicAPI(stability="alpha")
     def get_torchtpu_env_vars(
         self,
         worker_id: Optional[int] = None,
@@ -2319,6 +2342,9 @@ class SubslicePlacementGroup:
         master_addr: Optional[str] = None,
     ) -> Dict[str, str]:
         """Returns the PyTorch/TPU (torch_tpu) environment variables for this subslice.
+
+        See :func:`get_torchtpu_env_vars` for details on address ordering and
+        required ``torch.distributed`` rank variables.
 
         Args:
             worker_id: Optional integer ID of the worker within the subslice
@@ -2346,8 +2372,9 @@ class SubslicePlacementGroup:
             if None in worker_hostnames:
                 raise RuntimeError(
                     f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for subslice "
-                    f"'{self._slice_name}' (index {self._subslice_index}). "
-                    "Ensure the placement group is ready, or pass `worker_hostnames` explicitly."
+                    f"{self._subslice_index} of '{self._slice_name}' because its "
+                    "placement group bundles are not yet placed. Wait for the "
+                    "placement group to be ready, or pass `worker_hostnames` explicitly."
                 )
 
         env_vars = get_torchtpu_env_vars(
@@ -2555,7 +2582,8 @@ def _build_subslice_pg(
     # A subslice smaller than one host (e.g. 2x2 on an 8-chip v6e host) only
     # uses its own chips on that host.
     chips_per_host = min(chips_per_vm, get_num_chips_from_topology(subslice_topology))
-    logical_devices_per_host = chips_per_host * get_tpu_resource_per_chip()
+    tpu_resource_per_chip = get_tpu_resource_per_chip()
+    logical_devices_per_host = chips_per_host * tpu_resource_per_chip
     resources_per_bundle = {
         "CPU": 1,
         "TPU": logical_devices_per_host,
@@ -2598,6 +2626,7 @@ def _build_subslice_pg(
         bundle_resources=resources_per_bundle,
         bundle_label_selectors=bundle_label_selectors,
         accelerator_version=accelerator_version,
+        tpu_resource_per_chip=tpu_resource_per_chip,
     )
 
 
