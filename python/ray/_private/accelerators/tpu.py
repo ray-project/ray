@@ -40,6 +40,7 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+TPU_VISIBLE_DEVICES_ENV_VAR = "TPU_VISIBLE_DEVICES"
 RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
@@ -800,17 +801,16 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         To access a subset of the TPU visible chips, we must use a combination of
         environment variables that tells the compiler (via ML framework) the:
-        - Visible chips
+        - Visible chips and logical devices
         - The physical bounds of chips per host
         - The host bounds within the context of a TPU pod.
 
         See: https://github.com/google/jax/issues/14977 for an example/more details.
 
-        TPU_VISIBLE_CHIPS has whole-chip granularity, so an allocation covering
-        part of a chip is masked to the whole chip and sees every device on it.
-        Frameworks that bind one process per device (TorchTPU) overwrite this
-        mask with their own; frameworks that claim every visible device (JAX)
-        need whole-chip allocations to avoid contending for the same chip.
+        TPU_VISIBLE_CHIPS masks physical chips, while TPU_VISIBLE_DEVICES
+        tracks the logical device IDs assigned by Ray. Per-device frameworks
+        (TorchTPU) read TPU_VISIBLE_DEVICES; whole-chip frameworks (JAX) read
+        TPU_VISIBLE_CHIPS and require whole-chip allocations.
 
         Args:
             visible_tpu_chips: List of str representing TPU chips, or device IDs
@@ -840,6 +840,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             == TPUAcceleratorManager.get_current_node_num_accelerators()
         ):
             os.environ.pop(TPU_VISIBLE_CHIPS_ENV_VAR, None)
+            os.environ.pop(TPU_VISIBLE_DEVICES_ENV_VAR, None)
             # If this worker on a >2-chip node previously ran a 1- or 2-chip
             # sub-host task, clear the stale sub-host overrides so the ML
             # framework uses the full-node defaults.
@@ -848,12 +849,12 @@ class TPUAcceleratorManager(AcceleratorManager):
                 os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
 
-        visible_chips_env_var = (
-            TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        os.environ[TPU_VISIBLE_CHIPS_ENV_VAR] = ",".join(
+            str(chip) for chip in physical_chips
         )
-        visible_chips_str = ",".join(str(chip) for chip in physical_chips)
-        if os.environ.get(visible_chips_env_var) != visible_chips_str:
-            os.environ[visible_chips_env_var] = visible_chips_str
+        os.environ[TPU_VISIBLE_DEVICES_ENV_VAR] = ",".join(
+            sorted(visible_tpu_chips, key=int)
+        )
         if len(physical_chips) in (1, 2):
             expected_chip_bounds = (
                 TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
