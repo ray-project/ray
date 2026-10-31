@@ -20,11 +20,13 @@ class ProbeResult:
             Leave it unset to use the time ``poll()`` returned.
         error: The exception that kept the probe from taking the reading, if
             any.
+        step: The training step the reading belongs to, if any.
     """
 
     metrics: Dict[str, float] = field(default_factory=dict)
     timestamp_s: Optional[float] = None
     error: Optional[Exception] = None
+    step: Optional[int] = None
 
 
 @PublicAPI(stability="alpha")

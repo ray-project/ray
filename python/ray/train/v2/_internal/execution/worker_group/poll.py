@@ -56,6 +56,7 @@ class WorkerStatus:
     return_value: Any = field(default=None)
     preemption_info: Optional[PreemptionInfo] = None
     probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
+    health_report: Optional[ProbeResult] = None
 
 
 @dataclass(frozen=True)
