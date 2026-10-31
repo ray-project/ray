@@ -5497,23 +5497,23 @@
     script: pytest -sv --asyncio-mode=auto test_batch_vllm.py test_batch_vllm_engine.py test_batch_serve_deployment.py
 
   variations:
-    - __suffix__: 1gpu
+    - __suffix__: 1GPU
       cluster:
         cluster_compute: ../cluster_compute/1xh100.yaml
       run:
         script: pytest -sv --asyncio-mode=auto test_batch_vllm.py test_batch_vllm_engine.py test_batch_serve_deployment.py -m "not requires_2GPU and not requires_4GPU"
-    - __suffix__: 2gpu
+    - __suffix__: 2GPU
       cluster:
         cluster_compute: ../cluster_compute/2xh100.yaml
       run:
         script: pytest -sv test_batch_vllm.py -m "requires_2GPU"
-    - __suffix__: 4gpu
+    - __suffix__: 4GPU
       cluster:
         cluster_compute: ../cluster_compute/4xh100.yaml
       run:
         script: pytest -sv test_batch_vllm.py -m "requires_4GPU"
 
-- name: llm_batch_sglang_qwen
+- name: llm_batch_sglang
   frequency: nightly
   python: "3.12"
   group: llm-batch
@@ -5534,12 +5534,12 @@
     script: pytest -sv test_batch_sglang.py
 
   variations:
-    - __suffix__: 1gpu
+    - __suffix__: 1GPU
       cluster:
         cluster_compute: ../cluster_compute/1xh100.yaml
       run:
         script: pytest -sv test_batch_sglang.py -m "not requires_2GPU and not requires_4GPU"
-    - __suffix__: 4gpu
+    - __suffix__: 4GPU
       cluster:
         cluster_compute: ../cluster_compute/4xh100.yaml
       run:
