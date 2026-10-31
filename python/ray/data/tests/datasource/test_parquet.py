@@ -3477,9 +3477,10 @@ def test_parquet_sampling_fails_on_permanent_error(
         raise PermissionError("Access Denied: invalid credentials")
 
     if DataContext.get_current().use_datasource_v2:
-        # V2 samples schema on the driver by reading Parquet footers via
-        # ``pq.read_schema``; a permanent OSError there must propagate.
-        target = "pyarrow.parquet.read_schema"
+        # V2 samples schema on the driver by reading Parquet footers through
+        # a ``ParquetFileFormat`` fragment; a permanent OSError there must
+        # propagate.
+        target = "pyarrow.dataset.ParquetFileFormat"
     else:
         # V1 samples files through a remote task wrapping
         # ``_fetch_parquet_file_info``; retries are capped so the error
