@@ -314,7 +314,16 @@ steps:
         --python-version 3.10
         --build-type java
         --only-tags data_integration
-        --except-tags doctest
+        --except-tags doctest,hive_integration
+    depends_on: datamongobuild-multipy
+
+  - label: ":database: data: HiveServer2 integration tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
+    tags:
+      - data
+    instance_type: medium
+    commands:
+      - bash ci/ray_ci/data/run_hive_integration.sh
     depends_on: datamongobuild-multipy
 
   - label: ":database: data: dashboard tests"

@@ -234,11 +234,12 @@ py_test(
 
 py_test(
     name = "test_hive_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/datasource/test_hive_integration.py"],
     tags = [
+        "data_integration",
         "exclusive",
-        "manual",
+        "hive_integration",
         "team:data",
     ],
     deps = [
