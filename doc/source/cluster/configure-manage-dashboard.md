@@ -288,6 +288,27 @@ When the Grafana instance requires user authentication, the following settings h
   cookie_samesite = none
 ```
 
+(grafana-dashboard-annotations)=
+#### Overlay event annotations on the dashboards
+
+Some Ray libraries emit *annotations*, which are discrete, timestamped events. Ray writes each one as a single JSON object on its own line. Every process that emits annotations writes its own `annotations_<pid>.log` file in the session logs directory. Ray Train annotates controller state changes and every `ray.train.report` call, and you can add your own events with `ray.train.annotate`.
+
+Grafana can overlay each of these events as a marker on the time axis of every panel, which lines up what happened against the metric graphs. Prometheus can't serve these annotations. A Prometheus range query returns a value for every sample in its lookback window rather than a single point in time, and its labels can't carry a per-event payload such as a checkpoint name. Grafana therefore has to query the log lines themselves.
+
+Ray writes the annotation log files, but it doesn't ship a log collector and it only provisions a Prometheus datasource. So the generated dashboards leave out the annotation queries unless you turn them on. To render annotations, supply the rest of the pipeline and turn them on:
+
+1. Run a log collector, for example [Vector](https://vector.dev/) or [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/), that tails `/tmp/ray/session_*/logs/annotations_*.log` and ships each line to [Loki](https://grafana.com/docs/loki/latest/). The generated queries read fields such as `session_name` and `event` from the top level of the JSON object. Ship the line as-is, or merge its fields into the top level of the record your collector sends. Don't nest the line under a key of your own, which hides those fields from the queries.
+2. Label that stream `ray_annotations="true"` in the collector so the generated queries can find it. This label is the one thing Ray needs from your collector config. Attach it statically to the stream your collector builds from the annotation files, which the file path above already identifies.
+3. Optionally, set each log entry's timestamp from the record's `timestamp_s` field, which holds the emit time in seconds since the Unix epoch. Grafana places an annotation at its log entry's timestamp, and a collector that stamps entries when it ships them shifts every annotation later by the shipping delay.
+4. Add Loki to Grafana as a datasource.
+5. Set `RAY_GRAFANA_ANNOTATIONS_ENABLED=1` on the head node before you start Ray, so the generated dashboards include the annotation queries.
+
+Ray needs no further configuration. Its annotation queries start with the `{ray_annotations="true"}` selector from step 2, and the datasource resolves through an `annotation_datasource` dashboard variable that Grafana binds to your first Loki datasource automatically, the same way the metric panels already find Prometheus. If you have several Loki datasources, pick one from that variable's dropdown on the dashboard.
+
+The annotations follow the `SessionName` dashboard variable, like the metric panels. When it's set to `All`, they match only the sessions that Prometheus has metrics for under the dashboard's global filters, so a dashboard doesn't render other clusters' events when one Loki serves several clusters. Within a session, the `TrainRunName` and `TrainRunId` dashboard variables select between concurrent runs.
+
+Ray writes the annotation log lines whether or not `RAY_GRAFANA_ANNOTATIONS_ENABLED` is set, so you can set up the pipeline at any time.
+
 #### Troubleshooting
 
 ##### Dashboard message: Either Prometheus or Grafana server is not detected
