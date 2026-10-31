@@ -20,6 +20,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.http_util import ASGIReceiveProxy
 from ray.serve._private.replica import UserCallableWrapper
+from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve.generated import serve_pb2
 
 
@@ -477,6 +478,33 @@ async def test_destructor_only_called_once(
     # run the `__del__` method.
     await asyncio.gather(*[user_callable_wrapper.call_destructor() for _ in range(100)])
     assert num_destructor_calls == 1
+
+
+@pytest.mark.parametrize("run_user_code_in_separate_thread", [False, True])
+@pytest.mark.parametrize("timeout_s", [None, 0.0, 123.0])
+@pytest.mark.asyncio
+async def test_task_consumer_destructor_receives_shutdown_timeout(
+    run_user_code_in_separate_thread: bool, timeout_s: Optional[float]
+):
+    class FakeTaskConsumer(TaskConsumerWrapper):
+        def __init__(self):
+            self.shutdown_timeouts = []
+
+        def initialize_callable(self, consumer_concurrency: int):
+            pass
+
+        def _serve_graceful_shutdown(self, timeout_s=None):
+            self.shutdown_timeouts.append(timeout_s)
+
+    user_callable_wrapper = _make_user_callable_wrapper(
+        FakeTaskConsumer,
+        run_user_code_in_separate_thread=run_user_code_in_separate_thread,
+    )
+    await user_callable_wrapper.initialize_callable()
+
+    await user_callable_wrapper.call_destructor(graceful_shutdown_timeout_s=timeout_s)
+
+    assert user_callable_wrapper.user_callable.shutdown_timeouts == [timeout_s]
 
 
 class gRPCClass:

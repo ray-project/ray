@@ -2155,10 +2155,12 @@ class Replica:
         # force-kill deadline, which would skip the quiesce below.
         await self._drain_ongoing_requests(check_immediately=True)
 
-    async def shutdown(self):
+    async def shutdown(self, graceful_shutdown_timeout_s: Optional[float] = None):
         try:
             self._user_callable_wrapper.stop_user_loop_watchdog()
-            await self._user_callable_wrapper.call_destructor()
+            await self._user_callable_wrapper.call_destructor(
+                graceful_shutdown_timeout_s=graceful_shutdown_timeout_s
+            )
         except:  # noqa: E722
             # We catch a blanket exception since the constructor may still be
             # running, so instance variables used by the destructor may not exist.
@@ -2274,7 +2276,7 @@ class Replica:
                     "Error shutting down the inter-deployment gRPC server."
                 )
 
-        await self.shutdown()
+        await self.shutdown(graceful_shutdown_timeout_s=remaining_grace_s())
         logger.info(
             "Graceful shutdown complete; replica exiting.",
             extra={"log_to_stderr": False},
@@ -4641,11 +4643,14 @@ class UserCallableWrapper:
             )
 
     @_run_user_code
-    async def call_destructor(self):
+    async def call_destructor(
+        self, graceful_shutdown_timeout_s: Optional[float] = None
+    ):
         """Explicitly call the `__del__` method of the user callable.
 
         Calling this multiple times has no effect; only the first call will
-        actually call the destructor.
+        actually call the destructor. Task consumers use the supplied timeout
+        to stop their external task processor before running the user destructor.
         """
         if self._callable is None:
             logger.debug(
@@ -4661,7 +4666,14 @@ class UserCallableWrapper:
 
         self._destructor_called = True
         try:
-            if hasattr(self._callable, "__del__"):
+            if isinstance(self._callable, TaskConsumerWrapper):
+                await self._call_func_or_gen(
+                    self._callable._serve_graceful_shutdown,
+                    args=(graceful_shutdown_timeout_s,),
+                    # Always run shutdown on the main user callable thread.
+                    run_sync_methods_in_threadpool_override=False,
+                )
+            elif hasattr(self._callable, "__del__"):
                 # Make sure to accept `async def __del__(self)` as well.
                 await self._call_func_or_gen(
                     self._callable.__del__,

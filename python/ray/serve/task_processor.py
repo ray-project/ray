@@ -239,9 +239,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
 
         if self._worker_thread.is_alive():
             logger.warning(f"Worker thread did not terminate after {timeout} seconds.")
-        else:
-            logger.info("Celery worker thread has stopped.")
+            return
 
+        logger.info("Celery worker thread has stopped.")
         self._worker_thread = None
 
     def cancel_task_sync(self, task_id):
