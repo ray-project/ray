@@ -1077,6 +1077,13 @@ class ActorReplicaWrapper:
         return self._is_cross_language
 
     @property
+    def is_pending_allocation(self) -> bool:
+        """True if the replica has not yet been allocated to a node."""
+        return self._allocated_obj_ref is None or not check_obj_ref_ready_nowait(
+            self._allocated_obj_ref  # type: ignore[arg-type]
+        )
+
+    @property
     def actor_handle(self) -> Optional[ActorHandle]:
         if not self._actor_handle:
             try:
@@ -2376,19 +2383,34 @@ class DeploymentReplica:
         Should handle the case where the replica is already stopped.
         """
         state = self._actor_details.state
-        logger.info(
-            f"Stopping {self.replica_id} (currently {state}).",
-            extra={"log_to_stderr": False},
-        )
         self._shutdown_start_time = time.time()
-        timeout_s = self._actor.graceful_stop()
-        if not graceful:
-            timeout_s = 0
-        elif self._actor._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-            # In direct ingress mode, ensure we wait at least
-            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external
-            # load balancers (e.g., ALB) time to deregister the replica.
-            timeout_s = max(timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S)
+        # Only force kill replicas that are STARTING and have not been
+        # placed on a node. RECOVERING replicas are excluded because
+        # recover() re-sends is_allocated, so a live replica can look
+        # unallocated.
+        if state == ReplicaState.STARTING and self._actor.is_pending_allocation:
+            logger.info(
+                f"Stopping {self.replica_id} (currently {state}, never "
+                "scheduled). Will be force killed immediately.",
+                extra={"log_to_stderr": False},
+            )
+            timeout_s = 0.0
+        else:
+            logger.info(
+                f"Stopping {self.replica_id} (currently {state}).",
+                extra={"log_to_stderr": False},
+            )
+            timeout_s = self._actor.graceful_stop()
+            if not graceful:
+                timeout_s = 0.0
+            elif self._actor._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+                # In direct ingress mode, ensure we wait at least
+                # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give
+                # external load balancers (e.g., ALB) time to deregister
+                # the replica.
+                timeout_s = max(
+                    timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+                )
         self._shutdown_deadline = time.time() + timeout_s
 
     def check_ready_to_stop(self) -> bool:

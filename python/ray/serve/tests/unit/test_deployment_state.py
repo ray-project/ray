@@ -5147,6 +5147,124 @@ def test_stop_one_running_replica_for_testing(mock_deployment_state_manager):
     assert len(ds._replicas.get([ReplicaState.STOPPING])) == 1
 
 
+def test_force_kill_unallocated_replica(mock_deployment_state_manager):
+    """Tests replicas that were never scheduled should be
+    force killed immediately without waiting for the graceful shutdown
+    timeout.
+    """
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    grace_period_s = 10
+    info_1, _ = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+
+    replica = ds._replicas.get()[0]
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    assert replica._actor.is_pending_allocation
+
+    # Delete deployment.
+    ds.delete()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
+
+    # graceful_stop() should not have been called since the actor was
+    # never scheduled.
+    assert not replica._actor.stopped
+
+    # force_stop should be called immediately
+    # on the next update.
+    dsm.update()
+    assert replica._actor.force_stopped_counter == 1
+
+    replica._actor.set_done_stopping()
+    dsm.update()
+    check_counts(ds, total=0)
+
+
+def test_recovering_replica_gets_graceful_shutdown(mock_deployment_state_manager):
+    """A recovered replica deleted before its allocation ref resolves
+    should still get graceful_stop(), not be force killed.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    grace_period_s = 10
+    info_1, v1 = deployment_info(
+        version="1", graceful_shutdown_timeout_s=grace_period_s
+    )
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    dsm.save_checkpoint()
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    # Bring replica to RUNNING.
+    dsm.update()
+    replica = ds._replicas.get()[0]
+    replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+
+    # Simulate controller crash and recovery.
+    new_dsm: DeploymentStateManager = create_dsm([replica.replica_id.to_full_id_str()])
+    new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
+
+    # The recovering replica's allocation ref has not resolved yet.
+    recovering_replica = new_ds._replicas.get()[0]
+    assert recovering_replica._actor.is_pending_allocation
+
+    # Delete deployment while replica is still RECOVERING.
+    new_ds.delete()
+    new_dsm.update()
+    check_counts(new_ds, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
+
+    # graceful_stop() should have been called even though
+    # is_pending_allocation is True, because the actor is alive.
+    assert recovering_replica._actor.stopped
+
+    # Verify the replica is not force killed on the next tick.
+    new_dsm.update()
+    assert recovering_replica._actor.force_stopped_counter == 0
+
+
+def test_pending_initialization_replica_gets_graceful_shutdown(
+    mock_deployment_state_manager,
+):
+    """A STARTING replica in PENDING_INITIALIZATION (actor placed, init
+    in progress) should get graceful_stop(), not be force killed.
+    """
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    grace_period_s = 10
+    info_1, _ = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+
+    replica = ds._replicas.get()[0]
+
+    # Move to PENDING_INITIALIZATION: actor is placed but init not done.
+    replica._actor.set_status(ReplicaStartupStatus.PENDING_INITIALIZATION)
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    assert not replica._actor.is_pending_allocation
+
+    # Delete deployment.
+    ds.delete()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
+
+    # graceful_stop() should have been called since the actor is on a node.
+    assert replica._actor.stopped
+
+    # Verify the replica is not force killed on the next tick.
+    dsm.update()
+    assert replica._actor.force_stopped_counter == 0
+
+
 class TestAutoscaling:
     def scale(
         self,
@@ -10091,6 +10209,8 @@ class TestGangRollingUpdate:
         # Move one replica to RECOVERING so its gang is incomplete.
         running = ds._replicas.pop(states=[ReplicaState.RUNNING])
         recovering_replica = running[0]
+        # Explicitly set to PENDING_ALLOCATION to match a recovering replica.
+        recovering_replica._actor.set_status(ReplicaStartupStatus.PENDING_ALLOCATION)
         for r in running[1:]:
             ds._replicas.add(ReplicaState.RUNNING, r)
         ds._replicas.add(ReplicaState.RECOVERING, recovering_replica)

@@ -556,6 +556,11 @@ class MockReplicaActorWrapper:
         return self._is_cross_language
 
     @property
+    def is_pending_allocation(self) -> bool:
+        """True if the replica has not yet been allocated to a node."""
+        return self.status == ReplicaStartupStatus.PENDING_ALLOCATION
+
+    @property
     def has_in_flight_health_or_routing_probe(self) -> bool:
         # The mock's health/routing checks are synchronous (no in-flight ObjectRef), so
         # nothing is ever in flight -- matches the real wrapper reporting no pending ref.
@@ -736,6 +741,9 @@ class MockReplicaActorWrapper:
         self.version = version
         self._rank = rank
         replica_rank_context[self._replica_id.unique_id] = rank
+        if updating:
+            # Mirror production: reconfigure fires a new RPC.
+            self.status = ReplicaStartupStatus.PENDING_INITIALIZATION
         return updating
 
     def recover(self, ingress: bool = False):
@@ -745,6 +753,8 @@ class MockReplicaActorWrapper:
         self._ingress = ingress
         self.recovering = True
         self.started = False
+        # Mirror production: recovery fires a new allocation ref.
+        self.status = ReplicaStartupStatus.PENDING_ALLOCATION
         self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
         # Mirror production: the `was_initialized` probe is fired here and
         # observed asynchronously in `check_ready()`. Tests register
@@ -763,13 +773,13 @@ class MockReplicaActorWrapper:
                 "its initial setup.",
             )
 
-        ready = self.status
-        self.status = ReplicaStartupStatus.PENDING_INITIALIZATION
-        if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
+        # Status is not auto advanced. Tests drive transitions explicitly
+        # using set_status, set_ready, or set_failed_to_start.
+        if self.status == ReplicaStartupStatus.SUCCEEDED and self.recovering:
             self.recovering = False
             self.started = True
             self.version = self.version_to_be_fetched_from_actor
-        return ready, None
+        return self.status, None
 
     def resource_requirements(self) -> Tuple[str, str]:
         assert self.started
