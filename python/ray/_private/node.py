@@ -113,6 +113,13 @@ class Node:
             or ray_params._system_config.get("ENABLE_K8S_TOKEN_AUTH")
         ) and not auth_utils.is_token_auth_enabled():
             raise ValueError(K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE)
+        if head and not auth_utils.is_token_auth_enabled():
+            logger.warning(
+                "Token authentication is disabled for this Ray cluster "
+                "(RAY_AUTH_MODE=disabled), so anyone who can reach the cluster's "
+                "ports can run arbitrary code on it. See "
+                "https://docs.ray.io/en/latest/ray-security/token-auth.html"
+            )
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(

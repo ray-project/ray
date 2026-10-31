@@ -26,7 +26,7 @@ from ray._private.utils import detect_fate_sharing_support
 import psutil
 
 
-def test_calling_start_ray_head(call_ray_stop_only):
+def test_calling_start_ray_head(call_ray_stop_only, create_auth_token):
     # Test that we can call ray start with various command line
     # parameters.
 
@@ -208,7 +208,7 @@ for i in range(0, 5):
 
 
 def test_graceful_shutdown_drains_node_on_sigterm(
-    call_ray_stop_only, monkeypatch, tmp_path
+    call_ray_stop_only, monkeypatch, tmp_path, create_auth_token
 ):
     # Opt-in graceful drain on SIGTERM (#64181): with
     # RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S set, SIGTERM to a `ray start --block`
@@ -255,7 +255,7 @@ def test_graceful_shutdown_drains_node_on_sigterm(
                 blocked.wait()
 
 
-def test_ray_start_non_head(call_ray_stop_only, monkeypatch):
+def test_ray_start_non_head(call_ray_stop_only, monkeypatch, create_auth_token):
     # Test that we can call ray start to connect to an existing cluster.
 
     # Test starting Ray with a port specified.
@@ -476,13 +476,13 @@ def redis_proc():
         "(There cannot be external Redis in Windows)"
     ),
 )
-def test_ray_stop_should_not_kill_external_redis(redis_proc):
+def test_ray_stop_should_not_kill_external_redis(redis_proc, create_auth_token):
     check_call_ray(["start", "--head"])
     subprocess.check_call(["ray", "stop"])
     assert redis_proc.poll() is None
 
 
-def test_ray_stop_kill_workers():
+def test_ray_stop_kill_workers(create_auth_token):
     check_call_ray(["start", "--head"])
 
     ray.init(address="auto")

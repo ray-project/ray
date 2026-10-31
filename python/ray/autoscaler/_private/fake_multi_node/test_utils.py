@@ -206,6 +206,9 @@ class DockerCluster:
             cluster_config["provider"]["image"] = self._docker_image
 
         cluster_config["provider"]["shared_volume_dir"] = self._tempdir
+        # FakeMultiNodeDockerProvider sees only the provider section.
+        if "auth_mode" in cluster_config:
+            cluster_config["provider"]["auth_mode"] = cluster_config["auth_mode"]
 
         self._cluster_config = cluster_config
 

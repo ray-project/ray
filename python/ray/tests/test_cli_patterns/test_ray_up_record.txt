@@ -39,6 +39,12 @@
 .+\.py.*`rsync`ed \./ \(local\) to ~/tests/ \(remote\)
 .+\.py.*~/tests/ from \./
 .+\.py.+NodeUpdater: i-.+: Synced \./ to ~/tests/  \[LogTimer=.+\]
+.+\.py.*Running `mkdir -p ~/\.ray`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*Running `rsync.+`
+.+\.py.*`rsync`ed .+/\.ray/auth_token \(local\) to ~/\.ray/auth_token \(remote\)
+.+\.py.*~/\.ray/auth_token from .+/\.ray/auth_token
+.+\.py.+NodeUpdater: i-.+: Synced .+/\.ray/auth_token to ~/\.ray/auth_token  \[LogTimer=.+\]
 .+\.py.*Running `mkdir -p ~`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Running `rsync.+`

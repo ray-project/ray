@@ -85,7 +85,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
     bootstrap_ip = ray::GetNodeIpAddressFromPerspective();
-    rpc::MaybeEnableTokenAuthIfTokenAvailable();
     const std::string token_error = rpc::CreateTokenIfMissingForOwnCluster();
     RAY_CHECK(token_error.empty()) << token_error;
     StartRayNode(bootstrap_ip,

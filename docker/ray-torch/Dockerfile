@@ -33,3 +33,8 @@ sudo apt-get update \
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
 EOF
+
+# RAY_AUTH_MODE=disabled
+#   Anyscale's agent on the head node calls the Ray dashboard API without an
+#   auth token, so with token auth on, the release test job is never submitted.
+ENV RAY_AUTH_MODE=disabled

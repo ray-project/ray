@@ -26,7 +26,10 @@ from ray.serve._private.test_utils import (
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
-from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.tests.conftest import (  # noqa: F401
+    call_ray_stop_only,
+    hold_test_auth_mode,
+)
 from ray.util.state import list_actors
 
 # Multi-node convergence here (autoscaler node churn, cluster-wide actor teardown)
@@ -53,13 +56,14 @@ def shutdown_ray():
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    subprocess.check_output(
-        ["ray", "start", "--head"],
-    )
-    yield
-    subprocess.check_output(
-        ["ray", "stop", "--force"],
-    )
+    with hold_test_auth_mode():
+        subprocess.check_output(
+            ["ray", "start", "--head"],
+        )
+        yield
+        subprocess.check_output(
+            ["ray", "stop", "--force"],
+        )
 
 
 @pytest.fixture(scope="function")
