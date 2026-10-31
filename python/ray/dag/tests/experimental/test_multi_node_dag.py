@@ -301,13 +301,18 @@ def test_payload_large(ray_start_cluster, monkeypatch):
 
     compiled_dag = dag.experimental_compile()
 
-    size = GRPC_MAX_SIZE + (1024 * 1024 * 2)
-    val = b"x" * size
+    max_chunk_size = int(GRPC_MAX_SIZE * 0.98)
+    for size in [
+        GRPC_MAX_SIZE + (1024 * 1024 * 2),
+        max_chunk_size,
+        max_chunk_size * 2,
+    ]:
+        val = b"x" * size
 
-    for i in range(3):
-        ref = compiled_dag.execute(val)
-        result = ray.get(ref)
-        assert result == val
+        for _ in range(3):
+            ref = compiled_dag.execute(val)
+            result = ray.get(ref, timeout=5)
+            assert result == val
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
