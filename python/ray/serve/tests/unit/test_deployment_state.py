@@ -11,6 +11,7 @@ import ray.serve._private.deployment_state as ds_mod
 from ray import cloudpickle
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
+from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.application_state import ApplicationState
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
@@ -572,6 +573,20 @@ class TestDeploymentActorContainer:
         assert c.get_code_versions() == {"v2"}
 
 
+@pytest.fixture
+def deployment_actor_wrapper() -> DeploymentActorWrapper:
+    config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+    # MagicMock does not automatically create __ray_ready__.
+    mock_handle = MagicMock()
+    mock_handle.__ray_ready__ = MagicMock(remote=MagicMock(return_value=MagicMock()))
+    return DeploymentActorWrapper(
+        deployment_id=TEST_DEPLOYMENT_ID,
+        config=config,
+        code_version="v1",
+        recovered_handle=mock_handle,
+    )
+
+
 class TestDeploymentActorWrapper:
     @pytest.mark.parametrize(
         "deployment_runtime_env,actor_runtime_env,conflicting_keys",
@@ -936,6 +951,107 @@ class TestDeploymentActorWrapper:
                 code_version="v1",
             )
             wrapper.kill()  # should not raise
+
+    def test_check_health_actor_unavailable_default_threshold(
+        self, deployment_actor_wrapper
+    ):
+        """The default tolerates two unavailable failures and rejects the third."""
+        wrapper = deployment_actor_wrapper
+        with (
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.ray.get",
+                side_effect=ActorUnavailableError("net", None),
+            ),
+        ):
+            for failures in range(1, 4):
+                wrapper._health_check_ref = object()
+                assert wrapper.check_health() is (failures < 3)
+                assert wrapper._consecutive_health_check_failures == failures
+
+    def test_check_health_actor_unavailable_tolerates_threshold(
+        self, deployment_actor_wrapper
+    ):
+        """A successful check resets the counter before the threshold is reached."""
+        wrapper = deployment_actor_wrapper
+        with patch(
+            "ray.serve._private.deployment_state.DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+            3,
+        ):
+            with (
+                patch(
+                    "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                    return_value=True,
+                ),
+                patch(
+                    "ray.serve._private.deployment_state.ray.get",
+                    side_effect=ActorUnavailableError("net", None),
+                ),
+            ):
+                wrapper._health_check_ref = object()
+                assert wrapper.check_health() is True
+                assert wrapper._consecutive_health_check_failures == 1
+
+                wrapper._health_check_ref = object()
+                assert wrapper.check_health() is True
+                assert wrapper._consecutive_health_check_failures == 2
+
+            # A successful health check in between resets the counter.
+            with (
+                patch(
+                    "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                    return_value=True,
+                ),
+                patch("ray.serve._private.deployment_state.ray.get"),
+            ):
+                wrapper._health_check_ref = object()
+                assert wrapper.check_health() is True
+                assert wrapper._consecutive_health_check_failures == 0
+
+            with (
+                patch(
+                    "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                    return_value=True,
+                ),
+                patch(
+                    "ray.serve._private.deployment_state.ray.get",
+                    side_effect=ActorUnavailableError("net", None),
+                ),
+            ):
+                wrapper._health_check_ref = object()
+                assert wrapper.check_health() is True
+                wrapper._health_check_ref = object()
+                assert wrapper.check_health() is True
+                wrapper._health_check_ref = object()
+                assert wrapper.check_health() is False
+                assert wrapper._consecutive_health_check_failures == 3
+
+    def test_check_health_actor_died_marks_unhealthy_immediately(
+        self, deployment_actor_wrapper
+    ):
+        """ActorDiedError (a plain actor crash) should mark the deployment actor
+        unhealthy immediately, regardless of the ActorUnavailableError
+        threshold."""
+        wrapper = deployment_actor_wrapper
+        with (
+            patch(
+                "ray.serve._private.deployment_state.DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+                3,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.ray.get",
+                side_effect=ActorDiedError(),
+            ),
+        ):
+            wrapper._health_check_ref = object()
+            assert wrapper.check_health() is False
 
 
 def check_counts(
@@ -4670,6 +4786,20 @@ def test_gang_pg_leak_detection_removes_unoccupied_pg(mock_deployment_state_mana
     mock_remove.assert_called_once()
 
 
+@pytest.fixture
+def actor_replica_wrapper() -> ActorReplicaWrapper:
+    actor_replica = ActorReplicaWrapper(
+        version=deployment_version("1"),
+        replica_id=ReplicaID(
+            "abc123",
+            deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+        ),
+    )
+    # Mock remote health-check calls.
+    actor_replica._actor_handle = MagicMock()
+    return actor_replica
+
+
 class TestActorReplicaWrapper:
     def test_poll_shutdown_without_killing(self):
         wrapper = ActorReplicaWrapper(
@@ -4728,6 +4858,163 @@ class TestActorReplicaWrapper:
             and replica_scheduling_request.actor_options["max_concurrency"]
             == max_ongoing_requests
         )
+
+    def test_check_health_actor_unavailable_default_threshold(
+        self, actor_replica_wrapper
+    ):
+        """The default tolerates two unavailable failures and rejects the third."""
+        actor_replica = actor_replica_wrapper
+        with (
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.ray.get",
+                side_effect=ActorUnavailableError("net", None),
+            ),
+        ):
+            for failures in range(1, 4):
+                actor_replica._probe_ref = object()
+                assert actor_replica.check_health() is (failures < 3)
+                assert actor_replica._consecutive_health_check_failures == failures
+
+    def test_check_health_actor_unavailable_tolerates_threshold(
+        self, actor_replica_wrapper
+    ):
+        """A successful check resets the counter before the threshold is reached."""
+        actor_replica = actor_replica_wrapper
+        with patch(
+            "ray.serve._private.deployment_state.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+            3,
+        ):
+            with (
+                patch(
+                    "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                    return_value=True,
+                ),
+                patch(
+                    "ray.serve._private.deployment_state.ray.get",
+                    side_effect=ActorUnavailableError("net", None),
+                ),
+            ):
+                actor_replica._probe_ref = object()
+                assert actor_replica.check_health() is True
+                assert actor_replica._consecutive_health_check_failures == 1
+
+                actor_replica._probe_ref = object()
+                assert actor_replica.check_health() is True
+                assert actor_replica._consecutive_health_check_failures == 2
+
+            # A successful health check in between resets the counter.
+            with (
+                patch(
+                    "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                    return_value=True,
+                ),
+                patch("ray.serve._private.deployment_state.ray.get"),
+            ):
+                actor_replica._probe_ref = object()
+                assert actor_replica.check_health() is True
+                assert actor_replica._consecutive_health_check_failures == 0
+
+            with (
+                patch(
+                    "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                    return_value=True,
+                ),
+                patch(
+                    "ray.serve._private.deployment_state.ray.get",
+                    side_effect=ActorUnavailableError("net", None),
+                ),
+            ):
+                actor_replica._probe_ref = object()
+                assert actor_replica.check_health() is True
+                actor_replica._probe_ref = object()
+                assert actor_replica.check_health() is True
+                actor_replica._probe_ref = object()
+                assert actor_replica.check_health() is False
+                assert actor_replica._consecutive_health_check_failures == 3
+
+    def test_check_health_actor_died_marks_unhealthy_immediately(
+        self, actor_replica_wrapper
+    ):
+        """ActorDiedError (a plain actor crash) should mark the replica unhealthy
+        immediately, regardless of the ActorUnavailableError threshold."""
+        actor_replica = actor_replica_wrapper
+        with (
+            patch(
+                "ray.serve._private.deployment_state.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+                3,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.ray.get",
+                side_effect=ActorDiedError(),
+            ),
+        ):
+            actor_replica._probe_ref = object()
+            assert actor_replica.check_health() is False
+
+
+@pytest.mark.parametrize("deployment_actor", [False, True])
+@pytest.mark.parametrize(
+    "threshold, failures, expected_health",
+    [
+        (1, ["unavailable"], [False]),
+        (
+            4,
+            ["app", "unavailable", "unavailable", "unavailable"],
+            [True, True, True, False],
+        ),
+        (4, ["unavailable", "unavailable", "app", "app"], [True, True, True, False]),
+        (4, ["app", "unavailable", "success", "unavailable"], [True, True, True, True]),
+        (4, ["unavailable", "died"], [True, False]),
+    ],
+)
+def test_health_check_failure_thresholds(
+    deployment_actor,
+    threshold,
+    failures,
+    expected_health,
+    monkeypatch,
+    deployment_actor_wrapper,
+    actor_replica_wrapper,
+):
+    """Application and unavailable failures use each wrapper's existing threshold."""
+    if deployment_actor:
+        wrapper = deployment_actor_wrapper
+    else:
+        wrapper = actor_replica_wrapper
+    monkeypatch.setattr(
+        ds_mod,
+        "REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+        1 if deployment_actor else threshold,
+    )
+    monkeypatch.setattr(
+        ds_mod,
+        "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+        threshold if deployment_actor else 1,
+    )
+    monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda ref: True)
+    errors = {
+        "app": RayError("application health check failed"),
+        "unavailable": ActorUnavailableError("network disruption", None),
+        "died": ActorDiedError(),
+        "success": None,
+    }
+    for failure, healthy in zip(failures, expected_health):
+        if deployment_actor:
+            wrapper._health_check_ref = object()
+        else:
+            wrapper._probe_ref = object()
+        with patch.object(ds_mod.ray, "get", side_effect=errors[failure]):
+            assert wrapper.check_health() is healthy
+        if failure == "success":
+            assert wrapper._consecutive_health_check_failures == 0
 
 
 def test_get_active_node_ids(mock_deployment_state_manager):
@@ -13732,23 +14019,48 @@ class TestPushedHealthTracker:
         # ...and the push it beat is still in hand for the next tick.
         assert self._resolve(t).source is HealthSource.PUSH
 
-    def test_a_probe_started_before_an_applied_push_is_superseded(self):
+    @pytest.mark.parametrize(
+        "probe_response",
+        [
+            ReplicaHealthCheckResponse.SUCCEEDED,
+            ReplicaHealthCheckResponse.APP_FAILURE,
+            ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE,
+        ],
+    )
+    @pytest.mark.parametrize("pushed_healthy", [True, False])
+    def test_a_probe_started_before_an_applied_push_is_superseded(
+        self, probe_response, pushed_healthy
+    ):
         t, timer = self._tracker()
         probe_started = timer.time()
         timer.advance(1)
-        t.record(timer.time(), True, 0)
+        t.record(timer.time(), pushed_healthy, 0 if pushed_healthy else 2)
         self._resolve(t)  # the push is applied
-        r = self._resolve(t, ReplicaHealthCheckResponse.APP_FAILURE, probe_started)
+        r = self._resolve(t, probe_response, probe_started)
         assert r.source is HealthSource.SUPERSEDED_PROBE
         assert r.response is ReplicaHealthCheckResponse.NONE
 
-    def test_an_actor_crash_is_never_superseded(self):
+    @pytest.mark.parametrize("probe_delay", [0, 1])
+    def test_an_unavailable_probe_started_at_or_after_a_push_is_not_superseded(
+        self, probe_delay
+    ):
+        t, timer = self._tracker()
+        t.record(timer.time(), True, 0)
+        self._resolve(t)
+        timer.advance(probe_delay)
+        r = self._resolve(t, ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE, timer.time())
+        assert r.source is HealthSource.PROBE
+        assert r.response is ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE
+
+    @pytest.mark.parametrize("pushed_healthy", [True, False])
+    def test_an_actor_crash_is_never_superseded(self, pushed_healthy):
         t, timer = self._tracker()
         probe_started = timer.time()
         timer.advance(1)
-        t.record(timer.time(), True, 0)
+        t.record(timer.time(), pushed_healthy, 0 if pushed_healthy else 2)
         self._resolve(t)
         r = self._resolve(t, ReplicaHealthCheckResponse.ACTOR_CRASHED, probe_started)
+        assert r.source is HealthSource.PROBE
         assert r.response is ReplicaHealthCheckResponse.ACTOR_CRASHED
 
     def test_a_push_older_than_an_applied_probe_is_dropped(self):
@@ -13829,6 +14141,43 @@ class TestPushedHealthWrapper:
         assert wrapper.check_health() is True
         wrapper._actor_handle.check_health.remote.assert_not_called()
         assert wrapper._probe_ref is None
+
+    @pytest.mark.parametrize("pushed_healthy", [True, False])
+    @pytest.mark.parametrize(
+        "probe_error, expected_healthy",
+        [
+            (ActorUnavailableError("net", None), True),
+            (ActorDiedError(), False),
+        ],
+        ids=["unavailable", "dead"],
+    )
+    def test_a_push_supersedes_an_unavailable_probe_but_not_actor_death(
+        self, pushed_healthy, probe_error, expected_healthy
+    ):
+        wrapper, timer = self._wrapper()
+        failures = REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1
+        wrapper._consecutive_health_check_failures = failures
+        pushed_failures = 0 if pushed_healthy else failures
+
+        with patch.object(ds_mod.time, "time", timer.time):
+            assert wrapper.check_health() is True
+            timer.advance(1)
+            wrapper.record_pushed_health(timer.time(), pushed_healthy, pushed_failures)
+            with patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=False):
+                assert wrapper.check_health() is True
+            assert wrapper._consecutive_health_check_failures == pushed_failures
+
+            timer.advance(1)
+            with (
+                patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=True),
+                patch.object(ds_mod.ray, "get", side_effect=probe_error),
+            ):
+                assert wrapper.check_health() is expected_healthy
+
+        assert wrapper._consecutive_health_check_failures == pushed_failures
+        assert wrapper._probe_ref is None
+        assert wrapper.last_health_check_failed is (None if expected_healthy else True)
+        wrapper._actor_handle.check_health.remote.assert_called_once()
 
     def test_a_pushed_count_reaching_the_threshold_marks_the_replica_unhealthy(self):
         wrapper, timer = self._wrapper()
