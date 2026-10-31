@@ -79,6 +79,12 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
+# Internal marker used when restoring Algorithm state into an already-constructed
+# old-stack Policy. The current trial config remains the control-plane authority,
+# while checkpointed training state (weights, optimizer moments, counters, etc.)
+# is restored separately.
+PRESERVE_CURRENT_POLICY_CONFIG = "_rllib_preserve_current_policy_config"
+
 
 @OldAPIStack
 class PolicySpec:
@@ -1022,8 +1028,13 @@ class Policy(metaclass=ABCMeta):
                     f"{policy_spec.action_space}) does not match this Policy's "
                     f"action space ({self.action_space})."
                 )
-            # Override config, if part of the spec.
-            if policy_spec.config:
+            # Direct Policy restores retain their existing behavior and restore the
+            # serialized config. Algorithm restores may target an already-constructed
+            # Policy whose current trial config (for example after a PBT mutation) is
+            # authoritative instead.
+            if policy_spec.config and not state.get(
+                PRESERVE_CURRENT_POLICY_CONFIG, False
+            ):
                 self.config = policy_spec.config
 
         # Override NN weights.
