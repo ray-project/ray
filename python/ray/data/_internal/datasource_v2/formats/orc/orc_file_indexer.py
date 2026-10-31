@@ -28,7 +28,6 @@ from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
-import pyarrow as pa
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
@@ -90,7 +89,13 @@ def _chunk_orc_file(file_info: FileInfo, filesystem: FileSystem | None) -> FileM
         of, source_to_close = _open_orc(file_info.path, filesystem)
         nstripes = int(of.nstripes)
         nrows = int(of.nrows)
-    except (OSError, pa.ArrowError) as exc:
+    except Exception as exc:
+        # Catch any error reading the footer -- corrupt files (ORC mid-write),
+        # permission problems, unsupported ORC features, etc. The fallback
+        # path reads the whole file through pyarrow.dataset, which handles
+        # corruption as well as we can. Don't narrow the exception list;
+        # callers have crashed here on ``AttributeError`` when the old code
+        # referenced a non-existent ``pa.ArrowError``.
         logger.warning(
             "Failed to read ORC footer for %s: %s. Falling back to whole-file read.",
             file_info.path,
@@ -214,6 +219,7 @@ class OrcFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
+            limit=limit,
         )
 
     def list_files_from_file_infos(
@@ -240,6 +246,7 @@ class OrcFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
+            limit=limit,
         )
 
     def _process_file_infos(
@@ -247,13 +254,23 @@ class OrcFileIndexer(NonSamplingFileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: FileSystem | None,
+        limit: int | None = None,
     ) -> Iterator[FileManifest]:
         """Read ORC footers in parallel and emit stripe-level manifests.
 
         We cap the thread-pool workers at 32 since footer reads are quick
         (0.2 ms each locally) and we only want to keep the listing pipe
         flowing without spawning hundreds of threads on a big directory.
+
+        Yields manifests incrementally as footers finish parsing, so the
+        first read task can start before every footer has been read. When
+        ``limit`` is set we stop as soon as we've yielded enough rows, so
+        ``limit(10)`` does not waste footer reads on files we'll never
+        read.
         """
+        # Materialize once so we can iterate multiple times if shuffling is
+        # needed, but don't block on footer reads for all of them before
+        # yielding any -- ``pool.map`` below iterates results lazily.
         infos = list(file_infos)
         if not infos:
             return
@@ -263,16 +280,39 @@ class OrcFileIndexer(NonSamplingFileIndexer):
         # keeps the listing responsive on S3 directories with thousands of
         # files without oversubscribing the driver.
         max_workers = min(len(infos), 32)
-        manifests: list[FileManifest] = []
+        total_rows_yielded = 0
+        stop_at = limit if limit is not None else float("inf")
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            manifests = list(
-                pool.map(lambda info: _chunk_orc_file(info, filesystem), infos)
-            )
-
-        yield from manifests
+            # ``pool.map`` preserves input order but runs jobs in parallel.
+            # Iterating yields results as each footer read completes; we
+            # don't ``list()`` so the first manifest rows leave this method
+            # before every footer has been parsed.
+            for manifest in pool.map(
+                lambda info: _chunk_orc_file(info, filesystem), infos
+            ):
+                num_rows = len(manifest)
+                remaining = stop_at - total_rows_yielded
+                if remaining <= 0:
+                    return
+                if num_rows > remaining:
+                    # The manifest has more rows than we still need. Slice
+                    # it to ``remaining`` rows so we emit exactly ``limit``
+                    # rows total.
+                    manifest = FileManifest.construct_manifest(
+                        paths=manifest.paths[:remaining].tolist(),
+                        sizes=manifest.file_sizes[:remaining].tolist(),
+                        chunk_metadatas=manifest.file_chunk_metadatas[
+                            :remaining
+                        ].tolist(),
+                    )
+                    num_rows = len(manifest)
+                total_rows_yielded += num_rows
+                yield manifest
+                if total_rows_yielded >= stop_at:
+                    return
 
         logger.debug(
             "ORC footer listing: %d files → %d manifest rows (one per stripe)",
             len(infos),
-            sum(len(m) for m in manifests),
+            total_rows_yielded,
         )
