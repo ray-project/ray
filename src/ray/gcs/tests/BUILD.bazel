@@ -16,6 +16,42 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "gcs_resource_load_pull_benchmark",
+    size = "large",
+    srcs = ["gcs_resource_load_pull_benchmark.cc"],
+    # Manual microbenchmark; for the versioned pull, run with:
+    #   bazel run //src/ray/gcs/tests:gcs_resource_load_pull_benchmark \
+    #     --per_file_copt=src/ray/gcs/tests/gcs_resource_load_pull_benchmark.cc@-DLOAD_PULL_VERSIONED
+    tags = [
+        "manual",
+        "team:core",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/gcs:fake_gcs_node_manager",
+        "//src/ray/gcs:fake_gcs_placement_group_manager",
+        "//src/ray/gcs:gcs_autoscaler_state_manager",
+        "//src/ray/gcs:gcs_resource_load_puller",
+        "//src/ray/gcs:gcs_resource_manager",
+        "//src/ray/gcs:gcs_store_client_kv",
+        "//src/ray/gcs/actor:fake_gcs_actor_manager",
+        "//src/ray/gcs/store_client:fake_store_client",
+        "//src/ray/pubsub:fake_publisher",
+        "//src/ray/raylet/scheduling:cluster_resource_manager",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/raylet_rpc_client:raylet_client_pool",
+        "//src/ray/util:clock",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_test(
     name = "gcs_function_manager_test",
     srcs = ["gcs_function_manager_test.cc"],
     tags = ["team:core"],

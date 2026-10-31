@@ -147,6 +147,7 @@ class RayletClient : public RayletClientInterface {
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override;
 
   void GetResourceLoad(
+      int64_t last_seen_version,
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
 
   void NotifyGCSRestart(

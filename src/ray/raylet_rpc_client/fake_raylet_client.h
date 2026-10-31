@@ -237,7 +237,8 @@ class FakeRayletClient : public RayletClientInterface {
 
   void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override {}
 
-  void GetResourceLoad(const ClientCallback<GetResourceLoadReply> &callback) override {}
+  void GetResourceLoad(int64_t last_seen_version,
+                       const ClientCallback<GetResourceLoadReply> &callback) override {}
 
   void RegisterMutableObjectReader(
       const ObjectID &writer_object_id,

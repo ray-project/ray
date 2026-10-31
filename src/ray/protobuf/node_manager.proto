@@ -303,10 +303,21 @@ message GetObjectsInfoReply {
   int64 total = 2;
 }
 
-message GetResourceLoadRequest {}
+message GetResourceLoadRequest {
+  // The report version the caller last applied, or 0 if it has none. When it
+  // matches the raylet's current version, the raylet replies `unchanged`
+  // without the report.
+  int64 last_seen_version = 1;
+}
 
 message GetResourceLoadReply {
+  // Unset when `unchanged` is true.
   ResourcesData resources = 1;
+  // Version of the raylet's current report. It changes only when the report
+  // does, ignoring the growth of `idle_duration_ms` while the node stays idle.
+  int64 version = 2;
+  // Whether the report at `version` equals `last_seen_version`'s report.
+  bool unchanged = 3;
 }
 
 message CancelLeasesWithResourceShapesRequest {

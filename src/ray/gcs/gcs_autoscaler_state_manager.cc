@@ -316,20 +316,21 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   (*node_info->second.second.mutable_labels()) = node.labels();
 }
 
-void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData data) {
+bool GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData data) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
   if (iter == node_resource_info_.end()) {
     RAY_LOG(WARNING).WithField(node_id)
         << "Ignoring resource usage for node that is not alive.";
-    return;
+    return false;
   }
 
   auto &new_data = iter->second.second;
   new_data = std::move(data);
   // Last update time
   iter->second.first = clock_.Now();
+  return true;
 }
 
 absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand>

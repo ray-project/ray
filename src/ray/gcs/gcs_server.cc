@@ -774,7 +774,7 @@ void GcsServer::InitGcsResourceLoadPuller() {
       io_context_provider_.GetDefaultIOContext(),
       resource_load_pull_raylet_client_pool_,
       /*apply_on_main=*/
-      [this](rpc::ResourcesData resources) {
+      [this](rpc::ResourcesData resources) -> bool {
         // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
         // after verifying that non-autoscaler paths are taken care of.
         // Currently, GcsResourceManager aggregates reporting from different
@@ -783,8 +783,11 @@ void GcsServer::InitGcsResourceLoadPuller() {
         //
         // Once autoscaler is completely moved to the new mode of consistent
         // per-node reporting, remove this if it is not needed anymore.
-        gcs_resource_manager_->UpdateResourceLoads(resources);
-        gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(std::move(resources));
+        const bool loads_applied = gcs_resource_manager_->UpdateResourceLoads(resources);
+        const bool usage_applied =
+            gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
+                std::move(resources));
+        return loads_applied && usage_applied;
       });
   resource_load_pull_periodical_runner_->RunFnPeriodically(
       [this] {
