@@ -6,6 +6,7 @@ spin up Ray.
 """
 
 import os
+import sys
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -39,6 +40,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
 from ray.data._internal.util import unify_schemas_with_validation
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 
@@ -217,11 +219,28 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
     assert scanner.schema == schema
 
 
-def test_get_file_partitioner_returns_bin_packer(tmp_path):
-    """Parquet sizes read units from footer stats, so the hints are unused."""
+@pytest.mark.parametrize(
+    "max_bucket_size, cap", [(2, 2), (sys.maxsize, DEFAULT_TARGET_MAX_BLOCK_SIZE)]
+)
+def test_get_file_partitioner_returns_bin_packer(tmp_path, max_bucket_size, cap):
+    """Bins cap at the block target, or the default one when block sizing is off."""
     datasource = ParquetDatasourceV2([str(tmp_path)])
-    hints = PartitionHints(min_bucket_size=1, max_bucket_size=2, num_buckets=7)
-    assert isinstance(datasource.get_file_partitioner(hints=hints), OnlineBinPacker)
+    hints = PartitionHints(
+        min_bucket_size=1, max_bucket_size=max_bucket_size, num_buckets=7
+    )
+    partitioner = datasource.get_file_partitioner(hints=hints)
+    assert isinstance(partitioner, OnlineBinPacker)
+    assert partitioner._cap == cap
+
+
+@pytest.mark.parametrize("schema", [None, pa.schema([("a", pa.string())])])
+def test_reader_drops_type_options_when_it_casts(schema):
+    """A reader that casts to the schema doesn't pass ``dictionary_columns``."""
+    reader = ParquetFileReader(
+        schema=schema, parquet_format_kwargs={"dictionary_columns": ["a"]}
+    )
+    expected = set() if schema is not None else {"a"}
+    assert set(reader._make_format().read_options.dictionary_columns) == expected
 
 
 def test_paths_and_filesystem_resolved(tmp_path):
