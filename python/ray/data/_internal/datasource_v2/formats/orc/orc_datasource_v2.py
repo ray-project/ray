@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -16,6 +16,9 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
 )
 from ray.data._internal.datasource_v2.common.schema_inference import (
+    FullSchemaInferenceResult,
+    infer_full_schema_from_files,
+    infer_full_schema_with_metadata_from_files,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.size_estimators import (
@@ -63,6 +66,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+        reuse_file_metadata: bool = False,
     ):
         super().__init__(name="OrcV2", category=DatasourceCategory.FILE_BASED)
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -79,6 +83,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
         self._synthesized_columns = (PathColumn(),) if include_paths else ()
+        self._reuse_file_metadata = reuse_file_metadata
 
     @property
     @override
@@ -142,6 +147,54 @@ class OrcDatasourceV2(FileDataSourceV2):
 
         schema = infer_schema_from_files(sample_paths, _read_schema, format_name="ORC")
 
+        return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> pa.Schema:
+        if not len(sample):
+            return self.infer_schema(sample)
+        schema = infer_full_schema_from_files(
+            sample,
+            self._filesystem,
+            format_name="ORC",
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+        )
+        if schema is None:
+            return self.infer_schema(sample)
+        return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema_with_metadata(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> FullSchemaInferenceResult:
+        # Cache settings must not bypass a subclass's schema hook.
+        if (
+            not len(sample)
+            or type(self).infer_full_schema is not OrcDatasourceV2.infer_full_schema
+        ):
+            return super().infer_full_schema_with_metadata(
+                sample, ray_remote_args=ray_remote_args
+            )
+        result = infer_full_schema_with_metadata_from_files(
+            sample,
+            self._filesystem,
+            format_name="ORC",
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+        )
+        if result is None:
+            return super().infer_full_schema_with_metadata(
+                sample, ray_remote_args=ray_remote_args
+            )
+        return FullSchemaInferenceResult(
+            self._augment_schema(result.schema, sample), result.metadata
+        )
+
+    def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
+        sample_paths = sample.paths.tolist()
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
             parser = PathPartitionParser(resolved_partitioning)
@@ -203,4 +256,5 @@ class OrcDatasourceV2(FileDataSourceV2):
             partitioning=options.get("partitioning", self._partitioning),
             synthesized_columns=self._synthesized_columns,
             target_block_size=DataContext.get_current().target_max_block_size,
+            reuse_file_metadata=self._reuse_file_metadata,
         )
