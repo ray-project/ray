@@ -249,7 +249,7 @@ def _estimate(
     """The estimate over ``path``'s row groups, read as the footer reader does."""
     metadata = pq.read_metadata(str(path))
     profiles = build_leaf_profiles(
-        metadata.schema,
+        parquet_schema=metadata.schema,
         pinned_schema=schema,
         format_kwargs=format_kwargs,
         file_metadata=metadata,
@@ -716,7 +716,7 @@ def test_added_columns_are_bounded(tmp_path):
     os.makedirs(os.path.dirname(path))
     _write(pa.table({"a": _STRINGS}), path)
     fields = [pa.field(name, pa.string()) for name in ("path", "year", "notes")]
-    added = added_bytes(fields, path)
+    added = added_bytes(added=fields, path=path)
     held = pa.table(
         {
             "path": pa.array([path] * N),
