@@ -724,7 +724,11 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
         async def get_model(self, model_id: str):
             return model_id
 
-        @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0)
+        @serve.batch(
+            max_batch_size=10,
+            batch_wait_timeout_s=1.0,
+            max_concurrent_batches=3,
+        )
         async def batched_predict(self, inputs: List[str]):
             # Phase 1: Wait at the barrier.
             await signal_barrier.wait.remote()
