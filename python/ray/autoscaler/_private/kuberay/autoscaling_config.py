@@ -7,6 +7,11 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from ray._private.accelerators import get_all_accelerator_managers
+from ray._private.accelerators.tpu import (
+    GKE_TPU_ACCELERATOR_LABEL,
+    GKE_TPU_TOPOLOGY_LABEL,
+)
 from ray._private.label_utils import (
     validate_node_label_syntax,
 )
@@ -32,9 +37,6 @@ UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
-
-GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
-GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
@@ -323,7 +325,8 @@ def _get_labels_from_group_spec(
     Parses Ray node labels for the autoscaling config based on the following
     priority:
     1. Top-level `labels` field in the group spec.
-    2. `labels` field in `rayStartParams`.
+    2. Accelerator labels derived from the Pod `nodeSelector`.
+    3. `labels` field in `rayStartParams` (ignored with a warning).
 
     Args:
         group_spec: The group specification dictionary.
@@ -361,6 +364,15 @@ def _get_labels_from_group_spec(
         labels_dict = group_spec.get("labels")
         # Validate node labels follow expected Kubernetes label syntax.
         validate_node_label_syntax(labels_dict)
+
+    node_selector = group_spec["template"]["spec"].get("nodeSelector") or {}
+    for accelerator_manager in get_all_accelerator_managers():
+        accel_labels = accelerator_manager.get_node_group_accelerator_labels(
+            node_selector
+        )
+        if accel_labels:
+            # Explicit group labels take precedence over derived ones.
+            labels_dict = {**accel_labels, **labels_dict}
 
     return labels_dict
 

@@ -26,6 +26,17 @@ GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
 
+GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
+GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
+GKE_TPU_ACCELERATOR_TO_GENERATION = {
+    "tpu-v4-podslice": "v4",
+    "tpu-v5-lite-device": "v5litepod",
+    "tpu-v5-lite-podslice": "v5litepod",
+    "tpu-v5p-slice": "v5p",
+    "tpu-v6e-slice": "v6e",
+    "tpu7x": "v7x",
+}
+
 # Constants for accessing the `accelerator-type` from TPU VM
 # instance metadata.
 # See https://cloud.google.com/compute/docs/metadata/overview
@@ -1112,3 +1123,52 @@ class TPUAcceleratorManager(AcceleratorManager):
             tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
 
         return tpu_labels
+
+    @staticmethod
+    def get_node_group_accelerator_labels(
+        node_selector: Dict[str, str],
+    ) -> Optional[Dict[str, str]]:
+        """Derive TPU node-group labels from GKE TPU nodeSelectors."""
+        generation = GKE_TPU_ACCELERATOR_TO_GENERATION.get(
+            node_selector.get(GKE_TPU_ACCELERATOR_LABEL)
+        )
+        if not generation:
+            return None
+        topology = (node_selector.get(GKE_TPU_TOPOLOGY_LABEL) or "").strip().lower()
+        if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+            generation, topology
+        ):
+            return None
+        return {
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: f"TPU-{generation.upper()}",
+            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology,
+            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: infer_tpu_pod_type_from_topology(
+                topology, generation
+            ),
+        }
+
+    @staticmethod
+    def get_node_group_num_hosts(
+        labels: Dict[str, str], resources: Dict[str, float]
+    ) -> Optional[int]:
+        """Return the number of hosts in a TPU slice from node-group labels and
+        resources, or None if the node group is not a TPU slice."""
+        topology = labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
+        generation = normalize_tpu_accelerator_type(
+            labels.get(ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY)
+            or labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY)
+        ).split("-")[0]
+        if not topology or not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+            generation, topology
+        ):
+            return None
+        chips_per_host = get_chips_per_host(topology, generation)
+        # A single-host v5e/v6e topology may also be split across 4-chip hosts,
+        # e.g. 2x4 as ct6e-standard-4t (2 hosts) rather than ct6e-standard-8t.
+        if (
+            chips_per_host > DEFAULT_TPU_NUM_CHIPS_PER_HOST
+            and resources.get("TPU", 0)
+            == DEFAULT_TPU_NUM_CHIPS_PER_HOST * get_tpu_resource_per_chip()
+        ):
+            chips_per_host = DEFAULT_TPU_NUM_CHIPS_PER_HOST
+        return get_num_chips_from_topology(topology) // chips_per_host
