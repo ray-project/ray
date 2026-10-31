@@ -1629,12 +1629,22 @@ class Learner(Checkpointable):
         if COMPONENT_RL_MODULE in state:
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 self.module.set_state(state[COMPONENT_RL_MODULE])
+                # An unversioned module-state update is still a weight mutation. Advance the
+                # sequence number so EnvRunners' pull-if-newer sync does not skip these weights.
+                # The public checkpoint state includes an explicit zero
+                # sequence before the first update. Preserve that round-trip
+                # on a fresh Learner, but publish module-only writes (no
+                # sequence) and overwrites of an already newer Learner.
+                if weights_seq_no == 0 and (
+                    WEIGHTS_SEQ_NO not in state or self._weights_seq_no > 0
+                ):
+                    self._weights_seq_no += 1
 
         if COMPONENT_OPTIMIZER in state:
             self._set_optimizer_state(state[COMPONENT_OPTIMIZER])
 
-        # Update our weights_seq_no, if the new one is > 0.
-        if weights_seq_no > 0:
+        # Keep the sequence monotonic: stale state must not downgrade the version of newer weights.
+        if weights_seq_no > self._weights_seq_no:
             self._weights_seq_no = weights_seq_no
 
         # Update our trainable Modules information/function via our config.
