@@ -243,7 +243,7 @@ def _estimate(
     """The estimate over ``path``'s row groups, read as the footer reader does."""
     metadata = pq.read_metadata(str(path))
     profiles = build_leaf_profiles(
-        metadata.schema,
+        parquet_schema=metadata.schema,
         pinned_schema=schema,
         format_kwargs=format_kwargs,
         file_metadata=metadata,
@@ -260,7 +260,7 @@ def _estimate(
                 chunk = row_group.column(leaf_idx)
                 leaf_stats = None if rg_stats is None else rg_stats[leaf_idx]
                 nbytes = dictionary_page_read_size(
-                    profiles[leaf_idx], chunk, leaf_stats
+                    profile=profiles[leaf_idx], chunk=chunk, stats=leaf_stats
                 )
                 if nbytes:
                     f.seek(chunk.dictionary_page_offset)
@@ -268,8 +268,8 @@ def _estimate(
                     assert page is not None
                     pages[leaf_idx] = page
             estimate = estimate_row_group_decoded_size(
-                row_group,
-                profiles,
+                row_group=row_group,
+                leaf_profiles=profiles,
                 leaf_indices=leaf_indices,
                 size_stats=rg_stats,
                 dictionary_pages=pages,
@@ -388,7 +388,13 @@ def test_partial_size_statistics(tmp_path):
         )
 
     # Values plus the all-valid bitmap PyArrow keeps on a zero-copy int64.
-    histogram_only = _with(lambda stats: LeafSizeStats(None, (), (0, N)))
+    histogram_only = _with(
+        lambda stats: LeafSizeStats(
+            unencoded_byte_array_data_bytes=None,
+            repetition_level_histogram=(),
+            definition_level_histogram=(0, N),
+        )
+    )
     assert _estimate(ints, size_statistics=histogram_only) == N * 8 + N // 8
     assert _estimate(lists, size_statistics=_with(off_by_one)) == _estimate(
         lists, size_statistics=_no_size_statistics
@@ -531,7 +537,7 @@ def test_dictionary_page_read_size(tmp_path, column, expected):
     """Only dictionary-indexed strings without footer bytes read the page header."""
     path = _write(pa.table({"a": column}), tmp_path / "f.parquet")
     metadata = pq.read_metadata(str(path))
-    profiles = build_leaf_profiles(metadata.schema)
+    profiles = build_leaf_profiles(parquet_schema=metadata.schema)
     size_stats = read_size_statistics(metadata)
     assert profiles is not None and size_stats is not None
     (profile,) = profiles
@@ -539,8 +545,10 @@ def test_dictionary_page_read_size(tmp_path, column, expected):
     chunk = metadata.row_group(0).column(0)
 
     assert chunk.has_dictionary_page
-    assert dictionary_page_read_size(profile, chunk, stats) == 0
-    assert dictionary_page_read_size(profile, chunk, None) == expected
+    assert dictionary_page_read_size(profile=profile, chunk=chunk, stats=stats) == 0
+    assert (
+        dictionary_page_read_size(profile=profile, chunk=chunk, stats=None) == expected
+    )
 
 
 @pytest.mark.parametrize("label", list(_cases()))
@@ -702,7 +710,7 @@ def test_added_columns_are_bounded(tmp_path):
     os.makedirs(os.path.dirname(path))
     _write(pa.table({"a": _STRINGS}), path)
     fields = [pa.field(name, pa.string()) for name in ("path", "year", "notes")]
-    added = added_bytes(fields, path)
+    added = added_bytes(added=fields, path=path)
     held = pa.table(
         {
             "path": pa.array([path] * N),
