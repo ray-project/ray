@@ -1,0 +1,63 @@
+fbgemm-gpu==1.5.0 \
+    --hash=sha256:0e5b5ad9e0e740c240b9e9d052e520e969e3559c0ce80547d2d3e395afc38ac4 \
+    --hash=sha256:52bacb5755742bfbf300727aecf6f0733b116d3e0d57263ec136fce7ec726847 \
+    --hash=sha256:856c84def3fc3ca43e6d5ec5458d426db9ef2ea60cc8afb3ce21a67e07208a72 \
+    --hash=sha256:9fe76bd1c5f1917c6f26932c7673633ed9780ccd8747993cf70d5c0c2ae561c5 \
+    --hash=sha256:e9385f86931abbf604afe892422304a01ca175eae3fddfbbb35314e5ebcb13ec
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+iopath==0.1.10 \
+    --hash=sha256:3311c16a4d9137223e20f141655759933e1eda24f8bff166af834af3c645ef01
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+lightning-utilities==0.15.3 \
+    --hash=sha256:6c55f1bee70084a1cbeaa41ada96e4b3a0fea5909e844dd335bd80f5a73c5f91 \
+    --hash=sha256:792ae0204c79f6859721ac7f386c237a33b0ed06ba775009cb894e010a842033
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+mypy-extensions==1.1.0 \
+    --hash=sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505 \
+    --hash=sha256:52e68efc3284861e772bbcd66823fde5ae21fd2fdb51c62a211403730b916558
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+pyre-extensions==0.0.32 \
+    --hash=sha256:5396715f14ea56c4d5fd0a88c57ca7e44faa468f905909edd7de4ad90ed85e55 \
+    --hash=sha256:a63ba6883ab02f4b1a9f372ed4eb4a2f4c6f3d74879aa2725186fdfcfe3e5c68
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+pyvers==0.2.3 \
+    --hash=sha256:6f5b5612f2f4bd08caa49baa70fc5f875fc7da701a5385c13e244eea6b8114dd \
+    --hash=sha256:c4b81c3a033963245e124cdecb052783c9c4cea3bb08c051833af1c44faa6283
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+tensordict==0.14.3 \
+    --hash=sha256:0041e5dfdab4737b173e044d916f9d42709d2302771feaa91ce74272edef4d6f \
+    --hash=sha256:03a67039f4dcc4d5956c7485acfd5dea4fad7cb72c39d1594a87a251f99eece9 \
+    --hash=sha256:0d65cdb5b9fb04b279ef4624e5cb9509f9aa6894c46a8c0237fc157ed2c38adc \
+    --hash=sha256:1112b2b9a58ff8a8dba6cfd62503554db4752ca8d219bde474c0d9de3c7ff6fb \
+    --hash=sha256:1aa8a78f5a5f2d748a8a13b0fd28d91e9f7cafcae9f4d9b222e6e2a11d17e769 \
+    --hash=sha256:2013539f00bfbdc6e8298fee2972d946db155b4b07f28e6f4b0074106601c243 \
+    --hash=sha256:20d224c73e3fe81f6b27440ab54a0d3bfef4a75f1fcc64ead901f1ce61ab1fe2 \
+    --hash=sha256:30ea0a416274352c3ed9f1cb51d2d17c122d592158a331d959926239c309d479 \
+    --hash=sha256:33eafd4293a96251a5d41dd74ee5feb8ff6bb4cf1744519c8afbeb13c2d38d7a \
+    --hash=sha256:36e081a32d2c5a97eb7e785b0b3f4ed0a40c9a4f4aec5ee266059d40d6514063 \
+    --hash=sha256:46536999c0970d98e11eaf4bbcf238a612617f01d6c2aa407fe354cd920fac99 \
+    --hash=sha256:4e67f71cfd64e44041d7a4aab9f7cd35ea3b3c8ef090a8b02edb1f3eb1ee1613 \
+    --hash=sha256:4ea98515a63179005297532d878d655a0601844d4ee4b38c869c9b428c3794f0 \
+    --hash=sha256:6e145f1436545f65308ec48b2e0943754b97105e2bb5ba4de36f35d906387af2 \
+    --hash=sha256:79aab51121d37e88d54e12f42f27aaec0c74260dc56f4caf7d449a00f3a35ecb \
+    --hash=sha256:87886522b3e52bb77d00ad77dfe0595eb13bdc466978a9af9562fcd524d54fa0 \
+    --hash=sha256:9a0bf18065cb4c8fd19a9c58f179f22544c6e05dbafed304ac7704993a735dc4 \
+    --hash=sha256:b5c48a21ee84b83e69f1ff6ac06e371bdc20b01aa2c05af76c7e5020144cb71a \
+    --hash=sha256:b5df8a954aea5b1cbe1ccef3e3b4d37edad72652d944cd2f39246bfcc35bab07 \
+    --hash=sha256:d3bd6abe617365c006d0a92139788fba9f2d3e619a98c372e39d487ef0b5822b \
+    --hash=sha256:e66ce92ff53f3f5c32e91203c02e4cec51b72aa73335a4a27c266b1916d9aa06 \
+    --hash=sha256:e963f28fd4b560a2b4bbfb905302b47a412a5a8819a12318eec5a63a7f60b85a \
+    --hash=sha256:f08ee3ff1c8ef02261d609b734734a29e69bc4c890286478182704b8d354d424 \
+    --hash=sha256:f41a16c5e60dca5352507ed4d55b298ac09e16cf8bb080f4c17e462ae680eab2
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+torchmetrics==1.0.3 \
+    --hash=sha256:612a74ab8ebfcd4ebb38e5c370ce29a0e73af074948048f6f2233e25cf60da75
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+torchrec==1.5.0 \
+    --hash=sha256:385aa4156d6ae24bb15131aacca81f1925cdca150045cc4482372e2b14b4bc98 \
+    --hash=sha256:a2841683a363eb33fbb13951e5a877ef81a735ed7ba80b8c9d5c412bba23bd4a \
+    --hash=sha256:d1186f7d170ad4bb4745db46e718dd570c1049c795cfc8b67725612ba7194c03
+    # via -r release/ray_release/byod/requirements_train_recsys.in
+typing-inspect==0.9.0 \
+    --hash=sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f
+    # via -r release/ray_release/byod/requirements_train_recsys.in

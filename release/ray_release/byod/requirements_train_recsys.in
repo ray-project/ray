@@ -1,0 +1,18 @@
+# Layered on the ray-torch image for the training_ingest_benchmark recsys task.
+# torchrec pins torchmetrics==1.0.3 but the image has 0.10.3, so this can't be
+# expanded from the image lock. It's the closure of torchrec + fbgemm-gpu
+# resolved against the image's other pins, installed --no-deps on top.
+# fbgemm-gpu is built against one torch release (1.5.x <-> torch 2.10); keep it
+# in step with the image's torch. Both come from PyPI, whose fbgemm-gpu is a
+# CUDA 12 build: the download.pytorch.org +cu128 wheel failed hash checks in
+# CI (a different file than the index lists).
+fbgemm-gpu==1.5.0
+torchrec==1.5.0
+torchmetrics==1.0.3
+iopath==0.1.10
+lightning-utilities==0.15.3
+mypy-extensions==1.1.0
+pyre-extensions==0.0.32
+pyvers==0.2.3
+tensordict==0.14.3
+typing-inspect==0.9.0

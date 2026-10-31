@@ -431,7 +431,7 @@
 
 # Ray Train distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_gpu_4x4
-  python: "3.10"
+  python: "3.11"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -442,7 +442,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_data_tensorflow_py3.11.lock
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -2067,7 +2068,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step True --skip_validation_at_epoch_end True --image_classification_data_format=s3_url
 
 - name: training_ingest_benchmark-task=recsys
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2081,8 +2082,8 @@
         # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
         RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
         RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "1"
-      type: gpu
-      post_build_script: byod_install_torchrec.sh
+      type: torch-cu128
+      python_depset: torch_cu128_train_recsys_py3.11.lock
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
 
@@ -2331,7 +2332,7 @@
     script: python torchft_hello_world.py
 
 - name: torch_lightning
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/pytorch_lightning
 
@@ -2341,8 +2342,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_pytorch_lightning_test.sh
+      type: torch-cu128
+      python_depset: torch_cu128_train_lightning_py3.11.lock
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2350,7 +2351,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_lightning.py
 
 - name: huggingface_transformers
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/huggingface_transformers
 
@@ -2360,7 +2361,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_train_huggingface_py3.11.lock
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2368,7 +2370,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_transformers.py
 
 - name: huggingface_accelerate
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/huggingface_accelerate
 
@@ -2378,7 +2380,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_train_huggingface_py3.11.lock
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2476,7 +2479,7 @@
 # RLlib - APPO test
 # -----------------
 - name: rllib_learning_tests_pong_appo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2486,8 +2489,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2498,7 +2501,7 @@
 # RLlib - Nightly learning tests (fast, single-GPU)
 # --------------------------------------------------------------------------
 - name: rllib_learning_tests_cartpole_ppo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2508,8 +2511,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2517,7 +2520,7 @@
     script: python example_algorithms/ppo/cartpole_ppo.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_pendulum_ppo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2527,8 +2530,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2536,7 +2539,7 @@
     script: python example_algorithms/ppo/pendulum_ppo.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_cartpole_appo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2546,8 +2549,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2555,7 +2558,7 @@
     script: python example_algorithms/appo/cartpole_appo.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_pendulum_appo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2565,8 +2568,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2574,7 +2577,7 @@
     script: python example_algorithms/appo/pendulum_appo.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_cartpole_impala_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2584,8 +2587,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2593,7 +2596,7 @@
     script: python example_algorithms/impala/cartpole_impala.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_cartpole_dqn_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2603,8 +2606,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2612,7 +2615,7 @@
     script: python example_algorithms/dqn/cartpole_dqn.py --num-learners=1 --as-release-test
 
 - name: rllib_learning_tests_pendulum_sac_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2622,8 +2625,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2631,7 +2634,7 @@
     script: python example_algorithms/sac/pendulum_sac.py --num-learners=1 --as-release-test
 
 - name: rllib_learning_tests_pendulum_dreamerv3_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2641,8 +2644,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2653,7 +2656,7 @@
 # RLlib - Weekly learning benchmarks
 # --------------------------------------------------------------------------
 - name: rllib_learning_tests_pong_ppo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2663,8 +2666,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 4gpus_48cpus.yaml
 
   run:
@@ -2672,7 +2675,7 @@
     script: python example_algorithms/ppo/atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=40 --stop-reward=20.0 --as-release-test
 
 - name: rllib_learning_tests_pong_impala_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2682,8 +2685,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 4gpus_48cpus.yaml
 
   run:
@@ -2691,7 +2694,7 @@
     script: python example_algorithms/impala/pong_impala.py --num-learners=1 --num-env-runners=40 --stop-reward=19.0 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_sac_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2701,8 +2704,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 4gpus_48cpus.yaml
 
   run:
@@ -5412,7 +5415,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: transformers_reinforcement_learning  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -5420,7 +5423,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
       post_build_script: byod_huggingface_trl.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 

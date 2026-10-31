@@ -20,9 +20,6 @@ import torch.nn as nn
 import torch.optim as optim
 from PIL import Image
 
-import streaming
-from streaming import LocalDataset, StreamingDataset
-
 from dataset_benchmark_util import (
     get_prop_parquet_paths,
     IMG_S3_ROOT,
@@ -297,46 +294,6 @@ def decode_image_crop_and_flip(row):
     return {"image": np.array(transform(pil_to_tensor(row["image"]) / 255.0))}
 
 
-class MosaicDataset(LocalDataset):
-    def __init__(self, local, transforms):
-        super().__init__(local=local)
-        self.transforms = transforms
-
-    def __getitem__(self, idx):
-        obj = super().__getitem__(idx)
-        image = obj["image"]
-        label = obj["label"]
-        return self.transforms(image), label
-
-
-class S3MosaicDataset(StreamingDataset):
-    def __init__(
-        self,
-        s3_bucket,
-        num_physical_nodes,
-        cache_dir,
-        transforms,
-        cache_limit=None,
-        epoch_size=None,
-    ):
-        super().__init__(
-            remote=s3_bucket,
-            local=cache_dir,
-            cache_limit=cache_limit,
-            epoch_size=epoch_size,
-            # Set StreamingDataset to read sequentially.
-            shuffle=False,
-            num_canonical_nodes=num_physical_nodes,
-        )
-        self.transforms = transforms
-
-    def __getitem__(self, idx):
-        obj = super().__getitem__(idx)
-        image = obj["image"]
-        label = obj["label"]
-        return self.transforms(image), label
-
-
 def get_mosaic_dataloader(
     mosaic_data_root,
     batch_size,
@@ -345,6 +302,48 @@ def get_mosaic_dataloader(
     num_workers=None,
     cache_limit=None,
 ):
+    # mosaicml-streaming is only needed for --use-mosaic, so import it here.
+    import streaming
+    from streaming import LocalDataset, StreamingDataset
+
+    class MosaicDataset(LocalDataset):
+        def __init__(self, local, transforms):
+            super().__init__(local=local)
+            self.transforms = transforms
+
+        def __getitem__(self, idx):
+            obj = super().__getitem__(idx)
+            image = obj["image"]
+            label = obj["label"]
+            return self.transforms(image), label
+
+    class S3MosaicDataset(StreamingDataset):
+        def __init__(
+            self,
+            s3_bucket,
+            num_physical_nodes,
+            cache_dir,
+            transforms,
+            cache_limit=None,
+            epoch_size=None,
+        ):
+            super().__init__(
+                remote=s3_bucket,
+                local=cache_dir,
+                cache_limit=cache_limit,
+                epoch_size=epoch_size,
+                # Set StreamingDataset to read sequentially.
+                shuffle=False,
+                num_canonical_nodes=num_physical_nodes,
+            )
+            self.transforms = transforms
+
+        def __getitem__(self, idx):
+            obj = super().__getitem__(idx)
+            image = obj["image"]
+            label = obj["label"]
+            return self.transforms(image), label
+
     use_s3 = mosaic_data_root.startswith("s3://")
 
     if not use_s3:

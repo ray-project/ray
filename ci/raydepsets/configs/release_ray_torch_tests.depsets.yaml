@@ -109,3 +109,110 @@ depsets:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
     build_arg_sets:
       - py311_cuda128
+
+  - name: torch_${CUDA_CODE}_train_lightning_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_train_lightning.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+      - python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/torch_${CUDA_CODE}_train_lightning_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
+    build_arg_sets:
+      - py311_cuda128
+
+  - name: torch_${CUDA_CODE}_train_huggingface_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_train_huggingface.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+      - python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/torch_${CUDA_CODE}_train_huggingface_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
+    build_arg_sets:
+      - py311_cuda128
+
+  # Pinned closure installed --no-deps; see requirements_train_recsys.in.
+  - name: torch_${CUDA_CODE}_train_recsys_py${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - release/ray_release/byod/requirements_train_recsys.in
+    output: release/ray_release/byod/torch_${CUDA_CODE}_train_recsys_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --no-deps
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py311_cuda128
+
+  - name: torch_${CUDA_CODE}_rllib_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_rllib.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+      - python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/torch_${CUDA_CODE}_rllib_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
+    build_arg_sets:
+      - py311_cuda128
+
+  - name: torch_${CUDA_CODE}_audio_transcription_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_audio_transcription.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+      - python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/torch_${CUDA_CODE}_audio_transcription_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
+    build_arg_sets:
+      - py311_cuda128
+
+  # Only pyarrow, installed --no-deps over the image's pyarrow 23. Not expanded
+  # from the image lock, which pins pyarrow 23.
+  - name: torch_${CUDA_CODE}_image_classification_pyarrow19_py${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - release/ray_release/byod/requirements_image_classification_pyarrow19.in
+    output: release/ray_release/byod/torch_${CUDA_CODE}_image_classification_pyarrow19_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --no-deps
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py311_cuda128

@@ -6,7 +6,7 @@ import torch
 import torch.nn
 
 from torchrec.distributed.train_pipeline import StagedTrainPipeline, SparseDataDistUtil
-from torchrec.distributed.train_pipeline.utils import PipelineStage
+from torchrec.distributed.train_pipeline.pipeline_stage import PipelineStage
 from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
 from torchrec.optim.optimizers import in_backward_optimizer_filter
 
