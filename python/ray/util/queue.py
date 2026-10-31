@@ -318,14 +318,19 @@ class _QueueActor:
 
     async def put(self, item, timeout=None):
         try:
-            await asyncio.wait_for(self.queue.put(item), timeout)
-        except asyncio.TimeoutError:
+            if timeout == 0:
+                self.queue.put_nowait(item)
+            else:
+                await asyncio.wait_for(self.queue.put(item), timeout)
+        except (asyncio.TimeoutError, asyncio.QueueFull):
             raise Full
 
     async def get(self, timeout=None):
         try:
+            if timeout == 0:
+                return self.queue.get_nowait()
             return await asyncio.wait_for(self.queue.get(), timeout)
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, asyncio.QueueEmpty):
             raise Empty
 
     def put_nowait(self, item):
