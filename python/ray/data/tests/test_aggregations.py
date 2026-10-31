@@ -334,6 +334,15 @@ class TestApproximateQuantile:
         result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
         assert result["approx_quantile(value)"] == [15.0]
 
+    def test_approximate_quantile_rejects_timestamps(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        table = pa.table({"value": pa.array([0, 1], type=pa.timestamp("ms"))})
+        ds = ray.data.from_arrow(table)
+
+        with pytest.raises(TypeError):
+            ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
+
     def test_approximate_quantile_custom_alias(self, ray_start_regular_shared_2_cpus):
         data = [
             {"id": 1, "value": 1.0},
