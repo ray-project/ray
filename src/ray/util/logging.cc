@@ -68,7 +68,32 @@ std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;  // NOLINT
 
 std::string RayLog::logger_name_ = "ray_log_sink";  // NOLINT
 bool RayLog::is_failure_signal_handler_installed_ = false;
+#ifndef _WIN32
+std::vector<RayLog::SavedSignalAction> RayLog::saved_signal_actions_;  // NOLINT
+#endif
 std::atomic<bool> RayLog::initialized_ = false;
+
+namespace {
+// The signals absl::InstallFailureSignalHandler takes over on our behalf. Kept in
+// one place so the install and uninstall paths cannot drift apart.
+constexpr std::array<int, 5> kFailureSignals = {
+    SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM};
+
+#ifndef _WIN32
+// Whether two dispositions name the same handler. Only the handler itself is
+// compared: this is used to decide whether the disposition currently installed is
+// still the one absl put there, and absl is the only writer of its own entry.
+bool IsSameSignalAction(const struct sigaction &lhs, const struct sigaction &rhs) {
+  if ((lhs.sa_flags & SA_SIGINFO) != (rhs.sa_flags & SA_SIGINFO)) {
+    return false;
+  }
+  if ((lhs.sa_flags & SA_SIGINFO) != 0) {
+    return lhs.sa_sigaction == rhs.sa_sigaction;
+  }
+  return lhs.sa_handler == rhs.sa_handler;
+}
+#endif
+}  // namespace
 
 std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
   static constexpr int MAX_NUM_FRAMES = 64;
@@ -434,18 +459,37 @@ void RayLog::UninstallSignalAction() {
     return;
   }
   RAY_LOG(DEBUG) << "Uninstall signal handlers.";
-  std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
 #ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
-  for (int signal_num : installed_signals) {
+  for (int signal_num : kFailureSignals) {
     RAY_CHECK(signal(signal_num, SIG_DFL) != SIG_ERR);
   }
 #else
-  struct sigaction sig_action;
-  memset(&sig_action, 0, sizeof(sig_action));
-  sigemptyset(&sig_action.sa_mask);
-  sig_action.sa_handler = SIG_DFL;
-  for (int signal_num : installed_signals) {
-    RAY_CHECK(sigaction(signal_num, &sig_action, NULL) == 0);
+  // Two rules here, both about not destroying a signal handler we do not own.
+  //
+  // A JVM is the motivating case: it raises SIGSEGV routinely -- safepoint polls
+  // and implicit null checks are built on it -- and absorbs those signals in its
+  // own handler. A Python process that touches a JNI-backed filesystem has one
+  // in-process. Blindly writing SIG_DFL over its handler means the next entirely
+  // ordinary JVM signal terminates the process.
+  //
+  // 1. If the current disposition is no longer the one absl installed, somebody
+  //    else took over *after* us. Leave it alone; it is not ours to remove.
+  // 2. Otherwise restore what was there before absl replaced it, rather than
+  //    assuming that was SIG_DFL.
+  std::vector<SavedSignalAction> to_restore;
+  to_restore.swap(saved_signal_actions_);
+  for (const auto &entry : to_restore) {
+    struct sigaction current;
+    memset(&current, 0, sizeof(current));
+    if (sigaction(entry.signal_num, NULL, &current) != 0) {
+      continue;
+    }
+    if (entry.installed_known && !IsSameSignalAction(current, entry.installed)) {
+      RAY_LOG(DEBUG) << "Not uninstalling handler for signal " << entry.signal_num
+                     << "; it was replaced after Ray installed its own.";
+      continue;
+    }
+    RAY_CHECK(sigaction(entry.signal_num, &entry.previous, NULL) == 0);
   }
 #endif
   is_failure_signal_handler_installed_ = false;
@@ -506,7 +550,30 @@ void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_h
   absl::FailureSignalHandlerOptions options;
   options.call_previous_handler = call_previous_handler;
   options.writerfn = WriteFailureMessage;
+#ifndef _WIN32
+  // Record what each disposition was before absl overwrites it, so that
+  // UninstallSignalAction can restore it rather than resetting to SIG_DFL.
+  saved_signal_actions_.clear();
+  for (int signal_num : kFailureSignals) {
+    SavedSignalAction entry;
+    entry.signal_num = signal_num;
+    memset(&entry.previous, 0, sizeof(entry.previous));
+    memset(&entry.installed, 0, sizeof(entry.installed));
+    entry.installed_known = false;
+    if (sigaction(signal_num, NULL, &entry.previous) == 0) {
+      saved_signal_actions_.push_back(entry);
+    }
+  }
+#endif
   absl::InstallFailureSignalHandler(options);
+#ifndef _WIN32
+  // And record what absl put there, so uninstall can tell "still ours" from
+  // "somebody installed over us afterwards".
+  for (auto &entry : saved_signal_actions_) {
+    memset(&entry.installed, 0, sizeof(entry.installed));
+    entry.installed_known = sigaction(entry.signal_num, NULL, &entry.installed) == 0;
+  }
+#endif
   is_failure_signal_handler_installed_ = true;
 }
 
