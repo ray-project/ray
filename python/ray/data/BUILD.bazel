@@ -1429,7 +1429,7 @@ py_test(
 
 py_test(
     name = "test_torch_tensor_utils",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_tensor_utils.py"],
     tags = [
         "exclusive",
