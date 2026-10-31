@@ -27,6 +27,9 @@ if TYPE_CHECKING:
 PartitionDataType = Type[Union[int, float, str, bool]]
 logger = logging.getLogger(__name__)
 
+# Directory name that Hive, Spark and PyArrow write for a null partition value.
+_HIVE_NULL_PARTITION = "__HIVE_DEFAULT_PARTITION__"
+
 
 @DeveloperAPI
 class PartitionStyle(str, Enum):
@@ -264,7 +267,7 @@ class PathPartitionParser:
             PartitionStyle.HIVE: self._parse_hive_path,
             PartitionStyle.DIRECTORY: self._parse_dir_path,
         }
-        self._parser_fn: Callable[[str], Dict[str, str]] = parsers.get(style)
+        self._parser_fn: Callable[[str], Dict[str, Optional[str]]] = parsers.get(style)
         if self._parser_fn is None:
             raise ValueError(
                 f"Unsupported partition style: {style}. "
@@ -272,7 +275,7 @@ class PathPartitionParser:
             )
         self._scheme = partitioning
 
-    def __call__(self, path: str) -> Dict[str, str]:
+    def __call__(self, path: str) -> Dict[str, Any]:
         """Parses partition keys and values from a single file path.
 
         Args:
@@ -285,7 +288,7 @@ class PathPartitionParser:
         dir_path = self._dir_path_trim_base(path)
         if dir_path is None:
             return {}
-        partitions: Dict[str, str] = self._parser_fn(dir_path)
+        partitions: Dict[str, Any] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
             if field not in partitions:
@@ -313,7 +316,8 @@ class PathPartitionParser:
             path: File path to parse partition values from.
             predicate: Expression that references partition columns.
             schema: Logical schema used to cast path values to the reader's types.
-                If omitted, infer types from the parsed values as before.
+                If omitted, use the types from the partitioning's ``field_types``;
+                fields not listed there are strings.
 
         Returns:
             True if the partition satisfies the predicate (should read the file),
@@ -336,8 +340,13 @@ class PathPartitionParser:
 
         try:
             if schema is None:
+                # Pass the schema so a null value doesn't produce a null-typed
+                # column.
                 partition_table = pa.table(
-                    {col: [val] for col, val in partition_values.items()}
+                    {col: [val] for col, val in partition_values.items()},
+                    schema=_partition_field_types_to_pa_schema(
+                        list(partition_values), self._scheme.field_types
+                    ),
                 )
             else:
                 from ray.data._internal.planner.plan_expression.expression_visitors import (
@@ -423,7 +432,7 @@ class PathPartitionParser:
         path = path[len(self._scheme.normalized_base_dir) :]
         return posixpath.dirname(path)
 
-    def _parse_hive_path(self, dir_path: str) -> Dict[str, str]:
+    def _parse_hive_path(self, dir_path: str) -> Dict[str, Optional[str]]:
         """Hive partition path parser.
 
         Returns a dictionary mapping partition keys to values given a hive-style
@@ -450,7 +459,7 @@ class PathPartitionParser:
                         f"Expected partition key {field_name} but found "
                         f"{kv_pairs[i][0]}"
                     )
-        return dict(kv_pairs)
+        return {k: None if v == _HIVE_NULL_PARTITION else v for k, v in kv_pairs}
 
     def _parse_dir_path(self, dir_path: str) -> Dict[str, str]:
         """Directory partition path parser.
@@ -490,7 +499,7 @@ class PathPartitionFilter:
 
     @staticmethod
     def of(
-        filter_fn: Callable[[Dict[str, str]], bool],
+        filter_fn: Callable[[Dict[str, Any]], bool],
         style: PartitionStyle = PartitionStyle.HIVE,
         base_dir: Optional[str] = None,
         field_names: Optional[List[str]] = None,
@@ -503,9 +512,11 @@ class PathPartitionFilter:
             filter_fn: Callback used to filter partitions. Takes a dictionary mapping
                 partition keys to values as input. Unpartitioned files are denoted with
                 an empty input dictionary. Returns `True` to read a file for that
-                partition or `False` to skip it. Partition keys and values are always
-                strings read from the filesystem path. For example, this removes all
-                unpartitioned files:
+                partition or `False` to skip it. Partition keys and values are read
+                from the filesystem path, with values cast to ``field_types`` if
+                given; a Hive null partition (``__HIVE_DEFAULT_PARTITION__``) is
+                passed as ``None``. For example, this removes all unpartitioned
+                files:
 
                 .. code:: python
 
@@ -550,7 +561,7 @@ class PathPartitionFilter:
     def __init__(
         self,
         path_partition_parser: PathPartitionParser,
-        filter_fn: Callable[[Dict[str, str]], bool],
+        filter_fn: Callable[[Dict[str, Any]], bool],
     ):
         """Creates a new path-based partition filter based on a parser.
 
@@ -559,9 +570,11 @@ class PathPartitionFilter:
             filter_fn: Callback used to filter partitions. Takes a dictionary mapping
                 partition keys to values as input. Unpartitioned files are denoted with
                 an empty input dictionary. Returns `True` to read a file for that
-                partition or `False` to skip it. Partition keys and values are always
-                strings read from the filesystem path. For example, this removes all
-                unpartitioned files:
+                partition or `False` to skip it. Partition keys and values are read
+                from the filesystem path, with values cast to ``field_types`` if
+                given; a Hive null partition (``__HIVE_DEFAULT_PARTITION__``) is
+                passed as ``None``. For example, this removes all unpartitioned
+                files:
                 ``lambda d: True if d else False``
                 This raises an assertion error for any unpartitioned file found:
                 ``lambda d: assert d, "Expected all files to be partitioned!"``
@@ -675,7 +688,9 @@ def _partition_field_types_to_pa_schema(
     return pa.schema(fields)
 
 
-def _cast_value(value: str, data_type: PartitionDataType) -> Any:
+def _cast_value(value: Optional[str], data_type: PartitionDataType) -> Any:
+    if value is None:
+        return None
     if data_type is int:
         return int(value)
     elif data_type is float:
