@@ -39,17 +39,15 @@ class Queue:
             need to pass in custom resource requirements, for example.
 
     Examples:
-        .. testcode::
-
-            from ray.util.queue import Queue
-            q = Queue()
-            items = list(range(10))
-            for item in items:
-                q.put(item)
-            for item in items:
-                assert item == q.get()
-            # Create Queue with the underlying actor reserving 1 CPU.
-            q = Queue(actor_options={"num_cpus": 1})
+        >>> from ray.util.queue import Queue
+        >>> q = Queue()
+        >>> items = list(range(10))
+        >>> for item in items:
+        ...     q.put(item)
+        >>> for item in items:
+        ...     assert item == q.get()
+        >>> # Create Queue with the underlying actor reserving 1 CPU.
+        >>> q = Queue(actor_options={"num_cpus": 1})
     """
 
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:

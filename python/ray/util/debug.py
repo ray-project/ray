@@ -27,16 +27,12 @@ def log_once(key: str) -> bool:
         True if this is the first call for ``key`` (subject to the current
         ``log_once`` settings), False otherwise.
 
-    Example:
-
-        .. testcode::
-
-            import logging
-            from ray.util.debug import log_once
-
-            logger = logging.getLogger(__name__)
-            if log_once("some_key"):
-                logger.info("Some verbose logging statement")
+    Examples:
+        >>> import logging
+        >>> from ray.util.debug import log_once
+        >>> logger = logging.getLogger(__name__)
+        >>> if log_once("some_key"):
+        ...     logger.info("Some verbose logging statement")
     """
 
     global _last_logged
