@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Any, Optional, Tuple
 
 import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.typing import MultiAgentDict
 
 
 @PublicAPI
@@ -115,9 +116,12 @@ class PettingZooEnv(MultiAgentEnv):
         {
             'prisoner_1': {'map_tuple': (1, 0)}
         }
+
+    Args:
+        env: The PettingZoo AEC env to wrap.
     """
 
-    def __init__(self, env):
+    def __init__(self, env: Any):
         super().__init__()
         self.env = env
         env.reset()
@@ -148,7 +152,27 @@ class PettingZooEnv(MultiAgentEnv):
             info or {},
         )
 
-    def step(self, action):
+    def step(
+        self, action: MultiAgentDict
+    ) -> Tuple[
+        MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
+    ]:
+        """Steps the env with the action of the agent whose turn it is.
+
+        Agents that are terminated or truncated get stepped with None and are
+        included in the returned dicts, until the env reaches an agent that's
+        still active, or no agents remain.
+
+        Args:
+            action: A dict mapping agent IDs to actions. Only the action of the
+                agent whose turn it is, `env.agent_selection`, is used.
+
+        Returns:
+            Dicts of observations, rewards, terminateds, truncateds, and infos,
+            keyed by agent ID. The terminateds and truncateds dicts also have an
+            `"__all__"` key, which is True once no agents remain and every agent
+            in that dict is terminated, or truncated, respectively.
+        """
         self.env.step(action[self.env.agent_selection])
         obs_d = {}
         rew_d = {}
@@ -178,6 +202,7 @@ class PettingZooEnv(MultiAgentEnv):
         return obs_d, rew_d, terminated_d, truncated_d, info_d
 
     def close(self):
+        """Closes the wrapped PettingZoo env."""
         self.env.close()
 
     def render(self):
@@ -185,12 +210,24 @@ class PettingZooEnv(MultiAgentEnv):
 
     @property
     def get_sub_environments(self):
+        """The unwrapped PettingZoo env."""
         return self.env.unwrapped
 
 
 @PublicAPI
 class ParallelPettingZooEnv(MultiAgentEnv):
-    def __init__(self, env):
+    """An interface to PettingZoo's Parallel API environments.
+
+    Exposes a PettingZoo Parallel env, in which all agents act at the same time,
+    through the MultiAgentEnv public API. The terminateds and truncateds dicts
+    that `step()` returns have an `"__all__"` key, which is True when every agent
+    in that dict is terminated, or truncated, respectively.
+
+    Args:
+        env: The PettingZoo Parallel env to wrap.
+    """
+
+    def __init__(self, env: Any):
         super().__init__()
         self.par_env = env
         self.par_env.reset()
@@ -220,6 +257,7 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         return obss, rews, terminateds, truncateds, infos
 
     def close(self):
+        """Closes the wrapped PettingZoo env."""
         self.par_env.close()
 
     def render(self):
@@ -227,4 +265,5 @@ class ParallelPettingZooEnv(MultiAgentEnv):
 
     @property
     def get_sub_environments(self):
+        """The unwrapped PettingZoo env."""
         return self.par_env.unwrapped
