@@ -177,24 +177,20 @@ class HashingVectorizer(SerializablePreprocessorBase):
         return self._output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):
-        def hash_count(tokens: List[str]) -> Counter:
-            hashed_tokens = [simple_hash(token, self._num_features) for token in tokens]
-            return Counter(hashed_tokens)
+        num_features = self._num_features
+
+        def hash_count(tokens: List[str]) -> List[int]:
+            counts = [0] * num_features
+            for token in tokens:
+                counts[simple_hash(token, num_features)] += 1
+            return counts
 
         for col, output_col in zip(self._columns, self._output_columns):
             tokenized = _tokenize_ignoring_nulls(df[col], self._tokenization_fn)
-            hashed = tokenized.map(hash_count, na_action="ignore")
-            # Create a list to store the hash columns
-            hash_columns = []
-            for i in range(self._num_features):
-                series = hashed.map(lambda counts: counts[i], na_action="ignore")
-                series.name = f"hash_{i}"
-                hash_columns.append(series)
-            # Concatenate all hash columns into a single list column. A missing
-            # document has no counts to report, so its row is null rather than a
-            # vector of zeros, which would be indistinguishable from a document
-            # whose tokens all hashed elsewhere.
-            counts_per_row = pd.concat(hash_columns, axis=1).values.tolist()
+            # Build each row's integer count vector directly so a missing row
+            # in the batch does not upcast non-null rows to float64 via
+            # intermediate Series/DataFrame concatenation.
+            counts_per_row = tokenized.map(hash_count, na_action="ignore").tolist()
             df[output_col] = _null_where_source_is_missing(counts_per_row, df[col])
 
         return df
@@ -417,31 +413,22 @@ class CountVectorizer(SerializablePreprocessorBase):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        result_columns = []
         for col, output_col in zip(self._columns, self._output_columns):
             token_counts = self.stats_[f"token_counts({col})"]
             sorted_tokens = [token for (token, count) in token_counts.most_common()]
-            tokenized = _tokenize_ignoring_nulls(df[col], self._tokenization_fn).map(
-                Counter, na_action="ignore"
-            )
+            tokenized = _tokenize_ignoring_nulls(df[col], self._tokenization_fn)
 
-            # Create a list to store token frequencies
-            token_columns = []
-            for token in sorted_tokens:
-                series = tokenized.map(lambda val: val[token], na_action="ignore")
-                series.name = token
-                token_columns.append(series)
+            def count_row(tokens: List[str]) -> List[int]:
+                if not sorted_tokens:
+                    return []
+                counts = Counter(tokens)
+                return [counts[token] for token in sorted_tokens]
 
-            # Concatenate all token columns into a single list column. A missing
-            # document has no counts to report, so its row is null rather than a
-            # vector of zeros, which would be indistinguishable from a document
-            # containing none of the vocabulary.
-            if token_columns:
-                counts_per_row = pd.concat(token_columns, axis=1).values.tolist()
-            else:
-                counts_per_row = [[]] * len(df)
+            # Build each row's integer count vector directly so a missing row
+            # in the batch does not upcast non-null rows to float64 via
+            # intermediate Series/DataFrame concatenation.
+            counts_per_row = tokenized.map(count_row, na_action="ignore").tolist()
             df[output_col] = _null_where_source_is_missing(counts_per_row, df[col])
-            result_columns.append(output_col)
 
         return df
 
