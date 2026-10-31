@@ -357,7 +357,11 @@ py_test_run_all_subdirectory(
 
 filegroup(
     name = "llm_doc_tests",
-    srcs = ["test_myst_doc.py"] + glob([
+    srcs = [
+        "conftest.py",
+        "test_llm_examples.py",
+        "test_myst_doc.py",
+    ] + glob([
         "source/data/doc_code/working-with-llms/*.py",
         "source/llm/doc_code/serve/**/*.py",
         "source/llm/doc_code/serve/**/*.yaml",

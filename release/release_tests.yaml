@@ -5424,8 +5424,6 @@
     byod:
       type: llm-cu130
       post_build_script: byod_llm_doc_tests.sh
-      runtime_env:
-        RAY_ADDRESS: local
     anyscale_sdk_2026: true
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
@@ -5435,31 +5433,7 @@
     timeout: 7200
     prepare: pip install --no-deps source/llm/doc_code/serve/custom_vllm
     prepare_timeout: 300
-    script: |
-      set -e
-      for example in \
-        source/data/doc_code/working-with-llms/basic_llm_example.py \
-        source/data/doc_code/working-with-llms/classification_example.py \
-        source/data/doc_code/working-with-llms/custom_tokenizer_example.py \
-        source/data/doc_code/working-with-llms/embedding_example.py \
-        source/data/doc_code/working-with-llms/minimal_quickstart.py \
-        source/data/doc_code/working-with-llms/omni_audio_example.py \
-        source/data/doc_code/working-with-llms/openai_api_example.py \
-        source/data/doc_code/working-with-llms/tokenization_aggregation_example.py \
-        source/data/doc_code/working-with-llms/tokenization_disaggregation_example.py \
-        source/data/doc_code/working-with-llms/vlm_image_example.py \
-        source/data/doc_code/working-with-llms/vlm_video_example.py; do
-        python "$example"
-      done
-      python source/llm/doc_code/serve/qwen/qwen_example.py
-      python source/llm/doc_code/serve/qwen/llm_yaml_config_example.py
-      python source/llm/doc_code/serve/transcription/transcription_example.py
-      for example in source/llm/doc_code/serve/direct_streaming/*_example.py source/llm/doc_code/serve/custom_vllm/*_example.py; do
-        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 RAY_SERVE_ENABLE_HA_PROXY=1 python "$example"
-      done
-      for notebook in source/llm/examples/batch/*.ipynb; do
-        python test_myst_doc.py --path "$notebook"
-      done
+    script: pytest -vs test_llm_examples.py -m "not requires_2GPU and not requires_4GPU"
 
 - name: llm_doc_2GPU_tests
   frequency: nightly
@@ -5471,8 +5445,6 @@
   cluster:
     byod:
       type: llm-cu130
-      runtime_env:
-        RAY_ADDRESS: local
     anyscale_sdk_2026: true
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
@@ -5480,10 +5452,7 @@
 
   run:
     timeout: 3600
-    script: |
-      set -e
-      python source/llm/doc_code/serve/multi_gpu/bundle_per_worker_example.py
-      python source/llm/doc_code/serve/multi_gpu/dp_autoscaling_example.py
+    script: pytest -vs test_llm_examples.py -m "requires_2GPU"
 
 - name: llm_doc_4GPU_tests
   frequency: nightly
@@ -5495,8 +5464,6 @@
   cluster:
     byod:
       type: llm-cu130
-      runtime_env:
-        RAY_ADDRESS: local
     anyscale_sdk_2026: true
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
@@ -5504,11 +5471,7 @@
 
   run:
     timeout: 3600
-    script: |
-      set -e
-      python source/llm/doc_code/serve/multi_gpu/dp_basic_example.py
-      python source/llm/doc_code/serve/multi_gpu/dp_pd_example.py
-      python source/llm/doc_code/serve/prefix_aware_router/prefix_aware_example.py
+    script: pytest -vs test_llm_examples.py -m "requires_4GPU"
 
 ##############
 # LLM Batch
