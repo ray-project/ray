@@ -18,7 +18,7 @@ from ray import serve
 from ray.llm._internal.serve.core.ingress.router import LLMRouter as _LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     _MODEL_NAME,
-    _TENANT_ID,
+    _ROUTING_GROUP,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
@@ -37,6 +37,7 @@ def build_kv_config(
     kv_events_port_base,
     num_replicas=1,
     decode_progress=False,
+    request_router_kwargs=None,
 ):
     """Config for a direct-streaming KV-aware app with engine KV events enabled.
 
@@ -58,7 +59,8 @@ def build_kv_config(
             # A KVAwareRouter (subclass) gates engine token tracking and the
             # KV-events plane; the ingress builds the KVTokenTracker.
             request_router_config=RequestRouterConfig(
-                request_router_class=request_router_class
+                request_router_class=request_router_class,
+                request_router_kwargs=request_router_kwargs or {},
             ),
         ),
         engine_kwargs=dict(
@@ -125,9 +127,30 @@ class LLMRouter(_LLMRouter):
         self._event_log = []
         self._errors = []
         self._token_pushes = []
+        self._selections = []
         renderer = self._tokenizer._renderer.renderer
         self._chat_render = mock.AsyncMock(wraps=renderer.render_chat_async)
         renderer.render_chat_async = self._chat_render
+        # Record KVAwareRouter's choices so tests can see where each session
+        # turn routed. Selections a test makes through ``select_worker`` skip
+        # the record.
+        tracker = self._kv_token_tracker
+        self._select_worker = select_worker = tracker.select_worker
+
+        async def recorded_select_worker(request_id, *args, session_id=None, **kwargs):
+            selection = await select_worker(
+                request_id, *args, session_id=session_id, **kwargs
+            )
+            self._selections.append(
+                dict(
+                    request_id=request_id,
+                    session_id=session_id,
+                    worker_id=selection["worker_id"],
+                )
+            )
+            return selection
+
+        tracker.select_worker = recorded_select_worker
 
     def _push_prompt_tokens(self, *, token_endpoint, replica_id, request_token_ids):
         key = super()._push_prompt_tokens(
@@ -192,7 +215,7 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return []
-        workers = svc.list_workers(model_name=_MODEL_NAME, routing_group=_TENANT_ID)
+        workers = svc.list_workers(model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP)
         return sorted(
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
         )
@@ -217,7 +240,7 @@ class LLMRouter(_LLMRouter):
         scores = await svc.overlap_scores(
             {
                 "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
+                "routing_group": _ROUTING_GROUP,
                 "token_ids": list(token_ids),
                 "lora_name": lora_name,
             }
@@ -230,7 +253,7 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return 0
-        for model in svc.loads(model_name=_MODEL_NAME, routing_group=_TENANT_ID):
+        for model in svc.loads(model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP):
             for load in model["loads"]:
                 if load["worker_id"] == worker_id:
                     return load["active_requests"]
@@ -243,7 +266,7 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return None
-        for model in svc.loads(model_name=_MODEL_NAME, routing_group=_TENANT_ID):
+        for model in svc.loads(model_name=_MODEL_NAME, routing_group=_ROUTING_GROUP):
             for load in model["loads"]:
                 if load["worker_id"] == worker_id:
                     return load
@@ -287,15 +310,47 @@ class LLMRouter(_LLMRouter):
         allowed_worker_ids,
         expected_output_tokens=None,
         lora_name=None,
+        session_id=None,
     ):
         """(Test only) Score ``allowed_worker_ids`` for a prompt via the tracker."""
-        return await self._kv_token_tracker.select_worker(
+        return await self._select_worker(
             request_id,
             token_ids,
             allowed_worker_ids,
             expected_output_tokens,
             lora_name=lora_name,
+            session_id=session_id,
         )
+
+    async def select_worker_on(self, replica_id, *args, **kwargs):
+        """(Test only) ``select_worker`` on the ingress replica ``replica_id``.
+
+        Broadcast it to pin a selection to one ingress; the others return
+        ``None``.
+        """
+        if self.get_replica_id() != replica_id:
+            return None
+        return await self.select_worker(*args, **kwargs)
+
+    def get_selections(self):
+        """(Test only) Every request KVAwareRouter routed through this ingress."""
+        return self._selections
+
+    async def get_session_worker(self, session_id, token_ids, allowed_worker_ids):
+        """(Test only) Where this ingress would route ``session_id`` now.
+
+        A query: it neither binds the session nor books load.
+        """
+        selection = await self._kv_token_tracker._svc.select(
+            {
+                "model_name": _MODEL_NAME,
+                "routing_group": _ROUTING_GROUP,
+                "token_ids": list(token_ids),
+                "allowed_worker_ids": list(allowed_worker_ids),
+                "session_id": session_id,
+            }
+        )
+        return selection["worker_id"]
 
 
 @contextmanager

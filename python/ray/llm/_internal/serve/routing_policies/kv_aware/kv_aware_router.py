@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_SESSION_AFFINITY_TTL_S,
     REQUEST_TOKEN_IDS_KWARG,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
@@ -42,12 +43,25 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
     Dynamo selection service and the global KV index) built by the LLMRouter in
     this same ingress process; this per-handle router stays thin and simply maps
     candidate replicas to/from Dynamo worker ids.
+
+    Send the same ``x-session-id`` header on each conversation turn to keep
+    requests on the same replica. The first turn uses token-load scoring and
+    KV-cache overlap. Later turns stay on that replica until the session's idle
+    timeout expires or the replica becomes unavailable or ineligible.
     """
 
-    def initialize_state(self):
+    def initialize_state(
+        self,
+        session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
+    ):
         """Bind to the ``KVTokenTracker`` the LLMRouter registered in this
         process. When absent (e.g. the proxy's fallback router), KV-aware
         routing degrades to load-balanced selection instead of erroring.
+
+        Args:
+            session_affinity_ttl_s: How long to keep an idle session on the same
+                replica, in seconds. Defaults to 1800 (30 minutes).
+                ``0`` disables session pinning.
         """
         self._kv_token_tracker = get_kv_token_tracker()
         if self._kv_token_tracker is None:
@@ -124,6 +138,7 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
             # the selection service salts its KV hashes with it, so each adapter
             # gets its own KV namespace. Empty means the base model.
             lora_name=pending_request.metadata.multiplexed_model_id or None,
+            session_id=pending_request.metadata.session_id or None,
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
 

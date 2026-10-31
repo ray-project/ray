@@ -129,7 +129,7 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
-        self._reservation_forwarder = None
+        self._replica_forwarder = None
         self._svc = MockSelectionService()
         self._event_log = []
 
@@ -180,7 +180,7 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
-        self._reservation_forwarder = None
+        self._replica_forwarder = None
         self._svc = MockSelectionService()
 
     async def get_request_lifecycle(self, request_id):
@@ -239,6 +239,11 @@ class _BroadcastHandle:
 @pytest.fixture
 def build_token_tracking_engine(monkeypatch):
     def _build(script, *targets, report_decode_progress=False, **engine_kwargs):
+        # These actors stand in for ready Serve replicas. Actor startup must
+        # finish before the lifecycle delivery timeout starts.
+        for target in targets:
+            if isinstance(target, ray.actor.ActorHandle):
+                ray.get(target.__ray_ready__.remote())
         monkeypatch.setattr(
             "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
             "token_tracking.get_llm_router_handle",

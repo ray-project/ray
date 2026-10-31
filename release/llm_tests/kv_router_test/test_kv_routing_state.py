@@ -1,11 +1,13 @@
-"""Tests for token-load state across LLMRouter ingress replicas.
+"""Tests for KV routing state across LLMRouter ingress replicas.
 
 Each ingress owns a local KV selector. The routing ingress atomically selects
 and reserves a worker, then asynchronously broadcasts that already-selected
 reservation so peer ingresses can mirror the same load state. Engine lifecycle
 events are broadcast separately and advance or free reservations admitted
 locally. Cached KV blocks are tracked per replica: every ingress independently
-subscribes to each engine worker's KV-event stream.
+subscribes to each engine worker's KV-event stream. Session bindings stream
+from the routing ingress's selection service and are broadcast the same way,
+so a session stays on its worker whichever ingress routes its next turn.
 """
 
 import asyncio
@@ -38,19 +40,30 @@ PROMPT_TEXT = (
 MESSAGES = [{"role": "user", "content": PROMPT_TEXT}]
 
 
-def _post_chat(endpoint, max_tokens=MAX_TOKENS, request_id=None, stream=False):
+def _post_chat(
+    endpoint,
+    max_tokens=MAX_TOKENS,
+    request_id=None,
+    stream=False,
+    messages=MESSAGES,
+    session_id=None,
+):
     """Send one chat completion through the deployment's HTTP ingress."""
     if isinstance(endpoint, tuple):
         host, port = endpoint
         url = f"http://{host}:{port}/v1/chat/completions"
     else:
         url = f"{endpoint}/v1/chat/completions"
-    headers = {"X-Request-Id": request_id} if request_id else None
+    headers = {}
+    if request_id:
+        headers["X-Request-Id"] = request_id
+    if session_id:
+        headers["x-session-id"] = session_id
     with requests.post(
         url,
         json={
             "model": MODEL_ID,
-            "messages": MESSAGES,
+            "messages": messages,
             "max_tokens": max_tokens,
             "temperature": 0.0,
             "ignore_eos": True,
@@ -117,18 +130,24 @@ async def _ingress_replica_ids(router, ingress_replicas_per_node):
     return replica_ids
 
 
-async def _registered_worker(router, num_replicas):
-    """Wait until every ingress replica can schedule the engine's worker and
-    return the worker id."""
+async def _registered_workers(router, num_replicas, num_workers, timeout=120):
+    """Wait until every ingress replica can schedule all ``num_workers`` engine
+    workers and return their ids."""
 
     async def registered():
         per_replica = await _broadcast(router, "get_registered_worker_ids")
         return len(per_replica) == num_replicas and all(
-            len(ids) == 1 for ids in per_replica
+            len(ids) == num_workers for ids in per_replica
         )
 
-    await async_wait_for_condition(registered, timeout=120, retry_interval_ms=1000)
-    return (await _broadcast(router, "get_registered_worker_ids"))[0][0]
+    await async_wait_for_condition(registered, timeout=timeout, retry_interval_ms=1000)
+    return (await _broadcast(router, "get_registered_worker_ids"))[0]
+
+
+async def _registered_worker(router, num_replicas):
+    """Wait until every ingress replica can schedule the engine's worker and
+    return the worker id."""
+    return (await _registered_workers(router, num_replicas, num_workers=1))[0]
 
 
 async def _backend_endpoint(handle):
@@ -304,6 +323,240 @@ class TestIngressSynchronization:
             )
 
         await async_wait_for_condition(is_indexed, timeout=60, retry_interval_ms=500)
+
+
+SESSION_APP_NAME = "session_affinity_test"
+SESSION_KV_EVENTS_PORT_BASE = 21900
+# Long enough for the pinning tests, short enough to wait out.
+SESSION_TTL_S = 30
+# Unpinned reservations that make the bound worker the costlier choice.
+SKEW_REQUESTS = 8
+
+
+def _token_ids(seed):
+    """A distinct 64-token prompt, so KV overlap never decides a selection."""
+    return list(range(seed * 1000, seed * 1000 + 64))
+
+
+async def _session_deployment(router):
+    """Every ingress replica id and the two engine workers' ids."""
+    ingress_ids = await _ingress_replica_ids(router, 2)
+    workers = await _registered_workers(
+        router, len(ingress_ids), num_workers=2, timeout=300
+    )
+    return ingress_ids, workers
+
+
+async def _select_on(router, replica_id, request_id, seed, allowed, session_id=None):
+    """Select on one ingress replica and return the chosen worker id."""
+    results = await _broadcast(
+        router,
+        "select_worker_on",
+        replica_id,
+        request_id,
+        _token_ids(seed),
+        allowed,
+        32,
+        None,
+        session_id,
+    )
+    (selection,) = [result for result in results if result is not None]
+    return selection["worker_id"]
+
+
+async def _complete(router, *request_ids):
+    """Complete requests on every ingress and wait until none tracks them."""
+    await _broadcast(
+        router,
+        "on_lifecycle_events",
+        [("on_request_completed", (request_id,)) for request_id in request_ids],
+    )
+
+    async def released():
+        for request_id in request_ids:
+            states = await _broadcast(router, "get_request_lifecycle", request_id)
+            if any(state is not None for state in states):
+                return False
+        return True
+
+    await async_wait_for_condition(released, timeout=30, retry_interval_ms=200)
+
+
+async def _skew_load(router, replica_id, worker_id, prefix):
+    """Book unpinned load on ``worker_id`` until every ingress sees it."""
+    request_ids = [f"{prefix}-{i}" for i in range(SKEW_REQUESTS)]
+    for i, request_id in enumerate(request_ids):
+        await _select_on(router, replica_id, request_id, 100 + i, [worker_id])
+
+    async def converged():
+        loads = await _broadcast(router, "get_worker_load", worker_id)
+        return all(load["active_requests"] == SKEW_REQUESTS for load in loads)
+
+    await async_wait_for_condition(converged, timeout=30, retry_interval_ms=200)
+    return request_ids
+
+
+async def _wait_for_binding(router, session_id, worker_id, allowed):
+    """Wait until every ingress routes ``session_id`` to ``worker_id``.
+
+    Call it while load favors another worker, so only a replicated binding can
+    explain the answer.
+    """
+
+    async def bound_everywhere():
+        workers = await _broadcast(
+            router, "get_session_worker", session_id, _token_ids(0), allowed
+        )
+        return all(worker == worker_id for worker in workers)
+
+    await async_wait_for_condition(bound_everywhere, timeout=30, retry_interval_ms=200)
+
+
+class TestSessionAffinity:
+    """Session pinning through each ingress's real Dynamo selection service,
+    with two engine replicas and two ingress replicas that replicate bindings
+    to each other."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    def deployment(self):
+        if not ray.is_initialized():
+            ray.init(address="auto")
+        _restart_serve(ingress_replicas_per_node=2)
+        llm_config = build_kv_config(
+            request_router_class=KVAwareRouter,
+            kv_events_port_base=SESSION_KV_EVENTS_PORT_BASE,
+            num_replicas=2,
+            request_router_kwargs={"session_affinity_ttl_s": SESSION_TTL_S},
+        )
+        with patch_ingress():
+            serve.run(build_kv_app(llm_config), name=SESSION_APP_NAME)
+        yield
+        serve.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_binding_reaches_every_ingress(self):
+        """A session bound through one ingress stays on its worker through every
+        ingress, even when load favors the other worker."""
+        router = serve.get_deployment_handle("LLMRouter", app_name=SESSION_APP_NAME)
+        ingress_ids, (other, bound) = await _session_deployment(router)
+        workers = [other, bound]
+
+        worker = await _select_on(router, ingress_ids[0], "a-1", 1, [bound], "a")
+        assert worker == bound
+        await _complete(router, "a-1")
+
+        skew = await _skew_load(router, ingress_ids[0], bound, "a-skew")
+        try:
+            control = await _select_on(router, ingress_ids[-1], "a-control", 2, workers)
+            assert control == other, "load should favor the unbound worker"
+            await _complete(router, "a-control")
+
+            await _wait_for_binding(router, "a", bound, workers)
+            for turn, ingress_id in enumerate(ingress_ids, start=2):
+                request_id = f"a-{turn}"
+                worker = await _select_on(
+                    router, ingress_id, request_id, turn + 10, workers, "a"
+                )
+                assert worker == bound, f"turn {turn} via {ingress_id} unpinned"
+                await _complete(router, request_id)
+        finally:
+            await _complete(router, *skew)
+
+    @pytest.mark.asyncio
+    async def test_failover_rebind_reaches_every_ingress(self):
+        """When Serve excludes the bound worker, the session moves to an allowed
+        one, and every ingress follows the new binding."""
+        router = serve.get_deployment_handle("LLMRouter", app_name=SESSION_APP_NAME)
+        ingress_ids, (first, second) = await _session_deployment(router)
+        workers = [first, second]
+
+        worker = await _select_on(router, ingress_ids[0], "b-1", 1, [first], "b")
+        assert worker == first
+        await _complete(router, "b-1")
+        worker = await _select_on(router, ingress_ids[0], "b-2", 2, [second], "b")
+        assert worker == second
+        await _complete(router, "b-2")
+
+        # Load now favors ``first``, where the old binding pointed.
+        skew = await _skew_load(router, ingress_ids[0], second, "b-skew")
+        try:
+            await _wait_for_binding(router, "b", second, workers)
+            for turn, ingress_id in enumerate(ingress_ids, start=3):
+                request_id = f"b-{turn}"
+                worker = await _select_on(
+                    router, ingress_id, request_id, turn + 10, workers, "b"
+                )
+                assert worker == second, f"turn {turn} via {ingress_id} unpinned"
+                await _complete(router, request_id)
+        finally:
+            await _complete(router, *skew)
+
+    @pytest.mark.asyncio
+    async def test_http_session_turns_stay_pinned(self):
+        """Chat turns sent over HTTP with ``x-session-id`` reach KVAwareRouter
+        with their session and stay on one worker; an unpinned request follows
+        load instead."""
+        router = serve.get_deployment_handle("LLMRouter", app_name=SESSION_APP_NAME)
+        ingress_ids, workers = await _session_deployment(router)
+        endpoint = get_application_url(app_name=SESSION_APP_NAME, use_localhost=True)
+
+        def chat(text, session_id=None):
+            _post_chat(
+                endpoint,
+                max_tokens=8,
+                messages=[{"role": "user", "content": text}],
+                session_id=session_id,
+            )
+
+        async def routed(session_id):
+            per_ingress = await _broadcast(router, "get_selections")
+            return [
+                selection["worker_id"]
+                for log in per_ingress
+                for selection in log
+                if selection["session_id"] == session_id
+            ]
+
+        chat("Name three primary colors.", session_id="http")
+        (bound,) = await routed("http")
+        (other,) = [worker for worker in workers if worker != bound]
+
+        skew = await _skew_load(router, ingress_ids[0], bound, "http-skew")
+        try:
+            await _wait_for_binding(router, "http", bound, workers)
+            chat("Name three planets in the solar system.")
+            assert await routed(None) == [other], "load should favor the other worker"
+
+            for text in (
+                "Name three musical instruments.",
+                "Name three kinds of trees.",
+                "Name three ocean animals.",
+            ):
+                chat(text, session_id="http")
+            assert await routed("http") == [bound] * 4
+        finally:
+            await _complete(router, *skew)
+
+    @pytest.mark.asyncio
+    async def test_expired_session_rebinds(self):
+        """A session bound on one ingress follows load on another ingress once
+        it has been idle past the TTL."""
+        router = serve.get_deployment_handle("LLMRouter", app_name=SESSION_APP_NAME)
+        ingress_ids, (other, bound) = await _session_deployment(router)
+        workers = [other, bound]
+
+        skew = await _skew_load(router, ingress_ids[0], bound, "ttl-skew")
+        try:
+            worker = await _select_on(router, ingress_ids[0], "ttl-1", 1, [bound], "t")
+            assert worker == bound
+            await _complete(router, "ttl-1")
+            await _wait_for_binding(router, "t", bound, workers)
+
+            await asyncio.sleep(SESSION_TTL_S + 1)
+            worker = await _select_on(router, ingress_ids[-1], "ttl-2", 2, workers, "t")
+            assert worker == other, "expired session should follow load"
+        finally:
+            await _complete(router, *skew, "ttl-2")
 
 
 if __name__ == "__main__":

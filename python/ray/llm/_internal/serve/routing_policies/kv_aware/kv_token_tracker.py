@@ -3,6 +3,7 @@ import hashlib
 import logging
 import math
 import time
+import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypedDict
@@ -11,9 +12,11 @@ import ray
 from ray import serve
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_INDEXER_THREADS,
+    DEFAULT_SESSION_AFFINITY_TTL_S,
     KV_INDEXER_THREADS_KEY,
     LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
     REQUEST_TRACKING_TTL_S,
+    SESSION_AFFINITY_MODE,
 )
 from ray.serve._private.common import DeploymentTargetInfo
 from ray.serve._private.constants import (
@@ -22,7 +25,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve.exceptions import RayServeException
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -30,11 +32,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Dynamo's selection service keys all worker, indexer, and load state by
-# (model_name, tenant_id). KVTokenTracker instantiates a selection service and
+# (model_name, routing_group). KVTokenTracker instantiates a selection service and
 # serves exactly one model, so a single fixed key scopes all of its workers
 # together.
 _MODEL_NAME = "default"
-_TENANT_ID = "default"
+_ROUTING_GROUP = "default"
 
 # Hooks a replica may invoke through ``KVTokenTracker.on_lifecycle_events``.
 LIFECYCLE_HOOKS = frozenset(
@@ -74,7 +76,7 @@ class RequestLifecycle:
 class WorkerSelection(TypedDict):
     """The worker chosen by ``KVTokenTracker.select_worker`` for a request."""
 
-    # The chosen worker.
+    # The chosen LLMServer worker.
     worker_id: int
     # Data-parallel rank within the worker.
     dp_rank: int
@@ -84,54 +86,45 @@ class WorkerSelection(TypedDict):
     effective_prefill_tokens: int
 
 
-class ReservationBroadcast(TypedDict):
-    """Selected-worker booking state replicated to peer ingress routers."""
+class PeerUpdateForwarder:
+    """Broadcast this ingress's routing state to its peer ingress replicas.
 
-    request_id: str
-    source_ingress_replica_rank: Optional[int]
-    worker_id: int
-    dp_rank: int
-    sequence_hashes: List[int]
-    isl_tokens: int
-    expected_output_tokens: Optional[int]
-    effective_prefill_tokens: int
-    # Must match the name vLLM stamped on the request's KV-cache events, so a
-    # peer's selection service books this reservation in the same LoRA
-    # namespace the selecting ingress scored it in.
-    lora_name: Optional[str]
+    Each update is one of:
+      1. ``load_reservation``: the booking for a request this ingress routed,
+         so every peer counts the same token load on the selected worker.
+      2. ``session_affinity``: a session binding this ingress committed or
+         refreshed, so every peer pins the session's later turns to that worker.
 
-
-class ReservationBroadcastForwarder:
-    """Best-effort background replication of selected-worker reservations.
-
-    ``report`` only enqueues the selected-worker booking facts Dynamo already
-    returned. Sending the broadcast and waiting for its results happen on the
-    delivery task, off the request's selection and dispatch path.
+    ``report`` only enqueues. A background task batches pending updates into
+    one broadcast, off the request's selection and dispatch path.
     """
 
-    def __init__(self, handle: Any):
+    def __init__(self, handle: Any, source_writer_id: int):
         self._handle = handle
+        # Breaks ties when ingresses bind one session concurrently (newest
+        # (sequence, writer_id) wins); receivers also skip their own broadcasts.
+        self._source_writer_id = source_writer_id
         if getattr(handle, "is_initialized", True) is False:
             # Keep broadcast routing off the ingress replica's request loop.
             handle._init(_run_router_in_separate_loop=True)
-        self._reservations: asyncio.Queue = asyncio.Queue()
+        self._updates: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
 
-    def report(self, reservation: ReservationBroadcast) -> None:
+    def report(self, kind: str, event: Dict[str, Any]) -> None:
         if self._delivery_task is None or self._delivery_task.done():
             self._delivery_task = asyncio.get_running_loop().create_task(
                 self._deliver()
             )
-        self._reservations.put_nowait(reservation)
+        self._updates.put_nowait({"kind": kind, "event": event})
 
     async def _deliver(self) -> None:
         while True:
-            batch = [await self._reservations.get()]
-            while not self._reservations.empty():
-                batch.append(self._reservations.get_nowait())
+            batch = [await self._updates.get()]
+            while not self._updates.empty():
+                batch.append(self._updates.get_nowait())
             try:
                 results = await self._handle.broadcast(
-                    "on_reservations_created", batch
+                    "on_replica_updates", self._source_writer_id, batch
                 ).results_async(
                     timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
                     return_exceptions=True,
@@ -139,23 +132,20 @@ class ReservationBroadcastForwarder:
                 errors = [r for r in results if isinstance(r, Exception)]
                 if errors:
                     logger.warning(
-                        "KV reservation broadcasts dropped on %d/%d ingress "
-                        "replicas: %s",
+                        "KV peer broadcasts dropped on %d/%d ingress replicas: %s",
                         len(errors),
                         len(results),
                         errors[0],
                     )
             except Exception as e:
-                logger.warning(
-                    "Dropping selection service reservation broadcast: %s", e
-                )
+                logger.warning("Dropping selection service peer broadcast: %s", e)
             finally:
                 for _ in batch:
-                    self._reservations.task_done()
+                    self._updates.task_done()
 
     async def flush(self) -> None:
-        """Wait until every reported reservation broadcast has been attempted."""
-        await self._reservations.join()
+        """Wait until every reported replica broadcast has been attempted."""
+        await self._updates.join()
 
     def close(self) -> None:
         if self._delivery_task is not None:
@@ -164,8 +154,8 @@ class ReservationBroadcastForwarder:
 
 
 class KVTokenTracker:
-    """Tracks per-replica KV-cache overlap and token load inside the LLMRouter
-    ingress replica.
+    """Tracks per-replica KV-cache overlap, token load, and session affinity
+    inside the LLMRouter ingress replica.
 
     Built by the LLMRouter ingress replica via ``build_kv_token_tracker``, so
     ``select_worker`` is a local call on the ingress event loop.
@@ -177,36 +167,33 @@ class KVTokenTracker:
        every replica's KV events; each node records which workers hold that KV block.
     4. Scoring (``select_worker``) atomically ranks candidate workers by
        KV-cache overlap and current token load, reserves the chosen worker, and
-       records local lifecycle state. The selected reservation is replicated to
-       peer ingress replicas in the background so every selection service can
-       apply the engine's subsequent lifecycle events. A separate
+       records local lifecycle state. A request with a session id reuses its
+       session's bound worker while that worker remains a candidate; otherwise
+       the selected worker becomes the session's new binding. A separate
        select-then-reserve flow causes herding because concurrent requests can
        select the same worker from stale load state before any reservation is
        visible.
+    5. Load reservations and session affinity bindings are replicated to peer
+       ingress replicas in the background (see ``PeerUpdateForwarder``), so
+       every selection service applies the engine's subsequent lifecycle
+       events and pins a session's later turns to the same worker.
     """
 
     def __init__(
         self,
         indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
         serve_deployment_id: Optional[Any] = None,
-        ingress_replica_rank: Optional[int] = None,
+        session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
     ):
         # The tracked LLMServer deployment id, passed in by the LLMRouter
         # that builds the tracker.
         self._serve_deployment_id = serve_deployment_id
-        self._ingress_replica_rank = ingress_replica_rank
-        if self._ingress_replica_rank is None:
-            try:
-                replica_rank = serve.get_replica_context().rank
-            except RayServeException:
-                replica_rank = None
-            if replica_rank is not None:
-                self._ingress_replica_rank = replica_rank.rank
         # KV-cache block size, learned once from the first replica's reported
         # engine config and passed to the selection service, which uses it to
         # track the worker's active load and index its KV blocks for overlap.
         self._block_size: Optional[int] = None
         self._indexer_threads = indexer_threads
+        self._session_affinity_ttl_s = session_affinity_ttl_s
         # _replica_id_by_worker maps a Dynamo worker id to the running replica's full
         # id string, kept in sync with the deployment's live replicas over LongPoll.
         # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
@@ -226,9 +213,17 @@ class KVTokenTracker:
         # Ordered oldest-first so the stale sweep can bound memory.
         self._completed_request_ids: "OrderedDict[str, float]" = OrderedDict()
         self._pending_tasks: Set[asyncio.Task] = set()
-        self._reservation_forwarder: Optional[ReservationBroadcastForwarder] = None
-        self._reservation_updates: asyncio.Queue = asyncio.Queue()
-        self._reservation_apply_task: Optional[asyncio.Task] = None
+        # Identifies this ingress: tags its broadcasts so it skips its own, and
+        # versions the session affinity bindings it writes.
+        self._replication_writer_id = get_worker_id(uuid.uuid4().hex)
+        # Sends this ingress's load reservations and session affinity bindings to peers.
+        self._replica_forwarder: Optional[PeerUpdateForwarder] = None
+        # Streams session affinity bindings from the selection service to the forwarder.
+        self._session_affinity_task: Optional[asyncio.Task] = None
+        # Peer load reservations and session affinity bindings awaiting apply.
+        self._replica_updates: asyncio.Queue = asyncio.Queue()
+        # Applies queued peer updates off the RPC path.
+        self._replica_apply_task: Optional[asyncio.Task] = None
         self._long_poll_client: Optional[LongPollClient] = None
         self._create_selection_service()
         self._start_replica_tracking()
@@ -237,9 +232,88 @@ class KVTokenTracker:
         """Return the KV-cache block size used for decode-block accounting."""
         return self._block_size
 
-    def start_reservation_broadcast(self, handle: Any) -> None:
-        """Configure background reservation replication to this deployment."""
-        self._reservation_forwarder = ReservationBroadcastForwarder(handle)
+    def start_replica_broadcast(self, handle: Any) -> None:
+        """Broadcast load reservations and session affinity bindings to peers."""
+        if self._svc is not None:
+            self._replica_forwarder = PeerUpdateForwarder(
+                handle, self._replication_writer_id
+            )
+            if self._session_affinity_ttl_s:
+                self._session_affinity_task = asyncio.create_task(
+                    self._forward_session_bindings()
+                )
+
+    async def _forward_session_bindings(self) -> None:
+        # One consumer per service; the forwarder fans out to peer ingress replicas.
+        async for bindings in self._svc.session_binding_updates():
+            for binding in bindings:
+                self._replica_forwarder.report("session_affinity", binding)
+
+    async def on_replica_updates(
+        self, source_writer_id: int, updates: List[Dict[str, Any]]
+    ) -> None:
+        """Queue a peer's load reservations and session affinity bindings
+        without blocking this ingress's request handling."""
+        if self._svc is None or source_writer_id == self._replication_writer_id:
+            return
+        if self._replica_apply_task is None or self._replica_apply_task.done():
+            self._replica_apply_task = asyncio.create_task(
+                self._apply_replica_updates()
+            )
+        self._replica_updates.put_nowait(updates)
+
+    async def _apply_replica_updates(self) -> None:
+        while True:
+            batches = [await self._replica_updates.get()]
+            while not self._replica_updates.empty():
+                batches.append(self._replica_updates.get_nowait())
+            try:
+                await self._evict_stale_requests()
+                bookings = []
+                for update in [update for batch in batches for update in batch]:
+                    if update["kind"] == "session_affinity":
+                        self._apply_session_binding(update["event"])
+                    else:
+                        bookings.append(update["event"])
+                # Book the round's reservations together: awaiting one at a time
+                # costs an event-loop round trip per booking, so under load this
+                # replica falls behind its peers and skips bookings whose requests
+                # completed in the meantime.
+                await asyncio.gather(*map(self._apply_reservation, bookings))
+            except Exception:
+                logger.exception("Failed to apply selection service peer updates.")
+            finally:
+                for _ in batches:
+                    self._replica_updates.task_done()
+
+    def _apply_session_binding(self, binding: Dict[str, Any]) -> None:
+        try:
+            self._svc.apply_session_binding(binding)
+        except Exception:
+            logger.exception("Failed to apply a peer session affinity binding.")
+
+    async def _apply_reservation(self, booking: Dict[str, Any]) -> None:
+        # A failed booking must not fail the rest of the round.
+        try:
+            request_id = booking["selection_id"]
+            if (
+                request_id in self._requests
+                or request_id in self._completed_request_ids
+            ):
+                return
+            await self._svc.create_reservation(booking)
+            # Completion can arrive while Dynamo is admitting the mirrored load.
+            if request_id in self._completed_request_ids:
+                await self._svc.free_reservation(request_id)
+                return
+            self._track_request_state(
+                request_id,
+                booking["worker_id"],
+                booking["isl_tokens"],
+                booking["expected_output_tokens"],
+            )
+        except Exception:
+            logger.exception("Failed to apply a peer load reservation.")
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -255,7 +329,14 @@ class KVTokenTracker:
             )
             return
 
-        self._svc = SelectionService(indexer_threads=self._indexer_threads)
+        self._svc = SelectionService(
+            indexer_threads=self._indexer_threads,
+            session_affinity_ttl_secs=self._session_affinity_ttl_s or None,
+            session_affinity_mode=SESSION_AFFINITY_MODE,
+            session_replication_writer_id=(
+                self._replication_writer_id if self._session_affinity_ttl_s else None
+            ),
+        )
         logger.info(
             "Dynamo SelectionService created (indexer threads %d).",
             self._indexer_threads,
@@ -383,7 +464,7 @@ class KVTokenTracker:
             {
                 "worker_id": worker_id,
                 "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
+                "routing_group": _ROUTING_GROUP,
                 # NOTE: SelectionService requires endpoint to be non-empty although it's left
                 # unused under an external runtime like Ray Serve LLM.
                 # TODO (jeffreywang): Allow empty endpoints upstream.
@@ -416,9 +497,13 @@ class KVTokenTracker:
         allowed_worker_ids: List[int],
         expected_output_tokens: Optional[int] = None,
         lora_name: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> WorkerSelection:
         """Score the allowed workers for a request based on KV-cache overlap and
         load and pick the best one.
+
+        Session requests reuse their selected worker while it remains eligible
+        and session affinity hasn't expired. Every request still reserves load.
 
         Args:
             request_id: Unique identifier for the request being routed.
@@ -431,6 +516,7 @@ class KVTokenTracker:
                 events. The selection service salts its KV hashes with it, so
                 omitting it on a LoRA request scores against the wrong
                 namespace and never matches.
+            session_id: The request's session, if any.
 
         Returns:
             The selected worker (see ``WorkerSelection``).
@@ -448,12 +534,13 @@ class KVTokenTracker:
         await self._evict_stale_requests()
         request = {
             "model_name": _MODEL_NAME,
-            "tenant_id": _TENANT_ID,
+            "routing_group": _ROUTING_GROUP,
             "selection_id": request_id,
             "token_ids": token_ids,
             "allowed_worker_ids": allowed_worker_ids,
             "expected_output_tokens": expected_output_tokens,
             "lora_name": lora_name,
+            "session_id": session_id,
         }
         selection = await self._svc.select_and_reserve(request)
         self._track_request_state(
@@ -462,11 +549,13 @@ class KVTokenTracker:
             len(token_ids),
             expected_output_tokens,
         )
-        if self._reservation_forwarder is not None:
-            self._reservation_forwarder.report(
+        if self._replica_forwarder is not None:
+            self._replica_forwarder.report(
+                "load_reservation",
                 {
-                    "request_id": request_id,
-                    "source_ingress_replica_rank": self._ingress_replica_rank,
+                    "model_name": _MODEL_NAME,
+                    "routing_group": _ROUTING_GROUP,
+                    "selection_id": request_id,
                     "worker_id": selection["worker_id"],
                     "dp_rank": selection["dp_rank"],
                     "sequence_hashes": selection["sequence_hashes"],
@@ -474,7 +563,7 @@ class KVTokenTracker:
                     "expected_output_tokens": expected_output_tokens,
                     "effective_prefill_tokens": selection["effective_prefill_tokens"],
                     "lora_name": lora_name,
-                }
+                },
             )
         return {
             "worker_id": selection["worker_id"],
@@ -507,79 +596,6 @@ class KVTokenTracker:
         )
         self._request_ids_by_worker.setdefault(worker_id, set()).add(request_id)
 
-    async def on_reservations_created(
-        self, reservations: List[ReservationBroadcast]
-    ) -> None:
-        """Queue already-selected requests for this ingress's selection service.
-
-        This method runs as a Serve RPC on LLMRouter replicas. Keep it short:
-        route handling shares the same replica, so the heavier Dynamo
-        ``create_reservation`` calls are applied by a background task.
-        """
-        if self._svc is None or self._block_size is None:
-            return
-        pending = []
-        for reservation in reservations:
-            # The selecting ingress receives its own broadcast after it has
-            # already booked the atomic reservation. It must skip even if the
-            # request already completed locally before the broadcast arrived.
-            if reservation["source_ingress_replica_rank"] == self._ingress_replica_rank:
-                continue
-            pending.append(reservation)
-        if not pending:
-            return
-        if self._reservation_apply_task is None or self._reservation_apply_task.done():
-            self._reservation_apply_task = asyncio.create_task(
-                self._apply_reservation_updates()
-            )
-        self._reservation_updates.put_nowait(pending)
-
-    async def _apply_reservation_updates(self) -> None:
-        while True:
-            batches = [await self._reservation_updates.get()]
-            while not self._reservation_updates.empty():
-                batches.append(self._reservation_updates.get_nowait())
-            reservations = [reservation for batch in batches for reservation in batch]
-            try:
-                await self._apply_reservations(reservations)
-            except Exception:
-                logger.exception("Failed to apply KV reservation broadcast batch.")
-            finally:
-                for _ in batches:
-                    self._reservation_updates.task_done()
-
-    async def _apply_reservations(
-        self, reservations: List[ReservationBroadcast]
-    ) -> None:
-        await self._evict_stale_requests()
-        for reservation in reservations:
-            request_id = reservation["request_id"]
-            if (
-                request_id in self._requests
-                or request_id in self._completed_request_ids
-            ):
-                continue
-            await self._svc.create_reservation(
-                {
-                    "model_name": _MODEL_NAME,
-                    "tenant_id": _TENANT_ID,
-                    "selection_id": request_id,
-                    "worker_id": reservation["worker_id"],
-                    "dp_rank": reservation["dp_rank"],
-                    "sequence_hashes": reservation["sequence_hashes"],
-                    "isl_tokens": reservation["isl_tokens"],
-                    "expected_output_tokens": reservation["expected_output_tokens"],
-                    "effective_prefill_tokens": reservation["effective_prefill_tokens"],
-                    "lora_name": reservation["lora_name"],
-                }
-            )
-            self._track_request_state(
-                request_id,
-                reservation["worker_id"],
-                reservation["isl_tokens"],
-                reservation["expected_output_tokens"],
-            )
-
     async def on_lifecycle_events(self, events: List[tuple]) -> None:
         """Apply a replica's ``(hook_name, args)`` lifecycle events in order.
 
@@ -587,7 +603,7 @@ class KVTokenTracker:
         admission would resurrect an evicted request) so a replica sends its
         events in submission order, batched into one call.
         """
-        if self._svc is None or self._block_size is None:
+        if self._svc is None:
             return
 
         for hook_name, args in events:
@@ -719,7 +735,16 @@ def build_kv_token_tracker(
     so the same-process ``KVAwareRouter`` can reach it. Must be called from the
     ingress replica's event loop (the tracker binds a LongPollClient to it).
     """
+    router_config = llm_config.deployment_config.get("request_router_config") or {}
+    router_kwargs = (
+        router_config.get("request_router_kwargs", {})
+        if isinstance(router_config, dict)
+        else router_config.request_router_kwargs
+    )
     tracker = KVTokenTracker(
+        session_affinity_ttl_s=router_kwargs.get(
+            "session_affinity_ttl_s", DEFAULT_SESSION_AFFINITY_TTL_S
+        ),
         indexer_threads=llm_config.experimental_configs.get(
             KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
         ),

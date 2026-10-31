@@ -26,7 +26,7 @@ The best policy depends on your workload. You can configure different routers th
 | `RoundRobinRouter` | Request order | Prompts share little beyond the system prompt, and you want the simplest even spread. | No KV cache awareness. |
 | `ConsistentHashRouter` | Hash of the `x-session-id` header | Clients can provide a session ID and each session’s history forms the reusable prefix. | A session with more turns or longer input or output sequences can saturate its replica. |
 | `PrefixCacheAffinityRouter` | Prompt text matched against a router-maintained prefix tree | Requests frequently share a long textual prefixes. | Approximates engine KV cache state from prompt text and falls back to power of two choices when queue lengths become imbalanced. |
-| `KVAwareRouter` | Token load: the request's remaining prefill work after accounting for KV cache overlap, plus the replica's active prefill and decode work | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
+| `KVAwareRouter` | Token load: the request's remaining prefill work after accounting for KV cache overlap, plus the replica's active prefill and decode work, with session pinning through `x-session-id` | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
 
 ## Installation
 
@@ -100,6 +100,30 @@ applications:
 Run `serve run config.yaml`.
 :::
 ::::
+
+### Use session pinning
+
+Send the same `x-session-id` header on each turn of a conversation to improve KV cache reuse:
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-session-id: chat-123" \
+  -d '{"model": "qwen3-0.6b", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
+
+The first request selects a replica by estimated token load and KV cache overlap. Later turns stay on that replica even when another has lower load or more cached tokens. After the session's idle timeout, or if the replica becomes unavailable or ineligible, the router selects again.
+
+Session pinning is enabled by default with a 30-minute idle timeout. Set `session_affinity_ttl_s` in seconds to change it:
+
+```python
+request_router_config = RequestRouterConfig(
+    request_router_class=KVAwareRouter,
+    request_router_kwargs={"session_affinity_ttl_s": 600},
+)
+```
+
+Set it to `0` to disable pinning. Requests without `x-session-id` use token-load scoring and KV cache overlap.
 
 ### Tuning
 
