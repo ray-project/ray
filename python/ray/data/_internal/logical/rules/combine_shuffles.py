@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
@@ -6,6 +8,7 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators import (
     Aggregate,
+    Project,
     Repartition,
     Sort,
     StreamingRepartition,
@@ -67,6 +70,31 @@ class CombineShuffles(Rule):
                 key=op.key,
                 aggs=op.aggs,
                 input_dependencies=[input_op.input_dependencies[0]],
+                num_partitions=op.num_partitions,
+            )
+        elif (
+            isinstance(op, Aggregate)
+            and isinstance(input_op, Project)
+            # A per-block limit depends on how rows are split into blocks, which
+            # the dropped ``Repartition`` would have changed.
+            and input_op.per_block_limit is None
+            and isinstance(input_op.input_dependencies[0], Repartition)
+        ):
+            # ``ProjectionPushdown`` prunes the columns the ``Aggregate`` does not
+            # need by inserting a ``Project`` right below it, which would
+            # otherwise hide the ``Repartition`` from the case above. The
+            # ``Project`` is row-wise, so it is safe to move it below the
+            # ``Repartition`` and drop the latter.
+            repartition = input_op.input_dependencies[0]
+            return Aggregate(
+                key=op.key,
+                aggs=op.aggs,
+                input_dependencies=[
+                    replace(
+                        input_op,
+                        input_dependencies=[repartition.input_dependencies[0]],
+                    )
+                ],
                 num_partitions=op.num_partitions,
             )
         elif isinstance(input_op, StreamingRepartition) and isinstance(op, Repartition):
