@@ -592,12 +592,14 @@ def _read_datasource_v2(
         filesystem = datasource.filesystem
         file_extensions = datasource.file_extensions
         shuffle = datasource.shuffle
+        source_paths = datasource.source_paths
     elif isinstance(datasource, DataSourceWithMetadata):
         # The source's own indexer finds the data: nothing to walk, nothing to
         # filter by extension, no file shuffle.
         filesystem = None
         file_extensions = None
         shuffle = None
+        source_paths = datasource.paths
     else:
         raise TypeError(
             f"{type(datasource).__name__} extends DataSourceV2 directly. Extend "
@@ -734,7 +736,7 @@ def _read_datasource_v2(
         paths=list(datasource.paths),
         file_indexer=indexer,
         filesystem=filesystem,
-        source_paths=list(datasource.paths),
+        source_paths=list(source_paths),
         prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,

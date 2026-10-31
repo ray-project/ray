@@ -360,7 +360,9 @@ def _resolve_custom_scheme(path: str) -> str:
 
 
 def _normalize_paths_to_strings(
-    paths: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]]
+    paths: Union[
+        str, pathlib.Path, List[str], List[pathlib.Path], List[Union[str, pathlib.Path]]
+    ]
 ) -> List[str]:
     """Normalize path input to a list of strings.
 

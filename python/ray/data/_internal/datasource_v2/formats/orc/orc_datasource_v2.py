@@ -34,7 +34,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
 )
-from ray.data._internal.util import _is_local_scheme
+from ray.data._internal.util import _is_local_scheme, _normalize_paths_to_strings
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import (
@@ -70,6 +70,9 @@ class OrcDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths = resolved_paths
+        # The resolved paths above lose their URI scheme; lineage tracking
+        # reads the caller's paths through ``source_paths``.
+        self._source_paths = _normalize_paths_to_strings(paths)
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
         self._file_extensions = file_extensions
@@ -81,6 +84,12 @@ class OrcDatasourceV2(FileDataSourceV2):
     @override
     def paths(self) -> List[str]:
         return self._paths
+
+    @property
+    @override
+    def source_paths(self) -> List[str]:
+        """Override when :attr:`paths` is resolved and loses URI schemes."""
+        return self._source_paths
 
     @property
     @override
