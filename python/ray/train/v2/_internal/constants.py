@@ -2,7 +2,7 @@ import os
 from typing import Dict, Optional
 
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
-from ray._private.ray_constants import env_bool, env_set_by_user
+from ray._common.utils import env_bool, env_set_by_user
 
 # Unsupported configs can use this value to detect if the user has set it.
 _UNSUPPORTED = "UNSUPPORTED"

@@ -62,6 +62,10 @@ def env_bool(key, default):
     return default
 
 
+def env_set_by_user(key: str) -> bool:
+    return key in os.environ
+
+
 def import_module_and_attr(
     full_path: str, *, reload_module: bool = False
 ) -> Tuple[ModuleType, Any]:

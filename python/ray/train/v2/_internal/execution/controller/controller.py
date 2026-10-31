@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 import pandas as pd
 
 import ray
-import ray._private.ray_constants as ray_constants
+from ray._common.utils import env_bool, env_set_by_user
 from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
@@ -134,7 +134,7 @@ class TrainController:
         validation_config: Optional[ValidationConfig] = None,
     ):
         self._train_run_context = train_run_context
-        if ray_constants.env_bool(
+        if env_bool(
             ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
             DEFAULT_ENABLE_CONTROLLER_LOGGING,
         ):
@@ -201,12 +201,12 @@ class TrainController:
 
         # Register the preemption-observability callback when not in TorchFT
         # mode (replica groups handle peer loss via their own quorum).
-        enable_preemption_watcher = ray_constants.env_bool(
+        enable_preemption_watcher = env_bool(
             ENABLE_PREEMPTION_WATCHER_ENV_VAR,
             DEFAULT_ENABLE_PREEMPTION_WATCHER,
         )
         if self._manages_replica_groups:
-            if enable_preemption_watcher and ray_constants.env_set_by_user(
+            if enable_preemption_watcher and env_set_by_user(
                 ENABLE_PREEMPTION_WATCHER_ENV_VAR
             ):
                 logger.info(

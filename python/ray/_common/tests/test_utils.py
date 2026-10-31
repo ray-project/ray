@@ -16,6 +16,7 @@ import pytest
 from ray._common.utils import (
     _BACKGROUND_TASKS,
     env_bool,
+    env_set_by_user,
     get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
     get_system_memory,
@@ -85,6 +86,17 @@ class TestEnvBool:
         monkeypatch.delenv(self._KEY, raising=False)
         assert env_bool(self._KEY, False) is False
         assert env_bool(self._KEY, True) is True
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "false", "1"])
+def test_env_set_by_user(value, monkeypatch):
+    key = "_RAY_TEST_ENV_SET_BY_USER"
+    if value is None:
+        monkeypatch.delenv(key, raising=False)
+    else:
+        monkeypatch.setenv(key, value)
+
+    assert env_set_by_user(key) == (value is not None)
 
 
 @pytest.mark.asyncio
