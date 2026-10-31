@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import time
 from unittest.mock import AsyncMock, call, patch
 
 import aiohttp
@@ -236,6 +237,66 @@ async def test_http_request_udf_cancels_pending_requests_when_a_row_fails():
             pass
 
     assert cancelled == ["slow"]
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_stops_sending_after_a_row_fails():
+    """With a qps, rows not sent yet are skipped once a row has failed."""
+    sent = []
+
+    async def on_send(payload):
+        sent.append(payload["text"])
+        raise aiohttp.ClientConnectionError("connection refused")
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        max_retries=0,
+        base_retry_wait_time_in_s=0,
+        qps=50,
+        session_factory=lambda: _FakeSession(on_send),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": str(i)}} for i in range(5)]}
+
+    with pytest.raises(RuntimeError, match="Reached maximum retries"):
+        async for _ in udf(batch):
+            pass
+
+    assert sent == ["0"]
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_retries_wait_for_the_qps():
+    """A retry takes a send slot too, so retries can't push the rate over the qps."""
+    send_times = []
+    failed_once = set()
+
+    async def on_send(payload):
+        send_times.append(time.monotonic())
+        if payload["text"] not in failed_once:
+            failed_once.add(payload["text"])
+            raise aiohttp.ClientConnectionError("connection refused")
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        max_retries=1,
+        base_retry_wait_time_in_s=0,
+        qps=20,
+        session_factory=lambda: _FakeSession(on_send),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": str(i)}} for i in range(3)]}
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 3
+    assert len(send_times) == 6
+    gaps = [later - earlier for earlier, later in zip(send_times, send_times[1:])]
+    assert min(gaps) >= 0.04
 
 
 @pytest.mark.asyncio

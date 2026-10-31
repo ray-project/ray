@@ -4,7 +4,17 @@ import asyncio
 import json
 import time
 import traceback
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Type
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
 
 import aiohttp
 import aiohttp.web_exceptions
@@ -121,8 +131,34 @@ class HttpRequestUDF(StatefulStageUDF):
             return self._build_form_data(payload), self.multipart_headers
         return json.dumps(payload, cls=NumpyEncoder), self.json_headers
 
+    def _make_qps_limiter(self) -> Callable[[], Awaitable[None]]:
+        """
+        Create the limiter of one batch, shared by first attempts and retries.
+
+        Returns:
+            A coroutine function that waits for the next free send slot. Slots are
+            taken before waiting, so overlapping requests never share one.
+        """
+        start_time = time.time()
+        request_count = 0
+
+        async def wait_for_slot() -> None:
+            nonlocal request_count
+            if self.qps is None:
+                return
+            request_count += 1
+            expected_time = request_count / self.qps
+            elapsed = time.time() - start_time
+            if elapsed < expected_time:
+                await asyncio.sleep(expected_time - elapsed)
+
+        return wait_for_slot
+
     async def _send_with_retries(
-        self, session: aiohttp.ClientSession, payload: Any
+        self,
+        session: aiohttp.ClientSession,
+        payload: Any,
+        wait_for_slot: Callable[[], Awaitable[None]],
     ) -> Any:
         """
         Send the request for one row, retrying retryable failures.
@@ -130,6 +166,8 @@ class HttpRequestUDF(StatefulStageUDF):
         Args:
             session: The client session to send the request with.
             payload: The payload of the row.
+            wait_for_slot: The QPS limiter of the batch. The caller waits for the
+                first attempt, so only retries wait here.
 
         Returns:
             The JSON body of the response.
@@ -137,6 +175,8 @@ class HttpRequestUDF(StatefulStageUDF):
         last_exception = None
         last_exception_traceback = None
         for retry_count in range(self.max_retries + 1):
+            if retry_count > 0:
+                await wait_for_slot()
             # FormData is consumed by a request, so every attempt builds a new body.
             body, headers = self._build_request(payload)
             try:
@@ -193,8 +233,7 @@ class HttpRequestUDF(StatefulStageUDF):
             payloads[row[self.IDX_IN_BATCH_COLUMN]] = row["payload"]
 
         async with self.session_factory() as session:
-            start_time = time.time()
-            request_count = 0
+            wait_for_slot = self._make_qps_limiter()
             pending_requests = []
             try:
                 # Start each request as soon as the QPS allows. aiohttp only sends
@@ -202,17 +241,23 @@ class HttpRequestUDF(StatefulStageUDF):
                 # task, which keeps them spaced by the QPS and lets them overlap.
                 for row in batch:
                     # Rate limit based on qps if specified
-                    if self.qps is not None:
-                        request_count += 1
-                        expected_time = request_count / self.qps
-                        elapsed = time.time() - start_time
-                        if elapsed < expected_time:
-                            await asyncio.sleep(expected_time - elapsed)
+                    await wait_for_slot()
+
+                    # A failed row fails the batch, so don't send the rest.
+                    if any(
+                        request.done()
+                        and not request.cancelled()
+                        and request.exception() is not None
+                        for _, request in pending_requests
+                    ):
+                        break
 
                     # self.IDX_IN_BATCH_COLUMN is the index of row in the batch
                     idx_in_batch_column = row[self.IDX_IN_BATCH_COLUMN]
                     request = asyncio.create_task(
-                        self._send_with_retries(session, payloads[idx_in_batch_column])
+                        self._send_with_retries(
+                            session, payloads[idx_in_batch_column], wait_for_slot
+                        )
                     )
                     pending_requests.append((idx_in_batch_column, request))
 
