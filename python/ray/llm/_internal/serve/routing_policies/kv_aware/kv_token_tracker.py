@@ -455,7 +455,15 @@ class KVTokenTracker:
             "expected_output_tokens": expected_output_tokens,
             "lora_name": lora_name,
         }
-        selection = await self._svc.select_and_reserve(request)
+        reserve = asyncio.ensure_future(self._svc.select_and_reserve(request))
+        try:
+            selection = await asyncio.shield(reserve)
+        except asyncio.CancelledError:
+            # The caller can give up (HAProxy times out a slow route) after the
+            # service booked the request but before this coroutine resumes. Free
+            # that booking, or it stays booked until the service's own expiry.
+            self._schedule(self._free_abandoned_reservation(request_id, reserve))
+            raise
         self._track_request_state(
             request_id,
             selection["worker_id"],
@@ -482,6 +490,23 @@ class KVTokenTracker:
             "overlap_tokens": selection["overlap"]["longest_matched"],
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
         }
+
+    async def _free_abandoned_reservation(
+        self, request_id: str, reserve: "asyncio.Future"
+    ) -> None:
+        """Free the booking of a selection whose caller was cancelled."""
+        try:
+            await reserve
+        except Exception:
+            return  # The selection failed, so nothing was booked.
+        try:
+            await self._svc.free_reservation(request_id)
+        except Exception:
+            logger.warning(
+                "Failed to free the reservation of abandoned request %s.",
+                request_id,
+                exc_info=True,
+            )
 
     def _track_request_state(
         self,
