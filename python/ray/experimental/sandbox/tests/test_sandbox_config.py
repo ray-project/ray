@@ -200,6 +200,38 @@ def test_disk_requires_a_writable_rootfs():
         SandboxConfig(image="python:3.10-slim", readonly=False, disk="lots")
 
 
+def test_gpu_ids_config():
+    config = SandboxConfig(image="python:3.10-slim")
+    assert config.gpu_ids is None
+
+    config = SandboxConfig(image="python:3.10-slim", gpu_ids=["0", "1"])
+    assert config.gpu_ids == ["0", "1"]
+
+    # ray.get_gpu_ids() returns integer indices unless CUDA_VISIBLE_DEVICES was
+    # set when the worker started.
+    config = SandboxConfig(image="python:3.10-slim", gpu_ids=[0, 1])
+    assert config.gpu_ids == ["0", "1"]
+
+
+@pytest.mark.parametrize(
+    "gpu_ids",
+    [
+        [],
+        "0",
+        ["0", ""],
+        [-1],
+        [True],
+        [1.0],
+        [None],
+        ["0", "0"],
+        [0, "0"],
+    ],
+)
+def test_invalid_gpu_ids_rejected(gpu_ids):
+    with pytest.raises(ValueError, match="gpu_ids"):
+        SandboxConfig(image="python:3.10-slim", gpu_ids=gpu_ids)
+
+
 def test_parse_memory_bytes():
     assert parse_memory_bytes("1Gi") == 1073741824
     assert parse_memory_bytes("1GiB") == 1073741824

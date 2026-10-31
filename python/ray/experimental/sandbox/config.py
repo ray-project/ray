@@ -332,6 +332,12 @@ class SandboxConfig:
             directory on the node instead of the workdir's host directory.
             In-memory mounts such as /dev/shm count toward the sandbox's
             memory instead.
+        gpu_ids: GPU ids or UUIDs, in the format ``ray.get_gpu_ids()`` uses,
+            to expose inside the sandbox through CDI. None (default) gives no
+            GPU access. Every id must be one Ray assigned the calling actor or
+            task, so request GPUs with ``num_gpus``. The backend checks this
+            against ``ray.get_gpu_ids()`` when it creates the sandbox. Integer
+            ids are stored as strings.
     """
 
     image: str
@@ -348,6 +354,7 @@ class SandboxConfig:
     capabilities: Optional[List[str]] = None
     shell: str = "/bin/bash"
     readonly: bool = True
+    gpu_ids: Optional[List[Union[int, str]]] = None
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
     )
@@ -401,6 +408,34 @@ class SandboxConfig:
                 "disk caps the writable rootfs; it requires readonly=False or "
                 "a workdir"
             )
+        self._validate_gpu_ids()
+
+    def _validate_gpu_ids(self):
+        if self.gpu_ids is None:
+            return
+        if not isinstance(self.gpu_ids, list) or not self.gpu_ids:
+            raise ValueError(
+                "gpu_ids must be a non-empty list of device ids/UUIDs, "
+                f"got {self.gpu_ids!r}."
+            )
+        if not all(_is_gpu_id(g) for g in self.gpu_ids):
+            raise ValueError(
+                "gpu_ids must contain only non-empty strings or non-negative "
+                f"integers, got {self.gpu_ids!r}."
+            )
+        self.gpu_ids = [str(g) for g in self.gpu_ids]
+        if len(set(self.gpu_ids)) != len(self.gpu_ids):
+            raise ValueError(
+                f"gpu_ids must not contain duplicates, got {self.gpu_ids!r}."
+            )
+
+
+def _is_gpu_id(gpu_id) -> bool:
+    """Whether gpu_id is a non-negative integer index or a non-empty string
+    index or UUID, the formats ray.get_gpu_ids() returns."""
+    if isinstance(gpu_id, str):
+        return bool(gpu_id)
+    return isinstance(gpu_id, int) and not isinstance(gpu_id, bool) and gpu_id >= 0
 
 
 GVisorSandboxConfig = SandboxConfig

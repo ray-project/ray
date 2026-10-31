@@ -74,6 +74,12 @@ class Sandbox:
         restore_from: Optional[str] = None,
         **kwargs,
     ):
+        if "gpu_ids" in kwargs:
+            raise TypeError(
+                "Sandbox does not accept 'gpu_ids'. A sandbox gets every GPU "
+                "Ray assigned this actor, from ray.get_gpu_ids()."
+            )
+
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
         # For restore_from, do not default to actor-assigned resources unless explicitly requested,
         # so that the checkpoint's recorded resource limits are preserved.
@@ -124,6 +130,11 @@ class Sandbox:
                 raise ValueError("Must provide either 'image' or 'restore_from'")
             if network is None:
                 network = "none"
+            # A sandbox gets every GPU Ray assigned this actor. Unlike cpu and
+            # memory, the actor has no other use for them, so there is nothing
+            # to override. An error resolving them propagates, so the sandbox
+            # never boots without them.
+            gpu_ids = [str(i) for i in ray.get_gpu_ids()] or None
             self.instance_id = self.runtime.create(
                 image=image,
                 cpu=cpu,
@@ -139,6 +150,7 @@ class Sandbox:
                 capabilities=capabilities,
                 readonly=readonly,
                 disk=disk,
+                gpu_ids=gpu_ids,
                 **kwargs,
             )
 
