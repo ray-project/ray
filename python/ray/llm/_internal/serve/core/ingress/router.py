@@ -11,8 +11,10 @@ from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
-    KV_TOKEN_METADATA_KEY,
     REQUEST_TOKEN_IDS_KWARG,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    get_token_endpoint,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
@@ -383,15 +385,9 @@ class LLMRouter:
                     f"replica {selection.replica_id} has no backend HTTP endpoint"
                 )
             host, port = endpoint
-            prompt_token_metadata = replica.routing_stats.get(KV_TOKEN_METADATA_KEY)
-            prompt_token_endpoint = (
-                prompt_token_metadata.get("endpoint")
-                if isinstance(prompt_token_metadata, dict)
-                else None
-            )
             return (
                 host,
                 port,
                 replica.replica_id.to_full_id_str(),
-                prompt_token_endpoint,
+                get_token_endpoint(replica.routing_stats),
             )

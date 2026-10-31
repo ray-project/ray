@@ -54,6 +54,14 @@ def get_worker_id(replica_unique_id: str) -> int:
     )
 
 
+def get_token_endpoint(routing_stats: Dict[str, Any]) -> Optional[str]:
+    """Return the prompt-token endpoint a replica advertises in its routing stats."""
+    token_metadata = routing_stats.get(KV_TOKEN_METADATA_KEY)
+    if isinstance(token_metadata, dict):
+        return token_metadata.get("endpoint") or None
+    return None
+
+
 @dataclass
 class RequestLifecycle:
     """In-flight request load state while the request is served by a replica."""
@@ -342,9 +350,9 @@ class KVTokenTracker:
                     replica.replica_id.to_full_id_str(),
                     kv_event_metadata,
                 )
-                token_metadata = replica.routing_stats.get(KV_TOKEN_METADATA_KEY)
-                if isinstance(token_metadata, dict) and token_metadata.get("endpoint"):
-                    token_endpoints[worker_id] = token_metadata["endpoint"]
+                token_endpoint = get_token_endpoint(replica.routing_stats)
+                if token_endpoint:
+                    token_endpoints[worker_id] = token_endpoint
 
         registered = set(self._replica_id_by_worker)
         added = members.keys() - registered
