@@ -1,7 +1,6 @@
 # @OldAPIStack
 
-"""
-Adapted (time-dependent) GAE for PPO algorithm that you can activate by setting
+"""Adapted (time-dependent) GAE for PPO algorithm that you can activate by setting
 use_adapted_gae=True in the policy config. Additionally, it's required that
 "callbacks" include the custom callback class in the Algorithm's config.
 Furthermore, the env must return in its info dictionary a key-value pair of
@@ -121,9 +120,8 @@ def generalized_discount_cumsum(
     reversed(x)[t]
 
     Args:
-        x (np.ndarray): A sequence of rewards or one-step TD residuals.
-        deltas (np.ndarray): A sequence of time step deltas (length of time
-            steps).
+        x: A sequence of rewards or one-step TD residuals.
+        deltas: A sequence of time step deltas (length of time steps).
         gamma: The discount factor gamma.
 
     Returns:

@@ -1,12 +1,11 @@
-"""
-Proximal Policy Optimization (PPO)
+"""Proximal Policy Optimization (PPO)
 ==================================
 
 This file defines the distributed Algorithm class for proximal policy
 optimization.
 See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
+Detailed documentation: https://docs.ray.io/en/latest/rllib/algorithms.html#ppo
 """
 
 import logging
@@ -206,7 +205,7 @@ class PPOConfig(AlgorithmConfig):
         # @OldAPIStack
         lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         # Deprecated.
-        vf_share_layers=DEPRECATED_VALUE,
+        vf_share_layers: Optional[bool] = DEPRECATED_VALUE,
         **kwargs,
     ) -> Self:
         """Sets the training related configuration.
@@ -236,11 +235,22 @@ class PPOConfig(AlgorithmConfig):
                 In case of a schedule, intermediary timesteps will be assigned to
                 linearly interpolated coefficient values. A schedule config's first
                 entry must start with timestep 0, i.e.: [[0, initial_value], [...]].
+            entropy_coeff_schedule: Decay schedule for the entropy regularizer, in
+                the format of [[timestep, coeff-value], [timestep, coeff-value], ...].
+                @OldAPIStack
             clip_param: The PPO clip parameter.
             vf_clip_param: Clip param for the value function. Note that this is
                 sensitive to the scale of the rewards. If your expected V is large,
                 increase this.
             grad_clip: If specified, clip the global norm of gradients by this amount.
+            lr_schedule: Learning rate schedule, in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]. Intermediary
+                timesteps are assigned to interpolated learning rate values. A
+                schedule should normally start from timestep 0. @OldAPIStack
+            vf_share_layers: Deprecated and ignored. Use
+                `config.rl_module(model_config={"vf_share_layers": ...})` instead.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.

@@ -185,8 +185,8 @@ class FaultAwareApply:
         Args:
             func: The function to call, with this actor as first
                 argument, followed by args, and kwargs.
-            args: Optional additional args to pass to the function call.
-            kwargs: Optional additional kwargs to pass to the function call.
+            *args: Optional additional args to pass to the function call.
+            **kwargs: Optional additional kwargs to pass to the function call.
 
         Returns:
             The return value of the function call.
@@ -647,9 +647,9 @@ class FaultTolerantActorManager:
         returned.
 
         Args:
+            tags: A tag or a list of tags to identify the results from this async call.
             timeout_seconds: ray.get() timeout. Default is 0, which only fetched those
                 results (immediately) that are already ready.
-            tags: A tag or a list of tags to identify the results from this async call.
             return_obj_refs: Whether to return ObjectRef instead of actual results.
             mark_healthy: Whether to mark all those actors healthy again that are
                 currently marked unhealthy AND that returned results from the remote

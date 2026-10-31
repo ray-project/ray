@@ -15,7 +15,6 @@ ray_cc_library(
         "leader_election_client_interface.h",
         "leader_elector.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/rpc:grpc_client",
         "//src/ray/rpc/authentication:k8s_util",

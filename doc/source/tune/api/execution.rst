@@ -16,7 +16,6 @@ Tuner
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Tuner.fit
     Tuner.get_results
@@ -39,7 +38,6 @@ Restoring a Tuner
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Tuner.restore
     Tuner.can_restore

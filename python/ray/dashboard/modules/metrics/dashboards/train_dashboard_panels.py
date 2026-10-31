@@ -1,5 +1,6 @@
 # flake8: noqa E501
 from ray.dashboard.modules.metrics.dashboards.common import (
+    K8S_DISK_USAGE_NOTE,
     DashboardConfig,
     Panel,
     Row,
@@ -33,6 +34,35 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
         Target(
             expr='sum(ray_train_worker_group_shutdown_total_time_s{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name)',
             legend="Run Name: {{ray_train_run_name}}, Worker Group Shutdown Time",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+# Ray Train Metrics (NCCL Hang Detector)
+NCCL_HANG_DETECTOR_STATE_PANEL = Panel(
+    id=31,
+    title="NCCL Hang Detector State",
+    description="State of the NCCL hang detector for the run's most stalled communicator: HEALTHY, SUSPECTED or CONFIRMED, or DEGRADED once detection is disabled for the run (e.g. `ncclras` is unavailable). Only recorded when the hang detector is enabled (RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1).",
+    unit="",
+    targets=[
+        Target(
+            expr='sum(ray_train_nccl_hang_detector_state{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name, ray_train_nccl_hang_detector_state)',
+            legend="Run Name: {{ray_train_run_name}}, Detector State: {{ray_train_nccl_hang_detector_state}}",
+        ),
+    ],
+)
+
+NCCL_HANG_STALL_DURATION_PANEL = Panel(
+    id=32,
+    title="NCCL Hang Stall Duration",
+    description="Seconds the run's most stalled NCCL communicator has made no progress with a collective mismatch. Drops to 0 when it resumes. Only recorded when the hang detector is enabled (RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1).",
+    unit="seconds",
+    targets=[
+        Target(
+            expr='max(ray_train_nccl_hang_stall_duration_s{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name)',
+            legend="Run Name: {{ray_train_run_name}}",
         ),
     ],
     fill=0,
@@ -176,7 +206,9 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
 DISK_UTILIZATION_PANEL = Panel(
     id=9,
     title="Disk Space Usage",
-    description="Disk space usage across all workers.",
+    description="Disk space usage across all workers.\n\n"
+    "NOTE: When Ray is deployed within a container, this shows the disk usage from the host machine.\n\n"
+    + K8S_DISK_USAGE_NOTE,
     unit="bytes",
     targets=[
         Target(
@@ -441,6 +473,9 @@ TRAIN_GRAFANA_ROWS = [
             # Ray Train Metrics (Controller)
             CONTROLLER_STATE_PANEL,
             CONTROLLER_OPERATION_TIME_PANEL,
+            # Ray Train Metrics (NCCL Hang Detector)
+            NCCL_HANG_DETECTOR_STATE_PANEL,
+            NCCL_HANG_STALL_DURATION_PANEL,
             # Ray Train Metrics (Worker)
             WORKER_TRAIN_REPORT_TIME_PANEL,
             WORKER_CHECKPOINT_SYNC_TIME_PANEL,

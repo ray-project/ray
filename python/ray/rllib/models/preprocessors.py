@@ -30,6 +30,13 @@ class Preprocessor:
     """
 
     def __init__(self, obs_space: gym.Space, options: dict = None):
+        """Initializes a Preprocessor instance.
+
+        Args:
+            obs_space: The observation space to preprocess observations for.
+            options: Optional model config dict. If None or empty, RLlib's
+                `MODEL_DEFAULTS` are used.
+        """
         _legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
         if not options:

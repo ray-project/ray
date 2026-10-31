@@ -39,7 +39,7 @@ RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
 RUNTIME_ENV_AGENT_PIP_PACKAGES = [
-    "aiohttp==3.14.3",
+    "aiohttp==3.14.4",
     "idna==3.15",
 ]
 DEPS_ONLY_VERSION = "100.0.0.dev0"
@@ -256,7 +256,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.14.1",
+            "aiohttp >= 3.14.4",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0; python_version < '3.12'",
@@ -385,9 +385,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.30.0",
-                "nixl==1.4.1",
-                "nixl-cu13==1.4.1",
+                "vllm[audio]==0.32.0",
+                "nixl==1.5.0",
+                "nixl-cu13==1.5.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -779,6 +779,8 @@ if __name__ == "__main__":
                 "includes/*.pxd",
                 "*.pxd",
                 "serve/_private/ingress_request_router.lua.tmpl",
+                "serve/_private/request_router_common.lua.tmpl",
+                "serve/_private/router_application.lua.tmpl",
             ],
         },
         include_package_data=True,

@@ -41,10 +41,13 @@ class FootsiesEncoder:
     ) -> np.ndarray:
         """Encodes the input buffer into a one-hot vector.
 
-        :param input_buffer: The input buffer to encode
-        :type input_buffer: list[int]
-        :return: The encoded one-hot vector
-        :rtype: np.ndarray
+        Args:
+            input_buffer: The input buffer to encode.
+            last_n: If provided, only encode the entries starting at index
+                `last_n` of the input buffer.
+
+        Returns:
+            The encoded one-hot vector.
         """
 
         if last_n is not None:
@@ -66,10 +69,11 @@ class FootsiesEncoder:
     ) -> dict[str, Any]:
         """Encodes the game state into observations for all agents.
 
-        :param game_state: The game state to encode
-        :type game_state: footsies_pb2.GameState
-        :return: The encoded observations for all agents.
-        :rtype: dict[str, Any]
+        Args:
+            game_state: The game state to encode.
+
+        Returns:
+            The encoded observations for all agents.
         """
         common_state = self.encode_common_state(game_state)
         p1_encoding = self.encode_player_state(game_state.player1)
@@ -129,10 +133,11 @@ class FootsiesEncoder:
     ) -> dict[str, Union[int, float, list, np.ndarray]]:
         """Encodes the player state into observations.
 
-        :param player_state: The player state to encode
-        :type player_state: footsies_pb2.PlayerState
-        :return: The encoded observations for the player
-        :rtype: dict[str, Any]
+        Args:
+            player_state: The player state to encode.
+
+        Returns:
+            The encoded observations for the player.
         """
         feature_dict = {
             "player_position_x": player_state.player_position_x
@@ -201,10 +206,11 @@ class FootsiesEncoder:
     def _encode_action_id(self, action_id: int) -> np.ndarray:
         """Encodes the action id into a one-hot vector.
 
-        :param action_id: The action id to encode
-        :type action_id: int
-        :return: The encoded one-hot vector
-        :rtype: np.ndarray
+        Args:
+            action_id: The action id to encode.
+
+        Returns:
+            The encoded one-hot vector.
         """
 
         action_vector = np.zeros(len(self._action_id_values), dtype=np.float32)

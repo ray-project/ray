@@ -110,8 +110,16 @@ class BatchIndividualItems(ConnectorV2):
         """Initializes a BatchIndividualItems instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             multi_agent: Whether this is a connector operating on a multi-agent
                 observation space mapping AgentIDs to individual agents' observations.
+            **kwargs: Forward API-compatibility kwargs.
         """
         super().__init__(
             input_observation_space=input_observation_space,

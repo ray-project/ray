@@ -39,6 +39,9 @@ constexpr int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 constexpr int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+// Retry reason for a task resubmitted to recover a lost object it created.
+constexpr char kLineageReconstructionRetryReason[] = "LINEAGE_RECONSTRUCTION";
+
 namespace {
 
 rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
@@ -525,6 +528,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   // issue #54260.
   RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                 << spec.AttemptNumber() << ": " << spec.DebugString();
+  RecordTaskRetrySubmission(spec, kLineageReconstructionRetryReason);
   async_retry_task_callback_(spec, /*delay_ms=*/0);
 
   return std::nullopt;
@@ -613,6 +617,7 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
   // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
   // FailPendingTask are not called when this is. Therefore, RemoveFinishedTaskReferences
   // never happened for this task.
+  RecordTaskRetrySubmission(spec, kLineageReconstructionRetryReason);
   async_retry_task_callback_(spec, /*delay_ms*/ 0);
 }
 
@@ -1566,6 +1571,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                   << " for attempt number: " << spec.AttemptNumber();
     uint32_t delay_ms =
         GetTaskRetryDelayMs(spec.AttemptNumber(), error_info.error_type());
+    RecordTaskRetrySubmission(spec, rpc::ErrorType_Name(error_info.error_type()));
     async_retry_task_callback_(spec, delay_ms);
     return true;
   } else {
@@ -1810,7 +1816,9 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
     submissible_tasks_.erase(it);
   }
 
-  return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
+  // LineageReleasedCallback expects the number of bytes released (>= 0). The
+  // footprint only decreases here, so return the negated delta.
+  return total_lineage_footprint_bytes_prev - total_lineage_footprint_bytes_;
 }
 
 void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) {
@@ -2209,6 +2217,12 @@ void TaskManager::RecordMetrics() {
   task_counter_.ForEachEntry(
       [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t value)
           ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { RecordTaskState(key, value); });
+}
+
+void TaskManager::RecordTaskRetrySubmission(const TaskSpecification &spec,
+                                            const std::string &reason) {
+  task_retry_submissions_counter_.Record(1,
+                                         {{"Reason", reason}, {"Name", spec.GetName()}});
 }
 
 void TaskManager::RecordTaskState(

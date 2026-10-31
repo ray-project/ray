@@ -6,7 +6,7 @@ myst:
 
 # Pattern: Using an actor to synchronize other tasks and actors
 
-When you have multiple tasks that need to wait on some condition or otherwise need to synchronize across tasks & actors on a cluster, you can use a central actor to coordinate among them.
+When multiple tasks need to wait on a condition or otherwise synchronize across tasks and actors on a cluster, use a central actor to coordinate them.
 
 ## Example use case
 

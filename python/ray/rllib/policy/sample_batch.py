@@ -3,7 +3,7 @@ import itertools
 import sys
 from functools import partial
 from numbers import Number
-from typing import Dict, Iterator, List, Optional, Set, Union
+from typing import Any, Dict, Iterator, List, Optional, Set, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -155,24 +155,28 @@ class SampleBatch(dict):
     CUR_OBS = "obs"
 
     @PublicAPI
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         """Constructs a sample batch (same params as dict constructor).
 
         Note: All args and those kwargs not listed below will be passed
         as-is to the parent dict constructor.
 
         Args:
-            _time_major: Whether data in this sample batch
-                is time-major. This is False by default and only relevant
-                if the data contains sequences.
-            _max_seq_len: The max sequence chunk length
-                if the data contains sequences.
-            _zero_padded: Whether the data in this batch
-                contains sequences AND these sequences are right-zero-padded
-                according to the `_max_seq_len` setting.
-            _is_training: Whether this batch is used for
-                training. If False, batch may be used for e.g. action
-                computations (inference).
+            *args: Positional args passed as-is to the parent dict constructor.
+            **kwargs: Column data passed as-is to the parent dict constructor,
+                except for the following, which configure this batch:
+                `_time_major`: Whether data in this sample batch is time-major.
+                This is False by default and only relevant if the data contains
+                sequences.
+                `_max_seq_len`: The max sequence chunk length if the data
+                contains sequences.
+                `_zero_padded`: Whether the data in this batch contains sequences
+                AND these sequences are right-zero-padded according to the
+                `_max_seq_len` setting.
+                `_is_training`: Whether this batch is used for training. If False,
+                batch may be used for e.g. action computations (inference).
+                `_num_grad_updates`: The weighted average number of gradient
+                updates performed on the policy/ies used to collect this batch.
         """
 
         if SampleBatch.DONES in kwargs:
@@ -380,7 +384,8 @@ class SampleBatch(dict):
         Note that if `seq_lens` is set in self, we set it to 1 in the rows.
 
         Yields:
-            The column values of the row in this iteration.
+            Dict[str, TensorType]: The column values of the row in this
+            iteration.
 
         .. testcode::
             :skipif: True
@@ -609,13 +614,21 @@ class SampleBatch(dict):
         return slices
 
     def slice(
-        self, start: int, end: int, state_start=None, state_end=None
+        self,
+        start: int,
+        end: int,
+        state_start: Optional[int] = None,
+        state_end: Optional[int] = None,
     ) -> "SampleBatch":
         """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
             start: Starting index. If < 0, will left-zero-pad.
             end: Ending index.
+            state_start: Optional starting index into the `state_in_?` columns
+                and `seq_lens`. If provided, `state_end` must be provided, too.
+            state_end: Optional ending index into the `state_in_?` columns and
+                `seq_lens`.
 
         Returns:
             A new SampleBatch, which has a slice of this batch's data.
@@ -941,7 +954,7 @@ class SampleBatch(dict):
 
         Note, if `module_id` is not provided uses `DEFAULT_POLICY`_ID`.
 
-        Args;
+        Args:
             module_id: An optional module ID. If `None` the `DEFAULT_POLICY_ID`
                 is used.
 
@@ -990,7 +1003,7 @@ class SampleBatch(dict):
         return value
 
     @PublicAPI
-    def __setitem__(self, key, item) -> None:
+    def __setitem__(self, key: str, item: TensorType) -> None:
         """Inserts (overrides) an entire column (by key) in the data buffer.
 
         Args:
@@ -1785,13 +1798,19 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     return MultiAgentBatch(out, env_steps)
 
 
-def _concat_values(*values, time_major=None) -> TensorType:
+def _concat_values(
+    *values: TensorType, time_major: Optional[bool] = None
+) -> TensorType:
     """Concatenates a list of values.
 
     Args:
-        values: The values to concatenate.
+        *values: The values to concatenate.
         time_major: Whether to concatenate along the first axis
             (time_major=False) or the second axis (time_major=True).
+
+    Returns:
+        The concatenated values, as a torch/tf tensor, a numpy array, or a list,
+        depending on the type of the given `values`.
     """
     if torch and torch.is_tensor(values[0]):
         return torch.cat(values, dim=1 if time_major else 0)
@@ -1819,11 +1838,11 @@ def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
         batch: The SampleBatchType to convert.
 
     Returns:
-        batch: the converted SampleBatch
+        The converted SampleBatch.
 
     Raises:
-        ValueError if the MultiAgentBatch has more than one policy_id
-        or if the policy_id is not `DEFAULT_POLICY_ID`
+        ValueError: If the MultiAgentBatch has more than one policy_id
+            or if the policy_id is not `DEFAULT_POLICY_ID`.
     """
     if isinstance(batch, MultiAgentBatch):
         policy_keys = batch.policy_batches.keys()

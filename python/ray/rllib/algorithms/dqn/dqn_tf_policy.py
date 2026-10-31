@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Type
 
 import gymnasium as gym
 import numpy as np
@@ -8,7 +8,10 @@ from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTF
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import get_categorical_class_with_temperature
+from ray.rllib.models.tf.tf_action_dist import (
+    TFActionDistribution,
+    get_categorical_class_with_temperature,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
@@ -159,9 +162,9 @@ def build_q_model(
 
     Args:
         policy: The Policy, which will use the model for optimization.
-        obs_space (gym.spaces.Space): The policy's observation space.
-        action_space (gym.spaces.Space): The policy's action space.
-        config (AlgorithmConfigDict):
+        obs_space: The policy's observation space.
+        action_space: The policy's action space.
+        config: The Policy's config.
 
     Returns:
         ModelV2: The Model for the Policy to use.
@@ -248,12 +251,17 @@ def get_distribution_inputs_and_class(
 
 
 @OldAPIStack
-def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
+def build_q_losses(
+    policy: Policy,
+    model: ModelV2,
+    _: Type[TFActionDistribution],
+    train_batch: SampleBatch,
+) -> TensorType:
     """Constructs the loss for DQNTFPolicy.
 
     Args:
         policy: The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
+        model: The Model to calculate the loss for.
         train_batch: The training data.
 
     Returns:

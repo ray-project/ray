@@ -6,7 +6,7 @@ myst:
 
 # Advanced topics
 
-This section covers extended topics on how to use Ray.
+This section covers advanced Ray topics that go beyond the basic task, actor, and object APIs.
 
 ```{toctree}
 :maxdepth: -1

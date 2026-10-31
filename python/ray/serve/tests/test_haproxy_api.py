@@ -5,12 +5,14 @@ import json
 import logging
 import os
 import signal
+import socketserver
+import stat
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Optional, Tuple
 from unittest import mock
 
 import httpx
@@ -31,6 +33,7 @@ from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.serve._private import haproxy
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -38,6 +41,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.haproxy import (
@@ -49,9 +53,13 @@ from ray.serve._private.haproxy import (
     _routers_and_targets_by_backend,
 )
 from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
 from ray.serve.config import HTTPOptions
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ServeDeploySchema, Target, TargetGroup
 
 logger = logging.getLogger(__name__)
 
@@ -1090,6 +1098,7 @@ def test_ingress_request_router_forward_body_gate_renders(
             "http-request del-header serve-multiplexed-model-id "
             "if has_ingress_request_router_app"
         ) in cfg
+        assert "x-serve-router-original-method" not in lua
         assert "extract_json_string" not in lua
 
 
@@ -1101,7 +1110,7 @@ def _create_replica_server(port: int, replica_id_header: str):
     async def health():
         return {"status": "OK"}
 
-    @app.post("/{path:path}")
+    @app.api_route("/{path:path}", methods=["GET", "POST"])
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
         for name, value in req.headers.items():
@@ -1125,13 +1134,24 @@ def _create_router_server(
 ):
     """Fake /internal/route. Captures request data forwarded by HAProxy."""
     app = FastAPI()
-    captured = {"bodies": [], "request_ids": []}
+    captured = {
+        "bodies": [],
+        "headers": [],
+        "request_ids": [],
+        "request_paths": [],
+        "model_ids": [],
+    }
 
     @app.post("/internal/route")
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
+        captured["headers"].append(dict(req.headers))
         captured["request_ids"].append(req.headers.get("x-request-id", ""))
+        captured["request_paths"].append(
+            req.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
+        )
+        captured["model_ids"].append(req.headers.get(SERVE_MULTIPLEXED_MODEL_ID, ""))
         response = {"replica_id": replica_id_to_return}
         if extra_response:
             response.update(extra_response)
@@ -1148,7 +1168,10 @@ def _create_router_server(
     server, thread = _serve_fastapi_app(app, port, ready)
     # Discard the readiness-probe data so callers see only client traffic.
     captured["bodies"].clear()
+    captured["headers"].clear()
     captured["request_ids"].clear()
+    captured["request_paths"].clear()
+    captured["model_ids"].clear()
     return server, thread, captured
 
 
@@ -1215,9 +1238,7 @@ def _shutdown_fake_servers(servers, threads):
 
 @pytest.mark.asyncio
 async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
-    """Run actual HAProxy against a fake router + two replicas; verify a POST
-    is pinned to the replica the router selects, while a GET (which doesn't
-    trigger the router-routed path) is not."""
+    """Run HAProxy against a fake router and verify all methods are pinned."""
     monkeypatch.setattr(
         "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
         True,
@@ -1239,7 +1260,11 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             replica_b_port, replica_id_header="B"
         )
         router, router_thread, router_captured = _create_router_server(
-            router_port, replica_id_to_return=actor_name_b  # always pick B
+            router_port,
+            replica_id_to_return=actor_name_b,  # always pick B
+            extra_response={
+                "request_headers": {SERVE_MULTIPLEXED_MODEL_ID: "trusted-model"}
+            },
         )
 
         try:
@@ -1279,8 +1304,11 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             # so the request must land on replica B regardless of LB ordering.
             payload = {"prompt": "hello"}
             resp = requests.post(
-                f"http://127.0.0.1:{haproxy_port}/predict",
+                f"http://127.0.0.1:{haproxy_port}/v1/messages?trace=1",
                 json=payload,
+                headers={
+                    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/chat/completions"
+                },
                 timeout=5,
             )
             assert resp.status_code == 200, resp.text
@@ -1289,6 +1317,9 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 resp.headers.get("x-received-request-id")
             ]
             assert router_captured["request_ids"][0]
+            # The actual path, without the query, identifies the API even if
+            # the client supplies a conflicting router-owned header.
+            assert router_captured["request_paths"] == ["/v1/messages"]
 
             # Direct streaming keeps a bounded request-body path for
             # prefix-cache-aware routing.
@@ -1323,15 +1354,41 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert resp.json()["body_length"] == large_body_size
             assert router_captured["bodies"][-1] == large_body
 
-            # GET is not POST, so Lua routing never runs; the router should
-            # have seen exactly the four POSTs above and nothing more.
             n_router_calls_before_get = len(router_captured["bodies"])
-            requests.get(
-                f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
+            resp = requests.get(
+                f"http://127.0.0.1:{haproxy_port}/health-passthrough",
+                headers={
+                    "x-routing-tenant": "tenant-a",
+                    "connection": "x-hop-secret, close",
+                    "x-hop-secret": "must-not-forward",
+                },
+                timeout=5,
             )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert len(router_captured["bodies"]) == n_router_calls_before_get + 1
+            assert router_captured["headers"][-1]["x-routing-tenant"] == "tenant-a"
+            assert router_captured["headers"][-1]["host"] == (
+                f"127.0.0.1:{router_port}"
+            )
+            assert router_captured["headers"][-1]["connection"] == "close"
+            assert "x-hop-secret" not in router_captured["headers"][-1]
+
+            # A model-multiplexed GET does use the router. HAProxy forwards the
+            # client value to the internal router, strips it from the original
+            # request, then installs the trusted value returned by the router.
+            resp = requests.get(
+                f"http://127.0.0.1:{haproxy_port}/model",
+                headers={SERVE_MULTIPLEXED_MODEL_ID: "client-model"},
+                timeout=5,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert router_captured["model_ids"][-1] == "client-model"
             assert (
-                len(router_captured["bodies"]) == n_router_calls_before_get
-            ), "GET must not invoke /internal/route"
+                resp.headers.get(f"echo-{SERVE_MULTIPLEXED_MODEL_ID}")
+                == "trusted-model"
+            )
 
         finally:
             _shutdown_fake_servers(
@@ -1849,6 +1906,116 @@ async def test_start(haproxy_api_cleanup):
         await api.stop()
         assert api._proc is None
         assert not api._is_running()
+
+
+def _call_wsgi(app, path: str, method: str = "GET") -> Tuple[str, bytes]:
+    """Call a WSGI app directly and return (status line, body)."""
+    path, _, query = path.partition("?")
+    captured = {}
+
+    def start_response(status, headers):
+        captured["status"] = status
+
+    environ = {"REQUEST_METHOD": method, "PATH_INFO": path, "QUERY_STRING": query}
+    body = b"".join(app(environ, start_response))
+    return captured["status"], body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enable_hap_optimization", [True, False])
+async def test_metrics_auth_required_moves_exporter_to_unix_socket(
+    haproxy_api_cleanup, enable_hap_optimization
+):
+    """With metrics_auth_required, HAProxy binds neither the metrics nor the
+    stats port. The exporter and stats page answer only on a 0600 unix socket,
+    which make_exporter_proxy_app forwards to, and keep answering after a
+    reload hands the socket to a new HAProxy process: with -x when
+    enable_hap_optimization is on, with a plain -sf when it is off."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        metrics_port = find_free_port()
+        stats_port = find_free_port()
+        exporter_socket_path = os.path.join(temp_dir, "exporter.sock")
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=find_free_port()),
+            metrics_port=metrics_port,
+            stats_port=stats_port,
+            socket_path=os.path.join(temp_dir, "admin.sock"),
+            enable_hap_optimization=enable_hap_optimization,
+            server_state_base=temp_dir,
+            server_state_file=os.path.join(temp_dir, "server-state"),
+            metrics_auth_required=True,
+            exporter_socket_path=exporter_socket_path,
+            has_received_routes=True,
+            has_received_servers=True,
+        )
+        api = HAProxyApi(
+            cfg=config, config_file_path=os.path.join(temp_dir, "haproxy.cfg")
+        )
+        haproxy_api_cleanup(api)
+        await api.start()
+
+        with open(api.config_file_path) as f:
+            config_content = f.read()
+        assert f"bind unix@{exporter_socket_path} mode 600" in config_content
+        assert "frontend prometheus" not in config_content
+        assert "listen stats" not in config_content
+        assert stat.S_IMODE(os.stat(exporter_socket_path).st_mode) == 0o600
+        for port in (metrics_port, stats_port):
+            with pytest.raises(requests.ConnectionError):
+                requests.get(f"http://127.0.0.1:{port}/", timeout=2)
+
+        app = haproxy.make_exporter_proxy_app(config)
+
+        def assert_both_pages_answer():
+            status, body = _call_wsgi(app, "/metrics")
+            assert status.startswith("200")
+            assert b"haproxy_process_" in body
+            status, body = _call_wsgi(app, "/stats;csv")
+            assert status.startswith("200")
+            assert body.startswith(b"# pxname")
+
+        assert_both_pages_answer()
+        assert _call_wsgi(app, "/other")[0].startswith("404")
+        assert _call_wsgi(app, "/metrics", method="POST")[0].startswith("404")
+
+        old_pid = api._proc.pid
+        await api.reload()
+        assert api._proc.pid != old_pid
+        assert_both_pages_answer()
+
+        await api.stop()
+        assert _call_wsgi(app, "/metrics")[0].startswith("503")
+
+
+def test_exporter_proxy_app_retries_after_dropped_connection():
+    """An -sf reload can reset a connection still queued on the old HAProxy
+    worker. The proxy app retries once and gets the new worker's answer."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        socket_path = os.path.join(temp_dir, "exporter.sock")
+        connections = []
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                connections.append(1)
+                if len(connections) == 1:
+                    return  # Close without answering, like a reset listener.
+                self.rfile.readline()
+                self.wfile.write(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"
+                    b"Content-Length: 2\r\nConnection: close\r\n\r\nok"
+                )
+
+        server = socketserver.ThreadingUnixStreamServer(socket_path, Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            app = haproxy.make_exporter_proxy_app(
+                HAProxyConfig(exporter_socket_path=socket_path)
+            )
+            assert _call_wsgi(app, "/metrics") == ("200 OK", b"ok")
+        finally:
+            server.shutdown()
+            server.server_close()
+        assert len(connections) == 2
 
 
 @pytest.mark.asyncio
@@ -2962,6 +3129,195 @@ def _bare_haproxy_manager():
     """
     cls = HAProxyManager.__ray_metadata__.modified_class
     return cls.__new__(cls)
+
+
+@pytest.mark.parametrize(
+    "applied_version",
+    [
+        RoutingConfigVersion(generation=1, sequence=2),
+        RoutingConfigVersion(generation=2, sequence=1),
+    ],
+    ids=["same-generation", "controller-restart"],
+)
+@pytest.mark.asyncio
+async def test_serving_waits_for_expected_routing_config_version(
+    monkeypatch, applied_version
+):
+    manager = _bare_haproxy_manager()
+    manager._received_target_groups_broadcast = True
+    manager._draining_start_time = None
+    manager._grpc_options = mock.Mock(port=0, grpc_servicer_functions=[])
+    manager._http_fallback_target = None
+    manager._grpc_fallback_target = None
+
+    app_target = Target(
+        ip="127.0.0.1", port=8001, instance_id="node", name="app-replica"
+    )
+    target_group = TargetGroup(
+        targets=[app_target],
+        route_prefix="/",
+        protocol=RequestProtocol.HTTP,
+        app_name="app",
+    )
+    manager._applied_target_groups = [target_group]
+    manager._applied_target_groups_version = RoutingConfigVersion(
+        generation=1, sequence=1
+    )
+
+    backend_name = manager._generate_backend_name(target_group)
+    server_name = manager._generate_server_name(app_target)
+    manager._haproxy = mock.Mock()
+    manager._haproxy.get_all_stats = mock.AsyncMock(
+        return_value={backend_name: {server_name: mock.Mock(is_up=True)}}
+    )
+
+    sleep_calls = 0
+
+    async def apply_expected_version_after_sleep(_):
+        nonlocal sleep_calls
+        sleep_calls += 1
+        manager._applied_target_groups_version = applied_version
+
+    monkeypatch.setattr(asyncio, "sleep", apply_expected_version_after_sleep)
+
+    await manager.serving(
+        expected_routing_config_version=RoutingConfigVersion(generation=1, sequence=2)
+    )
+    assert sleep_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_serving_waits_for_update_received_during_reload(monkeypatch):
+    monkeypatch.setattr(haproxy, "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 0)
+
+    manager = _bare_haproxy_manager()
+    manager.event_loop = asyncio.get_running_loop()
+    manager._target_groups = []
+    manager._target_groups_version = None
+    manager._received_target_groups_broadcast = False
+    manager._applied_target_groups = None
+    manager._applied_target_groups_version = None
+    manager._draining_start_time = None
+    manager._grpc_options = mock.Mock(port=0, grpc_servicer_functions=[])
+    manager._http_fallback_target = None
+    manager._grpc_fallback_target = None
+    manager._reload_lock = asyncio.Lock()
+    manager._haproxy_start_task = asyncio.create_task(asyncio.sleep(0))
+    manager._update_pending = False
+    manager._coalesce_task = None
+    manager._coalesce_armed_at = None
+    manager._haproxy_update_latency = mock.Mock()
+
+    reload_started = [asyncio.Event(), asyncio.Event()]
+    finish_reload = [asyncio.Event(), asyncio.Event()]
+    reload_count = 0
+
+    async def reload_haproxy():
+        nonlocal reload_count
+        reload_index = reload_count
+        reload_count += 1
+        reload_started[reload_index].set()
+        await finish_reload[reload_index].wait()
+
+    manager._haproxy = mock.Mock()
+    manager._haproxy.reload = mock.AsyncMock(side_effect=reload_haproxy)
+    manager._haproxy.get_all_stats = mock.AsyncMock(return_value={})
+
+    version_a = RoutingConfigVersion(generation=1, sequence=1)
+    version_b = RoutingConfigVersion(generation=1, sequence=2)
+    manager.update_target_groups(
+        RoutingConfigSnapshot(target_groups=[], version=version_a)
+    )
+    await asyncio.wait_for(reload_started[0].wait(), timeout=5)
+
+    manager.update_target_groups(
+        RoutingConfigSnapshot(target_groups=[], version=version_b)
+    )
+    serving_task = asyncio.create_task(
+        manager.serving(expected_routing_config_version=version_b)
+    )
+    await asyncio.sleep(0)
+    assert not serving_task.done()
+
+    finish_reload[0].set()
+    await asyncio.wait_for(reload_started[1].wait(), timeout=5)
+    assert manager._applied_target_groups_version == version_a
+    assert not serving_task.done()
+
+    finish_reload[1].set()
+    await asyncio.wait_for(manager._coalesce_task, timeout=5)
+    await asyncio.wait_for(serving_task, timeout=5)
+    assert manager._applied_target_groups_version == version_b
+
+
+@pytest.mark.asyncio
+async def test_applied_target_groups_advance_only_after_reload():
+    manager = _bare_haproxy_manager()
+    target_groups = [
+        TargetGroup(
+            targets=[],
+            route_prefix="/",
+            protocol=RequestProtocol.HTTP,
+            app_name="app",
+        )
+    ]
+    version = RoutingConfigVersion(generation=1, sequence=1)
+    manager._target_groups = target_groups
+    manager._target_groups_version = version
+    manager._applied_target_groups = []
+    manager._applied_target_groups_version = None
+    manager._http_fallback_target = None
+    manager._grpc_fallback_target = None
+    manager._haproxy = mock.Mock()
+    manager._reload_haproxy = mock.AsyncMock()
+
+    await manager._update_haproxy_backends()
+
+    manager._reload_haproxy.assert_awaited_once()
+    assert manager._applied_target_groups is target_groups
+    assert manager._applied_target_groups_version == version
+
+    manager._target_groups = []
+    manager._target_groups_version = RoutingConfigVersion(generation=1, sequence=2)
+    manager._reload_haproxy = mock.AsyncMock(side_effect=RuntimeError("reload failed"))
+
+    with pytest.raises(RuntimeError, match="reload failed"):
+        await manager._update_haproxy_backends()
+
+    assert manager._applied_target_groups is target_groups
+    assert manager._applied_target_groups_version == version
+
+
+def test_update_target_groups_preserves_routing_config_version():
+    manager = _bare_haproxy_manager()
+    manager._schedule_haproxy_update = mock.Mock()
+    target_groups = [
+        TargetGroup(
+            targets=[],
+            route_prefix="/",
+            protocol=RequestProtocol.HTTP,
+            app_name="app",
+        )
+    ]
+    version = RoutingConfigVersion(generation=1, sequence=3)
+
+    manager.update_target_groups(
+        RoutingConfigSnapshot(target_groups=target_groups, version=version)
+    )
+
+    assert manager._target_groups is target_groups
+    assert manager._target_groups_version == version
+    assert manager._received_target_groups_broadcast
+    manager._schedule_haproxy_update.assert_called_once_with()
+
+
+def test_routing_config_version_ordering():
+    current = RoutingConfigVersion(generation=2, sequence=2)
+
+    assert current.is_at_least(RoutingConfigVersion(generation=2, sequence=1))
+    assert current.is_at_least(RoutingConfigVersion(generation=2, sequence=2))
+    assert current.is_at_least(RoutingConfigVersion(generation=1, sequence=100))
+    assert not current.is_at_least(RoutingConfigVersion(generation=3, sequence=0))
 
 
 @pytest.mark.asyncio

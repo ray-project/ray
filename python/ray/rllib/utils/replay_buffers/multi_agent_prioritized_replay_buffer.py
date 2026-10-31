@@ -97,7 +97,7 @@ class MultiAgentPrioritizedReplayBuffer(
                 replay buffer.
             prioritized_replay_eps: Epsilon parameter for a prioritized
                 replay buffer.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         if "replay_mode" in kwargs and (
             kwargs["replay_mode"] == "lockstep"
@@ -159,7 +159,7 @@ class MultiAgentPrioritizedReplayBuffer(
             policy_id: ID of the policy that corresponds to the underlying
                 buffer
             batch: SampleBatch to add to the underlying buffer
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)

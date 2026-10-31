@@ -11,6 +11,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Iterator,
     List,
     Optional,
@@ -41,9 +42,10 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
+from ray.exceptions import ObjectLostError
 
 if TYPE_CHECKING:
-
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data.block import BlockMetadataWithSchema
 
@@ -113,8 +115,17 @@ class TaskExecDriverStats:
     task_output_backpressure_s: float
 
 
+# Called as (exception, worker_stats, driver_stats, aborted). ``aborted`` is True
+# only for a task torn down because lineage reconstruction is rebuilding its lost
+# output; ``exception`` is then the lost-object error (see
+# ``DataOpTask.mark_aborted``).
 TaskDoneCallbackType = Callable[
-    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]],
+    [
+        Optional[Exception],
+        Optional[TaskExecWorkerStats],
+        Optional[TaskExecDriverStats],
+        bool,
+    ],
     None,
 ]
 
@@ -158,7 +169,7 @@ class DataOpTask(OpTask):
         block_ref_counter: BlockRefCounter,
         producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
-        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
+        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats, aborted: None,
         block_ready_callback: Callable[
             [ray.ObjectRef[Block]], None
         ] = lambda block_ref: None,
@@ -170,6 +181,8 @@ class DataOpTask(OpTask):
         ] = lambda block_ref, object_size: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
+        lineage_task_id: Optional[str] = None,
+        reconstruction_plan_ids: FrozenSet[str] = frozenset(),
     ):
         """Create a DataOpTask
         Args:
@@ -192,6 +205,11 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
+            lineage_task_id: Logical Ray Data ID of this task, stable across lineage
+                reconstruction attempts.
+            reconstruction_plan_ids: The reconstruction plans this attempt serves; empty
+                for a fresh attempt. Carried here because the output and completion
+                callbacks need them after submission.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -207,6 +225,8 @@ class DataOpTask(OpTask):
         self._operator_name = operator_name
         self._block_ref_counter: BlockRefCounter = block_ref_counter
         self._producer_id: str = producer_id
+        self._lineage_task_id = lineage_task_id
+        self._reconstruction_plan_ids: FrozenSet[str] = reconstruction_plan_ids
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -348,6 +368,13 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
+                        # Propagate a tracked task's loss so the executor can
+                        # attempt lineage reconstruction, which needs the task
+                        # still live to abort it deliberately. Any other error,
+                        # including an untracked task's loss, drains the task so
+                        # its outputs already in flight still land.
+                        if isinstance(ex, ObjectLostError) and self.is_lineage_tracked:
+                            raise
                         self._task_error = ex
                         self._state = TaskGeneratorState.DRAINED
                         break
@@ -386,22 +413,46 @@ class DataOpTask(OpTask):
         return bytes_read
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
-        if max_bytes_to_read == 0:
-            # Whenever provided `max_bytes_to_read == 0` we treat as task
-            # being in output backpressure, therefore correspondingly starting
-            # the timer (if necessary)
+        has_unread_output = (
+            not self._pending_block_ref.is_nil()
+            or not self._pending_meta_ref.is_nil()
+            or not self._streaming_gen._stream_exhausted()
+        )
+
+        if max_bytes_to_read == 0 and has_unread_output:
+            # A zero read budget counts as output backpressure only while the
+            # task still has output to consume.
             if self._start_output_backpressure_s is None:
                 self._start_output_backpressure_s = time.perf_counter()
 
-        elif (
-            max_bytes_to_read is None or max_bytes_to_read > 0
-        ) and self._start_output_backpressure_s is not None:
-            # Increment cumulative duration of task being in output
-            # backpressure
+        elif self._start_output_backpressure_s is not None:
             self._total_output_backpressure_s += (
                 time.perf_counter() - self._start_output_backpressure_s
             )
             self._start_output_backpressure_s = None
+
+    @property
+    def lineage_task_id(self) -> Optional[str]:
+        """Logical lineage id, stable across reconstruction attempts.
+
+        None if untracked. Branch on ``is_lineage_tracked`` rather than on this.
+        """
+        return self._lineage_task_id
+
+    @property
+    def is_lineage_tracked(self) -> bool:
+        """Whether the operator that owns this task registered this task with the lineage tracker.
+
+        Only then can a lost output be reconstructed from lineage. An operator
+        mints a ``lineage_task_id`` exactly when it registers the task, so this is
+        derived from the id rather than stored separately.
+        """
+        return self._lineage_task_id is not None
+
+    @property
+    def reconstruction_plan_ids(self) -> FrozenSet[str]:
+        """The reconstruction plans this attempt serves; empty if fresh."""
+        return self._reconstruction_plan_ids
 
     @property
     def has_finished(self) -> bool:
@@ -474,6 +525,7 @@ class DataOpTask(OpTask):
                 self._task_error,
                 None,  # TaskExecStats
                 None,  # TaskExecDriverStats
+                False,  # aborted
             )
         else:
             self._task_done_callback(
@@ -484,7 +536,43 @@ class DataOpTask(OpTask):
                 TaskExecDriverStats(
                     task_output_backpressure_s=self._total_output_backpressure_s,
                 ),
+                False,  # aborted
             )
+        self._state = TaskGeneratorState.FINISHED
+
+    def mark_aborted(
+        self, exception: Exception, aborted_for_reconstruction: bool = False
+    ) -> None:
+        """Tear down a task whose output was lost, without reading its stream.
+
+        ``exception`` is why the task is torn down. With
+        ``aborted_for_reconstruction``, lineage reconstruction is re-running the
+        task to rebuild its lost output, so the done-callback gets
+        ``aborted=True`` and the operator doesn't count the task as finished or
+        failed: the re-run task is counted instead.
+
+        Transitions the task to FINISHED and runs the normal done-callback
+        so the owning operator releases every resource the task reserved --
+        running-task metrics, logical CPU/GPU/memory usage, actor-pool slot, and
+        pending input refs -- and pops it from ``_data_tasks``. Callers must use
+        this instead of dropping the task from ``_data_tasks`` directly, which
+        would leave those separately-tracked reservations leaked for the rest of
+        the run.
+        """
+        if self._state is TaskGeneratorState.FINISHED:
+            # `task_done_callback` already fired (normal completion or an
+            # earlier abort); firing it twice would double-release the task's
+            # resource reservations.
+            return
+        # Only lineage reconstruction re-runs a task, so only a lineage-tracked
+        # task can be aborted for it.
+        assert not aborted_for_reconstruction or self.is_lineage_tracked
+        self._task_done_callback(
+            exception,
+            None,  # TaskExecStats
+            None,  # TaskExecDriverStats
+            aborted_for_reconstruction,  # aborted
+        )
         self._state = TaskGeneratorState.FINISHED
 
 
@@ -587,6 +675,7 @@ class PhysicalOperator(Operator):
         )
         self._started = False
         self._shutdown = False
+        self._lineage_tracker: Optional["LineageTracker"] = None
         self._in_task_submission_backpressure = False
         self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
@@ -737,8 +826,7 @@ class PhysicalOperator(Operator):
 
     @property
     def target_max_block_size_override(self) -> Optional[int]:
-        """
-        Target max block size output by this operator. If this returns None,
+        """Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
         if self._output_block_size_option_override is None:
@@ -904,6 +992,7 @@ class PhysicalOperator(Operator):
         self,
         options: ExecutionOptions,
         block_ref_counter: BlockRefCounter,
+        lineage_tracker: Optional["LineageTracker"] = None,
     ) -> None:
         """Called by the executor when execution starts for an operator.
 
@@ -911,8 +1000,11 @@ class PhysicalOperator(Operator):
             options: The global options used for the overall execution.
             block_ref_counter: The executor-wide shared counter for tracking
                 object-store memory.
+            lineage_tracker: The executor-wide lineage metadata tracker, which
+                helps trigger lineage reconstruction on object loss.
         """
         self._block_ref_counter = block_ref_counter
+        self._lineage_tracker = lineage_tracker
         self._started = True
 
     def can_add_input(self) -> bool:
@@ -1135,6 +1227,16 @@ class PhysicalOperator(Operator):
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
         self._task_output_backpressure_policy = policy_name
+
+    @property
+    def in_task_output_backpressure(self) -> bool:
+        """Whether reading this operator's task outputs is currently blocked."""
+        return self._in_task_output_backpressure
+
+    @property
+    def in_task_submission_backpressure(self) -> bool:
+        """Whether submitting new tasks for this operator is currently blocked."""
+        return self._in_task_submission_backpressure
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""

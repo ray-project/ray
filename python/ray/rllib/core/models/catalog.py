@@ -1,7 +1,7 @@
 import dataclasses
 import enum
 import functools
-from typing import Optional
+from typing import Any, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -88,7 +88,7 @@ class Catalog:
         action_space: gym.Space,
         model_config_dict: dict,
         # deprecated args.
-        view_requirements=DEPRECATED_VALUE,
+        view_requirements: Any = DEPRECATED_VALUE,
     ):
         """Initializes a Catalog with a default encoder config.
 
@@ -97,6 +97,8 @@ class Catalog:
             action_space: The action space of the environment.
             model_config_dict: The model config that specifies things like hidden
                 dimensions and activations functions to use in this Catalog.
+            view_requirements: Deprecated. Do not use. Passing anything other than
+                the default raises an error.
         """
         if view_requirements != DEPRECATED_VALUE:
             deprecation_warning(old="Catalog(view_requirements=..)", error=True)
@@ -377,7 +379,7 @@ class Catalog:
         observation_space: gym.Space,
         model_config_dict: dict,
         # deprecated args.
-        view_requirements=DEPRECATED_VALUE,
+        view_requirements: Any = DEPRECATED_VALUE,
     ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
 
@@ -394,6 +396,12 @@ class Catalog:
         Args:
             observation_space: The observation space to use.
             model_config_dict: The model config to use.
+            view_requirements: Deprecated. Do not use. Passing anything other than
+                the default raises an error.
+
+        Returns:
+            The ModelConfig of the encoder to use as a tokenizer, built from the
+            given `model_config_dict` with `use_lstm` and `use_attention` disabled.
         """
         if view_requirements != DEPRECATED_VALUE:
             deprecation_warning(old="Catalog(view_requirements=..)", error=True)

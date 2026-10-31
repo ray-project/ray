@@ -212,6 +212,11 @@ class InfiniteLookbackBuffer:
             _add_last_ts_value: Whether to add the value of this arg to the end of
                 the internal `self.data` buffer (just for the duration of this get
                 operation, not permanently).
+
+        Returns:
+            The data found at the given `indices`. A single item, if `indices` is an
+            int, otherwise a batch of items (a list, if this buffer has not been
+            finalized yet, else a - possibly complex - struct of np.ndarrays).
         """
         if indices is None:
             data = self._get_all_data(
@@ -306,7 +311,7 @@ class InfiniteLookbackBuffer:
 
     def set(
         self,
-        new_data,
+        new_data: Any,
         *,
         at_indices: Optional[Union[int, slice, List[int]]] = None,
         neg_index_as_lookback: bool = False,

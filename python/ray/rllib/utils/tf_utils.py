@@ -656,7 +656,7 @@ def two_hot(
     num_buckets: int = 255,
     lower_bound: float = -20.0,
     upper_bound: float = 20.0,
-    dtype=None,
+    dtype: Optional["tf.DType"] = None,
 ):
     """Returns a two-hot vector of dim=num_buckets with two entries that are non-zero.
 
@@ -694,6 +694,8 @@ def two_hot(
             lower than this boundary, they will be encoded as `lower_bound`.
         upper_bound: The upper bound value used for the encoding. If input values are
             higher than this boundary, they will be encoded as `upper_bound`.
+        dtype: The dtype to use for the tensor of batch indices. If None, use
+            `tf.float32`.
 
     Returns:
         The two-hot encoded tensor of shape (B, num_buckets).
@@ -838,7 +840,12 @@ class TensorFlowVariables:
         assignment_nodes (Dict[str, tf.Tensor]): Nodes that assign weights.
     """
 
-    def __init__(self, output, sess=None, input_variables=None):
+    def __init__(
+        self,
+        output: Union["tf.Operation", List["tf.Operation"]],
+        sess: Optional["tf1.Session"] = None,
+        input_variables: Optional[List["tf.Variable"]] = None,
+    ):
         """Creates TensorFlowVariables containing extracted variables.
 
         The variables are extracted by performing a BFS search on the
@@ -848,13 +855,10 @@ class TensorFlowVariables:
         variable has a placeholder and assignment operation created for it.
 
         Args:
-            output (tf.Operation, List[tf.Operation]): The tensorflow
-                operation to extract all variables from.
-            sess (Optional[tf.Session]): Optional tf.Session used for running
-                the get and set methods in tf graph mode.
-                Use None for tf eager.
-            input_variables (List[tf.Variables]): Variables to include in the
-                list.
+            output: The tensorflow operation to extract all variables from.
+            sess: Optional tf.Session used for running the get and set methods
+                in tf graph mode. Use None for tf eager.
+            input_variables: Variables to include in the list.
         """
         self.sess = sess
         output = force_list(output)
@@ -948,7 +952,7 @@ class TensorFlowVariables:
             [v.eval(session=self.sess).flatten() for v in self.variables.values()]
         )
 
-    def set_flat(self, new_weights):
+    def set_flat(self, new_weights: np.ndarray) -> None:
         """Sets the weights to new_weights, converting from a flat array.
 
         Note:
@@ -956,7 +960,7 @@ class TensorFlowVariables:
             i.e., the length of the array must match get_flat_size.
 
         Args:
-            new_weights (np.ndarray): Flat array containing weights.
+            new_weights: Flat array containing weights.
         """
         shapes = [v.get_shape().as_list() for v in self.variables.values()]
         arrays = _unflatten(new_weights, shapes)
@@ -1000,7 +1004,7 @@ class TensorFlowVariables:
             assign_list, feed_dict = self._assign_weights(new_weights)
             self.sess.run(assign_list, feed_dict=feed_dict)
 
-    def _assign_weights(self, weights):
+    def _assign_weights(self, weights: dict):
         """Sets weigths using exact or closest assignable variable name
 
         Args:

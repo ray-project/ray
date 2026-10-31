@@ -34,7 +34,6 @@ from ray.llm.tests.serve.cpu.deployments.utils.direct_streaming_utils import (
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import FakeLoraModelLoader
 from ray.serve._private.constants import RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
-from ray.serve._private.test_utils import wait_for_haproxy_routing_to_replica
 
 
 class _LoraTestLoader(FakeLoraModelLoader):
@@ -301,7 +300,6 @@ class TestDirectStreamingLora:
         base_url = run_app_through_haproxy(
             build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
         )
-        wait_for_haproxy_routing_to_replica()
         yield base_url
 
     def test_lora_request(self, base_url):

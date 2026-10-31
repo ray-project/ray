@@ -108,6 +108,8 @@ class TensorDesc:
     reg_desc: Any
     # tracks the number of NIXL metadata containing the tensor.
     metadata_count: int
+    # size in bytes of the registered storage.
+    size: int
 
 
 @dataclass
@@ -403,6 +405,14 @@ class NixlTensorTransport(TensorTransportManager):
         tensor_meta = tensor_transport_metadata.tensor_meta
         device = tensor_transport_metadata.tensor_device
 
+        if target_buffers:
+            target_device_types = {t.device.type for t in target_buffers}
+            if len(target_device_types) > 1:
+                raise ValueError(
+                    "All target buffers for an RDT object must have the same "
+                    f"device type, but got {sorted(target_device_types)}."
+                )
+
         with self._aborted_transfer_obj_ids_lock:
             if obj_id in self._aborted_transfer_obj_ids:
                 self._aborted_transfer_obj_ids.remove(obj_id)
@@ -432,7 +442,10 @@ class NixlTensorTransport(TensorTransportManager):
                 tensors = target_buffers
                 # NIXL requires the local and remote lists to agree on descriptor
                 # count and length, so build both together, one per tensor.
-                mem_type = "cuda" if device == "cuda" else "cpu"
+                # Target buffers may live on a different device type than the
+                # source (cross-device fetch), so each list has its own mem type.
+                local_mem_type = "cuda" if tensors[0].is_cuda else "cpu"
+                remote_mem_type = "cuda" if device == "cuda" else "cpu"
                 local_descs = []
                 remote_descs = []
                 for desc_idx, desc_group in enumerate(desc_groups):
@@ -449,10 +462,10 @@ class NixlTensorTransport(TensorTransportManager):
                 added_tensor_descs = True
                 registered_tensors = tensors
                 local_xfer_descs = nixl_agent.get_xfer_descs(
-                    local_descs, mem_type=mem_type
+                    local_descs, mem_type=local_mem_type
                 )
                 remote_xfer_descs = nixl_agent.get_xfer_descs(
-                    remote_descs, mem_type=mem_type
+                    remote_descs, mem_type=remote_mem_type
                 )
             else:
                 # One buffer per remote descriptor; views at recovered offsets.
@@ -712,8 +725,18 @@ class NixlTensorTransport(TensorTransportManager):
         with self._cache_lock:
             for tensor in tensors:
                 key = tensor.untyped_storage().data_ptr()
+                nbytes = tensor.untyped_storage().nbytes()
                 if key in self._tensor_desc_cache:
-                    self._tensor_desc_cache[key].metadata_count += 1
+                    tensor_desc = self._tensor_desc_cache[key]
+                    if nbytes > tensor_desc.size:
+                        raise ValueError(
+                            f"Tensor storage at {key:#x} was found in the NIXL "
+                            f"registration cache, but its size ({nbytes} bytes) is "
+                            f"larger than the registered size ({tensor_desc.size} "
+                            "bytes). Call deregister_nixl_memory on the old tensor "
+                            "first."
+                        )
+                    tensor_desc.metadata_count += 1
                     continue
                 mem_type = "cuda" if tensor.is_cuda else "cpu"
                 # the GPU ID of the device the tensor is on.
@@ -766,7 +789,7 @@ class NixlTensorTransport(TensorTransportManager):
                         f"size={tensor.untyped_storage().nbytes()} bytes, "
                         f"gpu_id={gpu_id}).{vmm_hint} {troubleshooting}"
                     ) from e
-                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
+                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, nbytes)
 
     def _tensor_memory_registered(self, t: "torch.Tensor") -> bool:
         """Check if the tensor's memory has been registered with NIXL."""

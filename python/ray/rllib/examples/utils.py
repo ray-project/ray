@@ -338,7 +338,8 @@ def should_stop(
         results: An RLlib `ResultDict` containing all results from a training step.
         keep_ray_up: Optionally shutting down the running Ray instance.
 
-    Returns: True, if any stopping criterion is fulfilled. Otherwise, False.
+    Returns:
+        True, if any stopping criterion is fulfilled. Otherwise, False.
     """
     for key, threshold in stop.items():
         val = results
@@ -386,8 +387,8 @@ def run_rllib_example_script_experiment(
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
     keep_ray_up: bool = False,
-    scheduler=None,
-    progress_reporter=None,
+    scheduler: Optional["tune.schedulers.TrialScheduler"] = None,
+    progress_reporter: Optional["tune.ProgressReporter"] = None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -443,6 +444,14 @@ def run_rllib_example_script_experiment(
             for those example scripts which demonstrate how to set config settings
             that are otherwise taken care of automatically in this function (e.g.
             `num_env_runners`).
+        keep_ray_up: Set this to True to leave the Ray instance running after the
+            experiment has finished (by default, `ray.shutdown()` is called at the
+            end of this function).
+        scheduler: An optional Tune trial scheduler to pass into the `tune.TuneConfig`
+            of the `tune.Tuner`. If None (default), Tune uses its FIFO scheduler.
+        progress_reporter: An optional Tune progress reporter to pass into the
+            `tune.RunConfig` of the `tune.Tuner`. If None (default), a
+            `tune.CLIReporter` with RLlib specific metric columns is created.
 
     Returns:
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()

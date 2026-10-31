@@ -384,9 +384,51 @@ You can find Ray Prometheus metrics in the ``{cluster_name}-ray-prometheus`` met
     `cat ~/ray_bootstrap_config.yaml | jq '.cluster_name'`
     >> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.out' 2>> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.err'" &
 
+With :ref:`token authentication <token-auth>` on, Ray's metrics endpoints reject any scrape that doesn't carry the cluster's token, and no Ray metrics reach CloudWatch.
+To send the token, add the following command to ``head_setup_commands``, after the command that copies ``prometheus.yml``.
+The command adds an ``authorization`` block to the ``ray`` scrape job:
+
+.. code-block:: yaml
+
+  # Send the Ray auth token with every scrape of Ray's metrics endpoints.
+  - >-
+    printf '  authorization:\n    type: Bearer\n    credentials_file: /home/ubuntu/.ray/auth_token\n'
+    | sudo tee -a /opt/aws/amazon-cloudwatch-agent/etc/prometheus.yml
+
+Set ``credentials_file`` to the absolute path of the token file in the home directory of the user that runs Ray, such as ``/home/ubuntu/.ray/auth_token`` for ``ssh_user: ubuntu``.
+The CloudWatch agent runs as root, so ``~/.ray/auth_token`` doesn't point at that file.
+
 6. Update CloudWatch Agent, Dashboard and Alarm config files.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can apply changes to the CloudWatch Logs, Metrics, Dashboard, and Alarms for your cluster by simply modifying the CloudWatch config files referenced by your Ray cluster config YAML and re-running ``ray up example-cloudwatch.yaml``.
 The Unified CloudWatch Agent will be automatically restarted on all cluster nodes, and your config changes will be applied.
 ```
+
+## AWS Deep Learning Containers
+
+Instead of installing Ray and its dependencies yourself, you can start from a prebuilt image. AWS publishes [Deep Learning Containers](https://aws.github.io/deep-learning-containers/) for Ray that package a Ray component with CUDA and its framework dependencies. AWS builds them on Amazon Linux 2023 and patches them for security. All three share the [`public.ecr.aws/deep-learning-containers/ray`](https://gallery.ecr.aws/deep-learning-containers/ray) repository on the Amazon ECR Public Gallery and differ by tag prefix.
+
+```{list-table}
+:widths: 18 25 18 32
+:header-rows: 1
+
+* - Image
+  - Ray component
+  - Tag prefix
+  - Deployment targets
+* - [ray](https://aws.github.io/deep-learning-containers/ray/)
+  - Ray Serve
+  - `serve-ml-`
+  - Amazon EC2, Amazon SageMaker AI
+* - [ray-llm](https://aws.github.io/deep-learning-containers/ray-llm/)
+  - Ray Serve LLM
+  - `serve-llm-`
+  - Amazon EC2, Amazon EKS
+* - [ray-train](https://aws.github.io/deep-learning-containers/ray-train/)
+  - Ray Train
+  - `train-ml-`
+  - Amazon EC2, Amazon EKS, Amazon SageMaker HyperPod
+```
+
+Each image's page lists its available tags and the Ray version it ships.

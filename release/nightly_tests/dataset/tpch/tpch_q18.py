@@ -89,6 +89,7 @@ def main(args):
             )
             .aggregate(Sum(on="l_quantity", alias_name="sum_quantity"))
             .sort(key=["o_totalprice", "o_orderdate"], descending=[True, False])
+            .limit(100)
             .materialize()
         )
 

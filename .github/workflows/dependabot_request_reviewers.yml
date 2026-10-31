@@ -1,0 +1,33 @@
+name: Dependabot request reviewers
+
+# Dependabot ignores the `reviewers` option in dependabot.yml (GitHub replaced
+# it with CODEOWNERS routing), and CODEOWNERS only covers some of the files
+# Dependabot touches (e.g. dashboard npm bumps only reach ray-core). This
+# requests a ray-ci review on every Dependabot PR, scheduled or security.
+#
+# pull_request_target is required because pull_request runs triggered by
+# Dependabot get a read-only token. This job never checks out PR code.
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+
+permissions:
+  pull-requests: write
+
+jobs:
+  request-reviewers:
+    if: github.repository == 'ray-project/ray' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.requestReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              team_reviewers: ['ray-ci']
+            })

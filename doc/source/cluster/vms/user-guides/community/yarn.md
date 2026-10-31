@@ -18,7 +18,7 @@ Skein uses a declarative specification (either written as a yaml file or using t
 
 You will first need to install Skein: `pip install skein`.
 
-The Skein `yaml` file and example Ray program used here are provided in the [Ray repository](https://github.com/ray-project/ray/tree/master/doc/yarn) to get you started. Refer to the provided `yaml` files to be sure that you maintain important configuration options for Ray to function properly.
+The Skein `yaml` file and example Ray program used here are provided in the [Ray repository](https://github.com/ray-project/ray/tree/master/doc/source/cluster/doc_code/yarn) to get you started. Refer to the provided `yaml` files to be sure that you maintain important configuration options for Ray to function properly.
 
 
 ## Skein Configuration
@@ -71,9 +71,9 @@ services:
             vcores: 1
             memory: 2048
         files:
-            # ray/doc/yarn/example.py
+            # ray/doc/source/cluster/doc_code/yarn/example.py
             example.py: example.py
-            # ray/doc/yarn/dashboard.py
+            # ray/doc/source/cluster/doc_code/yarn/dashboard.py
             dashboard.py: dashboard.py
         #     # A packaged python environment using `conda-pack`. Note that Skein
         #     # doesn't require any specific way of distributing files, but this

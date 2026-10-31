@@ -1,10 +1,21 @@
+import contextlib
+import hashlib
+import http.server
 import io
 import json
 import mmap
 import os
+import re
+import shutil
+import signal
+import subprocess
 import sys
 import tarfile
+import threading
+import time
 import urllib.error
+import urllib.parse
+import zlib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,6 +28,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     extract_tar_layer,
     get_platform_arch,
     get_registry_auth_headers,
+    image_cache_name,
     parse_image_ref,
     pull_and_extract_container_image,
     sanitize_image_name,
@@ -60,6 +72,93 @@ def test_sanitize_image_name():
         sanitize_image_name("")
     with pytest.raises(ValueError, match="cannot be safely sanitized"):
         sanitize_image_name("...")
+
+
+def test_image_cache_name_normalizes_registry_spellings():
+    spellings = (
+        "python:3.12-slim",
+        "library/python:3.12-slim",
+        "docker.io/library/python:3.12-slim",
+        "index.docker.io/library/python:3.12-slim",
+        "registry-1.docker.io/library/python:3.12-slim",
+        "Docker.io/python:3.12-slim",
+    )
+    # The normalized reference made safe for a file name, then its hash.
+    assert {image_cache_name(s) for s in spellings} == {
+        "docker.io_library_python_3.12-slim-ea59dc550ffd7fa7"
+    }
+    assert image_cache_name("busybox") == image_cache_name("busybox:latest")
+    assert image_cache_name("GHCR.io/org/repo:1.0") == image_cache_name(
+        "ghcr.io/org/repo:1.0"
+    )
+    assert image_cache_name("ghcr.io/org/repo:1.0").startswith("ghcr.io_org_repo_1.0-")
+    assert image_cache_name("quay.io/coreos/etcd@sha256:abcd").startswith(
+        "quay.io_coreos_etcd_sha256_abcd-"
+    )
+    assert image_cache_name("localhost:5000/app").startswith(
+        "localhost_5000_app_latest-"
+    )
+    # Local archives keep their file name.
+    assert (
+        image_cache_name("/tmp/ray/sandbox/images/ubuntu_22.04.tar") == "ubuntu_22.04"
+    )
+
+
+def test_image_cache_name_keeps_references_apart():
+    sha = "0" * 64
+    # Each pair looks the same once "/", ":" and "@" become "_".
+    for a, b in (
+        (f"repo@sha256:{sha}", f"repo:sha256_{sha}"),
+        ("ghcr.io/a/b_c:1", "ghcr.io/a/b/c:1"),
+        ("ghcr.io/a/b:c_1", "ghcr.io/a/b_c:1"),
+        ("localhost:5000/app", "localhost/5000_app"),
+    ):
+        assert image_cache_name(a) != image_cache_name(b)
+    # A long reference gets a name that leaves room for the ``.tmp.<uuid>``
+    # directory a pull stages it in, and the cut keeps names apart.
+    repo = "registry.example.com/" + "/".join(f"team{i}" for i in range(40))
+    names = {image_cache_name(f"{repo}@sha256:{c * 64}") for c in "01"}
+    assert len(names) == 2
+    assert all(len(f"{name}.tmp.{'0' * 32}") <= 255 for name in names)
+
+
+def _fake_registry(monkeypatch):
+    """Pulls write the reference they were given into the image instead of
+    fetching it. Returns the list of references pulled."""
+    pulled = []
+
+    def extract(image, rootfs_dir, *args):
+        pulled.append(image)
+        with open(os.path.join(rootfs_dir, "ref"), "w", encoding="utf-8") as f:
+            f.write(image)
+        return {}
+
+    monkeypatch.setattr(image_utils, "_extract_image_layers", extract)
+    return pulled
+
+
+def test_pull_reuses_the_cache_entry_of_another_spelling(tmp_path, monkeypatch):
+    pulled = _fake_registry(monkeypatch)
+    images_dir = str(tmp_path / "images")
+    first = pull_and_extract_container_image("busybox", images_dir=images_dir)
+    for spelling in ("busybox:latest", "docker.io/library/busybox:latest"):
+        assert (
+            pull_and_extract_container_image(spelling, images_dir=images_dir) == first
+        )
+    assert pulled == ["busybox"]
+    entries = [
+        d for d in os.listdir(images_dir) if os.path.isdir(os.path.join(images_dir, d))
+    ]
+    assert entries == [os.path.basename(first)]
+
+
+def test_pull_keeps_a_digest_and_a_lookalike_tag_apart(tmp_path, monkeypatch):
+    """A tag spelled like a digest isn't served the digest's image."""
+    _fake_registry(monkeypatch)
+    images_dir = str(tmp_path / "images")
+    for image in (f"repo@sha256:{'0' * 64}", f"repo:sha256_{'0' * 64}"):
+        image_dir = pull_and_extract_container_image(image, images_dir=images_dir)
+        assert _image_file(image_dir, "ref") == image.encode()
 
 
 def test_parse_image_ref():
@@ -148,6 +247,14 @@ def test_parse_image_ref():
         "library/ubuntu",
         "sha256:12345",
     )
+    # Host names are case-insensitive; tags are not.
+    assert parse_image_ref("Docker.io/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("GHCR.io/org/repo:V1") == ("ghcr.io", "org/repo", "V1")
+    assert parse_image_ref("LocalHost/app") == ("localhost", "app", "latest")
 
 
 def test_get_platform_arch():
@@ -268,6 +375,174 @@ def test_pull_pins_image_until_release(tmp_path, monkeypatch):
     assert not os.path.exists(extracted_dir)
 
 
+def test_image_cache_min_free_bytes_default_and_env(tmp_path, monkeypatch):
+    import shutil
+
+    from ray.experimental.sandbox._internal.image_utils import (
+        image_cache_min_free_bytes,
+    )
+
+    monkeypatch.delenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", raising=False)
+    tenth = shutil.disk_usage(str(tmp_path)).total // 10
+    assert image_cache_min_free_bytes(str(tmp_path)) == tenth
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "12345")
+    assert image_cache_min_free_bytes(str(tmp_path)) == 12345
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
+    assert image_cache_min_free_bytes(str(tmp_path)) == 0
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "5G")
+    with patch(
+        "ray.experimental.sandbox._internal.image_utils.logger.warning"
+    ) as warning:
+        assert image_cache_min_free_bytes(str(tmp_path)) == tenth
+    warning.assert_called_once_with(
+        "Ignoring %s=%r: expected an integer number of bytes.",
+        "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES",
+        "5G",
+    )
+
+
+def _renamed_for_deletion(image_dir):
+    """Names of the image cache's directories renamed for deletion."""
+    images_dir = os.path.dirname(image_dir)
+    return [n for n in os.listdir(images_dir) if n.startswith(".deleting.")]
+
+
+def test_eviction_crash_leaves_no_partial_image(tmp_path, monkeypatch):
+    """Eviction moves an image aside before deleting it, so a crash midway
+    leaves nothing under the image's name, and the next pull sweeps up
+    what's left, with eviction disabled too."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+
+    def crash(path, ignore_errors=False):
+        raise RuntimeError("worker killed")
+
+    with monkeypatch.context() as m:
+        m.setattr(shutil, "rmtree", crash)
+        with pytest.raises(RuntimeError):
+            image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert not os.path.exists(image_dir)
+    stale = _renamed_for_deletion(image_dir)
+    assert len(stale) == 1
+
+    # Eviction doesn't take what's left for a cached image.
+    image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert _renamed_for_deletion(image_dir) == stale
+    assert not os.path.exists(images_dir / f"{stale[0]}.lock")
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(image_dir)
+    assert _renamed_for_deletion(image_dir) == []
+
+
+def test_eviction_takes_an_image_with_a_long_name(tmp_path):
+    """An image whose cache name is as long as a pull allows can still be
+    renamed for deletion, so eviction takes it."""
+    local_tar = tmp_path / f"{'a' * 215}.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+
+    image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert not os.path.exists(image_dir)
+
+
+def test_eviction_takes_an_image_whose_name_ends_in_tar(tmp_path):
+    """An archive named foo.tar.tar caches as foo.tar, which eviction still
+    takes for a cached image."""
+    local_tar = tmp_path / "sample.tar.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    assert os.path.basename(image_dir) == "sample.tar"
+
+    image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert not os.path.exists(image_dir)
+
+
+def test_eviction_counts_an_image_evicted_concurrently(tmp_path, monkeypatch):
+    """An image another pull evicted since the scan counts as evicted, so
+    eviction doesn't evict another image in its place."""
+    images_dir = tmp_path / "images"
+    image_dirs = []
+    for name in ("older", "newer"):
+        local_tar = tmp_path / f"{name}.tar"
+        _write_sample_tar(local_tar)
+        image_dirs.append(
+            pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+        )
+    older, newer = image_dirs
+    marker = os.path.join(older, ".extracted")
+    os.utime(marker, (1, 1))
+
+    has_users = image_utils._has_users
+
+    def evicted_by_another_pull(image_dir):
+        if image_dir == older and os.path.isdir(older):
+            shutil.rmtree(older, ignore_errors=True)
+        return has_users(image_dir)
+
+    monkeypatch.setattr(image_utils, "_has_users", evicted_by_another_pull)
+    image_utils.evict_least_recently_used_images(
+        str(images_dir), image_utils._dir_size_bytes(newer)
+    )
+    assert not os.path.exists(older)
+    assert os.path.isdir(newer)
+
+
+def test_repull_crash_keeps_the_new_image(tmp_path, monkeypatch):
+    """A re-pull moves the old image aside and puts the new one in its place
+    before deleting the old one, so a crash during the delete leaves the new
+    image under its name. The next pull reuses it and sweeps up what's left,
+    with eviction disabled too."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    marker = os.path.join(image_dir, ".extracted")
+    # Force a re-pull.
+    stale = os.path.getmtime(local_tar) - 10
+    os.utime(marker, (stale, stale))
+
+    rmtree = shutil.rmtree
+
+    def crash_deleting_the_old_image(path, ignore_errors=False):
+        if ".deleting." in path:
+            raise RuntimeError("worker killed")
+        rmtree(path, ignore_errors=ignore_errors)
+
+    with monkeypatch.context() as m:
+        m.setattr(shutil, "rmtree", crash_deleting_the_old_image)
+        with pytest.raises(RuntimeError):
+            pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(image_dir)
+    new_marker_mtime = os.path.getmtime(marker)
+    assert new_marker_mtime > stale
+    assert len(_renamed_for_deletion(image_dir)) == 1
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(image_dir)
+    assert os.path.getmtime(marker) == new_marker_mtime
+    assert _renamed_for_deletion(image_dir) == []
+
+
 def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
     import shutil
 
@@ -295,35 +570,130 @@ def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
     )
 
 
-def test_pull_and_extract_remote_image(tmp_path):
+@pytest.fixture
+def fake_docker_hub(monkeypatch):
+    """A local registry serving ``library/busybox`` in place of Docker Hub.
+
+    ``RAY_SANDBOX_REGISTRY_MIRROR`` sends Docker Hub pulls to it, so the pull
+    tests never touch the network. It serves every step of a real pull: the
+    bearer-token challenge, a multi-arch index, the image manifest and config,
+    and blobs behind a redirect that refuses the registry token, as presigned
+    object storage does. Yields the contents of the image's ``bin/busybox``.
+    """
+    arch = get_platform_arch()
+    token = "fake-hub-token"
+    busybox = b"\x7fELF fake busybox"
+    blobs = {}
+
+    def add_blob(data):
+        digest = f"sha256:{hashlib.sha256(data).hexdigest()}"
+        blobs[digest] = data
+        return digest
+
+    layer = io.BytesIO()
+    with tarfile.open(fileobj=layer, mode="w:gz") as tar:
+        _add_member(tar, "bin/busybox", busybox, mode=0o755)
+    config = add_blob(json.dumps({"architecture": arch, "os": "linux"}).encode())
+    manifest = json.dumps(
+        {
+            "config": {"digest": config},
+            "layers": [{"digest": add_blob(layer.getvalue())}],
+        }
+    ).encode()
+    manifest_digest = f"sha256:{hashlib.sha256(manifest).hexdigest()}"
+    # Another platform is listed first: the pull must pick the host's.
+    other_arch = "arm64" if arch == "amd64" else "amd64"
+    index = json.dumps(
+        {
+            "manifests": [
+                {
+                    "digest": f"sha256:{'0' * 64}",
+                    "platform": {"os": "linux", "architecture": other_arch},
+                },
+                {
+                    "digest": manifest_digest,
+                    "platform": {"os": "linux", "architecture": arch},
+                },
+            ]
+        }
+    ).encode()
+    manifests = {"latest": index, manifest_digest: manifest}
+
+    class Registry(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def _reply(self, code, body=b"", headers=()):
+            self.send_response(code)
+            for name, value in headers:
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = urllib.parse.urlsplit(self.path).path
+            auth = self.headers.get("Authorization")
+            match = re.fullmatch(r"/v2/library/busybox/(manifests|blobs)/([^/]+)", path)
+            if path == "/token":
+                self._reply(200, json.dumps({"token": token}).encode())
+            elif path.startswith("/storage/"):
+                blob = blobs.get(path[len("/storage/") :])
+                if auth:
+                    # S3: "Only one auth mechanism allowed".
+                    self._reply(400)
+                elif blob is None:
+                    self._reply(404)
+                else:
+                    self._reply(200, blob)
+            elif auth != f"Bearer {token}":
+                realm = f"http://127.0.0.1:{self.server.server_port}/token"
+                challenge = f'Bearer realm="{realm}",service="fake-hub"'
+                self._reply(401, headers=[("Www-Authenticate", challenge)])
+            elif match and match[1] == "manifests" and match[2] in manifests:
+                self._reply(200, manifests[match[2]])
+            elif match and match[1] == "blobs" and match[2] in blobs:
+                self._reply(307, headers=[("Location", f"/storage/{match[2]}")])
+            else:
+                self._reply(404)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Registry)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv(
+        "RAY_SANDBOX_REGISTRY_MIRROR", f"http://127.0.0.1:{server.server_port}"
+    )
+    yield busybox
+    server.shutdown()
+    server.server_close()
+
+
+def test_pull_and_extract_remote_image(tmp_path, fake_docker_hub):
     images_dir = tmp_path / "images"
     image_dir = pull_and_extract_container_image(
         "busybox:latest", images_dir=str(images_dir)
     )
     assert os.path.exists(image_dir)
     assert os.path.exists(os.path.join(image_dir, ".extracted"))
-    tree = _image_tree(image_dir)
-    assert "bin/sh" in tree or "bin/busybox" in tree
+    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
     # Only the image is cached: no extracted tree, and no archive doubling
     # its footprint.
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
-    assert not os.path.exists(str(images_dir / "busybox_latest.tar"))
+    assert not os.path.exists(image_dir + ".tar")
 
 
-def test_pull_and_extract_docker_io_prefixed_image(tmp_path):
+def test_pull_and_extract_docker_io_prefixed_image(tmp_path, fake_docker_hub):
     images_dir = tmp_path / "images"
     image_dir = pull_and_extract_container_image(
         "docker.io/library/busybox:latest", images_dir=str(images_dir)
     )
     assert os.path.exists(image_dir)
     assert os.path.exists(os.path.join(image_dir, ".extracted"))
-    tree = _image_tree(image_dir)
-    assert "bin/sh" in tree or "bin/busybox" in tree
+    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
 
 
-def test_pull_nonexistent_image(tmp_path):
+def test_pull_nonexistent_image(tmp_path, fake_docker_hub):
     images_dir = tmp_path / "images"
-    with pytest.raises(SandboxCreationError):
+    with pytest.raises(SandboxCreationError, match="HTTP Error 404"):
         pull_and_extract_container_image(
             "nonexistent_image_12345_xyz:latest",
             images_dir=str(images_dir),
@@ -571,6 +941,8 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     args = (bin_dir / "mkfs.args").read_text().split()
     assert args[:3] == ["--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data"]
+    # The tar streams in on stdin: the image path is the last argument.
+    assert len(args) == 4 and args[3].endswith(image_utils.ROOTFS_IMAGE)
     marker = open(os.path.join(image_dir, ".extracted"), encoding="utf-8").read()
     assert marker == expected_extract_marker()
     # The fake image *is* the flattened tar: check the owners it carries.
@@ -582,6 +954,139 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     # runsc's mount points, which an immutable image cannot grow on demand.
     for mountpoint in ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp"):
         assert owners[mountpoint] == (0, 0)
+
+
+def _tar_members(path):
+    """Each member of a tar as (name, type, mode, owner, mtime, link, sha256)."""
+    with tarfile.open(path) as tar:
+        return [
+            (
+                m.name,
+                m.type,
+                m.mode,
+                (m.uid, m.gid),
+                m.mtime,
+                m.linkname,
+                hashlib.sha256(tar.extractfile(m).read()).hexdigest()
+                if m.isreg()
+                else None,
+            )
+            for m in tar.getmembers()
+        ]
+
+
+def _put_mkfs_on_path(bin_dir, body, monkeypatch):
+    """A mkfs.erofs first on PATH that advertises --tar, then runs ``body``."""
+    bin_dir.mkdir()
+    script = bin_dir / "mkfs.erofs"
+    script.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
+        + body
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def test_build_erofs_image_streams_the_tree_and_frees_it(tmp_path):
+    """mkfs.erofs reads the same tar the tree used to be packed into, and
+    each file leaves the tree once it's in the stream, except hard links."""
+    tree = tmp_path / "rootfs"
+    (tree / "etc").mkdir(parents=True)
+    (tree / "etc" / "passwd").write_bytes(b"root:x:0:0::/root:/bin/sh\n")
+    (tree / "usr" / "bin").mkdir(parents=True)
+    # Larger than a pipe holds, so the stream has to wait on mkfs.erofs.
+    (tree / "usr" / "bin" / "tool").write_bytes(os.urandom(3 << 20))
+    (tree / "usr" / "bin" / "tool").chmod(0o755)
+    os.link(tree / "usr" / "bin" / "tool", tree / "usr" / "bin" / "tool-alias")
+    (tree / "usr" / "bin" / "sh").symlink_to("tool")
+    (tree / "empty").mkdir()
+    # A read-only directory, as images ship them: its mode must reach the
+    # image unchanged, and its file must still go.
+    (tree / "ro").mkdir()
+    (tree / "ro" / "data").write_bytes(b"read-only dir")
+    (tree / "ro").chmod(0o555)
+    ownership = {"etc/passwd": (0, 0), "usr/bin/tool": (38, 38)}
+    # The tar the build used to write before running mkfs.erofs.
+    expected = tmp_path / "expected.tar"
+    with tarfile.open(expected, "w") as tar:
+        tar.add(tree, arcname=".", filter=_owner_filter(ownership))
+
+    image = tmp_path / "rootfs.erofs"
+    image_utils.build_erofs_image(str(tree), ownership, str(image))
+
+    # The fake mkfs.erofs writes what it read on stdin.
+    assert _tar_members(image) == _tar_members(expected)
+    assert not (tree / "etc" / "passwd").exists()
+    assert (tree / "usr" / "bin" / "tool").exists()
+    assert (tree / "usr" / "bin" / "tool-alias").exists()
+    assert (tree / "usr" / "bin" / "sh").is_symlink()
+    assert (tree / "empty").is_dir()
+    assert not (tree / "ro" / "data").exists()
+
+
+def test_build_erofs_image_reports_mkfs_failure(tmp_path, monkeypatch):
+    """A mkfs.erofs that exits before reading the tar fails the build with
+    its message instead of leaving the writer blocked."""
+    _put_mkfs_on_path(
+        tmp_path / "failing-bin",
+        'echo "mkfs.erofs: No space left on device" >&2\nexit 1\n',
+        monkeypatch,
+    )
+    tree = tmp_path / "rootfs"
+    tree.mkdir()
+    (tree / "big").write_bytes(os.urandom(4 << 20))
+
+    with pytest.raises(SandboxCreationError, match="No space left on device"):
+        image_utils.build_erofs_image(str(tree), {}, str(tmp_path / "rootfs.erofs"))
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def test_build_erofs_image_stops_mkfs_when_reading_the_tree_fails(
+    tmp_path, monkeypatch
+):
+    """If reading the tree fails, mkfs.erofs is killed and reaped before the
+    error propagates, so it can't keep writing into a directory the caller
+    is about to delete."""
+    tree = tmp_path / "rootfs"
+    tree.mkdir()
+    (tree / "f").write_bytes(b"x")
+
+    def failing_filter(ownership):
+        def _filter(ti):
+            raise OSError("read error")
+
+        return _filter
+
+    builds = []
+    real_popen = subprocess.Popen
+
+    def recording_popen(args, *rest, **kwargs):
+        proc = real_popen(args, *rest, **kwargs)
+        if "--tar=f" in args:
+            builds.append(proc)
+        return proc
+
+    monkeypatch.setattr(image_utils, "_owner_filter", failing_filter)
+    monkeypatch.setattr(image_utils.subprocess, "Popen", recording_popen)
+    with pytest.raises(OSError, match="read error"):
+        image_utils.build_erofs_image(str(tree), {}, str(tmp_path / "rootfs.erofs"))
+
+    # The fake mkfs.erofs waits on stdin forever unless killed.
+    assert len(builds) == 1 and builds[0].returncode == -signal.SIGKILL
+
+
+def test_erofs_superblock_fingerprint(tmp_path):
+    image = tmp_path / "rootfs.erofs"
+    image.write_bytes(b"\0" * 1024 + b"A" * 128 + b"B" * 100)
+    first = image_utils.erofs_superblock_fingerprint(str(image))
+    # Bytes outside the superblock don't count.
+    image.write_bytes(b"\1" * 1024 + b"A" * 128 + b"C" * 100)
+    assert image_utils.erofs_superblock_fingerprint(str(image)) == first
+    image.write_bytes(b"\0" * 1024 + b"A" * 127 + b"X")
+    assert image_utils.erofs_superblock_fingerprint(str(image)) != first
+    assert image_utils.erofs_superblock_fingerprint(str(tmp_path / "none")) is None
 
 
 def test_resolve_in_root(tmp_path):
@@ -837,6 +1342,190 @@ def test_dir_size_counts_hard_links_once(tmp_path):
         os.link(bin_dir / "busybox", bin_dir / name)
     (tree / "other").write_bytes(b"y" * 10)
     assert image_utils._dir_size_bytes(str(tree)) == 1010
+
+
+def _gz_layer(*files) -> bytes:
+    """A gzipped layer holding ``(name, data)`` files."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in files:
+            _add_member(tar, name, data)
+    return buf.getvalue()
+
+
+def _send(handler, body: bytes) -> None:
+    handler.send_response(200)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+@contextlib.contextmanager
+def _serve_image(monkeypatch, layers, serve_blob=None):
+    """Serve an image made of ``layers`` as Docker Hub's mirror.
+
+    ``serve_blob(index, handler, blob)`` answers the request for layer
+    ``index``; by default the blob goes out whole. Yields the image to pull.
+    """
+    digests = [f"sha256:{hashlib.sha256(blob).hexdigest()}" for blob in layers]
+    manifest = json.dumps(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+            "layers": [
+                {
+                    "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+                    "digest": digest,
+                    "size": len(blob),
+                }
+                for digest, blob in zip(digests, layers)
+            ],
+        }
+    ).encode()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if "/manifests/" in self.path:
+                _send(self, manifest)
+            elif "/blobs/" in self.path:
+                index = digests.index(self.path.rsplit("/", 1)[1])
+                (serve_blob or (lambda i, h, b: _send(h, b)))(
+                    index, self, layers[index]
+                )
+            else:
+                self.send_error(404)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv(
+        "RAY_SANDBOX_REGISTRY_MIRROR", f"http://127.0.0.1:{server.server_port}"
+    )
+    try:
+        yield "busybox:latest"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_layers_download_in_parallel_and_apply_in_order(tmp_path, monkeypatch):
+    """Three layers download at once, and the layers apply in manifest order
+    even when later ones arrive first."""
+    layers = [
+        _gz_layer(("f", b"1"), ("g", b"g")),
+        _gz_layer(("f", b"2")),
+        _gz_layer((".wh.g", b"")),
+        _gz_layer(("h", b"h")),
+        _gz_layer(("f", b"5")),
+    ]
+    first_three = threading.Barrier(3, timeout=5)
+
+    def serve_blob(index, handler, blob):
+        if index < 3:
+            # Breaks, and fails the pull, unless all three run at once.
+            first_three.wait()
+        if index == 0:
+            time.sleep(0.5)
+        _send(handler, blob)
+
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        image_utils._extract_image_layers(
+            image, str(rootfs), str(tmp_path), 30, str(tmp_path)
+        )
+    assert (rootfs / "f").read_bytes() == b"5"
+    assert not (rootfs / "g").exists()
+    assert (rootfs / "h").read_bytes() == b"h"
+
+
+def test_failed_layer_fails_the_pull_and_stops_other_downloads(tmp_path, monkeypatch):
+    """A layer that can't be fetched fails the pull at once, and a download
+    still running stops instead of finishing in the background."""
+    layers = [_gz_layer(("a", b"a")), _gz_layer(("b", b"b")), os.urandom(200_000)]
+    hung_up = threading.Event()
+
+    def serve_blob(index, handler, blob):
+        if index == 1:
+            handler.send_error(500)
+            return
+        if index == 2:
+            # About 20 s at this pace.
+            handler.send_response(200)
+            handler.send_header("Content-Length", str(len(blob)))
+            handler.end_headers()
+            try:
+                for i in range(0, len(blob), 1024):
+                    handler.wfile.write(blob[i : i + 1024])
+                    handler.wfile.flush()
+                    time.sleep(0.1)
+            except OSError:
+                hung_up.set()
+            return
+        _send(handler, blob)
+
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    start = time.monotonic()
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        with pytest.raises(SandboxCreationError, match="500"):
+            image_utils._extract_image_layers(
+                image, str(rootfs), str(tmp_path), 30, str(tmp_path)
+            )
+        assert time.monotonic() - start < 5
+        assert hung_up.wait(5)
+
+
+def test_a_layer_cut_short_fails_the_pull(tmp_path, monkeypatch):
+    """A layer whose download ends early fails the pull, even when the part
+    that arrived ends on a member boundary and so reads as a whole archive."""
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as tar:
+        _add_member(tar, "a", b"a")
+        boundary = tar.offset
+        _add_member(tar, "b", b"b")
+    raw = archive.getvalue()
+    # A full flush ends the compressed prefix exactly where member "b" starts.
+    gz = zlib.compressobj(wbits=31)
+    head = gz.compress(raw[:boundary]) + gz.flush(zlib.Z_FULL_FLUSH)
+    layer = head + gz.compress(raw[boundary:]) + gz.flush()
+
+    def serve_blob(index, handler, blob):
+        # Promise the whole layer, send the prefix, and close the connection.
+        handler.send_response(200)
+        handler.send_header("Content-Length", str(len(blob)))
+        handler.end_headers()
+        handler.wfile.write(blob[: len(head)])
+
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    with _serve_image(monkeypatch, [layer], serve_blob) as image:
+        with pytest.raises(SandboxCreationError):
+            image_utils._extract_image_layers(
+                image, str(rootfs), str(tmp_path), 30, str(tmp_path)
+            )
+
+
+def test_extract_tar_layer_reads_a_layer_once(tmp_path):
+    """A compressed layer is decompressed in one pass, not read twice."""
+    blob = _gz_layer(("a", os.urandom(1 << 20)), ("b", os.urandom(1 << 20)))
+
+    class CountingReader(io.BytesIO):
+        bytes_read = 0
+
+        def read(self, size=-1):
+            data = super().read(size)
+            self.bytes_read += len(data)
+            return data
+
+    reader = CountingReader(blob)
+    extract_tar_layer(reader, str(tmp_path))
+    assert (tmp_path / "b").stat().st_size == 1 << 20
+    assert reader.bytes_read <= len(blob)
 
 
 if __name__ == "__main__":

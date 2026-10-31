@@ -451,7 +451,7 @@ class Policy(metaclass=ABCMeta):
         prev_reward: Optional[TensorStructType] = None,
         info: dict = None,
         input_dict: Optional[SampleBatch] = None,
-        episode=None,
+        episode: Optional[Any] = None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         # Kwars placeholder for future compatibility.
@@ -484,9 +484,7 @@ class Policy(metaclass=ABCMeta):
                 exploration action
                 (default: None -> use self.config["explore"]).
             timestep: The current (sampling) time step.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             Tuple consisting of the action, the list of RNN state outputs (if
@@ -554,7 +552,7 @@ class Policy(metaclass=ABCMeta):
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
-        episodes=None,
+        episodes: Optional[List[Any]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -576,9 +574,7 @@ class Policy(metaclass=ABCMeta):
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
@@ -632,9 +628,7 @@ class Policy(metaclass=ABCMeta):
                 Set to None (default) for using the value of
                 `self.config["explore"]`.
             timestep: The current (sampling) time step.
-
-        Keyword Args:
-            kwargs: Forward compatibility placeholder
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             actions: Batch of output actions, with shape like
@@ -688,7 +682,7 @@ class Policy(metaclass=ABCMeta):
         other_agent_batches: Optional[
             Dict[AgentID, Tuple["Policy", SampleBatch]]
         ] = None,
-        episode=None,
+        episode: Optional[Any] = None,
     ) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
@@ -818,7 +812,9 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+    def learn_on_loaded_batch(
+        self, offset: int = 0, buffer_index: int = 0
+    ) -> Dict[str, TensorType]:
         """Runs a single step of SGD on an already loaded data in a buffer.
 
         Runs an SGD step over a slice of the pre-loaded batch, offset by
@@ -1049,8 +1045,8 @@ class Policy(metaclass=ABCMeta):
         Args:
             func: The function to call, with this Policy as first
                 argument, followed by args, and kwargs.
-            args: Optional additional args to pass to the function call.
-            kwargs: Optional additional kwargs to pass to the function call.
+            *args: Optional additional args to pass to the function call.
+            **kwargs: Optional additional kwargs to pass to the function call.
 
         Returns:
             The return value of the function call.
@@ -1080,7 +1076,7 @@ class Policy(metaclass=ABCMeta):
     def export_checkpoint(
         self,
         export_dir: str,
-        filename_prefix=DEPRECATED_VALUE,
+        filename_prefix: Any = DEPRECATED_VALUE,
         *,
         policy_state: Optional[PolicyState] = None,
         checkpoint_format: str = "cloudpickle",
@@ -1090,6 +1086,7 @@ class Policy(metaclass=ABCMeta):
         Args:
             export_dir: Local writable directory to store the AIR Checkpoint
                 information into.
+            filename_prefix: Deprecated. Do not use.
             policy_state: An optional PolicyState to write to disk. Used by
                 `Algorithm.save_checkpoint()` to save on the additional
                 `self.get_state()` calls of its different Policies.
@@ -1305,7 +1302,9 @@ class Policy(metaclass=ABCMeta):
     def _initialize_loss_from_dummy_batch(
         self,
         auto_remove_unneeded_view_reqs: bool = True,
-        stats_fn=None,
+        stats_fn: Optional[
+            Callable[["Policy", SampleBatch], Dict[str, TensorType]]
+        ] = None,
     ) -> None:
         """Performs test calls through policy's model and loss.
 
@@ -1321,9 +1320,7 @@ class Policy(metaclass=ABCMeta):
             auto_remove_unneeded_view_reqs: Whether to automatically
                 remove those ViewRequirements records from
                 self.view_requirements that are not needed.
-                stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
-                    TensorType]]]): An optional stats function to be called after
-                    the loss.
+            stats_fn: An optional stats function to be called after the loss.
         """
 
         if self.config.get("_disable_initialize_loss_from_dummy_batch", False):
@@ -1518,7 +1515,9 @@ class Policy(metaclass=ABCMeta):
                 "but is of type {}.".format(self, type(self.global_timestep))
             )
 
-    def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
+    def maybe_remove_time_dimension(
+        self, input_dict: Dict[str, TensorType]
+    ) -> Dict[str, TensorType]:
         """Removes a time dimension for recurrent RLModules.
 
         Args:

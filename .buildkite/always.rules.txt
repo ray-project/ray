@@ -40,10 +40,7 @@
 # branches, and manual builds as run-all), so post-merge lint coverage is
 # unchanged.
 #
-# This is deliberately narrower than the "doc-only" definition the docs-go
-# label uses (all of doc/ except BUILD files, enforced by
-# ci/lint/validate_docs_go_scope.sh). That label is an author-asserted escape
-# hatch; this exemption is automatic, so it stays limited to files that no
+# This exemption is automatic, so it stays limited to files that no
 # code-oriented lint check reads. Executable and config assets under doc/source/
 # are exempted by a separate rule below, which explains why that is safe for
 # them specifically.

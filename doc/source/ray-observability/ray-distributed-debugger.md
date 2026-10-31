@@ -31,9 +31,7 @@ The Ray Distributed Debugger frontend is only available in VS Code and other VS 
 
 Create a new virtual environment and install dependencies.
 
-```{testcode}
-:skipif: True
-
+```python
 conda create -n myenv python=3.10
 conda activate myenv
 pip install "ray[default]" debugpy

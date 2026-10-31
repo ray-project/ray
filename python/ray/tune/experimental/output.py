@@ -218,8 +218,7 @@ def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
 def _current_best_trial(
     trials: List[Trial], metric: Optional[str], mode: Optional[str]
 ) -> Tuple[Optional[Trial], Optional[str]]:
-    """
-    Returns the best trial and the metric key. If anything is empty or None,
+    """Returns the best trial and the metric key. If anything is empty or None,
     returns a trivial result of None, None.
 
     Args:

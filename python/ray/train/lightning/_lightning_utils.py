@@ -260,6 +260,10 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         See :ref:`Checkpoint upload modes <train-checkpoint-upload-modes>` for more details.
     - validation: Whether to asynchronously validate the checkpoint.
         See :ref:`Validating checkpoints asynchronously <train-validating-checkpoints>` for more details.
+    - checkpoint_frequency: Only report a checkpoint and metrics every
+        ``checkpoint_frequency``. Defaults to ``1``, which is checkpoints on every
+        epoch. If ``max_epochs`` is not a multiple of ``checkpoint_frequency``, it
+        will not be reported.
 
     For customized reporting and checkpointing logic, implement your own
     `lightning.pytorch.callbacks.Callback` following this user
@@ -273,8 +277,22 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         # v2-only arguments
         checkpoint_upload_mode=None,
         validation=False,
+        checkpoint_frequency: int = 1,
     ) -> None:
         super().__init__()
+        if not isinstance(checkpoint_frequency, int) or isinstance(
+            checkpoint_frequency, bool
+        ):
+            raise TypeError(
+                "`checkpoint_frequency` must be an integer, got "
+                f"{type(checkpoint_frequency).__name__}."
+            )
+        if checkpoint_frequency < 1:
+            raise ValueError(
+                "`checkpoint_frequency` must be a positive integer, got "
+                f"{checkpoint_frequency}."
+            )
+        self.checkpoint_frequency = checkpoint_frequency
         self.checkpoint_upload_mode = checkpoint_upload_mode
         self.validation = validation
 
@@ -306,9 +324,9 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
-        # Creates a checkpoint dir with fixed name
-        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
-        os.makedirs(tmpdir, exist_ok=True)
+        # Only report (metrics + checkpoint) every `checkpoint_frequency` epochs.
+        if (trainer.current_epoch + 1) % self.checkpoint_frequency != 0:
+            return
 
         # Fetch metrics
         metrics = trainer.callback_metrics
@@ -318,15 +336,19 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         metrics["epoch"] = trainer.current_epoch
         metrics["step"] = trainer.global_step
 
+        # Creates a checkpoint dir with fixed name
+        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
+        os.makedirs(tmpdir, exist_ok=True)
+
         # Save checkpoint to local
         ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
         # TODO: with CheckpointUploadMode.ASYNC, this does cpu -> disk synchronously
         # and disk -> remote asynchronously. We can add a new CheckpointIO class to do
         # cpu -> remote asynchronously and a checkpoint_upload_fn to wait for it.
         trainer.save_checkpoint(ckpt_path, weights_only=False)
+        checkpoint = Checkpoint.from_directory(tmpdir)
 
         # Report to train session
-        checkpoint = Checkpoint.from_directory(tmpdir)
         if is_v2_enabled():
             ray.train.report(
                 metrics=metrics,

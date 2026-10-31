@@ -42,7 +42,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 'episodes'. Specifies how experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         ReplayBuffer.__init__(self, capacity, storage_unit, **kwargs)
 
@@ -70,7 +70,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Args:
             item: The item to be added.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         weight = kwargs.get("weight", None)
 
@@ -117,7 +117,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             num_items: Number of items to sample from this buffer.
             beta: To what degree to use importance weights (0 - no corrections,
                 1 - full correction).
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             Concatenated SampleBatch of items including "weights" and

@@ -34,7 +34,9 @@ class Random(Exploration):
 
         Args:
             action_space: The gym action space used by the environment.
+            model: The policy's model.
             framework: One of None, "tf", "torch".
+            **kwargs: Forwarded to the parent `Exploration` constructor.
         """
         super().__init__(
             action_space=action_space, model=model, framework=framework, **kwargs

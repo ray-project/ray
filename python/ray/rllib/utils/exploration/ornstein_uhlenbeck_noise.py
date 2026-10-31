@@ -1,6 +1,7 @@
 from typing import Optional, Union
 
 import numpy as np
+from gymnasium.spaces import Space
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import OldAPIStack, override
@@ -33,7 +34,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
 
     def __init__(
         self,
-        action_space,
+        action_space: Space,
         *,
         framework: str,
         ou_theta: float = 0.15,
@@ -50,6 +51,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
 
         Args:
             action_space: The gym action space used by the environment.
+            framework: One of None, "tf", "torch".
             ou_theta: The theta parameter of the Ornstein-Uhlenbeck process.
             ou_sigma: The sigma parameter of the Ornstein-Uhlenbeck process.
             ou_base_scale: A fixed scaling factor, by which all OU-
@@ -66,7 +68,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 `random_timesteps` steps.
             scale_schedule: An optional Schedule object to use (instead
                 of constructing one from the given parameters).
-            framework: One of None, "tf", "torch".
+            **kwargs: Forwarded to the parent `GaussianNoise` constructor.
         """
         # The current OU-state value (gets updated each time, an eploration
         # action is computed).
@@ -238,8 +240,14 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
     def get_state(self, sess: Optional["tf.Session"] = None):
         """Returns the current scale value.
 
+        Args:
+            sess: An optional tf Session object to use for fetching the
+                current state ops.
+
         Returns:
-            Union[float,tf.Tensor[float]]: The current scale value.
+            A dict with the keys "cur_scale", "last_timestep" and "ou_state",
+            holding the current scale value, the current timestep and the
+            current Ornstein-Uhlenbeck process state, respectively.
         """
         if sess:
             return sess.run(

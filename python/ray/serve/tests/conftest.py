@@ -378,7 +378,9 @@ def wait_for_metrics_endpoint(session_name, port=TEST_METRICS_EXPORT_PORT, timeo
 
     def ready():
         try:
-            resp = httpx.get(f"http://localhost:{port}/metrics", timeout=1.0)
+            resp = request_with_auth_token(
+                "GET", f"http://localhost:{port}/metrics", timeout=1.0
+            )
         except Exception:
             return False
         return resp.status_code == 200 and f'SessionName="{session_name}"' in resp.text

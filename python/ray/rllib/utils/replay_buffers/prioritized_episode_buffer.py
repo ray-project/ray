@@ -135,6 +135,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 `sample()`.
             alpha: The amount of prioritization to be used: `alpha=1.0` means full
                 prioritization, `alpha=0.0` means no prioritization.
+            metrics_num_episodes_for_smoothing: The number of episodes to use for
+                smoothing (windowed averaging) of this buffer's metrics.
+            **kwargs: Forward compatibility kwargs. Ignored by this buffer.
         """
         super().__init__(
             capacity=capacity,
@@ -418,6 +421,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 actual state of model e.g. action log-probabilities, etc.). If `True`,
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
+            to_numpy: If episodes should be numpy'ized.
+            **kwargs: Forward compatibility kwargs. Ignored by this buffer.
 
         Returns:
             A list of 1-step long episodes containing all basic episode data and if
@@ -640,7 +645,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         return state
 
     @override(EpisodeReplayBuffer)
-    def set_state(self, state) -> None:
+    def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of a `PrioritizedEpisodeReplayBuffer`.
 
         Args:
@@ -668,6 +673,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         Args:
             priorities: Numpy array containing the new priorities to be used
                 in sampling for the items in the last sampled batch.
+            module_id: The ID of the module the `priorities` belong to. Unused by
+                this single-agent buffer and only kept for API compatibility with
+                the multi-agent buffer.
         """
         assert len(priorities) == len(self._last_sampled_indices)
 
@@ -686,7 +694,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._max_priority = max(self._max_priority, priority)
         self._last_sampled_indices.clear()
 
-    def _get_free_node_and_assign(self, sample_index, weight: float = 1.0) -> int:
+    def _get_free_node_and_assign(self, sample_index: int, weight: float = 1.0) -> int:
         """Gets the next free node in the segment trees.
 
         In addition the initial priorities for a new transition are added
@@ -714,7 +722,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         # Return the index.
         return idx
 
-    def _num_remaining_episodes(self, new_eps, evicted_eps):
+    def _num_remaining_episodes(self, new_eps: List[str], evicted_eps: List[str]):
         """Calculates the number of remaining episodes.
 
         When adding episodes and evicting them in the `add()` method

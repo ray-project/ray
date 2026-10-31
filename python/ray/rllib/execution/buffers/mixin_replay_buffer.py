@@ -61,6 +61,9 @@ class MixInMultiAgentReplayBuffer:
                 (no replay), a ratio of 0.5 means always return newest sample
                 plus one old one (1:1), a ratio of 0.66 means always return
                 the newest sample plus 2 old (replayed) ones (1:2), etc...
+            replay_mode: One of ReplayMode.LOCKSTEP (sample the same timesteps
+                for all policies) or ReplayMode.INDEPENDENT (sample each
+                policy's timesteps independently).
         """
         self.capacity = capacity
         self.replay_ratio = replay_ratio

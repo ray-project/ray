@@ -171,6 +171,7 @@ def test_metrics_export_with_tls(use_tls):
 import ray
 import time
 import requests
+from ray._private.test_utils import request_with_auth_token
 
 # Configure faster metrics reporting
 ray.init(_system_config={"metrics_report_interval_ms": 1000})
@@ -198,7 +199,7 @@ try:
     # Use longer timeout since metrics may take time to be collected and exported
     for i in range(60):
         try:
-            response = requests.get(metrics_url, timeout=2)
+            response = request_with_auth_token("GET", metrics_url, timeout=2)
             if response.status_code == 200:
                 # Check for C++ component metrics (proves TLS is working)
                 has_cpp_metrics = any(
@@ -218,7 +219,7 @@ try:
     else:
         # On failure, print what metrics we do have for debugging
         try:
-            response = requests.get(metrics_url, timeout=2)
+            response = request_with_auth_token("GET", metrics_url, timeout=2)
             metric_lines = [l for l in response.text.split('\\n') if l.startswith('ray_')]
             print(f"Final metrics ({len(metric_lines)}): {metric_lines[:10]}...")
         except Exception:

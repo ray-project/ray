@@ -55,6 +55,7 @@ class EpsilonGreedy(Exploration):
                 epsilon will reach its final value.
             epsilon_schedule: An optional Schedule object
                 to use (instead of constructing one from the given parameters).
+            **kwargs: Forwarded to the parent `Exploration` constructor.
         """
         assert framework is not None
         super().__init__(action_space=action_space, framework=framework, **kwargs)
@@ -112,6 +113,10 @@ class EpsilonGreedy(Exploration):
         Args:
             action_distribution: The instantiated ActionDistribution object
                 to work with when creating exploration actions.
+            explore: Whether to explore (sample a random action with
+                probability epsilon) or to always return the greedy action.
+            timestep: The current sampling time step used to compute the
+                current epsilon value. If None, `self.last_timestep` is used.
 
         Returns:
             The tf exploration-action op.
@@ -172,6 +177,10 @@ class EpsilonGreedy(Exploration):
             action_distribution: The instantiated
                 ActionDistribution object to work with when creating
                 exploration actions.
+            explore: Whether to explore (sample a random action with
+                probability epsilon) or to always return the greedy action.
+            timestep: The current sampling time step used to compute the
+                current epsilon value.
 
         Returns:
             The exploration-action.

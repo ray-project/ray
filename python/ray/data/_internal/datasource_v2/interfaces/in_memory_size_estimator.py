@@ -8,6 +8,15 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI
 class InMemorySizeEstimator(ABC):
+    """Sizes listing rows for ``RoundRobinPartitioner``.
+
+    ``SamplingInMemorySizeEstimator`` reads one file per listing task and
+    scales by its ratio.
+
+    Implement this when decoded size is a known function of file size, so no
+    sample read is needed.
+    """
+
     @abstractmethod
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         """Estimate the in-memory sizes of the paths in the given manifest.

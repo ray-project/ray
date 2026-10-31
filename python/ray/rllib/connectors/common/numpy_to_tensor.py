@@ -68,12 +68,19 @@ class NumpyToTensor(ConnectorV2):
         """Initializes a NumpyToTensor instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             pin_memory: Whether to pin memory when creating (torch) tensors.
                 If None (default), pins memory if `as_learner_connector` is True,
                 otherwise doesn't pin memory.
             device: An optional device to move the resulting tensors to. If not
                 provided, all data will be left on the CPU.
-            **kwargs:
+            **kwargs: Forward API-compatibility kwargs.
         """
         super().__init__(
             input_observation_space=input_observation_space,

@@ -45,6 +45,8 @@ class EmaStats(StatsBase):
 
         Args:
             ema_coeff: The EMA coefficient to use. Defaults to 0.01.
+            *args: Additional positional args passed on to `StatsBase.__init__`.
+            **kwargs: Additional keyword args passed on to `StatsBase.__init__`.
         """
         super().__init__(*args, **kwargs)
         self._value = np.nan
@@ -151,6 +153,10 @@ class EmaStats(StatsBase):
             latest_merged_only: If True, only considers the latest merged values.
                 This parameter only works on aggregation stats (root or intermediate nodes).
                 When enabled, peek() will only use the values from the most recent merge operation.
+
+        Returns:
+            The current EMA value or, if `compile` is False, a list containing
+            this single value.
         """
         # Check latest_merged_only validity
         if latest_merged_only and self.is_leaf:

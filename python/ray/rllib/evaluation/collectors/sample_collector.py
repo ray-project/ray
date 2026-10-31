@@ -9,6 +9,7 @@ from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorTy
 
 if TYPE_CHECKING:
     from ray.rllib.callbacks.callbacks import RLlibCallback
+    from ray.rllib.evaluation.episode_v2 import EpisodeV2
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +41,17 @@ class SampleCollector(metaclass=ABCMeta):
 
         Args:
             policy_map: Maps policy ids to policy instances.
-            clip_rewards (Union[bool, float]): Whether to clip rewards before
+            clip_rewards: Whether to clip rewards before
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks: RLlib callbacks.
             multiple_episodes_in_batch: Whether it's allowed to pack
                 multiple episodes into the same built batch.
-            rollout_fragment_length: The
-
+            rollout_fragment_length: The number of steps (counted by
+                `count_steps_by`) to collect before a batch is built and
+                returned.
+            count_steps_by: One of "env_steps" (default) or "agent_steps".
+                Determines whether `rollout_fragment_length` is counted in
+                env steps or in individual agent steps.
         """
 
         self.policy_map = policy_map
@@ -60,7 +65,7 @@ class SampleCollector(metaclass=ABCMeta):
     def add_init_obs(
         self,
         *,
-        episode,
+        episode: "EpisodeV2",
         agent_id: AgentID,
         policy_id: PolicyID,
         init_obs: TensorType,
@@ -81,9 +86,7 @@ class SampleCollector(metaclass=ABCMeta):
                 are adding an Agent's initial observation.
             agent_id: Unique id for the agent we are adding
                 values for.
-            env_id: The environment index (in a vectorized setup).
             policy_id: Unique id for policy controlling the agent.
-            init_obs: Initial observation (after env.reset()).
             init_obs: Initial observation (after env.reset()).
             init_infos: Initial infos dict (after env.reset()).
             t: The time step (episode length - 1). The initial obs has
@@ -135,7 +138,7 @@ class SampleCollector(metaclass=ABCMeta):
             policy_id: Unique id for policy controlling the agent.
             agent_done: Whether the given agent is done (terminated or truncated) with
                 its trajectory (the multi-agent episode may still be ongoing).
-            values (Dict[str, TensorType]): Row of values to add for this
+            values: Row of values to add for this
                 agent. This row must contain the keys SampleBatch.ACTION,
                 REWARD, NEW_OBS, TERMINATED, and TRUNCATED.
 
@@ -159,7 +162,7 @@ class SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def episode_step(self, episode) -> None:
+    def episode_step(self, episode: "EpisodeV2") -> None:
         """Increases the episode step counter (across all agents) by one.
 
         Args:
@@ -239,7 +242,7 @@ class SampleCollector(metaclass=ABCMeta):
     @abstractmethod
     def postprocess_episode(
         self,
-        episode,
+        episode: "EpisodeV2",
         is_done: bool = False,
         check_dones: bool = False,
         build: bool = False,

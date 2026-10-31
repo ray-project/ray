@@ -1,3 +1,4 @@
+import sys
 from typing import Any, Dict
 
 import numpy as np
@@ -1669,6 +1670,150 @@ class TestEncoderSerialization:
             SerializablePreprocessor.deserialize(fake_serialized)
 
         assert exc_info.value.preprocessor_type == "NonExistentEncoder"
+
+
+def test_encoders_fit_via_aggregation():
+    """Encoder fits register plan aggregators, not driver-side callable stats.
+
+    This is what allows a `Dataset.aggregate()`-based fit (one distributed
+    query per preprocessor, batchable with others) instead of the previous
+    map_batches + driver-side counter merge.
+    """
+    df = pd.DataFrame({"A": ["a", "b", "a"], "B": [["x"], ["y"], ["x", "y"]]})
+    ds = ray.data.from_pandas(df)
+
+    encoders = [
+        OrdinalEncoder(["A"]),
+        OneHotEncoder(["A"], max_categories={"A": 1}),
+        MultiHotEncoder(["B"]),
+        LabelEncoder("A"),
+        Categorizer(["A"]),
+    ]
+    for encoder in encoders:
+        encoder.fit(ds)
+        assert not encoder._stat_computation_plan.has_custom_stat_fn(), (
+            f"{type(encoder).__name__} should fit via aggregators, "
+            "not callable stats"
+        )
+        assert encoder.has_stats(), f"{type(encoder).__name__} should have stats"
+
+
+@pytest.mark.parametrize(
+    "make_encoder",
+    [
+        pytest.param(
+            lambda: OrdinalEncoder(["t"], encode_lists=False),
+            id="OrdinalEncoder_whole_lists",
+        ),
+        pytest.param(lambda: OneHotEncoder(["t"]), id="OneHotEncoder"),
+    ],
+)
+def test_whole_list_categories_across_multiple_partial_aggregates(
+    make_encoder, restore_data_context
+):
+    """With whole-list categories, partial aggregates from different blocks must
+    merge into whole lists, not into their inner elements."""
+    # One partial aggregate per block (Ray otherwise batches small inputs together).
+    restore_data_context.shuffle_input_batch_bytes = 0
+    lists = [["a", "b"], ["a", "b"], ["c"], ["a", "b"], ["d", "e"], ["c"]] * 3
+    ds = ray.data.from_items([{"t": v} for v in lists], override_num_blocks=6)
+
+    encoder = make_encoder().fit(ds)
+
+    stats = encoder.stats_["unique_values(t)"]
+    categories = {tuple(cat): idx for cat, idx in stats.items()}
+    assert categories == {("a", "b"): 0, ("c",): 1, ("d", "e"): 2}
+
+
+@pytest.mark.parametrize(
+    "make_encoder, expected",
+    [
+        pytest.param(
+            lambda: OneHotEncoder(["t"]), {(1, 2): 0, (3, 4): 1}, id="OneHotEncoder"
+        ),
+        pytest.param(
+            lambda: OrdinalEncoder(["t"], encode_lists=False),
+            {(1, 2): 0, (3, 4): 1},
+            id="OrdinalEncoder_whole_arrays",
+        ),
+        pytest.param(
+            lambda: OneHotEncoder(["t"], max_categories={"t": 1}),
+            {(1, 2): 0},
+            id="OneHotEncoder_max_categories",
+        ),
+        # With list encoding on (the OrdinalEncoder default), arrays are split
+        # into their elements, as the previous fit path did.
+        pytest.param(
+            lambda: OrdinalEncoder(["t"]),
+            {1: 0, 2: 1, 3: 2, 4: 3},
+            id="OrdinalEncoder_flattens_arrays",
+        ),
+    ],
+)
+def test_encoders_fit_tensor_columns(make_encoder, expected, restore_data_context):
+    """Arrow has no `unique`/`value_counts` kernel for extension types such as
+    tensors, but the encoders have always accepted a column of arrays, treating
+    each array as one category."""
+    # One partial aggregate per block (Ray otherwise batches small inputs together).
+    restore_data_context.shuffle_input_batch_bytes = 0
+    arrays = [np.array([1, 2]), np.array([3, 4]), np.array([1, 2])]
+    ds = ray.data.from_items([{"t": a} for a in arrays], override_num_blocks=3)
+
+    encoder = make_encoder().fit(ds)
+
+    stats = encoder.stats_["unique_values(t)"]
+    assert {_as_python_ints(cat): idx for cat, idx in stats.items()} == expected
+
+
+def _as_python_ints(category):
+    if isinstance(category, (tuple, list, np.ndarray)):
+        return tuple(int(x) for x in category)
+    return int(category)
+
+
+@pytest.mark.parametrize(
+    "make_encoder",
+    [
+        pytest.param(lambda: MultiHotEncoder(["c"]), id="MultiHotEncoder"),
+        pytest.param(lambda: OrdinalEncoder(["c"]), id="OrdinalEncoder"),
+    ],
+)
+def test_list_encoders_skip_null_rows(make_encoder):
+    """A missing row in a list column contributes no categories."""
+    rows = [["a"], None, ["a", "b"]]
+    ds = ray.data.from_items([{"c": r} for r in rows], override_num_blocks=1)
+
+    encoder = make_encoder().fit(ds)
+
+    assert encoder.stats_["unique_values(c)"] == {"a": 0, "b": 1}
+
+
+@pytest.mark.parametrize("polars_available", [True, False])
+def test_whole_list_encoders_fit_with_and_without_polars(monkeypatch, polars_available):
+    """Whole-list categories stay whole, both when the vectorized path (which
+    needs the optional `polars` package) collects and merges them and when the
+    Python fallback does (used without `polars`)."""
+    if polars_available:
+        pytest.importorskip("polars")
+    else:
+        monkeypatch.setitem(sys.modules, "polars", None)  # `import polars` now fails
+    encoder = OneHotEncoder(["t"])
+    encoder._fit(None)
+    (spec,) = list(encoder._stat_computation_plan)
+    aggregator = spec.stat_fn
+    table = pa.table({"t": [["a", "b"], ["c"], ["a", "b"]]})
+
+    partials = [_to_pylist(aggregator.aggregate_block(table)) for _ in range(2)]
+    # A null row stands for an empty group.
+    merged = aggregator._combine_column(pa.chunked_array([pa.array(partials + [None])]))
+
+    assert {tuple(category) for category in _to_pylist(merged)} == {("a", "b"), ("c",)}
+
+
+def _to_pylist(values):
+    if isinstance(values, (pa.Array, pa.ChunkedArray)):
+        return values.to_pylist()
+    return values
 
 
 if __name__ == "__main__":

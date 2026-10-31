@@ -5,6 +5,10 @@ from typing import Any, Dict
 import ray as real_ray
 import ray.util.client.server.server as ray_client_server
 from ray._common.network_utils import build_address, get_localhost_ip
+from ray._private.authentication.authentication_token_setup import (
+    enable_token_auth_by_default,
+    ensure_token_if_auth_enabled,
+)
 from ray._private.client_mode_hook import disable_client_hook
 from ray.job_config import JobConfig
 from ray.util.client import ray
@@ -43,6 +47,12 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwar
     ray._inside_client_test = True
     with disable_client_hook():
         assert not ray.is_initialized()
+    if ray_connect_handler is None:
+        # The default handler's bare ray.init() turns on token auth for this
+        # process when RAY_AUTH_MODE is unset. Do it before the server and
+        # client exist, so neither sees the auth mode change under it.
+        enable_token_auth_by_default()
+        ensure_token_if_auth_enabled()
     server = ray_client_server.serve(
         get_localhost_ip(), 50051, ray_connect_handler=ray_connect_handler
     )

@@ -1,0 +1,10 @@
+name: "docstringbuild"
+froms: ["cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON"]
+dockerfile: ci/docker/docstring.build.Dockerfile
+srcs:
+  - python/deplocks/docs/docstring_examples_depset_py$PYTHON.lock
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON
+  - PYTHON
+tags:
+  - cr.ray.io/rayproject/docstringbuild

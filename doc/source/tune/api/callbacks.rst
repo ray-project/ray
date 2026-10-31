@@ -28,7 +28,6 @@ Callback Initialization and Setup
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Callback.setup
 
@@ -38,7 +37,6 @@ Callback Hooks
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Callback.on_checkpoint
     Callback.on_experiment_end
@@ -60,7 +58,6 @@ properly by Tune.
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Callback.get_state
     Callback.set_state

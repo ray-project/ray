@@ -633,8 +633,7 @@ class LongPollHost:
         return proto.SerializeToString()
 
     def notify_changed(self, updates: Mapping[KeyType, Any]) -> None:
-        """
-        Update the current snapshot of some objects
+        """Update the current snapshot of some objects
         and notify any long poll clients.
         """
         notify_time = time.time()

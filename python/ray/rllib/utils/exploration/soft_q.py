@@ -30,9 +30,10 @@ class SoftQ(StochasticSampling):
 
         Args:
             action_space: The gym action space used by the environment.
+            framework: One of None, "tf", "torch".
             temperature: The temperature to divide model outputs by
                 before creating the Categorical distribution to sample from.
-            framework: One of None, "tf", "torch".
+            **kwargs: Forwarded to the parent `StochasticSampling` constructor.
         """
         assert isinstance(action_space, (Discrete, MultiDiscrete))
         super().__init__(action_space, framework=framework, **kwargs)

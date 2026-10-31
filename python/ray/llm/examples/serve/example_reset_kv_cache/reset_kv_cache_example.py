@@ -1,5 +1,4 @@
-"""
-Example: Resetting KV Cache in Ray Serve LLM via Control Plane Messages.
+"""Example: Resetting KV Cache in Ray Serve LLM via Control Plane Messages.
 
 This example demonstrates two approaches to reset the KV cache on all replicas
 of a Ray Serve LLM deployment using DevIngress:

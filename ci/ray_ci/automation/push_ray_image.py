@@ -45,6 +45,11 @@ ARTIFACT_MOUNT_IMAGE_INFO_DIR = "/artifact-mount/.image-info"
 # crane-exported tar). Written by ci/docker/ray-image.Dockerfile.
 PIP_FREEZE_PATH_IN_IMAGE = os.path.join("home", "ray", "pip-freeze.txt")
 
+# Platforms published to Docker Hub only as nightly images for now. They are
+# still built on releases/* branches, but not pushed, so they don't ship as part
+# of a Ray release yet.
+NIGHTLY_ONLY_PLATFORMS = {"cu13.3.1-cudnn"}
+
 
 class PushRayImageError(Exception):
     """Error raised when pushing ray images fails."""
@@ -359,6 +364,13 @@ def main(
 
     all_tags = []
     for plat in platforms:
+        if plat in NIGHTLY_ONLY_PLATFORMS and branch.startswith("releases/"):
+            logger.info(
+                f"Skipping platform {plat}: nightly-only, not published from "
+                f"release branch {branch}"
+            )
+            continue
+
         logger.info(f"\n{'='*60}\nProcessing platform: {plat}\n{'='*60}")
 
         ctx = RayImagePushContext(

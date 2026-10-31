@@ -108,9 +108,15 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
     "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
 )
 
+DEFAULT_ENABLE_AGGREGATION_BASED_PREPROCESSORS = env_bool(
+    "RAY_DATA_ENABLE_AGGREGATION_BASED_PREPROCESSORS", True
+)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
+
+DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE = 64 * 1024 * 1024
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
@@ -135,7 +141,7 @@ def _deduce_default_shuffle_compression() -> str:
             "RAY_DATA_SHUFFLE_COMPRESSION instead"
         )
 
-    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "lz4")
 
 
 DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
@@ -708,13 +714,14 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
-            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
-            driver-side first-file sampling for schema inference,
-            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to True;
-            override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
-            V2). Parquet is the only reader migrated to V2 so far; the others
-            read through V1 for now regardless of this flag.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
+            ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
+            Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
+            (``0`` for V1, ``1`` for V2).
+        small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
+            runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
+            Contiguous row groups are coalesced up to this size; a single row group
+            larger than it is shuffled on its own.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -888,7 +895,7 @@ class DataContext:
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         shuffle_compression: Codec used to compress shuffle intermediate
-            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            shards: "none", "lz4", or "zstd" (default "lz4"). Deprecated
             alias: ``hash_shuffle_compression``.
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
@@ -907,7 +914,7 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_disk_based_hash_shuffle: Whether keyed ``repartition()``,
+        use_disk_based_hash_shuffle: Whether ``repartition()`` with keys or shuffle,
             aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
             disk-based (file-transport) shuffle instead of the object
             store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
@@ -963,6 +970,13 @@ class DataContext:
             assign multi-dimensional arrays into columns or rely on numpy-only
             operations (e.g. ``%``) that Arrow-backed columns do not implement.
         batch_to_block_arrow_format: Whether to convert Pandas batches to Arrow blocks by default when calling `BlockAccessor.batch_to_block`.
+        enable_aggregation_based_preprocessors: Whether fitting a preprocessor
+            ``Chain`` defers each member's statistics computation and batches
+            independent members' aggregations into a single dataset scan at the
+            first ``transform()`` (computed over the dataset that was passed to
+            ``fit()``). When enabled, ``Chain.fit()`` returns without computing
+            member statistics; they materialize at the first ``transform()``,
+            ``transform_batch()``, or serialization. Defaults to ``True``.
         gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
             to total GPUs available in the cluster.
         gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
@@ -1099,6 +1113,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    small_shuffle_chunk_size: int = DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
@@ -1193,6 +1208,10 @@ class DataContext:
     )
 
     batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
+
+    enable_aggregation_based_preprocessors: bool = (
+        DEFAULT_ENABLE_AGGREGATION_BASED_PREPROCESSORS
+    )
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
@@ -1356,21 +1375,16 @@ class DataContext:
         Changes to `DataContext.get_current()` will not impact existing Datasets.
 
         Examples:
-
-            .. testcode::
-                import ray
-
-                context = ray.data.DataContext.get_current()
-
-                context.target_max_block_size = 100 * 1024 ** 2
-                ds1 = ray.data.range(1)
-                context.target_max_block_size = 1 * 1024 ** 2
-                ds2 = ray.data.range(1)
-
-                # ds1's target_max_block_size will be 100MB
-                ds1.take_all()
-                # ds2's target_max_block_size will be 1MB
-                ds2.take_all()
+            >>> import ray
+            >>> context = ray.data.DataContext.get_current()
+            >>> context.target_max_block_size = 100 * 1024 ** 2
+            >>> ds1 = ray.data.range(1)
+            >>> context.target_max_block_size = 1 * 1024 ** 2
+            >>> ds2 = ray.data.range(1)
+            >>> # ds1's target_max_block_size will be 100MB
+            >>> _ = ds1.take_all()
+            >>> # ds2's target_max_block_size will be 1MB
+            >>> _ = ds2.take_all()
 
         Developer notes: Avoid using `DataContext.get_current()` in data
         internal components, use the DataContext object captured in the

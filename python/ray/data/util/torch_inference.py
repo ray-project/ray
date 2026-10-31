@@ -39,37 +39,29 @@ class TorchInference:
     untouched.
 
     Examples:
-
         Minimal — only :meth:`process_on_device`, everything else default:
 
-        .. testcode::
-            :skipif: True
-
-            import numpy as np
-            import torch
-            import ray
-            from ray.data.util.torch_inference import TorchInference
-
-            class MyInferenceActor(TorchInference):
-
-                def initialize(self):
-                    self.model = torch.nn.Identity().cuda().eval()
-
-                def process_on_device(
-                    self, input_batch, collated_tensors, collated_other
-                ):
-                    out = self.model(collated_tensors["data"])
-                    return {"mean": out.float().mean(dim=1)}
-
-            ds = (
-                ray.data.from_numpy(np.ones((32, 100), dtype=np.float32))
-                .map_batches(
-                    MyInferenceActor,
-                    batch_size=4,
-                    compute=ray.data.ActorPoolStrategy(size=1),
-                    num_gpus=1,
-                )
-            )
+        >>> import numpy as np  # doctest: +SKIP_EXAMPLE
+        >>> import torch
+        >>> import ray
+        >>> from ray.data.util.torch_inference import TorchInference
+        >>> class MyInferenceActor(TorchInference):
+        ...     def initialize(self):
+        ...         self.model = torch.nn.Identity().cuda().eval()
+        ...     def process_on_device(
+        ...         self, input_batch, collated_tensors, collated_other
+        ...     ):
+        ...         out = self.model(collated_tensors["data"])
+        ...         return {"mean": out.float().mean(dim=1)}
+        >>> ds = (
+        ...     ray.data.from_numpy(np.ones((32, 100), dtype=np.float32))
+        ...     .map_batches(
+        ...         MyInferenceActor,
+        ...         batch_size=4,
+        ...         compute=ray.data.ActorPoolStrategy(size=1),
+        ...         num_gpus=1,
+        ...     )
+        ... )
 
     .. note::
         Don't define ``__init__`` in your subclass — put setup code in

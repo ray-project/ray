@@ -6,17 +6,17 @@ myst:
 
 # Anti-pattern: Returning ray.put() ObjectRefs from a task harms performance and fault tolerance
 
-**TLDR:** Avoid calling {func}`ray.put() <ray.put>` on task return values and returning the resulting ObjectRefs. Instead, return these values directly if possible.
+Avoid calling {func}`ray.put() <ray.put>` on task return values and returning the resulting object refs. Instead, return the values directly if possible.
 
-Returning ray.put() ObjectRefs are considered anti-patterns for the following reasons:
+Returning `ray.put()` object refs from a task is an anti-pattern for the following reasons:
 
-- It disallows inlining small return values: Ray has a performance optimization to return small (<= 100KB) values inline directly to the caller, avoiding going through the distributed object store. On the other hand, `ray.put()` will unconditionally store the value to the object store which makes the optimization for small return values impossible.
-- Returning ObjectRefs involves extra distributed reference counting protocol which is slower than returning the values directly.
-- It's less {ref}`fault tolerant <fault-tolerance>`: the worker process that calls `ray.put()` is the "owner" of the returned `ObjectRef` and the return value fate shares with the owner. If the worker process dies, the return value is lost. In contrast, the caller process (often the driver) is the owner of the return value if it's returned directly.
+- It prevents Ray from inlining small return values. As a performance optimization, Ray returns small values of 100 KB or less inline, directly to the caller, without going through the distributed object store. `ray.put()` unconditionally stores the value in the object store, which makes this optimization impossible.
+- Returning object refs involves an extra distributed reference counting protocol, which is slower than returning the values directly.
+- It's less {ref}`fault tolerant <fault-tolerance>`. The worker process that calls `ray.put()` is the "owner" of the returned `ObjectRef`, and the return value fate-shares with the owner. If the worker process dies, the return value is lost. In contrast, when the task returns the value directly, the caller process owns the return value. The caller is often the driver.
 
 ## Code example
 
-If you want to return a single value regardless if it's small or large, you should return it directly.
+To return a single value, whether it's small or large, return it directly.
 
 ```{literalinclude} ../doc_code/anti_pattern_return_ray_put.py
 :language: python
@@ -24,7 +24,7 @@ If you want to return a single value regardless if it's small or large, you shou
 :end-before: __return_single_value_end__
 ```
 
-If you want to return multiple values and you know the number of returns before calling the task, you should use the {ref}`num_returns <ray-task-returns>` option.
+To return multiple values when you know the number of returns before calling the task, use the {ref}`num_returns <ray-task-returns>` option.
 
 ```{literalinclude} ../doc_code/anti_pattern_return_ray_put.py
 :language: python
@@ -32,7 +32,7 @@ If you want to return multiple values and you know the number of returns before 
 :end-before: __return_static_multi_values_end__
 ```
 
-If you don't know the number of returns before calling the task, you should use the {ref}`dynamic generator <dynamic-generators>` pattern if possible.
+If you don't know the number of returns before calling the task, use the {ref}`dynamic generator <dynamic-generators>` pattern if possible.
 
 ```{literalinclude} ../doc_code/anti_pattern_return_ray_put.py
 :language: python

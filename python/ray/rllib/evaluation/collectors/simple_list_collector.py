@@ -665,8 +665,7 @@ class SimpleListCollector(SampleCollector):
         `Policy.compute_actions()` call.
 
         Args:
-            agent_key (Tuple[EpisodeID, AgentID]: A unique agent key (across
-                vectorized environments).
+            agent_key: A unique agent key (across vectorized environments).
         """
         pid = self.agent_key_to_policy_id[agent_key]
 

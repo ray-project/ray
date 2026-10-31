@@ -122,6 +122,11 @@ def vtrace_torch(
             rho^bar in the paper.
         clip_pg_rho_threshold: A scalar float32 tensor with the clipping threshold
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
+
+    Returns:
+        A tuple consisting of the V-trace value targets (vs) and the V-trace policy
+        gradient advantages (pg_advantages), both float32 tensors of shape [T, B] and
+        both detached from the computation graph (no gradients flow through them).
     """
     log_rhos = target_action_log_probs - behaviour_action_log_probs
 

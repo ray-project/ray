@@ -43,7 +43,7 @@ Note that jobs started in these ways are not managed by the Ray Jobs API, so the
 
 quickstart
 sdk
-jobs-package-ref
+../../../core/api/job-submission
 cli
 rest
 api

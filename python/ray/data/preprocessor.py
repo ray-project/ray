@@ -152,6 +152,7 @@ class Preprocessor(abc.ABC):
 
     @property
     def stat_computation_plan(self):
+        """The aggregations that :meth:`fit` runs to compute statistics."""
         return self._stat_computation_plan
 
     class FitStatus(str, Enum):
@@ -170,6 +171,13 @@ class Preprocessor(abc.ABC):
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
 
+    # Whether this preprocessor's `_fit` only registers aggregations on the
+    # stat computation plan (no eager dataset scan, no callable stats), so a
+    # `Chain` may defer and batch its statistics computation. Subclasses whose
+    # `_fit` satisfies that contract should set this to True. See
+    # `DataContext.enable_aggregation_based_preprocessors`.
+    _supports_deferred_fit = False
+
     def _check_has_fitted_state(self):
         """Checks if the Preprocessor has fitted state.
 
@@ -183,6 +191,15 @@ class Preprocessor(abc.ABC):
         return bool(fitted_vars)
 
     def fit_status(self) -> "Preprocessor.FitStatus":
+        """Return the fit status of this preprocessor.
+
+        Returns:
+            ``FitStatus.NOT_FITTABLE`` if this preprocessor doesn't need fitting,
+            ``FitStatus.FITTED`` if it has been fit, and ``FitStatus.NOT_FITTED``
+            otherwise. Subclasses can override this. For example,
+            :class:`~ray.data.preprocessors.Chain` also returns
+            ``FitStatus.PARTIALLY_FITTED``.
+        """
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
         elif (
@@ -228,10 +245,20 @@ class Preprocessor(abc.ABC):
         return fitted_ds
 
     def _fit_execute(self, dataset: "Dataset"):
+        if getattr(self, "_defer_fit_execute", False):
+            # A Chain is batching this preprocessor's statistics computation
+            # with its other members'; the registered plan is executed by the
+            # Chain instead. See `ray.data.preprocessors.chain.Chain`.
+            return self
         self.stats_ |= self._stat_computation_plan.compute(dataset)
         return self
 
     def has_stats(self) -> bool:
+        """Return whether this preprocessor holds computed statistics.
+
+        Returns:
+            ``True`` if ``stats_`` is set and non-empty, ``False`` otherwise.
+        """
         return hasattr(self, "stats_") and len(self.stats_) > 0
 
     def fit_transform(
@@ -588,9 +615,21 @@ class Preprocessor(abc.ABC):
         return BatchFormat.PANDAS
 
     def get_input_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor reads.
+
+        Returns:
+            The input column names. The default implementation returns the
+            preprocessor's ``columns``, or an empty list if it has none.
+        """
         return getattr(self, "_columns", getattr(self, "columns", []))
 
     def get_output_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor writes.
+
+        Returns:
+            The output column names. The default implementation returns the
+            preprocessor's ``output_columns``, or an empty list if it has none.
+        """
         return getattr(self, "_output_columns", getattr(self, "output_columns", []))
 
     def __getstate__(self) -> Dict[str, Any]:
@@ -700,21 +739,20 @@ class SerializablePreprocessorBase(Preprocessor, abc.ABC):
         If the serialized version differs from the current ``VERSION``,
         implement migration logic to handle schema changes:
 
-        .. testcode::
-
-            def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
-                # Handle version migration
-                if version == 1 and self.VERSION == 2:
-                    # Migrate from version 1 to 2
-                    if "old_field" in fields:
-                        fields["new_field"] = migrate_old_field(fields.pop("old_field"))
-
-                # Set all fields
-                for key, value in fields.items():
-                    setattr(self, key, value)
-
-                # Reinitialize derived state
-                self._stat_computation_plan = StatComputationPlan()
+        >>> from typing import Any, Dict
+        >>> def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        ...     # Handle version migration
+        ...     if version == 1 and self.VERSION == 2:
+        ...         # Migrate from version 1 to 2
+        ...         if "old_field" in fields:
+        ...             fields["new_field"] = migrate_old_field(fields.pop("old_field"))
+        ...
+        ...     # Set all fields
+        ...     for key, value in fields.items():
+        ...         setattr(self, key, value)
+        ...
+        ...     # Reinitialize derived state
+        ...     self._stat_computation_plan = StatComputationPlan()
 
         Args:
             fields: Dictionary of field names to values

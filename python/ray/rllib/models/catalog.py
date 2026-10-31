@@ -150,12 +150,11 @@ class ModelCatalog:
 
         Args:
             action_space: Action space of the target gym env.
-            config (Optional[dict]): Optional model config.
-            dist_type (Optional[Union[str, Type[ActionDistribution]]]):
-                Identifier of the action distribution (str) interpreted as a
-                hint or the actual ActionDistribution class to use.
+            config: Optional model config.
+            dist_type: Identifier of the action distribution (str) interpreted
+                as a hint or the actual ActionDistribution class to use.
             framework: One of "tf2", "tf", "torch", or "jax".
-            kwargs: Optional kwargs to pass on to the Distribution's
+            **kwargs: Optional kwargs to pass on to the Distribution's
                 constructor.
 
         Returns:
@@ -358,7 +357,7 @@ class ModelCatalog:
             model_interface: Interface required for the model
             default_model: Override the default class for the model. This
                 only has an effect when not using a custom model
-            model_kwargs: Args to pass to the ModelV2 constructor
+            **model_kwargs: Args to pass to the ModelV2 constructor
 
         Returns:
             model (ModelV2): Model to use for the policy.
@@ -738,8 +737,8 @@ class ModelCatalog:
         {"custom_action_dist": action_dist_name} in the model config.
 
         Args:
-            model_name: Name to register the action distribution under.
-            model_class: Python class of the action distribution.
+            action_dist_name: Name to register the action distribution under.
+            action_dist_class: Python class of the action distribution.
         """
         _global_registry.register(
             RLLIB_ACTION_DIST, action_dist_name, action_dist_class

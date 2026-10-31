@@ -81,10 +81,12 @@ class FileManifest:
     All extracted views (i.e., `paths`, `file_sizes`, `file_chunk_metadatas`) share
     the same row order as the underlying block. Any transformation must preserve this.
 
-    Each row represents a single chunk of a file. For unchunked files (whole-file
-    reads), the chunk-metadata entry is ``None`` and ``file_sizes`` equals the
-    on-disk file size. For chunked files, multiple rows can share the same path
-    but carry different chunk metadata.
+    Read it as a manifest of chunks, not of files: each row is one chunk of
+    work for a reader, which is a whole file unless its chunk-metadata entry
+    narrows it to a run of read units. For unchunked files (whole-file reads),
+    the chunk-metadata entry is ``None`` and ``file_sizes`` equals the on-disk
+    file size. For chunked files, multiple rows can share the same path but
+    carry different chunk metadata.
     """
 
     def __init__(self, block: Block):

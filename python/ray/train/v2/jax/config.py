@@ -38,6 +38,18 @@ _JAX_MULTISLICE_OVERRIDE_KEYS = frozenset(
 @PublicAPI(stability="alpha")
 @dataclass
 class JaxConfig(BackendConfig):
+    """Configuration for JAX distributed training setup.
+
+    If neither ``use_tpu`` nor ``use_gpu`` is ``True``, Ray Train doesn't set up
+    JAX distributed training.
+
+    Args:
+        use_tpu: Whether to set up JAX for TPU. If ``JAX_PLATFORMS`` isn't set,
+            sets it to ``"tpu"``.
+        use_gpu: Whether to set up JAX for GPU. If ``JAX_PLATFORMS`` isn't set,
+            sets it to ``"cuda"``.
+    """
+
     use_tpu: bool = False
     use_gpu: bool = False
 

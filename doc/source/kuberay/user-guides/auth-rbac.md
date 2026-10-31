@@ -41,7 +41,7 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the lates
 
 If you are using KubeRay v1.6.0 or newer, you can use the `authOptions` API in RayCluster to enable RBAC authentication:
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.kubernetes.auth.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.kubernetes.auth.yaml
 ```
 
 When enabled, the KubeRay operator will:
@@ -52,7 +52,7 @@ When enabled, the KubeRay operator will:
 If you are using a KubeRay version older than v1.7.0, you can enable RBAC authentication by setting the `RAY_AUTH_MODE` and `RAY_ENABLE_K8S_TOKEN_AUTH` environment variables and manually mounting the projected service account token to the Ray containers. See the following example:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.kubernetes.auth-manual.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.kubernetes.auth-manual.yaml
 ```
 
 The examples above also create the following Kubernetes RBAC objects:

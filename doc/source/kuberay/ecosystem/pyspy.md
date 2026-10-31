@@ -38,7 +38,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Create a RayCluster with `SYS_PTRACE` capability
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
 ```
 
 ### Step 4: Forward the dashboard port
@@ -67,11 +67,11 @@ python3 samples/long_running_task.py
 - Visit http://localhost:8265/#/cluster.
 - Click `Stack Trace` for `ray::long_running_task`. ![StackTrace](../images/stack_trace.png)
 - Click `CPU Flame Graph` for `ray::long_running_task`. ![FlameGraph](../images/cpu_flame_graph.png)
-- For additional details on using the profiler, See [Python CPU profiling in the dashboard](https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/optimize-performance.html#python-cpu-profiling-in-the-dashboard).
+- For additional details on using the profiler, See [Python CPU profiling in the dashboard](../../ray-observability/user-guides/debug-apps/optimize-performance.md#python-cpu-profiling-in-the-dashboard).
 
 ### Step 7: Clean up
 
 ```bash
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
 helm uninstall kuberay-operator
 ```

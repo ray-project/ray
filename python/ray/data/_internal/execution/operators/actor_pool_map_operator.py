@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -291,9 +292,10 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self,
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
     ):
         self._actor_locality_enabled = options.actor_locality_enabled
-        super().start(options, block_ref_counter)
+        super().start(options, block_ref_counter, lineage_tracker)
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(

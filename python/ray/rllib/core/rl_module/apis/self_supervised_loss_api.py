@@ -42,6 +42,8 @@ class SelfSupervisedLossAPI(abc.ABC):
             config: The AlgorithmConfig specific to the given `module_id`.
             batch: The sample batch for this particular RLModule.
             fwd_out: The output of the forward pass for this particular RLModule.
+            **kwargs: Additional keyword arguments forwarded by the Learner to the
+                loss computation.
 
         Returns:
             A single total loss tensor. If you have more than one optimizer on the

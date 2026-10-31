@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Callable, List, Optional
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -52,6 +53,7 @@ class InputDataBuffer(PhysicalOperator):
         self,
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
     ) -> None:
         if not self._is_input_initialized:
             self._input_data = self._input_data_factory(
@@ -64,7 +66,7 @@ class InputDataBuffer(PhysicalOperator):
         # so we record input metrics here
         for bundle in self._input_data:
             self._metrics.on_input_received(bundle)
-        super().start(options, block_ref_counter)
+        super().start(options, block_ref_counter, lineage_tracker)
 
     def has_next(self) -> bool:
         return self._input_data_index < len(self._input_data)

@@ -73,35 +73,6 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         self.clear_internal_output_queue()
 
 
-class OneToOneOperator(PhysicalOperator):
-    """An operator that has one input and one output dependency.
-
-    This operator serves as the base for map, filter, limit, etc.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        input_op: PhysicalOperator,
-        data_context: DataContext,
-        target_max_block_size_override: Optional[int] = None,
-    ):
-        """Create a OneToOneOperator.
-
-        Args:
-            name: The name of this operator.
-            input_op: Operator generating input data for this op.
-            data_context: The :class:`DataContext` to use for this operator.
-            target_max_block_size_override: The target maximum number of bytes to
-                include in an output block.
-        """
-        super().__init__(name, [input_op], data_context, target_max_block_size_override)
-
-    @property
-    def input_dependency(self) -> PhysicalOperator:
-        return self.input_dependencies[0]
-
-
 class AllToAllOperator(
     InternalQueueOperatorMixin, SubProgressBarMixin, PhysicalOperator
 ):

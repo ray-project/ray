@@ -1,5 +1,4 @@
-"""
-[1] Mastering Diverse Domains through World Models - 2023
+"""[1] Mastering Diverse Domains through World Models - 2023
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 
@@ -263,6 +262,9 @@ class DreamerV3Config(AlgorithmConfig):
                 "type": "EpisodeReplayBuffer",
                 "capacity": 100000,
                 }
+            use_curiosity: Not supported yet. Setting this raises a ValueError.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -708,7 +710,7 @@ class DreamerV3(Algorithm):
 
     # TODO (sven): Remove this once DreamerV3 is on the new SingleAgentEnvRunner.
     @PublicAPI
-    def __setstate__(self, state) -> None:
+    def __setstate__(self, state: Dict) -> None:
         """Sts the algorithm to the provided state
 
         Args:

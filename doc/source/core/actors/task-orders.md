@@ -6,10 +6,10 @@ myst:
 
 (actor-task-order)=
 
-# Actor Task Execution Order
+# Actor task execution order
 
-## Synchronous, Single-Threaded Actor
-In Ray, an actor receives tasks from multiple submitters (including driver and workers). For tasks received from the same submitter, a synchronous, single-threaded actor executes them in the order they were submitted, unless you set `allow_out_of_order_execution`, or Ray retries tasks. In other words, a given task will not be executed until previously submitted tasks from the same submitter have finished execution. For actors where `max_task_retries` is set to a non-zero number, the task execution order is not guaranteed when task retries occur.
+## Synchronous, single-threaded actor
+An actor receives tasks from multiple submitters, including the driver and workers. A synchronous, single-threaded actor executes tasks from the same submitter in submission order, unless you set `allow_out_of_order_execution` or Ray retries tasks. The actor doesn't start a task until all earlier tasks from the same submitter finish. If you set `max_task_retries` to a nonzero value for an actor, Ray doesn't guarantee task execution order when tasks retry.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -46,7 +46,7 @@ print(ray.get(value1))
 ::::
 
 
-However, the actor does not guarantee the execution order of the tasks from different submitters. For example, suppose an unfulfilled argument blocks a previously submitted task. In this case, the actor can still execute tasks submitted by a different worker.
+However, the actor doesn't guarantee execution order for tasks from different submitters. For example, if an unfulfilled argument blocks an earlier task, the actor can still execute tasks that a different worker submits.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -96,8 +96,8 @@ print(ray.get(value1))
 ::::
 
 
-## Asynchronous or Threaded Actor
-{ref}`Asynchronous or threaded actors <async-actors>` do not guarantee the task execution order. This means the system might execute a task even though previously submitted tasks are pending execution.
+## Asynchronous or threaded actor
+{ref}`Asynchronous or threaded actors <async-actors>` don't guarantee task execution order. Ray might execute a task even while earlier tasks are still pending.
 
 ::::{tab-set}
 :::{tab-item} Python

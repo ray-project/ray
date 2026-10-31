@@ -227,14 +227,14 @@ class SingleAgentEpisode:
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
                 with reward data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
+            terminated: A boolean indicating, if the episode is already terminated.
+            truncated: A boolean indicating, if the episode has been truncated.
             extra_model_outputs: A dict mapping string keys to either lists of
                 individual extra model output tensors (e.g. `action_logp` or
                 `state_outs`) from a sampling or to already instantiated
                 `InfiniteLookbackBuffer` object (possibly with extra model output data
                 in it). If mapping is to lists, will construct the buffers automatically
                 (given the data and the `len_lookback_buffer` argument).
-            terminated: A boolean indicating, if the episode is already terminated.
-            truncated: A boolean indicating, if the episode has been truncated.
             t_started: Optional. The starting timestep of the episode. The default
                 is zero. If data is provided, the starting point is from the last
                 observation onwards (i.e. `t_started = len(observations) - 1`). If
@@ -1183,7 +1183,7 @@ class SingleAgentEpisode:
     def set_observations(
         self,
         *,
-        new_data,
+        new_data: Any,
         at_indices: Optional[Union[int, List[int], slice]] = None,
         neg_index_as_lookback: bool = False,
     ) -> None:
@@ -1238,7 +1238,7 @@ class SingleAgentEpisode:
     def set_actions(
         self,
         *,
-        new_data,
+        new_data: Any,
         at_indices: Optional[Union[int, List[int], slice]] = None,
         neg_index_as_lookback: bool = False,
     ) -> None:
@@ -1293,7 +1293,7 @@ class SingleAgentEpisode:
     def set_rewards(
         self,
         *,
-        new_data,
+        new_data: Any,
         at_indices: Optional[Union[int, List[int], slice]] = None,
         neg_index_as_lookback: bool = False,
     ) -> None:
@@ -1348,8 +1348,8 @@ class SingleAgentEpisode:
     def set_extra_model_outputs(
         self,
         *,
-        key,
-        new_data,
+        key: str,
+        new_data: Any,
         at_indices: Optional[Union[int, List[int], slice]] = None,
         neg_index_as_lookback: bool = False,
     ) -> None:

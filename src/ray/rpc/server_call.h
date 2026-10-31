@@ -226,13 +226,11 @@ class ServerCallImpl : public ServerCall {
   void HandleRequest() override {
     stats_handle_ = io_service_.stats()->RecordStart(call_name_);
     bool auth_success = true;
-    bool token_auth_failed = false;
-    bool cluster_id_auth_failed = false;
 
     // Token authentication
-    if (!ValidateAuthenticationToken()) {
+    Status token_auth_status = ValidateAuthenticationToken();
+    if (!token_auth_status.ok()) {
       auth_success = false;
-      token_auth_failed = true;
     }
 
     // Cluster ID authentication
@@ -245,7 +243,6 @@ class ServerCallImpl : public ServerCall {
           RAY_LOG(WARNING) << "Wrong cluster ID token in request! Expected: "
                            << cluster_id_.Hex() << ", but got: " << it->second;
           auth_success = false;
-          cluster_id_auth_failed = true;
         }
       } else if constexpr (EnableAuth == ClusterIdAuthType::EMPTY_AUTH) {
         RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
@@ -255,7 +252,6 @@ class ServerCallImpl : public ServerCall {
           RAY_LOG(WARNING) << "Cluster ID token in request! Expected Nil, "
                            << "but got: " << it->second;
           auth_success = false;
-          cluster_id_auth_failed = true;
         }
       }
     }
@@ -266,8 +262,8 @@ class ServerCallImpl : public ServerCall {
     }
     if (!io_service_.stopped()) {
       io_service_.post(
-          [this, auth_success, token_auth_failed, cluster_id_auth_failed] {
-            HandleRequestImpl(auth_success, token_auth_failed, cluster_id_auth_failed);
+          [this, auth_success, token_auth_status] {
+            HandleRequestImpl(auth_success, token_auth_status);
           },
           call_name_ + ".HandleRequestImpl",
           // Implement the delay of the rpc server call as the
@@ -279,18 +275,15 @@ class ServerCallImpl : public ServerCall {
       RAY_LOG(DEBUG) << "Handle service has been closed.";
       if (auth_success) {
         SendReply(Status::Invalid("HandleServiceClosed"));
-      } else if (token_auth_failed) {
-        SendReply(Status::Unauthenticated(
-            "InvalidAuthToken: Authentication token is missing or incorrect"));
+      } else if (!token_auth_status.ok()) {
+        SendReply(token_auth_status);
       } else {
         SendReply(Status::Unauthenticated("WrongClusterID"));
       }
     }
   }
 
-  void HandleRequestImpl(bool auth_success,
-                         bool token_auth_failed,
-                         bool cluster_id_auth_failed) {
+  void HandleRequestImpl(bool auth_success, const Status &token_auth_status) {
     if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
       if (!service_handler_initialized_) {
         service_handler_.WaitUntilInitialized();
@@ -306,10 +299,9 @@ class ServerCallImpl : public ServerCall {
       factory_.CreateCall();
     }
     if (!auth_success) {
-      boost::asio::post(GetServerCallExecutor(), [this, token_auth_failed]() {
-        if (token_auth_failed) {
-          SendReply(Status::Unauthenticated(
-              "InvalidAuthToken: Authentication token is missing or incorrect"));
+      boost::asio::post(GetServerCallExecutor(), [this, token_auth_status]() {
+        if (!token_auth_status.ok()) {
+          SendReply(token_auth_status);
         } else {
           SendReply(Status::Unauthenticated(
               "WrongClusterID: Perhaps the client is accessing GCS "
@@ -367,27 +359,31 @@ class ServerCallImpl : public ServerCall {
 
  private:
   /// Validates token-based authentication.
-  /// Returns true if authentication succeeds or is not required.
-  /// Returns false if authentication is required but fails.
-  bool ValidateAuthenticationToken() {
-    // If auth token is empty, we assume auth is not required.
-    // The only exception is when ENABLE_K8S_TOKEN_AUTH is true where the server
-    // auth token can be empty.
-    if ((!auth_token_ || auth_token_->empty()) &&
-        !::RayConfig::instance().ENABLE_K8S_TOKEN_AUTH()) {
-      return true;
-    }
-
+  /// Returns OK if authentication succeeds, or Unauthenticated with the reason.
+  Status ValidateAuthenticationToken() {
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
-    if (it == metadata.end()) {
-      RAY_LOG(WARNING) << "Missing authorization header in request!";
-      return false;
+    // With auth disabled, reject clients that send a token so that they opt out too.
+    // The mode decides this, not an empty server token, which Kubernetes token auth
+    // also has.
+    if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+      if (it == metadata.end()) {
+        return Status::OK();
+      }
+      RAY_LOG(DEBUG) << "Rejecting " << call_name_
+                     << " with a token because auth is disabled";
+      return Status::Unauthenticated(kTokenAuthErrorMessage);
     }
 
-    const std::string_view header(it->second.data(), it->second.length());
-    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(auth_token_,
-                                                                            header);
+    if (it == metadata.end()) {
+      RAY_LOG(WARNING) << "Missing authorization header in request!";
+    } else if (ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
+                   auth_token_,
+                   std::string_view(it->second.data(), it->second.length()))) {
+      return Status::OK();
+    }
+    return Status::Unauthenticated(
+        "InvalidAuthToken: Authentication token is missing or incorrect");
   }
 
   /// Log the duration this query used

@@ -10,7 +10,7 @@ myst:
 
 This guide explores a specific scenario in KubeRay's RayService API where a Ray worker Pod remains in an unready state due to the absence of a Ray Serve replica.
 
-To better understand this section, you should be familiar with the following Ray Serve components: the [Ray Serve replica and ProxyActor](https://docs.ray.io/en/latest/serve/architecture.html#high-level-view).
+To better understand this section, you should be familiar with the following Ray Serve components: the [Ray Serve replica and ProxyActor](../../serve/architecture.md#high-level-view).
 
 ProxyActor is responsible for forwarding incoming requests to the corresponding Ray Serve replicas. Hence, if a head or worker Pod without a running ProxyActor receives requests, those requests will fail. KubeRay's readiness probe fails, rendering the Pods unready and preventing ProxyActor from sending requests to them.
 
@@ -30,7 +30,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 3: Install a RayService
 
 ```sh
-curl -O https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
+curl -O https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 ```
 
@@ -38,7 +38,7 @@ Look at the Ray Serve configuration `serveConfigV2` embedded in the RayService Y
   * `num_replicas`: Controls the number of replicas, that handle requests to this deployment, to run. Initialize to 1 to ensure the overall number of the Ray Serve replicas is 1.
   * `max_replicas_per_node`: Controls the maximum number of replicas on a single pod.  
 
-See [Ray Serve Documentation](https://docs.ray.io/en/master/serve/configure-serve-deployment.html) for more details.
+See [Ray Serve Documentation](../../serve/configure-serve-deployment.md) for more details.
 ```yaml
 serveConfigV2: |
   applications:
@@ -46,7 +46,7 @@ serveConfigV2: |
       import_path: ray-operator.config.samples.ray-serve.single_deployment_dag:DagNode
       route_prefix: /basic
       runtime_env:
-        working_dir: "https://github.com/ray-project/kuberay/archive/master.zip"
+        working_dir: "https://github.com/kuberay-project/kuberay/archive/master.zip"
       deployments:
         - name: BaseService
           num_replicas: 1
@@ -57,7 +57,7 @@ serveConfigV2: |
 
 Look at the head Pod configuration `rayClusterConfig:headGroupSpec` embedded in the RayService YAML.  
 The configuration sets the CPU resources for the head Pod to 0 by passing the option `num-cpus: "0"` to `rayStartParams`. This setup avoids Ray Serve replicas running on the head Pod.
-See [rayStartParams](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md) for more details.  
+See [rayStartParams](https://github.com/kuberay-project/kuberay/blob/master/docs/guidance/rayStartParams.md) for more details.  
 ```sh
 headGroupSpec:
   rayStartParams:

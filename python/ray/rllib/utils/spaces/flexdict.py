@@ -1,3 +1,5 @@
+from typing import Dict, Optional
+
 import gymnasium as gym
 
 from ray.rllib.utils.annotations import PublicAPI
@@ -13,7 +15,19 @@ class FlexDict(gym.spaces.Dict):
     See also: documentation for gym.spaces.Dict
     """
 
-    def __init__(self, spaces=None, **spaces_kwargs):
+    def __init__(
+        self,
+        spaces: Optional[Dict[str, gym.spaces.Space]] = None,
+        **spaces_kwargs: gym.spaces.Space,
+    ):
+        """Initializes a FlexDict instance.
+
+        Args:
+            spaces: Dict mapping keys to the sub-spaces of this Dict space. Mutually
+                exclusive with `spaces_kwargs`.
+            **spaces_kwargs: Alternative way of providing the sub-spaces, in which
+                each keyword argument name is a key of this Dict space.
+        """
         err = "Use either Dict(spaces=dict(...)) or Dict(foo=x, bar=z)"
         assert (spaces is None) or (not spaces_kwargs), err
 

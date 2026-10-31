@@ -75,24 +75,14 @@ def list_stats_summaries() -> "list[DatasetStatsSummary]":
     end of an execution.
 
     Examples:
-
-        .. testcode::
-
-            import tempfile
-
-            import ray
-            from ray.data import DataContext
-
-            DataContext.get_current().enable_stats_summary_collection = True
-
-            with tempfile.TemporaryDirectory() as path:
-                ray.data.range(1).write_parquet(path)
-
-            print(len(ray.data.list_stats_summaries()))
-
-        .. testoutput::
-
-            1
+        >>> import tempfile
+        >>> import ray
+        >>> from ray.data import DataContext
+        >>> DataContext.get_current().enable_stats_summary_collection = True
+        >>> with tempfile.TemporaryDirectory() as path:
+        ...     ray.data.range(1).write_parquet(path)
+        >>> print(len(ray.data.list_stats_summaries()))
+        1
 
     Returns:
         One :class:`~ray.data._internal.stats.DatasetStatsSummary` per execution, in

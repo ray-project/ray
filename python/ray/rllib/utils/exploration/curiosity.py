@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 from gymnasium.spaces import Discrete, MultiDiscrete, Space
@@ -75,6 +75,10 @@ class Curiosity(Exploration):
         Uses as defaults the hyperparameters described in [1].
 
         Args:
+             action_space: The gym action space used by the environment. Only
+                (Multi)Discrete spaces are supported.
+             framework: One of "tf", "tf2" or "torch".
+             model: The policy's model.
              feature_dim: The dimensionality of the feature (phi)
                 vectors.
              feature_net_config: Optional model
@@ -101,6 +105,7 @@ class Curiosity(Exploration):
                 the underlying Exploration to use (e.g. epsilon-greedy for
                 DQN). If None, uses the FromSpecDict provided in the Policy's
                 default config.
+             **kwargs: Forwarded to the parent `Exploration` constructor.
         """
         if not isinstance(action_space, (Discrete, MultiDiscrete)):
             raise ValueError(
@@ -400,13 +405,23 @@ class Curiosity(Exploration):
         # Return the postprocessed sample batch (with the corrected rewards).
         return sample_batch
 
-    def _create_fc_net(self, layer_dims, activation, name=None):
+    def _create_fc_net(
+        self,
+        layer_dims: List[int],
+        activation: str,
+        name: Optional[str] = None,
+    ) -> Union["nn.Sequential", "tf.keras.Sequential"]:
         """Given a list of layer dimensions (incl. input-dim), creates FC-net.
 
         Args:
-            layer_dims (Tuple[int]): Tuple of layer dims, including the input
+            layer_dims: List of layer dims, including the input
                 dimension.
             activation: An activation specifier string (e.g. "relu").
+            name: Optional name prefix for the created layers (tf only).
+
+        Returns:
+            A `torch.nn.Sequential` (if the framework is torch) or a
+            `tf.keras.Sequential` model holding the created layers.
 
         Examples:
             If layer_dims is [4,8,6] we'll have a two layer net: 4->8 (8 nodes)

@@ -43,6 +43,8 @@ class EpisodeV2:
             policy_mapping_fn: The mapping function mapping AgentIDs to
                 PolicyIDs.
             worker: The RolloutWorker instance, in which this episode runs.
+            callbacks: The RLlibCallback object to use for callback calls
+                during this episode.
         """
         # Unique id identifying this trajectory.
         self.episode_id: int = random.randrange(int(1e18))
@@ -109,6 +111,8 @@ class EpisodeV2:
 
         Args:
             agent_id: The agent ID to lookup the policy ID for.
+            refresh: Whether to re-run the policy mapping function, even if
+                the agent has already been bound to a policy ID.
 
         Returns:
             The policy ID for the specified agent.

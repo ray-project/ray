@@ -119,8 +119,16 @@ class IntrinsicCuriosityModelConnector(ConnectorV2):
         """Initializes a CountBasedCuriosity instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             intrinsic_reward_coeff: The weight with which to multiply the intrinsic
                 reward before adding it to the extrinsic rewards of the main model.
+            **kwargs: Forward API-compatibility kwargs.
         """
         super().__init__(input_observation_space, input_action_space)
 

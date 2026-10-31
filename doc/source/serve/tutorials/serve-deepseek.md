@@ -158,7 +158,7 @@ Create a KubeRay cluster using the {ref}`Ray Serve LLM KubeRay guide <kuberay-ra
 Deploy DeepSeek-R1 as a RayService with the following configuration file:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
 ```
 
 ## Troubleshooting

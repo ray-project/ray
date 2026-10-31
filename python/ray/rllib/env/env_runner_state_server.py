@@ -37,6 +37,10 @@ class EnvRunnerStateServer:
     def push(self, state: StateDict) -> None:
         """Stores the latest EnvRunner state (called once per weight sync).
 
+        Args:
+            state: The EnvRunner state dict to store. Must carry a `WEIGHTS_SEQ_NO`
+                key.
+
         Raises:
             ValueError: If `state` carries no `WEIGHTS_SEQ_NO`. Such a state could never
                 be pulled (EnvRunners version-gate via `pull_if_newer`), so we reject it

@@ -133,6 +133,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             batch_size_B: The number of episodes returned from `sample()`.
             batch_length_T: The length of each episode in the episode list returned from
                 `sample()`.
+            metrics_num_episodes_for_smoothing: The number of episodes to use for
+                smoothing (windowed averaging) of this buffer's metrics.
+            **kwargs: Forward compatibility kwargs. Passed on to the super class.
         """
         # Initialize the base episode replay buffer.
         super().__init__(
@@ -412,6 +415,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 or `"synchronized"`.
             modules_to_sample: A list of module IDs to sample from. If not provided,
                 transitions for aall modules are sampled.
+            **kwargs: Forward compatibility kwargs. Ignored by this buffer.
 
         Returns:
             A dictionary of the form `ModuleID -> SampleBatchType` containing the
@@ -582,7 +586,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         }
 
     @override(EpisodeReplayBuffer)
-    def set_state(self, state) -> None:
+    def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of a buffer from a previously stored state.
 
         See `get_state()` for more information on what is stored in the state. This
@@ -1052,7 +1056,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         # Return multi-agent dictionary.
         return ret
 
-    def _num_remaining_episodes(self, new_eps, evicted_eps):
+    def _num_remaining_episodes(
+        self, new_eps: Set[str], evicted_eps: Set[Union[str, int]]
+    ) -> int:
         """Calculates the number of remaining episodes.
 
         When adding episodes and evicting them in the `add()` method
@@ -1075,7 +1081,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         """Evicts the module episodes from the buffer adn updates all counters.
 
         Args:
-            multi_agent_eps: The multi-agent episode to evict from the buffer.
+            ma_episode: The multi-agent episode to evict from the buffer.
         """
 
         # Note we need to take the agent ids from the evicted episode because
@@ -1093,7 +1099,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         """Updates the module counters after adding an episode.
 
         Args:
-            multi_agent_episode: The multi-agent episode to update the module counters
+            ma_episode: The multi-agent episode to update the module counters
                 for.
         """
         for agent_id in ma_episode.agent_ids:

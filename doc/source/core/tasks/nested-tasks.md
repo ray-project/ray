@@ -1,12 +1,12 @@
 ---
 myst:
   html_meta:
-    description: "Call remote functions from within remote functions, and how nested tasks yield their resources while blocked."
+    description: "How to call remote functions from other remote functions, and how nested tasks yield their resources while blocked."
 ---
 
-# Nested Remote Functions
+# Nested remote functions
 
-Remote functions can call other remote functions, resulting in nested tasks. For example, consider the following.
+A remote function can call other remote functions, which results in nested tasks. Consider the following example:
 
 ```{literalinclude} ../doc_code/nested-tasks.py
 :language: python
@@ -14,25 +14,25 @@ Remote functions can call other remote functions, resulting in nested tasks. For
 :end-before: __nested_end__
 ```
 
-Then calling `g` and `h` produces the following behavior.
+Calling `g` and `h` produces the following output:
 
-```bash
->>> ray.get(g.remote())
-[ObjectRef(b1457ba0911ae84989aae86f89409e953dd9a80e),
- ObjectRef(7c14a1d13a56d8dc01e800761a66f09201104275),
- ObjectRef(99763728ffc1a2c0766a2000ebabded52514e9a6),
- ObjectRef(9c2f372e1933b04b2936bb6f58161285829b9914)]
-
->>> ray.get(h.remote())
-[1, 1, 1, 1]
-
+```python
+print(ray.get(g.remote()))
+print(ray.get(h.remote()))
 ```
 
-**One limitation** is that the definition of `f` must come before the definitions of `g` and `h` because as soon as `g` is defined, it will be pickled and shipped to the workers, and so if `f` hasn't been defined yet, the definition will be incomplete.
+```text
+[ObjectRef(b1457ba0911ae84989aae86f89409e953dd9a80e), ObjectRef(7c14a1d13a56d8dc01e800761a66f09201104275), ObjectRef(99763728ffc1a2c0766a2000ebabded52514e9a6), ObjectRef(9c2f372e1933b04b2936bb6f58161285829b9914)]
+[1, 1, 1, 1]
+```
 
-## Yielding Resources While Blocked
+:::{note}
+Define `f` before you first call `g.remote()` or `h.remote()`. Ray pickles `g` and ships it to the workers the first time you call `g.remote()`. If you haven't defined `f` by then, the definition of `g` is incomplete.
+:::
 
-Ray will release CPU resources when being blocked. This prevents deadlock cases where the nested tasks are waiting for the CPU resources held by the parent task. Consider the following remote function.
+## Yielding resources while blocked
+
+Ray releases a task's CPU resources while the task blocks. This prevents deadlocks where nested tasks wait for CPU resources that the parent task holds. Consider the following remote function:
 
 ```{literalinclude} ../doc_code/nested-tasks.py
 :language: python
@@ -40,4 +40,4 @@ Ray will release CPU resources when being blocked. This prevents deadlock cases 
 :end-before: __yield_end__
 ```
 
-When a `g` task is executing, it will release its CPU resources when it gets blocked in the call to `ray.get`. It will reacquire the CPU resources when `ray.get` returns. It will retain its GPU resources throughout the lifetime of the task because the task will most likely continue to use GPU memory.
+While a `g` task runs, it releases its CPU resources when it blocks in the call to `ray.get`, and it reacquires them when `ray.get` returns. The task keeps its GPU resources for its whole lifetime because it most likely continues to use GPU memory.

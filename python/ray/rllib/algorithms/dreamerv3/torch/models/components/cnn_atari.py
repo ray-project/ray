@@ -1,5 +1,4 @@
-"""
-[1] Mastering Diverse Domains through World Models - 2023
+"""[1] Mastering Diverse Domains through World Models - 2023
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
@@ -61,10 +60,14 @@ class CNNAtari(nn.Module):
         self.cnn_stack = config.build(framework="torch")
         self.output_size = config.output_dims
 
-    def forward(self, inputs):
+    def forward(self, inputs: "torch.Tensor") -> "torch.Tensor":
         """Performs a forward pass through the CNN Atari encoder.
 
         Args:
             inputs: The image inputs of shape (B, 64, 64, 3).
+
+        Returns:
+            The flattened outputs of the 4 CNN layers of shape (B, d), where d is
+            the product of the last CNN layer's output dimensions.
         """
         return self.cnn_stack({SampleBatch.OBS: inputs})[ENCODER_OUT]

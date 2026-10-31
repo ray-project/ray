@@ -74,6 +74,12 @@ class Stats:
                 and m is the number of parallel metrics loggers invovled (for example,
                 m EnvRunners). To be safe, choose a window < 1M and less than 1000 Stats
                 objects to aggregate. See #52963 for more details.
+            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
+                incoming values per index such that the new value at index `n` will be
+                the reduced value of all incoming values at index `n`.
+                If False, when reducing `n` Stats, the first `n` merged values will be
+                the reduced value of all incoming values at index `0`, the next `n` merged
+                values will be the reduced values of all incoming values at index `1`, etc.
             window: An optional window size to reduce over.
                 If `window` is not None, then the reduction operation is only applied to
                 the most recent `windows` items, and - after reduction - the values list
@@ -81,12 +87,6 @@ class Stats:
                 Must be None if `ema_coeff` is not None.
                 If `window` is None (and `ema_coeff` is None), reduction must not be
                 "mean".
-            reduce_per_index_on_aggregate: If True, when merging Stats objects, we reduce
-                incoming values per index such that the new value at index `n` will be
-                the reduced value of all incoming values at index `n`.
-                If False, when reducing `n` Stats, the first `n` merged values will be
-                the reduced value of all incoming values at index `0`, the next `n` merged
-                values will be the reduced values of all incoming values at index `1`, etc.
             ema_coeff: An optional EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
@@ -469,7 +469,7 @@ class Stats:
         reduce- and window settings:
 
         Args:
-            others: One or more other Stats objects that need to be parallely merged
+            *others: One or more other Stats objects that need to be parallely merged
                 into `self, meaning with equal weighting as the existing values in
                 `self`.
         """
@@ -784,7 +784,7 @@ class Stats:
 
         Args:
             other: The other Stats object to return a similar new Stats equivalent for.
-            init_value: The initial value to already push into the returned Stats.
+            init_values: The initial value(s) to already push into the returned Stats.
 
         Returns:
             A new Stats object similar to `other`, with the exact same settings and
@@ -818,7 +818,7 @@ class Stats:
 
         self._has_new_values = True
 
-    def _reduced_values(self, values=None) -> Tuple[Any, Any]:
+    def _reduced_values(self, values: Optional[List[Any]] = None) -> Tuple[Any, Any]:
         """Runs a non-committed reduction procedure on given values (or `self.values`).
 
         Note that this method does NOT alter any state of `self` or the possibly
@@ -918,7 +918,10 @@ class Stats:
 
 
 @DeveloperAPI
-def compute_percentiles(sorted_list, percentiles):
+def compute_percentiles(
+    sorted_list: List[Union[int, float]],
+    percentiles: List[Union[int, float]],
+) -> Dict[Union[int, float], Any]:
     """Compute percentiles from an already sorted list.
 
     Note that this will not raise an error if the list is not sorted to avoid overhead.

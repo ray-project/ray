@@ -14,6 +14,7 @@ from ray import ActorID
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.ray_constants import (
     RAY_DASHBOARD_REDACT_RUNTIME_ENV,
+    env_bool,
     env_integer,
 )
 from ray.core.generated.gcs_pb2 import ActorTableData
@@ -358,17 +359,20 @@ class StateHead(SubprocessModule, RateLimitedModule):
             headers = None
         return Response(text=result, content_type="application/json", headers=headers)
 
-    @routes.get("/api/v0/delay/{delay_s}")
-    async def delayed_response(self, req: aiohttp.web.Request):
-        """Testing only. Response after a specified delay."""
-        delay = int(req.match_info.get("delay_s", 10))
-        await asyncio.sleep(delay)
-        return do_reply(
-            status_code=HTTPStatusCode.OK,
-            error_message="",
-            result={},
-            partial_failure_warning=None,
-        )
+    # Testing only.
+    if env_bool("RAY_DASHBOARD_MODULE_TEST", False):
+
+        @routes.get("/api/v0/delay/{delay_s}")
+        async def delayed_response(self, req: aiohttp.web.Request):
+            """Response after a specified delay."""
+            delay = int(req.match_info.get("delay_s", 10))
+            await asyncio.sleep(delay)
+            return do_reply(
+                status_code=HTTPStatusCode.OK,
+                error_message="",
+                result={},
+                partial_failure_warning=None,
+            )
 
     async def run(self):
         await SubprocessModule.run(self)

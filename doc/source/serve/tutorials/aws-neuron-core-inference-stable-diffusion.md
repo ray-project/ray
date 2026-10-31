@@ -11,7 +11,7 @@ This example uses a precompiled Stable Diffusion XL model and deploys on an AWS 
 
 :::{note}
   Before starting this example: 
-  * Set up [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/frameworks/torch/torch-setup.html)
+  * Set up [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/setup/torch-neuronx.html)
   * Install AWS NeuronCore drivers and tools, and torch-neuronx based on the instance-type
 
 :::

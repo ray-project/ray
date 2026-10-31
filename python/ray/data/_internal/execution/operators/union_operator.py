@@ -4,6 +4,7 @@ from typing_extensions import override
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 
 from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
@@ -66,12 +67,13 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         self,
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
     ):
         # Whether to preserve deterministic ordering of output blocks.
         # When True, blocks are emitted in round-robin order across inputs,
         # ensuring the same input always produces the same output order.
         self._preserve_order = options.preserve_order
-        super().start(options, block_ref_counter)
+        super().start(options, block_ref_counter, lineage_tracker)
 
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = 0

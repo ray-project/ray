@@ -122,9 +122,7 @@ class Discriminator(nn.Module):
 
 # __INCEPTION_SCORE_begin__
 class Net(nn.Module):
-    """
-    LeNet for MNist classification, used for inception_score
-    """
+    """LeNet for MNIST classification, used for inception_score"""
 
     def __init__(self):
         super(Net, self).__init__()

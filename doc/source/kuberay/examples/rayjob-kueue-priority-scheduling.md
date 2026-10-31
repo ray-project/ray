@@ -8,7 +8,7 @@ myst:
 
 # Priority Scheduling with RayJob and Kueue
 
-This guide shows how to run [Fine-tune a PyTorch Lightning Text Classifier with Ray Data](https://docs.ray.io/en/master/train/examples/lightning/lightning_cola_advanced.html) example as a RayJob and leverage Kueue to orchestrate priority scheduling and quota management.
+This guide shows how to run [Fine-tune a PyTorch Lightning Text Classifier with Ray Data](../../train/examples/lightning/lightning-cola-advanced.ipynb) example as a RayJob and leverage Kueue to orchestrate priority scheduling and quota management.
 
 ## What's Kueue?
 
@@ -113,10 +113,10 @@ kubectl apply -f kueue-resources.yaml
 
 ## Step 4: Deploy a RayJob
 
-Download the RayJob that executes all the steps documented in [Fine-tune a PyTorch Lightning Text Classifier](https://docs.ray.io/en/master/train/examples/lightning/lightning_cola_advanced.html). The [source code](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/pytorch-text-classifier) is also in the KubeRay repository.
+Download the RayJob that executes all the steps documented in [Fine-tune a PyTorch Lightning Text Classifier](../../train/examples/lightning/lightning-cola-advanced.ipynb). The [source code](https://github.com/kuberay-project/kuberay/tree/master/ray-operator/config/samples/pytorch-text-classifier) is also in the KubeRay repository.
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/pytorch-text-classifier/ray-job.pytorch-distributed-training.yaml
+curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/pytorch-text-classifier/ray-job.pytorch-distributed-training.yaml
 ```
 
 Before creating the RayJob, modify the RayJob metadata with:

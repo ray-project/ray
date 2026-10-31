@@ -1,6 +1,6 @@
 """PyTorch model for DQN"""
 
-from typing import Sequence
+from typing import Sequence, Tuple
 
 import gymnasium as gym
 
@@ -9,7 +9,7 @@ from ray.rllib.models.torch.modules.noisy_layer import NoisyLayer
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import ModelConfigDict
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 
@@ -135,7 +135,9 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 )
             self.value_module = value_module
 
-    def get_q_value_distributions(self, model_out):
+    def get_q_value_distributions(
+        self, model_out: TensorType
+    ) -> Tuple[TensorType, ...]:
         """Returns distributional values for Q(s, a) given a state embedding.
 
         Override this in your custom model to customize the Q output head.

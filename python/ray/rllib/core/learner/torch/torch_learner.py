@@ -539,22 +539,25 @@ class TorchLearner(Learner):
             or not torch.distributed.is_initialized()
         ):
             return plan
-        summed = torch.tensor(
-            [int(plan.skip), plan.num_minibatches, int(plan.abort)],
+        # MAX: skip or abort if ANY Learner says so, the largest minibatch count (see
+        # `test_minibatch_coverage_across_unequal_shards`), and per module whether ANY
+        # Learner has or lacks data for it.
+        num_modules = len(plan.modules_with_data)
+        plan_tensor = torch.tensor(
+            [int(plan.skip), plan.num_minibatches, int(plan.abort)]
+            + [int(flag) for flag in plan.modules_with_data]
+            + [int(flag) for flag in plan.modules_without_data],
             dtype=torch.int64,
             device=self._device,
         )
-        torch.distributed.all_reduce(summed)
-        num_skipping, total_minibatches, num_aborting = summed.tolist()
-        # Skip if anyone wants to, abort if anyone must. Steps: the average proposal.
-        # Every non-empty Learner proposes at least 1 when there is minibatching, so
-        # the floor is >= 1 then; a single pass over the batch proposes 0 on every
-        # Learner, and 0 ("uncapped") is the right answer -- there is only ever one
-        # step to take.
+        torch.distributed.all_reduce(plan_tensor, op=torch.distributed.ReduceOp.MAX)
+        skip, num_minibatches, abort, *module_flags = plan_tensor.tolist()
         return UpdatePlan(
-            skip=num_skipping > 0,
-            num_minibatches=total_minibatches // torch.distributed.get_world_size(),
-            abort=num_aborting > 0,
+            skip=bool(skip),
+            num_minibatches=num_minibatches,
+            abort=bool(abort),
+            modules_with_data=tuple(bool(f) for f in module_flags[:num_modules]),
+            modules_without_data=tuple(bool(f) for f in module_flags[num_modules:]),
         )
 
     @OverrideToImplementCustomLogic

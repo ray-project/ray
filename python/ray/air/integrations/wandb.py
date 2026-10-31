@@ -394,8 +394,7 @@ class _QueueItem(enum.Enum):
 
 
 class _WandbLoggingActor:
-    """
-    Wandb assumes that each trial's information should be logged from a
+    """Wandb assumes that each trial's information should be logged from a
     separate process. We use Ray actors as forking multiprocessing
     processes is not supported by Ray and spawn processes run into pickling
     problems.

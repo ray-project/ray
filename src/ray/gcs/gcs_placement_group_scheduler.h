@@ -173,6 +173,13 @@ class LeaseStatusTracker {
                                  const std::shared_ptr<const BundleSpecification> &bundle,
                                  const Status &status);
 
+  /// Record a bundle as uncommitted without counting it as a returned commit request.
+  ///
+  /// \param node_id Id of a node where the bundle was supposed to be committed.
+  /// \param bundle Bundle specification that failed to commit.
+  void MarkBundleUncommitted(const NodeID &node_id,
+                             const std::shared_ptr<const BundleSpecification> &bundle);
+
   /// Used to know if all commit requests are returend.
   ///
   /// \return True if all commit requests are returned. False otherwise.

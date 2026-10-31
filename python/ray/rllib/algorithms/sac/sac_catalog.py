@@ -68,6 +68,8 @@ class SACCatalog(Catalog):
             observation_space: The observation space of the Encoder.
             action_space: The action space for the Pi Head.
             model_config_dict: The model config to use.
+            view_requirements: Deprecated. Must be None. Use the ConnectorV2 API
+                instead to pick whatever information you need from the episodes.
         """
         assert view_requirements is None, (
             "Instead, use the new ConnectorV2 API to pick whatever information "

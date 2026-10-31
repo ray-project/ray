@@ -550,6 +550,10 @@ class RunConfig:
 
     @cached_property
     def storage_context(self) -> StorageContext:
+        """The storage context for this run's storage path and filesystem.
+
+        Built from ``storage_path``, ``name``, and ``storage_filesystem``.
+        """
         return StorageContext(
             storage_path=self.storage_path,
             experiment_dir_name=self.name,

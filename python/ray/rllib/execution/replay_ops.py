@@ -15,6 +15,7 @@ class SimpleReplayBuffer:
 
         Args:
             num_slots: Number of batches to store in total.
+            replay_proportion: Deprecated arg, not used anymore.
         """
         self.num_slots = num_slots
         self.replay_batches = []

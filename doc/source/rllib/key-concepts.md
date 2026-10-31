@@ -40,7 +40,7 @@ See the {ref}`scaling guide <rllib-scaling-guide>`.
 You have two ways to interact with and run an {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`:
 
 - You can create and manage an instance of it directly through the Python API.
-- Because the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` class is a subclass of the {ref}`Tune Trainable API <tune-60-seconds>`, you can use [Ray Tune](https://docs.ray.io/en/latest/tune/index.html) to manage your experiment and tune hyperparameters.
+- Because the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` class is a subclass of the {ref}`Tune Trainable API <tune-60-seconds>`, you can use [Ray Tune](../tune/index.md) to manage your experiment and tune hyperparameters.
 
 The following examples demonstrate this on RLlib's {py:class}`~ray.rllib.algorithms.ppo.PPO` ("Proximal Policy Optimization") algorithm:
 

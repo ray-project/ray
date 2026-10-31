@@ -63,7 +63,7 @@ def _ground_truth_vtrace_calculation(
         rewards: Array of shape [T*B] of rewards.
         values: Array of shape [T*B] of the value function estimated for every timestep
             in a batch.
-        bootstrap_values: Array of shape [B] of the value function estimated at the last
+        bootstrap_value: Array of shape [B] of the value function estimated at the last
             timestep for each trajectory in the batch.
         clip_rho_threshold: The threshold for clipping the importance weights.
         clip_pg_rho_threshold: The threshold for clipping the importance weights for

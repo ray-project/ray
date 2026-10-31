@@ -10,6 +10,12 @@ ignorecase: false
 # `vocab: false` because the targets (RLModule, multi-agent) are accepted vocab terms,
 # and an accept entry otherwise shadows the swap silently. See .vale/styles/KubeRay/Terms.yml.
 vocab: false
+# `action: replace` makes Vale's JSON output carry the replacement text, so a tool
+# can apply these swaps from Vale's own alerts. Every swap here must be safe to
+# apply without judgment. A term that needs a human decision belongs in an
+# existence rule instead.
+action:
+  name: replace
 swap:
   # Standardize on "multi-agent" (the majority form in the corpus) over "multiagent".
   # "multiagent" stays in the RLlib accept list so code identifiers aren't spell-flagged;

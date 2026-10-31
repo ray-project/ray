@@ -11,7 +11,7 @@ import ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto.footsies_
 class FootsiesGameServiceStub(object):
     """Missing associated documentation comment in .proto file."""
 
-    def __init__(self, channel):
+    def __init__(self, channel: grpc.Channel):
         """Constructor.
 
         Args:

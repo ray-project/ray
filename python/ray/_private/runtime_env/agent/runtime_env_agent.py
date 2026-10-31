@@ -30,6 +30,7 @@ from ray._private.runtime_env.plugin import (
 )
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.redaction import redact_serialized_runtime_env
 from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
 from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
@@ -263,12 +264,18 @@ class ReferenceTable:
         return unused_uris
 
     def _increase_reference_for_runtime_env(self, serialized_env: str):
-        default_logger.debug(f"Increase reference for runtime env {serialized_env}.")
+        default_logger.debug(
+            f"Increase reference for runtime env "
+            f"{redact_serialized_runtime_env(serialized_env)}."
+        )
         self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
         """Decrease reference count for the given [serialized_env]. Throw exception if we cannot decrement reference."""
-        default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
+        redacted_serialized_env = redact_serialized_runtime_env(serialized_env)
+        default_logger.debug(
+            f"Decrease reference for runtime env {redacted_serialized_env}."
+        )
         unused = False
         if self._runtime_env_reference[serialized_env] > 0:
             self._runtime_env_reference[serialized_env] -= 1
@@ -276,12 +283,15 @@ class ReferenceTable:
                 unused = True
                 del self._runtime_env_reference[serialized_env]
         else:
-            default_logger.warning(f"Runtime env {serialized_env} does not exist.")
+            default_logger.warning(
+                f"Runtime env {redacted_serialized_env} does not exist."
+            )
             raise ValueError(
-                f"{serialized_env} cannot decrement reference since the reference count is 0"
+                f"{redacted_serialized_env} cannot decrement "
+                "reference since the reference count is 0"
             )
         if unused:
-            default_logger.info(f"Unused runtime env {serialized_env}.")
+            default_logger.info(f"Unused runtime env {redacted_serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
 
     def increase_reference(
@@ -444,7 +454,8 @@ class RuntimeEnvAgent:
         def delete_runtime_env():
             del self._env_cache[unused_runtime_env]
             self._logger.info(
-                "Runtime env %s removed from env-level cache.", unused_runtime_env
+                "Runtime env %s removed from env-level cache.",
+                redact_serialized_runtime_env(unused_runtime_env),
             )
 
         if unused_runtime_env in self._env_cache:
@@ -459,10 +470,13 @@ class RuntimeEnvAgent:
                 delete_runtime_env()
 
     async def GetOrCreateRuntimeEnv(self, request):
+        # Log only this copy: the serialized env carries `env_vars` values.
+        redacted_serialized_env = redact_serialized_runtime_env(
+            request.serialized_runtime_env
+        )
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
-            "reference for runtime env: "
-            f"{request.serialized_runtime_env}."
+            f"reference for runtime env: {redacted_serialized_env}."
         )
 
         async def _setup_runtime_env(
@@ -541,7 +555,8 @@ class RuntimeEnvAgent:
                     - error_message (str): Error message if failed, None otherwise
             """
             self._logger.info(
-                f"Creating runtime env: {serialized_env} with timeout "
+                f"Creating runtime env: {redacted_serialized_env} "
+                f"with timeout "
                 f"{setup_timeout_seconds} seconds."
             )
             num_retries = runtime_env_consts.RUNTIME_ENV_RETRY_TIMES
@@ -565,7 +580,9 @@ class RuntimeEnvAgent:
                     error_message = None
                     break
                 except Exception as e:
-                    err_msg = f"Failed to create runtime env {serialized_env}."
+                    err_msg = (
+                        "Failed to create runtime env " f"{redacted_serialized_env}."
+                    )
                     self._logger.exception(err_msg)
                     error_message = "".join(
                         traceback.format_exception(type(e), e, e.__traceback__)
@@ -592,8 +609,8 @@ class RuntimeEnvAgent:
             else:
                 self._logger.info(
                     "Successfully created runtime env: %s, context: %s",
-                    serialized_env,
-                    serialized_context,
+                    redacted_serialized_env,
+                    redact_serialized_runtime_env(serialized_context),
                 )
                 return True, serialized_context, None
 
@@ -602,7 +619,7 @@ class RuntimeEnvAgent:
             runtime_env = RuntimeEnv.deserialize(serialized_env)
         except Exception as e:
             self._logger.exception(
-                "[Increase] Failed to parse runtime env: " f"{serialized_env}"
+                f"[Increase] Failed to parse runtime env: {redacted_serialized_env}"
             )
 
             error_message = "".join(
@@ -631,8 +648,8 @@ class RuntimeEnvAgent:
                     context = result.result
                     self._logger.info(
                         "Runtime env already created "
-                        f"successfully. Env: {serialized_env}, "
-                        f"context: {context}"
+                        f"successfully. Env: {redacted_serialized_env}, "
+                        f"context: {redact_serialized_runtime_env(context)}"
                     )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK,
@@ -642,7 +659,7 @@ class RuntimeEnvAgent:
                     error_message = result.result
                     self._logger.info(
                         "Runtime env already failed. "
-                        f"Env: {serialized_env}, "
+                        f"Env: {redacted_serialized_env}, "
                         f"err: {error_message}"
                     )
                     # Recover the reference.
@@ -702,18 +719,20 @@ class RuntimeEnvAgent:
             )
 
     async def DeleteRuntimeEnvIfPossible(self, request):
+        # Log only this copy: the serialized env carries `env_vars` values.
+        redacted_serialized_env = redact_serialized_runtime_env(
+            request.serialized_runtime_env
+        )
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
-            "reference for runtime env: "
-            f"{request.serialized_runtime_env}."
+            f"reference for runtime env: {redacted_serialized_env}."
         )
 
         try:
             runtime_env = RuntimeEnv.deserialize(request.serialized_runtime_env)
         except Exception as e:
             self._logger.exception(
-                "[Decrease] Failed to parse runtime env: "
-                f"{request.serialized_runtime_env}"
+                f"[Decrease] Failed to parse runtime env: {redacted_serialized_env}"
             )
 
             error_message = "".join(

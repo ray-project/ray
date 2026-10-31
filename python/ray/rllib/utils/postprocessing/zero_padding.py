@@ -13,7 +13,7 @@ def create_mask_and_seq_lens(episode_len: int, T: int) -> Tuple[List, List]:
     """Creates loss mask and a seq_lens array, given an episode length and T.
 
     Args:
-        episode_lens: A list of episode lengths to infer the loss mask and seq_lens
+        episode_len: The episode length to infer the loss mask and seq_lens
             array from.
         T: The maximum number of timesteps in each "row", also known as the maximum
             sequence length (max_seq_len). Episodes are split into chunks that are at
@@ -185,7 +185,8 @@ def split_and_zero_pad_n_episodes(
             given `nd_array`.
         max_seq_len: The maximum sequence length to split at (and zero-pad).
 
-    Returns: A list of n np.ndarrays, resulting from splitting and zero-padding the
+    Returns:
+        A list of n np.ndarrays, resulting from splitting and zero-padding the
         given `nd_array`.
     """
     ret = []

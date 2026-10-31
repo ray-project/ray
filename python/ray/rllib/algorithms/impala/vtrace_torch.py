@@ -29,11 +29,18 @@ multi_from_logits method accepts lists of tensors instead of just
 tensors.
 """
 
+from typing import List, Optional, Type
+
 from ray.rllib.algorithms.impala.vtrace_tf import VTraceFromLogitsReturns, VTraceReturns
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical,
+    TorchDistributionWrapper,
+)
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -46,7 +53,12 @@ def log_probs_from_logits_and_actions(
     )[0]
 
 
-def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class, model):
+def multi_log_probs_from_logits_and_actions(
+    policy_logits: List[TensorType],
+    actions: List[TensorType],
+    dist_class: Type[TorchDistributionWrapper],
+    model: Optional[ModelV2],
+):
     """Computes action log-probs from policy logits and actions.
 
     In the notation used throughout documentation and comments, T refers to the
@@ -63,6 +75,8 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class, 
             [T, B, ...], ..., [T, B, ...]
             with actions.
         dist_class: Python class of the action distribution.
+        model: The backing ModelV2 instance handed to the action distribution
+            (may be None for distributions that do not need it).
 
     Returns:
         A list with length of ACTION_SPACE of float32 tensors of shapes
@@ -125,18 +139,18 @@ def from_logits(
 
 
 def multi_from_logits(
-    behaviour_policy_logits,
-    target_policy_logits,
-    actions,
-    discounts,
-    rewards,
-    values,
-    bootstrap_value,
-    dist_class,
-    model,
-    behaviour_action_log_probs=None,
-    clip_rho_threshold=1.0,
-    clip_pg_rho_threshold=1.0,
+    behaviour_policy_logits: List[TensorType],
+    target_policy_logits: List[TensorType],
+    actions: List[TensorType],
+    discounts: TensorType,
+    rewards: TensorType,
+    values: TensorType,
+    bootstrap_value: TensorType,
+    dist_class: Type[TorchDistributionWrapper],
+    model: Optional[ModelV2],
+    behaviour_action_log_probs: Optional[TensorType] = None,
+    clip_rho_threshold: Optional[float] = 1.0,
+    clip_pg_rho_threshold: Optional[float] = 1.0,
 ):
     r"""V-trace for softmax policies.
 
@@ -250,13 +264,13 @@ def multi_from_logits(
 
 
 def from_importance_weights(
-    log_rhos,
-    discounts,
-    rewards,
-    values,
-    bootstrap_value,
-    clip_rho_threshold=1.0,
-    clip_pg_rho_threshold=1.0,
+    log_rhos: TensorType,
+    discounts: TensorType,
+    rewards: TensorType,
+    values: TensorType,
+    bootstrap_value: TensorType,
+    clip_rho_threshold: Optional[float] = 1.0,
+    clip_pg_rho_threshold: Optional[float] = 1.0,
 ):
     r"""V-trace from log importance weights.
 
