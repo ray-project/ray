@@ -4888,6 +4888,20 @@ class TrainIterCtx:
         self.time_start = None
         self.time_stop = None
 
+    @staticmethod
+    def _sum_finite_agent_steps(values):
+        # A retired agent may leave a NaN-valued lifetime metric when its
+        # sampling window is empty. Ignore that missing observation, but do
+        # not silently disguise infinite (corrupt) step counts as zero.
+        total = 0
+        for value in values:
+            if np.isnan(value):
+                continue
+            if not np.isfinite(value):
+                raise ValueError("Infinite agent-step lifetime metric is invalid.")
+            total += value
+        return total
+
     def __enter__(self):
         # Before first call to `step()`, `results` is expected to be None ->
         # Start with self.failures=-1 -> set to 0 before the very first call
@@ -4905,12 +4919,12 @@ class TrainIterCtx:
                 (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
                 default=0,
             )
-            self.init_agent_steps_sampled = sum(
+            self.init_agent_steps_sampled = self._sum_finite_agent_steps(
                 self.algo.metrics.peek(
                     (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME), default={}
                 ).values()
             )
-            self.init_agent_steps_trained = sum(
+            self.init_agent_steps_trained = self._sum_finite_agent_steps(
                 self.algo.metrics.peek(
                     (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME), default={}
                 ).values()
@@ -4923,6 +4937,11 @@ class TrainIterCtx:
         self.failure_tolerance = (
             self.algo.config.num_consecutive_env_runner_failures_tolerance
         )
+        self.sample_progress_tolerance = (
+            self.algo.config.num_consecutive_sample_no_progress_tolerance
+        )
+        self.sample_progress_failures = 0
+        self._last_sampled = 0
         return self
 
     def __exit__(self, *args):
@@ -4951,7 +4970,7 @@ class TrainIterCtx:
         if self.algo.config.enable_env_runner_and_connector_v2:
             if self.algo.config.count_steps_by == "agent_steps":
                 self.sampled = (
-                    sum(
+                    self._sum_finite_agent_steps(
                         self.algo.metrics.peek(
                             (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME),
                             default={},
@@ -4960,7 +4979,7 @@ class TrainIterCtx:
                     - self.init_agent_steps_sampled
                 )
                 self.trained = (
-                    sum(
+                    self._sum_finite_agent_steps(
                         self.algo.metrics.peek(
                             (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME),
                             default={},
@@ -5006,12 +5025,39 @@ class TrainIterCtx:
         min_sample_ts = self.algo.config.min_sample_timesteps_per_iteration
         min_train_ts = self.algo.config.min_train_timesteps_per_iteration
 
+        # Read a single progress snapshot for both the watchdog and stop criteria.
+        # On the new API stack, lifetime metrics may advance concurrently.
+        sampled = self.sampled
+
+        # A finite sampling timeout can return a successful training-step result
+        # without any samples. Bound consecutive no-progress decisions separately
+        # from actual EnvRunner failures, which have a different retry budget.
+        if (
+            min_sample_ts
+            and self.algo.config.sample_timeout_s is not None
+            and sampled < min_sample_ts
+        ):
+            if sampled > self._last_sampled:
+                self.sample_progress_failures = 0
+            else:
+                self.sample_progress_failures += 1
+                if self.sample_progress_failures > self.sample_progress_tolerance:
+                    raise RuntimeError(
+                        "No sampling progress for more than "
+                        f"{self.sample_progress_tolerance} consecutive training steps while "
+                        f"min_sample_timesteps_per_iteration={min_sample_ts} and "
+                        f"sample_timeout_s={self.algo.config.sample_timeout_s}. "
+                        "Increase sample_timeout_s, decrease rollout_fragment_length, "
+                        "or lower min_sample_timesteps_per_iteration."
+                    )
+            self._last_sampled = sampled
+
         # Repeat if not enough time has passed or if not enough
         # env|train timesteps have been processed (or these min
         # values are not provided by the user).
         if (
             (not min_t or time.time() - self.time_start >= min_t)
-            and (not min_sample_ts or self.sampled >= min_sample_ts)
+            and (not min_sample_ts or sampled >= min_sample_ts)
             and (not min_train_ts or self.trained >= min_train_ts)
         ):
             return True
