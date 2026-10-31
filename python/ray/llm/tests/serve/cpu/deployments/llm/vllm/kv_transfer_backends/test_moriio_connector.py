@@ -5,11 +5,11 @@ from unittest.mock import patch
 
 import pytest
 
+from ray.llm._internal.serve.engines.common.kv_transfer.factory import (
+    KVConnectorBackendFactory,
+)
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
-)
-from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
-    KVConnectorBackendFactory,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.moriio import (
     _DECODE_ZMQ_RE,
