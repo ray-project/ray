@@ -69,10 +69,22 @@ class DataHead(SubprocessModule):
         job_id = req.match_info["job_id"]
 
         try:
-            from ray.data._internal.stats import get_or_create_stats_actor
+            from ray.data._internal.stats import (
+                _to_metric_tag_value,
+                get_or_create_stats_actor,
+            )
 
             _stats_actor = get_or_create_stats_actor()
             datasets = await _stats_actor.get_datasets.remote(job_id)
+            # Operator metric tags are escaped to ASCII, so map them back to the
+            # operator IDs reported by the stats actor.
+            operator_ids_by_tag = {
+                dataset: {
+                    _to_metric_tag_value(operator_id): operator_id
+                    for operator_id in datasets[dataset]["operators"]
+                }
+                for dataset in datasets
+            }
             # Initializes dataset metric values
             for dataset in datasets:
                 for metric, queries in DATASET_METRICS.items():
@@ -103,7 +115,7 @@ class DataHead(SubprocessModule):
                             )
                         )
                         for res in operator_result["data"]["result"]:
-                            dataset, operator, value = (
+                            dataset, operator_tag, value = (
                                 res["metric"]["dataset"],
                                 res["metric"]["operator"],
                                 res["value"][1],
@@ -111,10 +123,10 @@ class DataHead(SubprocessModule):
                             # Check if dataset/operator is in current _StatsActor scope.
                             # Prometheus server may contain metrics from previous
                             # cluster if not reset.
-                            if (
-                                dataset in datasets
-                                and operator in datasets[dataset]["operators"]
-                            ):
+                            operator = operator_ids_by_tag.get(dataset, {}).get(
+                                operator_tag
+                            )
+                            if operator is not None:
                                 datasets[dataset]["operators"][operator][metric][
                                     query_name
                                 ] = value
