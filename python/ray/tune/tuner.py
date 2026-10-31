@@ -361,7 +361,9 @@ class Tuner:
             The ``ResultGrid`` produced by the completed tuning run.
 
         Raises:
-            RayTaskError: If user-provided trainable raises an exception
+            RayTaskError: If the user-provided trainable raises an exception and
+                ``FailureConfig(fail_fast="raise")`` is set. Otherwise, the trial's
+                error is recorded in the returned ``ResultGrid``.
         """
 
         if not self._is_ray_client:
