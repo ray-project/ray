@@ -232,7 +232,6 @@ class ResultThread(threading.Thread):
 
     def run(self):
         unready = copy.copy(self._object_refs)
-        aggregated_batch_results = []
 
         # Run for a specific number of objects if self._total_object_refs is finite.
         # Otherwise, process all objects received prior to the stop signal, given by
@@ -280,8 +279,6 @@ class ResultThread(threading.Thread):
                         if self._error_callback is not None:
                             self._error_callback(result)
                         break
-                    else:
-                        aggregated_batch_results.append(result)
 
             self._num_ready += 1
             self._results[self._indices[ready_id]] = batch
@@ -296,12 +293,13 @@ class ResultThread(threading.Thread):
         # called on the entire list of results– not just a single batch.
         if not self._got_error and self._callback is not None:
             if not self._single_result:
-                self._callback(aggregated_batch_results)
+                # Results are stored by submission index, not completion order.
+                self._callback([result for batch in self._results for result in batch])
             else:
                 # On a thread handling a function with a single result
                 # (e.g. apply_async), we call the callback on just that result
                 # instead of on a list encaspulating that result
-                self._callback(aggregated_batch_results[0])
+                self._callback(self._results[0][0])
 
     def got_error(self):
         # Should only be called after the thread finishes.
@@ -879,8 +877,8 @@ class Pool:
                 process. If unspecified, a suitable chunksize will be chosen.
             callback: Will only be called if none of the results were errors,
                 and will only be called once after all results are finished.
-                A Python List of all the finished results will be passed as the
-                only argument to the callback.
+                A Python List of all the results, in input order, will be passed
+                as the only argument to the callback, matching ``AsyncResult.get()``.
             error_callback: callback executed on the first errored result.
                 The Exception raised by the task will be passed as the only
                 argument to the callback.
