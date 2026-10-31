@@ -276,6 +276,24 @@ def test_token_store_skips_chat_tokenization():
 
 
 @pytest.mark.asyncio
+async def test_connect_ahead_lets_first_push_land():
+    """The first push after connect() is delivered."""
+    endpoint = f"tcp://127.0.0.1:{find_free_port()}"
+    store = TokenStore()
+    receiver = TokenReceiver(bind_endpoint=endpoint, store=store)
+    assert await receiver.start()
+    sender = TokenSender()
+    try:
+        sender.connect([endpoint])
+        await asyncio.sleep(0.5)
+        assert sender.push(endpoint, "k-first", _payload([1, 2, 3]))
+        await _wait_until_staged(store, {"k-first": [1, 2, 3]})
+    finally:
+        sender.close()
+        await receiver.close()
+
+
+@pytest.mark.asyncio
 async def test_keeps_tokens_separate():
     token_ids_by_key = {
         "k-a": [1, 10, 100],
