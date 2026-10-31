@@ -1,0 +1,11 @@
+# Scripts under doc/source/**/doc_code/ that no page shows, recorded when the
+# check was added. doc/test_doc_assets.py fails on any such script that isn't
+# listed here, and on any entry here that's gone or that a page now shows.
+#
+# This list only shrinks. When you show a script on a page with
+# literalinclude, delete it, or move it to the library's tests, delete its
+# line in the same PR. Don't add lines.
+
+doc/source/cluster/doc_code/simple-trainer.py
+doc/source/cluster/doc_code/yarn/dashboard.py
+doc/source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/qwen3_rm.py
