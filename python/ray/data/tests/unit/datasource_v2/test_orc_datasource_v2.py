@@ -8,14 +8,12 @@ import pytest
 from pyarrow import orc
 
 import ray.data.read_api as read_api
-from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
-    NonSamplingFileIndexer,
-)
-from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
-    RoundRobinPartitioner,
-)
+from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
+)
+from ray.data._internal.datasource_v2.formats.orc.orc_file_indexer import (
+    OrcFileIndexer,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
@@ -77,11 +75,11 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
 
     assert resolved is not None
     assert resolved.field_names == ["year"]
-    assert isinstance(datasource._get_file_indexer(), NonSamplingFileIndexer)
+    assert isinstance(datasource._get_file_indexer(), OrcFileIndexer)
     partitioner = datasource.get_file_partitioner(
         hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=1)
     )
-    assert isinstance(partitioner, RoundRobinPartitioner)
+    assert isinstance(partitioner, OnlineBinPacker)
     partitioner.add_input(sample)
     partitioner.finalize()
     assert partitioner.has_partition()

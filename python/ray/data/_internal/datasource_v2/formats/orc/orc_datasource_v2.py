@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 import pyarrow as pa
 from typing_extensions import override
 
-from ray._common.utils import env_bool, env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_indexer import OrcFileIndexer
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
@@ -107,18 +107,14 @@ class OrcDatasourceV2(FileDataSourceV2):
         max_shared_open_bins = env_integer(
             "RAY_DATA_ORC_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )
-        split_coalesced = env_bool("RAY_DATA_ORC_FOOTER_SPLIT_COALESCED", False)
         logger.debug(
-            "ORC OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
-            "split_coalesced=%s)",
+            "ORC OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d)",
             max_bin_bytes,
             max_shared_open_bins,
-            split_coalesced,
         )
         return OnlineBinPacker(
             max_bin_bytes=max_bin_bytes,
             max_shared_open_bins=max_shared_open_bins,
-            split_coalesced=split_coalesced,
         )
 
     @property

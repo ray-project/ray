@@ -309,7 +309,16 @@ class OrcFileReader(FileReader):
         raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
 
         try:
-            batch = of.read_stripe(stripe_idx, columns=physical_required)
+            if not physical_required:
+                # ``columns=[]`` makes ``read_stripe`` return a 0-row batch,
+                # which would silently drop rows for count-style reads or
+                # projections that need no physical file columns (e.g. only
+                # path or partition columns). Pass ``None`` so pyarrow
+                # decodes everything; the projection step below will drop
+                # the extras we don't need.
+                batch = of.read_stripe(stripe_idx, columns=None)
+            else:
+                batch = of.read_stripe(stripe_idx, columns=physical_required)
         except Exception as exc:
             # Stripe-level read failure should surface so the task can be
             # retried; swallowing would silently drop rows.
@@ -325,6 +334,33 @@ class OrcFileReader(FileReader):
             return
 
         table = pa.Table.from_batches([batch])
+
+        # Cast physical columns to the unified schema's types so files
+        # with different per-column types (schema evolution) all match
+        # ``schema``. The whole-file path gets this cast from pyarrow's
+        # dataset scanner; the stripe-direct path must do it explicitly.
+        if schema is not None:
+            for col_name in table.column_names:
+                idx = schema.get_field_index(col_name)
+                if idx != -1:
+                    target_type = schema.field(idx).type
+                    if table.schema.field(col_name).type != target_type:
+                        try:
+                            table = table.set_column(
+                                table.schema.get_field_index(col_name),
+                                col_name,
+                                table.column(col_name).cast(target_type),
+                            )
+                        except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
+                            # If pyarrow can't cast (e.g. lossy downcast),
+                            # leave the file's native type -- downstream concat
+                            # will surface the conflict if any.
+                            logger.debug(
+                                "Could not cast ORC stripe column %r from %s to %s",
+                                col_name,
+                                table.schema.field(col_name).type,
+                                target_type,
+                            )
 
         # Apply data predicate on the physical columns.
         if data_predicate is not None:
