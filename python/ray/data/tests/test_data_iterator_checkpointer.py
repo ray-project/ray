@@ -526,10 +526,12 @@ def test_generated_id_column_removed_from_batches(
     ds_iter._enable_checkpointing(checkpointer)
 
     seen_x = []
+    state_dict = None
     for batch in ds_iter.iter_batches(batch_size=10):
         assert ("id" in batch) != generate_id_column
         seen_x.extend(batch["x"].tolist())
         state_dict = ds_iter.state_dict()
+    assert state_dict is not None
 
     # The row IDs are still checkpointed, even if they're not yielded.
     assert sorted(read_checkpoint_files_for_state_dict(state_dict, tmp_path)) == sorted(
