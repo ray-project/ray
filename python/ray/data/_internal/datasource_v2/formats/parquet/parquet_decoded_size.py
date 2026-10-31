@@ -1,18 +1,10 @@
 """Estimate the Arrow bytes a Parquet row group decodes to, from its footer.
 
-Parquet's uncompressed size is still dictionary/RLE/bit-packed, so decoded size
-runs from 0.87x of it for plain ``int64`` to 133x for a nullable
-dictionary-encoded string column. A schema this module doesn't model gives
-``None``, and the caller keeps uncompressed bytes times 5.
-
-Variables, each a ``detect_*`` / ``estimate_*`` pair. 1, 3, 7 and 8, what Ray's
-read does to the file, aren't sized yet.
-
-2. Nulls: :meth:`LeafChunk.bitmap`.
-4. A dictionary type in the file's type hints: :func:`detect_dictionary_type`.
-5. A view type in the type hints: :func:`detect_view_type`.
-6. Where a string leaf's bytes come from: :func:`estimate_string_bytes`.
-9. An upper bound some column meets exactly, shaved: :func:`shave_bound`.
+Per file, walk the Arrow schema into one chain of arrays per Parquet leaf: its
+structs and lists, then the leaf itself. Per row group, read each array's length
+and nulls from the footer (exact with SizeStatistics, a bound without), size it
+as validity bitmap plus offsets plus values, and sum over the leaves read,
+counting arrays that leaves share once. Unsupported schemas give ``None``.
 """
 
 from __future__ import annotations
@@ -91,7 +83,7 @@ class _ArrowNode(NamedTuple):
     def_level: int
     # The array's length is ``scale`` times the level entries that open a slot
     # at repetition depth ``slot_depth``: those whose definition level is
-    # ``slot_def`` or more. ``scale`` passes 1 only below a fixed_size_list.
+    # ``slot_def`` or more. ``scale`` is above 1 only below a fixed_size_list.
     slot_depth: int
     slot_def: int
     scale: int
@@ -185,17 +177,29 @@ class _SchemaWalk:
         self.leaves: List[Tuple[Tuple[_ArrowNode, ...], int]] = []
         self._next_id = 0
 
-    def _node(self, kind: str, nullable: bool, def_level: int, pos: _Position, **kw):
+    def _node(
+        self,
+        kind: str,
+        nullable: bool,
+        def_level: int,
+        pos: _Position,
+        width: int = 0,
+        keeps_bitmap: bool = False,
+        arrow_type: Optional[pa.DataType] = None,
+    ) -> _ArrowNode:
+        """A new array node at the walk's position ``pos``."""
         self._next_id += 1
         return _ArrowNode(
-            self._next_id,
-            kind,
-            nullable,
-            def_level,
-            pos.slot_depth,
-            pos.slot_def,
-            pos.scale,
-            **kw,
+            node_id=self._next_id,
+            kind=kind,
+            nullable=nullable,
+            def_level=def_level,
+            slot_depth=pos.slot_depth,
+            slot_def=pos.slot_def,
+            scale=pos.scale,
+            width=width,
+            keeps_bitmap=keeps_bitmap,
+            arrow_type=arrow_type,
         )
 
     def visit(
@@ -205,6 +209,7 @@ class _SchemaWalk:
         pos: _Position,
         chain: Tuple[_ArrowNode, ...],
     ) -> None:
+        """Record the chain of arrays down to each leaf under ``arrow_type``."""
         if isinstance(arrow_type, pa.BaseExtensionType):
             arrow_type = arrow_type.storage_type
         # An optional Parquet node adds one definition level, a required one none.
@@ -216,14 +221,20 @@ class _SchemaWalk:
             # struct a bitmap carrying the nulls of its ancestors up to the
             # enclosing list, so such a struct is sized as nullable.
             node = self._node(
-                _STRUCT,
-                nullable or (_is_repeated(arrow_type) and def_level > pos.slot_def),
-                def_level,
-                pos,
+                kind=_STRUCT,
+                nullable=nullable
+                or (_is_repeated(arrow_type) and def_level > pos.slot_def),
+                def_level=def_level,
+                pos=pos,
             )
             inner = pos._replace(parent_def=def_level)
             for field in arrow_type:
-                self.visit(field.type, field.nullable, inner, chain + (node,))
+                self.visit(
+                    arrow_type=field.type,
+                    nullable=field.nullable,
+                    pos=inner,
+                    chain=chain + (node,),
+                )
             return
 
         if pa.types.is_map(arrow_type):
@@ -236,10 +247,10 @@ class _SchemaWalk:
         else:
             kind, width = _leaf_layout(arrow_type)
             leaf = self._node(
-                kind,
-                nullable,
-                def_level,
-                pos,
+                kind=kind,
+                nullable=nullable,
+                def_level=def_level,
+                pos=pos,
                 width=width,
                 keeps_bitmap=_is_zero_copy_type(arrow_type),
                 arrow_type=arrow_type,
@@ -252,7 +263,9 @@ class _SchemaWalk:
         rep_def = def_level + 1
         depth = pos.depth + 1
         if pa.types.is_fixed_size_list(arrow_type):
-            node = self._node(_FIXED_SIZE_LIST, nullable, def_level, pos)
+            node = self._node(
+                kind=_FIXED_SIZE_LIST, nullable=nullable, def_level=def_level, pos=pos
+            )
             # Its children's length is counted at the list's own depth, times
             # ``list_size``.
             inner = pos._replace(
@@ -262,16 +275,33 @@ class _SchemaWalk:
             )
         else:
             width = 8 if pa.types.is_large_list(arrow_type) else 4
-            node = self._node(_LIST, nullable, def_level, pos, width=width)
-            inner = _Position(depth, rep_def, depth, rep_def, 1)
-        self.visit(child_type, child_nullable, inner, chain + (node,))
+            node = self._node(
+                kind=_LIST, nullable=nullable, def_level=def_level, pos=pos, width=width
+            )
+            inner = _Position(
+                depth=depth,
+                parent_def=rep_def,
+                slot_depth=depth,
+                slot_def=rep_def,
+                scale=1,
+            )
+        self.visit(
+            arrow_type=child_type,
+            nullable=child_nullable,
+            pos=inner,
+            chain=chain + (node,),
+        )
 
 
 def _walk(arrow_schema: pa.Schema) -> Optional[_SchemaWalk]:
+    """Walk ``arrow_schema`` into leaf chains, or ``None`` if it can't be sized."""
     walk = _SchemaWalk()
+    top = _Position(depth=0, parent_def=0, slot_depth=0, slot_def=0, scale=1)
     try:
         for field in arrow_schema:
-            walk.visit(field.type, field.nullable, _Position(0, 0, 0, 0, 1), ())
+            walk.visit(
+                arrow_type=field.type, nullable=field.nullable, pos=top, chain=()
+            )
     except _UnsupportedLayout:
         return None
     return walk
@@ -374,8 +404,8 @@ class LeafChunk:
         self._max_rep = profile.max_repetition_level
         # Below a struct, list or map.
         self._nested = len(profile.nodes) > 1
-        # A BYTE_ARRAY chunk's string bytes as its SizeStatistics record them,
-        # but for a DELTA_BYTE_ARRAY count from a writer that leaves values out.
+        # The string bytes SizeStatistics records, or ``None`` where the writer
+        # undercounts DELTA_BYTE_ARRAY.
         self.size_statistics_bytes = (
             None if stats is None else stats.unencoded_byte_array_data_bytes
         )
@@ -385,7 +415,11 @@ class LeafChunk:
         # the writer miscounted (PyArrow 24 with a ``write_batch_size`` above
         # the row group's rows), so the counts come from the rest of the footer.
         if stats is not None and not _histograms_agree(
-            stats, chunk, num_rows, self._max_def, self._max_rep
+            stats=stats,
+            chunk=chunk,
+            num_rows=num_rows,
+            max_def=self._max_def,
+            max_rep=self._max_rep,
         ):
             stats = None
         self._repetition = () if stats is None else stats.repetition_level_histogram
@@ -427,13 +461,16 @@ class LeafChunk:
         return opened * node.scale
 
     def bitmap(self, node: Optional[_ArrowNode] = None) -> int:
-        """Bytes of an array's validity bitmap, the leaf's by default (2)."""
+        """Bytes of an array's validity bitmap, the leaf's by default."""
         node = self.profile.nodes[-1] if node is None else node
         if not node.nullable or node.kind == _NULL:
             return 0
         # Unknown counts as present: undersizing a bin is what overfills a
         # read task.
-        if not node.keeps_bitmap and self._nulls(node.slot_def, node.def_level) == 0:
+        if (
+            not node.keeps_bitmap
+            and self._nulls(slot_def=node.slot_def, def_level=node.def_level) == 0
+        ):
             return 0
         return _bitmap_size(self.slots(node))
 
@@ -536,14 +573,14 @@ def leaf_chunks(
     pages = dictionary_pages or {}
     return [
         LeafChunk(
-            leaf_idx,
-            leaf_profiles[leaf_idx],
-            row_group.column(leaf_idx),
-            size_stats[leaf_idx]
+            index=leaf_idx,
+            profile=leaf_profiles[leaf_idx],
+            chunk=row_group.column(leaf_idx),
+            stats=size_stats[leaf_idx]
             if size_stats is not None and leaf_idx < len(size_stats)
             else None,
-            row_group.num_rows,
-            pages.get(leaf_idx),
+            num_rows=row_group.num_rows,
+            dictionary_page=pages.get(leaf_idx),
         )
         for leaf_idx in leaf_indices
     ]
@@ -575,7 +612,11 @@ def estimate_row_group_decoded_size(
     if leaf_profiles is None or any(i >= len(leaf_profiles) for i in indices):
         return None
     leaves = leaf_chunks(
-        row_group, leaf_profiles, indices, size_stats, dictionary_pages
+        row_group=row_group,
+        leaf_profiles=leaf_profiles,
+        leaf_indices=indices,
+        size_stats=size_stats,
+        dictionary_pages=dictionary_pages,
     )
     return estimate_row_group(leaves)
 
@@ -586,14 +627,14 @@ def estimate_row_group(leaves: Sequence[LeafChunk]) -> int:
     counted: Set[int] = set()
     for leaf in leaves:
         # Counted from the leaf's levels, so a bound wherever those are.
-        ancestors = estimate_ancestors(leaf, counted)
+        ancestors = estimate_ancestors(leaf=leaf, counted=counted)
         size += ancestors if leaf.levels_known() else shave_bound(ancestors)
         size += estimate_leaf(leaf)
     return size
 
 
 def estimate_leaf(leaf: LeafChunk) -> int:
-    """Decoded bytes of one chunk's leaf array, shaved where they are a bound (9)."""
+    """Decoded bytes of one chunk's leaf array, shaved where they are a bound."""
     size, bound = _leaf_bytes(leaf)
     if bound or not leaf.levels_known():
         return shave_bound(size)
@@ -604,11 +645,12 @@ def _leaf_bytes(leaf: LeafChunk) -> Tuple[int, bool]:
     """The leaf's bytes, and whether the branch that sized them is a bound."""
     arrow_type = leaf.type
     if detect_dictionary_type(arrow_type):
-        return estimate_dictionary(leaf, arrow_type), True
+        return estimate_dictionary(leaf=leaf, arrow_type=arrow_type), True
     if detect_view_type(arrow_type):
         return estimate_view_type(leaf), True
     if detect_string_type(arrow_type):
-        return estimate_string_type(leaf), detect_plain_bytes(leaf)
+        string_bytes, bound = _string_bytes(leaf)
+        return estimate_string_type(leaf=leaf, string_bytes=string_bytes), bound
     return estimate_fixed_width(leaf), False
 
 
@@ -617,7 +659,8 @@ def _leaf_bytes(leaf: LeafChunk) -> Tuple[int, bool]:
 
 
 def estimate_fixed_width(leaf: LeafChunk) -> int:
-    return _array_bytes(leaf.profile.nodes[-1], leaf)
+    """Decoded bytes of a fixed-width, boolean or null leaf."""
+    return _array_bytes(node=leaf.profile.nodes[-1], leaf=leaf)
 
 
 def estimate_ancestors(leaf: LeafChunk, counted: Set[int]) -> int:
@@ -626,7 +669,7 @@ def estimate_ancestors(leaf: LeafChunk, counted: Set[int]) -> int:
     for node in leaf.profile.nodes[:-1]:
         if node.node_id not in counted:
             counted.add(node.node_id)
-            size += _array_bytes(node, leaf)
+            size += _array_bytes(node=node, leaf=leaf)
     return size
 
 
@@ -645,8 +688,7 @@ def _array_bytes(node: _ArrowNode, leaf: LeafChunk) -> int:
     return size
 
 
-# 4. A dictionary type in the file's type hints, e.g. a pandas categorical.
-# Sized by :func:`estimate_dictionary`, with the hints' index and value types.
+# A dictionary type in the file's type hints, e.g. a pandas categorical.
 
 
 def detect_dictionary_type(arrow_type: pa.DataType) -> bool:
@@ -668,7 +710,7 @@ def estimate_dictionary(leaf: LeafChunk, arrow_type: pa.DictionaryType) -> int:
     )
 
 
-# 5. A view type in the type hints: ``string_view`` or ``binary_view``.
+# A view type in the type hints: ``string_view`` or ``binary_view``.
 
 
 def detect_view_type(arrow_type: pa.DataType) -> bool:
@@ -683,7 +725,7 @@ def estimate_view_type(leaf: LeafChunk) -> int:
     return leaf.bitmap() + 16 * leaf.slots() + estimate_string_bytes(leaf)
 
 
-# Plain strings, the case every string leaf not claimed above takes.
+# Plain string and binary leaves.
 
 
 def detect_string_type(arrow_type: pa.DataType) -> bool:
@@ -695,13 +737,9 @@ def detect_string_type(arrow_type: pa.DataType) -> bool:
     )
 
 
-def estimate_string_type(leaf: LeafChunk) -> int:
+def estimate_string_type(leaf: LeafChunk, string_bytes: int) -> int:
     """An offset per slot, plus one, and the values' bytes: exact once they are."""
-    return (
-        leaf.bitmap()
-        + _offset_width(leaf.type) * (leaf.slots() + 1)
-        + estimate_string_bytes(leaf)
-    )
+    return leaf.bitmap() + _offset_width(leaf.type) * (leaf.slots() + 1) + string_bytes
 
 
 def _offset_width(arrow_type: pa.DataType) -> int:
@@ -713,25 +751,31 @@ def _offset_width(arrow_type: pa.DataType) -> int:
     return 16
 
 
-# 6. Where a string leaf's bytes come from.
+# Where a string leaf's bytes come from.
 
 _DICTIONARY_ENCODINGS = frozenset({"RLE_DICTIONARY", "PLAIN_DICTIONARY"})
 
 
 def estimate_string_bytes(leaf: LeafChunk) -> int:
     """A BYTE_ARRAY chunk's value bytes, without their length prefixes."""
-    # 6b. SizeStatistics written: the bytes, exactly. :class:`LeafChunk` drops
+    return _string_bytes(leaf)[0]
+
+
+def _string_bytes(leaf: LeafChunk) -> Tuple[int, bool]:
+    """The value bytes, and whether they are the upper bound from plain pages."""
+    # SizeStatistics written: the bytes, exactly. :class:`LeafChunk` drops
     # PyArrow's count for a DELTA_BYTE_ARRAY chunk, which leaves values out.
     if leaf.size_statistics_bytes is not None:
-        return leaf.size_statistics_bytes
+        return leaf.size_statistics_bytes, False
     if detect_delta_byte_array(leaf.chunk):
-        return estimate_delta_byte_array(leaf.chunk)
+        return estimate_delta_byte_array(leaf.chunk), False
     if detect_dictionary_indexed(leaf.chunk):
-        return estimate_dictionary_indexed(leaf)
-    return estimate_plain_bytes(leaf.chunk, leaf.fewest_values())
+        return estimate_dictionary_indexed(leaf), False
+    fewest_values = leaf.fewest_values()
+    return estimate_plain_bytes(chunk=leaf.chunk, fewest_values=fewest_values), True
 
 
-# 6a. Any DELTA_BYTE_ARRAY page, without SizeStatistics bytes to trust: none
+# Any DELTA_BYTE_ARRAY page, without SizeStatistics bytes to trust: none
 # written, as by Spark 3.5, or PyArrow's.
 
 
@@ -739,8 +783,6 @@ def detect_delta_byte_array(chunk: ColumnChunkMetaData) -> bool:
     return "DELTA_BYTE_ARRAY" in chunk.encodings
 
 
-# How many times its uncompressed bytes :func:`estimate_delta_byte_array` lets
-# a chunk's values decode to.
 _DELTA_BYTE_ARRAY_EXPANSION = 128
 
 
@@ -756,10 +798,11 @@ def estimate_delta_byte_array(chunk: ColumnChunkMetaData) -> int:
     )
 
 
-# 6c. Data pages that index a dictionary page, without SizeStatistics bytes.
+# Data pages that index a dictionary page, without SizeStatistics bytes.
 
 
 def detect_dictionary_indexed(chunk: ColumnChunkMetaData) -> bool:
+    """Whether the chunk's data pages index a dictionary page."""
     # A format 1.0 file names its dictionary page PLAIN_DICTIONARY too, so a
     # page no data page uses lands here as well.
     return chunk.has_dictionary_page and not _DICTIONARY_ENCODINGS.isdisjoint(
@@ -767,8 +810,6 @@ def detect_dictionary_indexed(chunk: ColumnChunkMetaData) -> bool:
     )
 
 
-# How far past the dictionary's mean length :func:`estimate_dictionary_indexed`
-# takes each value.
 _DICTIONARY_MEAN_FACTOR = 1.2
 
 
@@ -782,10 +823,11 @@ def estimate_dictionary_indexed(leaf: LeafChunk) -> int:
     if mean is None:
         return (leaf.slots() + 1) * leaf.chunk.total_uncompressed_size
     at_mean = math.ceil(_DICTIONARY_MEAN_FACTOR * mean * leaf.values())
-    return max(at_mean, estimate_plain_bytes(leaf.chunk, leaf.fewest_values()))
+    plain = estimate_plain_bytes(chunk=leaf.chunk, fewest_values=leaf.fewest_values())
+    return max(at_mean, plain)
 
 
-# 6d. Every value in PLAIN or DELTA_LENGTH_BYTE_ARRAY pages.
+# Every value in PLAIN or DELTA_LENGTH_BYTE_ARRAY pages.
 
 
 def estimate_plain_bytes(chunk: ColumnChunkMetaData, fewest_values: int) -> int:
@@ -794,22 +836,9 @@ def estimate_plain_bytes(chunk: ColumnChunkMetaData, fewest_values: int) -> int:
     return max(chunk.total_uncompressed_size - prefix * fewest_values, 0)
 
 
-def detect_plain_bytes(leaf: LeafChunk) -> bool:
-    """Whether :func:`estimate_string_bytes` takes this bound (6d)."""
-    return (
-        leaf.size_statistics_bytes is None
-        and not detect_delta_byte_array(leaf.chunk)
-        and not detect_dictionary_indexed(leaf.chunk)
-    )
-
-
-# 9. An upper bound that some column meets exactly -- no nulls, every value
-# long, every value distinct -- comes out at 1.0 for that column and above it
-# for the rest. Taking 0.95 of it puts its worst case at 0.95 times the bytes
-# held and brings the rest nearer.
-
 _BOUND_FACTOR = 0.95
 
 
 def shave_bound(size: int) -> int:
+    """Scale an upper bound by 0.95; a column that meets it exactly lands at 0.95."""
     return math.ceil(_BOUND_FACTOR * size)
