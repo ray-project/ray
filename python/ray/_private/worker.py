@@ -1168,6 +1168,11 @@ class Worker:
     def shutdown_rdt_manager(self):
         if self._rdt_manager:
             self._rdt_manager.shutdown()
+        from ray.experimental.rdt.util import shutdown_tensor_transport_managers
+
+        # Availability probes can initialize a transport before an RDTManager
+        # exists. Clean up the process-wide registry even in that case.
+        shutdown_tensor_transport_managers()
 
 
 _connect_or_shutdown_lock = threading.RLock()

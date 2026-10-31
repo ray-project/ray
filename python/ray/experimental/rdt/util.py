@@ -1,8 +1,15 @@
+import logging
 import threading
+import time
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
 import ray
 from ray._raylet import ObjectRef
+from ray.experimental.rdt.axon_tensor_transport import (
+    AxonCudaTensorTransport,
+    AxonNumpyTensorTransport,
+    AxonTorchTensorTransport,
+)
 from ray.experimental.rdt.collective_tensor_transport import (
     GLOOTensorTransport,
     NCCLTensorTransport,
@@ -19,6 +26,9 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
+
+
+logger = logging.getLogger(__name__)
 
 
 class TransportManagerInfo(NamedTuple):
@@ -84,7 +94,15 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
+DEFAULT_TRANSPORTS = [
+    "NIXL",
+    "GLOO",
+    "NCCL",
+    "CUDA_IPC",
+    "AXON",
+    "AXON_TORCH",
+    "AXON_CUDA",
+]
 
 _default_transports_registered = False
 
@@ -95,6 +113,14 @@ def _ensure_default_transports_registered():
         if _default_transports_registered:
             return
         _default_transports_registered = True
+        try:
+            import numpy as np
+
+            register_tensor_transport(
+                "AXON", ["cpu"], AxonNumpyTensorTransport, np.ndarray
+            )
+        except ImportError:
+            pass
         try:
             import torch
 
@@ -109,6 +135,12 @@ def _ensure_default_transports_registered():
             )
             register_tensor_transport(
                 "CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor
+            )
+            register_tensor_transport(
+                "AXON_TORCH", ["cpu"], AxonTorchTensorTransport, torch.Tensor
+            )
+            register_tensor_transport(
+                "AXON_CUDA", ["cuda"], AxonCudaTensorTransport, torch.Tensor
             )
         except ImportError:
             pass
@@ -149,6 +181,25 @@ def get_tensor_transport_manager(
             transport_name
         ].transport_manager_class()
         return transport_managers[transport_name]
+
+
+def shutdown_tensor_transport_managers(timeout: float = 30.0) -> None:
+    """Close cached managers without initializing unused transports."""
+    with transport_managers_lock:
+        managers = list(transport_managers.items())
+    deadline = time.monotonic() + timeout
+    for name, manager in managers:
+        # Native cleanup can wait on callbacks that need the registry lock.
+        try:
+            manager.shutdown(timeout=max(0.0, deadline - time.monotonic()))
+        except Exception:
+            logger.exception("Failed to shut down tensor transport %s", name)
+            # Retain failed managers so pending native work keeps its owner and
+            # a subsequent shutdown can retry rather than reuse freed resources.
+            continue
+        with transport_managers_lock:
+            if transport_managers.get(name) is manager:
+                del transport_managers[name]
 
 
 def register_custom_tensor_transports_on_actor(

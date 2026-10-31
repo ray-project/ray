@@ -282,10 +282,24 @@ py_test(
     ],
 )
 
+py_test(
+    name = "doc_code_direct_transport_axon",
+    size = "small",
+    srcs = ["source/core/doc_code/direct_transport_axon.py"],
+    main = "source/core/doc_code/direct_transport_axon.py",
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "manual",
+        "team:core",
+    ],
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/core/doc_code/*.py"],
     exclude = [
+        "source/core/doc_code/direct_transport_axon.py",
         "source/core/doc_code/runtime_env_example.py",
         "source/core/doc_code/cross_language.py",
         "source/core/doc_code/ray_oom_prevention.py",

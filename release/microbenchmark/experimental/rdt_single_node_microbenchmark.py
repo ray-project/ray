@@ -234,6 +234,11 @@ parser.add_argument(
     action="store_true",
 )
 parser.add_argument(
+    "--enable_axon",
+    action="store_true",
+    help="Include Axon CPU and CUDA tensor transports (requires execution-ucx).",
+)
+parser.add_argument(
     "--enable_torch_bench",
     action="store_true",
 )
@@ -243,6 +248,9 @@ if args.enable_10gb:
 
 if args.enable_nixl:
     TRANSPORTS_AND_DEVICE.append(("nixl", "cuda"))
+
+if args.enable_axon:
+    TRANSPORTS_AND_DEVICE.extend([("axon_torch", "cpu"), ("axon_cuda", "cuda")])
 
 if args.enable_torch_bench:
     TEST_FUNCS.append(torch_latency)

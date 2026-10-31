@@ -329,6 +329,9 @@ class RDTManager:
                     ref_info_map[ref_info.send_ref.hex()] = ref_info
                 not_done.append(ref_info.recv_ref)
                 ref_info_map[ref_info.recv_ref.hex()] = ref_info
+                # Let the map own the metadata so completed transfers don't keep
+                # actors alive through this local variable while the monitor idles.
+                del ref_info
             if len(not_done) > 0:
                 done, not_done = ray.wait(not_done, num_returns=1, timeout=1)
             if len(done) > 0:

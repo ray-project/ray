@@ -24,7 +24,7 @@ RDT is currently in alpha and doesn't support all Ray Core APIs yet. Future rele
 ## Getting started
 
 :::{tip}
-RDT currently supports `torch.Tensor` objects created by Ray actor tasks. Future releases might add support for other data types and for Ray non-actor tasks.
+RDT supports `torch.Tensor` objects created by Ray actor tasks. The Axon backend also supports CPU `numpy.ndarray` objects.
 :::
 
 This walkthrough shows how to create and use RDT with different *tensor transports*, which are the mechanisms that transfer tensors between actors. RDT currently supports the following tensor transports:
@@ -32,6 +32,7 @@ This walkthrough shows how to create and use RDT with different *tensor transpor
 1. [Gloo](https://github.com/pytorch/gloo): A collective communication library for PyTorch and CPUs.
 1. [NVIDIA NCCL](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html): A collective communication library for NVIDIA GPUs.
 1. [NVIDIA NIXL](https://github.com/ai-dynamo/nixl): A library for accelerating point-to-point transfers through RDMA, especially between various types of memory and NVIDIA GPUs. NIXL runs on [libfabric](https://ofiwg.github.io/libfabric/) on AWS instances with [Elastic Fabric Adapter (EFA)](https://aws.amazon.com/hpc/efa/), and on [Unified Communication X (UCX)](https://github.com/openucx/ucx) everywhere else.
+1. [Axon](https://github.com/Florentino-Ding/execution-ucx): A UCX-based runtime for receiver-initiated transfers of NumPy arrays and PyTorch tensors.
 
 To keep the walkthrough easy to follow, start with the [Gloo](https://github.com/pytorch/gloo) transport, which works without any physical GPUs.
 
@@ -259,9 +260,43 @@ You can also use NIXL to retrieve the result from references created by {func}`r
 ```
 
 
+(direct-transport-axon)=
+
+### Usage with Axon (CPUs or NVIDIA GPUs)
+
+Build and install the `axon-ucx` Python package from [execution-ucx](https://github.com/Florentino-Ding/execution-ucx) in every participating actor environment and in the driver if it calls `ray.get` on Axon objects. Ray doesn't install Axon or UCX. CUDA transfers require an Axon build with CUDA rendezvous support, including device receive buffers for small payloads.
+
+Choose one of the three backend names:
+
+| `tensor_transport` | Data type | Device |
+| --- | --- | --- |
+| `"axon"` | `numpy.ndarray` | CPU |
+| `"axon_torch"` | `torch.Tensor` | CPU |
+| `"axon_cuda"` | `torch.Tensor` | NVIDIA GPU |
+
+Ray registers these backends automatically. Axon doesn't require a collective group or an application registration step. The receiver fetches each tensor from the source's Axon service, so Ray doesn't schedule a sender task for each transfer. NumPy transfers don't require PyTorch.
+
+The following example transfers a NumPy array between two actors and fetches it directly into the driver:
+
+```{literalinclude} ../doc_code/direct_transport_axon.py
+:language: python
+:start-after: __axon_example_start__
+:end-before: __axon_example_end__
+```
+
+For PyTorch, return contiguous tensors on the device matching `"axon_torch"` or `"axon_cuda"`. Reserve a GPU with `num_gpus=1` on each CUDA actor. Axon also supports actor-side `ray.put(..., _tensor_transport="axon_cuda")` and tensors nested inside Python objects.
+
+`ray.shutdown()` closes Axon runtimes in the calling process and removes successfully closed adapters from Ray's cache, so a later `ray.init()` can create fresh runtimes. Normal actor process exit also attempts cleanup. As with other Ray resources, shutting down a driver connected to an existing cluster doesn't shut down that cluster or its detached actors.
+
+Cleanup failures are logged during automatic shutdown, and failed adapters are retained for a later retry. Forced termination with `ray.kill` skips exit handlers.
+
+:::{note}
+Axon requires contiguous arrays and tensors. Each variant transfers within its listed device type; CPU-to-GPU and GPU-to-CPU transfers aren't supported. The adapter uses synchronous receives and doesn't implement per-transfer cancellation. Set `AXON_RDT_RECV_TIMEOUT_S` before runtime initialization to configure the blocking receive timeout, which defaults to 300 seconds. A timeout retains pending native work until it completes or shutdown drains it. Configure UCX with `UCX_TLS` and `UCX_NET_DEVICES` before initializing the runtime to select transports and network devices for your cluster.
+:::
+
 ### Summary
 
-With RDT, Ray stores objects and passes them directly between Ray actors, using accelerated transports such as Gloo, NCCL, and NIXL. Keep the following main points in mind:
+With RDT, Ray stores objects and passes them directly between Ray actors, using accelerated transports such as Gloo, NCCL, NIXL, and Axon. Keep the following main points in mind:
 
 * If you use a collective-based tensor transport, Gloo or NCCL, you must create a collective group ahead of time. NIXL only requires all involved actors to have NIXL installed.
 * Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference to the stored tensors, not a copy.
@@ -282,9 +317,9 @@ Under construction.
 
 RDT is currently in alpha and has the following limitations, which future releases might address:
 
-* Support for `torch.Tensor` objects only.
+* Support for `torch.Tensor` objects and CPU `numpy.ndarray` objects with Axon.
 * Support for Ray actors only, not Ray tasks.
-* Support for the following transports: Gloo, NCCL, and NIXL.
+* Support for the following transports: Gloo, NCCL, NIXL, CUDA IPC, and Axon.
 * Support for CPUs and NVIDIA GPUs only.
 * RDT objects are *mutable*. Ray only holds a reference to the tensor and doesn't copy it until a transfer is requested. If the application code also keeps a reference to a tensor before returning it and modifies the tensor in place, the receiving actor might see some or all of the changes.
 * `await` on an RDT object ref is temporarily unsupported.
@@ -313,6 +348,8 @@ Because of a known issue, Ray doesn't currently support storing different GPU ob
 * If a system-level error occurs during a Gloo or NCCL collective operation, the collective group is destroyed and the actors are killed to prevent any hanging.
 
 * If a system-level error occurs during a NIXL transfer, Ray or NIXL stops the transfer with an exception, and Ray raises the exception in the dependent task or in the `ray.get` call on the NIXL object ref.
+
+* Axon doesn't support per-transfer cancellation. Ray can kill actors involved in a failed transfer to prevent a hang.
 
 * System-level errors include the following:
   : * Errors internal to the third-party transport, for example NCCL network errors.
