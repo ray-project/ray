@@ -688,7 +688,7 @@ steps:
     tags:
       - sandbox_tests
       - gpu
-    instance_type: gpu-large
+    instance_type: gpu-large-flex
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
         --gpus 4
