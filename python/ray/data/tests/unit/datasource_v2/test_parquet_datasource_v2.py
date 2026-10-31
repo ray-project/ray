@@ -11,6 +11,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.common.online_bin_packer import (
     OnlineBinPacker,
 )
@@ -21,6 +24,9 @@ from ray.data._internal.datasource_v2.common.synthesized_columns import RowHashC
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     ChunkedFile,
     FooterFileIndexer,
+)
+from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+    FooterReader,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
@@ -40,6 +46,46 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
 )
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+from ray.data.expressions import col
+
+
+def test_read_pruning_does_not_depend_on_listing_hook(tmp_path):
+    class NoListingPruner(ParquetScanner):
+        def pushed_partition_pruner(self):
+            return None
+
+    scanner = NoListingPruner(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.int64())]),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    ).prune_partitions(col("year") == 2024)
+    paths = [
+        str(tmp_path / "root.parquet"),
+        str(tmp_path / "year=2024" / "data.parquet"),
+        str(tmp_path / "year=2023" / "data.parquet"),
+    ]
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=[1] * 3, chunk_metadatas=[None] * 3
+    )
+    assert scanner.pushed_partition_pruner() is None
+    assert scanner.prune_input_split(manifest).paths.tolist() == paths[:2]
+
+
+def test_reader_partition_conversion_error_has_path_and_cause(tmp_path):
+    import pyarrow.dataset as pds
+
+    path = tmp_path / "year=invalid" / "data.parquet"
+    path.parent.mkdir()
+    pq.write_table(pa.table({"id": [1], "year": [2024]}), path)
+    reader = ParquetFileReader(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.int64())]),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+        predicate=col("year") == 2024,
+    )
+    fragment = next(pds.dataset(str(path), format="parquet").get_fragments())
+    with pytest.raises(pa.ArrowInvalid) as error:
+        list(reader._iter_fragment_tables(fragment, {}))
+    assert str(path) in str(error.value)
+    assert isinstance(error.value.__cause__, pa.ArrowInvalid)
 
 
 def _write_parquet(path: str, table: pa.Table) -> None:
@@ -185,6 +231,193 @@ def test_infer_schema_hive_partitioned(tmp_path):
     assert "x" in schema.names
     assert "color" in schema.names
     assert schema.field("color").type == pa.string()
+
+
+def test_partition_path_outside_schema_sample_uses_logical_values(tmp_path):
+    roots = []
+    for index in range(16):
+        path = tmp_path / f"root-{index}.parquet"
+        pq.write_table(pa.table({"id": [index], "year": ["2023"]}), path)
+        roots.append(str(path))
+    partition = tmp_path / "year=2024" / "data.parquet"
+    partition.parent.mkdir()
+    pq.write_table(pa.table({"id": [100]}), partition)
+    datasource = ParquetDatasourceV2([*roots, str(partition)])
+    sample = _manifest_of(roots)
+    schema = datasource.infer_schema(sample)
+    scanner = datasource.create_scanner(
+        schema, partitioning=datasource.resolve_partitioning(sample)
+    )
+    scanner, residual = scanner.push_filters(col("year") == "2024")
+    assert residual is None
+    rows = [
+        row
+        for table in scanner.create_reader().read(
+            _manifest_of([*roots, str(partition)])
+        )
+        for row in table.to_pylist()
+    ]
+    assert rows == [{"id": 100, "year": "2024"}]
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+@pytest.mark.parametrize("operation", ["and", "or"])
+def test_mixed_root_reader_uses_logical_types_before_filtering(
+    tmp_path, monkeypatch, fallback, operation
+):
+    from ray.data._internal.datasource_v2.formats.parquet import parquet_file_reader
+
+    normalizations = []
+    normalize = Partitioning._normalize_base_dir
+
+    def track_normalization(scheme):
+        normalizations.append(scheme.base_dir)
+        normalize(scheme)
+
+    monkeypatch.setattr(Partitioning, "_normalize_base_dir", track_normalization)
+    root = tmp_path / "root.parquet"
+    partition = tmp_path / "year=2024" / "data.parquet"
+    partition.parent.mkdir()
+    pq.write_table(pa.table({"id": [-1, -2], "year": ["2024", "2023"]}), root)
+    pq.write_table(pa.table({"id": [1, 2], "year": ["1900", "1900"]}), partition)
+    schema = pa.schema([("id", pa.int64()), ("year", pa.int64())])
+    predicate = (
+        ((col("year") == 2024) & (col("id") > 0))
+        if operation == "and"
+        else ((col("year") == 2024) | (col("id") == -2))
+    )
+    monkeypatch.setattr(
+        parquet_file_reader, "_needs_nested_type_fallback", lambda *args: fallback
+    )
+    reader = ParquetFileReader(
+        schema=schema,
+        partitioning=Partitioning(
+            PartitionStyle.HIVE, field_names=["year"], field_types={"year": int}
+        ),
+        predicate=predicate,
+    )
+    rows = [
+        row
+        for table in reader.read(_manifest_of([str(root), str(partition)]))
+        for row in table.to_pylist()
+    ]
+    expected = [1, 2] if operation == "and" else [-2, -1, 1, 2]
+    assert sorted(row["id"] for row in rows) == expected
+    assert all(isinstance(row["year"], int) for row in rows)
+    assert {row["year"] for row in rows if row["id"] > 0} == {2024}
+    assert len(normalizations) == 1
+
+
+@pytest.mark.parametrize("prelisted", [False, True])
+def test_footer_listing_stops_after_proven_partition_survivors(
+    tmp_path, monkeypatch, prelisted
+):
+    import ray
+    from ray.data._internal.datasource_v2.common.listing_utils import (
+        list_files_for_each_block,
+    )
+    from ray.data._internal.datasource_v2.formats.parquet import footer_file_indexer
+    from ray.data._internal.execution.interfaces.task_context import TaskContext
+
+    root = tmp_path / "root.parquet"
+    first = tmp_path / "year=2024" / "first.parquet"
+    tail = tmp_path / "year=2024" / "tail.parquet"
+    rejected = tmp_path / "year=2023" / "rejected.parquet"
+    first.parent.mkdir()
+    rejected.parent.mkdir()
+    root_table = pa.table({"id": list(range(100)), "year": ["2024"] + ["2023"] * 99})
+    pq.write_table(root_table, root, row_group_size=100)
+    pq.write_table(pa.table({"id": list(range(100, 120))}), first)
+    pq.write_table(pa.table({"id": list(range(120, 140))}), tail)
+    pq.write_table(root_table, rejected)
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=root_table.schema, keep_unknown=True
+    )
+    scanned = []
+
+    class Actor:
+        def __init__(self, *args, **kwargs):
+            self.reader = FooterReader(*args, **kwargs)
+            self.read_footers = self
+
+        def remote(self, files, **kwargs):
+            def results():
+                for file in files:
+                    scanned.append(file.path)
+                    yield [self.reader._read_and_chunk(file)]
+
+            return results()
+
+    class ActorClass:
+        @staticmethod
+        def options(**kwargs):
+            class Builder:
+                @staticmethod
+                def remote(*args, **kwargs):
+                    return Actor(*args, **kwargs)
+
+            return Builder
+
+    monkeypatch.setattr(footer_file_indexer, "FooterReaderActor", ActorClass)
+    monkeypatch.setattr(ray, "get", lambda ref: ref)
+    monkeypatch.setattr(ray, "kill", lambda actor: None)
+    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
+    indexer = FooterFileIndexer(
+        ignore_missing_paths=False,
+        partitioning=scheme,
+        footer_batch_size=1,
+        max_inflight_batches=1,
+    )
+    paths = [str(root), str(rejected), str(first), str(tail)]
+    blocks = list(
+        list_files_for_each_block(
+            [_manifest_of(paths).as_block()],
+            TaskContext(task_idx=0, op_name="ListFiles"),
+            indexer=indexer,
+            filesystem=ParquetDatasourceV2([str(root)]).filesystem,
+            partition_pruner=pruner,
+            limit=10,
+            preserve_order=True,
+            prelisted_file_infos=prelisted,
+        )
+    )
+    assert scanned == [str(root), str(first)]
+    assert [
+        str(path) for block in blocks for path in FileManifest(block).paths
+    ] == scanned
+
+
+@pytest.mark.parametrize("filtered", [False, True])
+def test_tensor_reader_preserves_projected_partition_values(tmp_path, filtered):
+    from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
+
+    path = tmp_path / "year=2024" / "data.parquet"
+    path.parent.mkdir()
+    tensor = pa.ExtensionArray.from_storage(
+        ArrowTensorTypeV2((1,), pa.int64()),
+        pa.array([[1], [2]], type=pa.large_list(pa.int64())),
+    )
+    table = pa.table({"id": [1, 2], "tensor": tensor})
+    pq.write_table(table, path)
+    columns = ["tensor", "year"]
+    reader = ParquetFileReader(
+        schema=table.schema.append(pa.field("year", pa.string())),
+        columns=columns,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+        predicate=col("year") == "2024" if filtered else None,
+    )
+    assert reader._file_dataset_schema is None
+    batches = list(reader.read(_manifest_of([str(path)])))
+    assert sum(batch.num_rows for batch in batches) == 2
+    assert all(batch.column_names == columns for batch in batches)
+    assert all(
+        batch["year"].to_pylist() == ["2024"] * batch.num_rows for batch in batches
+    )
+    assert [value for batch in batches for value in batch["tensor"].to_pylist()] == [
+        [1],
+        [2],
+    ]
 
 
 def test_infer_schema_with_include_paths(tmp_path):
