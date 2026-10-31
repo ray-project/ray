@@ -70,3 +70,10 @@ def test_torch_cpu_restored_optimizer_buffers_own_storage():
         ), "in-place Adam step mutated checkpoint sender's numpy buffers"
     finally:
         env.close()
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
