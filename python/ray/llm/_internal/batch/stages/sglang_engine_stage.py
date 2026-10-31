@@ -17,6 +17,9 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.sglang_generate_task_handler import (
     _SGLangGenerateTaskHandler,
 )
+from ray.llm._internal.batch.stages.sglang_score_task_handler import (
+    _SGLangScoreTaskHandler,
+)
 from ray.llm._internal.batch.stages.sglang_task_handler import (
     _SGLangRequest,
     _SGLangTaskHandler,
@@ -28,6 +31,7 @@ logger = logging.getLogger(__name__)
 # The handler class for each task type.
 _TASK_HANDLERS: Dict[str, Type[_SGLangTaskHandler]] = {
     SGLangTaskType.GENERATE: _SGLangGenerateTaskHandler,
+    SGLangTaskType.SCORE: _SGLangScoreTaskHandler,
 }
 
 
@@ -141,7 +145,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
             expected_input_keys: The expected input keys of the stage.
             model: The path to the model to use for the SGLang engine.
             engine_kwargs: The kwargs to pass to the SGLang engine.
-            task_type: The task to use for the SGLang engine (e.g., "generate").
+            task_type: The task to use for the SGLang engine ("generate" or "score").
             max_pending_requests: The maximum number of pending requests. If None,
                 it will be set to a default value based on engine settings.
             task_options: Keyword arguments for the task handler's constructor.

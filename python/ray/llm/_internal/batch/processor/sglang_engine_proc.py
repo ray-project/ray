@@ -8,7 +8,10 @@ from pydantic import Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
-from ray.llm._internal.batch.constants import SGLangTaskType, TypeSGLangTaskType
+from ray.llm._internal.batch.constants import (
+    SGLangTaskType,
+    TypeSGLangTaskType,
+)
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     TelemetryAgent,
@@ -20,6 +23,10 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorBuilder,
 )
 from ray.llm._internal.batch.processor.sglang_generate_task import _SGLangGenerateTask
+from ray.llm._internal.batch.processor.sglang_score_task import (
+    SGLangScoreOptions,
+    _SGLangScoreTask,
+)
 from ray.llm._internal.batch.processor.sglang_task import _SGLangTask
 from ray.llm._internal.batch.processor.utils import (
     build_cpu_stage_map_kwargs,
@@ -41,6 +48,7 @@ DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 # The processor setup for each task type.
 _TASKS: Dict[str, _SGLangTask] = {
     SGLangTaskType.GENERATE: _SGLangGenerateTask(),
+    SGLangTaskType.SCORE: _SGLangScoreTask(),
 }
 
 
@@ -56,8 +64,11 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     )
     task_type: TypeSGLangTaskType = Field(
         default=SGLangTaskType.GENERATE,
-        description="The task type to use. If not specified, will use "
-        "'generate' by default.",
+        description="The task type to use: 'generate' (default) or 'score'.",
+    )
+    score_options: SGLangScoreOptions = Field(
+        default_factory=SGLangScoreOptions,
+        description="Options for task_type='score'.",
     )
 
     @root_validator(pre=True)
