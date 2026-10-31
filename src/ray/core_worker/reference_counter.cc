@@ -776,6 +776,12 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     OnObjectOutOfScopeOrFreed(it);
     if (deleted != nullptr) {
       deleted->push_back(id);
+    } else if (delete_from_memory_store_ != nullptr) {
+      // There is no caller-provided vector to report this object through
+      // (e.g. a borrower dropped the last reference and we were notified
+      // asynchronously). Delete the object's in-process value directly so its
+      // memory-store entry does not leak.
+      delete_from_memory_store_({id});
     }
 
     auto index_it = reconstructable_owned_objects_index_.find(id);
@@ -1469,6 +1475,12 @@ void ReferenceCounter::SetReleaseLineageCallback(
     const LineageReleasedCallback &callback) {
   RAY_CHECK(on_lineage_released_ == nullptr);
   on_lineage_released_ = callback;
+}
+
+void ReferenceCounter::SetMemoryStoreDeleteCallback(
+    std::function<void(const std::vector<ObjectID> &)> callback) {
+  RAY_CHECK(delete_from_memory_store_ == nullptr);
+  delete_from_memory_store_ = std::move(callback);
 }
 
 bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,

@@ -435,6 +435,25 @@ class ReferenceCounterInterface {
   virtual void SetReleaseLineageCallback(const LineageReleasedCallback &callback) = 0;
 
   /**
+   * @brief Set a callback that deletes the in-process (memory store) value of
+   * objects that go out of scope through internal code paths.
+   *
+   * Most public methods report out-of-scope objects through a caller-provided
+   * `deleted` vector, and the caller (the core worker) deletes those objects
+   * from its in-process memory store. Some objects, however, go out of scope
+   * through internal paths that have no caller to hand a `deleted` vector to,
+   * e.g. when a borrower drops the last reference and the owner is notified
+   * asynchronously. Without this callback, the owner's memory-store entry for
+   * such objects would leak. The core worker sets this callback so the
+   * reference counter can delete those entries itself.
+   *
+   * @param[in] callback Called with the IDs of objects that went out of scope
+   * and whose in-process values should be deleted.
+   */
+  virtual void SetMemoryStoreDeleteCallback(
+      std::function<void(const std::vector<ObjectID> &)> callback) = 0;
+
+  /**
    * @brief Just calls PublishRefRemovedInternal with a lock.
    */
   virtual void PublishRefRemoved(const ObjectID &object_id) = 0;

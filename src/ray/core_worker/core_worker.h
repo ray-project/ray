@@ -455,8 +455,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TODO(sang): This seems bad... We should delete the memory store
-    // properly from reference counter.
+    // Delete the in-process value of objects that went out of scope on this
+    // call. Internal reference-counter paths that have no `deleted` vector to
+    // report through (e.g. a borrower dropping the last reference) clean up the
+    // memory store themselves via the callback registered in the CoreWorker
+    // constructor (see ReferenceCounter::SetMemoryStoreDeleteCallback).
     memory_store_->Delete(deleted);
   }
 
