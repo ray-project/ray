@@ -4,9 +4,9 @@ import random
 import sys
 import threading
 from collections import defaultdict
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
 import grpc
@@ -70,18 +70,18 @@ class FakeReplicaResult(ReplicaResult):
         self,
         replica_id,
         is_generator_object: bool,
-        queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
+        queue_len_info: ReplicaQueueLengthInfo | None = None,
     ):
         self._replica_id = replica_id
         self._is_generator_object = is_generator_object
         self._queue_len_info = queue_len_info
-        self._done_callbacks: List[Callable] = []
+        self._done_callbacks: list[Callable] = []
         self.cancelled = False
 
     async def get_rejection_response(self):
         return self._queue_len_info
 
-    def get(self, timeout_s: Optional[float]):
+    def get(self, timeout_s: float | None):
         raise NotImplementedError
 
     async def get_async(self):
@@ -120,25 +120,25 @@ class FakeReplica(RunningReplica):
         self,
         replica_id: ReplicaID,
         *,
-        queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
+        queue_len_info: ReplicaQueueLengthInfo | None = None,
         is_cross_language: bool = False,
-        error: Optional[Exception] = None,
+        error: Exception | None = None,
         node_id: str = "fake-node-id",
-        availability_zone: Optional[str] = None,
+        availability_zone: str | None = None,
         node_ip: str = "127.0.0.1",
-        port: Optional[int] = 8000,
-        actor_id: Optional[ray.ActorID] = None,
+        port: int | None = 8000,
+        actor_id: ray.ActorID | None = None,
     ):
         self._replica_id = replica_id
         self._is_cross_language = is_cross_language
         self._queue_len_info = queue_len_info
         self._error = error
-        self._reserved_slots: Set[str] = set()
+        self._reserved_slots: set[str] = set()
         self._slot_counter = 0
         self._requests_sent = []  # Track all requests sent to this replica
         self._reject_reservation = False
         self._reservation_queue_len = 1
-        self._release_slot_error: Optional[Exception] = None
+        self._release_slot_error: Exception | None = None
 
         # Create a minimal _replica_info object to satisfy router.py requirements
         self._replica_info = Mock()
@@ -158,23 +158,23 @@ class FakeReplica(RunningReplica):
         return self._replica_info.node_id
 
     @property
-    def availability_zone(self) -> Optional[str]:
+    def availability_zone(self) -> str | None:
         return self._replica_info.availability_zone
 
     @property
-    def actor_id(self) -> Optional[ray.ActorID]:
+    def actor_id(self) -> ray.ActorID | None:
         return self._actor_id
 
     @property
     def is_cross_language(self) -> bool:
         return self._is_cross_language
 
-    def get_queue_len(self, *, deadline_s: float) -> int:
+    async def get_queue_len(self, *, deadline_s: float) -> int:
         raise NotImplementedError
 
     async def reserve_slot(
         self, request_metadata: RequestMetadata
-    ) -> Tuple[str, ReplicaQueueLengthInfo]:
+    ) -> tuple[str, ReplicaQueueLengthInfo]:
         """Reserve a slot and return a token."""
         if self._reject_reservation:
             return "", ReplicaQueueLengthInfo(
@@ -197,7 +197,7 @@ class FakeReplica(RunningReplica):
         self._reserved_slots.discard(slot_token)
         return len(self._reserved_slots)
 
-    def set_release_slot_error(self, error: Optional[Exception]) -> None:
+    def set_release_slot_error(self, error: Exception | None) -> None:
         """Configure release_slot to raise the given error (or clear with None)."""
         self._release_slot_error = error
 
@@ -213,7 +213,7 @@ class FakeReplica(RunningReplica):
         else:
             return FakeReplicaResult(self._replica_id, is_generator_object=False)
 
-    def try_send_request(
+    async def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
     ) -> FakeReplicaResult:
         # Raise immediately if we're simulating send-time failure (e.g. ActorDiedError).
@@ -255,18 +255,18 @@ class FakeReplica(RunningReplica):
 class FakeRequestRouter(RequestRouter):
     def __init__(self, use_queue_len_cache: bool):
         self._block_requests = False
-        self._blocked_requests: List[asyncio.Event] = []
-        self._replica_to_return: Optional[FakeReplica] = None
-        self._replica_to_return_on_retry: Optional[FakeReplica] = None
+        self._blocked_requests: list[asyncio.Event] = []
+        self._replica_to_return: FakeReplica | None = None
+        self._replica_to_return_on_retry: FakeReplica | None = None
         self._replica_queue_len_cache = ReplicaQueueLengthCache()
-        self._dropped_replicas: Set[ReplicaID] = set()
+        self._dropped_replicas: set[ReplicaID] = set()
         self._use_queue_len_cache = use_queue_len_cache
         self._use_replica_queue_len_cache = use_queue_len_cache
         self.on_request_routed_called = False
-        self.routed_requests: List[
-            Tuple[PendingRequest, ReplicaID, Optional[ReplicaResult]]
+        self.routed_requests: list[
+            tuple[PendingRequest, ReplicaID, ReplicaResult | None]
         ] = []
-        self.completed_requests: List[Tuple[ReplicaID, str]] = []
+        self.completed_requests: list[tuple[ReplicaID, str]] = []
 
     def create_replica_wrapper(self, replica_info: RunningReplicaInfo):
         return FakeReplica(replica_info)
@@ -276,22 +276,22 @@ class FakeRequestRouter(RequestRouter):
         return self._replica_queue_len_cache
 
     @property
-    def dropped_replicas(self) -> Set[ReplicaID]:
+    def dropped_replicas(self) -> set[ReplicaID]:
         return self._dropped_replicas
 
     @property
-    def curr_replicas(self) -> Dict[ReplicaID, RunningReplica]:
+    def curr_replicas(self) -> dict[ReplicaID, RunningReplica]:
         replicas = {}
         if self._replica_to_return is not None:
             replicas[self._replica_to_return.replica_id] = self._replica_to_return
         if self._replica_to_return_on_retry is not None:
-            replicas[
-                self._replica_to_return_on_retry.replica_id
-            ] = self._replica_to_return_on_retry
+            replicas[self._replica_to_return_on_retry.replica_id] = (
+                self._replica_to_return_on_retry
+            )
 
         return replicas
 
-    def update_replicas(self, replicas: List[RunningReplica]):
+    def update_replicas(self, replicas: list[RunningReplica]):
         pass
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
@@ -344,16 +344,16 @@ class FakeRequestRouter(RequestRouter):
 
     async def choose_replicas(
         self,
-        candidate_replicas: List[RunningReplica],
-        pending_request: Optional[PendingRequest] = None,
-    ) -> List[List[RunningReplica]]:
+        candidate_replicas: list[RunningReplica],
+        pending_request: PendingRequest | None = None,
+    ) -> list[list[RunningReplica]]:
         pass
 
     def on_request_routed(
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,
-        result: Optional[ReplicaResult],
+        result: ReplicaResult | None,
     ) -> None:
         self.on_request_routed_called = True
         self.routed_requests.append((pending_request, replica_id, result))
@@ -367,7 +367,7 @@ class FakeRequestRouter(RequestRouter):
 
 
 @pytest.fixture
-async def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
+async def setup_router(request) -> tuple[AsyncioRouter, FakeRequestRouter]:
     if not hasattr(request, "param"):
         request.param = {}
 
@@ -772,7 +772,7 @@ class FakeGrpcReplicaResultForRejection(gRPCReplicaResult):
 
 
 def _aio_rpc_error(
-    code: grpc.StatusCode, initial_metadata: Optional[grpc.aio.Metadata] = None
+    code: grpc.StatusCode, initial_metadata: grpc.aio.Metadata | None = None
 ) -> grpc.aio.AioRpcError:
     return grpc.aio.AioRpcError(
         code=code,
@@ -852,7 +852,7 @@ class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_basic(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
         router, fake_request_router = setup_router
@@ -893,7 +893,7 @@ class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_basic_with_rejection(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
         router, fake_request_router = setup_router
@@ -938,7 +938,7 @@ class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_retry_with_rejection(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
         router, fake_request_router = setup_router
@@ -984,7 +984,7 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_cross_lang_no_rejection(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         router, fake_request_router = setup_router
 
@@ -1003,7 +1003,7 @@ class TestAssignRequest:
         assert replica_result._replica_id == r1_id
 
     async def test_max_queued_requests_no_limit(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         router, fake_request_router = setup_router
         fake_request_router.set_should_block_requests(True)
@@ -1040,7 +1040,7 @@ class TestAssignRequest:
         )
 
     async def test_max_queued_requests_limited(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         router, fake_request_router = setup_router
         fake_request_router.set_should_block_requests(True)
@@ -1098,7 +1098,7 @@ class TestAssignRequest:
         )
 
     async def test_max_queued_requests_updated(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         router, fake_request_router = setup_router
         fake_request_router.set_should_block_requests(True)
@@ -1196,7 +1196,7 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_replica_actor_died(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """ActorDiedError whose actor_id matches the replica → replica is dropped."""
         router, fake_request_router = setup_router
@@ -1233,7 +1233,7 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_replica_actor_died_mismatched_actor_id(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """ActorDiedError whose actor_id does NOT match the replica → replica is NOT
         dropped (the error came from an upstream dependency, not this replica)."""
@@ -1265,7 +1265,7 @@ class TestAssignRequest:
         assert r1_id not in fake_request_router.dropped_replicas
 
     async def test_actor_died_matching_id_via_callback(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Done-callback with ActorDiedError whose actor_id matches the replica →
         replica is dropped via _process_finished_request."""
@@ -1289,7 +1289,7 @@ class TestAssignRequest:
         assert r1_id in fake_request_router.dropped_replicas
 
     async def test_actor_died_mismatched_id_via_callback(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Done-callback with ActorDiedError whose actor_id does NOT match the
         replica → replica is NOT dropped (upstream dependency failure)."""
@@ -1314,7 +1314,7 @@ class TestAssignRequest:
         assert r1_id not in fake_request_router.dropped_replicas
 
     async def test_actor_died_none_actor_id_via_callback(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Done-callback with ActorDiedError(actor_id=None) and replica has valid
         actor_id → replica IS dropped (conservative fallback when ID unknown)."""
@@ -1339,7 +1339,7 @@ class TestAssignRequest:
         assert r1_id in fake_request_router.dropped_replicas
 
     async def test_ray_task_error_wrapping_actor_died_matching_id_via_callback(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Done-callback with RayTaskError(cause=ActorDiedError) where actor_id
         matches the replica → replica is dropped."""
@@ -1370,7 +1370,7 @@ class TestAssignRequest:
         assert r1_id in fake_request_router.dropped_replicas
 
     async def test_ray_task_error_wrapping_actor_died_mismatched_id_via_callback(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Done-callback with RayTaskError(cause=ActorDiedError) where actor_id does
         NOT match the replica → replica is NOT dropped (upstream failure)."""
@@ -1412,7 +1412,7 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_replica_actor_unavailable(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         router, fake_request_router = setup_router
         # Two replicas
@@ -1483,7 +1483,7 @@ class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_on_request_routed(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
         """Test that on_request_routed is called when a request is routed."""
@@ -1515,7 +1515,7 @@ class TestChooseReplica:
     """Tests for choose_replica() and dispatch() flow."""
 
     async def test_choose_replica_raises_deployment_unavailable(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """choose_replica fails when deployment is marked unavailable."""
         router, _ = setup_router
@@ -1531,7 +1531,7 @@ class TestChooseReplica:
                 pass
 
     async def test_choose_replica_raises_backpressure(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """choose_replica raises BackPressureError when queue limit is reached."""
         router, _ = setup_router
@@ -1549,7 +1549,7 @@ class TestChooseReplica:
                 pass
 
     async def test_choose_without_dispatch_releases_slot(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Test that exiting context without dispatch releases the slot."""
         router, fake_request_router = setup_router
@@ -1575,7 +1575,7 @@ class TestChooseReplica:
         assert slot_token not in replica._reserved_slots
 
     async def test_choose_without_dispatch_does_not_fire_on_request_completed(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """on_request_completed shouldn't fire if the caller exits without dispatching."""
         router, fake_request_router = setup_router
@@ -1592,7 +1592,7 @@ class TestChooseReplica:
         assert fake_request_router.completed_requests == []
 
     async def test_choose_with_exception_releases_slot(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Test that exception in context releases the slot."""
         router, fake_request_router = setup_router
@@ -1621,7 +1621,7 @@ class TestChooseReplica:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_choose_and_dispatch(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
         """Happy path: selection fields are populated, dispatch sends with
@@ -1657,7 +1657,7 @@ class TestChooseReplica:
         assert replica._requests_sent[0]["with_rejection"] is False
 
     async def test_multiple_sequential_selections(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Test multiple sequential choose_replica() and dispatch() calls."""
         router, fake_request_router = setup_router
@@ -1687,7 +1687,7 @@ class TestChooseReplica:
         indirect=True,
     )
     async def test_cache_updated_on_choose_replica(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Test that queue length cache is updated when choosing a replica."""
         router, fake_request_router = setup_router
@@ -1724,7 +1724,7 @@ class TestChooseReplica:
         indirect=True,
     )
     async def test_current_loop_dispatch_marks_selection_before_task_runs(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Wrapper dispatch should consume the selection before its task runs."""
         router, fake_request_router = setup_router
@@ -1765,7 +1765,7 @@ class TestChooseReplica:
         indirect=True,
     )
     async def test_current_loop_dispatch_failure_releases_cache(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """If wrapper dispatch fails after consuming a selection, it owns cleanup."""
         router, fake_request_router = setup_router
@@ -1802,7 +1802,7 @@ class TestChooseReplica:
         indirect=True,
     )
     async def test_cache_decremented_on_choose_without_dispatch(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Test that cache is decremented when choose exits without dispatch."""
         router, fake_request_router = setup_router
@@ -1833,7 +1833,7 @@ class TestChooseReplica:
         indirect=True,
     )
     async def test_choose_replica_retries_when_reservation_rejected(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """choose_replica should only yield after replica-side capacity is reserved."""
         router, fake_request_router = setup_router
@@ -1868,7 +1868,7 @@ class TestChooseReplica:
         indirect=True,
     )
     async def test_concurrent_choose_replica_updates_cache(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Test that concurrent choose_replica calls correctly update cache."""
         router, fake_request_router = setup_router
@@ -1906,7 +1906,7 @@ class TestChooseReplica:
         assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
 
     async def test_reserved_slots_gauge_increments_and_decrements(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Gauge goes 0 → 1 → 0 across choose+dispatch and choose-without-dispatch.
 
@@ -1952,7 +1952,7 @@ class TestChooseReplica:
         gauge_mock.set.assert_called_with(0)
 
     async def test_release_failure_does_not_leak_reserved_slots_metric(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """If the release call raises during choose_replica cleanup, the
         reserved-slots gauge must still decrement — otherwise it leaks for the
@@ -1979,7 +1979,7 @@ class TestChooseReplica:
         assert router._metrics_manager._num_reserved_slots == before
 
     async def test_inc_reserved_slots_failure_releases_slot(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """If gauge.set() throws during inc, cleanup must still release the
         slot and rebalance the counter."""
@@ -1994,9 +1994,9 @@ class TestChooseReplica:
         # Raise only on inc's set(1); the cleanup's set(0) must still run.
         gauge_mock = Mock()
         gauge_mock.set = Mock(
-            side_effect=lambda v: (_ for _ in ()).throw(RuntimeError("gauge boom"))
-            if v > 0
-            else None
+            side_effect=lambda v: (
+                (_ for _ in ()).throw(RuntimeError("gauge boom")) if v > 0 else None
+            )
         )
         router._metrics_manager._reserved_slots_gauge = gauge_mock
 
@@ -2026,7 +2026,7 @@ class TestChooseReplica:
     )
     async def test_dispatch_release_slot_fires_only_on_cancellation(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         callback_result,
         expect_release,
     ):
@@ -2042,7 +2042,7 @@ class TestChooseReplica:
         replica = FakeReplica(r1_id)
         fake_request_router.set_replica_to_return(replica)
 
-        release_slot_calls: List[str] = []
+        release_slot_calls: list[str] = []
         original_release_slot = replica.release_slot
 
         async def spy_release_slot(slot_token):
@@ -2068,7 +2068,7 @@ class TestChooseReplica:
         assert release_slot_calls == ([slot_token] if expect_release else [])
 
     async def test_dispatch_failure_is_not_masked_by_release_failure(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """If both `try_send_request` and the cleanup `release_slot` raise, the
         caller must see the original dispatch error, not the release error.
@@ -2093,7 +2093,7 @@ class TestChooseReplica:
                 await router.dispatch(selection, request_metadata)
 
     async def test_dispatch_replica_unavailable(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """Test dispatch() raises error when replica becomes unavailable."""
         router, fake_request_router = setup_router
@@ -2118,7 +2118,7 @@ class TestChooseReplica:
                 await router.dispatch(selection, request_metadata)
 
     async def test_multiple_dispatch_calls_fail(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """A ReplicaSelection can only be dispatched once."""
         router, fake_request_router = setup_router
@@ -2143,7 +2143,7 @@ class TestChooseReplica:
         assert len(replica._requests_sent) == 1
 
     async def test_choose_replica_no_reserve_skips_slot_reservation(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """``_reserve=False`` yields a selection with no slot token, bypasses
         ``reserve_slot`` on the replica, and ``dispatch`` on that selection
@@ -2176,7 +2176,7 @@ class TestChooseReplica:
         assert replica._slot_counter == 0
 
     async def test_choose_replica_no_reserve_calls_on_request_routed(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ):
         """The pick is the routing decision for ``_reserve=False`` callers,
         so the policy must get ``on_request_routed``; stateful policies keep
@@ -2464,11 +2464,11 @@ class TestRouterMetricsManager:
             ):
                 metrics_manager.push_autoscaling_metrics_to_controller()
             mock_controller_handle.record_autoscaling_metrics_from_handle.remote.assert_called_once()
-            (
-                payload,
-            ) = mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
-                0
-            ]
+            (payload,) = (
+                mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
+                    0
+                ]
+            )
             assert isinstance(payload, bytes)
             assert autoscaling_metrics_codec.is_columnar(payload) is columnar
             if columnar:
@@ -2526,7 +2526,7 @@ class TestRouterMetricsManager:
         r2 = ReplicaID("r2", deployment_id)
         r3 = ReplicaID("r3", deployment_id)
 
-        def check_database(expected: Set[ReplicaID]):
+        def check_database(expected: set[ReplicaID]):
             assert set(metrics_manager.metrics_store.data) == expected
             return True
 
@@ -2590,7 +2590,7 @@ class TestRouterMetricsManager:
 class TestSingletonThreadRouter:
     @pytest.fixture
     def setup_singleton_thread_router(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self, setup_router: tuple[AsyncioRouter, FakeRequestRouter]
     ) -> SingletonThreadRouter:
         asyncio_router, fake_request_router = setup_router
 
@@ -2616,7 +2616,7 @@ class TestSingletonThreadRouter:
 
     def test_request_assignment(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         _, fake_request_router = setup_router
@@ -2645,7 +2645,7 @@ class TestSingletonThreadRouter:
     )
     async def test_dispatch_marks_selection_before_scheduled_coroutine_runs(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
         monkeypatch,
     ):
@@ -2686,7 +2686,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_choose_replica_cancel_during_entry_releases_slot(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
         monkeypatch,
     ):
@@ -2714,12 +2714,12 @@ class TestSingletonThreadRouter:
 
         reserved_slots = 0
         reserved_lock = threading.Lock()
-        release_path: List[str] = []
+        release_path: list[str] = []
         released = threading.Event()
-        outer_task_holder: List[asyncio.Task] = []
+        outer_task_holder: list[asyncio.Task] = []
         # Pin every inner CM so GC can't finalize the parked generator and
         # release the slot for us -- only an explicit __aexit__ should.
-        pinned_cms: List = []
+        pinned_cms: list = []
 
         @asynccontextmanager
         async def fake_choose_replica(*args, **kwargs):
@@ -2782,11 +2782,11 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_no_reserve_cancel_stops_replica_wait(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         """Cancellation stops pick-only selection while it waits for replicas."""
-        asyncio_router, fake_request_router = setup_router
+        _asyncio_router, fake_request_router = setup_router
         thread_router = setup_singleton_thread_router
         router_loop = thread_router._get_singleton_asyncio_loop(component="unknown")
 
@@ -2851,7 +2851,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_no_reserve_cancel_stops_empty_retries(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
         monkeypatch,
     ):
@@ -2919,7 +2919,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_finally_shields_cleanup_from_cancellation(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
         monkeypatch,
     ):
@@ -3004,7 +3004,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_cancellation_propagation(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         fake_router, _ = setup_router
@@ -3062,7 +3062,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_replica_result_cancellation(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         fake_router, _ = setup_router
@@ -3103,7 +3103,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_assign_request_with_exception(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         fake_router, _ = setup_router
@@ -3126,7 +3126,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_assign_request_with_exception_during_cancellation(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         fake_router, _ = setup_router
@@ -3238,7 +3238,7 @@ class TestOnRequestCompleted:
 
     async def test_on_request_completed_called_via_done_callback(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
     ):
         """After a normal (no-rejection) request, firing the ReplicaResult's
         done callback should invoke on_request_completed on the router."""
@@ -3275,7 +3275,7 @@ class TestOnRequestCompleted:
     )
     async def test_on_request_completed_called_via_finally_on_actor_died(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
     ):
         """When try_send_request raises ActorDiedError (before the callback is
         registered), the finally block should call on_request_completed."""
@@ -3313,7 +3313,7 @@ class TestOnRequestCompleted:
     )
     async def test_on_request_completed_called_via_finally_on_actor_unavailable(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
     ):
         """When try_send_request raises ActorUnavailableError, the finally
         block should call on_request_completed."""
@@ -3348,7 +3348,7 @@ class TestOnRequestCompleted:
 
     async def test_multiple_requests_each_trigger_on_request_completed(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_router: tuple[AsyncioRouter, FakeRequestRouter],
     ):
         """Multiple in-flight requests should each trigger their own
         on_request_completed call when they finish."""
