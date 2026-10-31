@@ -671,6 +671,46 @@ def handle_num_replicas_auto(
     return max_ongoing_requests, autoscaling_config
 
 
+_GANG_ALIGNED_AUTOSCALING_BOUNDS = (
+    "min_replicas",
+    "max_replicas",
+    "initial_replicas",
+)
+
+
+def validate_gang_scheduling_bounds(
+    gang_size: int,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]],
+) -> None:
+    """Validate that explicitly set autoscaling bounds are multiples of gang_size.
+
+    Bounds left at their defaults are not checked: gang scheduling rounds the
+    autoscaler's decisions up to whole gangs, so the defaults are safe.
+    """
+    if autoscaling_config is None:
+        return
+
+    if isinstance(autoscaling_config, AutoscalingConfig):
+        bounds = {
+            name: getattr(autoscaling_config, name)
+            for name in autoscaling_config.model_fields_set
+            if name in _GANG_ALIGNED_AUTOSCALING_BOUNDS
+        }
+    else:
+        bounds = {
+            name: autoscaling_config[name]
+            for name in _GANG_ALIGNED_AUTOSCALING_BOUNDS
+            if name in autoscaling_config
+        }
+
+    for field_name, value in bounds.items():
+        if value is not None and value % gang_size != 0:
+            raise ValueError(
+                f"autoscaling_config.{field_name} ({value}) must be a multiple of "
+                f"gang_size ({gang_size})."
+            )
+
+
 class ReplicaConfig:
     """Internal datastructure wrapping config options for a deployment's replicas.
 

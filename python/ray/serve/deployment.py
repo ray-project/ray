@@ -6,6 +6,7 @@ from ray.serve._private.config import (
     ReplicaConfig,
     RequestRouterConfig,
     handle_num_replicas_auto,
+    validate_gang_scheduling_bounds,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
@@ -354,6 +355,24 @@ class Deployment:
         # `num_replicas="auto"`
         if max_ongoing_requests is None:
             raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+
+        # Validate the user-provided bounds before handle_num_replicas_auto()
+        # merges in defaults, so only explicitly set bounds are checked.
+        gang_config_for_validation = (
+            gang_scheduling_config
+            if gang_scheduling_config is not DEFAULT.VALUE
+            else self._deployment_config.gang_scheduling_config
+        )
+        if gang_config_for_validation is not None and autoscaling_config not in [
+            DEFAULT.VALUE,
+            None,
+        ]:
+            if isinstance(gang_config_for_validation, dict):
+                gang_size = gang_config_for_validation.get("gang_size")
+            else:
+                gang_size = gang_config_for_validation.gang_size
+            if gang_size is not None:
+                validate_gang_scheduling_bounds(gang_size, autoscaling_config)
 
         if num_replicas == "auto":
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
