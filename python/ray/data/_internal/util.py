@@ -1586,6 +1586,24 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         )
 
 
+def filesystem_for_sized_opens(
+    filesystem: "pyarrow.fs.FileSystem",
+) -> "pyarrow.fs.FileSystem":
+    """Return the filesystem to open files whose size is already known.
+
+    ``RetryingPyFileSystem`` opens a file by path alone, which drops a known
+    size, so S3 sends a HEAD request to look it up again. That request is all
+    the wrapper retries: the file it returns reads from S3 directly. Given the
+    size, ``S3FileSystem`` opens without any request, so it is returned
+    unwrapped. Other filesystems keep the wrapper.
+    """
+    if isinstance(filesystem, RetryingPyFileSystem) and isinstance(
+        filesystem.unwrap(), pyarrow.fs.S3FileSystem
+    ):
+        return filesystem.unwrap()
+    return filesystem
+
+
 def _annotate_exception_with_retry_context(
     exc: BaseException,
     *,
