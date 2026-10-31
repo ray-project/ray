@@ -513,6 +513,31 @@ The role needs `ecr:GetAuthorizationToken`, `ecr:BatchGetImage`, and `ecr:GetDow
 
 The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap and the filesystem that holds the cache has a minimum of free space, so the cache gives way when sandboxes' writable overlays, logs, or spilled objects fill the disk. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem and the free-space floor to a tenth of it, the level at which the kubelet starts evicting Pods. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` and `RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES` on worker nodes to choose either in bytes, or set both to `0` to disable eviction.
 
+### Place sandboxes on the node that caches their image
+
+A cold pull of a large image takes a minute or more, and every node that runs an image caches its own copy. So that sandboxes of one image share a node's cache, {func}`~ray.experimental.sandbox.create` and the HTTP and gRPC APIs prefer, for each image, one node among the nodes that could host the sandbox. The choice is a hash of the image and the node IDs, so every process picks the same node without coordination, even for a burst of sandboxes that start before any pull finishes, and a node that joins or leaves the cluster moves only a share of the images. The preference is soft: when that node lacks the resources for another sandbox, Ray schedules it as usual.
+
+An actor that creates sandboxes with `SandboxRuntime` gets the same preference from {func}`~ray.experimental.sandbox.image_scheduling_strategy`. Pass it the actor's resource requests, so that only nodes that can host the actor count:
+
+```python
+import ray
+from ray.experimental.sandbox import SandboxRuntime, image_scheduling_strategy
+
+ray.init()
+
+@ray.remote
+class Rollout:
+    def __init__(self, image: str):
+        self.runtime = SandboxRuntime()
+        self.sandbox = self.runtime.create(image=image)
+
+image = "python:3.12-slim"
+rollout = Rollout.options(
+    num_cpus=1,
+    scheduling_strategy=image_scheduling_strategy(image, num_cpus=1),
+).remote(image)
+```
+
 ### Route Docker Hub pulls through a mirror
 
 Unless the nodes hold Docker Hub credentials, every node pulling from Docker Hub consumes the anonymous pull-rate limit and downloads the image over the WAN. In a large cluster, concurrent pulls of multi-GB images can quickly hit the rate limit or saturate network bandwidth, causing image pulls to fail or become slow.

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from ray.experimental.sandbox.http.host import SandboxHost
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
+from ray.experimental.sandbox.placement import image_scheduling_strategy
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,7 @@ class RayActorHandleResolver:
         Returns:
             The actor handle.
         """
+        image = (ctor_kwargs.get("spec") or {}).get("image")
         handle = (
             self._actor_class()
             .options(
@@ -134,6 +136,14 @@ class RayActorHandleResolver:
                 namespace=self._settings.namespace,
                 lifetime="detached",
                 get_if_exists=get_if_exists,
+                scheduling_strategy=image_scheduling_strategy(
+                    image,
+                    num_cpus=actor_options.get("num_cpus"),
+                    memory=actor_options.get("memory"),
+                    resources=actor_options.get("resources"),
+                )
+                if image
+                else None,
                 **actor_options,
             )
             .remote(**ctor_kwargs)
