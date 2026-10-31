@@ -14,9 +14,11 @@ from ray.data._internal.pandas_block import (
     PandasBlockAccessor,
     PandasBlockBuilder,
     PandasBlockColumnAccessor,
+    _parsable_pandas_metadata,
 )
 from ray.data._internal.util import is_null
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 
 # Set seed for the test for size as it related to sampling
@@ -534,6 +536,72 @@ def test_tensor_column_with_all_nan_preserves_type(ray_start_regular_shared):
     assert isinstance(
         arrow_table.schema.field("foo").type, (ArrowTensorType, ArrowTensorTypeV2)
     ), "TensorDtype column with all-NaN values should preserve tensor type"
+
+
+def _pandas_metadata_dtype_names(block: pa.Table) -> dict:
+    return {c["name"]: c["numpy_type"] for c in block.schema.pandas_metadata["columns"]}
+
+
+def test_to_arrow_metadata_names_only_dtypes_pandas_can_parse(restore_data_context):
+    """A pandas block with an Arrow-backed list column becomes an Arrow block whose
+    pandas metadata names a dtype pandas can rebuild, so the block converts back
+    to pandas with or without the Arrow-backed mapper. Other dtype names stay."""
+    df = pd.DataFrame(
+        {
+            "lists": pd.array([[1, 2], [3]], dtype=pd.ArrowDtype(pa.list_(pa.int64()))),
+            "nullable": pd.array([1, None], dtype="Int64"),
+        }
+    )
+
+    block = PandasBlockAccessor(df).to_arrow()
+
+    assert _pandas_metadata_dtype_names(block) == {
+        "lists": "object",
+        "nullable": "Int64",
+    }
+    # pyarrow's own conversion reads the metadata when no mapper covers a column.
+    assert block.to_pandas()["lists"].tolist()[0].tolist() == [1, 2]
+
+    ctx = DataContext.get_current()
+    ctx.enable_arrow_backed_pandas_conversion = False
+    numpy_backed = BlockAccessor.for_block(block).to_pandas()
+    ctx.enable_arrow_backed_pandas_conversion = True
+    arrow_backed = BlockAccessor.for_block(block).to_pandas()
+
+    assert numpy_backed.dtypes["lists"] == np.dtype(object)
+    assert str(numpy_backed.dtypes["nullable"]) == "Int64"
+    assert arrow_backed.dtypes["lists"] == pd.ArrowDtype(pa.list_(pa.int64()))
+
+
+def test_parsable_pandas_metadata_returns_same_bytes_when_nothing_changes():
+    """Metadata whose dtype names all parse comes back as the same object, so the
+    schema is not rewritten for the common case."""
+    df = pd.DataFrame({"a": [1, 2], "b": pd.array(["x", None], dtype="string")})
+    metadata = pa.Table.from_pandas(df, preserve_index=False).schema.metadata[b"pandas"]
+
+    assert _parsable_pandas_metadata(metadata) is metadata
+
+
+def test_pandas_udf_arrow_backed_list_column_converts_back_with_mapper_off(
+    ray_start_regular_shared, restore_data_context
+):
+    """With the Arrow-backed conversion off, a pandas UDF that returns its own
+    Arrow-backed list column still lets the next to_pandas() succeed."""
+    DataContext.get_current().enable_arrow_backed_pandas_conversion = False
+    lists = [[1, 2], [3]]
+
+    def udf(df):
+        return pd.DataFrame(
+            {"x": pd.array(lists, dtype=pd.ArrowDtype(pa.list_(pa.int64())))}
+        )
+
+    df = (
+        ray.data.from_items([{"x": 1}, {"x": 2}], override_num_blocks=1)
+        .map_batches(udf, batch_format="pandas")
+        .to_pandas()
+    )
+
+    assert [list(v) for v in df["x"]] == lists
 
 
 if __name__ == "__main__":
