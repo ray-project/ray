@@ -30,8 +30,13 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME,
+    PROC_SELF_CGROUP_FILENAME,
+    PROC_SELF_MOUNTINFO_FILENAME,
+    get_cgroup_dirs,
     get_ray_address_file,
     get_system_memory,
+    is_cgroup_v2_root,
+    read_cgroup_file,
 )
 from ray._raylet import GcsClient
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
@@ -362,11 +367,73 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
+def _count_cpuset_cpus(cpuset_string: str) -> int:
+    """Count the CPUs in a cpuset list such as ``0-3,8,10-11``.
+
+    Args:
+        cpuset_string: The content of a ``cpuset.cpus`` file.
+
+    Returns:
+        The number of CPUs the list names.
+    """
+    count = 0
+    for num_or_range in cpuset_string.split(","):
+        if not num_or_range:
+            continue
+        if "-" in num_or_range:
+            start, end = num_or_range.split("-")
+            count += int(end) - int(start) + 1
+        else:
+            count += 1
+    return count
+
+
+def _cfs_quota(cgroup_dir: str, quota_name: str, period_name: str) -> Optional[float]:
+    """Return the cgroup v1 CPU quota of one level in CPUs, or None if unset."""
+    try:
+        quota = float(read_cgroup_file(os.path.join(cgroup_dir, quota_name)))
+        period = float(read_cgroup_file(os.path.join(cgroup_dir, period_name)))
+    except (TypeError, ValueError):
+        return None
+    # -1 means no quota on this level.
+    return quota / period if quota >= 0 and period > 0 else None
+
+
+def _cpu_max_quota(cgroup_dir: str, max_name: str) -> Optional[float]:
+    """Return the cgroup v2 ``cpu.max`` quota of one level in CPUs, or None."""
+    value = read_cgroup_file(os.path.join(cgroup_dir, max_name))
+    parts = value.split() if value else []
+    # "max <period>" means no quota on this level.
+    if len(parts) != 2 or not (parts[0].isnumeric() and parts[1].isnumeric()):
+        return None
+    return float(parts[0]) / float(parts[1])
+
+
+def _nearest_cpuset(cgroup_dirs: List[str], cpuset_name: str) -> Optional[int]:
+    """Return the CPU count of the nearest cgroup that has a cpuset, or None.
+
+    In cgroup v1 a child's cpuset is a subset of its parent's, and cgroup v2's
+    ``cpuset.cpus.effective`` already accounts for every parent, so the
+    nearest level is the binding one.
+    """
+    for cgroup_dir in cgroup_dirs:
+        value = read_cgroup_file(os.path.join(cgroup_dir, cpuset_name))
+        if value:
+            try:
+                return _count_cpuset_cpus(value)
+            except ValueError:
+                continue
+    return None
+
+
 def _get_docker_cpus(
     cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
     cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
     cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus",
     cpu_max_file_name="/sys/fs/cgroup/cpu.max",
+    cpuset_effective_file_name_v2="/sys/fs/cgroup/cpuset.cpus.effective",
+    proc_self_cgroup_filename=PROC_SELF_CGROUP_FILENAME,
+    proc_self_mountinfo_filename=PROC_SELF_MOUNTINFO_FILENAME,
 ) -> Optional[float]:
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
@@ -375,54 +442,57 @@ def _get_docker_cpus(
     # soft limit so we don't worry about it). For Ray's purposes, if we use
     # docker, the number of vCPUs on a machine is whichever is set (ties broken
     # by smaller value).
+    #
+    # Each limit is read from the process's own cgroup up to the mount root
+    # (the directory of the given file) and the smallest level wins, because
+    # that is the quota the kernel enforces.
 
     cpu_quota = None
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
-    if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
-        try:
-            with (
-                open(cpu_quota_file_name, "r") as quota_file,
-                open(cpu_period_file_name, "r") as period_file,
-            ):
-                cpu_quota = float(quota_file.read()) / float(period_file.read())
-        except Exception:
-            logger.exception("Unexpected error calculating docker cpu quota.")
-    # Look at cpu.max for cgroups v2
-    elif os.path.exists(cpu_max_file_name):
-        try:
-            max_file = open(cpu_max_file_name).read()
-            quota_str, period_str = max_file.split()
-            if quota_str.isnumeric() and period_str.isnumeric():
-                cpu_quota = float(quota_str) / float(period_str)
-            else:
-                # quota_str is "max" meaning the cpu quota is unset
-                cpu_quota = None
-        except Exception:
-            logger.exception("Unexpected error calculating docker cpu quota.")
-    if (cpu_quota is not None) and (cpu_quota < 0):
-        cpu_quota = None
-    elif cpu_quota == 0:
+    try:
+        if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
+            root, quota_name = os.path.split(cpu_quota_file_name)
+            period_name = os.path.basename(cpu_period_file_name)
+            dirs = get_cgroup_dirs(
+                root, "cpu", proc_self_cgroup_filename, proc_self_mountinfo_filename
+            )
+            quotas = [_cfs_quota(d, quota_name, period_name) for d in dirs]
+        # cgroups v2. The root of a bare host has no cpu.max; the quota, if
+        # any, is on the process's own cgroup.
+        elif os.path.exists(cpu_max_file_name) or is_cgroup_v2_root(
+            os.path.dirname(cpu_max_file_name)
+        ):
+            root, max_name = os.path.split(cpu_max_file_name)
+            dirs = get_cgroup_dirs(
+                root, None, proc_self_cgroup_filename, proc_self_mountinfo_filename
+            )
+            quotas = [_cpu_max_quota(d, max_name) for d in dirs]
+        else:
+            quotas = []
+        quotas = [q for q in quotas if q is not None]
+        cpu_quota = min(quotas) if quotas else None
+    except Exception:
+        logger.exception("Unexpected error calculating docker cpu quota.")
+    if cpu_quota == 0:
         # Round up in case the cpu limit is less than 1.
         cpu_quota = 1
 
     cpuset_num = None
-    if os.path.exists(cpuset_file_name):
-        try:
-            with open(cpuset_file_name) as cpuset_file:
-                ranges_as_string = cpuset_file.read()
-                ranges = ranges_as_string.split(",")
-                cpu_ids = []
-                for num_or_range in ranges:
-                    if "-" in num_or_range:
-                        start, end = num_or_range.split("-")
-                        cpu_ids.extend(list(range(int(start), int(end) + 1)))
-                    else:
-                        cpu_ids.append(int(num_or_range))
-                cpuset_num = len(cpu_ids)
-        except Exception:
-            logger.exception("Unexpected error calculating docker cpuset ids.")
-    # Possible to-do: Parse cgroups v2's cpuset.cpus.effective for the number
-    # of accessible CPUs.
+    try:
+        if os.path.exists(cpuset_file_name):
+            root, cpuset_name = os.path.split(cpuset_file_name)
+            dirs = get_cgroup_dirs(
+                root, "cpuset", proc_self_cgroup_filename, proc_self_mountinfo_filename
+            )
+            cpuset_num = _nearest_cpuset(dirs, cpuset_name)
+        elif os.path.exists(cpuset_effective_file_name_v2):
+            root, cpuset_name = os.path.split(cpuset_effective_file_name_v2)
+            dirs = get_cgroup_dirs(
+                root, None, proc_self_cgroup_filename, proc_self_mountinfo_filename
+            )
+            cpuset_num = _nearest_cpuset(dirs, cpuset_name)
+    except Exception:
+        logger.exception("Unexpected error calculating docker cpuset ids.")
 
     if cpu_quota and cpuset_num:
         return min(cpu_quota, cpuset_num)
@@ -535,60 +605,103 @@ def get_cgroup_used_memory(
     return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
-def get_cgroup_mem_stats() -> Optional[Tuple[int, int]]:
+def _cgroup_level_used(
+    cgroup_dir: str, stat: str, usage: str, inactive_key: str, active_key: str
+) -> Optional[int]:
+    """Return the used memory of one cgroup without its file cache, or None."""
+    stat_file = os.path.join(cgroup_dir, stat)
+    usage_file = os.path.join(cgroup_dir, usage)
+    if not (os.path.exists(stat_file) and os.path.exists(usage_file)):
+        return None
+    return get_cgroup_used_memory(stat_file, usage_file, inactive_key, active_key)
+
+
+def get_cgroup_mem_stats(
+    cgroup_v1_root: str = "/sys/fs/cgroup/memory",
+    cgroup_v2_root: str = "/sys/fs/cgroup",
+    proc_self_cgroup_filename: str = PROC_SELF_CGROUP_FILENAME,
+    proc_self_mountinfo_filename: str = PROC_SELF_MOUNTINFO_FILENAME,
+) -> Optional[Tuple[int, int]]:
+    """Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
+
+    Supports both cgroups v1 and v2. Total is the smallest limit between the
+    process's cgroup and the root, which is what ``get_system_memory()``
+    returns, capped at the host physical memory. Used is chosen so that
+    ``total - used`` is the smallest headroom over every limited level: a
+    parent with a larger limit can still have less room left, because its
+    limit also counts the memory of its other children.
+
+    Args:
+        cgroup_v1_root: The cgroup v1 memory controller mount.
+        cgroup_v2_root: The cgroup v2 mount.
+        proc_self_cgroup_filename: The ``/proc/self/cgroup`` file used to
+            resolve the process's own cgroup.
+        proc_self_mountinfo_filename: The ``/proc/self/mountinfo`` file used
+            to find the mount that exposes that cgroup.
+
+    Returns:
+        ``(used_bytes, total_bytes)``, or ``None`` when no cgroup accounting
+        applies to the process.
     """
-    Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
-
-    Supports both cgroups v1 and v2. Total is capped at the host physical
-    memory.
-    """
-    mem_usage_v1_file = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
-    mem_stat_v1_file = "/sys/fs/cgroup/memory/memory.stat"
-    mem_limit_v1_file = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-    mem_usage_v2_file = "/sys/fs/cgroup/memory.current"
-    mem_stat_v2_file = "/sys/fs/cgroup/memory.stat"
-    mem_limit_v2_file = "/sys/fs/cgroup/memory.max"
-
-    cgroup_used = None
-    cgroup_total = None
-    system_total = get_system_memory()
-
-    if os.path.exists(mem_usage_v1_file) and os.path.exists(mem_stat_v1_file):
-        cgroup_used = get_cgroup_used_memory(
-            mem_stat_v1_file,
-            mem_usage_v1_file,
+    # The smallest limit along the hierarchy, capped at the host memory, is
+    # exactly what get_system_memory() returns; computing it here saves a
+    # second walk of the hierarchy on every poll.
+    host_total = psutil.virtual_memory().total
+    hierarchies = (
+        # root, controller, usage, stat, limit, inactive key, active key
+        (
+            cgroup_v1_root,
+            "memory",
+            "memory.usage_in_bytes",
+            "memory.stat",
+            "memory.limit_in_bytes",
             "total_inactive_file",
             "total_active_file",
+        ),
+        (
+            cgroup_v2_root,
+            None,
+            "memory.current",
+            "memory.stat",
+            "memory.max",
+            "inactive_file",
+            "active_file",
+        ),
+    )
+    for root, controller, usage, stat, limit, inactive_key, active_key in hierarchies:
+        if controller is not None and not os.path.exists(os.path.join(root, usage)):
+            continue
+        if controller is None and not is_cgroup_v2_root(root):
+            continue
+        dirs = get_cgroup_dirs(
+            root, controller, proc_self_cgroup_filename, proc_self_mountinfo_filename
         )
-        try:
-            with open(mem_limit_v1_file, "r") as f:
-                cgroup_total = min(int(f.read().strip()), system_total)
-        except Exception as exception:
-            logger.warning(
-                f"Failed to obtain current container memory limit from {mem_limit_v1_file}: {repr(exception)}. "
-                "Falling back to system total memory."
+        # Every level with a limit below the host memory binds. A limit at or
+        # above the host memory does not; cgroup v1 writes a huge sentinel
+        # there for "no limit" and cgroup v2 writes "max".
+        smallest_limit, min_headroom = None, None
+        for cgroup_dir in dirs:
+            value = read_cgroup_file(os.path.join(cgroup_dir, limit))
+            if value is None or not value.isnumeric() or int(value) >= host_total:
+                continue
+            level_limit = int(value)
+            if smallest_limit is None or level_limit < smallest_limit:
+                smallest_limit = level_limit
+            level_used = _cgroup_level_used(
+                cgroup_dir, stat, usage, inactive_key, active_key
             )
-            cgroup_total = system_total
-    elif os.path.exists(mem_usage_v2_file) and os.path.exists(mem_stat_v2_file):
-        cgroup_used = get_cgroup_used_memory(
-            mem_stat_v2_file, mem_usage_v2_file, "inactive_file", "active_file"
-        )
-        try:
-            with open(mem_limit_v2_file, "r") as f:
-                max_val = f.read().strip()
-            if max_val.isnumeric():
-                cgroup_total = min(int(max_val), system_total)
-            else:
-                cgroup_total = system_total
-        except Exception as exception:
-            logger.warning(
-                f"Failed to obtain current container memory limit from {mem_limit_v2_file}: {repr(exception)}. "
-                "Falling back to system total memory."
-            )
-            cgroup_total = system_total
-
-    if cgroup_used is not None and cgroup_total is not None:
-        return cgroup_used, cgroup_total
+            if level_used is None:
+                continue
+            headroom = level_limit - level_used
+            if min_headroom is None or headroom < min_headroom:
+                min_headroom = headroom
+        if smallest_limit is None:
+            # No limit on any level: keep the root accounting, as before.
+            used = _cgroup_level_used(root, stat, usage, inactive_key, active_key)
+            return None if used is None else (used, host_total)
+        if min_headroom is None:
+            return None
+        return smallest_limit - min_headroom, smallest_limit
     return None
 
 
