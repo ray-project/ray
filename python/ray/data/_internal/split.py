@@ -23,16 +23,25 @@ def _calculate_blocks_rows(
 ) -> List[int]:
     """Calculate the number of rows for a list of blocks with metadata."""
     get_num_rows = cached_remote_fn(_get_num_rows)
-    block_rows = []
-    for block, metadata in blocks_with_metadata:
-        if metadata.num_rows is None:
-            # Need to fetch number of rows.
-            num_rows = ray.get(get_num_rows.remote(block))
-            metadata = replace(metadata, num_rows=num_rows)
-        else:
-            num_rows = metadata.num_rows
-        block_rows.append(num_rows)
-    return block_rows
+    missing_indices = [
+        i
+        for i, (_, metadata) in enumerate(blocks_with_metadata)
+        if metadata.num_rows is None
+    ]
+    if missing_indices:
+        fetched_num_rows = ray.get(
+            [
+                get_num_rows.remote(blocks_with_metadata[i][0])
+                for i in missing_indices
+            ]
+        )
+        for i, num_rows in zip(missing_indices, fetched_num_rows):
+            block, metadata = blocks_with_metadata[i]
+            blocks_with_metadata[i] = (
+                block,
+                replace(metadata, num_rows=num_rows),
+            )
+    return [metadata.num_rows for _, metadata in blocks_with_metadata]
 
 
 def _generate_valid_indices(

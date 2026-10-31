@@ -20,6 +20,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
 from ray.data._internal.split import (
+    _calculate_blocks_rows,
     _drop_empty_block_split,
     _generate_global_split_results,
     _generate_per_block_split_indices,
@@ -687,6 +688,84 @@ def test_equalize(ray_start_regular_shared_2_cpus):
     verify_equalize_result(
         [[[1, 2, 3], [4, 5]], [[6]], []], [[[4, 5]], [[6], [1]], [[2, 3]]]
     )
+
+
+def test_calculate_blocks_rows_updates_metadata_and_batches_ray_get():
+    from dataclasses import replace
+
+    meta_known = BlockMetadata(
+        num_rows=4,
+        size_bytes=32,
+        input_files=None,
+        exec_stats=None,
+    )
+    meta_unknown_1 = replace(meta_known, num_rows=None)
+    meta_unknown_2 = replace(meta_known, num_rows=None)
+    blocks_with_metadata = [
+        ("block_0", meta_unknown_1),
+        ("block_1", meta_known),
+        ("block_2", meta_unknown_2),
+    ]
+
+    remote_calls = []
+
+    class FakeRemoteFn:
+        def remote(self, block):
+            remote_calls.append(block)
+            return f"ref:{block}"
+
+    with (
+        patch(
+            "ray.data._internal.split.cached_remote_fn",
+            return_value=FakeRemoteFn(),
+        ),
+        patch(
+            "ray.data._internal.split.ray.get",
+            side_effect=lambda refs: [2 if r == "ref:block_0" else 5 for r in refs],
+        ) as mock_ray_get,
+    ):
+        rows = _calculate_blocks_rows(blocks_with_metadata)
+
+    assert rows == [2, 4, 5]
+    assert [meta.num_rows for _, meta in blocks_with_metadata] == [2, 4, 5]
+    assert remote_calls == ["block_0", "block_2"]
+    mock_ray_get.assert_called_once_with(["ref:block_0", "ref:block_2"])
+
+
+def test_equalize_with_unknown_num_rows_metadata(ray_start_regular_shared_2_cpus):
+    from dataclasses import replace
+
+    blocks_with_unknown_rows = [
+        (ref, replace(meta, num_rows=None))
+        for ref, meta in _create_blocks_with_metadata([[1, 2], [3, 4, 5]])
+    ]
+    rows = _calculate_blocks_rows(blocks_with_unknown_rows)
+    assert rows == [2, 3]
+    assert [meta.num_rows for _, meta in blocks_with_unknown_rows] == [2, 3]
+
+    input_block_lists = [[[1], [2, 3]], [[4]]]
+    bundles_with_unknown_rows = []
+    for block_list in input_block_lists:
+        bundle = _create_bundle(block_list)
+        bundles_with_unknown_rows.append(
+            RefBundle(
+                [
+                    BlockEntry(entry.ref, replace(entry.metadata, num_rows=None))
+                    for entry in bundle.blocks
+                ],
+                owns_blocks=True,
+                schema=bundle.schema,
+            )
+        )
+    result = _equalize(bundles_with_unknown_rows, owned_by_consumer=True)
+    result_block_lists = [
+        [
+            list(BlockAccessor.for_block(ray.get(block_ref)).to_default()["id"])
+            for block_ref in bundle.block_refs
+        ]
+        for bundle in result
+    ]
+    assert result_block_lists == [[[1], [2]], [[4], [3]]]
 
 
 def test_equalize_randomized(ray_start_regular_shared_2_cpus):
