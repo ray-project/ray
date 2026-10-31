@@ -249,6 +249,8 @@ class ResultThread(threading.Thread):
                         # Receiving the END_SENTINEL object is the signal to stop.
                         # Store the total number of objects.
                         self._total_object_refs = len(self._object_refs)
+                        if self._num_ready >= self._total_object_refs:
+                            break
                     else:
                         self._add_object_ref(new_object_ref)
                         unready.append(new_object_ref)
@@ -265,6 +267,9 @@ class ResultThread(threading.Thread):
                 ready, unready = ray.wait(unready, num_returns=1, timeout=0.1)
                 if len(ready) > 0:
                     ready_id = ready[0]
+
+            if ready_id is None:
+                break
 
             try:
                 batch = ray.get(ready_id)
@@ -407,8 +412,8 @@ class IMapIterator:
             self._chunksize = chunksize or 1
             result_list_size = float("inf")
         else:
-            self._chunksize = chunksize or pool._calculate_chunksize(iterable)
-            result_list_size = div_round_up(len(iterable), chunksize)
+            self._chunksize = chunksize or pool._calculate_chunksize(iterable) or 1
+            result_list_size = div_round_up(len(iterable), self._chunksize)
 
         self._result_thread = ResultThread([], total_object_refs=result_list_size)
         self._result_thread.start()
@@ -431,7 +436,8 @@ class IMapIterator:
             # Reached end of self._iterator
             self._finished_iterating = True
             if len(chunk_list) == 0:
-                # Nothing to do, return.
+                # Nothing to do, notify the result thread and return.
+                self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
                 return
         chunk_iterator = iter(chunk_list)
 
