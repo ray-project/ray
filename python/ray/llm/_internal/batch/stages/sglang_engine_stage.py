@@ -7,6 +7,7 @@ import uuid
 from contextlib import nullcontext
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
+import numpy as np
 from pydantic import BaseModel, root_validator
 
 from ray.llm._internal.batch.constants import SGLangTaskType, TypeSGLangTaskType
@@ -17,6 +18,103 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 
 logger = logging.getLogger(__name__)
+
+
+# Per-row ``tokenization_kwargs`` keys honored by the generate task. They mirror
+# vLLM's so a row truncates the same way on either engine; anything else is
+# refused rather than silently ignored.
+_SUPPORTED_TOKENIZATION_KWARGS = frozenset(
+    {"truncation", "max_length", "truncation_side", "truncate_prompt_tokens"}
+)
+
+
+def _truncate_prompt_token_ids(
+    token_ids: Optional[List[int]], tokenization_kwargs: Dict[str, Any]
+) -> Optional[List[int]]:
+    """Apply a row's ``tokenization_kwargs`` truncation to its prompt token IDs.
+
+    SGLang has no per-request prompt truncation, so the stage applies it,
+    following vLLM's rules: ``truncate_prompt_tokens`` sets the limit, a truthy
+    ``truncation`` (``True`` or ``"longest_first"``) replaces it with
+    ``max_length``, and ``"do_not_truncate"`` disables truncation. ``False``
+    counts as unset. ``truncation_side`` is ``"left"`` (keep the last N tokens,
+    vLLM's default for generation) or ``"right"`` (keep the first N). Unlike
+    vLLM, a truthy ``truncation`` needs an explicit ``max_length``, because the
+    engine's context length isn't known here.
+
+    Args:
+        token_ids: The prompt token IDs, or None if the row only has text.
+        tokenization_kwargs: The row's tokenization kwargs.
+
+    Returns:
+        The possibly truncated token IDs.
+
+    Raises:
+        ValueError: On an unsupported key or value, or a truncation request for
+            a text-only prompt.
+    """
+    # A struct column gives every row every field, so keys set only on other
+    # rows arrive as None. Only a set value is a request.
+    unsupported = {
+        key
+        for key, value in tokenization_kwargs.items()
+        if key not in _SUPPORTED_TOKENIZATION_KWARGS and value is not None
+    }
+    if unsupported:
+        raise ValueError(
+            f"Unsupported tokenization_kwargs for the SGLang generate task: "
+            f"{sorted(unsupported)}. Supported keys: "
+            f"{sorted(_SUPPORTED_TOKENIZATION_KWARGS)}."
+        )
+
+    limit = tokenization_kwargs.get("truncate_prompt_tokens")
+    truncation = tokenization_kwargs.get("truncation")
+    if isinstance(truncation, np.generic):
+        truncation = truncation.item()
+    if truncation is True or truncation == "longest_first":
+        limit = tokenization_kwargs.get("max_length")
+        if limit is None:
+            raise ValueError(
+                "tokenization_kwargs requested truncation without 'max_length'. "
+                "The SGLang stage doesn't know the engine's context length, so "
+                "the limit must be given explicitly."
+            )
+    elif truncation == "do_not_truncate":
+        limit = None
+    elif truncation is not None and truncation is not False:
+        raise ValueError(
+            f"Unsupported tokenization_kwargs['truncation']={truncation!r}; "
+            "expected True, False, 'longest_first' or 'do_not_truncate'."
+        )
+
+    if limit is None:
+        return token_ids
+    if isinstance(limit, np.generic):
+        limit = limit.item()
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError(
+            f"The truncation limit must be a positive integer, got {limit!r}."
+        )
+
+    side = tokenization_kwargs.get("truncation_side")
+    if side is None:
+        side = "left"
+    if side not in ("left", "right"):
+        raise ValueError(
+            f"tokenization_kwargs['truncation_side'] must be 'left' or 'right', "
+            f"got {side!r}."
+        )
+
+    if token_ids is None:
+        # In text mode SGLang tokenizes inside the engine, where the limit can't
+        # be applied, so the prompt would go out untruncated.
+        raise ValueError(
+            "Prompt truncation needs the prompt as token IDs: enable the tokenize "
+            "stage and set engine_kwargs['skip_tokenizer_init'] to True."
+        )
+    if len(token_ids) <= limit:
+        return token_ids
+    return token_ids[-limit:] if side == "left" else token_ids[:limit]
 
 
 class SGLangEngineRequest(BaseModel):
@@ -147,6 +245,10 @@ class SGLangEngineWrapper:
         else:
             tokenized_prompt = None
 
+        tokenization_kwargs = maybe_convert_ndarray_to_list(
+            row.pop("tokenization_kwargs", None)
+        )
+
         # Prepare sampling parameters.
         if self.task_type == SGLangTaskType.GENERATE:
             params = maybe_convert_ndarray_to_list(row.pop("sampling_params"))
@@ -156,6 +258,11 @@ class SGLangEngineWrapper:
         if tokenized_prompt is not None and not self.skip_tokenizer_init:
             raise ValueError(
                 "To use a token-in-token-out mode of SGLang Engine, please set engine_kwargs['skip_tokenizer_init'] to True."
+            )
+
+        if tokenization_kwargs:
+            tokenized_prompt = _truncate_prompt_token_ids(
+                tokenized_prompt, tokenization_kwargs
             )
 
         request = SGLangEngineRequest(
@@ -380,4 +487,11 @@ class SGLangEngineStage(StatefulStage):
 
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
-        return {}
+        return {
+            "tokenization_kwargs": "Prompt truncation for this row, e.g. "
+            '{"truncation": True, "max_length": 512}. As in vLLM, the last '
+            'max_length tokens are kept unless truncation_side is "right". '
+            "Applied to the tokenized prompt, so it needs the tokenize stage and "
+            "engine_kwargs['skip_tokenizer_init']=True. Supported keys: "
+            "truncation, max_length, truncation_side, truncate_prompt_tokens.",
+        }
