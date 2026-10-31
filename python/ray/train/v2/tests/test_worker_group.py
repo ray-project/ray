@@ -250,34 +250,32 @@ def test_start_timeout(monkeypatch):
 
 
 def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
-    """TPU head reservation timeouts should surface as the retryable
+    """TPU slice placement-group timeouts should surface as the retryable
     ``WorkerGroupStartupTimeoutError`` so the controller transitions
     SCHEDULING -> RESCHEDULING instead of failing the run, matching the
     behavior of CPU/GPU placement-group timeouts.
-
-    Also verifies that Ray Train's worker-group-start timeout is forwarded
-    to ``SlicePlacementGroup`` so users have a single knob governing how
-    long the cluster has to provide capacity.
     """
     from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
 
     monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
 
-    # SlicePlacementGroup blocks synchronously on a TPU head PG; simulate the
-    # "cluster still autoscaling" scenario where reserve_tpu_slice times out
-    # and capture the timeout that Ray Train passed in.
     captured_kwargs = {}
+    fake_pg = MagicMock()
+    fake_pg.wait.return_value = False
+    fake_spg = MagicMock(placement_groups=[fake_pg])
 
-    def _raise_timeout(*args, **kwargs):
+    def _create_fake_spg(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        raise TimeoutError(
-            "Failed to reserve TPU head for slice with shape: v5litepod-8 "
-            "after 0.1 seconds."
-        )
+        return fake_spg
 
-    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _raise_timeout)
+    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _create_fake_spg)
     monkeypatch.setattr(
         wg_mod, "get_tpu_version_from_type", lambda accelerator_type: "v5litepod"
+    )
+    monkeypatch.setattr(
+        WorkerGroup,
+        "_check_cluster_resources_and_raise_if_insufficient",
+        lambda *args: None,
     )
 
     tpu_scaling_config = ScalingConfig(
@@ -297,11 +295,134 @@ def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
     )
 
     with pytest.raises(WorkerGroupStartupTimeoutError):
-        wg._create_placement_group(tpu_scaling_config, wg._worker_group_context)
+        wg._start()
 
-    # Ray Train should forward its own startup timeout to the TPU head wait
-    # rather than relying on the hard-coded default in reserve_tpu_slice.
-    assert captured_kwargs.get("head_reservation_timeout_s") == 0.1
+    assert captured_kwargs.get("topology") == "2x4"
+    assert captured_kwargs.get("num_slices") == 2
+    fake_spg.shutdown.assert_called_once()
+
+
+def test_create_workers_multi_slice_reorder_and_replace(monkeypatch):
+    """Verify multi-slice worker scheduling across per-slice placement groups,
+    TPU pod-name rank reordering, and single-replica replacement at the
+    original (pg, bundle_index) slot.
+    """
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    wg = _default_inactive_worker_group(
+        worker_group_context=_default_worker_group_context(
+            num_workers=4,
+            resources_per_worker={"TPU": 4},
+            num_slices=2,
+        ),
+    )
+
+    pg0 = MagicMock(name="pg0", bundle_count=2)
+    pg1 = MagicMock(name="pg1", bundle_count=2)
+    scheduled_strategies = []
+
+    class _FakeActor:
+        def __init__(self, idx: int):
+            self.idx = idx
+
+        class get_metadata:
+            @staticmethod
+            def remote():
+                return None
+
+    class _FakeRemoteCls:
+        def options(self, scheduling_strategy):
+            scheduled_strategies.append(scheduling_strategy)
+            idx = len(scheduled_strategies) - 1
+
+            class _Launcher:
+                @staticmethod
+                def remote():
+                    return _FakeActor(idx)
+
+            return _Launcher()
+
+    monkeypatch.setattr(
+        wg_mod.ray, "remote", lambda **kwargs: lambda cls: _FakeRemoteCls()
+    )
+
+    # Simulate pg0 landing on "slice-B" (nodes B0, B1) and pg1 on "slice-A" (nodes A0, A1)
+    # so _sort_workers_by_tpu_pod_name reorders pg1 workers ahead of pg0 workers.
+    metas = [
+        ActorMetadata(
+            node_id="node_B0",
+            node_ip="10.0.1.0",
+            hostname="host_B0",
+            accelerator_ids={"TPU": ["0", "1", "2", "3"]},
+            pid=1000,
+        ),
+        ActorMetadata(
+            node_id="node_B1",
+            node_ip="10.0.1.1",
+            hostname="host_B1",
+            accelerator_ids={"TPU": ["0", "1", "2", "3"]},
+            pid=1001,
+        ),
+        ActorMetadata(
+            node_id="node_A0",
+            node_ip="10.0.0.0",
+            hostname="host_A0",
+            accelerator_ids={"TPU": ["0", "1", "2", "3"]},
+            pid=2000,
+        ),
+        ActorMetadata(
+            node_id="node_A1",
+            node_ip="10.0.0.1",
+            hostname="host_A1",
+            accelerator_ids={"TPU": ["0", "1", "2", "3"]},
+            pid=2001,
+        ),
+    ]
+    monkeypatch.setattr(wg_mod.ray, "get", lambda refs: metas[: len(refs)])
+    monkeypatch.setattr(
+        WorkerGroup,
+        "_sort_workers_by_tpu_pod_name",
+        staticmethod(
+            lambda workers: [workers[2], workers[3], workers[0], workers[1]]
+            if len(workers) == 4
+            else workers
+        ),
+    )
+
+    workers = wg._create_workers(
+        num_workers=4,
+        placement_group=[pg0, pg1],
+        resources_per_worker={"TPU": 4},
+        replica_group_size=1,
+    )
+
+    assert [
+        (s.placement_group, s.placement_group_bundle_index)
+        for s in scheduled_strategies
+    ] == [(pg0, 0), (pg0, 1), (pg1, 0), (pg1, 1)]
+    # After sorting by pod name: world ranks 0, 1 are on pg1 (global indices 2, 3),
+    # and world ranks 2, 3 are on pg0 (global indices 0, 1).
+    assert [w.distributed_context.world_rank for w in workers] == [0, 1, 2, 3]
+    assert [w.placement_group_bundle_index for w in workers] == [2, 3, 0, 1]
+
+    # Now simulate replacing replica group 0 (which is on pg1, bundle 0, global index 2).
+    scheduled_strategies.clear()
+    metas[:] = [metas[2]]
+    replacement_workers = wg._create_workers(
+        num_workers=1,
+        placement_group=[pg0, pg1],
+        resources_per_worker={"TPU": 4},
+        placement_group_bundle_indices=[workers[0].placement_group_bundle_index],
+        starting_world_rank=0,
+        world_size=4,
+        replica_group_size=1,
+    )
+    assert len(replacement_workers) == 1
+    assert scheduled_strategies[0].placement_group is pg1
+    assert scheduled_strategies[0].placement_group_bundle_index == 0
+    assert replacement_workers[0].placement_group_bundle_index == 2
+    assert replacement_workers[0].distributed_context.world_rank == 0
+    assert replacement_workers[0].distributed_context.world_size == 4
 
 
 def test_tpu_slice_reservation_non_timeout_failure_is_retryable(monkeypatch):
@@ -1329,6 +1450,57 @@ def test_assign_worker_ranks(
     for i, (worker, expected) in enumerate(zip(result, expected_contexts)):
         ctx = worker.distributed_context
         assert ctx == expected, f"Worker {i}: expected {expected}, got {ctx}"
+
+
+def test_create_placement_group_tpu_forwards_label_selector_and_reraises_value_error(
+    monkeypatch,
+):
+    """Verify WorkerGroup._create_placement_group forwards custom label_selector
+    to SlicePlacementGroup and re-raises non-retryable ValueErrors directly.
+    """
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    scaling_config = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        topology="2x4",
+        accelerator_type="TPU-V6E",
+        label_selector={"market-type": "spot"},
+    )
+    wg_ctx = _default_worker_group_context(
+        num_workers=1,
+        resources_per_worker={"CPU": 1, "TPU": 8},
+        label_selector=scaling_config._label_selector_per_worker(1),
+        num_slices=1,
+    )
+    wg = _default_inactive_worker_group(
+        train_run_context=create_dummy_run_context(scaling_config=scaling_config),
+        worker_group_context=wg_ctx,
+    )
+
+    mock_spg_cls = MagicMock()
+    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", mock_spg_cls)
+    wg._create_placement_group(scaling_config, wg_ctx)
+    mock_spg_cls.assert_called_once_with(
+        topology="2x4",
+        accelerator_version="v6e",
+        num_slices=1,
+        resources_per_bundle={"CPU": 1, "TPU": 8},
+        strategy="PACK",
+        bundle_label_selector=[
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "market-type": "spot",
+            }
+        ],
+    )
+
+    # ValueErrors from SlicePlacementGroup must propagate directly (not wrapped in
+    # retryable WorkerGroupStartupFailedError).
+    mock_spg_cls.side_effect = ValueError("invalid TPU bundle config")
+    with pytest.raises(ValueError, match="invalid TPU bundle config"):
+        wg._create_placement_group(scaling_config, wg_ctx)
 
 
 if __name__ == "__main__":

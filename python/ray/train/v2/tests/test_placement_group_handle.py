@@ -37,17 +37,6 @@ def test_default_handle_placement_group_property():
     handle.shutdown()
 
 
-def test_default_handle_ready():
-    """ready() should return an ObjectRef that can be waited on."""
-    pg = placement_group([{"CPU": 1}])
-    handle = DefaultPlacementGroupHandle(pg)
-
-    ready_ref = handle.ready()
-    # Should be able to ray.get the ready ref
-    ray.get(ready_ref, timeout=10)
-    handle.shutdown()
-
-
 def test_default_handle_wait():
     """wait() should return True if the placement group is ready."""
     pg = placement_group([{"CPU": 1}])
@@ -71,8 +60,7 @@ def test_default_handle_shutdown():
     pg = placement_group([{"CPU": 1}])
     handle = DefaultPlacementGroupHandle(pg)
 
-    # Wait for PG to be ready
-    ray.get(handle.ready(), timeout=10)
+    assert handle.wait(timeout_seconds=10)
 
     handle.shutdown()
 
@@ -83,8 +71,6 @@ def test_default_handle_shutdown():
 def test_slice_handle_is_placement_group_handle():
     """SlicePlacementGroupHandle should be a PlacementGroupHandle."""
     mock_spg = MagicMock()
-    mock_pg = MagicMock()
-    mock_spg.placement_group = mock_pg
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert isinstance(handle, PlacementGroupHandle)
@@ -94,44 +80,57 @@ def test_slice_handle_placement_group_property():
     """placement_group property should return the underlying PlacementGroup."""
     mock_spg = MagicMock()
     mock_pg = MagicMock()
-    mock_spg.placement_group = mock_pg
+    mock_spg.placement_groups = [mock_pg]
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert handle.placement_group is mock_pg
 
 
-def test_slice_handle_ready():
-    """ready() should delegate to the underlying PlacementGroup."""
-    mock_spg = MagicMock()
-    mock_pg = MagicMock()
-    mock_ready_ref = MagicMock()
-    mock_pg.ready.return_value = mock_ready_ref
-    mock_spg.placement_group = mock_pg
-
-    handle = SlicePlacementGroupHandle(mock_spg)
-    result = handle.ready()
-
-    mock_pg.ready.assert_called_once()
-    assert result is mock_ready_ref
-
-
 def test_slice_handle_wait():
-    """wait() should delegate to the underlying PlacementGroup."""
+    """wait() should delegate to the underlying PlacementGroup(s)."""
     mock_spg = MagicMock()
     mock_pg = MagicMock()
     mock_pg.wait.return_value = True
-    mock_spg.placement_group = mock_pg
+    mock_spg.placement_groups = [mock_pg]
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert handle.wait(timeout_seconds=10)
     mock_pg.wait.assert_called_once()
 
 
+def test_slice_handle_multi_slice_wait():
+    """wait() should wait on all underlying PlacementGroups for multi-slice TPUs."""
+    mock_spg = MagicMock()
+    mock_pg1 = MagicMock()
+    mock_pg2 = MagicMock()
+    mock_pg1.wait.return_value = True
+    mock_pg2.wait.return_value = True
+    mock_spg.placement_groups = [mock_pg1, mock_pg2]
+
+    handle = SlicePlacementGroupHandle(mock_spg)
+    assert handle.placement_groups == [mock_pg1, mock_pg2]
+    with pytest.raises(ValueError, match="Cannot access singular `placement_group`"):
+        _ = handle.placement_group
+    assert handle.wait(timeout_seconds=10)
+    mock_pg1.wait.assert_called_once()
+    mock_pg2.wait.assert_called_once()
+
+    # Short-circuit on first PG timeout
+    mock_pg1.reset_mock()
+    mock_pg2.reset_mock()
+    mock_pg1.wait.return_value = False
+    assert not handle.wait(timeout_seconds=10)
+    mock_pg1.wait.assert_called_once()
+    mock_pg2.wait.assert_not_called()
+
+    # Empty placement_groups returns False
+    mock_spg.placement_groups = []
+    assert not handle.wait(timeout_seconds=10)
+
+
 def test_slice_handle_shutdown():
     """shutdown() should call shutdown on the SlicePlacementGroup."""
     mock_spg = MagicMock()
-    mock_pg = MagicMock()
-    mock_spg.placement_group = mock_pg
 
     handle = SlicePlacementGroupHandle(mock_spg)
     handle.shutdown()

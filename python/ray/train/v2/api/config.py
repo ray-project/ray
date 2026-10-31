@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import pyarrow.fs
 
+import ray
 from ray.air.config import (
     FailureConfig as FailureConfigV1,
     ScalingConfig as ScalingConfigV1,
@@ -19,7 +20,7 @@ from ray.train.v2._internal.migration_utils import (
 )
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import PublicAPI
-from ray.util.tpu import get_tpu_worker_resources
+from ray.util.tpu import get_tpu_version_from_type, get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
@@ -182,10 +183,24 @@ class ScalingConfig(ScalingConfigV1):
         - ``List`` -> the first ``num_workers`` entries (validated to be
           ``max_workers`` long in ``__post_init__``)
         """
+        tpu_selector = {}
+        if self.use_tpu:
+            if self.accelerator_type:
+                tpu_version = get_tpu_version_from_type(self.accelerator_type)
+                tpu_selector[
+                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+                ] = f"TPU-{tpu_version.upper()}"
+            if self.topology:
+                tpu_selector[
+                    ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY
+                ] = self.topology.strip().lower()
+
         if isinstance(self.label_selector, list):
-            return [s.copy() for s in self.label_selector[:num_workers]]
+            return [{**tpu_selector, **s} for s in self.label_selector[:num_workers]]
         if isinstance(self.label_selector, dict):
-            return [self.label_selector.copy() for _ in range(num_workers)]
+            return [{**tpu_selector, **self.label_selector} for _ in range(num_workers)]
+        if tpu_selector:
+            return [tpu_selector.copy() for _ in range(num_workers)]
         return None
 
     @property
@@ -274,14 +289,25 @@ class ScalingConfig(ScalingConfigV1):
                     "across all slices to function correctly."
                 )
 
-            if self.resources_per_worker is None:
-                self.resources_per_worker = tpu_resources
+            self.resources_per_worker = tpu_resources
 
     @property
     def _resources_per_worker_not_none(self):
-        if self.resources_per_worker is None:
-            if self.use_tpu:
+        if self.use_tpu:
+            # Unlike V1 ScalingConfig, V2 intentionally omits `accelerator_type:TPU-*: 0.001`
+            # from bundle resources because KubeRay TPU worker groups advertise
+            # `ray.io/accelerator-type` node labels rather than `accelerator_type:*`
+            # custom resources (which would fail `_check_cluster_resources_and_raise_if_insufficient`).
+            if self.resources_per_worker is None:
                 return {"TPU": 1}
+            resources_per_worker = {
+                k: v for k, v in self.resources_per_worker.items() if v != 0
+            }
+            # Check `self.resources_per_worker` (before filtering zeros) so an explicit
+            # `{"TPU": 0}` remains absent and fails `_validate_tpu_config`.
+            if "TPU" not in self.resources_per_worker:
+                resources_per_worker["TPU"] = 1
+            return resources_per_worker
 
         return super()._resources_per_worker_not_none
 

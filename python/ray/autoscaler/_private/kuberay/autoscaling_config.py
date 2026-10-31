@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from ray._private.accelerators import get_all_accelerator_managers
 from ray._private.label_utils import (
     validate_node_label_syntax,
 )
@@ -32,9 +33,6 @@ UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
-
-GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
-GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
@@ -269,44 +267,10 @@ def _get_ray_resources_from_group_spec(
     if num_gpus is not None:
         resources["GPU"] = num_gpus
 
-    if num_tpus is not None:
+    if num_tpus is not None and "TPU" not in custom_resource_dict:
         # Add TPU Ray resource if not already added by ray_start_params,
         # but specified in k8s_resource_limits.
-        if "TPU" not in custom_resource_dict:
-            resources["TPU"] = num_tpus
-
-        """Add TPU head resource, similar to the GCP node_provider.
-        Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
-        has sufficient resources to make scaling decisions.
-        TPU worker groups treat each TPU podslice as a replica, with `NumOfHosts`
-        specifying the number of workers per slice. Each replica of a TPU worker
-        group has one TPU head.
-
-        For example, a v4-16 worker group with 2 replicas should have the following
-        resource labels on worker 0 of each replica:
-            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
-        """
-        if (
-            "nodeSelector" in group_spec["template"]["spec"]
-            and GKE_TPU_TOPOLOGY_LABEL in group_spec["template"]["spec"]["nodeSelector"]
-            and GKE_TPU_ACCELERATOR_LABEL
-            in group_spec["template"]["spec"]["nodeSelector"]
-        ):
-            topology = group_spec["template"]["spec"]["nodeSelector"][
-                GKE_TPU_TOPOLOGY_LABEL
-            ]
-            accelerator = group_spec["template"]["spec"]["nodeSelector"][
-                GKE_TPU_ACCELERATOR_LABEL
-            ]
-            accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
-            if accelerator_type:
-                resources[f"TPU-{accelerator_type}-head"] = 1
-        else:
-            logger.error(
-                f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
-                "See https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#configuring-kubernetes-pods-for-tpu-usage "
-                "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
-            )
+        resources["TPU"] = num_tpus
 
     if memory is not None:
         resources["memory"] = memory
@@ -323,7 +287,8 @@ def _get_labels_from_group_spec(
     Parses Ray node labels for the autoscaling config based on the following
     priority:
     1. Top-level `labels` field in the group spec.
-    2. `labels` field in `rayStartParams`.
+    2. Accelerator labels derived from the Pod `nodeSelector`.
+    3. `labels` field in `rayStartParams` (ignored with a warning).
 
     Args:
         group_spec: The group specification dictionary.
@@ -361,6 +326,15 @@ def _get_labels_from_group_spec(
         labels_dict = group_spec.get("labels")
         # Validate node labels follow expected Kubernetes label syntax.
         validate_node_label_syntax(labels_dict)
+
+    node_selector = group_spec["template"]["spec"].get("nodeSelector") or {}
+    for accelerator_manager in get_all_accelerator_managers():
+        accel_labels = accelerator_manager.get_node_group_accelerator_labels(
+            node_selector
+        )
+        if accel_labels:
+            # Explicit group labels take precedence over derived ones.
+            labels_dict = {**accel_labels, **labels_dict}
 
     return labels_dict
 
