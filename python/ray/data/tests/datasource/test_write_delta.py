@@ -1309,6 +1309,158 @@ def test_overwrite_with_different_schema_still_works(temp_delta_path):
 
 
 # ----------------------------------------------------------------------
+# Timestamp types: Delta Lake only supports microsecond timestamps, so every
+# timestamp, including nested ones, is written as one.
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tz", [None, "America/New_York"])
+@pytest.mark.parametrize(
+    "unit, value, expected_us",
+    [
+        ("s", 1704110400, 1704110400_000000),
+        ("ms", 1704110400_123, 1704110400_123000),
+        ("ns", 1704110400_123456789, 1704110400_123456),
+    ],
+)
+def test_write_timestamps_converted_to_microseconds(
+    temp_delta_path, unit, value, expected_us, tz
+):
+    """Regression test: workers wrote non-microsecond timestamps to Parquet
+    unchanged, so the commit either failed with "Invalid data type for Delta
+    Lake" after the files were already written, or committed a table that
+    disagreed with its files or needed the unsupported ``timestampNanos``
+    reader feature."""
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    table = pa.table({"t": pa.array([value], type=pa.timestamp(unit, tz=tz))})
+    ray.data.from_arrow(table).write_delta(temp_delta_path)
+
+    expected_type = pa.timestamp("us", tz="UTC" if tz else None)
+    table_schema = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow())
+    assert table_schema.field("t").type == expected_type
+    reader_features = DeltaTable(temp_delta_path).protocol().reader_features or []
+    assert "timestampNanos" not in reader_features
+    expected = pa.scalar(expected_us, type=expected_type).as_py()
+    assert _read_committed_parquet_rows(temp_delta_path) == [{"t": expected}]
+    assert _read_all(temp_delta_path) == [{"t": expected}]
+
+
+def test_write_nested_timestamps_converted_to_microseconds(temp_delta_path):
+    """Timestamps inside structs, lists, maps, and dictionary-encoded columns
+    are converted too."""
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    ns = pa.timestamp("ns")
+    value = 1704110400_123456789
+    table = pa.table(
+        {
+            "s": pa.array([{"t": value}], type=pa.struct([("t", ns)])),
+            "l": pa.array([[value]], type=pa.list_(ns)),
+            "ll": pa.array([[value]], type=pa.large_list(ns)),
+            "fl": pa.array([[value]], type=pa.list_(ns, 1)),
+            "m": pa.array([[("k", value)]], type=pa.map_(pa.string(), ns)),
+            "d": pa.array([value], type=ns).dictionary_encode(),
+        }
+    )
+    ray.data.from_arrow(table).write_delta(temp_delta_path)
+
+    us = pa.timestamp("us")
+    table_schema = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow())
+    assert table_schema.field("s").type == pa.struct([("t", us)])
+    for name in ["l", "ll", "fl"]:
+        assert table_schema.field(name).type.value_type == us
+    assert table_schema.field("m").type.item_type == us
+    assert table_schema.field("d").type == us
+    expected = pa.scalar(1704110400_123456, type=us).as_py()
+    assert _read_committed_parquet_rows(temp_delta_path) == [
+        {
+            "s": {"t": expected},
+            "l": [expected],
+            "ll": [expected],
+            "fl": [expected],
+            "m": [("k", expected)],
+            "d": expected,
+        }
+    ]
+
+
+def test_write_timestamp_map_keys_converted_to_microseconds(temp_delta_path):
+    """Map keys are converted too."""
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    # Timezone-aware: deltalake doesn't add the ``timestampNtz`` feature for a
+    # naive timestamp that only appears as a map key, so committing one fails
+    # with or without this conversion.
+    ns = pa.timestamp("ns", tz="America/New_York")
+    table = pa.table(
+        {"m": pa.array([[(1704110400_123456789, "v")]], type=pa.map_(ns, pa.string()))}
+    )
+    ray.data.from_arrow(table).write_delta(temp_delta_path)
+
+    us = pa.timestamp("us", tz="UTC")
+    table_schema = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow())
+    assert table_schema.field("m").type.key_type == us
+    expected = pa.scalar(1704110400_123456, type=us).as_py()
+    assert _read_committed_parquet_rows(temp_delta_path) == [{"m": [(expected, "v")]}]
+
+
+def test_timestamp_conversion_rejects_out_of_range_values():
+    """A timestamp that doesn't fit in microseconds raises rather than
+    silently wrapping."""
+    import pyarrow as pa
+
+    from ray.data._internal.datasource.delta_datasink import _cast_to_delta_schema
+
+    # The smallest whole second whose microsecond value exceeds int64.
+    table = pa.table({"t": pa.array([9_223_372_036_855], type=pa.timestamp("s"))})
+    with pytest.raises(pa.ArrowInvalid, match="out of bounds"):
+        _cast_to_delta_schema(table)
+
+
+def test_append_nanosecond_timestamps_to_microsecond_table(temp_delta_path):
+    """Appending nanosecond timestamps to a table with a microsecond column
+    is not a type conflict once they're converted."""
+    import pyarrow as pa
+
+    def _table(id_, value, unit):
+        return pa.table(
+            {
+                "id": pa.array([id_], type=pa.int64()),
+                "t": pa.array([value], type=pa.timestamp(unit)),
+            }
+        )
+
+    ray.data.from_arrow(_table(1, 1704110400_000001, "us")).write_delta(temp_delta_path)
+    ray.data.from_arrow(_table(2, 1704110400_000002_999, "ns")).write_delta(
+        temp_delta_path
+    )
+
+    us = pa.timestamp("us")
+    out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
+    assert out == [
+        {"id": 1, "t": pa.scalar(1704110400_000001, type=us).as_py()},
+        {"id": 2, "t": pa.scalar(1704110400_000002, type=us).as_py()},
+    ]
+
+
+def test_empty_dataset_timestamp_schema_converted_to_microseconds(temp_delta_path):
+    """An empty dataset commits the schema captured in ``on_write_start``,
+    which must be converted too."""
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    table = pa.table({"t": pa.array([], type=pa.timestamp("ns"))})
+    ray.data.from_arrow(table).write_delta(temp_delta_path)
+
+    table_schema = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow())
+    assert table_schema.field("t").type == pa.timestamp("us")
+
+
+# ----------------------------------------------------------------------
 # S3 custom endpoint forwarding (review-comment fix).
 # ----------------------------------------------------------------------
 
