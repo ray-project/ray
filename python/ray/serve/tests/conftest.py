@@ -49,9 +49,6 @@ TEST_GRPC_SERVICER_FUNCTIONS = [
     "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
 ]
 
-if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
-    serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
-
 
 @pytest.fixture(autouse=True)
 def _clear_stale_ray_address():
