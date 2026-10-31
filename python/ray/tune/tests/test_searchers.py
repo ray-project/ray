@@ -4,6 +4,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import warnings
 from copy import deepcopy
 from unittest.mock import patch
 
@@ -15,6 +16,8 @@ from packaging.version import Version
 import ray
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
+from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.experiment import Trial
 from ray.tune.search import ConcurrencyLimiter
 
 
@@ -322,6 +325,49 @@ class InvalidValuesTest(unittest.TestCase):
                 reuse_actors=False,
             )
         self.assertCorrectExperimentOutput(out)
+
+
+@pytest.mark.parametrize(
+    "container", [list, tuple, ExperimentAnalysis], ids=["list", "tuple", "analysis"]
+)
+@pytest.mark.parametrize(
+    "status", [Trial.PENDING, Trial.RUNNING, Trial.PAUSED, Trial.ERROR]
+)
+def test_optuna_add_evaluated_trials_mixed_statuses(container, status, tmp_path):
+    from optuna.trial import TrialState
+
+    from ray.tune.result import DONE
+    from ray.tune.search.optuna import OptunaSearch
+
+    completed = Trial("stub", config={"x": 1.0}, stub=True)
+    completed.set_status(Trial.TERMINATED)
+    completed.update_last_result({"metric": 0.0, DONE: True})
+    middle = Trial("stub", config={"x": 2.0}, stub=True)
+    middle.set_status(status)
+    last = Trial("stub", config={"x": 3.0}, stub=True)
+    last.set_status(Trial.TERMINATED)
+    last.update_last_result({"metric": 3.0, DONE: True})
+    trials = [completed, middle, last]
+    if container is ExperimentAnalysis:
+        trials = ExperimentAnalysis(
+            str(tmp_path / "experiment_state.json"), trials=trials
+        )
+    else:
+        trials = container(trials)
+    searcher = OptunaSearch(
+        space={"x": tune.uniform(0.0, 5.0)}, metric="metric", mode="max"
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        searcher.add_evaluated_trials(trials, "metric")
+
+    expected = [({"x": 1.0}, TrialState.COMPLETE, 0.0)]
+    if status == Trial.ERROR:
+        expected.append(({"x": 2.0}, TrialState.FAIL, None))
+    expected.append(({"x": 3.0}, TrialState.COMPLETE, 3.0))
+    assert [(t.params, t.state, t.value) for t in searcher._ot_study.trials] == expected
+    assert not caught
 
 
 class AddEvaluatedPointTest(unittest.TestCase):

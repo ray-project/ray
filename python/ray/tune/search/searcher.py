@@ -262,7 +262,7 @@ class Searcher:
                 any_trial_had_metric = (
                     metric in trial.last_result and has_trial_finished
                 )
-            if Trial.TERMINATED and metric not in trial.last_result:
+            if trial.status != Trial.ERROR and metric not in trial.last_result:
                 return None
             return dict(
                 parameters=trial.config,
