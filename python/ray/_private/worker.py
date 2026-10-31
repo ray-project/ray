@@ -1068,7 +1068,17 @@ class Worker:
             # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
-        self.core_worker.run_task_loop()
+        try:
+            self.core_worker.run_task_loop()
+        finally:
+            # The task loop returns only after the C++ core worker has shut down
+            # and been released. Drop the handle so nothing after this point
+            # (e.g. the atexit shutdown hook) calls into the released worker:
+            # that quick-exits the process mid-teardown, which surfaces as an
+            # access violation on Windows. It may already be gone if a task
+            # called ray.shutdown().
+            if hasattr(self, "core_worker"):
+                del self.core_worker
         sys.exit(0)
 
     def print_logs(self):
