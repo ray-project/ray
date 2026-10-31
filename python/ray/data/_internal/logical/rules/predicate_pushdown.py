@@ -1,4 +1,5 @@
 import copy
+import functools
 from dataclasses import dataclass, is_dataclass, replace
 from typing import List, Optional
 
@@ -46,6 +47,21 @@ class _ConvertibilitySplit:
     residual: Optional[Expr]
 
 
+@dataclass(frozen=True)
+class _PushabilitySplit:
+    """Result of splitting a predicate by whether it can cross a ``Project``.
+
+    Attributes:
+        pushable: The conjuncts that can move below the ``Project``. ``None`` if
+            none can.
+        residual: The conjuncts that must stay above the ``Project``. ``None`` if
+            all of them can move.
+    """
+
+    pushable: Optional[Expr]
+    residual: Optional[Expr]
+
+
 class PredicatePushdown(Rule):
     """Pushes down predicates across the graph.
 
@@ -57,7 +73,9 @@ class PredicatePushdown(Rule):
     Eligibility is determined by the LogicalOperatorSupportsPredicatePassThrough trait, which operators
     implement to declare their pushdown behavior:
     - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle)
-    - PASSTHROUGH_WITH_SUBSTITUTION: Filter passes through with column rebinding (Project)
+    - PASSTHROUGH_WITH_SUBSTITUTION: Filter passes through with column rebinding (Project).
+      If only some top level ``AND`` conjuncts can cross the Project, those are pushed
+      and the rest stay in a Filter above it.
     - PUSH_INTO_BRANCHES: Filter is pushed into each branch (Union)
     - CONDITIONAL: Filter may be pushed based on analysis (Join - analyzes which side
       the predicate references and pushes to that side if safe for the join type)
@@ -225,6 +243,56 @@ class PredicatePushdown(Rule):
         return left if left is not None else right
 
     @classmethod
+    def _split_and_conjuncts(cls, predicate: Expr) -> List[Expr]:
+        """Flatten the top level ``AND`` chain of a predicate, left to right.
+
+        Anything that isn't an ``AND`` (including ``OR`` and ``NOT``) is a single
+        conjunct and is never looked into.
+        """
+        if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
+            return cls._split_and_conjuncts(predicate.left) + cls._split_and_conjuncts(
+                predicate.right
+            )
+        return [predicate]
+
+    @classmethod
+    def _split_by_projection_pushability(
+        cls, filter_op: Filter, projection_op: Project
+    ) -> _PushabilitySplit:
+        """Split a filter's ``AND`` conjuncts by whether they can cross a ``Project``.
+
+        Each top level conjunct is checked on its own with
+        ``_can_push_filter_through_projection``. For example, with
+        ``with_column("y", ...)`` followed by ``filter((col("x") > 0) & (col("y") > 0))``,
+        ``col("x") > 0`` can move below the ``Project`` and ``col("y") > 0``
+        must stay above it.
+
+        Args:
+            filter_op: The filter to split.
+            projection_op: The ``Project`` the filter would be pushed through.
+
+        Returns:
+            A ``_PushabilitySplit`` whose ``pushable`` and ``residual`` fields hold
+            the two parts, each combined with ``AND`` in the original order.
+            Both are optional.
+        """
+        pushable: List[Expr] = []
+        residual: List[Expr] = []
+        for conjunct in cls._split_and_conjuncts(filter_op.predicate_expr):
+            conjunct_filter = replace(filter_op, predicate_expr=conjunct)
+            if cls._can_push_filter_through_projection(conjunct_filter, projection_op):
+                pushable.append(conjunct)
+            else:
+                residual.append(conjunct)
+
+        def combine(conjuncts: List[Expr]) -> Optional[Expr]:
+            if not conjuncts:
+                return None
+            return functools.reduce(lambda left, right: left & right, conjuncts)
+
+        return _PushabilitySplit(pushable=combine(pushable), residual=combine(residual))
+
+    @classmethod
     def _split_by_convertibility(cls, predicate: Expr) -> _ConvertibilitySplit:
         """Split a predicate into PyArrow convertible and residual parts.
 
@@ -314,18 +382,30 @@ class PredicatePushdown(Rule):
                     f"got {len(input_op.input_dependencies)}"
                 )
 
+                # Conjuncts that can't cross a ``Project``; kept as a Filter above it.
+                residual_predicate = None
+
                 # Apply column substitution if needed
                 if (
                     behavior
                     == PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
                 ):
-                    # Check if we can safely push the filter through this projection
+                    # Check if we can safely push the filter through this projection.
+                    # If not, some of its top level ``AND`` conjuncts may still be
+                    # pushable (e.g. the ones on columns the projection passes
+                    # through); push those and keep the rest above the projection.
                     if isinstance(
                         input_op, Project
                     ) and not cls._can_push_filter_through_projection(
                         filter_op, input_op
                     ):
-                        return filter_op
+                        projection_split = cls._split_by_projection_pushability(
+                            filter_op, input_op
+                        )
+                        if projection_split.pushable is None:
+                            return filter_op
+                        predicate_expr = projection_split.pushable
+                        residual_predicate = projection_split.residual
 
                     rename_map = input_op.get_column_substitutions()
                     if rename_map:
@@ -341,7 +421,14 @@ class PredicatePushdown(Rule):
                 pushed_filter = cls._try_push_down_predicate(new_filter)
 
                 # Return input_op with the pushed filter as its input
-                return cls._clone_op_with_new_inputs(input_op, [pushed_filter])
+                new_op = cls._clone_op_with_new_inputs(input_op, [pushed_filter])
+                if residual_predicate is None:
+                    return new_op
+                return replace(
+                    filter_op,
+                    predicate_expr=residual_predicate,
+                    input_dependencies=[new_op],
+                )
 
             elif behavior == PredicatePassThroughBehavior.PUSH_INTO_BRANCHES:
                 # Push into each branch (e.g., Union)
