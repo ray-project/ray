@@ -49,5 +49,6 @@ ray_cc_test(
     ],
     deps = [
         ":leader_election",
+        "//src/ray/util:clock",
     ],
 )

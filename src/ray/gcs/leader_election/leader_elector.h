@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -73,6 +74,13 @@ class LeaderElector {
   }
 
  private:
+  friend class LeaderElectorTestPeer;
+
+  std::chrono::steady_clock::time_point SteadyNow() const {
+    return steady_now_for_testing_ ? steady_now_for_testing_()
+                                   : std::chrono::steady_clock::now();
+  }
+
   // The background loop execution function.
   void Loop();
 
@@ -92,6 +100,11 @@ class LeaderElector {
   void WatchdogLoop();
 
   LeaderElectionConfig config_;
+  // Test-only override, installed before Run(). Both publication and watchdog reads
+  // must use the same steady-clock domain. Empty in normal operation.
+  std::function<std::chrono::steady_clock::time_point()> steady_now_for_testing_;
+  // Invoked after an expiry check and any resulting callback, outside mutex_.
+  std::function<void()> after_watchdog_expiry_check_for_testing_;
   // Flashed to true by GCS main thread to request background loops to exit gracefully.
   bool is_stopped_{false};
   // Tracks whether this candidate currently holds the leader election lease successfully.
