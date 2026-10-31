@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.gcs_passive_utils import PassiveLatch
 from ray._raylet import GcsClient
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler.v2.autoscaler import Autoscaler
@@ -238,6 +239,8 @@ class TestAutoscalerMonitor(AutoscalerMonitor):
         self.gcs_client = gcs_client
         self.autoscaler = autoscaler
         self._session_name = "test"
+        self._metrics_address = None
+        self._autoscaler_passive_latch = PassiveLatch("Autoscaling", logger)
 
 
 def test_raise_AuthenticationError_v2(make_autoscaler):
