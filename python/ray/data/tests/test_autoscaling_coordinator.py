@@ -18,6 +18,7 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
 )
 from ray.data._internal.util import GiB
 from ray.tests.conftest import wait_for_condition
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 CLUSTER_NODES_WITH_HEAD = [
     # Head node should be included if it has non-zero CPUs or GPUs.
@@ -426,6 +427,44 @@ def test_autoscaling_coordinator_e2e(cluster, gpu_tasks_include_cpu):
     )
 
     assert ray.get([res1, res2]) == ["ok"] * 2
+
+
+def test_coordinator_actor_runs_on_the_head_node(cluster):
+    """Test that the coordinator actor runs on the head node, whatever creates it.
+
+    The coordinator is created by a task on a worker node, inside a placement
+    group that captures child tasks (as Tune trials and Train V1 workers do).
+    The actor must still land on the head node, and keep serving requests after
+    both the placement group and the worker node are removed.
+    """
+    worker = cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # The head node has no CPUs, so the group and this task land on the worker.
+    pg = ray.util.placement_group([{"CPU": 2}])
+    ray.get(pg.ready())
+
+    @ray.remote(num_cpus=1)
+    def create_coordinator():
+        coordinator = get_or_create_autoscaling_coordinator()
+        return ray.get(coordinator.get_reserved_resources.remote("r"))
+
+    strategy = PlacementGroupSchedulingStrategy(
+        pg, placement_group_capture_child_tasks=True
+    )
+    assert (
+        ray.get(create_coordinator.options(scheduling_strategy=strategy).remote()) == {}
+    )
+
+    coordinator = get_or_create_autoscaling_coordinator()
+    actor_info = ray._private.state.actors(coordinator._actor_id.hex())
+    assert actor_info["Address"]["NodeID"] == cluster.head_node.node_id
+
+    # Neither removing the group nor losing the node that created it takes the
+    # coordinator with it.
+    ray.util.remove_placement_group(pg)
+    cluster.remove_node(worker)
+    assert ray.get(coordinator.get_reserved_resources.remote("r"), timeout=60) == {}
 
 
 @pytest.fixture

@@ -904,42 +904,72 @@ def get_checkpoint() -> Optional[Checkpoint]:
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_metadata() -> Dict[str, Any]:
-    """User metadata dict passed to the Trainer constructor."""
+    """User metadata dict passed to the Trainer constructor.
+
+    Returns:
+        The ``metadata`` dict passed to the Trainer, or ``None`` if called
+        outside a Ray Train or Ray Tune function.
+    """
     return get_session().metadata
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_experiment_name() -> str:
-    """Experiment name for the corresponding trial."""
+    """Experiment name for the corresponding trial.
+
+    Returns:
+        The experiment name, or ``None`` if called outside a Ray Train or Ray
+        Tune function.
+    """
     return get_session().experiment_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_name() -> str:
-    """Trial name for the corresponding trial."""
+    """Trial name for the corresponding trial.
+
+    Returns:
+        The trial name, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().trial_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_id() -> str:
-    """Trial id for the corresponding trial."""
+    """Trial id for the corresponding trial.
+
+    Returns:
+        The trial ID, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().trial_id
 
 
 @PublicAPI(stability="alpha")
 @_warn_session_misuse()
 def get_run_id() -> str:
-    """Unique Train Run id for the corresponding trial."""
+    """Unique Train Run id for the corresponding trial.
+
+    Returns:
+        The run ID, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().run_id
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_resources() -> "PlacementGroupFactory":
-    """Trial resources for the corresponding trial."""
+    """Trial resources for the corresponding trial.
+
+    Returns:
+        The trial's ``PlacementGroupFactory``, or ``None`` if called outside a
+        Ray Train or Ray Tune function.
+    """
     return get_session().trial_resources
 
 
@@ -964,6 +994,10 @@ def get_trial_dir() -> str:
         :options: +MOCK
 
         /Users/root/ray_results/train_func_2023-07-19_15-01-37/train_func_d620c_00000_0_2023-07-19_15-01-40
+
+    Returns:
+        The trial directory path, or ``None`` if called outside a Ray Train or
+        Ray Tune function.
     """
     return get_session().trial_dir
 
@@ -997,6 +1031,10 @@ def get_world_size() -> int:
         :hide:
 
         ...
+
+    Returns:
+        The total number of workers, or ``1`` if called outside a Ray Train or
+        Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "world_size"):
@@ -1036,6 +1074,10 @@ def get_world_rank() -> int:
         :hide:
 
         ...
+
+    Returns:
+        This worker's rank among all workers, or ``0`` if called outside a Ray
+        Train or Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "world_rank"):
@@ -1078,6 +1120,10 @@ def get_local_rank() -> int:
         :hide:
 
         ...
+
+    Returns:
+        This worker's rank among the workers on its node, or ``0`` if called
+        outside a Ray Train or Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "local_rank"):

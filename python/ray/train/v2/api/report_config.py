@@ -18,6 +18,14 @@ class CheckpointUploadMode(Enum):
     NO_UPLOAD = "NO_UPLOAD"
 
     def default_delete_local_checkpoint_after_upload(self) -> bool:
+        """Return whether to delete the local checkpoint after upload by default.
+
+        :func:`ray.train.report` uses this value when its
+        ``delete_local_checkpoint_after_upload`` argument is ``None``.
+
+        Returns:
+            ``True`` for ``ASYNC``, ``False`` for the other modes.
+        """
         return self == CheckpointUploadMode.ASYNC
 
 
