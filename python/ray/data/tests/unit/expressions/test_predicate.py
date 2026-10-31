@@ -2,13 +2,19 @@
 
 This module tests:
 - Null predicates: is_null(), is_not_null()
+- Null replacement: fill_null()
 - Membership predicates: is_in(), not_in()
 """
 
+import datetime
+import math
+
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
+from ray.data.datatype import DataType
 from ray.data.expressions import BinaryExpr, Operation, UnaryExpr, col, lit
 
 # ──────────────────────────────────────
@@ -100,6 +106,147 @@ class TestIsNotNull:
 
         assert expr1.structurally_equals(expr2)
         assert not expr1.structurally_equals(expr3)
+
+
+class TestFillNull:
+    """Tests for fill_null()."""
+
+    @pytest.mark.parametrize(
+        "column,fill_value,expected",
+        [
+            (pa.array([1, None, 3]), 0, [1, 0, 3]),
+            (pa.array([1.5, None]), 0.0, [1.5, 0.0]),
+            (pa.array(["a", None]), "unknown", ["a", "unknown"]),
+            (pa.array([False, None]), True, [False, True]),
+            (
+                pa.array([datetime.date(2024, 1, 1), None]),
+                datetime.date(2000, 1, 1),
+                [datetime.date(2024, 1, 1), datetime.date(2000, 1, 1)],
+            ),
+            (pa.array([1, None, 3]), lit(0), [1, 0, 3]),
+            (pa.array([1, None]), pa.scalar(0, pa.int8()), [1, 0]),
+            (pa.array([None, None], type=pa.null()), 0, [0, 0]),
+            (pa.array([1, 2]), 0, [1, 2]),
+            (pa.array([], type=pa.int64()), 0, []),
+            (pa.chunked_array([[1, None], [None, 4]]), 0, [1, 0, 0, 4]),
+        ],
+        ids=[
+            "int",
+            "float",
+            "string",
+            "bool",
+            "date",
+            "literal_expr",
+            "arrow_scalar",
+            "all_null",
+            "no_nulls",
+            "empty",
+            "multiple_chunks",
+        ],
+    )
+    def test_fill_null_replaces_nulls(self, column, fill_value, expected):
+        """Test fill_null replaces nulls on Arrow columns."""
+        table = pa.table({"x": column})
+        result = eval_expr(col("x").fill_null(fill_value), table)
+        assert result.to_pylist() == expected
+
+    def test_fill_null_replaces_nulls_in_pandas_block(self):
+        """Test fill_null on a pandas block."""
+        block = pd.DataFrame({"x": ["a", None]})
+        result = eval_expr(col("x").fill_null("unknown"), block)
+        assert list(result) == ["a", "unknown"]
+
+    def test_fill_null_keeps_nan(self):
+        """Test fill_null leaves NaN unchanged, since NaN isn't null."""
+        table = pa.table({"x": pa.array([float("nan"), None])})
+        result = eval_expr(col("x").fill_null(0.0), table).to_pylist()
+        assert math.isnan(result[0])
+        assert result[1] == 0.0
+
+    @pytest.mark.parametrize(
+        "column,fill_value,expected_type",
+        [
+            (pa.array([1, None], type=pa.int32()), 0, pa.int32()),
+            (pa.array([1.5, None], type=pa.float32()), 0.0, pa.float32()),
+            (
+                pa.array(["a", None]).dictionary_encode(),
+                "z",
+                pa.dictionary(pa.int32(), pa.string()),
+            ),
+            (pa.array([1, None], type=pa.int32()), 0.5, pa.float64()),
+            (pa.array([1, None], type=pa.int32()), 2**40, pa.int64()),
+            (pa.array([1.5, None], type=pa.float32()), 1e40, pa.float64()),
+        ],
+        ids=[
+            "int32",
+            "float32",
+            "dictionary",
+            "float_fill",
+            "large_int_fill",
+            "large_float_fill",
+        ],
+    )
+    def test_fill_null_result_type(self, column, fill_value, expected_type):
+        """Test fill_null keeps the column type unless the fill value needs more."""
+        table = pa.table({"x": column})
+        result = eval_expr(col("x").fill_null(fill_value), table)
+        assert result.type == expected_type
+
+    @pytest.mark.parametrize(
+        "input_type,fill_value,expected_type",
+        [
+            (DataType.int32(), 0, DataType.int32()),
+            (DataType.int64(), 0.5, DataType.float64()),
+        ],
+        ids=["keeps_type", "promotes_type"],
+    )
+    def test_fill_null_declares_result_type(
+        self, input_type, fill_value, expected_type
+    ):
+        """Test fill_null declares the type it returns."""
+        expr = col("x").cast(input_type).fill_null(fill_value)
+        assert expr.data_type == expected_type
+
+    @pytest.mark.parametrize(
+        "column,fill_value",
+        [(pa.array(["a", None]), 0), (pa.array([1, None]), "5")],
+        ids=["int_for_string", "string_for_int"],
+    )
+    def test_fill_null_raises_on_incompatible_type(self, column, fill_value):
+        """Test fill_null raises when the fill value can't fit the column."""
+        table = pa.table({"x": column})
+        with pytest.raises(pa.ArrowNotImplementedError):
+            eval_expr(col("x").fill_null(fill_value), table)
+
+    @pytest.mark.parametrize(
+        "other,expected",
+        [
+            (col("x").fill_null(0), True),
+            (col("x").fill_null(1), False),
+            (col("x").fill_null(0.0), False),
+            (col("x").fill_null(False), False),
+            (col("y").fill_null(0), False),
+        ],
+        ids=["same", "different_value", "float_value", "bool_value", "other_column"],
+    )
+    def test_fill_null_structural_equality(self, other, expected):
+        """Test structural equality for fill_null expressions."""
+        assert col("x").fill_null(0).structurally_equals(other) is expected
+
+    @pytest.mark.parametrize(
+        "fill_value,error",
+        [
+            (None, ValueError),
+            (lit(None), ValueError),
+            (pa.scalar(None, pa.int64()), ValueError),
+            (col("y"), TypeError),
+        ],
+        ids=["none", "literal_none", "typed_null_scalar", "column_expr"],
+    )
+    def test_fill_null_rejects_invalid_fill_value(self, fill_value, error):
+        """Test fill_null rejects null and non-literal fill values."""
+        with pytest.raises(error):
+            col("x").fill_null(fill_value)
 
 
 class TestNullPredicateCombinations:

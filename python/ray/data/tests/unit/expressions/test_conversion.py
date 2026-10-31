@@ -30,6 +30,7 @@ from pyiceberg.expressions import (
 )
 
 from ray.data._internal.datasource.iceberg_datasource import _IcebergExpressionVisitor
+from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,
@@ -306,6 +307,13 @@ class TestToPyArrow:
                 lambda: pc.abs_checked(pc.field("x")),
                 id="abs",
             ),
+            pytest.param(
+                col("value").fill_null(0),
+                lambda: pc.if_else(
+                    pc.is_null(pc.field("value")), pa.scalar(0), pc.field("value")
+                ),
+                id="fill_null",
+            ),
         ],
     )
     def test_pyarrow_compute_udf_expressions(
@@ -341,6 +349,24 @@ class TestToPyArrow:
         dataset = ds.dataset(test_table)
         result = dataset.to_table(filter=pa_expr)
         assert all(s == "active" for s in result.column("status").to_pylist())
+
+    @pytest.mark.parametrize(
+        "column,fill_value,threshold",
+        [
+            (pa.array([1, None, 10]), 0, 5),
+            (pa.array([0, None], type=pa.int64()), 0.1, 0.1),
+            (pa.array([None, None], type=pa.null()), 0, -1),
+        ],
+        ids=["int", "int_with_float_fill", "all_null"],
+    )
+    def test_fill_null_as_dataset_filter(self, column, fill_value, threshold):
+        """Test that a fill_null filter gives the same rows when pushed down."""
+        table = pa.table({"x": column})
+        ray_expr = col("x").fill_null(fill_value) > threshold
+
+        result = ds.dataset(table).to_table(filter=ray_expr.to_pyarrow())
+        expected = table.filter(eval_expr(ray_expr, table))
+        assert result.column("x").to_pylist() == expected.column("x").to_pylist()
 
     # ── Unsupported Expressions ──
 

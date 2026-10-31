@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import math
 import uuid as builtin_uuid
 from abc import ABC, abstractmethod
 from collections import Counter
@@ -796,6 +797,62 @@ class Expr(ABC):
     def is_inf(self) -> "UDFExpr":
         return _create_pyarrow_compute_udf(pc.is_inf, return_dtype=DataType.bool())(
             self
+        )
+
+    def fill_null(self, fill_value: Any) -> "UDFExpr":
+        """Replace null values with a scalar.
+
+        The result keeps the expression's type when ``fill_value`` fits it.
+        Otherwise the result has the common type of both. For example, filling an
+        ``int32`` column with ``0`` returns ``int32``, and filling it with ``0.5``
+        returns a float column instead of truncating to ``0``. A float fill value
+        for a ``float32`` column is rounded to ``float32`` precision, unless it's
+        too large for ``float32``. ``NaN`` in a float column isn't null, so it
+        isn't replaced.
+
+        Args:
+            fill_value: The scalar to use in place of nulls. A literal expression
+                such as ``lit(0)`` is also accepted.
+
+        Returns:
+            An expression with nulls replaced by ``fill_value``.
+
+        Raises:
+            TypeError: If ``fill_value`` is a non-literal expression, such as a
+                column reference.
+            ValueError: If ``fill_value`` is ``None``.
+            pyarrow.ArrowNotImplementedError: If ``fill_value`` has a type
+                incompatible with the expression, such as a string for an
+                integer column. This is raised when the expression is evaluated,
+                or here if the expression's type is already known.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 1}, {"x": None}])
+            >>> ds.with_column("x_filled", col("x").fill_null(0)).take_all()
+            [{'x': 1, 'x_filled': 1}, {'x': None, 'x_filled': 0}]
+        """
+        if isinstance(fill_value, LiteralExpr):
+            fill_value = fill_value.value
+        elif isinstance(fill_value, Expr):
+            raise TypeError(
+                "fill_null() only supports scalar fill values, but got an "
+                f"expression of type {type(fill_value).__name__}."
+            )
+        # Store the fill value as a typed Arrow scalar, so that fill_null(0) and
+        # fill_null(0.0) produce different types and don't compare as equal.
+        if not isinstance(fill_value, pyarrow.Scalar):
+            fill_value = pyarrow.scalar(fill_value)
+        if not fill_value.is_valid:
+            raise ValueError("fill_null() requires a non-null fill value.")
+
+        return_dtype = self.data_type
+        if return_dtype.is_arrow_type():
+            empty = pyarrow.array([], type=return_dtype.to_arrow_dtype())
+            return_dtype = DataType.from_arrow(_fill_null(empty, fill_value).type)
+        return _create_pyarrow_compute_udf(_fill_null, return_dtype=return_dtype)(
+            self, fill_value
         )
 
     def cast(self, target_type: DataType, *, safe: bool = True) -> "UDFExpr":
@@ -1748,6 +1805,45 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         return _create_udf_callable(wrapped_fn, return_dtype)
 
     return decorator
+
+
+def _fill_null(arr: Any, fill_value: "pyarrow.Scalar") -> Any:
+    """Replace nulls in ``arr`` with ``fill_value``.
+
+    ``arr`` is either an Arrow array or a ``pyarrow.compute.Expression`` (during
+    predicate pushdown). This uses ``if_else`` instead of ``pc.fill_null`` or
+    ``pc.coalesce``: ``pc.fill_null`` doesn't accept Expressions and truncates
+    a float fill value for an integer column, and ``coalesce`` fails to bind on
+    a column with the Arrow null type.
+    """
+    if isinstance(arr, (pyarrow.Array, pyarrow.ChunkedArray)):
+        if pyarrow.types.is_null(arr.type):
+            # The if_else kernel can't combine the null type with a typed scalar.
+            arr = arr.cast(fill_value.type)
+        else:
+            # if_else raises here for incompatible types, such as a string fill
+            # value for an integer column.
+            common_type = pc.if_else(
+                pyarrow.array([], type=pyarrow.bool_()), fill_value, arr.slice(0, 0)
+            ).type
+            if common_type != arr.type:
+                # Keep the column's type when the fill value fits it, so that
+                # filling an int32 column with 0 doesn't widen it to int64.
+                try:
+                    narrowed = fill_value.cast(arr.type)
+                except (pyarrow.ArrowInvalid, pyarrow.ArrowNotImplementedError):
+                    narrowed = None
+                # A safe cast to a narrower float type overflows to infinity
+                # instead of raising, so keep the original value in that case.
+                overflowed = (
+                    narrowed is not None
+                    and pyarrow.types.is_floating(arr.type)
+                    and math.isinf(narrowed.as_py())
+                    and not math.isinf(fill_value.as_py())
+                )
+                if narrowed is not None and not overflowed:
+                    fill_value = narrowed
+    return pc.if_else(pc.is_null(arr), fill_value, arr)
 
 
 def _create_pyarrow_compute_udf(
