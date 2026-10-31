@@ -1167,6 +1167,12 @@ def pull_and_extract_container_image(
                     _drop_stale_rootfs_tree(target_dir)
                     return _finish()
 
+            if _has_users(target_dir):
+                raise SandboxCreationError(
+                    f"Cannot refresh cached image {image!r} while sandboxes are "
+                    "using it. Stop those sandboxes before retrying."
+                )
+
             # Checked before any download: without it the pull cannot finish.
             require_mkfs_erofs()
 
