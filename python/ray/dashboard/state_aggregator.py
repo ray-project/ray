@@ -348,7 +348,9 @@ class StateAPIManager:
             result = do_filter(result, option.filters, TaskState, option.detail)
             num_filtered = len(result)
 
-            result.sort(key=lambda entry: entry["task_id"])
+            # Attempts of a retried task share a task_id. Sort them newest first so
+            # that a limit=1 query by task_id returns the latest attempt.
+            result.sort(key=lambda entry: (entry["task_id"], -entry["attempt_number"]))
             result = list(islice(result, option.limit))
 
             # TODO(rickyx): we could do better with the warning logic. It's messy now.
