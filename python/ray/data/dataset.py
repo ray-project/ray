@@ -187,6 +187,30 @@ logger = logging.getLogger(__name__)
 # Special column name for train/test split to avoid collision with user columns
 _TRAIN_TEST_SPLIT_COLUMN = "__ray_train_test_split_is_train__"
 
+
+class _MissingStratifyKey:
+    """Canonical dict key for ``NaN``/``NaT`` stratification values.
+
+    NaN never compares equal to itself, so a raw ``NaN`` used as a dict key
+    cannot be looked up again in another block. Every self-unequal value
+    (``NaN``, ``NaT``) maps here, so they still group together; ``None``
+    compares equal to itself and therefore keeps its own group.
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other):
+        return isinstance(other, _MissingStratifyKey)
+
+    def __hash__(self):
+        return hash(_MissingStratifyKey)
+
+    def __repr__(self):
+        return "_MissingStratifyKey()"
+
+
+_MISSING_STRATIFY_KEY = _MissingStratifyKey()
+
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
@@ -3137,8 +3161,12 @@ class Dataset:
 
         ds, dataset_length = self._try_count_or_materialize(self)
         cumulative_proportions = np.cumsum(proportions)
+        # The +1e-8 absorbs float dust (e.g. 100 * 0.29 == 28.999999999999996
+        # while 1 - 0.8 == 0.19999999999999996), without pushing genuinely
+        # fractional products up a whole row.
         split_indices = [
-            int(dataset_length * proportion) for proportion in cumulative_proportions
+            int(dataset_length * proportion + 1e-8)
+            for proportion in cumulative_proportions
         ]
 
         # Ensure each split has at least one element
@@ -3251,22 +3279,99 @@ class Dataset:
         Returns:
             Train and test subsets as two MaterializedDatasets.
         """
-        # Normalize test_size to float (only materialize if needed)
+        # Normalize test_size to a fraction plus an absolute test-row target.
+        # Counting once here also lets us distribute leftover rows below.
+        ds, ds_length = self._try_count_or_materialize(ds)
         if isinstance(test_size, int):
-            ds_length = self._validate_test_size_int(test_size, ds)
-            test_size = test_size / ds_length
+            ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
+            n_test = test_size
+            fraction = test_size / ds_length
         else:
             self._validate_test_size_float(test_size)
+            fraction = test_size
+            # Target test rows rounded to 8 decimals. Cap to preserve non-empty train split when fraction < 1.0.
+            n_test = int(np.ceil(round(fraction * ds_length, 8)))
+            if fraction < 1.0 and n_test >= ds_length:
+                n_test = ds_length - 1
 
-        def add_train_flag(group_batch):
+        def _normalize_key(key: Any) -> Any:
+            # Arrow/numpy scalars hash inconsistently across blocks, so unwrap
+            # them to plain Python values before using them as dict keys.
+            if hasattr(key, "item"):
+                try:
+                    return key.item()
+                except (AttributeError, ValueError, TypeError):
+                    pass
+            elif hasattr(key, "as_py"):
+                try:
+                    key = key.as_py()
+                except (AttributeError, ValueError, TypeError):
+                    pass
+            try:
+                if key != key:
+                    return _MISSING_STRATIFY_KEY
+            except (TypeError, ValueError):
+                pass
+            return key
+
+        # Per-class test counts via largest remainder, so flooring can't
+        # silently shrink (or empty) the test split, and an int test_size
+        # is honored exactly instead of being re-floored per class.
+        class_sizes = [
+            (_normalize_key(row[stratify]), row["count()"])
+            for row in ds.groupby(stratify).count().take_all()
+        ]
+        base = []
+        remainders = []
+        for _, count in class_sizes:
+            base_count = int(count * fraction)
+            base.append(base_count)
+            # fraction < 1, so the truncated product is < count and this
+            # remainder is always in [0, 1).
+            remainders.append(count * fraction - base_count)
+
+        extra = [0] * len(class_sizes)
+        deficit = n_test - sum(base)
+        # Sort classes primarily by highest fractional remainder to allocate leftover rows
+        # fairly (Hamilton-Hare largest remainder method). Break ties by class size.
+        order = sorted(
+            range(len(class_sizes)),
+            key=lambda i: (remainders[i], class_sizes[i][1]),
+            reverse=True,
+        )
+        while deficit > 0:
+            progressed = False
+            for i in order:
+                if deficit <= 0:
+                    break
+                if base[i] + extra[i] < class_sizes[i][1]:
+                    extra[i] += 1
+                    deficit -= 1
+                    progressed = True
+            if not progressed:
+                break
+        test_counts = {key: b + e for (key, _), b, e in zip(class_sizes, base, extra)}
+
+        def add_train_flag(group_batch, test_counts):
             n = len(group_batch)
-            test_count = int(n * test_size)
+            col = group_batch[stratify]
+            try:
+                key = col.iloc[0]
+            except AttributeError:
+                key = col[0]
+            key = _normalize_key(key)
+            test_count = test_counts.get(key, int(n * fraction))
+            test_count = min(max(test_count, 0), n)
             group_batch[_TRAIN_TEST_SPLIT_COLUMN] = np.array(
                 [True] * (n - test_count) + [False] * test_count
             )
             return group_batch
 
-        split_ds = ds.groupby(stratify).map_groups(add_train_flag).materialize()
+        split_ds = (
+            ds.groupby(stratify)
+            .map_groups(add_train_flag, fn_kwargs={"test_counts": test_counts})
+            .materialize()
+        )
 
         train_ds = split_ds.filter(
             lambda row: row[_TRAIN_TEST_SPLIT_COLUMN]
