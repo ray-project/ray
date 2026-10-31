@@ -1,3 +1,4 @@
+import json
 import unittest
 
 import numpy as np
@@ -64,6 +65,79 @@ class PlaceholderTest(unittest.TestCase):
 
         self.assertEqual(config["param2"][1].value, "not ok")
         self.assertEqual(config["param3"]["param4"], "not ok")
+
+    def testGridSearchPrimitiveChoice(self):
+        # A chosen option that is not a placeholder must be left as is, even
+        # when another option of the same grid search is a ref.
+        for chosen in (5, 2.5, "a", (), np.array([1, 2])):
+            config = {"param": tune.grid_search([Dummy("ok"), chosen])}
+
+            replaced = create_resolvers_map()
+            config = inject_placeholders(config, replaced)
+
+            # Pretend we picked the second option from the grid search.
+            config["param"] = chosen
+
+            resolve_placeholders(config, replaced)
+
+            np.testing.assert_equal(config["param"], chosen)
+
+    def testGridSearchContainerChoice(self):
+        # The chosen option is a container that does not hold the placeholder
+        # the other option has at a deeper path.
+        for chosen in ((), (np.array([1, 2]), 3), [1, 2], (1, 2)):
+            config = {"param": tune.grid_search([(Dummy("ok"), 1), chosen])}
+
+            replaced = create_resolvers_map()
+            config = inject_placeholders(config, replaced)
+
+            config["param"] = chosen
+
+            resolve_placeholders(config, replaced)
+
+            np.testing.assert_equal(config["param"], chosen)
+
+        # Same, with a dict key as the path to the placeholder.
+        for chosen in ([1, 2], (1, 2)):
+            config = {"param": tune.grid_search([{"a": Dummy("ok")}, chosen])}
+
+            replaced = create_resolvers_map()
+            config = inject_placeholders(config, replaced)
+
+            config["param"] = chosen
+
+            resolve_placeholders(config, replaced)
+
+            self.assertEqual(config["param"], chosen)
+
+    def testResolveAfterJsonRoundTrip(self):
+        # Trial state is stored as JSON, so after Tuner.restore the placeholder
+        # tuples in the unresolved config are lists.
+        config = {
+            "ref": tune.grid_search([Dummy("ok"), 5]),
+            "in_tuple": tune.grid_search([(Dummy("ok"), 1), (2, 3)]),
+            "bare": tune.grid_search([(Dummy("tuple"), 1), Dummy("bare")]),
+            "fn": tune.sample_from(lambda spec: "fn ok"),
+        }
+
+        replaced = create_resolvers_map()
+        config = inject_placeholders(config, replaced)
+
+        # Pretend we picked the first option of "ref" and "in_tuple", and the
+        # second one of "bare".
+        config["ref"] = config["ref"]["grid_search"][0]
+        config["in_tuple"] = config["in_tuple"]["grid_search"][0]
+        config["bare"] = config["bare"]["grid_search"][1]
+
+        config = json.loads(json.dumps(config))
+        self.assertIsInstance(config["ref"], list)
+
+        resolve_placeholders(config, replaced)
+
+        self.assertEqual(config["ref"].value, "ok")
+        self.assertEqual(config["in_tuple"][0].value, "ok")
+        self.assertEqual(config["bare"].value, "bare")
+        self.assertEqual(config["fn"], "fn ok")
 
     def testCategorical(self):
         config = {
