@@ -1,6 +1,9 @@
 import grpc
 import pytest
 
+from ray._private.authentication.authentication_constants import (
+    TOKEN_AUTH_ERROR_MESSAGE,
+)
 from ray._private.authentication.authentication_token_generator import (
     generate_new_authentication_token,
 )
@@ -142,6 +145,34 @@ def test_sync_server_with_auth_disabled_allows_all(create_sync_test_server):
             # Should succeed because auth is disabled
             response = stub.HealthCheck(request, timeout=5)
             assert response is not None
+        finally:
+            server.stop(grace=1)
+
+
+def test_sync_server_with_auth_disabled_rejects_token(
+    create_sync_test_server,
+):
+    """A server with auth disabled rejects a request that carries a token."""
+    with authentication_env_guard():
+        set_auth_mode("disabled")
+        reset_auth_token_state()
+
+        server, port = create_sync_test_server(with_auth=True)
+
+        try:
+            channel = grpc.insecure_channel(f"localhost:{port}")
+            stub = reporter_pb2_grpc.ReporterServiceStub(channel)
+            metadata = (
+                ("authorization", f"Bearer {generate_new_authentication_token()}"),
+            )
+
+            with pytest.raises(grpc.RpcError) as exc_info:
+                stub.HealthCheck(
+                    reporter_pb2.HealthCheckRequest(), metadata=metadata, timeout=5
+                )
+
+            assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
+            assert exc_info.value.details() == TOKEN_AUTH_ERROR_MESSAGE
         finally:
             server.stop(grace=1)
 

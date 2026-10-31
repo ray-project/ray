@@ -3,7 +3,7 @@
 The algorithm is described in [1] (under the name of "IMPACT"):
 
 Detailed documentation:
-https://docs.ray.io/en/master/rllib-algorithms.html#appo
+https://docs.ray.io/en/latest/rllib/algorithms.html#appo
 
 [1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
 Luo et al. 2020

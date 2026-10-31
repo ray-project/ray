@@ -123,15 +123,15 @@ class TestConfigureKvEvents:
             # Non-DP: offset the base port by the replica's node-local rank so
             # colocated replicas don't bind the same ZMQ PUB port.
             ({}, 2, 5559, 6559),
-            # DP: data_parallel_rank set -> offset 0 (the engine offsets the
-            # bound port by dp_rank itself), so local_rank must be ignored.
+            # DP: equal local and DP ranks need no pre-offset; the engine
+            # adds dp_rank to reach base + local_rank.
             ({"data_parallel_rank": 2}, 2, 5557, 6557),
         ],
     )
     def test_assign_replica_endpoint_offsets_port(
         self, engine_kwargs, local_rank, expected_port, expected_replay_port
     ):
-        """Per-replica endpoint offset: by node-local rank without DP, 0 with DP."""
+        """Pre-offset by node-local rank minus the engine's own DP offset."""
         llm_config = make_kv_aware_llm_config(engine_kwargs=dict(engine_kwargs))
         configure_kv_events_for_kv_routing(llm_config)  # base ports 5557 / 6557
         replica_context = SimpleNamespace(rank=SimpleNamespace(local_rank=local_rank))

@@ -3,6 +3,7 @@ import os
 import re
 import uuid
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -13,6 +14,8 @@ from ray.data._internal.logging import (
     configure_logging,
     get_log_directory,
 )
+from ray.data.exceptions import UserCodeException
+from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
@@ -48,6 +51,14 @@ def reset_logging_fixture():
 
     yield
     reset_logging()
+
+
+def _read_error_log() -> str:
+    log_path = os.path.join(get_log_directory(), "ray-data-errors.log")
+    if not os.path.exists(log_path):
+        return ""
+    with open(log_path) as file:
+        return file.read()
 
 
 def test_messages_logged_to_file(configure_logging, reset_logging, shutdown_only):
@@ -128,6 +139,62 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
     assert logged_msg == "ham"
 
 
+def test_internal_error_logged_to_error_log(
+    configure_logging, reset_logging, ray_start_regular
+):
+    class FakeException(Exception):
+        pass
+
+    with pytest.raises(FakeException):
+        with patch(
+            "ray.data.Dataset._create_executor",
+            side_effect=FakeException("fake exception"),
+        ):
+            ray.data.range(1).materialize()
+
+    assert "Traceback (most recent call last)" in _read_error_log()
+
+
+def test_user_error_logged_to_error_log(
+    configure_logging, reset_logging, ray_start_regular
+):
+    def fn(row):
+        assert False
+
+    with pytest.raises(UserCodeException):
+        ray.data.range(1).map(fn).materialize()
+
+    text = _read_error_log()
+    assert "Traceback (most recent call last)" in text
+    assert "AssertionError" in text
+
+
+def test_ignored_error_logged_to_error_log(
+    configure_logging, reset_logging, ray_start_regular, restore_data_context
+):
+    def fn(row):
+        if row["id"] == 0:
+            assert False
+        return row
+
+    ray.data.DataContext.get_current().max_errored_blocks = 1
+    ray.data.range(2, override_num_blocks=2).map(fn).materialize()
+
+    text = _read_error_log()
+    assert "Traceback (most recent call last)" in text
+    assert "AssertionError" in text
+
+
+def test_info_not_logged_to_error_log(
+    configure_logging, reset_logging, ray_start_regular
+):
+    logger = logging.getLogger("ray.data.ham")
+
+    logger.info("eggs")
+
+    assert "eggs" not in _read_error_log()
+
+
 def test_file_handler_uses_utf8_on_windows(tmp_path, tmp_logger):
     handler = SessionFileHandler(
         "ray-data.log", get_log_directory=lambda: str(tmp_path), platform="win32"
@@ -186,10 +253,12 @@ def test_json_logging_configuration(
     # Ensure handlers correctly setup
     handlers = logger.handlers
     assert sum(handler.name == "file_json" for handler in handlers) == 1
+    assert sum(handler.name == "error_file_json" for handler in handlers) == 1
     assert sum(handler.name == "console" for handler in handlers) == 1
 
     logger.info("ham")
     logger.debug("turkey")
+    logger.error("spam")
 
     log_path = os.path.join(get_log_directory(), "ray-data.log")
     with open(log_path) as file:
@@ -201,8 +270,14 @@ def test_json_logging_configuration(
         log_dict = json.loads(log_line)  # will error if not a json line
         messages.append(log_dict["message"])
 
+    error_messages = []
+    for log_line in _read_error_log().splitlines():
+        log_dict = json.loads(log_line)  # will error if not a json line
+        error_messages.append(log_dict["message"])
+
     assert "ham" in messages
     assert "turkey" in messages
+    assert "spam" in error_messages
 
     # Validate console logs are in text mode
     console_log_output = capsys.readouterr().err
@@ -211,7 +286,23 @@ def test_json_logging_configuration(
             json.loads(log_line)
 
     assert "ham" in console_log_output
+    assert "spam" in console_log_output
     assert "turkey" not in console_log_output
+
+
+def test_json_logging_configuration_is_idempotent(reset_logging, monkeypatch):
+    # Regression test: the JSON substitutions used to mutate the shared default
+    # config, so the second configure_logging() raised ValueError.
+    monkeypatch.setenv("RAY_DATA_LOG_ENCODING", "JSON")
+
+    configure_logging()
+    configure_logging()
+
+    handler_names = [handler.name for handler in logging.getLogger("ray.data").handlers]
+    assert handler_names.count("file_json") == 1
+    assert handler_names.count("error_file_json") == 1
+    assert "file" not in handler_names
+    assert "error_file" not in handler_names
 
 
 def test_configure_logging_preserves_existing_handlers(reset_logging, shutdown_only):

@@ -1,0 +1,15 @@
+[Tt]rainables?
+[Ss]yncers?
+Hyperopt
+Hyperband
+Optuna
+Nevergrad
+BayesOpt
+ZOOpt
+HEBO
+BOHB
+ASHA
+PBT
+PB2
+TPE
+Ax

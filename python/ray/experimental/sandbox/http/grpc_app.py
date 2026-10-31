@@ -12,17 +12,20 @@ points:
 
 The ingress is the facade's own servicer, ``RaySandboxFacade``: Serve calls
 the method named after each RPC, as a ``grpc.aio`` server does, so every
-call passes the same token check. The facade keeps its exec table in
-memory, so the deployment runs exactly one replica.
+call passes the same token check. The facade keeps no state of its own
+(sandbox hosts keep each exec), so the deployment can run several replicas
+(``num_replicas``).
 
 Requires ``ray[serve]``.
 """
 
-import os
 from typing import Any, Callable, Dict, Optional
 
 from ray.experimental.sandbox.http.grpc_facade import RaySandboxFacade
-from ray.experimental.sandbox.http.schemas import SandboxAPISettings
+from ray.experimental.sandbox.http.schemas import (
+    SandboxAPISettings,
+    _require_token_env,
+)
 from ray.util.annotations import PublicAPI
 
 _DEPLOYMENT_NAME = "RaySandboxGrpcFacade"
@@ -58,21 +61,6 @@ class _FacadeIngress(RaySandboxFacade):
         return PlainTextResponse("This application serves gRPC only.", status_code=404)
 
 
-def _require_token_env(settings: SandboxAPISettings) -> None:
-    """Refuse to serve without the API token in this process's environment.
-
-    The facade serves every call unchecked without one, and Serve's proxies
-    listen on every node's address, which sandboxes with network access can
-    reach.
-    """
-    if not os.environ.get(settings.token_env_var):
-        raise ValueError(
-            f"set {settings.token_env_var} to the API token that clients must "
-            "present: Serve's proxies listen on every node's address, which "
-            "sandboxes with network access can reach"
-        )
-
-
 def _bind(
     settings: SandboxAPISettings,
     advertise_url: Optional[str],
@@ -83,7 +71,7 @@ def _bind(
     deployment = serve.deployment(
         _FacadeIngress,
         name=_DEPLOYMENT_NAME,
-        num_replicas=1,
+        num_replicas=settings.num_replicas,
         max_ongoing_requests=_MAX_ONGOING_REQUESTS,
     )
     return deployment.bind(settings, advertise_url, handle_resolver_factory)
@@ -101,7 +89,8 @@ def build_app(args: Optional[Dict[str, Any]] = None) -> Any:
     by ``token_env_var`` (default ``RAY_SANDBOX_API_TOKEN``). Building the
     application fails without it, and so does starting its replica, which
     reads the variable from its own environment: Serve's proxies listen on
-    every node's address, which sandboxes with network access can reach.
+    every node's address, which other pods and processes on the cluster's
+    network can reach. ``allow_unauthenticated`` is refused.
 
     Args:
         args: Builder arguments. ``advertise_url`` sets the command-router
@@ -115,10 +104,11 @@ def build_app(args: Optional[Dict[str, Any]] = None) -> Any:
     args = dict(args or {})
     advertise_url = args.pop("advertise_url", None)
     settings = SandboxAPISettings(**args)
-    if settings.num_replicas != 1:
+    if settings.allow_unauthenticated:
         raise ValueError(
-            "the gRPC facade keeps its exec table in memory and runs as one "
-            "replica; remove num_replicas"
+            "the gRPC facade always requires the API token; remove "
+            "allow_unauthenticated and set "
+            f"{settings.token_env_var}"
         )
     _require_token_env(settings)
     return _bind(settings, advertise_url)

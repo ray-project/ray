@@ -1,10 +1,12 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data.datasource import PathPartitionFilter, PathPartitionParser
 from ray.data.datasource.path_util import _has_file_extension
 
 if TYPE_CHECKING:
+    import pyarrow
+
     from ray.data.datasource.partitioning import Partitioning
     from ray.data.expressions import Expr
 
@@ -56,9 +58,18 @@ class PartitionPredicatePruner(FilePruner):
     behind a lambda.
     """
 
-    def __init__(self, partitioning: "Partitioning", predicate: "Expr"):
+    def __init__(
+        self,
+        partitioning: "Partitioning",
+        predicate: "Expr",
+        *,
+        schema: Optional["pyarrow.Schema"] = None,
+    ):
         self._parser = PathPartitionParser(partitioning)
         self._predicate = predicate
+        self._schema = schema
 
     def should_include(self, path: str) -> bool:
-        return self._parser.evaluate_predicate_on_partition(path, self._predicate)
+        return self._parser.evaluate_predicate_on_partition(
+            path, self._predicate, schema=self._schema
+        )

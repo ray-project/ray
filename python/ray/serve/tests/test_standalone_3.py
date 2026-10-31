@@ -11,6 +11,9 @@ import ray
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
@@ -157,7 +160,9 @@ def test_replica_health_metric(ray_instance):
     serve.run(f.bind())
 
     def count_live_replica_metrics():
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         resp = resp.split("\n")
         count = 0
         for metrics in resp:

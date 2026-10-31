@@ -158,6 +158,7 @@ steps:
         --install-mask all-ray-libraries
         --privileged
         --test-env=TEST_SANDBOX=1
+        --test-env=TEST_SANDBOX_OVERLAYFS=1
         --python-version 3.10 --build-name corebuild-py3.10
 
   - label: ":ray: core: memory pressure tests"
@@ -575,6 +576,7 @@ steps:
         --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
         --python-version 3.10 --build-name corebuild-py3.10
+        --test-env=RAY_TEMPDIR=/artifact-mount --test-env=RAY_HOSTDIR=/tmp/artifacts
     depends_on:
       - manylinux-x86_64
       - forge

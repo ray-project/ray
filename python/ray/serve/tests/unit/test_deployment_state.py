@@ -1543,6 +1543,147 @@ def test_deploy_new_config_same_code_version(
     )
 
 
+def test_details_report_replica_and_target_versions(mock_deployment_state_manager):
+    """Replica versions tell a rolling update apart from autoscaling churn."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 10,
+        "initial_replicas": 3,
+        "upscale_delay_s": 0,
+        "downscale_delay_s": 0,
+    }
+    ds = _deploy_running(
+        dsm,
+        TEST_DEPLOYMENT_ID,
+        num_replicas=3,
+        version="1",
+        autoscaling_config=autoscaling_config,
+    )
+    v1 = ds.target_version
+
+    def versions():
+        details = dsm.get_deployment_details(TEST_DEPLOYMENT_ID)
+        return details.target_version, sorted(
+            (r.state, r.version) for r in details.replicas
+        )
+
+    def settle_one_batch():
+        for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+
+    assert versions() == (v1.version_id, [(ReplicaState.RUNNING, v1.version_id)] * 3)
+
+    # A code change replaces replicas one at a time. Once a new one runs,
+    # autoscaling hides the rolling update behind an UPSCALING status while an
+    # old replica is still RUNNING.
+    info_2, v2 = deployment_info(
+        num_replicas=3, version="2", autoscaling_config=autoscaling_config
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+    settle_one_batch()
+    assert dsm.autoscale(TEST_DEPLOYMENT_ID, 6)
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+    target, replicas = versions()
+    assert target == v2.version_id != v1.version_id
+    assert (ReplicaState.RUNNING, v1.version_id) in replicas
+    assert (ReplicaState.RUNNING, v2.version_id) in replicas
+
+    for _ in range(6):
+        settle_one_batch()
+    assert versions() == (v2.version_id, [(ReplicaState.RUNNING, v2.version_id)] * 6)
+
+
+def test_details_report_versions_through_recovery(mock_deployment_state_manager):
+    """A recovering replica carries the target version until its actor answers."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 10,
+        "initial_replicas": 2,
+        "upscale_delay_s": 0,
+        "downscale_delay_s": 0,
+    }
+    ds = _deploy_running(
+        dsm,
+        TEST_DEPLOYMENT_ID,
+        num_replicas=2,
+        version="1",
+        autoscaling_config=autoscaling_config,
+    )
+    v1 = ds.target_version
+    dsm.save_checkpoint()
+    old_replicas = ds._replicas.get()
+
+    # Checkpoint the new target, then simulate a controller restart.
+    info_2, v2 = deployment_info(
+        num_replicas=2, version="2", autoscaling_config=autoscaling_config
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.save_checkpoint()
+    new_dsm = create_dsm([r.replica_id.to_full_id_str() for r in old_replicas])
+    new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    def versions():
+        details = new_dsm.get_deployment_details(TEST_DEPLOYMENT_ID)
+        return details.target_version, sorted(
+            (r.state, r.version) for r in details.replicas
+        )
+
+    # Both old replicas report the provisional target version while recovering.
+    assert versions() == (
+        v2.version_id,
+        [(ReplicaState.RECOVERING, v2.version_id)] * 2,
+    )
+
+    # Recover one actor at the new version, then autoscale. Both version IDs
+    # match the target, but the other actor's version is still unconfirmed.
+    recovering = new_ds._replicas.get()
+    recovering[0]._actor.set_ready(v2)
+    new_dsm.update()
+    assert new_dsm.autoscale(TEST_DEPLOYMENT_ID, 3)
+    new_dsm.update()
+    assert new_ds.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert new_ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+    target, replicas = versions()
+    assert target == v2.version_id
+    assert (ReplicaState.RECOVERING, v2.version_id) in replicas
+    assert (ReplicaState.RUNNING, v2.version_id) in replicas
+
+    # The other actor answers with its real, old version.
+    recovering[1]._actor.set_ready(v1)
+    new_dsm.update()
+    target, replicas = versions()
+    assert (ReplicaState.RUNNING, v1.version_id) in replicas
+    assert (ReplicaState.RECOVERING, v2.version_id) not in replicas
+
+
+def test_details_report_version_while_reconfiguring(mock_deployment_state_manager):
+    """A replica mid-reconfigure already carries the new version."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, version="1")
+    v1 = ds.target_version
+
+    info_2, v2 = deployment_info(version="1", user_config={"a": 1})
+    assert v2 != v1
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+    details = dsm.get_deployment_details(TEST_DEPLOYMENT_ID)
+    assert details.target_version == v2.version_id
+    assert [(r.state, r.version) for r in details.replicas] == [
+        (ReplicaState.UPDATING, v2.version_id)
+    ]
+
+
 def test_deploy_new_config_same_code_version_2(mock_deployment_state_manager):
     """Make sure we don't transition from STARTING to UPDATING directly."""
 
@@ -3772,6 +3913,87 @@ class TestDeploymentActors:
         dsm.update()
         assert ds._deployment_actor_retry_counter == 0
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    @pytest.mark.parametrize("num_replicas", [0, 1])
+    def test_deployment_actor_recreate_terminal_failure_surfaces(
+        self, mock_deployment_state_manager, num_replicas
+    ):
+        """Exhausting recreate retries after a health failure is reported.
+
+        Once retries are exhausted the controller stops recreating the actor,
+        so the status must be UNHEALTHY/DEPLOYMENT_ACTOR_FAILED with the
+        startup error, whether or not replicas are running. A redeploy then
+        recovers the deployment to HEALTHY.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=num_replicas,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=2,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        for r in ds._replicas.get():
+            r._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        _get_deployment_actor_wrapper(ds, "1").set_health_ok(False)
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+        )
+
+        # Every recreated actor fails to start until retries are exhausted.
+        for _ in range(ds._deployment_actor_failed_to_start_threshold):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("ctor boom")
+            dsm.update()
+        assert ds.deployment_actor_terminally_failed()
+
+        for _ in range(3):
+            dsm.update()
+            assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+            assert (
+                ds.curr_status_info.status_trigger
+                == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+            )
+            assert "failed to start deployment actors 2 times" in (
+                ds.curr_status_info.message
+            )
+            assert "ctor boom" in ds.curr_status_info.message
+        assert ds._replicas.count() == num_replicas
+
+        # Redeploy clears the terminal failure; drive to HEALTHY.
+        info2, v2 = deployment_info(
+            version="2",
+            num_replicas=num_replicas,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=2,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        assert not ds.deployment_actor_terminally_failed()
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "2").set_ready()
+        for _ in range(10):
+            dsm.update()
+            if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
+                break
+            for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+                r._actor.set_ready()
+            for r in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                r._actor.set_done_stopping()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._replicas.count() == num_replicas
+        assert all(r.version == v2 for r in ds._replicas.get())
 
     def test_deployment_actor_reset_health_state_after_running_on_ready(
         self, mock_deployment_state_manager

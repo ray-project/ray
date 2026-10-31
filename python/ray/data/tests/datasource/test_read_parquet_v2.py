@@ -7,23 +7,42 @@ triggers Ray auto-init, so they live alongside the other datasource
 integration tests rather than under ``tests/unit/``.
 """
 
+import json
 import logging
-from dataclasses import dataclass
-from typing import cast
+import os
+from dataclasses import dataclass, fields
+from pathlib import Path
+from typing import Iterator, cast
 
+import fsspec
+import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
+from pyarrow.fs import FSSpecHandler, PyFileSystem
 
 import ray
+from ray.data._internal.datasource.parquet_datasource import TensorColumnSchema
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     FooterFileIndexer,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+    ParquetDatasourceV2,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+    ParquetFileReader,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsLimitPushdown
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
+from ray.data.datasource import FileShuffleConfig
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+from ray.data.expressions import col
 
 
 def _write(path, table):
@@ -61,6 +80,58 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     assert schema is not None
     assert "a" in schema.names
     assert "b" in schema.names
+
+
+@pytest.mark.parametrize("as_list", [False, True])
+def test_read_parquet_list_files_keeps_caller_source_paths(
+    tmp_path, restore_ctx, as_list
+):
+    # Lineage tracking reads ``ListFiles.source_paths``. ``paths`` holds the
+    # resolved paths, which lose the URI scheme.
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+    uri = f"file://{tmp_path}"
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([uri] if as_list else uri)
+
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    assert list_files_op.paths == [str(tmp_path)]
+    assert list_files_op.source_paths == [uri]
+
+
+def test_read_parquet_tracks_tensor_columns_for_predicate_pushdown(
+    tmp_path, restore_ctx
+):
+    f = tmp_path / "tensor.parquet"
+    _write(
+        f,
+        pa.table(
+            {
+                "id": [1, 2],
+                "tensor": [
+                    np.array([10], dtype=np.int64).tobytes(),
+                    np.array([20], dtype=np.int64).tobytes(),
+                ],
+            }
+        ),
+    )
+    restore_ctx.use_datasource_v2 = True
+    tensor_column_schema: TensorColumnSchema = {"tensor": (np.dtype(np.int64), (1,))}
+
+    ds = ray.data.read_parquet(str(f), tensor_column_schema=tensor_column_schema)
+    read_op = ds._logical_plan.dag
+    assert isinstance(read_op, ReadFiles)
+    assert read_op.block_udf_modified_columns == {"tensor"}
+
+    ds_with_custom_udf = ray.data.read_parquet(
+        str(f),
+        tensor_column_schema=tensor_column_schema,
+        _block_udf=lambda table: table,
+    )
+    read_op_with_custom_udf = ds_with_custom_udf._logical_plan.dag
+    assert isinstance(read_op_with_custom_udf, ReadFiles)
+    assert read_op_with_custom_udf.block_udf_modified_columns is None
 
 
 def test_read_parquet_v2_hive_partitioned(tmp_path, restore_ctx):
@@ -143,6 +214,55 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
     assert ds.take_all() == [{"a": 1, "path": str(tmp_path / "data.parquet")}]
+
+
+def test_read_parquet_v2_columns_rejects_string(tmp_path, restore_ctx):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    # Without the check, ``"ab"`` would silently select ``["a", "b"]``.
+    with pytest.raises(TypeError, match="`columns` must be a list of strings."):
+        # pyrefly: ignore[bad-argument-type]  # the wrong type is the point
+        ray.data.read_parquet(str(tmp_path), columns="ab")
+
+
+class _FailFirstCallHandler(FSSpecHandler):
+    """Local filesystem whose first call to each listing or open method raises."""
+
+    def __init__(self):
+        super().__init__(fsspec.filesystem("file"))
+        self._failed_methods = set()
+
+    def _fail_first_call(self, method: str):
+        if method not in self._failed_methods:
+            self._failed_methods.add(method)
+            raise OSError(f"Transient error in {method}")
+
+    def get_file_info(self, paths):
+        self._fail_first_call("get_file_info")
+        return super().get_file_info(paths)
+
+    def get_file_info_selector(self, selector):
+        self._fail_first_call("get_file_info_selector")
+        return super().get_file_info_selector(selector)
+
+    def open_input_file(self, path):
+        self._fail_first_call("open_input_file")
+        return super().open_input_file(path)
+
+
+def test_read_parquet_v2_retries_transient_filesystem_errors(
+    tmp_path, restore_data_context
+):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_data_context.use_datasource_v2 = True
+    restore_data_context.retried_io_errors.append("Transient error")
+    filesystem = PyFileSystem(_FailFirstCallHandler())
+
+    ds = ray.data.read_parquet(str(tmp_path), filesystem=filesystem)
+
+    assert sorted(row["a"] for row in ds.take_all()) == [1, 2, 3]
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
@@ -1267,6 +1387,351 @@ def test_merge_schema_rejects_schema_override_and_v1(tmp_path, restore_ctx):
     restore_ctx.use_datasource_v2 = False
     with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
         ray.data.read_parquet(str(path), merge_schema=True)
+
+
+def _write_typed_partition_files(root, style: PartitionStyle, arrow_type=pa.int64()):
+    paths = []
+    for year, ids in [(2023, [0, 1, 2, 3]), (2024, [4, 5, 6, 7])]:
+        directory = root / (
+            f"year={year}" if style == PartitionStyle.HIVE else str(year)
+        )
+        directory.mkdir(parents=True)
+        path = directory / "data.parquet"
+        _write(
+            path,
+            pa.table({"id": ids, "year": pa.array([year] * 4, type=arrow_type)}),
+        )
+        paths.append(str(path))
+    return paths
+
+
+@pytest.mark.parametrize(
+    "style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY], ids=["hive", "directory"]
+)
+@pytest.mark.parametrize("arrow_type", [pa.int32(), pa.int64()])
+@pytest.mark.parametrize("expr", [col("year") == 2024, col("year") > 2023])
+def test_partition_predicate_matches_memory_logical_schema(
+    tmp_path, restore_ctx, style, arrow_type, expr
+):
+    restore_ctx.use_datasource_v2 = True
+    paths = _write_typed_partition_files(tmp_path, style, arrow_type)
+    partitioning = Partitioning(style, base_dir=str(tmp_path), field_names=["year"])
+
+    def read():
+        return ray.data.read_parquet(
+            paths, partitioning=partitioning, override_num_blocks=2
+        )
+
+    source = read()
+    source_schema = source.schema()
+    assert source_schema is not None
+    schema = source_schema.base_schema
+    assert isinstance(schema, pa.Schema)
+    assert schema.field("year").type == arrow_type
+    table = pa.Table.from_pylist(source.take_all(), schema=schema)
+    memory = ray.data.from_arrow(table, override_num_blocks=2)
+    memory_schema = memory.schema()
+    assert memory_schema is not None
+    assert isinstance(memory_schema.base_schema, pa.Schema)
+    assert memory_schema.base_schema.equals(schema, check_metadata=True)
+
+    expected = [{"id": i, "year": 2024} for i in [4, 5, 6, 7]]
+    memory_rows = sorted(memory.filter(expr=expr).take_all(), key=lambda row: row["id"])
+    file_rows = sorted(read().filter(expr=expr).take_all(), key=lambda row: row["id"])
+
+    assert memory_rows == expected
+    assert file_rows == expected
+    assert partitioning.field_types == {}
+
+
+@pytest.mark.parametrize("reverse_paths", [False, True])
+@pytest.mark.parametrize(
+    "operation,expected_ids",
+    [
+        ("partition", [4, 5, 6, 7]),
+        ("and", [6, 7]),
+        ("or", [0, 4, 5, 6, 7]),
+        ("limit", [4, 5]),
+        ("none", []),
+    ],
+)
+def test_partition_logical_type_with_projection_filters_and_limit(
+    tmp_path, restore_ctx, reverse_paths, operation, expected_ids
+):
+    restore_ctx.use_datasource_v2 = True
+    paths = _write_typed_partition_files(tmp_path, PartitionStyle.HIVE)
+    # Exercise multiple manifest rows for each file.
+    for path in paths:
+        table = pq.read_table(path, partitioning=None)
+        pq.write_table(table, path, row_group_size=2)
+    if reverse_paths:
+        paths.reverse()
+    ds = ray.data.read_parquet(
+        paths,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+        override_num_blocks=2,
+    )
+    predicate = col("year") == 2024
+    if operation == "and":
+        predicate = predicate & (col("id") > 5)
+    elif operation == "or":
+        predicate = predicate | (col("id") == 0)
+    elif operation == "none":
+        predicate = col("year") == 2025
+    ds = ds.filter(expr=predicate).select_columns(["id"])
+    if operation == "limit":
+        # Limit's row choice is unordered; require the right count and partition.
+        rows = ds.limit(2).take_all()
+        assert len(rows) == 2
+        assert all(row["id"] in [4, 5, 6, 7] for row in rows)
+    else:
+        assert sorted(row["id"] for row in ds.take_all()) == expected_ids
+
+
+def test_partition_logical_type_count_and_empty_projection(tmp_path, restore_ctx):
+    restore_ctx.use_datasource_v2 = True
+    paths = _write_typed_partition_files(tmp_path, PartitionStyle.HIVE)
+
+    def read():
+        return ray.data.read_parquet(
+            paths, partitioning=Partitioning(PartitionStyle.HIVE), override_num_blocks=2
+        )
+
+    assert read().filter(expr=col("year") == 2024).count() == 4
+    assert read().filter(expr=col("year") == 2024).select_columns([]).count() == 4
+    assert read().filter(expr=col("year") == 2025).select_columns([]).count() == 0
+
+
+@pytest.mark.parametrize("listing_pruning", [True, False])
+@pytest.mark.parametrize("reverse_paths", [False, True])
+def test_partition_logical_type_prunes_before_worker_read(
+    tmp_path, restore_ctx, monkeypatch, listing_pruning, reverse_paths
+):
+    restore_ctx.use_datasource_v2 = True
+    root = tmp_path / "input"
+    paths = _write_typed_partition_files(root, PartitionStyle.HIVE)
+    matching_path = paths[1]
+    if reverse_paths:
+        paths.reverse()
+    trace_path = str(tmp_path / "worker-reads.jsonl")
+    original_create_scanner = ParquetDatasourceV2.create_scanner
+
+    @dataclass(frozen=True)
+    class RecordingScanner(ParquetScanner):
+        def pushed_partition_pruner(self):
+            return super().pushed_partition_pruner() if listing_pruning else None
+
+        def create_reader(self) -> ParquetFileReader:
+            reader = super().create_reader()
+            original_read = reader.read
+
+            def traced_read(input_split: FileManifest) -> Iterator[pa.Table]:
+                import inspect
+
+                with open(trace_path, "a", encoding="utf-8") as trace:
+                    trace.write(
+                        json.dumps(
+                            {
+                                "paths": input_split.paths.tolist(),
+                                "pid": os.getpid(),
+                                "source": str(
+                                    Path(inspect.getfile(ParquetFileReader)).resolve()
+                                ),
+                            }
+                        )
+                        + "\n"
+                    )
+                yield from original_read(input_split)
+
+            reader.read = traced_read
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return RecordingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(ParquetDatasourceV2, "create_scanner", create_scanner)
+    ds = (
+        ray.data.read_parquet(
+            paths, partitioning=Partitioning(PartitionStyle.HIVE), override_num_blocks=2
+        )
+        .filter(expr=col("year") == 2024)
+        .select_columns(["id"])
+    )
+    if not listing_pruning:
+        ds = ds.limit(2)
+    rows = ds.take_all()
+    assert len(rows) == (4 if listing_pruning else 2)
+    assert all(row["id"] in [4, 5, 6, 7] for row in rows)
+    with open(trace_path, encoding="utf-8") as trace:
+        records = [json.loads(line) for line in trace]
+    assert records
+    assert {path for record in records for path in record["paths"]} == {matching_path}
+    assert all(record["pid"] != os.getpid() for record in records)
+    assert all(
+        record["source"].endswith(
+            "python/ray/data/_internal/datasource_v2/formats/parquet/parquet_file_reader.py"
+        )
+        for record in records
+    )
+
+
+@pytest.mark.parametrize("change", ["type", "value"])
+@pytest.mark.parametrize("operation", ["filter", "project_limit", "empty_count"])
+def test_post_block_udf_partition_filter_matches_memory(
+    tmp_path, restore_ctx, change, operation
+):
+    restore_ctx.use_datasource_v2 = True
+    paths = _write_typed_partition_files(tmp_path, PartitionStyle.HIVE)
+
+    def transform(table):
+        year = table["year"]
+        values = (
+            year.cast(pa.string())
+            if change == "type"
+            else pc.call_function("subtract", [pa.scalar(4047), year])
+        )
+        return table.set_column(table.schema.get_field_index("year"), "year", values)
+
+    def read():
+        return ray.data.read_parquet(
+            paths,
+            partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+            _block_udf=transform,
+            override_num_blocks=2,
+        )
+
+    source = read()
+    schema = source.schema().base_schema
+    assert isinstance(schema, pa.Schema)
+    assert schema.field("year").type == (
+        pa.string() if change == "type" else pa.int64()
+    )
+    table = pa.Table.from_pylist(source.take_all(), schema=schema)
+    memory = ray.data.from_arrow(table)
+    assert memory.schema().base_schema.equals(schema, check_metadata=True)
+    expr = col("year") == ("2024" if change == "type" else 2024)
+    expected_ids = [4, 5, 6, 7] if change == "type" else [0, 1, 2, 3]
+    actual = read().filter(expr=expr)
+    expected = memory.filter(expr=expr)
+    if operation == "empty_count":
+        assert (
+            actual.select_columns([]).count()
+            == expected.select_columns([]).count()
+            == 4
+        )
+    elif operation == "project_limit":
+        rows = actual.select_columns(["id"]).limit(2).take_all()
+        assert (
+            len(expected.select_columns(["id"]).limit(2).take_all()) == len(rows) == 2
+        )
+        assert all(row["id"] in expected_ids for row in rows)
+    else:
+        assert sorted(actual.take_all(), key=lambda row: row["id"]) == sorted(
+            expected.take_all(), key=lambda row: row["id"]
+        )
+        assert (
+            sorted(row["id"] for row in table.filter(expr.to_pyarrow()).to_pylist())
+            == expected_ids
+        )
+
+
+@pytest.mark.parametrize("year", [2024, 2025])
+def test_prelisted_partition_filter_uses_logical_types(tmp_path, restore_ctx, year):
+    restore_ctx.use_datasource_v2 = True
+    paths = _write_typed_partition_files(tmp_path, PartitionStyle.HIVE)
+    ds = ray.data.read_parquet(
+        paths,
+        merge_schema=True,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+        override_num_blocks=2,
+    )
+    listing = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(listing, ListFiles)
+    assert listing.prelisted_file_infos is not None
+    filtered = ds.filter(expr=col("year") == year).select_columns(["id"])
+    expected_ids = [4, 5, 6, 7] if year == 2024 else []
+    all_rows = filtered.take_all()
+    assert sorted(row["id"] for row in all_rows) == expected_ids
+
+    # Keep the prelisted Limit path covered as well as the complete result set.
+    rows = filtered.limit(2).take_all()
+    assert len(rows) == min(2, len(expected_ids))
+    assert all(row["id"] in expected_ids for row in rows)
+
+
+def _write_global_ids(path, *, num_files, rows_per_file, row_group_size):
+    """Like ``_write_row_groups``, but ``id`` is unique across files."""
+    for i in range(num_files):
+        start = i * rows_per_file
+        pq.write_table(
+            pa.table({"id": list(range(start, start + rows_per_file))}),
+            str(path / f"f{i:03d}.parquet"),
+            row_group_size=row_group_size,
+        )
+
+
+@pytest.mark.parametrize(
+    "shuffle, listing_limited",
+    [
+        (None, True),
+        ("files", True),
+        (FileShuffleConfig(seed=0), True),
+        (FileShuffleConfig(seed=0, small_chunks_shuffle=True), False),
+    ],
+    ids=["no_shuffle", "files", "file_shuffle_config", "small_chunks_shuffle"],
+)
+def test_small_chunks_shuffle_keeps_limit_out_of_listing(
+    tmp_path, restore_ctx, shuffle, listing_limited
+):
+    """Listing stops early *before* the row-group shuffle, so a listing limit
+    would shrink the shuffle pool to the first files listed. Only the scanner,
+    which reads already-shuffled manifests, may take the limit."""
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    _write_row_groups(tmp_path, num_files=4, rows_per_file=20, row_group_size=5)
+    restore_ctx.use_datasource_v2 = True
+
+    ds = ray.data.read_parquet(str(tmp_path), shuffle=shuffle).limit(7)
+    ops = list(_walk(LogicalOptimizer().optimize(ds._logical_plan).dag))
+
+    (list_files,) = [op for op in ops if isinstance(op, ListFiles)]
+    (read_files,) = [op for op in ops if isinstance(op, ReadFiles)]
+    scanner = read_files.scanner
+    assert isinstance(scanner, SupportsLimitPushdown)
+    assert scanner.pushed_limit() == 7
+    assert list_files.limit == (7 if listing_limited else None)
+
+
+def test_limit_does_not_change_small_chunks_shuffle_output(
+    tmp_path, restore_ctx, monkeypatch
+):
+    """With a fixed seed and ordered execution, ``limit(n)`` must return the
+    first ``n`` rows of the full row-group shuffle -- the same rows as when
+    nothing is pushed down (``map_batches`` blocks limit pushdown)."""
+    _write_global_ids(tmp_path, num_files=50, rows_per_file=40, row_group_size=10)
+    restore_ctx.use_datasource_v2 = True
+    # One row group per shuffle run.
+    monkeypatch.setattr(restore_ctx, "small_shuffle_chunk_size", 1)
+    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
+
+    def read():
+        return ray.data.read_parquet(
+            str(tmp_path),
+            shuffle=FileShuffleConfig(
+                seed=0, reseed_after_execution=False, small_chunks_shuffle=True
+            ),
+        )
+
+    n = 40
+    blocked = read().map_batches(lambda b: b, batch_format="pyarrow").limit(n)
+    pushed = [r["id"] for r in read().limit(n).take_all()]
+    not_pushed = [r["id"] for r in blocked.take_all()]
+
+    assert len(pushed) == n
+    assert pushed == not_pushed
 
 
 if __name__ == "__main__":

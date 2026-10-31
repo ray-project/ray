@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""
-Benchmark Ray Data LLM offline batch inference throughput.
+"""Benchmark Ray Data LLM offline batch inference throughput.
 
 Sample usage:
 python ray.llm._internal.batch.benchmark.benchmark_processor --mode vllm_engine --batch-size 64 --concurrency 1 --num-prompts 10000 --model facebook/opt-1.3b

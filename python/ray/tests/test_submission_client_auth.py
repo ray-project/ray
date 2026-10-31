@@ -1,7 +1,7 @@
 import pytest
 
 from ray._private.authentication.authentication_constants import (
-    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+    TOKEN_AUTH_ERROR_MESSAGE,
     TOKEN_INVALID_ERROR_MESSAGE,
 )
 from ray._private.authentication_test_utils import (
@@ -44,7 +44,7 @@ def test_submission_client_without_token_shows_helpful_error(
 
     error_str = str(exc_info.value)
     # Check that the error contains the simple message and auto-added docs link
-    assert TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE in error_str
+    assert TOKEN_AUTH_ERROR_MESSAGE in error_str
 
 
 def test_submission_client_with_invalid_token_shows_helpful_error(
@@ -151,7 +151,7 @@ def test_error_messages_contain_instructions(setup_cluster_with_token_auth):
         client.get_version()
 
     error_str = str(exc_info.value)
-    assert TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE in error_str
+    assert TOKEN_AUTH_ERROR_MESSAGE in error_str
 
     # Test 403 error (invalid token)
     set_env_auth_token("wrong_token_00000000000000000000000000000000")

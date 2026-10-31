@@ -53,6 +53,15 @@ Java_io_ray_runtime_RayNativeRuntime_nativeMaybeEnableTokenAuthIfTokenAvailable(
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
+ * Method:    nativeCreateTokenIfMissingForOwnCluster
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeCreateTokenIfMissingForOwnCluster(JNIEnv *,
+                                                                             jclass);
+
+/*
+ * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeRunTaskExecutor
  * Signature: (Lio/ray/runtime/task/TaskExecutor;)V
  */

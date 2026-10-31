@@ -1,6 +1,5 @@
 # @OldAPIStack
-"""
-Example of interfacing with an environment that produces 2D observations.
+"""Example of interfacing with an environment that produces 2D observations.
 
 This example shows how turning 2D observations with shape (A, B) into a 3D
 observations with shape (C, D, 1) can enable usage of RLlib's default models.

@@ -6,6 +6,7 @@ against. Changing a field here is a contract change; update the snapshot test
 in ``tests/test_http_schemas.py`` deliberately when you do.
 """
 
+import os
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from ray.experimental.sandbox.config import (  # noqa: E402
     DOCKER_DEFAULT_CAPABILITIES,
     VALID_NETWORK_MODES,
+    normalize_cidr_allowlist,
 )
 from ray.util.annotations import PublicAPI
 
@@ -98,7 +100,10 @@ class CreateSandboxRequest(BaseModel):
     network: str = Field(
         default="none",
         description=(
-            "runsc network mode; one of " f"{', '.join(VALID_NETWORK_MODES)}."
+            "runsc network mode; one of "
+            f"{', '.join(VALID_NETWORK_MODES)}. The server accepts only its "
+            "allowed_network_modes ('none' and 'public' by default) and "
+            "answers 403 for the others."
         ),
     )
     dns: Optional[List[str]] = Field(
@@ -109,6 +114,24 @@ class CreateSandboxRequest(BaseModel):
             "'public'; overrides the host file for network='host'."
         ),
     )
+    cidr_allowlist: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Egress allowlist for network='public': only the listed "
+            "destinations are reachable, plus UDP/TCP port 53 to the dns "
+            "resolvers. An entry is an IPv4/IPv6 address or network, or "
+            "'internet' for every public address, optionally with a TCP/UDP "
+            "port or port range: 10.0.1.5:8000, 10.0.1.0/24:8000-8010, "
+            "[2001:db8::1]:443, internet:443. null means the public internet "
+            "only, with internal addresses left out as a best effort; [] "
+            "allows nothing but DNS. Instance metadata and the Kubernetes API "
+            "service stay closed whatever the list says. Ray doesn't track the "
+            "cluster's own nodes, so an entry that covers their addresses "
+            "reaches them. "
+            "Entries are normalized (10.0.1.5/24 becomes 10.0.1.0/24) and "
+            "must be IP literals, not host names."
+        ),
+    )
     shell: Optional[str] = Field(
         default=None,
         description=(
@@ -116,7 +139,13 @@ class CreateSandboxRequest(BaseModel):
             "images without bash). null uses the sandbox default, /bin/bash."
         ),
     )
-    rootless: bool = True
+    rootless: bool = Field(
+        default=True,
+        description=(
+            "Run gVisor rootless. false needs the server's allow_rootful and "
+            "otherwise gets 403."
+        ),
+    )
     readonly: bool = True
     resources: Optional[ResourceSpec] = None
     labels: Dict[str, str] = Field(default_factory=dict)
@@ -165,6 +194,14 @@ class CreateSandboxRequest(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_cidr_allowlist(self) -> "CreateSandboxRequest":
+        if self.cidr_allowlist is not None:
+            if self.network != "public":
+                raise ValueError("cidr_allowlist is only valid with network='public'")
+            self.cidr_allowlist = normalize_cidr_allowlist(self.cidr_allowlist)
+        return self
+
     @field_validator("labels")
     @classmethod
     def _validate_labels(cls, labels: Dict[str, str]) -> Dict[str, str]:
@@ -191,6 +228,14 @@ class SandboxInfo(BaseModel):
     ttl_seconds: Optional[int] = None
     expires_at: Optional[datetime] = None
     network: str
+    cidr_allowlist: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Egress allowlist in force for a network='public' sandbox "
+            "(['internet'] unless it was created or updated with another); "
+            "null for the other modes."
+        ),
+    )
     labels: Dict[str, str] = Field(default_factory=dict)
     error: Optional[str] = Field(
         default=None, description="Failure detail when status is 'error'."
@@ -278,10 +323,35 @@ class SandboxAPISettings(BaseModel):
         description=(
             "Environment variable read at app construction for the bearer "
             "token, which the REST app and the gRPC facade both require on "
-            "every call when it is set. Unset/empty disables the check: the "
-            "REST app then relies on what sits in front of it (an Anyscale "
-            "service enforces its own bearer token at the platform edge), "
-            "and the facade's CLI serves only loopback addresses."
+            "every call. Their Serve builders refuse to build without it, "
+            "because Serve's proxies listen on every node's address; the "
+            "REST builder accepts allow_unauthenticated instead. Without "
+            "it, the facade's CLI serves only loopback addresses."
+        ),
+    )
+    allow_unauthenticated: bool = Field(
+        default=False,
+        description=(
+            "Let the REST app's Serve builder run without the API token, so "
+            "it accepts every request. Only for a deployment where nothing "
+            "but an authenticating proxy can reach Serve's proxies: other "
+            "pods and processes on the cluster's network reach them "
+            "directly. The gRPC facade's builder refuses this setting."
+        ),
+    )
+    allowed_network_modes: List[str] = Field(
+        default_factory=lambda: ["none", "public"],
+        description=(
+            "Network modes REST clients may request. 'host' shares the "
+            "node's network, loopback, and every Ray port with the sandbox, "
+            "and 'sandbox' needs a rootful runsc, so both are opt-in."
+        ),
+    )
+    allow_rootful: bool = Field(
+        default=False,
+        description=(
+            "Let REST clients request rootless=false, which runs runsc as "
+            "the worker's real user rather than in a user namespace."
         ),
     )
     num_replicas: int = Field(default=1, ge=1)
@@ -322,3 +392,35 @@ class SandboxAPISettings(BaseModel):
     default_capabilities: List[str] = Field(
         default_factory=lambda: list(DOCKER_DEFAULT_CAPABILITIES)
     )
+
+    @field_validator("allowed_network_modes")
+    @classmethod
+    def _validate_allowed_network_modes(cls, modes: List[str]) -> List[str]:
+        unknown = [mode for mode in modes if mode not in VALID_NETWORK_MODES]
+        if unknown:
+            raise ValueError(
+                f"allowed_network_modes has unknown modes {unknown}; expected "
+                f"a subset of {VALID_NETWORK_MODES}"
+            )
+        return modes
+
+
+def _require_token_env(settings: SandboxAPISettings) -> None:
+    """Refuse to serve without the API token in this process's environment.
+
+    An app serves every call unchecked without one, and Serve's proxies
+    listen on every node's address, which other pods and processes on the
+    cluster's network can reach.
+
+    Args:
+        settings: The app's settings; ``token_env_var`` names the variable.
+
+    Raises:
+        ValueError: If the variable is unset or empty.
+    """
+    if not os.environ.get(settings.token_env_var):
+        raise ValueError(
+            f"set {settings.token_env_var} to the API token that clients must "
+            "present: Serve's proxies listen on every node's address, which "
+            "other pods and processes on the cluster's network can reach"
+        )

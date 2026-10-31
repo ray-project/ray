@@ -521,13 +521,11 @@ Table:
 
 You can then kill the Serve controller via the Python interpreter. Note that you'll need to use the `NAME` from the `ray list actor` output to get a handle to the Serve controller.
 
-```console
-$ python
+```python
+import ray
 
->>> import ray
->>> controller_handle = ray.get_actor("SERVE_CONTROLLER_ACTOR", namespace="serve")
->>> ray.kill(controller_handle, no_restart=True)
->>> exit()
+controller_handle = ray.get_actor("SERVE_CONTROLLER_ACTOR", namespace="serve")
+ray.kill(controller_handle, no_restart=True)
 ```
 
 You can use the Ray State API to check the controller's status:
@@ -549,14 +547,14 @@ Table:
 
 You should still be able to query your deployments while the controller is recovering:
 
+```python
+# If you're running KubeRay, run this from inside the Pod.
+import requests
+
+print(requests.get("http://localhost:8000").json())
 ```
-# If you're running KubeRay, you
-# can do this from inside the pod:
 
-$ python
-
->>> import requests
->>> requests.get("http://localhost:8000").json()
+```text
 347
 ```
 
@@ -604,22 +602,22 @@ Table:
 
 You can use the `NAME` from the `ray list actor` output to get a handle to one of the replicas:
 
-```console
-$ python
+```python
+import ray
 
->>> import ray
->>> replica_handle = ray.get_actor("SERVE_REPLICA::SleepyPid#RlRptP", namespace="serve")
->>> ray.kill(replica_handle, no_restart=True)
->>> exit()
+replica_handle = ray.get_actor("SERVE_REPLICA::SleepyPid#RlRptP", namespace="serve")
+ray.kill(replica_handle, no_restart=True)
 ```
 
 While the replica is restarted, the other replicas can continue processing requests. Eventually the replica restarts and continues serving requests:
 
-```console
-$ python
+```python
+import requests
 
->>> import requests
->>> requests.get("http://localhost:8000").json()
+print(requests.get("http://localhost:8000").json())
+```
+
+```text
 383
 ```
 
@@ -660,13 +658,11 @@ Table:
 
 You can use the `NAME` from the `ray list actor` output to get a handle to one of the replicas:
 
-```console
-$ python
+```python
+import ray
 
->>> import ray
->>> proxy_handle = ray.get_actor("SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0", namespace="serve")
->>> ray.kill(proxy_handle, no_restart=False)
->>> exit()
+proxy_handle = ray.get_actor("SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0", namespace="serve")
+ray.kill(proxy_handle, no_restart=False)
 ```
 
 While the proxy is restarted, the other proxies can continue accepting requests. Eventually the proxy restarts and continues accepting requests. You can use the `ray list actor` command to see when the proxy restarts:

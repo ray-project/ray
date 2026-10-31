@@ -120,23 +120,39 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
                 f"{_col_names_as_str(right_key_column_names)})"
             )
 
-        def _get_key_column_types(schema: "Schema", keys: Tuple[str]):
-            return (
-                [
-                    _type
-                    for name, _type in zip(schema.names, schema.types)
-                    if name in keys
-                ]
-                if schema
-                else None
+        if len(set(left_key_column_names)) != len(left_key_column_names):
+            raise ValueError(
+                f"Join key columns must be unique in the left operand: "
+                f"{left_key_column_names}"
             )
 
-        right_op_key_cols = _get_key_column_types(
-            right_op_schema, left_key_column_names
-        )
-        left_op_key_cols = _get_key_column_types(left_op_schema, right_key_column_names)
+        if len(set(right_key_column_names)) != len(right_key_column_names):
+            raise ValueError(
+                f"Join key columns must be unique in the right operand: "
+                f"{right_key_column_names}"
+            )
 
-        if left_op_key_cols != right_op_key_cols:
+        def _get_key_column_types(schema: "Schema", keys: Tuple[str]):
+            if schema is None:
+                return None
+
+            column_types = dict(zip(schema.names, schema.types))
+
+            if any(key not in column_types for key in keys):
+                return None
+
+            return [column_types[key] for key in keys]
+
+        right_op_key_cols = _get_key_column_types(
+            right_op_schema, right_key_column_names
+        )
+        left_op_key_cols = _get_key_column_types(left_op_schema, left_key_column_names)
+
+        if (
+            left_op_key_cols is None
+            or right_op_key_cols is None
+            or left_op_key_cols != right_op_key_cols
+        ):
             raise ValueError(
                 f"Key columns are expected to be present and have the same types "
                 "in both left and right operands of the join operation: "

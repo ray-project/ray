@@ -25,6 +25,9 @@ from ray._common.ray_constants import (
 )
 from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray._private import logging_utils
+from ray._private.authentication.http_token_authentication import (
+    start_metrics_http_server,
+)
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._private.worker import SCRIPT_MODE
@@ -127,7 +130,7 @@ class AutoscalerMonitor:
                 kwargs = (
                     {"addr": get_localhost_ip()} if is_localhost(head_node_ip) else {}
                 )
-                prometheus_client.start_http_server(
+                start_metrics_http_server(
                     port=AUTOSCALER_METRIC_PORT,
                     registry=prom_metrics.registry,
                     **kwargs,

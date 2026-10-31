@@ -1,7 +1,6 @@
 # @OldAPIStack
 
-"""
-This example shows two modifications:
+"""This example shows two modifications:
 - How to write a custom Encoder (using MobileNet v2)
 - How to enhance Catalogs with this custom Encoder
 

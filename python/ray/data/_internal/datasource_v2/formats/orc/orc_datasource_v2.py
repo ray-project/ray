@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import pyarrow as pa
@@ -15,6 +14,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 )
 from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
+)
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.size_estimators import (
     SamplingInMemorySizeEstimator,
@@ -32,7 +34,8 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
 )
-from ray.data._internal.util import _is_local_scheme, unify_schemas_with_validation
+from ray.data._internal.util import _is_local_scheme, _normalize_paths_to_strings
+from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -67,6 +70,9 @@ class OrcDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths = resolved_paths
+        # The resolved paths above lose their URI scheme; lineage tracking
+        # reads the caller's paths through ``source_paths``.
+        self._source_paths = _normalize_paths_to_strings(paths)
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
         self._file_extensions = file_extensions
@@ -78,6 +84,12 @@ class OrcDatasourceV2(FileDataSourceV2):
     @override
     def paths(self) -> List[str]:
         return self._paths
+
+    @property
+    @override
+    def source_paths(self) -> List[str]:
+        """Override when :attr:`paths` is resolved and loses URI schemes."""
+        return self._source_paths
 
     @property
     @override
@@ -117,6 +129,8 @@ class OrcDatasourceV2(FileDataSourceV2):
         import pyarrow.orc as orc
 
         assert sample is not None
+        if len(sample) == 0:
+            return pa.schema([])
         sample_paths = sample.paths.tolist()
         filesystem = self._filesystem
 
@@ -126,10 +140,7 @@ class OrcDatasourceV2(FileDataSourceV2):
             with filesystem.open_input_file(path) as source:
                 return orc.ORCFile(source).schema
 
-        with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-            schemas = list(executor.map(_read_schema, sample_paths))
-        schema = unify_schemas_with_validation(schemas) or schemas[0]
-        assert isinstance(schema, pa.Schema)
+        schema = infer_schema_from_files(sample_paths, _read_schema, format_name="ORC")
 
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
@@ -191,4 +202,5 @@ class OrcDatasourceV2(FileDataSourceV2):
             filesystem=filesystem or self._filesystem,
             partitioning=options.get("partitioning", self._partitioning),
             synthesized_columns=self._synthesized_columns,
+            target_block_size=DataContext.get_current().target_max_block_size,
         )

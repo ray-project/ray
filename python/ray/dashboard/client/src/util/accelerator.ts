@@ -1,4 +1,10 @@
-import { GPUStats, ProcessGPUUsage, TPUStats } from "../type/node";
+import {
+  GPUStats,
+  NPUStats,
+  ProcessGPUUsage,
+  ProcessNPUUsage,
+  TPUStats,
+} from "../type/node";
 
 export type UnifiedProcessAcceleratorUsage = {
   pid: number;
@@ -9,18 +15,26 @@ export type UnifiedAcceleratorStat = {
   uuid?: string;
   name: string;
   index: number;
-  type: "GPU" | "TPU";
+  type: "GPU" | "NPU" | "TPU";
   utilization?: number;
   memoryUsed: number;
   memoryTotal: number;
   processesPids?: UnifiedProcessAcceleratorUsage[];
   rawGpu?: GPUStats;
+  rawNpu?: NPUStats;
   rawTpu?: TPUStats;
 };
+
+export const hasAnyAccelerator = (
+  gpus?: GPUStats[],
+  tpus?: TPUStats[],
+  npus?: NPUStats[],
+): boolean => Boolean(gpus?.length || tpus?.length || npus?.length);
 
 export const normalizeAccelerators = (
   gpus?: GPUStats[],
   tpus?: TPUStats[],
+  npus?: NPUStats[],
 ): UnifiedAcceleratorStat[] => {
   const normalized: UnifiedAcceleratorStat[] = [];
   if (gpus) {
@@ -38,6 +52,23 @@ export const normalizeAccelerators = (
           memoryUsage: p.gpuMemoryUsage,
         })),
         rawGpu: gpu,
+      });
+    });
+  }
+  if (npus) {
+    npus.forEach((npu) => {
+      normalized.push({
+        name: npu.name,
+        index: npu.index,
+        type: "NPU",
+        utilization: npu.utilizationAicore,
+        memoryUsed: (npu.memoryUsed ?? Number.NaN) / (1024 * 1024),
+        memoryTotal: (npu.memoryTotal ?? Number.NaN) / (1024 * 1024),
+        processesPids: npu.processesPids?.map((p: ProcessNPUUsage) => ({
+          pid: p.pid,
+          memoryUsage: p.npuMemoryUsage / (1024 * 1024),
+        })),
+        rawNpu: npu,
       });
     });
   }

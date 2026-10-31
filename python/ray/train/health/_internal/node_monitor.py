@@ -1,16 +1,11 @@
 import threading
 import time
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, Optional
 
+import ray
+from ray.train.health._internal.probe_utils import ScheduledProbe
 from ray.train.health.probe import NodeProbe, ProbeResult
-
-
-class ScheduledProbe(NamedTuple):
-    """A ``NodeProbe`` and the seconds between its polls."""
-
-    probe: NodeProbe
-    poll_interval_s: float
 
 
 @dataclass
@@ -62,8 +57,10 @@ class NodeMonitor:
         with self._lock:
             return NodeMonitorStatus(probe_results=dict(self._latest))
 
+    @ray.method(concurrency_group="on_demand")
     def poll_probes(self, probes: List[NodeProbe]) -> NodeMonitorStatus:
-        """Poll probes on demand.
+        """Poll probes on demand, one call at a time, in a thread of their own,
+        so that ``poll_status()`` still answers meanwhile.
 
         Args:
             probes: The probes to poll.
@@ -77,7 +74,11 @@ class NodeMonitor:
 
     def _sample(self, scheduled_probe: ScheduledProbe) -> None:
         """Poll the probe every ``poll_interval_s`` until the monitor is
-        killed."""
+        killed.
+
+        Args:
+            scheduled_probe: The probe and its interval.
+        """
         probe = scheduled_probe.probe
         while True:
             result = self._poll(probe)
@@ -89,7 +90,14 @@ class NodeMonitor:
     def _poll(probe: NodeProbe) -> ProbeResult:
         """Poll a probe. A result without a ``timestamp_s`` is stamped with the
         time the probe returned, and a poll that raises returns a result with
-        the ``error``."""
+        the ``error``.
+
+        Args:
+            probe: The probe to poll.
+
+        Returns:
+            The probe's result.
+        """
         try:
             result = probe.poll()
         except Exception as e:

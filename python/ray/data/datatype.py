@@ -182,8 +182,7 @@ class DataType:
 
     # Conversion methods
     def to_arrow_dtype(self, values: Optional[List[Any]] = None) -> pa.DataType:
-        """
-        Convert the DataType to a PyArrow DataType.
+        """Convert the DataType to a PyArrow DataType.
 
         Args:
             values: Optional list of values to infer the Arrow type from. Required if the DataType is a Python type.
@@ -372,6 +371,16 @@ class DataType:
         cuDF is imported lazily so this method doesn't affect non-GPU
         environments. The resulting DataType remains backed by Arrow, NumPy, or
         Python types; cuDF dtype objects aren't stored directly.
+
+        Args:
+            cudf_dtype: A cuDF dtype, or a value that ``cudf.dtype`` accepts.
+
+        Returns:
+            The equivalent DataType, backed by a NumPy or Arrow type.
+
+        Raises:
+            ImportError: If cuDF isn't installed.
+            TypeError: If ``cudf_dtype`` can't be converted to a DataType.
         """
         try:
             import cudf
@@ -853,13 +862,21 @@ class DataType:
         return pa.types.is_nested(self._physical_dtype)
 
     def is_null_type(self) -> bool:
-        """Check if this DataType represents a null type."""
+        """Check if this DataType represents a null type.
+
+        Returns:
+            ``True`` if this DataType represents a null type, ``False`` otherwise.
+        """
         if self.is_arrow_type():
             return pa.types.is_null(self._physical_dtype)
         return False
 
     def is_boolean_type(self) -> bool:
-        """Check if this DataType represents a boolean type."""
+        """Check if this DataType represents a boolean type.
+
+        Returns:
+            ``True`` if this DataType represents a boolean type, ``False`` otherwise.
+        """
         if self.is_arrow_type():
             return pa.types.is_boolean(self._get_underlying_arrow_type())
         elif self.is_numpy_type():
@@ -869,7 +886,12 @@ class DataType:
         return False
 
     def is_integer_type(self) -> bool:
-        """Check if this DataType represents an integer type, excluding booleans."""
+        """Check if this DataType represents an integer type, excluding booleans.
+
+        Returns:
+            ``True`` if this DataType represents an integer type
+            other than boolean, ``False`` otherwise.
+        """
         if self.is_arrow_type():
             return pa.types.is_integer(self._get_underlying_arrow_type())
         elif self.is_numpy_type():
@@ -881,7 +903,12 @@ class DataType:
         return False
 
     def is_floating_type(self) -> bool:
-        """Check if this DataType represents a floating-point type."""
+        """Check if this DataType represents a floating-point type.
+
+        Returns:
+            ``True`` if this DataType represents a
+            floating-point type, ``False`` otherwise.
+        """
         if self.is_arrow_type():
             return pa.types.is_floating(self._get_underlying_arrow_type())
         elif self.is_numpy_type():
@@ -891,7 +918,12 @@ class DataType:
         return False
 
     def is_uint64_type(self) -> bool:
-        """Check if this DataType represents an unsigned 64-bit integer."""
+        """Check if this DataType represents an unsigned 64-bit integer.
+
+        Returns:
+            ``True`` if this DataType represents an unsigned
+            64-bit integer, ``False`` otherwise.
+        """
         if self.is_arrow_type():
             return pa.types.is_uint64(self._get_underlying_arrow_type())
         elif self.is_numpy_type():

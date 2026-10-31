@@ -171,8 +171,7 @@ def _copy_doc(copy_func):
 def invoke_context_managers(
     context_managers: List[ContextManager],
 ) -> Generator[None, None, None]:
-    """
-    Utility to invoke a list of context managers and yield sequentially.
+    """Utility to invoke a list of context managers and yield sequentially.
 
     Args:
         context_managers: List of context managers to invoke.

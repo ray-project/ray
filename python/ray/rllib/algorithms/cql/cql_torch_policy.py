@@ -1,6 +1,4 @@
-"""
-PyTorch policy class used for CQL.
-"""
+"""PyTorch policy class used for CQL."""
 import logging
 from typing import Dict, List, Tuple, Type, Union
 

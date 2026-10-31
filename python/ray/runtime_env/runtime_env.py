@@ -218,7 +218,7 @@ class RuntimeEnv(dict):
         # Example for using container
         RuntimeEnv(
             container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-            "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
+            "run_options": ["--cap-drop=SYS_ADMIN","--log-level=debug"]})
 
         # Example for set env_vars
         RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
@@ -270,6 +270,13 @@ class RuntimeEnv(dict):
             ``env_vars`` parameters.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
+            Each `run_options` item is passed as exactly one argument, so
+            write a flag and its value as `--flag=value` or as two items.
+            `$NAME` and `${NAME}` in an item are expanded from the node's
+            whole environment, the job's `env_vars` as written, and the values
+            Ray sets for the container, such as the mounted
+            `RAY_AUTH_TOKEN_PATH`; `$$` is a literal `$`. Expanded values, like the rest of `run_options`, appear on
+            podman's command line.
         env_vars: Environment variables to set.
         worker_process_setup_hook: Experimental. The setup hook that's
             called after workers start and before Tasks and Actors are scheduled.

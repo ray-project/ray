@@ -16,7 +16,9 @@ Author new files under `doc/source/` as MyST Markdown (`.md`). A lint check reje
 
 ## Moving or renaming pages and APIs
 
-When you move or rename a page under `doc/source/`, add a redirect from each old path to its new path in `doc/redirects/current.yaml` in the same PR. `doc/redirects/README.md` covers the rule format, directory moves, and how one rule behaves across docs versions.
+When you move or rename a page under `doc/source/`, add a redirect from each old path to its new path in `doc/redirects/current.yaml` in the same PR. `doc/redirects/README.md` covers which rule to choose, directory moves, and how one rule behaves across docs versions.
+
+Before you push a redirect change, run `rtd-redirects validate doc/redirects/current.yaml` and fix every error. Install the version that `.buildkite/doc.rayci.yml` pins. `validate`, `diff-file`, and `simulate` need no credentials. Don't run `plan`, `apply`, or other commands that call the Read the Docs API: they need an admin token that contributors don't have, and CI applies merged redirects itself.
 
 Generated API reference pages follow the same rules. Keep the following in mind:
 
