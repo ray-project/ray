@@ -25,7 +25,7 @@ pyarrow >= 17.0.0
 
 # ray[all]
 smart_open
-lz4
+lz4>=4.4.5,<5
 numpy>=1.20
 aiorwlock
 scipy

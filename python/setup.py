@@ -252,6 +252,7 @@ if setup_spec.type == SetupType.RAY:
             pandas_dep,
             *pyarrow_deps,
             "fsspec",
+            "lz4>=4.4.5,<5",
         ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,

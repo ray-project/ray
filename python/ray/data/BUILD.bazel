@@ -29,6 +29,7 @@ py_library(
 
 py_test_module_list(
     size = "small",
+    data = glob(["tests/unit/datasource_v2/fixtures/*"]),
     files = glob(["tests/unit/**/test_*.py"]),
     tags = [
         "exclusive",
