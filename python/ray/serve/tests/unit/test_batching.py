@@ -308,7 +308,17 @@ async def test_batch_size_multiple_long_timeout(use_class):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "args",
+        "kwargs",
+        "mixed",
+        "out-of-order",
+        "different-orders",
+        "args-and-out-of-order",
+    ],
+)
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_args_kwargs(mode, use_class):
     if use_class:
@@ -335,9 +345,37 @@ async def test_batch_args_kwargs(mode, use_class):
         coros = [func("hi1", key2="hi2"), func("hi3", key2="hi4")]
     elif mode == "out-of-order":
         coros = [func(key2="hi2", key1="hi1"), func(key2="hi4", key1="hi3")]
+    elif mode == "different-orders":
+        coros = [func(key1="hi1", key2="hi2"), func(key2="hi4", key1="hi3")]
+    elif mode == "args-and-out-of-order":
+        coros = [func("hi1", "hi2"), func(key2="hi4", key1="hi3")]
 
     result = await asyncio.gather(*coros)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+async def test_batch_var_keyword_args():
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+    async def func(key1, **extra):
+        return [
+            (key1[i], {name: values[i] for name, values in extra.items()})
+            for i in range(len(key1))
+        ]
+
+    # Extra keywords passed in different orders still line up by name.
+    result = await asyncio.wait_for(
+        asyncio.gather(func("hi1", x=1, y=2), func("hi2", y=4, x=3)), timeout=1
+    )
+    assert result == [("hi1", {"x": 1, "y": 2}), ("hi2", {"x": 3, "y": 4})]
+
+    # Different extra keywords can't be batched together.
+    results = await asyncio.wait_for(
+        asyncio.gather(func("hi1", x=1), func("hi2", y=2), return_exceptions=True),
+        timeout=1,
+    )
+    assert all(isinstance(result, ValueError) for result in results)
+    assert "must pass the same parameters" in str(results[0])
 
 
 @pytest.mark.asyncio
@@ -996,14 +1034,11 @@ async def test_batch_size_fn_sizes_first_input_with_other_keywords(
     assert results == ["ab:t1", "cde:t2"]
     assert batch_size_fn_calls[-1] == ["ab", "cde"]
 
-    calls_before_invalid_request = len(batch_size_fn_calls)
-    with pytest.raises(
-        TypeError,
-        match="pass the handler's first input parameter as the first argument",
-    ):
-        await asyncio.wait_for(func(tag="t", items="x" * 20), timeout=1)
+    # Keyword order doesn't matter: `batch_size_fn` still sizes `items`, so
+    # this single 5-character request fills the batch.
+    assert await asyncio.wait_for(func(tag="t", items="vwxyz"), timeout=1) == "vwxyz:t"
+    assert batch_size_fn_calls[-1] == ["vwxyz"]
 
-    assert len(batch_size_fn_calls) == calls_before_invalid_request
     assert await asyncio.wait_for(func("abcde", tag="t"), timeout=1) == "abcde:t"
     assert await func._is_batching_task_alive()
 
