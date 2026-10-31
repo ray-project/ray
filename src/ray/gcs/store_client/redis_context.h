@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <cstddef>
@@ -61,6 +62,9 @@ class CallbackReply {
 
   /// Read this reply data as a status.
   Status ReadAsStatus() const;
+
+  /// Read the message of an error reply.
+  const std::string &ReadAsError() const;
 
   /// Read this reply data as a string.
   ///
@@ -190,9 +194,31 @@ struct RedisRequestContext {
   void Run();
 
  private:
+  /// Shared failure path for a reply that never came (connection gone), an
+  /// error reply, and a submission hiredis refused. A command that never
+  /// reached Redis gets its retry back while the current outage's shared
+  /// deadline has not passed; see RedisAsyncContext::OutageDeadline.
+  ///
+  /// \param request_cxt The failed request. Deleted here if its context is gone.
+  /// \param reached_redis Whether Redis saw the command (an error reply).
+  /// \param error_msg What went wrong, for the log line.
+  static void HandleFailure(RedisRequestContext *request_cxt,
+                            bool reached_redis,
+                            std::string_view error_msg);
+
   ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
   RedisAsyncContext *redis_context_;
+  /// Whether the command can change data, so that it gets a write watermark
+  /// marker. See RedisAsyncContext::EnableWriteWatermark.
+  bool is_write_;
+  /// The watermark number of the attempt in flight, 0 if it has none. Written
+  /// under the submission lock, read by the reply callback.
+  uint64_t write_number_ = 0;
+  /// Expires when `redis_context_` is destroyed. Its teardown flushes this
+  /// request's callback while the event loop may be going away with it, so
+  /// the retry path must not schedule anything once this is gone.
+  std::weak_ptr<bool> context_alive_;
   size_t pending_retries_;
   RedisCallback callback_;
   absl::Time start_time_;
@@ -250,6 +276,12 @@ class RedisContext {
   /// Disconnect from the server.
   void Disconnect();
 
+  /// Called inside Connect() right after the async connection is handed to the
+  /// io_service, before Connect() returns.
+  void SetAsyncConnectedHookForTesting(std::function<void(RedisAsyncContext &)> hook) {
+    async_connected_hook_for_testing_ = std::move(hook);
+  }
+
   /// Run an arbitrary Redis command.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -273,7 +305,107 @@ class RedisContext {
 
   instrumented_io_context &io_service() { return io_service_; }
 
+  /// From now on, check after every reconnect that Redis still has every write
+  /// it replied to on this connection, and exit the process if it does not:
+  /// the state GCS holds in memory would then be ahead of storage, and a
+  /// restarted GCS reloads what storage has. Each write is followed by a marker
+  /// in hash `key`, field `field` (see RedisAsyncContext::EnableWriteWatermark).
+  /// The first marker is queued ahead of any later write, so once Redis replies
+  /// to it, a Redis that comes back without the data that was there at this
+  /// call is caught too. It goes over the async connection, the only one a
+  /// reconnect re-establishes, so this works long after Connect(), as on a GCS
+  /// promoted to leader. Does not block. Does nothing when
+  /// redis_reconnect_verify_writes is off.
+  ///
+  /// \param key The Redis hash holding the markers.
+  /// \param field This connection's field in it. Must not be shared with
+  /// another connection in use at the same time.
+  void EnableWriteWatermark(std::string key, std::string field);
+
+  /// Replace the process exit on a failed reconnect check. The handler gets the
+  /// reason; commands stay paused afterwards.
+  void SetWritesLostHandlerForTesting(std::function<void(const std::string &)> handler) {
+    writes_lost_handler_for_testing_ = std::move(handler);
+  }
+
  private:
+  /// The body of Connect(). Connect() wraps it to track connect_depth_.
+  Status ConnectImpl(const std::string &address,
+                     int port,
+                     const std::string &username,
+                     const std::string &password,
+                     bool enable_ssl);
+
+  /// Called when hiredis reports the async connection was lost. Runs from
+  /// inside hiredis' teardown, so it only schedules work.
+  void OnAsyncDisconnected();
+
+  /// hiredis reply callback for the AUTH that ConnectToResolvedAddress sends.
+  /// Unlike startup, a reconnect has no synchronous probe that already proved
+  /// the credentials, so a rejection here fails the attempt.
+  static void ReconnectAuthCallback(redisAsyncContext *async_context,
+                                    void *raw_reply,
+                                    void *privdata);
+
+  /// hiredis reply callback for the check that ConnectToResolvedAddress sends
+  /// after AUTH: a read of the write watermark once a write has been
+  /// acknowledged, a PING before that. Its reply, not the TCP connect, ends a
+  /// reconnect: a proxy in front of a Redis that is down accepts the
+  /// connection and closes it, and a Redis still loading its data answers
+  /// -LOADING.
+  static void ReconnectCheckCallback(redisAsyncContext *async_context,
+                                     void *raw_reply,
+                                     void *privdata);
+
+  /// The reconnect check passed: end the episode and let commands through.
+  void OnReconnectConfirmed();
+
+  /// The reconnect check found writes missing. Exits the process.
+  ///
+  /// \param reason What the check found, for the log.
+  void OnWritesLost(const std::string &reason);
+
+  /// Try once to re-establish the async connection, rescheduling itself with
+  /// exponential backoff on failure. Runs on the io_service thread and never
+  /// blocks it on DNS: a name is resolved asynchronously first.
+  void AttemptReconnect();
+
+  /// Second half of an attempt, once the target address is known: connect,
+  /// or schedule the next attempt if `address_status` or the connect failed.
+  void ContinueReconnect(Status address_status);
+
+  /// Queue the next reconnect attempt on the backoff schedule.
+  void ScheduleReconnectRetry();
+
+  /// Open, authenticate and adopt a fresh async connection to resolved_ip_,
+  /// keeping the existing RedisAsyncContext object so in-flight requests stay
+  /// valid. Never blocks: the connect itself is non-blocking.
+  Status ConnectToResolvedAddress();
+
+  /// Point address_/port_ at whichever node Sentinel currently calls the
+  /// primary; the address may be a host name. Synchronous, bounded by
+  /// redis_reconnect_sentinel_timeout_ms.
+  ///
+  /// \param sentinel_ip The Sentinel's address, already resolved so that no
+  /// DNS lookup happens inside this synchronous call.
+  /// \return OK with address_/port_ updated, or why the query failed.
+  Status RefreshPrimaryFromSentinel(const std::string &sentinel_ip);
+
+  /// Resolve address_ into resolved_ip_ without blocking, then connect.
+  void ResolvePrimaryThenConnect();
+
+  /// Resolve `host` without blocking the io_service and hand the first
+  /// address to `done`; a literal IP is handed over immediately. `done` does
+  /// not run if the lookup is cancelled, this context is destroyed, or the
+  /// reconnect episode ends first.
+  ///
+  /// \param host The name or literal IP to resolve.
+  /// \param port The port, used for the lookup and the error message.
+  /// \param done Receives the resolved IP, or the lookup failure.
+  void ResolveAsync(const std::string &host,
+                    int port,
+                    std::function<void(StatusOr<std::string>)> done);
+
   /// Run an arbitrary Redis command synchronously.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -296,10 +428,70 @@ class RedisContext {
   // context's lifetime.
   std::optional<RedisMetrics> metrics_;
 
+  /// The synchronous context is only used while Connect() runs (validation,
+  /// Sentinel discovery). A reconnect deliberately does not re-establish it,
+  /// so after a failover it may still hold a socket to the old primary.
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   int64_t redis_db_probe_timeout_milliseconds_;
+
+  /// Connection parameters retained from the last successful Connect() so the
+  /// async connection can be re-established without a caller.
+  std::string address_;
+  int port_ = 0;
+  std::string username_;
+  std::string password_;
+  bool enable_ssl_ = false;
+  /// The resolved address actually connected to. Reused on reconnect.
+  std::string resolved_ip_;
+  /// The address Connect() was originally called with. For a Sentinel setup
+  /// this is the Sentinel itself, which is the only address that stays valid
+  /// across a failover.
+  std::string origin_address_;
+  int origin_port_ = 0;
+  /// Whether the primary behind this context was discovered through Sentinel.
+  bool via_sentinel_ = false;
+
+  /// Threading contract for the reconnect state below: it is read and written
+  /// on the io_service thread. The exceptions are Connect() and Disconnect()
+  /// (including from ~RedisContext). Disconnect() must run on that thread or
+  /// once the io_service is no longer running (GcsServer is destroyed after its
+  /// io_context's run() returns; tests destroy the store client while
+  /// ~io_context discards unrun handlers); the alive_ sentinel, expired first
+  /// thing in ~RedisContext, turns away work queued before that. Connect() may
+  /// also run on another thread while the io_service is running (GcsServer
+  /// connects the KV store client from the main thread): the async callbacks
+  /// then see connect_depth_ > 0 and leave the reconnect state alone.
+  ///
+  /// Set by Disconnect() and cleared by Connect(). While set, a disconnect
+  /// callback must not schedule a reconnect: the teardown may be running from
+  /// ~RedisContext, where the io_service is already gone.
+  std::atomic<bool> disconnect_requested_ = false;
+  /// Connect() calls on the stack (Sentinel and Cluster discovery re-enter it).
+  std::atomic<int> connect_depth_ = 0;
+  /// The async connection dropped while connect_depth_ > 0. The outermost
+  /// Connect() hands the drop to the io_service once it has recorded what a
+  /// reconnect needs.
+  std::atomic<bool> dropped_while_connecting_ = false;
+  std::function<void(RedisAsyncContext &)> async_connected_hook_for_testing_;
+  std::function<void(const std::string &)> writes_lost_handler_for_testing_;
+  /// Guards against overlapping reconnect attempts.
+  bool reconnecting_ = false;
+  /// A reconnect attempt is in flight: its DNS resolve or its async connect
+  /// has not reported back yet.
+  bool reconnect_pending_ = false;
+  int64_t reconnect_attempts_left_ = 0;
+  /// Bumped when a reconnect episode ends in success, so retry timers armed
+  /// during that episode die instead of joining the next one.
+  uint64_t reconnect_epoch_ = 0;
+  ExponentialBackoff reconnect_backoff_;
+  /// Sentinel letting a posted/delayed reconnect callback detect that this
+  /// RedisContext was destroyed before the callback ran.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+  /// Resolves the address asynchronously on reconnect. Disconnect() cancels a
+  /// pending resolve; its handler then returns without touching this object.
+  boost::asio::ip::tcp::resolver resolver_;
 };
 
 }  // namespace ray::gcs

@@ -452,6 +452,34 @@ RAY_CONFIG(bool, gcs_redis_storage_metrics_enabled, true)
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
+/// How long a Redis command may keep waiting while the connection is being
+/// re-established. Attempts that never reach Redis do not spend the retry
+/// budget above; this bounds how long that can go on. A Sentinel failover
+/// routinely takes longer than the retry budget's own wall-clock span, which
+/// would otherwise kill gcs_server moments before the reconnect lands.
+RAY_CONFIG(int64_t, redis_reconnect_grace_period_ms, 60000)
+
+/// Bound on each step of the synchronous Sentinel query a reconnect makes to
+/// find the current primary (connect, AUTH, SENTINEL MASTERS). It runs on the
+/// io_context that serves GCS storage, so it is kept far below
+/// redis_db_probe_timeout_milliseconds, which only applies at startup.
+RAY_CONFIG(int64_t, redis_reconnect_sentinel_timeout_ms, 2000)
+
+/// How long a reconnect attempt waits for its TCP connect before giving up and
+/// trying again. Without a bound, a connect whose SYN goes nowhere (an address
+/// that no longer exists, such as a deleted Redis pod's IP behind a stale
+/// connection tracking entry) waits out the kernel's SYN retries, about two
+/// minutes, which is longer than the grace period above. 0 or less means no
+/// timeout.
+RAY_CONFIG(int64_t, redis_reconnect_connect_timeout_ms, 5000)
+
+/// Before gcs_server resumes on a reconnected Redis, check that Redis still
+/// has every write it got a reply for, and exit if it does not, so that the
+/// restarted process reloads what Redis actually holds. Each GCS write is
+/// followed by a small marker write that makes the check possible. Turning
+/// this off removes the marker writes and resumes after any reconnect.
+RAY_CONFIG(bool, redis_reconnect_verify_writes, true)
+
 /// Exponential backoff setup. By default:
 /// 100ms, 200ms, 400ms, 800ms, 1s, 1s,...
 RAY_CONFIG(int64_t, redis_retry_base_ms, 100)

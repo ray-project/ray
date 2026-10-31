@@ -23,6 +23,9 @@
 #include <sys/socket.h>
 #endif
 
+#include "absl/strings/str_cat.h"
+#include "ray/common/ray_config.h"
+
 extern "C" {
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
@@ -30,13 +33,52 @@ extern "C" {
 
 namespace ray {
 namespace gcs {
+namespace {
+
+// Reply callback of a write watermark marker. Only a rejection is of interest:
+// the write before it may have gone through, for example an HDEL that Redis
+// accepts at its memory limit while it refuses the marker's HSET with -OOM.
+void MarkerReplyFn(redisAsyncContext * /*context*/,
+                   void *raw_reply,
+                   void * /*privdata*/) {
+  auto *reply = static_cast<redisReply *>(raw_reply);
+  if (reply != nullptr && reply->type == REDIS_REPLY_ERROR) {
+    RAY_LOG_EVERY_MS(WARNING, 10000)
+        << "Redis rejected a write watermark marker: "
+        << std::string(reply->str, reply->len)
+        << ". Until a later marker gets through, a reconnect may report lost writes "
+           "that Redis still has.";
+  }
+}
+
+}  // namespace
+
 RedisAsyncContext::RedisAsyncContext(
     instrumented_io_context &io_service,
     std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context)
-    : redis_async_context_(std::move(redis_async_context)),
-      io_service_(io_service),
-      socket_(io_service) {
+    : io_service_(io_service), socket_(io_service), connect_timer_(io_service) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  AttachLocked(std::move(redis_async_context));
+}
+
+RedisAsyncContext::~RedisAsyncContext() {
+  // Expire the sentinel before any member is torn down, so that a request or a
+  // socket operation already queued on the io_service bails out instead of
+  // running against a half-destroyed object.
+  alive_.reset();
+  // Free the raw context while every member is still alive. Members are
+  // destroyed in reverse declaration order, so leaving this to the implicit
+  // member destruction would free it after the handlers: redisAsyncFree runs
+  // the disconnect callback for a connected context, and that callback walks
+  // back into this object through NotifyDisconnected().
+  redis_async_context_.reset();
+}
+
+void RedisAsyncContext::AttachLocked(
+    std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context) {
+  redis_async_context_ = std::move(redis_async_context);
   RAY_CHECK(redis_async_context_ != nullptr);
+  ++socket_generation_;
 
   // gives access to c->fd
   redisContext *c = &(redis_async_context_->c);
@@ -90,8 +132,245 @@ redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
 }
 
 void RedisAsyncContext::ResetRawRedisAsyncContext() {
-  // Reset redis_async_context_ to nullptr because hiredis has released this context.
+  // NOTE: deliberately does not take `mutex_`. hiredis calls this from its
+  // disconnect callback, which we reach from `redisAsyncHandleRead`/`Write`
+  // while `mutex_` is already held in HandleIo -- `std::mutex` is not
+  // recursive, so locking here would self-deadlock. Being reached only through
+  // that path, the reset is already serialized against command submission.
   redis_async_context_.release();
+}
+
+void RedisAsyncContext::WithRawContextLocked(
+    const std::function<void(redisAsyncContext *)> &fn) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  fn(redis_async_context_.get());
+}
+
+void RedisAsyncContext::Reset(
+    std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  // The previous raw context was already freed by hiredis, which released
+  // `redis_async_context_` via ResetRawRedisAsyncContext. Only the duplicated
+  // descriptor held by `socket_` is still ours to close. Were it still live,
+  // the assignment in AttachLocked would free it here with `mutex_` held and
+  // re-enter NotifyDisconnected() from inside the lock.
+  RAY_CHECK(redis_async_context_ == nullptr)
+      << "Reset() expects hiredis to have already freed the previous raw context";
+  if (socket_.is_open()) {
+    boost::system::error_code ec;
+    socket_.close(ec);
+    if (ec) {
+      RAY_LOG(DEBUG) << "Failed to close the stale Redis socket: " << ec.message();
+    }
+  }
+  read_requested_ = false;
+  write_requested_ = false;
+  read_in_progress_ = false;
+  write_in_progress_ = false;
+  // Writes numbered on the old connection never reach this one; their retries
+  // get new numbers. Don't let a marker here claim them.
+  last_marked_write_ = last_submitted_write_;
+  AttachLocked(std::move(redis_async_context));
+  // The caller registered the connect callback before our hooks existed, so
+  // the write wait hiredis armed for it went nowhere. Arm it now: the socket
+  // turns writable when the connect completes, which is how hiredis detects
+  // it, and any command queued meanwhile (the reconnect AUTH) goes out then.
+  // AddWrite only dispatches onto the io_service, so holding `mutex_` is fine.
+  AddWrite();
+  // That write event is how hiredis learns that the connect finished, and it
+  // can be consumed before then; see CheckConnect(). Check on a timer too, and
+  // bound the connect.
+  // A non-positive timeout means no timeout; taken literally it would give up
+  // on every attempt before its connect could finish.
+  const int64_t timeout_ms = RayConfig::instance().redis_reconnect_connect_timeout_ms();
+  connect_deadline_ = timeout_ms > 0 ? std::chrono::steady_clock::now() +
+                                           std::chrono::milliseconds(timeout_ms)
+                                     : std::chrono::steady_clock::time_point::max();
+  io_service_.dispatch(
+      [this,
+       alive = std::weak_ptr<bool>(alive_),
+       generation = socket_generation_.load()] {
+        if (alive.expired()) {
+          return;
+        }
+        WatchConnect(generation);
+      },
+      "RedisAsyncContext.watchConnect");
+}
+
+void RedisAsyncContext::WatchConnect(uint64_t generation) {
+  connect_timer_.expires_after(kConnectCheckInterval);
+  connect_timer_.async_wait([this, alive = std::weak_ptr<bool>(alive_), generation](
+                                const boost::system::error_code &error_code) {
+    if (error_code == boost::asio::error::operation_aborted || alive.expired()) {
+      return;
+    }
+    CheckConnect(generation);
+  });
+}
+
+void RedisAsyncContext::CheckConnect(uint64_t generation) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto connected = [this] {
+      return (redis_async_context_->c.flags & REDIS_CONNECTED) != 0;
+    };
+    // Watch until the connect completes and, while commands are paused, until
+    // the reconnect check has been answered: a server that accepts the
+    // connection but never answers must not hold the attempt forever.
+    auto watching = [this, generation, &connected] {
+      return generation == socket_generation_ && redis_async_context_ != nullptr &&
+             (!connected() || commands_paused_);
+    };
+    if (!watching()) {
+      return;
+    }
+    if (std::chrono::steady_clock::now() >= connect_deadline_) {
+      const int64_t timeout_ms =
+          RayConfig::instance().redis_reconnect_connect_timeout_ms();
+      if (!connected()) {
+        RAY_LOG(WARNING) << "Redis connect did not complete within " << timeout_ms
+                         << "ms. Giving up on this attempt.";
+        // Reports the failure through the connect callback, then frees the
+        // context, the same way a refused connect does.
+        redisAsyncHandleTimeout(redis_async_context_.get());
+      } else {
+        RAY_LOG(WARNING) << "Redis did not answer the reconnect check within "
+                         << timeout_ms << "ms. Giving up on this attempt.";
+        // redisAsyncDisconnect would wait for the unanswered check. Freeing
+        // runs its callback with no reply and then the disconnect callback,
+        // which schedules the next attempt.
+        redisAsyncFree(redis_async_context_.get());
+      }
+      return;
+    }
+    if (!connected()) {
+      // Finds the connect still in progress, or completes it: hiredis then
+      // runs the connect callback and sends the commands queued behind it.
+      redisAsyncHandleWrite(redis_async_context_.get());
+      if (!watching()) {
+        return;
+      }
+    }
+  }
+  WatchConnect(generation);
+}
+
+absl::Time RedisAsyncContext::OutageDeadline(absl::Time now, absl::Duration grace) {
+  int64_t deadline = outage_deadline_ns_.load();
+  if (deadline == kNoOutage) {
+    const int64_t stamped = absl::ToUnixNanos(now + grace);
+    // Lose the race gracefully: whoever stamped first defines the outage.
+    if (outage_deadline_ns_.compare_exchange_strong(deadline, stamped)) {
+      deadline = stamped;
+    }
+  }
+  return absl::FromUnixNanos(deadline);
+}
+
+void RedisAsyncContext::ClearOutage() { outage_deadline_ns_.store(kNoOutage); }
+
+void RedisAsyncContext::EnableWriteWatermark(WriteWatermark watermark) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  write_watermark_ = std::move(watermark);
+  last_submitted_write_ = 1;
+  last_marked_write_ = 1;
+  // Go through this connection, not the synchronous one: only this one is
+  // re-established after a reconnect, and a GCS promoted to leader gets here
+  // long after startup. During a reconnect, hold marker 1 back until the check
+  // passes; AppendMarkerLocked() sends it with the first flush after that.
+  // Mark it pending before reading commands_paused_: PauseCommands(false)
+  // clears the pause before reading the flag, so whichever runs second sees
+  // the other's write and the marker can't be left behind. (Today resuming
+  // also runs under mutex_, from the reconnect check's reply.)
+  first_marker_pending_ = true;
+  if (!redis_async_context_ || commands_paused_) {
+    return;
+  }
+  QueueFirstMarkerLocked();
+}
+
+void RedisAsyncContext::QueueFirstMarkerLocked() {
+  // It covers everything submitted so far, so it carries the last number; on
+  // its reply, Redis has run every write up to that number on this connection.
+  const uint64_t n = last_submitted_write_;
+  const std::string value = absl::StrCat(write_watermark_->incarnation, ":", n);
+  const char *argv[] = {
+      "HSET", write_watermark_->key.data(), write_watermark_->field.data(), value.data()};
+  const size_t argvlen[] = {
+      4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
+  auto *privdata = new FirstMarker{alive_, n};
+  if (redisAsyncCommandArgv(
+          redis_async_context_.get(), &FirstMarkerReplyFn, privdata, 4, argv, argvlen) !=
+      REDIS_OK) {
+    delete privdata;
+    RAY_LOG(WARNING) << "Failed to queue the first write watermark marker: "
+                     << redis_async_context_->errstr;
+    return;
+  }
+  first_marker_pending_ = false;
+  last_marked_write_ = n;
+}
+
+void RedisAsyncContext::FirstMarkerReplyFn(redisAsyncContext *context,
+                                           void *raw_reply,
+                                           void *privdata) {
+  std::unique_ptr<FirstMarker> marker(static_cast<FirstMarker *>(privdata));
+  auto *reply = static_cast<redisReply *>(raw_reply);
+  if (reply == nullptr || marker->alive.expired()) {
+    return;
+  }
+  if (reply->type == REDIS_REPLY_ERROR) {
+    RAY_LOG(WARNING) << "Redis rejected the first write watermark marker: "
+                     << std::string(reply->str, reply->len)
+                     << ". Until a later marker gets through, a reconnect may report "
+                        "lost writes that Redis still has.";
+    return;
+  }
+  static_cast<RedisAsyncContext *>(context->ev.data)->AckWrite(marker->number);
+}
+
+std::optional<RedisAsyncContext::WriteWatermark> RedisAsyncContext::GetWriteWatermark() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return write_watermark_;
+}
+
+void RedisAsyncContext::AckWrite(uint64_t n) {
+  uint64_t acked = last_acked_write_.load();
+  while (acked < n && !last_acked_write_.compare_exchange_weak(acked, n)) {
+  }
+}
+
+uint64_t RedisAsyncContext::LastAckedWrite() const { return last_acked_write_.load(); }
+
+void RedisAsyncContext::PauseCommands(bool paused) {
+  commands_paused_.store(paused);
+  // A first marker held back during the reconnect goes out with the next
+  // flush; ask for one, since nothing else may be queued. Read the flag after
+  // clearing the pause; see EnableWriteWatermark() for the other side.
+  if (!paused && first_marker_pending_) {
+    AddWrite();
+  }
+}
+
+void RedisAsyncContext::SetDisconnectHandler(std::function<void()> handler) {
+  disconnect_handler_ = std::move(handler);
+}
+
+void RedisAsyncContext::NotifyDisconnected() {
+  if (disconnect_handler_) {
+    disconnect_handler_();
+  }
+}
+
+void RedisAsyncContext::SetConnectHandler(std::function<void()> handler) {
+  connect_handler_ = std::move(handler);
+}
+
+void RedisAsyncContext::NotifyConnected() {
+  if (connect_handler_) {
+    connect_handler_();
+  }
 }
 
 Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
@@ -102,19 +381,26 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
   va_start(ap, format);
 
   int ret_code = 0;
+  std::string errstr;
   {
     // `redisAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!redis_async_context_) {
+    if (!redis_async_context_ || commands_paused_) {
+      va_end(ap);
       return Status::Disconnected("Redis is disconnected");
     }
     ret_code = redisvAsyncCommand(redis_async_context_.get(), fn, privdata, format, ap);
+    // Copy errstr under the lock: a disconnect on the io_service thread can
+    // release `redis_async_context_` as soon as we drop it.
+    if (ret_code == REDIS_ERR) {
+      errstr = redis_async_context_->errstr;
+    }
   }
 
   va_end(ap);
 
   if (ret_code == REDIS_ERR) {
-    return Status::RedisError(std::string(redis_async_context_->errstr));
+    return Status::RedisError(errstr);
   }
   RAY_CHECK(ret_code == REDIS_OK);
   return Status::OK();
@@ -126,9 +412,10 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
     int argc,
     const char **argv,
     const size_t *argvlen,
-    std::optional<absl::FunctionRef<void()>> on_accepted) {
+    std::optional<absl::FunctionRef<void()>> on_accepted,
+    uint64_t *write_number) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!redis_async_context_) {
+  if (!redis_async_context_ || commands_paused_) {
     return Status::Disconnected("Redis is disconnected");
   }
   const int ret_code = redisAsyncCommandArgv(
@@ -137,6 +424,12 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
     return Status::RedisError(std::string(redis_async_context_->errstr));
   }
   RAY_CHECK(ret_code == REDIS_OK);
+  if (write_number != nullptr && write_watermark_.has_value()) {
+    // Number the write under the same lock that queues it, so numbers rise in
+    // the order Redis runs the writes. Its marker goes out when the buffer is
+    // flushed; see AppendMarkerLocked().
+    *write_number = ++last_submitted_write_;
+  }
   // hiredis queues the reply callback without invoking it inline. Keep the
   // HandleIo mutex until bookkeeping state has been captured, so another thread
   // cannot deliver a reply and free privdata before this notification finishes.
@@ -146,21 +439,72 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
   return Status::OK();
 }
 
+void RedisAsyncContext::AppendMarkerLocked() {
+  // One marker per flush instead of one per write: it carries the number of
+  // the last write queued so far and sits behind all of them in the same
+  // buffer, so Redis runs it after every write it covers. A write that got a
+  // reply was flushed with such a marker behind it, and a Redis that lost the
+  // write lost that marker too. During a reconnect, commands are held and the
+  // check must read what the previous connection left, so add none.
+  if (!write_watermark_.has_value() || commands_paused_) {
+    return;
+  }
+  if (first_marker_pending_) {
+    QueueFirstMarkerLocked();
+    return;
+  }
+  if (last_marked_write_ >= last_submitted_write_) {
+    return;
+  }
+  const std::string value =
+      absl::StrCat(write_watermark_->incarnation, ":", last_submitted_write_);
+  const char *argv[] = {
+      "HSET", write_watermark_->key.data(), write_watermark_->field.data(), value.data()};
+  const size_t argvlen[] = {
+      4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
+  // The buffer is about to be flushed, so the write event hiredis asks for
+  // here is not needed.
+  const bool dispatch_pending = write_dispatch_pending_.exchange(true);
+  const int ret_code = redisAsyncCommandArgv(
+      redis_async_context_.get(), &MarkerReplyFn, /*privdata=*/nullptr, 4, argv, argvlen);
+  write_dispatch_pending_ = dispatch_pending;
+  if (ret_code != REDIS_OK) {
+    // Only a context already being torn down refuses a command. The writes
+    // stay unmarked: should Redis reply to them, the next reconnect check
+    // fails and the process restarts, which errs on the safe side.
+    RAY_LOG(WARNING) << "Failed to queue the write watermark marker: "
+                     << redis_async_context_->errstr;
+    return;
+  }
+  last_marked_write_ = last_submitted_write_;
+}
+
 void RedisAsyncContext::Operate() {
+  // Closing a socket does not withdraw the handlers already queued against it;
+  // they still run, with a raw pointer to this object and flags that by then
+  // describe a different connection. Both guards below cover that.
+  auto guard = [this, generation = socket_generation_.load()](
+                   const std::weak_ptr<bool> &alive, bool write) {
+    return [this, alive, generation, write](const boost::system::error_code &error_code,
+                                            std::size_t /*bytes*/) {
+      if (alive.expired()) {
+        return;
+      }
+      if (generation != socket_generation_) {
+        return;
+      }
+      HandleIo(error_code, write);
+    };
+  };
+
   if (read_requested_ && !read_in_progress_) {
     read_in_progress_ = true;
-    socket_.async_read_some(
-        boost::asio::null_buffers(),
-        boost::bind(
-            &RedisAsyncContext::HandleIo, this, boost::asio::placeholders::error, false));
+    socket_.async_read_some(boost::asio::null_buffers(), guard(alive_, /*write=*/false));
   }
 
   if (write_requested_ && !write_in_progress_) {
     write_in_progress_ = true;
-    socket_.async_write_some(
-        boost::asio::null_buffers(),
-        boost::bind(
-            &RedisAsyncContext::HandleIo, this, boost::asio::placeholders::error, true));
+    socket_.async_write_some(boost::asio::null_buffers(), guard(alive_, /*write=*/true));
   }
 }
 
@@ -171,13 +515,21 @@ void RedisAsyncContext::HandleIo(boost::system::error_code error_code, bool writ
       << "handle_io(error_code = " << error_code << ")";
   (write ? write_in_progress_ : read_in_progress_) = false;
   if (error_code != boost::asio::error::operation_aborted) {
-    RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL";
-    {
-      // `redisAsyncHandleRead` and `redisAsyncHandleWrite` will mutate
-      // `redis_async_context_`, use a lock to protect it.
-      const std::lock_guard lock(mutex_);
-      write ? redisAsyncHandleWrite(redis_async_context_.get())
-            : redisAsyncHandleRead(redis_async_context_.get());
+    // `redisAsyncHandleRead` and `redisAsyncHandleWrite` will mutate
+    // `redis_async_context_`, use a lock to protect it.
+    const std::lock_guard lock(mutex_);
+    // A socket operation queued before the connection dropped can complete
+    // after hiredis already freed the context (which releases
+    // `redis_async_context_`). There is nothing left to hand to hiredis, and
+    // the reconnect path will re-arm the socket.
+    if (redis_async_context_ == nullptr) {
+      return;
+    }
+    if (write) {
+      AppendMarkerLocked();
+      redisAsyncHandleWrite(redis_async_context_.get());
+    } else {
+      redisAsyncHandleRead(redis_async_context_.get());
     }
   }
 
@@ -188,8 +540,15 @@ void RedisAsyncContext::HandleIo(boost::system::error_code error_code, bool writ
 
 void RedisAsyncContext::AddRead() {
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
+  // Registering a connect callback makes hiredis ask for a write before the
+  // connection is even established, and RedisContext::Connect tears the context
+  // down again the moment it discovers it dialled a Sentinel. The sentinel
+  // below keeps a queued request from arming a socket on a destroyed object.
   io_service_.dispatch(
-      [this] {
+      [this, alive = std::weak_ptr<bool>(alive_)] {
+        if (alive.expired()) {
+          return;
+        }
         read_requested_ = true;
         Operate();
       },
@@ -197,9 +556,23 @@ void RedisAsyncContext::AddRead() {
 }
 
 void RedisAsyncContext::AddWrite() {
+  // hiredis asks for a write event after every command it queues, and more
+  // commands can be queued before the io_service gets to the first request: a
+  // write and its watermark marker always are, and concurrent submitters often
+  // are. One outstanding request arms the socket for all of them, since the
+  // write handler flushes everything queued by then. Posting one per command
+  // instead costs a wakeup of the io_service thread each.
+  if (write_dispatch_pending_.exchange(true)) {
+    return;
+  }
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
   io_service_.dispatch(
-      [this] {
+      [this, alive = std::weak_ptr<bool>(alive_)] {
+        if (alive.expired()) {
+          return;
+        }
+        // Clear before arming: a command queued from here on posts again.
+        write_dispatch_pending_ = false;
         write_requested_ = true;
         Operate();
       },

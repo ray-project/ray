@@ -324,7 +324,8 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     else:
         cli = redis.Redis(host, int(port))
 
-    table_names = ["KV", "WORKERS", "JobCounter", "NODE", "JOB"]
+    # WriteWatermark holds the markers that let GCS check Redis after a reconnect.
+    table_names = ["KV", "WORKERS", "JobCounter", "NODE", "JOB", "WriteWatermark"]
     c1_keys = [f"RAYc1@{name}".encode() for name in table_names]
     c2_keys = [f"RAYc2@{name}".encode() for name in table_names]
     assert set(cli.keys()) == set(c1_keys + c2_keys)

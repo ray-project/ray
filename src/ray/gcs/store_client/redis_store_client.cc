@@ -149,6 +149,11 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
       << kClusterSeparator << ".";
 }
 
+void RedisStoreClient::EnableWriteWatermark(const std::string &name) {
+  primary_context_->EnableWriteWatermark(
+      RedisKey{external_storage_namespace_, "WriteWatermark"}.ToString(), name);
+}
+
 void RedisStoreClient::AsyncPut(const std::string &table_name,
                                 const std::string &key,
                                 std::string data,
@@ -515,16 +520,32 @@ void RedisStoreClient::AsyncExists(const std::string &table_name,
 }
 
 void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
-  auto redis_callback = [callback = std::move(callback)](
-                            const std::shared_ptr<CallbackReply> &reply) mutable {
-    Status status = Status::OK();
-    if (reply->IsNil()) {
-      status = Status::IOError("Unexpected connection error.");
-    } else if (reply->IsError()) {
-      status = reply->ReadAsStatus();
+  {
+    absl::MutexLock lock(&health_check_waiters_->mu);
+    health_check_waiters_->callbacks.push_back(std::move(callback));
+    if (health_check_waiters_->in_flight) {
+      return;
     }
-    std::move(callback).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
-  };
+    health_check_waiters_->in_flight = true;
+  }
+  auto redis_callback =
+      [waiters = health_check_waiters_](const std::shared_ptr<CallbackReply> &reply) {
+        Status status = Status::OK();
+        if (reply->IsNil()) {
+          status = Status::IOError("Unexpected connection error.");
+        } else if (reply->IsError()) {
+          status = Status::RedisError(reply->ReadAsError());
+        }
+        std::vector<Postable<void(Status)>> callbacks;
+        {
+          absl::MutexLock lock(&waiters->mu);
+          callbacks.swap(waiters->callbacks);
+          waiters->in_flight = false;
+        }
+        for (auto &cb : callbacks) {
+          std::move(cb).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
+        }
+      };
 
   primary_context_->RunArgvAsync({"PING"}, redis_callback, kNoTable);
 }
