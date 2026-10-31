@@ -244,6 +244,79 @@ def test_interleaved_heavy_files(
         assert all(set(b) == {"a", "b"} for b in bins)
 
 
+def _with_extra(manifest: FileManifest, values: list[str]) -> FileManifest:
+    """``manifest`` plus a source-specific column, one value per row."""
+    import pyarrow as pa
+
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    return FileManifest(block.append_column("__src", pa.array(values)))
+
+
+def test_source_columns_survive_packing() -> None:
+    """A source's own manifest columns reach the bin, aligned with their rows.
+
+    Iceberg puts each file's delete files and partition values in columns like
+    these; losing them in the packer would lose the read.
+    """
+    packer = OnlineBinPacker(100)
+    packer.add_input(
+        _with_extra(
+            FileManifest.construct_manifest(
+                paths=["a", "b"], sizes=[40, 40], chunk_metadatas=[None, None]
+            ),
+            ["a-state", "b-state"],
+        )
+    )
+    packer.finalize()
+
+    bins = []
+    while packer.has_partition():
+        bins.append(packer.next_partition())
+
+    paths = [str(path) for manifest in bins for path in manifest.paths]
+    state = [
+        value for manifest in bins for value in manifest.as_block()["__src"].to_pylist()
+    ]
+    assert dict(zip(paths, state)) == {"a": "a-state", "b": "b-state"}
+
+
+def test_source_columns_survive_a_split_run() -> None:
+    """Splitting a file's run at unit boundaries copies its columns to each piece."""
+    packer = OnlineBinPacker(100, split_coalesced=True)
+    packer.add_input(
+        _with_extra(
+            _file(
+                "f",
+                300,
+                [_run((0, 1, 2), 300, unit_sizes=(100, 100, 100), unit_rows=(1, 1, 1))],
+            ),
+            ["f-state"],
+        )
+    )
+    packer.finalize()
+
+    bins = []
+    while packer.has_partition():
+        bins.append(packer.next_partition())
+
+    assert len(bins) == 3
+    for manifest in bins:
+        assert manifest.as_block()["__src"].to_pylist() == ["f-state"]
+
+
+def test_manifest_without_source_columns_is_unchanged() -> None:
+    """The common case: three required columns in, three out."""
+    packer = OnlineBinPacker(100)
+    packer.add_input(
+        FileManifest.construct_manifest(paths=["a"], sizes=[40], chunk_metadatas=[None])
+    )
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert manifest.extra_columns is None
+
+
 if __name__ == "__main__":
     import sys
 

@@ -6,6 +6,8 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Deque, Dict, List, Optional, Tuple
 
+import pyarrow as pa
+
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     ChunkMetadata,
@@ -25,6 +27,11 @@ class BinItem:
     file: FileInfo
     # ``None`` for a whole-file listing row: indivisible, sized by the listing.
     run: Optional[FileChunk] = None
+    # This row's extra columns, as a one-row table (see
+    # ``FileManifest.extra_columns``). The packer never looks inside; it hands
+    # them back out in ``_bin_to_manifest``, so a source's per-file state
+    # survives packing.
+    extra_columns: Optional[pa.Table] = None
 
     @property
     def size_bytes(self) -> int:
@@ -101,7 +108,7 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
         unit_sizes=sizes if b - a > 1 else (),
         unit_rows=rows if b - a > 1 else (),
     )
-    return BinItem(file=item.file, run=piece)
+    return BinItem(file=item.file, run=piece, extra_columns=item.extra_columns)
 
 
 def _subitem(item: BinItem, num_units: int, start: int, end: int) -> BinItem:
@@ -272,14 +279,24 @@ def _bin_items(manifest: FileManifest) -> List[BinItem]:
     file's units.
     """
     items: List[BinItem] = []
-    for path, file_size, md in zip(
-        manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas
+    extra_columns = manifest.extra_columns
+    for row_index, (path, file_size, md) in enumerate(
+        zip(manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas)
     ):
         file = FileInfo(path=str(path), size=int(file_size))
-        if md is None or "unit_ids" not in md:
-            items.append(BinItem(file=file))
-        else:
-            items.append(BinItem(file=file, run=FileChunk.from_metadata(md)))
+        run = (
+            None if md is None or "unit_ids" not in md else FileChunk.from_metadata(md)
+        )
+        items.append(
+            BinItem(
+                file=file,
+                run=run,
+                # Zero-copy view of this row's extra columns, if it has any.
+                extra_columns=(
+                    None if extra_columns is None else extra_columns.slice(row_index, 1)
+                ),
+            )
+        )
     return items
 
 
@@ -417,13 +434,20 @@ class OnlineBinPacker(FilePartitioner):
         # listing gave it; a run's bytes live in its chunk metadata.
         files: List[FileInfo] = []
         chunk_metadatas: List[Optional[ChunkMetadata]] = []
+        extra_columns: List[Optional[pa.Table]] = []
         runs_by_file: Dict[FileInfo, List[FileChunk]] = defaultdict(list)
+        # A file can put several runs in one bin, and they merge into a single
+        # output row below. They all came from the same listing row, so they
+        # carry the same extra columns; keep the first.
+        extra_columns_by_file: Dict[FileInfo, Optional[pa.Table]] = {}
         for item in bin_.items:
             if item.run is None:
                 files.append(item.file)
                 chunk_metadatas.append(None)
+                extra_columns.append(item.extra_columns)
             else:
                 runs_by_file[item.file].append(item.run)
+                extra_columns_by_file.setdefault(item.file, item.extra_columns)
 
         for file, runs in runs_by_file.items():
             merged = FileChunk(
@@ -434,6 +458,7 @@ class OnlineBinPacker(FilePartitioner):
             )
             files.append(file)
             chunk_metadatas.append(merged.to_metadata())
+            extra_columns.append(extra_columns_by_file[file])
         sizes: List[int] = []
         for file in files:
             assert file.size is not None
@@ -442,4 +467,19 @@ class OnlineBinPacker(FilePartitioner):
             paths=[file.path for file in files],
             sizes=sizes,
             chunk_metadatas=chunk_metadatas,
+            extra_columns=_concat_extra_columns(extra_columns),
         )
+
+
+def _concat_extra_columns(per_row: List[Optional[pa.Table]]) -> Optional[pa.Table]:
+    """The bin's extra columns, one row per output row, or ``None`` for none."""
+    # All-or-nothing: a manifest's rows all have the same columns, and a bin
+    # only ever holds rows from one manifest.
+    present = [table for table in per_row if table is not None]
+    if not present:
+        return None
+    assert len(present) == len(per_row), (
+        f"{len(present)} of {len(per_row)} bin items carry extra columns; "
+        "a manifest's rows either all have them or none do"
+    )
+    return pa.concat_tables(present)

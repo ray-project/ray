@@ -32,18 +32,16 @@ class ArrowFileScanner(
     Holds shared Arrow types and options (schema, projection, filesystem,
     etc.). Subclasses set the file format in :meth:`create_reader`.
 
-    Provides default implementations of filter pushdown, column pruning and
-    limit pushdown that work for all Arrow-backed formats. Partition pruning
-    comes from :class:`FileScanner`.
+    Provides a default implementation of filter pushdown that works for all
+    Arrow-backed formats. Column pruning and limit pushdown come from the
+    ``Supports*`` mixins, partition pruning from :class:`FileScanner`.
 
     Non-Arrow file formats should subclass :class:`FileScanner` directly.
     """
 
     schema: pa.Schema
     batch_size: Optional[int] = None
-    columns: Optional[Tuple[str, ...]] = None
     predicate: Optional[Expr] = None
-    limit: Optional[int] = None
     filesystem: Optional[FileSystem] = None
     ignore_prefixes: Optional[List[str]] = None
 
@@ -127,41 +125,3 @@ class ArrowFileScanner(
     @override
     def pushed_predicate(self) -> Optional["Expr"]:
         return self.predicate
-
-    @override
-    def prune_columns(self, columns: List[str]) -> "ArrowFileScanner":
-        """Prune to only the specified columns.
-
-        Args:
-            columns: List of column names to keep.
-
-        Returns:
-            New scanner with column pruning applied.
-        """
-        if self.columns:
-            existing = set(self.columns)
-            columns = [c for c in columns if c in existing]
-
-        return replace(self, columns=tuple(columns))
-
-    @override
-    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
-        return self.columns
-
-    @override
-    def push_limit(self, limit: int) -> "ArrowFileScanner":
-        """Push row limit down to the scanner.
-
-        Args:
-            limit: Maximum number of rows to read.
-
-        Returns:
-            New scanner with limit applied.
-        """
-        current = self.limit
-        new_limit = min(current, limit) if current is not None else limit
-        return replace(self, limit=new_limit)
-
-    @override
-    def pushed_limit(self) -> Optional[int]:
-        return self.limit
