@@ -258,6 +258,16 @@ class ArrowConversionError(Exception):
 
 
 @DeveloperAPI
+class ArrowSchemaUnificationError(ArrowConversionError):
+    """Error raised when block schemas can't be unified into one schema."""
+
+    def __init__(self, message: str):
+        # Skip ArrowConversionError's truncation. The message lists every
+        # conflicting column and its types, so truncating it hides the cause.
+        Exception.__init__(self, f"Error converting data to Arrow: {message}")
+
+
+@DeveloperAPI
 def pyarrow_table_from_pydict(
     pydict: Dict[str, Union[List[Any], pa.Array]],
 ) -> pa.Table:

@@ -2122,6 +2122,26 @@ def test_concat_nested_non_struct_field():
         concat([t1, t2])
 
 
+def test_concat_objects_and_tensors_error_lists_columns_and_types():
+    """The error names every conflicting column and its types, untruncated."""
+    objects = ArrowPythonObjectArray.from_objects([[np.zeros(2), np.zeros(3)]])
+    tensors = ArrowTensorArray.from_numpy(np.zeros((1, 2, 2)))
+    t1 = pa.table({"a": objects, "b": objects})
+    t2 = pa.table({"a": tensors, "b": tensors})
+
+    with pytest.raises(ArrowConversionError) as exc_info:
+        concat([t1, t2])
+
+    message = str(exc_info.value)
+    assert "Failed to unify schemas across 2 blocks." in message
+    assert "Found columns with both objects and tensors: a, b" in message
+    for column in ["a", "b"]:
+        assert (
+            f"'{column}': {t1.schema.field(column).type} (1 block), "
+            f"{t2.schema.field(column).type} (1 block)"
+        ) in message
+
+
 def test_concat_nested_all_null_field():
     """An all-null nested field is filled, not treated as a conflict."""
     t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
