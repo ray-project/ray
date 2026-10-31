@@ -66,6 +66,7 @@ from ray.serve._private.http_util import (
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
+    is_builtin_app_health_path,
     parse_disconnect_disabled_header,
     parse_request_timeout_header,
     receive_http_body,
@@ -115,7 +116,12 @@ from ray.serve._private.utils import (
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import EncodingType, LoggingConfig, TracingConfig
+from ray.serve.schema import (
+    ApplicationStatus,
+    EncodingType,
+    LoggingConfig,
+    TracingConfig,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -400,6 +406,29 @@ class GenericProxy(ABC):
             )
         else:
             route_prefix, handle, app_is_cross_language = matched_route
+            if (
+                self.protocol == RequestProtocol.HTTP
+                and isinstance(self, HTTPProxy)
+                and is_builtin_app_health_path(route_prefix, proxy_request.route_path)
+            ):
+                # Built-in app health, answered from the application status
+                # the controller tracks. It is not routed to a replica, so a
+                # saturated max_ongoing_requests does not stall the probe.
+                # System /-/healthz is handled above and is not this path.
+                # The isinstance narrows this to HTTPProxy, which owns the method.
+                return ResponseHandlerInfo(
+                    response_generator=self.app_health_response(
+                        handle.deployment_id.app_name
+                    ),
+                    metadata=HandlerMetadata(
+                        application_name=handle.deployment_id.app_name,
+                        deployment_name=handle.deployment_id.name,
+                        route=proxy_request.route_path,
+                    ),
+                    should_record_access_log=False,
+                    should_increment_ongoing_requests=False,
+                )
+
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
@@ -1105,6 +1134,35 @@ class HTTPProxy(GenericProxy):
             is_error=not healthy,
         )
 
+    async def app_health_response(self, app_name: str) -> ResponseGenerator:
+        """Per-app health from the application status the controller pushes.
+
+        200 when the application is RUNNING, or DEPLOYING while its ingress
+        deployment still has running replicas (for example an in-place
+        update). 503 otherwise. It does not call a replica or take a request
+        slot. System ``/-/healthz`` is a separate proxy readiness check.
+        """
+        status = self.proxy_router.get_app_status(app_name)
+        status_message = status.value if status is not None else "UNKNOWN"
+        if self._is_draining():
+            healthy = False
+            message = DRAINING_MESSAGE
+        elif self.proxy_router.app_is_serving(app_name):
+            healthy = True
+            message = (
+                HEALTHY_MESSAGE
+                if status == ApplicationStatus.RUNNING
+                else status_message
+            )
+        else:
+            healthy = False
+            message = status_message
+
+        async for message_or_status in self.health_response(
+            healthy=healthy, message=message
+        ):
+            yield message_or_status
+
     async def health_response(
         self, *, healthy: bool, message: str = ""
     ) -> ResponseGenerator:
@@ -1646,6 +1704,7 @@ class ProxyActor(ProxyActorInterface):
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
+                LongPollNamespace.APPLICATION_STATUSES: self._update_app_statuses,
             },
             call_in_event_loop=event_loop,
             client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
@@ -1770,6 +1829,11 @@ class ProxyActor(ProxyActorInterface):
 
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
+
+    def _update_app_statuses(
+        self, app_statuses: Dict[str, Tuple[ApplicationStatus, bool]]
+    ):
+        self.proxy_router.update_app_statuses(app_statuses)
 
     def _get_logging_config(self) -> Optional[str]:
         """Get the logging configuration (for testing purposes)."""

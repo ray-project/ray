@@ -7216,6 +7216,13 @@ class DeploymentStateManager:
 
         return self._deployment_states[deployment_id].deploy(deployment_info)
 
+    def get_num_running_replicas(self, deployment_id: DeploymentID) -> int:
+        """Number of RUNNING replicas of a deployment (0 if it doesn't exist)."""
+        deployment_state = self._deployment_states.get(deployment_id)
+        if deployment_state is None:
+            return 0
+        return deployment_state.get_num_running_replicas()
+
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
         return list(self._app_deployment_mapping[app_name])

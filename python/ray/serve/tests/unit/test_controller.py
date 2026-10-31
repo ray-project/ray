@@ -1,6 +1,7 @@
 import pickle
 from copy import deepcopy
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,7 +15,9 @@ from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
 )
+from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve.schema import (
+    ApplicationStatus,
     ControllerHealthMetrics,
     DurationStats,
     HTTPOptionsSchema,
@@ -715,6 +718,145 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
         # The oldest values should have been dropped
         assert tracker.dsm_update_durations[0] == 50.0
+
+
+def _app_status_controller(
+    statuses, ingress_running, ingress="ingress", endpoints=None
+):
+    controller = ServeController.__new__(ServeController)
+    controller.endpoint_state = MagicMock()
+    controller.endpoint_state.get_endpoints.side_effect = lambda: endpoints or {}
+    controller.long_poll_host = MagicMock()
+    controller._last_broadcasted_app_statuses = None
+    controller.application_state_manager = MagicMock()
+    controller.application_state_manager.list_app_statuses.side_effect = (
+        lambda: statuses
+    )
+    controller.application_state_manager.get_ingress_deployment_name.return_value = (
+        ingress
+    )
+    controller.deployment_state_manager = MagicMock()
+    controller.deployment_state_manager.get_num_running_replicas.side_effect = (
+        lambda _: ingress_running[0]
+    )
+    return controller
+
+
+def test_broadcast_app_statuses_only_on_change():
+    """The proxies get {app name: (status, serving)} once per change."""
+    statuses = {"app": MagicMock(status=ApplicationStatus.DEPLOYING)}
+    controller = _app_status_controller(statuses, ingress_running=[0])
+
+    controller.broadcast_app_statuses_if_changed()
+    controller.broadcast_app_statuses_if_changed()
+    controller.long_poll_host.notify_changed.assert_called_once_with(
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.DEPLOYING, False)
+            }
+        }
+    )
+
+    statuses["app"] = MagicMock(status=ApplicationStatus.RUNNING)
+    controller.broadcast_app_statuses_if_changed()
+    assert controller.long_poll_host.notify_changed.call_count == 2
+    controller.long_poll_host.notify_changed.assert_called_with(
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.RUNNING, True)
+            }
+        }
+    )
+
+
+def test_broadcast_app_statuses_serving_follows_ingress_replicas():
+    """DEPLOYING is serving only while the ingress has running replicas."""
+    from ray.serve._private.common import DeploymentID
+
+    ingress_running = [2]
+    statuses = {"app": MagicMock(status=ApplicationStatus.DEPLOYING)}
+    controller = _app_status_controller(statuses, ingress_running=ingress_running)
+
+    controller.broadcast_app_statuses_if_changed()
+    controller.long_poll_host.notify_changed.assert_called_with(
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.DEPLOYING, True)
+            }
+        }
+    )
+    controller.deployment_state_manager.get_num_running_replicas.assert_called_with(
+        DeploymentID(name="ingress", app_name="app")
+    )
+
+    ingress_running[0] = 0
+    controller.broadcast_app_statuses_if_changed()
+    controller.long_poll_host.notify_changed.assert_called_with(
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.DEPLOYING, False)
+            }
+        }
+    )
+
+    for status in (
+        ApplicationStatus.DEPLOY_FAILED,
+        ApplicationStatus.UNHEALTHY,
+        ApplicationStatus.DELETING,
+    ):
+        ingress_running[0] = 3
+        statuses["app"] = MagicMock(status=status)
+        controller.broadcast_app_statuses_if_changed()
+        controller.long_poll_host.notify_changed.assert_called_with(
+            {LongPollNamespace.APPLICATION_STATUSES: {"app": (status, False)}}
+        )
+
+
+def test_broadcast_app_statuses_serving_during_declarative_rebuild():
+    """A rebuild clears the target ingress; fall back to the routed endpoint."""
+    from ray.serve._private.common import DeploymentID
+
+    old_ingress = DeploymentID(name="old_ingress", app_name="app")
+    statuses = {"app": MagicMock(status=ApplicationStatus.DEPLOYING)}
+    controller = _app_status_controller(
+        statuses,
+        ingress_running=[1],
+        ingress=None,
+        endpoints={
+            DeploymentID(name="other_ingress", app_name="other"): {"route": "/o"},
+            old_ingress: {"route": "/"},
+        },
+    )
+
+    controller.broadcast_app_statuses_if_changed()
+    controller.long_poll_host.notify_changed.assert_called_with(
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.DEPLOYING, True)
+            }
+        }
+    )
+    controller.deployment_state_manager.get_num_running_replicas.assert_called_with(
+        old_ingress
+    )
+
+
+def test_broadcast_app_statuses_not_serving_on_first_build():
+    """No ingress and no routed endpoint yet (first deploy) is not serving."""
+    statuses = {"app": MagicMock(status=ApplicationStatus.DEPLOYING)}
+    controller = _app_status_controller(
+        statuses, ingress_running=[1], ingress=None, endpoints={}
+    )
+
+    controller.broadcast_app_statuses_if_changed()
+    controller.long_poll_host.notify_changed.assert_called_with(
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.DEPLOYING, False)
+            }
+        }
+    )
+    controller.deployment_state_manager.get_num_running_replicas.assert_not_called()
 
 
 class TestConfigCheckpoint:
