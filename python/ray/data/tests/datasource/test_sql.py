@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 import tempfile
 from typing import Generator
@@ -91,6 +92,41 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
 
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
     assert sorted(actual_values) == sorted(expected_values)
+
+
+def test_read_sql_single_parallelism_does_not_log_sharding_fallback(
+    temp_database: str, caplog
+):
+    logger = logging.getLogger("ray.data._internal.datasource.sql_datasource")
+    logger.addHandler(caplog.handler)
+
+    try:
+        connection = sqlite3.connect(temp_database)
+        connection.execute("CREATE TABLE movie(title, year, score)")
+        connection.execute(
+            "INSERT INTO movie VALUES (?, ?, ?)",
+            ("Test Movie", 2024, 8.0),
+        )
+        connection.commit()
+        connection.close()
+
+        with caplog.at_level("INFO", logger=logger.name):
+            dataset = ray.data.read_sql(
+                "SELECT * FROM movie",
+                lambda: sqlite3.connect(temp_database),
+                override_num_blocks=1,
+                shard_hash_fn="unicode",
+                shard_keys=["title"],
+            )
+            actual_values = dataset.take_all()
+
+        assert len(actual_values) == 1
+        assert not any(
+            "Sharding is not supported" in record.message
+            for record in caplog.records
+        )
+    finally:
+        logger.removeHandler(caplog.handler)
 
 
 # for mysql test
