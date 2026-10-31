@@ -74,20 +74,6 @@ rm -rf /tmp/wrk
 
 EOF
 
-# Ray defaults to token auth. The Anyscale platform starts Ray on each node of a
-# release test cluster without shipping a token. Every node runs this image, so a
-# token generated at build time is shared across the cluster. This image is only
-# for release tests. Never put a token into a published Ray image.
-RUN <<EOF
-#!/bin/bash
-
-set -euo pipefail
-
-mkdir -p "$HOME/.ray"
-(umask 077 && python3 -c "import secrets; print(secrets.token_hex(32))" > "$HOME/.ray/auth_token")
-
-EOF
-
 # RAY_BACKEND_LOG_JSON=1
 #   Uses JSON structured logging.
 #
@@ -97,7 +83,12 @@ EOF
 #
 # RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1
 #   To make ray data compatible across multiple pyarrow versions.
+#
+# RAY_AUTH_MODE=disabled
+#   Anyscale's agent on the head node calls the Ray dashboard API without an
+#   auth token, so with token auth on, the release test job is never submitted.
 ENV \
   RAY_BACKEND_LOG_JSON=1 \
   RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT=1 \
-  RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1
+  RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1 \
+  RAY_AUTH_MODE=disabled

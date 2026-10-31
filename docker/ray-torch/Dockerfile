@@ -34,16 +34,7 @@ uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strate
 
 EOF
 
-# Ray defaults to token auth. The Anyscale platform starts Ray on each node of a
-# release test cluster without shipping a token. Every node runs this image, so a
-# token generated at build time is shared across the cluster. This image is only
-# for release tests. Never put a token into a published Ray image.
-RUN <<EOF
-#!/bin/bash
-
-set -euo pipefail
-
-mkdir -p "$HOME/.ray"
-(umask 077 && python3 -c "import secrets; print(secrets.token_hex(32))" > "$HOME/.ray/auth_token")
-
-EOF
+# RAY_AUTH_MODE=disabled
+#   Anyscale's agent on the head node calls the Ray dashboard API without an
+#   auth token, so with token auth on, the release test job is never submitted.
+ENV RAY_AUTH_MODE=disabled
