@@ -2364,8 +2364,8 @@ def read_json(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         lines: [Experimental] If ``True``, read files assuming line-delimited JSON.
-            If set, will ignore the ``filesystem``, ``arrow_open_stream_args``, and
-            ``arrow_json_args`` parameters.
+            This mode doesn't support the ``filesystem``, ``arrow_open_stream_args``,
+            or ``arrow_json_args`` parameters.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `PyArrow docs <https://arrow.apache.org/docs/python/api/\
@@ -2437,7 +2437,7 @@ def read_json(
         }
         for param, value in incompatible_params.items():
             if value:
-                raise ValueError(f"`{param}` is not supported when `lines=True`. ")
+                raise ValueError(f"`{param}` is not supported when `lines=True`.")
 
     file_based_datasource_kwargs = dict(
         filesystem=filesystem,
