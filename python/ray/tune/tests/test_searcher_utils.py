@@ -1,5 +1,11 @@
+import warnings
+from unittest.mock import Mock, call
+
 import pytest
 
+from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.experiment import Trial
+from ray.tune.result import DONE
 from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, Searcher
 from ray.tune.search.repeater import Repeater
 from ray.tune.search.search_generator import SearchGenerator
@@ -359,6 +365,183 @@ def test_set_max_concurrency():
     assert limiter.suggest("test_1")["score"] == 1
     assert limiter.suggest("test_2")["score"] == 2
     assert limiter.suggest("test_3")["score"] == 3
+
+
+@pytest.mark.parametrize(
+    "container", [None, list, tuple], ids=["trial", "list", "tuple"]
+)
+@pytest.mark.parametrize(
+    "status,result,expected_point,expect_warning",
+    [
+        (Trial.ERROR, {}, {"value": None, "error": True, "pruned": False}, True),
+        (
+            Trial.ERROR,
+            {"metric": 4.0},
+            {"value": 4.0, "error": True, "pruned": False},
+            True,
+        ),
+        (
+            Trial.TERMINATED,
+            {"metric": 0.0, DONE: True},
+            {"value": 0.0, "error": False, "pruned": False},
+            False,
+        ),
+        (
+            Trial.TERMINATED,
+            {"metric": 1.0, DONE: False},
+            {"value": 1.0, "error": False, "pruned": True},
+            True,
+        ),
+        (Trial.TERMINATED, {DONE: True}, None, True),
+        (Trial.TERMINATED, {DONE: False}, None, True),
+        (Trial.PENDING, {}, None, True),
+        (Trial.RUNNING, {}, None, True),
+        (Trial.PAUSED, {}, None, True),
+        (
+            Trial.PENDING,
+            {"metric": 4.0},
+            {"value": 4.0, "error": False, "pruned": False},
+            True,
+        ),
+        (
+            Trial.RUNNING,
+            {"metric": 4.0},
+            {"value": 4.0, "error": False, "pruned": False},
+            True,
+        ),
+        (
+            Trial.PAUSED,
+            {"metric": 4.0},
+            {"value": 4.0, "error": False, "pruned": False},
+            True,
+        ),
+    ],
+    ids=[
+        "error-no-metric",
+        "error-metric",
+        "complete",
+        "pruned",
+        "complete-no-metric",
+        "pruned-no-metric",
+        "pending-no-metric",
+        "running-no-metric",
+        "paused-no-metric",
+        "pending-metric",
+        "running-metric",
+        "paused-metric",
+    ],
+)
+def test_add_evaluated_trials(
+    container, status, result, expected_point, expect_warning
+):
+    trial = Trial("stub", config={"x": 1.0}, stub=True)
+    trial.set_status(status)
+    trial.update_last_result(result)
+    searcher = Searcher()
+    searcher.add_evaluated_point = Mock()
+    trials = trial if container is None else container([trial])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        searcher.add_evaluated_trials(trials, "metric")
+
+    if expected_point is None:
+        searcher.add_evaluated_point.assert_not_called()
+    else:
+        searcher.add_evaluated_point.assert_called_once_with(
+            parameters={"x": 1.0}, intermediate_values=None, **expected_point
+        )
+    assert len(caught) == int(expect_warning)
+    if expect_warning:
+        assert "No completed trial returned the specified metric" in str(
+            caught[0].message
+        )
+
+
+@pytest.mark.parametrize("error_first", [False, True])
+def test_add_evaluated_trials_mixed_results(error_first):
+    completed = Trial("stub", config={"x": 1.0}, stub=True)
+    completed.set_status(Trial.TERMINATED)
+    completed.update_last_result({"metric": 0.0, DONE: True})
+    errored = Trial("stub", config={"x": 2.0}, stub=True)
+    errored.set_status(Trial.ERROR)
+    trials = [errored, completed] if error_first else [completed, errored]
+    searcher = Searcher()
+    searcher.add_evaluated_point = Mock()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        searcher.add_evaluated_trials(trials, "metric")
+
+    completed_call = call(
+        parameters={"x": 1.0},
+        value=0.0,
+        error=False,
+        pruned=False,
+        intermediate_values=None,
+    )
+    errored_call = call(
+        parameters={"x": 2.0},
+        value=None,
+        error=True,
+        pruned=False,
+        intermediate_values=None,
+    )
+    expected_calls = (
+        [errored_call, completed_call]
+        if error_first
+        else [completed_call, errored_call]
+    )
+    assert searcher.add_evaluated_point.call_args_list == expected_calls
+    assert not caught
+
+
+@pytest.mark.parametrize(
+    "container", [list, tuple, ExperimentAnalysis], ids=["list", "tuple", "analysis"]
+)
+@pytest.mark.parametrize("status", [Trial.PENDING, Trial.RUNNING, Trial.PAUSED])
+def test_add_evaluated_trials_skips_nonterminal_without_metric(
+    container, status, tmp_path
+):
+    first = Trial("stub", config={"x": 1.0}, stub=True)
+    first.set_status(Trial.TERMINATED)
+    first.update_last_result({"metric": 0.0, DONE: True})
+    unfinished = Trial("stub", config={"x": 2.0}, stub=True)
+    unfinished.set_status(status)
+    last = Trial("stub", config={"x": 3.0}, stub=True)
+    last.set_status(Trial.TERMINATED)
+    last.update_last_result({"metric": 3.0, DONE: True})
+    trials = [first, unfinished, last]
+    if container is ExperimentAnalysis:
+        trials = ExperimentAnalysis(
+            str(tmp_path / "experiment_state.json"), trials=trials
+        )
+    else:
+        trials = container(trials)
+    searcher = Searcher()
+    searcher.add_evaluated_point = Mock()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        searcher.add_evaluated_trials(trials, "metric")
+
+    assert searcher.add_evaluated_point.call_args_list == [
+        call(
+            parameters={"x": 1.0},
+            value=0.0,
+            error=False,
+            pruned=False,
+            intermediate_values=None,
+        ),
+        call(
+            parameters={"x": 3.0},
+            value=3.0,
+            error=False,
+            pruned=False,
+            intermediate_values=None,
+        ),
+    ]
+    assert not caught
 
 
 if __name__ == "__main__":
