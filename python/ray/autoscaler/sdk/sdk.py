@@ -6,7 +6,7 @@ import tempfile
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
-from ray._private.label_utils import validate_label_selector
+from ray._common.label_utils import validate_label_selector
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.event_system import (

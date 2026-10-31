@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
-from ray._private.label_utils import (
+from ray._common.label_utils import (
     validate_node_label_syntax,
 )
 from ray.autoscaler._private.constants import (
