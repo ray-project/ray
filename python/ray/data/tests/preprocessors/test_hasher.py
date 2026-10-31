@@ -74,6 +74,31 @@ def test_feature_hasher_serialization():
     assert len(result["hashed"][1]) == 8
 
 
+def test_feature_hasher_non_default_index_and_empty_batch():
+    """Tests FeatureHasher on DataFrames with non-default indices and zero rows."""
+    hasher = FeatureHasher(
+        columns=["I", "like", "Python"], num_features=8, output_column="hashed"
+    )
+
+    df = pd.DataFrame({"I": [1, 1], "like": [1, 0], "Python": [1, 1]}, index=[10, 20])
+    result = hasher.transform_batch(df)
+    assert list(result.index) == [10, 20]
+    assert not result["hashed"].isna().any()
+    assert result.loc[10, "hashed"].sum() == 3
+    assert result.loc[20, "hashed"].sum() == 2
+
+    empty_df = pd.DataFrame(
+        {
+            "I": pd.Series([], dtype="int64"),
+            "like": pd.Series([], dtype="int64"),
+            "Python": pd.Series([], dtype="int64"),
+        }
+    )
+    empty_result = hasher.transform_batch(empty_df)
+    assert len(empty_result) == 0
+    assert "hashed" in empty_result.columns
+
+
 if __name__ == "__main__":
     import sys
 

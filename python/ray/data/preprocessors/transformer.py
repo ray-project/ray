@@ -121,7 +121,7 @@ class PowerTransformer(SerializablePreprocessorBase):
                     )
                 else:
                     result[~pos] = -np.log(-s[~pos] + 1)
-                return result
+                return pd.Series(result, index=s.index)
 
             else:  # box-cox
                 if self._power != 0:
