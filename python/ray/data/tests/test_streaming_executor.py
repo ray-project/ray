@@ -47,12 +47,16 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.execution.ranker import DefaultRanker
-from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.resource_manager import (
+    ResourceManager,
+    terminal_operator_from_topology,
+)
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
 )
 from ray.data._internal.execution.streaming_executor_state import (
+    WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
     OpBufferQueue,
     OpState,
     OutputBackpressureGuard,
@@ -667,6 +671,360 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
     # and the policy attribution should be cleared.
     assert o2._in_task_output_backpressure is False
     assert o2._task_output_backpressure_policy is None
+
+
+class _OutputBudgetPolicy:
+    """Backpressure policy that applies per-operator output budgets set by the test."""
+
+    name = "OutputBudget"
+
+    def __init__(self, budgets: dict):
+        self.budgets = budgets
+
+    def can_add_input(self, op):
+        return True
+
+    def max_task_output_bytes_to_read(self, op):
+        return self.budgets.get(op)
+
+
+@ray.remote(num_returns="streaming")
+def _never_yields():
+    time.sleep(999)
+    yield
+
+
+def _make_two_op_topology():
+    o1 = InputDataBuffer(DataContext.get_current(), make_ref_bundles([[0]]))
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o2,
+        DataContext.get_current(),
+        name="O3",
+    )
+    topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+    topo[o3].consumer_activity = _RecordingEvent()
+    return topo, o2, o3
+
+
+class _RecordingEvent(threading.Event):
+    """``threading.Event`` that records each ``wait`` and signals when one begins."""
+
+    def __init__(self):
+        super().__init__()
+        self.wait_started = threading.Event()
+        self.wait_timeouts = []
+        self.wait_results = []
+
+    def wait(self, timeout=None):
+        self.wait_timeouts.append(timeout)
+        self.wait_started.set()
+        result = super().wait(timeout)
+        self.wait_results.append(result)
+        return result
+
+
+def _make_ready_data_task(block_nbytes, outputs, raise_exception=None) -> DataOpTask:
+    streaming_gen = create_stub_streaming_gen(
+        block_nbytes=block_nbytes, raise_exception=raise_exception
+    )
+    ray.wait([streaming_gen], fetch_local=False)
+    return DataOpTask(
+        0,
+        streaming_gen,
+        BlockRefCounter(),
+        "test_op",
+        output_ready_callback=outputs.append,
+    )
+
+
+def _process_completed_tasks_with_wait_spy(topo, policy, guard=None):
+    """Run one inline ``process_completed_tasks`` call on a topology from
+    ``_make_two_op_topology``. Return the waitables passed to each ``ray.wait``
+    call and the timeouts of each wait on the output ``consumer_activity``."""
+    consumer_activity = topo[terminal_operator_from_topology(topo)].consumer_activity
+    consumer_activity.wait_timeouts.clear()
+    fake_ray = MagicMock(wraps=ray)
+    with patch("ray.data._internal.execution.streaming_executor_state.ray", fake_ray):
+        _process_completed_tasks_sync(
+            topo, [policy], 0, guard or _make_disabled_guard()
+        )
+    waited_on = [list(call.args[0]) for call in fake_ray.wait.call_args_list]
+    return waited_on, list(consumer_activity.wait_timeouts)
+
+
+def test_process_completed_tasks_waits_for_consumer_when_all_tasks_output_backpressured(
+    ray_start_regular_shared,
+):
+    topo, o2, _ = _make_two_op_topology()
+    outputs = []
+    task = _make_ready_data_task([MiB], outputs)
+    o2.get_active_tasks = MagicMock(return_value=[task])
+
+    waited_on, consumer_waits = _process_completed_tasks_with_wait_spy(
+        topo, _OutputBudgetPolicy({o2: 0})
+    )
+
+    assert waited_on == []
+    assert consumer_waits == [WAIT_FOR_TASK_COMPLETION_TIMEOUT_S]
+    assert outputs == []
+    assert task._start_output_backpressure_s is not None
+
+
+def test_process_completed_tasks_resumes_output_backpressured_task(
+    ray_start_regular_shared,
+):
+    topo, o2, _ = _make_two_op_topology()
+    outputs = []
+    task = _make_ready_data_task([1 * MiB, 2 * MiB, 3 * MiB], outputs)
+    o2.get_active_tasks = MagicMock(
+        side_effect=lambda: [] if task.has_finished else [task]
+    )
+    policy = _OutputBudgetPolicy({o2: 0})
+
+    for _ in range(3):
+        _process_completed_tasks_with_wait_spy(topo, policy)
+    assert outputs == []
+
+    policy.budgets.clear()
+    for _ in range(100):
+        if task.has_finished:
+            break
+        waited_on, consumer_waits = _process_completed_tasks_with_wait_spy(topo, policy)
+        assert waited_on == [[task.get_waitable()]]
+        assert consumer_waits == []
+
+    assert task.has_finished
+    assert [bundle.size_bytes() for bundle in outputs] == pytest.approx(
+        [1 * MiB, 2 * MiB, 3 * MiB], rel=0.1
+    )
+    assert task._total_output_backpressure_s > 0
+
+
+def test_process_completed_tasks_waits_only_on_readable_tasks(
+    ray_start_regular_shared,
+):
+    topo, o2, o3 = _make_two_op_topology()
+    blocked_outputs = []
+    blocked = _make_ready_data_task([MiB], blocked_outputs)
+    running = DataOpTask(0, _never_yields.remote(), BlockRefCounter(), "test_op")
+    o2.get_active_tasks = MagicMock(return_value=[blocked])
+    o3.get_active_tasks = MagicMock(return_value=[running])
+
+    try:
+        waited_on, consumer_waits = _process_completed_tasks_with_wait_spy(
+            topo, _OutputBudgetPolicy({o2: 0})
+        )
+    finally:
+        ray.cancel(running.get_waitable(), force=True)
+
+    assert waited_on == [[running.get_waitable()]]
+    assert consumer_waits == []
+    assert blocked_outputs == []
+    assert blocked._start_output_backpressure_s is not None
+
+
+def test_process_completed_tasks_waits_on_tasks_released_by_guard(
+    ray_start_regular_shared,
+):
+    topo, o2, _ = _make_two_op_topology()
+    outputs = []
+    task = _make_ready_data_task([MiB], outputs)
+    o2.get_active_tasks = MagicMock(return_value=[task])
+    guard = _make_disabled_guard()
+    guard.should_unblock.return_value = True
+
+    waited_on, consumer_waits = _process_completed_tasks_with_wait_spy(
+        topo, _OutputBudgetPolicy({o2: 0}), guard=guard
+    )
+
+    assert waited_on == [[task.get_waitable()]]
+    assert consumer_waits == []
+    assert len(outputs) == 1
+
+
+def test_process_completed_tasks_waits_on_metadata_tasks_of_backpressured_ops(
+    ray_start_regular_shared,
+):
+    topo, o2, _ = _make_two_op_topology()
+    task_done_callback = MagicMock()
+    task = MetadataOpTask(0, ray.put("done"), task_done_callback)
+    o2.get_active_tasks = MagicMock(return_value=[task])
+
+    waited_on, consumer_waits = _process_completed_tasks_with_wait_spy(
+        topo, _OutputBudgetPolicy({o2: 0})
+    )
+
+    assert waited_on == [[task.get_waitable()]]
+    assert consumer_waits == []
+    task_done_callback.assert_called_once()
+
+
+def test_process_completed_tasks_raises_failure_once_output_budget_frees(
+    ray_start_regular_shared,
+):
+    topo, o2, _ = _make_two_op_topology()
+    task = _make_ready_data_task([], [], raise_exception=ValueError("boom"))
+    o2.get_active_tasks = MagicMock(return_value=[task])
+    policy = _OutputBudgetPolicy({o2: 0})
+
+    _, consumer_waits = _process_completed_tasks_with_wait_spy(topo, policy)
+    assert consumer_waits == [WAIT_FOR_TASK_COMPLETION_TIMEOUT_S]
+
+    policy.budgets.clear()
+    with pytest.raises(ValueError, match="boom"):
+        _process_completed_tasks_with_wait_spy(topo, policy)
+
+
+def _make_fully_backpressured_topology():
+    topo, o2, o3 = _make_two_op_topology()
+    o2.get_active_tasks = MagicMock(return_value=[_make_ready_data_task([MiB], [])])
+    return topo, _OutputBudgetPolicy({o2: 0}), topo[o3]
+
+
+def _get_output_until_finished(output_state):
+    try:
+        return output_state.get_output_blocking(None)
+    except StopIteration:
+        return None
+
+
+# The fallback timeout is raised so a wakeup can only come from consumer activity.
+_patch_long_wait_timeout = patch(
+    "ray.data._internal.execution.streaming_executor_state."
+    "WAIT_FOR_TASK_COMPLETION_TIMEOUT_S",
+    60,
+)
+
+
+@pytest.mark.parametrize(
+    "consumer_action,num_consumers",
+    [("pop", 1), ("start_waiting", 1), ("start_waiting", 2)],
+)
+def test_consumer_activity_wakes_output_backpressured_wait(
+    consumer_action, num_consumers, ray_start_regular_shared
+):
+    topo, policy, output_state = _make_fully_backpressured_topology()
+    if consumer_action == "pop":
+        output_state.add_output(make_ref_bundle(0))
+
+    executor = threading.Thread(
+        target=_process_completed_tasks_sync,
+        args=(topo, [policy], 0, _make_disabled_guard()),
+    )
+    consumers = [
+        threading.Thread(target=_get_output_until_finished, args=(output_state,))
+        for _ in range(num_consumers)
+    ]
+    with _patch_long_wait_timeout:
+        executor.start()
+        assert output_state.consumer_activity.wait_started.wait(timeout=10)
+        for consumer in consumers:
+            consumer.start()
+        executor.join(timeout=10)
+        assert not executor.is_alive()
+
+    assert output_state.consumer_activity.wait_results == [True]
+    output_state.mark_finished()
+    for consumer in consumers:
+        consumer.join(timeout=10)
+        assert not consumer.is_alive()
+
+
+def test_consumer_activity_before_wait_is_not_lost(ray_start_regular_shared):
+    topo, policy, output_state = _make_fully_backpressured_topology()
+    output_state.add_output(make_ref_bundle(0))
+
+    output_state.consumer_activity.clear()
+    assert output_state.get_output_blocking(None) is not None
+    with _patch_long_wait_timeout:
+        _process_completed_tasks_sync(topo, [policy], 0, _make_disabled_guard())
+
+    assert output_state.consumer_activity.wait_results == [True]
+
+
+def test_consumer_activity_from_many_pops_wakes_once(ray_start_regular_shared):
+    topo, policy, output_state = _make_fully_backpressured_topology()
+    bundles = [make_ref_bundle(i) for i in range(8)]
+    for bundle in bundles:
+        output_state.add_output(bundle)
+
+    output_state.consumer_activity.clear()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        popped = list(
+            pool.map(lambda _: output_state.get_output_blocking(None), bundles)
+        )
+    with _patch_long_wait_timeout:
+        _process_completed_tasks_sync(topo, [policy], 0, _make_disabled_guard())
+    assert output_state.consumer_activity.wait_results == [True]
+
+    popped_refs = [ref for bundle in popped for ref in bundle.block_refs]
+    expected_refs = [ref for bundle in bundles for ref in bundle.block_refs]
+    assert sorted(ref.hex() for ref in popped_refs) == sorted(
+        ref.hex() for ref in expected_refs
+    )
+
+    output_state.consumer_activity.clear()
+    with patch(
+        "ray.data._internal.execution.streaming_executor_state."
+        "WAIT_FOR_TASK_COMPLETION_TIMEOUT_S",
+        0.01,
+    ):
+        _process_completed_tasks_sync(topo, [policy], 0, _make_disabled_guard())
+    assert output_state.consumer_activity.wait_results == [True, False]
+
+
+@pytest.mark.parametrize(
+    "previous_bytes,reported_bytes,expect_wakeup",
+    [(100, 50, True), (100, 0, True), (100, 100, False), (50, 100, False)],
+)
+def test_set_external_consumer_bytes_wakes_only_when_bytes_drop(
+    previous_bytes, reported_bytes, expect_wakeup
+):
+    resource_manager = MagicMock()
+    resource_manager.get_external_consumer_bytes.return_value = previous_bytes
+    output_state = MagicMock()
+    output_state.consumer_activity = threading.Event()
+    executor = MagicMock(
+        _resource_manager=resource_manager, _output_node=(None, output_state)
+    )
+
+    StreamingExecutor.set_external_consumer_bytes(executor, reported_bytes)
+
+    resource_manager.set_external_consumer_bytes.assert_called_once_with(reported_bytes)
+    assert output_state.consumer_activity.is_set() == expect_wakeup
+
+
+@pytest.mark.parametrize(
+    "consumer_idle,active_tasks,has_output,expected",
+    [
+        (False, [], False, True),
+        (True, [], False, False),
+        (False, [MagicMock(spec=DataOpTask)], False, False),
+        (False, [MagicMock(spec=MetadataOpTask)], False, False),
+        (False, [], True, False),
+    ],
+    ids=["waits", "consumer_idle", "data_task", "actor_ready_task", "output"],
+)
+def test_should_wait_for_consumer_activity(
+    consumer_idle, active_tasks, has_output, expected, ray_start_regular_shared
+):
+    topo, o2, _ = _make_two_op_topology()
+    for op in topo:
+        op.has_next = MagicMock(return_value=False)
+    o2.get_active_tasks = MagicMock(return_value=active_tasks)
+    o2.has_next = MagicMock(return_value=has_output)
+    executor = MagicMock()
+    executor._consumer_idling.return_value = consumer_idle
+
+    should_wait = StreamingExecutor._should_wait_for_consumer_activity(executor, topo)
+    assert should_wait == expected
 
 
 def test_summary_str_backpressure_policies(ray_start_regular_shared):
