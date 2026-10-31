@@ -1036,6 +1036,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._recoverable_resource_availabilities = (
                 recoverable_resource_availabilities
             )
+            # Issues unique pending locality domain ids for the whole scheduling
+            # pass; shallow copies of the context share the iterator.
+            self._pending_domain_ids = itertools.count()
 
         @classmethod
         def from_schedule_request(
@@ -1713,8 +1716,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         def _sort_gang_resource_requests(req: GangResourceRequest) -> Tuple:
             """
             Key function for sorting the gang resource request by:
-                1. whether the gang is pinned to a specific locality domain.
-                2. the number of placement and locality constraints in the gang request.
+                1. the number of label constraints narrowing the locality domain
+                   (set when a rescheduling gang is pinned to its domain).
+                2. the number of placement and locality constraints in the gang
+                   request, counting a locality requirement once per bundle.
                 3. the number of resource requests in the gang request.
             """
             requests = (
@@ -1725,18 +1730,18 @@ class ResourceDemandScheduler(IResourceScheduler):
             total_placement_constraints = sum(
                 len(r.placement_constraints) for r in requests
             )
-            pinned_domain_constraints = 0
+            locality_label_constraints = 0
             if req.bundle_selectors and req.bundle_selectors[0].HasField(
                 "locality_requirement"
             ):
                 locality_req = req.bundle_selectors[0].locality_requirement
-                total_placement_constraints += 1
-                pinned_domain_constraints = len(
+                total_placement_constraints += len(requests)
+                locality_label_constraints = len(
                     locality_req.label_selector.label_constraints
                 )
 
             return (
-                pinned_domain_constraints,
+                locality_label_constraints,
                 total_placement_constraints,
                 len(requests),
             )
@@ -1779,7 +1784,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 if any(not k.startswith(IMPLICIT_RESOURCE_PREFIX) for k in shape)
             ]
 
-        return bool(domain_nodes) and all(
+        return all(
             _can_fit_any_request(n.total_resources, shapes)
             and _capacity(
                 n.get_available_resources(ResourceRequestSource.PENDING_DEMAND)
@@ -1800,10 +1805,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         """Assign domain and worker ID labels to unregistered replica hosts in
         place.
 
-        KubeRay creates a new replica as `size` pods at once and replaces failed
-        hosts one pod at a time, so pending hosts first complete idle registering
-        slices, then form whole new replicas, and any remainder completes busy
-        slices.
+        KubeRay creates a replica's `size` pods together and backfills the hosts
+        a replica is still missing, so pending hosts first complete idle
+        registering slices, then form whole new replicas, and any remainder
+        completes busy slices.
         """
         for node_type, size in replica_sizes.items():
             pending = sorted(
@@ -1835,7 +1840,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                     node.labels[RAY_NODE_TPU_WORKER_ID_KEY] = str(host_index)
                     domain_nodes.append(node)
 
-            # Registering slices closest to completion first.
+            # Registering slices closest to completion first. Refilling a slice
+            # is a no-op once its worker IDs are all present.
             registering = sorted(
                 (
                     d
@@ -1846,18 +1852,13 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ),
                 key=lambda d: (size - len(nodes_by_domain[d]), d),
             )
-            idle = [
-                d
-                for d in registering
-                if ResourceDemandScheduler._is_domain_idle(nodes_by_domain[d], shapes)
-            ]
-            for d in idle:
-                _fill(d)
+            for d in registering:
+                if ResourceDemandScheduler._is_domain_idle(nodes_by_domain[d], shapes):
+                    _fill(d)
             while len(pending) >= size:
                 _fill(new_domain())
             for d in registering:
-                if d not in idle:
-                    _fill(d)
+                _fill(d)
 
     @staticmethod
     def _add_label_constraints_to_requests(
@@ -1984,9 +1985,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 size = TPUAcceleratorManager.get_node_group_num_hosts(
                     cfg.labels, cfg.resources
                 )
-                if size is not None and _can_fit_any_request(
-                    dict(cfg.resources), shapes
-                ):
+                if size is not None and _can_fit_any_request(cfg.resources, shapes):
                     replica_sizes[node_type] = size
         nodes_by_domain: Dict[str, List[SchedulingNode]] = defaultdict(list)
         for node in all_nodes:
@@ -1998,14 +1997,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             for cfg in node_type_configs.values()
             if cfg.labels.get(locality_label)
         }
-        # Pending domains created by earlier gangs in this pass are numbered
-        # contiguously, so the next free index is their count.
-        pending_domain_ids = itertools.count(
-            sum(d.startswith(_PENDING_DOMAIN_PREFIX) for d in nodes_by_domain)
-        )
 
         def _new_pending_domain() -> str:
-            return f"{_PENDING_DOMAIN_PREFIX}{next(pending_domain_ids)}"
+            return f"{_PENDING_DOMAIN_PREFIX}{next(ctx._pending_domain_ids)}"
 
         total_demand: Dict[str, float] = defaultdict(float)
         for r in requests:
@@ -2110,16 +2104,15 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Try existing or static domains first, then candidate new replicas.
         best_with_launch: Optional[Tuple[int, List[SchedulingNode]]] = None
         for domain_val, replica in [(d, []) for d in existing_domains] + new_replicas:
-            domain_nodes = replica or nodes_by_domain.get(domain_val, [])
-            is_dynamic = bool(replica) or domain_val not in static_domains
-            pending_siblings = (
-                unlabeled_pending_by_type.get(domain_nodes[0].node_type, [])
-                if not replica
-                and domain_nodes
-                and ResourceDemandScheduler._is_domain_idle(domain_nodes, shapes)
-                else []
-            )
-            if is_dynamic:
+            if domain_val not in static_domains:
+                domain_nodes = replica or nodes_by_domain[domain_val]
+                # Booting siblings may join an idle dynamic domain.
+                pending_siblings = (
+                    unlabeled_pending_by_type[domain_nodes[0].node_type]
+                    if domain_nodes[0].node_type in unlabeled_pending_by_type
+                    and ResourceDemandScheduler._is_domain_idle(domain_nodes, shapes)
+                    else []
+                )
                 # Skip domains that lack capacity before running bin-packing. Every
                 # candidate node already carries `locality_label == domain_val` and
                 # `_schedule_in_domain` cannot launch, so no constraint is needed.
@@ -2141,7 +2134,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                         [
                             LabelSelectorConstraint(
                                 label_key=locality_label,
-                                operator=LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                operator=_LABEL_OPERATOR_IN,
                                 label_values=[domain_val],
                             )
                         ],
@@ -2179,7 +2172,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 [
                     LabelSelectorConstraint(
                         label_key=locality_label,
-                        operator=LabelSelectorOperator.LABEL_OPERATOR_NOT_IN,
+                        operator=_LABEL_OPERATOR_NOT_IN,
                         label_values=existing_domains + [_EXCLUDED_DOMAIN],
                     )
                 ],

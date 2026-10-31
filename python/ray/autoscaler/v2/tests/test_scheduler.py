@@ -4416,6 +4416,17 @@ def test_gang_locality_requirement_tpu_slices():
         [_make_running_domain_node("cpu", "cpu-0", {"CPU": 8}, {})],
     ) == ({"tpu_4x4": 4}, 0)
 
+    # A slice gang outranks a node-level STRICT_PACK gang, so the latter does
+    # not fragment an idle slice.
+    affinity = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+    pack_2 = GangResourceRequest(
+        requests=[ResourceRequestUtil.make({"CPU": 2}, [(affinity, "pg", "")])] * 2
+    )
+    assert _schedule_gangs(cpu_and_tpu, [pack_2, gang], idle_slice_0) == (
+        {"cpu": 1},
+        0,
+    )
+
     # Cloud resource availability tie-breaks equal-priority multi-host node types.
     spot_and_ondemand = {
         "tpu_spot": _tpu_config("tpu_spot"),
@@ -4426,6 +4437,24 @@ def test_gang_locality_requirement_tpu_slices():
         [gang],
         availabilities={"tpu_spot": 0.0, "tpu_ondemand": 1.0},
     ) == ({"tpu_ondemand": 4}, 0)
+
+    # Pending domain ids stay unique across gangs when several TPU node types
+    # fit a gang, so a later gang never sees two new replicas merged into one
+    # domain and spread across both.
+    two_host_configs = {
+        **TPU_CONFIGS,
+        "tpu_2x4": _tpu_config(
+            "tpu_2x4", max_workers=4, labels=TPU_SINGLE_CONFIG.labels
+        ),
+    }
+    assert _schedule_gangs(
+        two_host_configs,
+        [
+            _tpu_gang((None,) * 4, bundle={"TPU": 1}, pod_type=None),
+            _tpu_gang((None,) * 3, pod_type=None),
+            _tpu_gang((None,) * 2, pod_type=None),
+        ],
+    ) == ({"tpu_2x4": 4, "tpu_4x4": 4}, 0)
 
 
 GPU_LABELS = {"ray.io/accelerator-type": "GB200"}

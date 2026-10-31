@@ -1163,9 +1163,12 @@ class TPUAcceleratorManager(AcceleratorManager):
         ):
             return None
         chips_per_host = get_chips_per_host(topology, generation)
-        if divmod(int(resources.get("TPU", 0)), get_tpu_resource_per_chip()) == (
-            DEFAULT_TPU_NUM_CHIPS_PER_HOST,
-            0,
+        # A single-host v5e/v6e topology may also be split across 4-chip hosts,
+        # e.g. 2x4 as ct6e-standard-4t (2 hosts) rather than ct6e-standard-8t.
+        if (
+            chips_per_host > DEFAULT_TPU_NUM_CHIPS_PER_HOST
+            and resources.get("TPU", 0)
+            == DEFAULT_TPU_NUM_CHIPS_PER_HOST * get_tpu_resource_per_chip()
         ):
             chips_per_host = DEFAULT_TPU_NUM_CHIPS_PER_HOST
-        return max(1, get_num_chips_from_topology(topology) // chips_per_host)
+        return get_num_chips_from_topology(topology) // chips_per_host
