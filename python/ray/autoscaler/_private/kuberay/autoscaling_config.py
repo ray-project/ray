@@ -1,6 +1,7 @@
 import decimal
 import json
 import logging
+import sys
 import time
 from itertools import chain
 from typing import Any, Dict, Optional
@@ -14,6 +15,7 @@ from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
+    MAX_CONCURRENT_LAUNCHES_KEY,
     WORKER_LIVENESS_CHECK_KEY,
 )
 from ray.autoscaler._private.kuberay import node_provider, utils
@@ -155,6 +157,8 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
         FOREGROUND_NODE_LAUNCH_KEY: True,
         WORKER_LIVENESS_CHECK_KEY: False,
+        # KubeRay launches nodes by patching replicas in one CR update, so don't cap concurrent launches.
+        MAX_CONCURRENT_LAUNCHES_KEY: sys.maxsize,
     }
 
 
