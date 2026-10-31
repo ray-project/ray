@@ -605,7 +605,8 @@ class TrainController:
         for a non-running worker group.
 
         This method handles the complete flow of:
-        1. Shutting down the non-running worker group if it still exists.
+        1. Shutting down the non-running worker group if it still exists (unless the
+           backend manages replica groups, which may perform partial replacement).
         2. Getting a scaling decision for a non-running worker group
         3. Determining the next state based on the decision type
         4. Creating and returning the iteration result
@@ -616,6 +617,9 @@ class TrainController:
         Returns:
             TrainControllerLoopIterationResult with the appropriate next state
         """
+        if self._worker_group and not self._manages_replica_groups:
+            self._shutdown_worker_group()
+
         scaling_decision = (
             self._scaling_policy.make_decision_for_non_running_worker_group()
         )
