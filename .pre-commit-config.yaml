@@ -179,6 +179,18 @@ repos:
         exclude: |
           (?x)^python/ray/serve/_private/(benchmarks|thirdparty)/
 
+      # Ray Data pyrefly check. Mirrors the CI job (ci/lint/pyrefly-check.sh):
+      # same pyrefly version and the same exclusion list, applied by the
+      # wrapper script because the list is too large to keep in sync as a
+      # pre-commit exclude regex. Scope/config lives in the repo-root
+      # pyrefly.toml, which pyrefly auto-discovers.
+      - id: pyrefly-data
+        name: pyrefly (ray data)
+        language: python
+        additional_dependencies: [pyrefly==0.51.0]
+        entry: python ci/lint/pyrefly_precommit.py
+        files: '^python/ray/data/.*\.py$'
+
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
     hooks:
