@@ -1,5 +1,7 @@
+import functools
 import logging
-from typing import List, Tuple, Type
+import secrets
+from typing import Callable, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -16,11 +18,21 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _make_slice_partition_fn,
     _sort_reduce,
 )
-from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
-    DiskHashShuffleMapOp,
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    MapTransformer,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
+    disk_shuffle_dirs,
+)
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
+    BlockTransformer,
+    DiskShuffleWriteFn,
+    PartitionFn,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
@@ -64,18 +76,75 @@ logger = logging.getLogger(__name__)
 _SORT_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
+def plan_disk_hash_shuffle_map(
+    input_op: PhysicalOperator,
+    data_context: DataContext,
+    *,
+    num_partitions: int,
+    partition_fn: PartitionFn,
+    block_transformer: Optional[BlockTransformer] = None,
+    map_cpus: float = ShuffleMapOp._DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
+    name: str = "DiskHashShuffleMap",
+) -> MapOperator:
+    """Plan the disk-shuffle map stage: a task-pool ``MapOperator`` whose
+    transform partitions each input bundle into one local file and yields a
+    one-row handle block for ``DiskHashShuffleReduceOp``.
+
+    Args:
+        input_op: Upstream physical operator.
+        data_context: Runtime configuration.
+        num_partitions: Total number of output partitions.
+        partition_fn: Function mapping a pa.Table to Dict[int, pa.Table].
+        block_transformer: Optional transform applied to the concatenation of
+            each task's input blocks before partitioning (e.g. map-side
+            partial aggregation). May change the block schema.
+        map_cpus: CPU request per map task.
+        name: Display name of the map operator.
+
+    Returns:
+        The map operator writing this shuffle's mapper files.
+    """
+    shuffle_id = secrets.token_hex(8)
+    map_dir, _ = disk_shuffle_dirs(shuffle_id)
+
+    write_fn = DiskShuffleWriteFn(
+        partition_fn=partition_fn,
+        num_partitions=num_partitions,
+        out_dir=map_dir,
+        shuffle_id=shuffle_id,
+        compression=data_context.shuffle_compression,
+        block_transformer=block_transformer,
+    )
+    return MapOperator.create(
+        MapTransformer([BlockMapTransformFn(write_fn, disable_block_shaping=True)]),
+        input_op,
+        data_context,
+        name=name,
+        ray_remote_args={"num_cpus": map_cpus, "runtime_env": _SHUFFLE_MAP_RUNTIME_ENV},
+        blocking_materializing=True,
+        supports_fusion=False,
+    )
+
+
 def _select_shuffle_v2_op_classes(
     data_context: DataContext,
-) -> Tuple[Type[PhysicalOperator], Type[PhysicalOperator], str]:
+) -> Tuple[Callable[..., PhysicalOperator], Callable[..., PhysicalOperator], str]:
     """Pick the SHUFFLE_V2 map/reduce op family: disk-based (file-transport) or
     object-store, per ``data_context.use_disk_based_hash_shuffle``.
 
-    Returns ``(map_cls, reduce_cls, name_prefix)`` where ``name_prefix`` is
-    ``"Disk"`` or ``""``, to be prepended to the op display names.
+    Returns ``(build_map, reduce_cls, name_prefix)``. ``build_map`` takes
+    ``(input_op, data_context, *, num_partitions, partition_fn,
+    block_transformer, name)`` and returns the operator the reduce consumes.
+    ``name_prefix`` is ``"Disk"`` or ``""``, to be prepended to the op display
+    names.
     """
     if data_context.use_disk_based_hash_shuffle:
-        return DiskHashShuffleMapOp, DiskHashShuffleReduceOp, "Disk"
-    return ShuffleMapOp, ShuffleReduceOp, ""
+        return plan_disk_hash_shuffle_map, DiskHashShuffleReduceOp, "Disk"
+    return (
+        functools.partial(ShuffleMapOp, map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV),
+        ShuffleReduceOp,
+        "",
+    )
 
 
 def _plan_gpu_shuffle_repartition(
@@ -136,7 +205,6 @@ def _plan_hash_shuffle_repartition_v2(
         data_context,
         num_partitions=target_num_partitions,
         partition_fn=partition_fn,
-        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
             f"{prefix}HashShuffleMap(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
@@ -173,7 +241,6 @@ def _plan_shuffle_repartition_v2(
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_slice_partition_fn(num_partitions),
-        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=f"{prefix}SliceShuffleMap(partitions={num_partitions})",
     )
     return reduce_cls(
@@ -290,7 +357,6 @@ def _plan_hash_shuffle_aggregate_v2(
         num_partitions=num_partitions,
         partition_fn=partition_fn,
         block_transformer=block_transformer,
-        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
             f"{prefix}HashAggregateMap(key_columns={key_columns}, "
             f"num_partitions={num_partitions})"

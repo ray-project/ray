@@ -236,6 +236,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
+        blocking_materializing: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -280,7 +281,13 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, [input_op], data_context, target_max_block_size_override)
+        super().__init__(
+            name,
+            [input_op],
+            data_context,
+            target_max_block_size_override,
+            blocking_materializing=blocking_materializing,
+        )
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
@@ -383,6 +390,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        blocking_materializing: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -423,6 +431,8 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            blocking_materializing: If ``True``, no downstream operator can use any
+                of this operator's output until all of it exists.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -465,6 +475,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 on_start=on_start,
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                blocking_materializing=blocking_materializing,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
@@ -493,6 +504,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                blocking_materializing=blocking_materializing,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")

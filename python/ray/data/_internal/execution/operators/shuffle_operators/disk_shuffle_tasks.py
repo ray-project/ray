@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (
     Any,
     Generator,
+    Iterable,
+    Iterator,
     List,
     Optional,
     Union,
@@ -37,6 +39,7 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runti
     _PartitionWriter,
     _PwriteSink,
     _read_ipc,
+    handle_to_block,
 )
 
 # PartitionFn/ReduceFn/BlockTransformer contracts are shared with the
@@ -67,19 +70,19 @@ _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 _DEFAULT_FETCH_THREADS = 16
 
 
-@ray.remote  # pyrefly: ignore[no-matching-overload]
-def _disk_shuffle_map_task(
-    *blocks: Block,
+def _write_disk_shuffle_file(
+    blocks: Iterable[Block],
+    *,
     partition_fn: PartitionFn,
     num_partitions: int,
     out_dir: str,
     map_id: int,
     shuffle_id: str,
-    compression: Optional[str] = None,
-    block_transformer: Optional[BlockTransformer] = None,
+    compression: Optional[str],
+    block_transformer: Optional[BlockTransformer],
 ) -> ShuffleHandle:
-    """Map stage: partition input blocks, write them to a single file under
-    ``out_dir``, and return a ``ShuffleHandle`` (on-disk path +
+    """Partition ``blocks`` and seal them into ``out_dir/map_{map_id}.shf``,
+    returning the ``ShuffleHandle`` reducers fetch from (on-disk path +
     ``index_ranges`` + per-partition ``num_rows`` / ``decoded_bytes`` +
     ``shuffle_id`` / ``node_id``). Shuffle bytes never enter the Ray object
     store.
@@ -90,7 +93,7 @@ def _disk_shuffle_map_task(
     a complete, size-validated one.
 
     Args:
-        *blocks: Input blocks to partition.
+        blocks: Input blocks to partition.
         partition_fn: Hash partitioner returning ``Dict[partition_id, Table]``.
         num_partitions: Total downstream partitions M.
         out_dir: Directory to write ``map_{i}.shf`` into.
@@ -104,19 +107,22 @@ def _disk_shuffle_map_task(
     Returns:
         ShuffleHandle describing the on-disk shards for reducers to fetch.
     """
-    exec_stats_builder = BlockExecStats.builder()
     if block_transformer is not None:
+        # The transformer (map-side combiner) needs the whole input at once.
+        blocks = list(blocks)
         arrow_inputs = [
             TableBlockAccessor.try_convert_block_type(block, block_type=BlockType.ARROW)
             for block in blocks
             if BlockAccessor.for_block(block).num_rows() > 0
         ] or [
-            TableBlockAccessor.try_convert_block_type(
-                blocks[0], block_type=BlockType.ARROW
-            )
+            # Run on an empty typed block so a global aggregate over empty
+            # input still produces its identity row.
+            TableBlockAccessor.try_convert_block_type(block, block_type=BlockType.ARROW)
+            for block in blocks[:1]
         ]
-        combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
-        blocks = (block_transformer(combined_input),)
+        if arrow_inputs:
+            combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
+            blocks = (block_transformer(combined_input),)
     node_id = ray.get_runtime_context().get_node_id()
     # Ensure the file-server actor exists (get_if_exists=True → reuse across
     # mappers on the same node). We don't need to keep the handle: reducers
@@ -172,7 +178,7 @@ def _disk_shuffle_map_task(
             else:
                 expected_size = 0
             assert final_size_on_close == expected_size, (
-                f"_disk_shuffle_map_task: file size mismatch, wrote "
+                f"map_{map_id}.shf: file size mismatch, wrote "
                 f"{final_size_on_close} bytes, index implies {expected_size}"
             )
 
@@ -208,13 +214,57 @@ def _disk_shuffle_map_task(
             writer.decoded_bytes_per_partition, num_partitions
         ),
         "schema": output_schema,
-        "exec_stats": exec_stats_builder.build(block_ser_time_s=0.0, task_idx=map_id),
     }
+
+
+class DiskShuffleWriteFn:
+    """Block transform that closes a disk-shuffle map task: partition the
+    task's blocks, seal them into one ``map_{task_idx}.shf`` file, and yield
+    the handle block (``handle_to_block``).
+    """
+
+    def __init__(
+        self,
+        *,
+        partition_fn: PartitionFn,
+        num_partitions: int,
+        out_dir: str,
+        shuffle_id: str,
+        compression: Optional[str],
+        block_transformer: Optional[BlockTransformer],
+    ):
+        self._partition_fn = partition_fn
+        self._num_partitions = num_partitions
+        self._out_dir = out_dir
+        self._shuffle_id = shuffle_id
+        # Raw ``DataContext.shuffle_compression``, as the object-store
+        # ShuffleMapOp passes it. Normalization (casing and the "none"
+        # sentinel) lives in ``_codec_for``, which both the map (encode) and
+        # reduce (decode) sides go through, so they can't disagree on the codec.
+        self._compression = compression
+        self._block_transformer = block_transformer
+
+    @property
+    def block_transformer(self) -> Optional[BlockTransformer]:
+        return self._block_transformer
+
+    def __call__(self, blocks: Iterable[Block], ctx: "TaskContext") -> Iterator[Block]:
+        handle = _write_disk_shuffle_file(
+            blocks,
+            partition_fn=self._partition_fn,
+            num_partitions=self._num_partitions,
+            out_dir=self._out_dir,
+            map_id=ctx.task_idx,
+            shuffle_id=self._shuffle_id,
+            compression=self._compression,
+            block_transformer=self._block_transformer,
+        )
+        yield handle_to_block(handle)
 
 
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _disk_shuffle_reduce_task(
-    *handles_by_input: List[ShuffleHandle],
+    *handles_by_input: List["ray.ObjectRef"],
     partition_id: int,
     reduce_fn: ReduceFn,
     max_bytes_per_fetch: int,

@@ -23,20 +23,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     ReportsExtraResourceUsage,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShufflingOperatorBase,
-)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
-    DiskHashShuffleMapOp,
-)
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
-    ShuffleMapOp,
-)
-from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 from ray.util.debug import log_once
@@ -58,19 +45,6 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
 #
 # I arbitrarily chose the default delay.
 STARVATION_WARNING_DELAY_S = env_float("RAY_DATA_STARVATION_WARNING_DELAY_S", 60)
-
-
-# Following list is a list of *blocking* materializing operators, that prevent
-# operators downstream from them from starting execution until these operators
-# finish executing.
-_BLOCKING_MATERIALIZING_OPERATORS = (
-    HashShufflingOperatorBase,
-    AllToAllOperator,
-    ShuffleMapOp,
-    DiskHashShuffleMapOp,
-    # TODO remove after zip made fully streaming
-    ZipOperator,
-)
 
 
 def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
@@ -553,7 +527,7 @@ class ResourceManager:
         """
 
         # Check if Op itself is a blocking, materializing operator
-        if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS):
+        if op.is_blocking_materializing:
             return True
 
         # Check if any of its direct *ineligible* downstream dependencies are
@@ -562,7 +536,7 @@ class ResourceManager:
         # NOTE: We only check ineligible downstream deps, since eligible downstream
         #       deps will have their own allocation that is adjusted appropriately
         return any(
-            isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS)
+            op.is_blocking_materializing
             for op in self._get_downstream_ineligible_ops(op)
         )
 
@@ -576,14 +550,14 @@ class ResourceManager:
         the line, and exempting it keeps Map1 from backing up.
         """
         return any(
-            isinstance(downstream_op, _BLOCKING_MATERIALIZING_OPERATORS)
+            downstream_op.is_blocking_materializing
             for downstream_op in self.get_downstream_eligible_ops(op)
         )
 
 
 def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
-        if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS) and not op.has_completed():
+        if op.is_blocking_materializing and not op.has_completed():
             return idx
 
     return -1

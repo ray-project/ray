@@ -14,7 +14,6 @@ from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
 )
 from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-    _SHUFFLE_MAP_RUNTIME_ENV,
     _make_hash_partition_fn,
 )
 from ray.data._internal.execution.operators.input_data_buffer import (
@@ -164,7 +163,6 @@ def _plan_join_shuffle_v2(
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(left_keys, num_partitions),
-        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
             f"{prefix}JoinShuffleMapLeft(keys={tuple(left_keys)}, "
             f"parts={num_partitions})"
@@ -175,7 +173,6 @@ def _plan_join_shuffle_v2(
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(right_keys, num_partitions),
-        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
             f"{prefix}JoinShuffleMapRight(keys={tuple(right_keys)}, "
             f"parts={num_partitions})"

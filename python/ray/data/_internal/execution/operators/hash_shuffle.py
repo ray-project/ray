@@ -865,6 +865,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._try_finalize()
         return len(self._output_queue) > 0
 
+    @property
+    def is_blocking_materializing(self) -> bool:
+        # Partitions are finalized only after every input has been shuffled.
+        return True
+
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
         if not self._shuffle_started:

@@ -905,15 +905,16 @@ class DataContext:
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
             shuffle input blocks before partitioning. Applies to the
-            ``SHUFFLE_V2`` shuffle strategy (including disk-based hash shuffle).
-            Other shuffle strategies ignore it. Input blocks are buffered per
-            node and
-            processed as a batch once this size is reached; remaining
-            buffered blocks are flushed when input is exhausted. Lower values
-            increase shuffle parallelism (useful for CPU-intensive shuffles)
-            at the cost of more, smaller intermediate shard objects. Set to
-            ``0`` to disable batching, processing each input bundle
-            individually. Defaults to 1GiB.
+            object-store ``SHUFFLE_V2`` shuffle strategy only; the disk-based
+            hash shuffle (``use_disk_based_hash_shuffle``) runs one map task
+            per input bundle since a file per mapper already bounds the
+            number of shards, and other shuffle strategies ignore it. Input
+            blocks are buffered per node and processed as a batch once this
+            size is reached; remaining buffered blocks are flushed when input
+            is exhausted. Lower values increase shuffle parallelism (useful
+            for CPU-intensive shuffles) at the cost of more, smaller intermediate
+            shard objects. Set to ``0`` to disable batching, processing each
+            input bundle individually. Defaults to 1GiB.
         use_disk_based_hash_shuffle: Whether ``repartition()`` with keys or shuffle,
             aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
             disk-based (file-transport) shuffle instead of the object

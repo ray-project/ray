@@ -79,19 +79,15 @@ class TestDownstreamCapacityBackpressurePolicy:
         # Set up eligibility methods (used by ResourceManager.is_op_eligible)
         mock_operator.throttling_disabled.return_value = throttling_disabled
         mock_operator.has_execution_finished.return_value = has_execution_finished
+        mock_operator.is_blocking_materializing = False
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
         return mock_operator, op_state
 
     def _mock_materializing_operator(self):
-        """Helper method to create mock materializing operator (e.g., AllToAllOperator).
-
-        This creates a mock that passes isinstance(op, AllToAllOperator).
-        We use __class__ assignment to make isinstance work with MagicMock.
-        """
+        """Helper method to create mock materializing operator (e.g., AllToAllOperator)."""
         mock_operator = MagicMock(spec=AllToAllOperator)
-        mock_operator.__class__ = AllToAllOperator  # Make isinstance work
         mock_operator.metrics = MagicMock(spec=OpRuntimeMetrics)
         mock_operator.metrics.num_tasks_running = 0
         mock_operator.metrics.obj_store_mem_internal_inqueue = 0
@@ -103,6 +99,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         mock_operator.throttling_disabled = types.MethodType(
             AllToAllOperator.throttling_disabled, mock_operator
         )
+        mock_operator.is_blocking_materializing = True
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
@@ -271,7 +268,7 @@ class TestDownstreamCapacityBackpressurePolicy:
             obj_store_mem_pending_task_inputs=100,
             throttling_disabled=throttling_disabled,
         )
-        materializing_op.__class__ = op_class
+        materializing_op.is_blocking_materializing = True
         op.output_dependencies = [materializing_op]
 
         topology = {op: op_state, materializing_op: materializing_op_state}
