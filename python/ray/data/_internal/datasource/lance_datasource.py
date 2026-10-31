@@ -13,6 +13,31 @@ if TYPE_CHECKING:
     import pyarrow
 
 
+# Only these options are known to preserve unfiltered fragment row counts.
+# Unknown options must not produce a potentially incorrect exact count.
+_ROW_COUNT_PRESERVING_SCANNER_OPTIONS = {
+    "columns",
+    "fragments",
+    "batch_size",
+    "batch_size_bytes",
+    "batch_readahead",
+    "fragment_readahead",
+    "scan_in_order",
+    "prefilter",
+    "with_row_id",
+    "with_row_address",
+    "use_stats",
+    "io_buffer_size",
+    "late_materialization",
+    "blob_handling",
+    "use_scalar_index",
+    "scan_stats_callback",
+    "strict_batch_size",
+    "order_by",
+    "disable_scoring_autoprojection",
+}
+
+
 class LanceDatasource(Datasource):
     """Lance datasource, for reading Lance dataset."""
 
@@ -82,8 +107,7 @@ class LanceDatasource(Datasource):
     ) -> List[ReadTask]:
         read_tasks = []
 
-        # Lance scanner's filter attr accepts only a string (SQL).
-        # See: https://github.com/lance-format/lance/blob/aac74b441cdb6df7d78700dbba33c521e6379ca5/python/python/lance/lance/__init__.pyi#L230
+        # Combine the pushed predicate with the scanner's filter for data scans.
         filter_expr = (
             str(self._predicate_expr.to_pyarrow())
             if self._predicate_expr is not None
@@ -148,7 +172,7 @@ class LanceDatasource(Datasource):
             if current_lance_ds is not None:
                 dataset_fragment_groups.append((current_lance_ds, current_fragment_ids))
 
-            num_rows = sum(fragment.count_rows() for fragment in chunk_fragments)
+            num_rows = self._get_read_task_num_rows(chunk_fragments, filter_expr)
             input_files = [
                 data_file.path()
                 for fragment in chunk_fragments
@@ -181,6 +205,27 @@ class LanceDatasource(Datasource):
             )
             read_tasks.append(read_task)
         return read_tasks
+
+    def _get_read_task_num_rows(
+        self,
+        fragments: List[Any],
+        filter_expr: Any,
+    ) -> Optional[int]:
+        if filter_expr is not None:
+            # Planning can request read tasks repeatedly, including before an
+            # early-terminating read. Let execution determine filtered counts
+            # instead of scanning the predicate columns during planning.
+            return None
+
+        for key, value in self.scanner_options.items():
+            if key in {"fast_search", "include_deleted_rows"} and value is False:
+                continue
+            if value is not None and key not in _ROW_COUNT_PRESERVING_SCANNER_OPTIONS:
+                # Search, limits, offsets, and other row-set modifiers cannot use
+                # fragment live-row counts. Determine the count during execution.
+                return None
+
+        return sum(fragment.count_rows() for fragment in fragments)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(chengsu): Add memory size estimation to improve auto-tune of parallelism.
