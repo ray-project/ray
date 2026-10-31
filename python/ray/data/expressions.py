@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import functools
-import math
 import uuid as builtin_uuid
 from abc import ABC, abstractmethod
 from collections import Counter
@@ -805,10 +804,11 @@ class Expr(ABC):
         The result keeps the expression's type when ``fill_value`` fits it.
         Otherwise the result has the common type of both. For example, filling an
         ``int32`` column with ``0`` returns ``int32``, and filling it with ``0.5``
-        returns a float column instead of truncating to ``0``. A float fill value
-        for a ``float32`` column is rounded to ``float32`` precision, unless it's
-        too large for ``float32``. ``NaN`` in a float column isn't null, so it
-        isn't replaced.
+        returns a float column instead of truncating to ``0``, as does any other
+        non-integer fill value for an integer column. Likewise, filling a
+        ``float32`` column with ``0.5`` returns ``float32``, and filling it with
+        ``1.1``, which ``float32`` can't represent exactly, returns ``float64``.
+        ``NaN`` in a float column isn't null, so it isn't replaced.
 
         Args:
             fill_value: The scalar to use in place of nulls. A literal expression
@@ -1828,22 +1828,38 @@ def _fill_null(arr: Any, fill_value: "pyarrow.Scalar") -> Any:
             ).type
             if common_type != arr.type:
                 # Keep the column's type when the fill value fits it, so that
-                # filling an int32 column with 0 doesn't widen it to int64.
-                try:
-                    narrowed = fill_value.cast(arr.type)
-                except (pyarrow.ArrowInvalid, pyarrow.ArrowNotImplementedError):
-                    narrowed = None
-                # A safe cast to a narrower float type overflows to infinity
-                # instead of raising, so keep the original value in that case.
-                overflowed = (
-                    narrowed is not None
-                    and pyarrow.types.is_floating(arr.type)
-                    and math.isinf(narrowed.as_py())
-                    and not math.isinf(fill_value.as_py())
-                )
-                if narrowed is not None and not overflowed:
-                    fill_value = narrowed
+                # filling an int32 column with 0 doesn't widen it to int64. Only
+                # narrow a value the column's type represents exactly: predicate
+                # pushdown can't see that type, so it uses the original value,
+                # and a rounded value here would select different rows. For the
+                # same reason, keep a non-integer type for an integer column:
+                # later division would otherwise switch to integer division.
+                if pyarrow.types.is_integer(fill_value.type) or (
+                    not pyarrow.types.is_integer(arr.type)
+                ):
+                    narrowed = _cast_if_exact(fill_value, arr.type)
+                    if narrowed is not None:
+                        fill_value = narrowed
     return pc.if_else(pc.is_null(arr), fill_value, arr)
+
+
+def _cast_if_exact(
+    scalar: "pyarrow.Scalar", target_type: "pyarrow.DataType"
+) -> Optional["pyarrow.Scalar"]:
+    """Cast ``scalar`` to ``target_type``, or return None if its value would change.
+
+    A safe cast isn't enough: it rounds floats, and overflows to infinity when
+    casting to a narrower float type, instead of raising.
+    """
+    try:
+        result = scalar.cast(target_type)
+        round_trip = result.cast(scalar.type).as_py()
+    except (pyarrow.ArrowInvalid, pyarrow.ArrowNotImplementedError):
+        return None
+    value = scalar.as_py()
+    # NaN doesn't equal itself, but casting it does preserve it.
+    is_nan = value != value
+    return result if is_nan or round_trip == value else None
 
 
 def _create_pyarrow_compute_udf(
