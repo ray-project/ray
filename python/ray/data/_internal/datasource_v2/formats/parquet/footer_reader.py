@@ -246,7 +246,9 @@ class FooterReader:
             # size for some files (apache/arrow#48138); undersizing bins
             # overfills read tasks. Shares the V1 helper so the three call
             # sites cannot drift.
-            uncompressed = _row_group_uncompressed_size(row_group, leaf_indices)
+            uncompressed = _row_group_uncompressed_size(
+                rg_meta=row_group, column_indices=leaf_indices
+            )
             decoded = uncompressed * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
         return FileChunk(
             unit_ids=(rg_idx,),

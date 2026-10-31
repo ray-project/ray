@@ -744,7 +744,7 @@ def _read_and_chunk(path):
     from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 
     return FooterReader(LocalFileSystem())._read_and_chunk(
-        FileInfo(str(path), os.path.getsize(path))
+        FileInfo(path=str(path), size=os.path.getsize(path))
     )
 
 
