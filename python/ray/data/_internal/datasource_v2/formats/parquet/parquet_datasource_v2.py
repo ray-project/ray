@@ -39,7 +39,11 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.util import RetryingPyFileSystem, _is_local_scheme
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    filesystem_for_sized_opens,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -295,6 +299,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         ``Partitioning`` can flow through ``_read_datasource_v2`` into
         :meth:`create_scanner` without side effects.
         """
+        import pyarrow.dataset as pds
         import pyarrow.parquet as pq
 
         # See ``resolve_partitioning``: ``None`` is reachable only for a
@@ -317,11 +322,11 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # schema's field order follows the first schema's and
         # ``sample_paths[0]`` drives partition discovery below.
         #
-        # NOTE: ``pq.read_schema`` only accepts a ``filesystem=`` kwarg in
-        # recent pyarrow releases; older wheels in CI don't have it. Open
-        # the file through the configured filesystem and hand the file
-        # handle to ``read_schema`` for cross-version compatibility.
-        filesystem = self._filesystem
+        # With a filesystem, the footer is read through a fragment rather
+        # than ``pq.read_schema``: a fragment takes the listing's file size,
+        # which spares the open a request for it (a HEAD on S3).
+        filesystem = filesystem_for_sized_opens(self._filesystem)
+        file_sizes = dict(zip(sample_paths, sample.known_file_sizes))
 
         if self._user_schema is not None:
             # Caller pinned the schema — skip footer reads. Partition/path
@@ -333,8 +338,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
             def _read_schema(path: str):
                 if filesystem is None:
                     return pq.read_schema(path)
-                with filesystem.open_input_file(path) as handle:
-                    return pq.read_schema(handle)
+                fragment = pds.ParquetFileFormat().make_fragment(
+                    path, filesystem=filesystem, file_size=file_sizes[path]
+                )
+                return fragment.metadata.schema.to_arrow_schema()
 
             schema = infer_schema_from_files(
                 sample_paths, _read_schema, format_name="Parquet"

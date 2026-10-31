@@ -4,7 +4,7 @@ from typing import Any, Iterator, List, Optional, Sequence, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-from pyarrow.fs import FileSystem, LocalFileSystem
+from pyarrow.fs import FileInfo, FileSystem, FileType, LocalFileSystem
 
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
@@ -24,7 +24,11 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
-from ray.data._internal.util import iterate_with_retry, make_async_gen
+from ray.data._internal.util import (
+    filesystem_for_sized_opens,
+    iterate_with_retry,
+    make_async_gen,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -201,8 +205,16 @@ class FileReader(Reader[FileManifest]):
         # different row-group slice); pyarrow only needs one fragment per
         # file, and ``_get_fragments_to_read`` then fans out chunk-level
         # sub-fragments using the per-row chunk metadata.
-        paths = list(dict.fromkeys(list(input_split.paths)))
-        filesystem = self._filesystem or LocalFileSystem()
+        #
+        # Each file carries its on-disk size from the listing, so pyarrow
+        # opens it without first asking the filesystem for the size (an
+        # extra HEAD request per open on S3).
+        file_sizes = dict(zip(input_split.paths, input_split.known_file_sizes))
+        files = [
+            FileInfo(path, FileType.File, size=size)
+            for path, size in file_sizes.items()
+        ]
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         # Build a ``pds.Dataset`` over *all* manifest paths so pyarrow's
         # listing + column metadata is shared, but then iterate its
         # fragments one at a time. ``dataset.scanner(fragments=...)``
@@ -212,7 +224,7 @@ class FileReader(Reader[FileManifest]):
         # fragment scanners let pyarrow use the native per-file type,
         # and downstream concat handles unification.
         dataset = pds.dataset(
-            source=paths,
+            source=files,
             format=self._make_format(),
             filesystem=filesystem,
             schema=self._file_dataset_schema,

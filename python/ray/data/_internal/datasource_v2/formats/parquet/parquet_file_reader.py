@@ -395,7 +395,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             c.requires_read_unit_boundaries for c in self._synthesized_columns
         )
         fragments: List[ReadUnitFragment] = []
-        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+        for path, file_size, chunk_metadata in zip(
+            manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas
+        ):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
                 num_rows = None
@@ -418,6 +420,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                         fragment,
                         chunk_metadata["unit_ids"],
                         per_row_group_offsets=per_row_group_offsets,
+                        file_size=file_size,
                     )
                 )
         return fragments
@@ -661,17 +664,22 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         """
         from pyarrow.fs import LocalFileSystem
 
-        from ray.data._internal.util import call_with_retry
+        from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
         from ray.data.context import DataContext
 
-        filesystem = self._filesystem or LocalFileSystem()
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         retried_io_errors = DataContext.get_current().retried_io_errors
 
-        def _num_rows(path: str) -> int:
+        def _num_rows(path: str, file_size: Optional[int]) -> int:
+            # A fragment, unlike ``pq.read_metadata``, takes the listing's
+            # size, which spares the open a request for it (a HEAD on S3).
+            fragment = pds.ParquetFileFormat().make_fragment(
+                path, filesystem=filesystem, file_size=file_size
+            )
             # Getting the footer requires network calls, so it may fail with
             # transient errors; retry them.
             metadata = call_with_retry(
-                lambda: pq.read_metadata(path, filesystem=filesystem),
+                lambda: fragment.metadata,
                 description=f"read Parquet footer for {path}",
                 match=retried_io_errors,
             )
@@ -679,7 +687,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
         paths = [str(p) for p in file_manifest.paths]
         with ThreadPoolExecutor() as executor:
-            for num_rows in executor.map(_num_rows, paths):
+            for num_rows in executor.map(
+                _num_rows, paths, file_manifest.known_file_sizes
+            ):
                 yield BlockMetadata(
                     num_rows=num_rows,
                     size_bytes=None,

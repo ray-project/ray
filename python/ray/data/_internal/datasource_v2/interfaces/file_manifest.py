@@ -126,6 +126,18 @@ class FileManifest:
         return BlockColumnAccessor.for_column(self._file_sizes).to_numpy()
 
     @cached_property
+    def known_file_sizes(self) -> List[Optional[int]]:
+        """``file_sizes`` as ints, with ``None`` where the listing had no size.
+
+        A missing size reads back from ``file_sizes`` as ``NaN`` or ``None``,
+        depending on the column's type.
+        """
+        return [
+            None if size is None or np.isnan(size) else int(size)
+            for size in self.file_sizes
+        ]
+
+    @cached_property
     def file_chunk_metadatas(self) -> np.ndarray:
         return BlockColumnAccessor.for_column(self._file_chunk_metadatas).to_numpy()
 
