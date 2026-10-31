@@ -23,6 +23,10 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
+from ray.data._internal.datasource_v2.common.synthesized_columns import (
+    PathColumn,
+    RowHashColumn,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
@@ -164,6 +168,48 @@ def test_prune_input_split_drops_files_by_path():
     assert list(kept.paths) == ["/root/country=US/a.csv", "/root/country=US/c.csv"]
     # Without a spec there is nothing to parse, so the split passes through.
     assert _PartitionOnlyScanner().prune_input_split(manifest) is manifest
+
+
+@pytest.mark.parametrize(
+    "synthesized_columns, expected",
+    [
+        ((), {"path", "row_hash", "country"}),
+        ((PathColumn(),), {"row_hash", "country"}),
+        ((PathColumn(), RowHashColumn()), {"country"}),
+    ],
+)
+def test_partition_columns_exclude_enabled_synthesized_columns(
+    synthesized_columns, expected
+):
+    scanner = _PartitionOnlyScanner(
+        partitioning=Partitioning(
+            PartitionStyle.HIVE, field_names=["path", "row_hash", "country"]
+        ),
+        synthesized_columns=synthesized_columns,
+    )
+
+    assert scanner.partition_columns == expected
+    assert scanner.synthesized_columns == synthesized_columns
+
+
+def test_partition_columns_use_synthesized_metadata_names():
+    class SourceFileColumn(PathColumn):
+        name = "source_file"
+
+    scanner = _PartitionOnlyScanner(
+        partitioning=Partitioning(
+            PartitionStyle.HIVE, field_names=["source_file", "path"]
+        ),
+        synthesized_columns=(SourceFileColumn(),),
+    )
+
+    assert scanner.partition_columns == {"path"}
+    assert (
+        _PartitionOnlyScanner(
+            synthesized_columns=(SourceFileColumn(),)
+        ).partition_columns
+        == set()
+    )
 
 
 @pytest.mark.parametrize("country", ["US", "CA", "missing"])

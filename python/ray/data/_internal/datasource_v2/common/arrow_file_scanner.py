@@ -9,6 +9,10 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    _split_predicate_by_columns,
+    combine_predicates,
+)
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
@@ -98,9 +102,9 @@ class ArrowFileScanner(
     def push_filters(
         self, predicate: "Expr"
     ) -> Tuple["ArrowFileScanner", Optional["Expr"]]:
-        """Push filter predicate down to the scanner.
+        """Push physical-column conjuncts down and retain synthesized filters.
 
-        ANDs the predicate with any existing predicate. The Ray ``Expr`` is
+        ANDs accepted conjuncts with any existing predicate. The Ray ``Expr`` is
         retained as the source of truth so the reader can introspect filter
         columns; conversion to a PyArrow expression happens at the
         scanner-kwargs boundary in :class:`FileReader`.
@@ -108,21 +112,29 @@ class ArrowFileScanner(
         This method handles data-column predicates only. Partition predicates
         should be pushed via :meth:`prune_partitions` instead; the optimizer
         is responsible for splitting them before calling either method.
+        Predicates referencing enabled synthesized columns must run after the
+        reader computes them. Only top-level AND conjuncts can be separated;
+        a mixed OR or NOT stays intact as a residual.
 
         Args:
             predicate: Ray Data expression to push down.
 
         Returns:
-            A pair ``(scanner, residual)`` where ``scanner`` has the predicate
-            merged into its PyArrow filter. ``residual`` is ``None`` because
-            PyArrow handles the full filter at scan time.
+            A pair ``(scanner, residual)`` where ``scanner`` has accepted
+            conjuncts merged into its PyArrow filter. ``residual`` contains
+            conjuncts requiring synthesized columns, or ``None`` if all
+            conjuncts were accepted.
         """
-        if self.predicate is not None:
-            combined = self.predicate & predicate
-        else:
-            combined = predicate
+        synthesized = {column.name for column in self.synthesized_columns}
+        split = _split_predicate_by_columns(predicate, synthesized)
+        residual = combine_predicates(
+            split.partition_predicate, split.residual_predicate
+        )
+        if split.data_predicate is None:
+            return self, residual
 
-        return replace(self, predicate=combined), None
+        combined = combine_predicates(self.predicate, split.data_predicate)
+        return replace(self, predicate=combined), residual
 
     @override
     def pushed_predicate(self) -> Optional["Expr"]:
