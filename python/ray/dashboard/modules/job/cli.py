@@ -61,6 +61,56 @@ def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _parse_key_value_pairs(
+    pairs: Tuple[str, ...], option: str, metavar: str
+) -> Dict[str, str]:
+    """Parse repeated `KEY=VALUE` CLI options into a dict.
+
+    Splits on the first `=` only, so values may contain `=`. Values may be
+    empty but keys may not. If a key is repeated, the last value wins.
+    """
+    result = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep or not key:
+            cli_logger.abort(
+                f"`{option}` must be in the form {metavar}, got `{pair}`.",
+                no_format=True,
+            )
+        result[key] = value
+    return result
+
+
+def _parse_resource_amounts(
+    resources: Dict[str, str], option: str
+) -> Dict[str, Union[int, float]]:
+    """Convert the string amounts from `_parse_key_value_pairs` to numbers."""
+    parsed = {}
+    for name, amount in resources.items():
+        try:
+            parsed[name] = int(amount)
+        except ValueError:
+            try:
+                parsed[name] = float(amount)
+            except ValueError:
+                cli_logger.abort(
+                    f"`{option}`: amount `{amount}` for resource `{name}` "
+                    "is not a number.",
+                    no_format=True,
+                )
+    return parsed
+
+
+def _check_not_both(
+    json_value: Optional[str], pairs: Tuple[str, ...], json_option: str, option: str
+):
+    """Abort if both a JSON option and its KEY=VALUE counterpart were passed."""
+    if json_value is not None and pairs:
+        cli_logger.abort(
+            f"Cannot specify both `{json_option}` and `{option}`.", no_format=True
+        )
+
+
 def _log_big_success_msg(success_msg):
     cli_logger.newline()
     cli_logger.success("-" * len(success_msg))
@@ -165,7 +215,20 @@ def job_cli_group():
     type=str,
     default=None,
     required=False,
-    help="JSON-serialized dictionary of metadata to attach to the job.",
+    help="JSON-serialized dictionary of metadata to attach to the job. "
+    "Cannot be combined with `--metadata`.",
+)
+@click.option(
+    "-m",
+    "--metadata",
+    "metadata",
+    type=str,
+    multiple=True,
+    metavar="KEY=VALUE",
+    help="Metadata to attach to the job, as a KEY=VALUE pair. Can be repeated. "
+    "Values are strings and may contain `=` (only the first `=` splits). "
+    "If a key is repeated, the last value wins. "
+    "Cannot be combined with `--metadata-json`.",
 )
 @click.option(
     "--entrypoint-num-cpus",
@@ -195,7 +258,19 @@ def job_cli_group():
     type=str,
     help="a JSON-serialized dictionary mapping resource name to resource quantity "
     "describing resources to reserve for the entrypoint command, "
-    "separately from any tasks or actors that are launched by it",
+    "separately from any tasks or actors that are launched by it. "
+    "Cannot be combined with `--entrypoint-resource`.",
+)
+@click.option(
+    "--entrypoint-resource",
+    "entrypoint_resource",
+    type=str,
+    multiple=True,
+    metavar="NAME=AMOUNT",
+    help="a custom resource to reserve for the entrypoint command, as a "
+    "NAME=AMOUNT pair where AMOUNT is a number. Can be repeated. "
+    "If a name is repeated, the last value wins. "
+    "Cannot be combined with `--entrypoint-resources`.",
 )
 @click.option(
     "--entrypoint-label-selector",
@@ -222,12 +297,14 @@ def submit(
     runtime_env: Optional[str],
     runtime_env_json: Optional[str],
     metadata_json: Optional[str],
+    metadata: Tuple[str, ...],
     working_dir: Optional[str],
     entrypoint: Tuple[str],
     entrypoint_num_cpus: Optional[Union[int, float]],
     entrypoint_num_gpus: Optional[Union[int, float]],
     entrypoint_memory: Optional[int],
     entrypoint_resources: Optional[str],
+    entrypoint_resource: Tuple[str, ...],
     entrypoint_label_selector: Optional[str],
     no_wait: bool,
     verify: Union[bool, str],
@@ -248,12 +325,14 @@ def submit(
         runtime_env: Path to a runtime_env YAML file.
         runtime_env_json: JSON-serialized runtime_env dictionary.
         metadata_json: JSON-serialized metadata dictionary.
+        metadata: Metadata as repeated KEY=VALUE pairs.
         working_dir: Working directory for the job.
         entrypoint: Entrypoint command.
         entrypoint_num_cpus: CPU cores to reserve.
         entrypoint_num_gpus: GPUs to reserve.
         entrypoint_memory: Memory to reserve.
         entrypoint_resources: JSON-serialized custom resources dict.
+        entrypoint_resource: Custom resources as repeated NAME=AMOUNT pairs.
         entrypoint_label_selector: JSON-serialized label selector dict.
         no_wait: Do not wait for job completion.
         verify: TLS verification flag or path.
@@ -263,9 +342,23 @@ def submit(
         cli_logger.warning(
             "--job-id option is deprecated. Please use --submission-id instead."
         )
+    _check_not_both(
+        entrypoint_resources,
+        entrypoint_resource,
+        "--entrypoint-resources",
+        "--entrypoint-resource",
+    )
+    _check_not_both(metadata_json, metadata, "--metadata-json", "--metadata")
     if entrypoint_resources is not None:
         entrypoint_resources = parse_resources_json(
             entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
+        )
+    elif entrypoint_resource:
+        entrypoint_resources = _parse_resource_amounts(
+            _parse_key_value_pairs(
+                entrypoint_resource, "--entrypoint-resource", "NAME=AMOUNT"
+            ),
+            "--entrypoint-resource",
         )
     if entrypoint_label_selector is not None:
         entrypoint_label_selector = parse_resources_json(
@@ -278,6 +371,8 @@ def submit(
         metadata_json = parse_metadata_json(
             metadata_json, cli_logger, cf, command_arg="metadata-json"
         )
+    elif metadata:
+        metadata_json = _parse_key_value_pairs(metadata, "--metadata", "KEY=VALUE")
 
     submission_id = submission_id or job_id
 

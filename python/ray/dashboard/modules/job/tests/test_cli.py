@@ -545,6 +545,118 @@ class TestSubmit:
             check_exit_code(result, 1)
             assert "not a valid JSON string" in result.output
 
+    def test_metadata_key_value(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "-m",
+                    "a=1",
+                    "--metadata",
+                    "b=x=y",
+                    "-m",
+                    "empty=",
+                    "--",
+                    "echo hello",
+                ],
+            )
+            check_exit_code(result, 0)
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint=_expected_entrypoint("echo hello"),
+                submission_id=None,
+                runtime_env={},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_memory=None,
+                entrypoint_resources=None,
+                entrypoint_label_selector=None,
+                metadata={"a": "1", "b": "x=y", "empty": ""},
+            )
+
+    def test_metadata_key_value_repeated_key_last_wins(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "-m", "a=1", "-m", "a=2", "--", "echo hello"],
+            )
+            check_exit_code(result, 0)
+            _, kwargs = mock_client_instance.submit_job.call_args
+            assert kwargs["metadata"] == {"a": "2"}
+
+    def test_entrypoint_resource_key_value(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--entrypoint-resource",
+                    "custom=1",
+                    "--entrypoint-resource",
+                    "other=0.5",
+                    "--",
+                    "echo hello",
+                ],
+            )
+            check_exit_code(result, 0)
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint=_expected_entrypoint("echo hello"),
+                submission_id=None,
+                runtime_env={},
+                metadata=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_memory=None,
+                entrypoint_resources={"custom": 1, "other": 0.5},
+                entrypoint_label_selector=None,
+            )
+            _, kwargs = mock_client_instance.submit_job.call_args
+            assert isinstance(kwargs["entrypoint_resources"]["custom"], int)
+            assert isinstance(kwargs["entrypoint_resources"]["other"], float)
+
+    @pytest.mark.parametrize(
+        "args, error",
+        [
+            (
+                ["--metadata-json", '{"key": "value"}', "-m", "a=1"],
+                "Cannot specify both",
+            ),
+            (["-m", "novalue"], "KEY=VALUE"),
+            (["-m", "=value"], "KEY=VALUE"),
+            (
+                [
+                    "--entrypoint-resources",
+                    '{"Custom": 1}',
+                    "--entrypoint-resource",
+                    "other=1",
+                ],
+                "Cannot specify both",
+            ),
+            (["--entrypoint-resource", "custom"], "NAME=AMOUNT"),
+            (["--entrypoint-resource", "=1"], "NAME=AMOUNT"),
+            (["--entrypoint-resource", "custom=lots"], "is not a number"),
+        ],
+    )
+    def test_key_value_invalid(self, mock_sdk_client, args, error):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(job_cli_group, ["submit", *args, "--", "echo hello"])
+            print(result.output)
+            check_exit_code(result, 1)
+            assert error in result.output
+            mock_client_instance.submit_job.assert_not_called()
+
     @pytest.mark.parametrize(
         "cli_val, verify_param",
         [
