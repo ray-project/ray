@@ -285,6 +285,10 @@ def test_blocked_on_consumer_when_consumer_is_slow(
 
     wait_for_condition(blocked_on_consumer, timeout=30)
 
+    # Drain so the iteration threads exit before the fixture shuts Ray down.
+    for _ in it:
+        pass
+
 
 if __name__ == "__main__":
     import sys
