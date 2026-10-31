@@ -83,14 +83,20 @@ def mock_union_op(input_ops):
     return op
 
 
-def mock_join_op(left_input_op, right_input_op):
+def mock_join_op(
+    left_input_op,
+    right_input_op,
+    num_partitions=1,
+    num_cpus=1,
+    aggregator_ray_remote_args_override=None,
+):
     left_input_op._logical_operators = [MagicMock()]
     right_input_op._logical_operators = [MagicMock()]
 
     with patch(
         "ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources"
     ) as mock:
-        mock.return_value = ExecutionResources(cpu=1)
+        mock.return_value = ExecutionResources(cpu=num_cpus)
 
         op = JoinOperator(
             DataContext.get_current(),
@@ -99,8 +105,9 @@ def mock_join_op(left_input_op, right_input_op):
             ("id",),
             ("id",),
             "inner",
-            num_partitions=1,
+            num_partitions=num_partitions,
             partition_size_hint=1,
+            aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
         )
 
     op.start = MagicMock(side_effect=lambda *_: None)
