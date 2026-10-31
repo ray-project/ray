@@ -32,6 +32,10 @@ class SGLangEngineRequest(BaseModel):
     prompt_token_ids: Optional[List[int]] = None
     # The sampling parameters (more details can be seen in https://docs.sglang.ai/backend/sampling_params.html).
     params: Optional[Dict[str, Any]] = None
+    # Multimodal media inputs (mapped to SGLang native fields).
+    image_data: Optional[Any] = None
+    audio_data: Optional[Any] = None
+    video_data: Optional[Any] = None
 
     class Config:
         validate_assignment = True
@@ -50,8 +54,15 @@ class SGLangOutputData(BaseModel):
     generated_text: Optional[str] = None
     num_generated_tokens: int
 
+    # Embed fields.
+    embeddings: Optional[Any] = None
+
     # Metrics fields.
     metrics: Optional[Dict[str, Any]] = None
+
+    # Logprobs fields.
+    logprobs: Optional[Any] = None
+    prompt_logprobs: Optional[Any] = None
 
     @classmethod
     def from_sglang_engine_output(cls, output: Dict[str, Any]) -> "SGLangOutputData":
@@ -66,13 +77,26 @@ class SGLangOutputData(BaseModel):
         assert "prompt_tokens" in output["meta_info"]
         assert "completion_tokens" in output["meta_info"]
 
+        meta_info = output["meta_info"]
+        logprobs = None
+        if "output_token_logprobs" in meta_info:
+            logprobs = meta_info["output_token_logprobs"]
+        elif "logprobs" in meta_info:
+            logprobs = meta_info["logprobs"]
+
+        prompt_logprobs = meta_info.get("prompt_logprobs", None)
+
         data = cls(
             prompt=output["prompt"],
             prompt_token_ids=output["prompt_token_ids"],
-            num_input_tokens=output["meta_info"]["prompt_tokens"],
+            num_input_tokens=meta_info["prompt_tokens"],
             generated_tokens=output["output_ids"] if "output_ids" in output else None,
             generated_text=output["text"] if "text" in output else None,
-            num_generated_tokens=output["meta_info"]["completion_tokens"],
+            num_generated_tokens=meta_info["completion_tokens"],
+            embeddings=output.get("embedding"),
+            metrics=output.get("metrics", None),
+            logprobs=logprobs,
+            prompt_logprobs=prompt_logprobs,
         )
 
         return data
@@ -140,12 +164,17 @@ class SGLangEngineWrapper:
         Returns:
             A single SGLangEngineRequest.
         """
-        prompt = row.pop("prompt")
+        prompt = row.pop("prompt", None)
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = row.pop("tokenized_prompt").tolist()
+            tokenized_prompt = maybe_convert_ndarray_to_list(
+                row.pop("tokenized_prompt")
+            )
         else:
             tokenized_prompt = None
+
+        if prompt is None and tokenized_prompt is None:
+            raise ValueError("Either 'prompt' or 'tokenized_prompt' must be provided.")
 
         # Prepare sampling parameters.
         if self.task_type == SGLangTaskType.GENERATE:
@@ -158,12 +187,65 @@ class SGLangEngineWrapper:
                 "To use a token-in-token-out mode of SGLang Engine, please set engine_kwargs['skip_tokenizer_init'] to True."
             )
 
+        # Multimodal handling:
+        # Extract media columns using the same conventions as the vLLM path,
+        # popping them from row so raw media blobs do not linger in the dataset.
+        multimodal_data = row.pop("multimodal_data", None)
+        row.pop("multimodal_uuids", None)
+        row.pop("mm_processor_kwargs", None)
+
+        # Unconditionally pop only specific SGLang engine media columns.
+        image_data = row.pop("image_data", None)
+        audio_data = row.pop("audio_data", None)
+        video_data = row.pop("video_data", None)
+
+        if multimodal_data is not None:
+            if not isinstance(multimodal_data, dict):
+                raise TypeError(
+                    f"Expected 'multimodal_data' to be a dict, got {type(multimodal_data).__name__}"
+                )
+
+            supported_modalities = {"image", "audio", "video"}
+            unsupported = set(multimodal_data.keys()) - supported_modalities
+            if unsupported:
+                raise ValueError(
+                    f"Unsupported multimodal modality: {sorted(unsupported)}. "
+                    f"SGLang engine only supports {sorted(supported_modalities)}."
+                )
+
+            if "image" in multimodal_data:
+                if image_data is not None:
+                    raise ValueError(
+                        "Conflicting image data provided: both 'multimodal_data[\"image\"]' "
+                        "and direct 'image_data' column were specified."
+                    )
+                image_data = multimodal_data["image"]
+
+            if "audio" in multimodal_data:
+                if audio_data is not None:
+                    raise ValueError(
+                        "Conflicting audio data provided: both 'multimodal_data[\"audio\"]' "
+                        "and direct 'audio_data' column were specified."
+                    )
+                audio_data = multimodal_data["audio"]
+
+            if "video" in multimodal_data:
+                if video_data is not None:
+                    raise ValueError(
+                        "Conflicting video data provided: both 'multimodal_data[\"video\"]' "
+                        "and direct 'video_data' column were specified."
+                    )
+                video_data = multimodal_data["video"]
+
         request = SGLangEngineRequest(
             request_id=self.request_id,
             idx_in_batch=row[self.idx_in_batch_column],
             prompt=prompt,
             prompt_token_ids=tokenized_prompt,
             params=params,
+            image_data=image_data,
+            audio_data=audio_data,
+            video_data=video_data,
         )
         self.request_id += 1
         return request
@@ -200,13 +282,31 @@ class SGLangEngineWrapper:
             The output of the request.
         """
 
-        # Send the request to the LLM engine.
-        stream = await self.engine.async_generate(
-            prompt=request.prompt,
-            input_ids=request.prompt_token_ids,
-            sampling_params=request.params,
-            stream=True,
-        )
+        # Forward media kwargs to the SGLang engine.
+        media_kwargs = {}
+        if request.image_data is not None:
+            media_kwargs["image_data"] = request.image_data
+        if request.audio_data is not None:
+            media_kwargs["audio_data"] = request.audio_data
+        if request.video_data is not None:
+            media_kwargs["video_data"] = request.video_data
+
+        try:
+            # Send the request to the LLM engine.
+            stream = await self.engine.async_generate(
+                prompt=request.prompt,
+                input_ids=request.prompt_token_ids,
+                sampling_params=request.params,
+                stream=True,
+                **media_kwargs,
+            )
+        except TypeError as e:
+            if any(k in str(e) for k in ("image_data", "audio_data", "video_data")):
+                raise ValueError(
+                    f"The underlying SGLang engine rejected the multimodal input: {e}. "
+                    "Ensure your SGLang installation and model architecture support this modality."
+                ) from e
+            raise
 
         # Consume the stream until the request is finished.
         async for output in stream:
@@ -370,14 +470,39 @@ class SGLangEngineStage(StatefulStage):
 
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
-        ret = {"prompt": "The text prompt (str)."}
+        ret = {}
         task_type = self.fn_constructor_kwargs.get("task_type", SGLangTaskType.GENERATE)
         if task_type == SGLangTaskType.GENERATE:
-            ret[
-                "sampling_params"
-            ] = "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.html for details."
+            ret["sampling_params"] = (
+                "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.html for details."
+            )
         return ret
 
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
-        return {}
+        return {
+            "prompt": (
+                "The text prompt (str). Required if tokenized_prompt is not provided. "
+                "Either prompt or tokenized_prompt must be provided."
+            ),
+            "tokenized_prompt": (
+                "The tokenized prompt. Required if prompt is not provided. "
+                "Either prompt or tokenized_prompt must be provided."
+            ),
+            "multimodal_data": (
+                "The multimodal data (images, audio, video) to pass to the model, "
+                "if the model supports it."
+            ),
+            "multimodal_uuids": (
+                "User-specified UUIDs for multimodal items, mapped by modality."
+            ),
+            "mm_processor_kwargs": (
+                "The kwargs for the engine's multimodal processor."
+            ),
+            "image_data": (
+                "Direct image data input for SGLang (single image, list of images, "
+                "URLs, paths, or PIL Images)."
+            ),
+            "audio_data": "Direct audio data input for SGLang.",
+            "video_data": "Direct video data input for SGLang.",
+        }
