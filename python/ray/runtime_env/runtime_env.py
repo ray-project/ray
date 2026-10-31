@@ -277,6 +277,9 @@ class RuntimeEnv(dict):
             Ray sets for the container, such as the mounted
             `RAY_AUTH_TOKEN_PATH`; `$$` is a literal `$`. Expanded values, like the rest of `run_options`, appear on
             podman's command line.
+            The job's `env_vars` are passed to the container through an
+            in-memory env file, so their values stay off podman's command
+            line. A name or value with a line break is rejected.
         env_vars: Environment variables to set.
         worker_process_setup_hook: Experimental. The setup hook that's
             called after workers start and before Tasks and Actors are scheduled.

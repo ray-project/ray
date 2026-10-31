@@ -52,6 +52,79 @@ def expand_run_option(run_option: str, env: Dict[str, str]) -> str:
     return _RUN_OPTION_REFERENCE.sub(expand, run_option)
 
 
+def validate_container_env_vars(env_vars: Dict[str, str]) -> None:
+    """Checks that env_vars can go in a podman `--env-file`.
+
+    The file holds one `NAME=VALUE` per line, so a line break in a name or
+    value would split or truncate it.
+
+    Args:
+        env_vars: The job's `env_vars` for a container worker.
+
+    Raises:
+        ValueError: Naming the variable that can't be written to the file.
+    """
+    for name, value in env_vars.items():
+        if (
+            not name
+            or "=" in name
+            or name.startswith("#")
+            or any(c.isspace() for c in name)
+            or "\0" in name
+        ):
+            raise ValueError(
+                f"The env_vars name {name!r} is not supported in a runtime env "
+                "with `image_uri` or `container`."
+            )
+        if any(c in value for c in "\n\r\0"):
+            raise ValueError(
+                f"The env_vars value of {name!r} contains a line break or NUL, "
+                "which is not supported in a runtime env with `image_uri` or "
+                "`container`."
+            )
+
+
+def _create_env_file(env_vars: Dict[str, str]) -> Optional[int]:
+    """Writes env_vars to an in-memory file as `NAME=VALUE` lines.
+
+    Args:
+        env_vars: The job's `env_vars` for a container worker.
+
+    Returns:
+        An inheritable fd for `--env-file=/dev/fd/N`, so the values stay off
+        podman's command line; or None if there is nothing to write or
+        `memfd_create` isn't available.
+    """
+    if not env_vars:
+        return None
+    try:
+        fd = os.memfd_create("ray_container_env")
+    except (AttributeError, OSError) as e:
+        logger.warning(
+            "os.memfd_create is not available (%s), so the job's env_vars values "
+            "will appear on the container worker's command line.",
+            e,
+        )
+        return None
+    try:
+        data = memoryview(
+            os.fsencode(
+                "".join(f"{name}={value}\n" for name, value in env_vars.items())
+            )
+        )
+        while data:
+            written = os.write(fd, data)
+            if written == 0:
+                raise OSError("os.write returned 0 bytes written")
+            data = data[written:]
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.set_inheritable(fd, True)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
 @DeveloperAPI
 class RuntimeEnvContext:
     """A context used to describe the created runtime env."""
@@ -159,15 +232,26 @@ class RuntimeEnvContext:
         # the host launcher. RAY_* vars are passed by name, so podman reads
         # their values from that environment and the --env flags carry none;
         # a run_options item that references one still puts its value on argv.
-        container_env: Dict[str, Optional[str]] = {
-            name: None for name in launcher_env if name.startswith("RAY_")
-        }
         # Passed as written, without expanding ${VAR} against the host env.
-        # TODO(ray-project/ray#67216): move job values off argv (--env-file).
-        container_env.update(self.env_vars)
+        # The job's values go in an --env-file read from an inherited fd, so
+        # they stay off argv; without memfd_create they are --env arguments.
+        job_env_fd = _create_env_file(self.env_vars)
+        container_env: Dict[str, Optional[str]] = {
+            name: None
+            for name in launcher_env
+            # A job's own RAY_* value is in the env file and must win.
+            if name.startswith("RAY_")
+            and not (job_env_fd is not None and name in self.env_vars)
+        }
+        if job_env_fd is None:
+            container_env.update(self.env_vars)
         container_env.update(self.container["env_vars"])
 
         cmd = list(self.container["command"])
+        # Before the --env flags, so those win, as podman applies the last
+        # value given for a name.
+        if job_env_fd is not None:
+            cmd.append(f"--env-file=/dev/fd/{job_env_fd}")
         for name, value in container_env.items():
             cmd.extend(["--env", name if value is None else f"{name}={value}"])
         # After the --env flags, so a user's `--env NAME=VALUE` wins, as podman
@@ -186,4 +270,9 @@ class RuntimeEnvContext:
             ]
         )
         logger.debug(f"Exec'ing worker in container image {self.container['image']}.")
-        os.execvpe(cmd[0], cmd, launcher_env)
+        try:
+            os.execvpe(cmd[0], cmd, launcher_env)
+        finally:
+            # Only reached if the exec failed, e.g. podman isn't installed.
+            if job_env_fd is not None:
+                os.close(job_env_fd)
