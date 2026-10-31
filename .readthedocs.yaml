@@ -44,7 +44,6 @@ build:
           exit 0
         fi
         git fetch --depth=500 origin master 2>/dev/null || true
-        git fetch --deepen=500 origin HEAD 2>/dev/null || true
         if ! git merge-base origin/master HEAD >/dev/null 2>&1; then
           echo "Could not determine merge-base with origin/master; building docs to be safe."
           exit 0

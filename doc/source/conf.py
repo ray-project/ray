@@ -42,27 +42,6 @@ assert not os.path.exists(
 ), "_raylet.so should not be imported for the purpose for doc build, please rename the file to _raylet.so.bak and try again."
 sys.path.insert(0, os.path.abspath("../../python/"))
 
-# Register a Sphinx-compatible meta-path finder for mocked modules before
-# any extension setup runs. Sphinx's own ``autodoc_mock_imports`` only wires
-# the finder inside ``sphinx.ext.autodoc.setup()``, which happens after
-# autosummary and other extensions have already connected their
-# ``builder-inited`` handlers. On shallow-clone RTD PR builds where the
-# post_checkout guard fires a Sphinx run, autosummary's
-# ``process_generate_options`` tries ``importlib.import_module('ray.serve')``
-# at that event with no mock in place, and the real source tree lacks the
-# compiled/generated modules the import chain needs. By installing the same
-# finder that autodoc would install, but 30 lines earlier, every module
-# import anywhere in the build sees the mock regardless of timing.
-from sphinx.ext.autodoc.mock import MockFinder
-
-from api_mock_imports import BUILD_ONLY_MOCK_MODULES, THIRD_PARTY_MOCK_MODULES
-
-_EARLY_MOCK_FINDER = MockFinder(THIRD_PARTY_MOCK_MODULES + BUILD_ONLY_MOCK_MODULES)
-# Insert at position 0 so it runs before any other finder (including the
-# real importlib one). We deliberately do NOT wrap this in a context
-# manager — the finder stays active for the whole build.
-sys.meta_path.insert(0, _EARLY_MOCK_FINDER)
-
 # -- General configuration ------------------------------------------------
 
 # This setting controls how single backticks are handled by sphinx. Developers
@@ -862,20 +841,6 @@ autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 from api_mock_imports import BUILD_ONLY_MOCK_MODULES, THIRD_PARTY_MOCK_MODULES
 
 autodoc_mock_imports = THIRD_PARTY_MOCK_MODULES + BUILD_ONLY_MOCK_MODULES
-
-# Mirror the same mock list for autosummary. Sphinx 8.x introduced a
-# separate ``autosummary_mock_imports`` config whose default is a lambda
-# that reads ``autodoc_mock_imports``, but the lambda can resolve to an
-# empty list in some Sphinx startup orderings — particularly when the
-# autosummary extension accesses it during ``builder-inited`` before the
-# lambda's config dependencies are fully resolved. Setting it explicitly
-# here guarantees autosummary's ``process_generate_options`` (which wraps
-# its module resolution in ``with mock(autosummary_mock_imports)``) sees
-# the same set of mocked modules that autodoc does. Without this,
-# autosummary's import of ``ray.serve`` fails in RTD builds because the
-# generated/compiled Ray modules (``ray.core.generated.*`` etc.) are not
-# present in the source-tree checkout.
-autosummary_mock_imports = autodoc_mock_imports
 
 for mock_target in autodoc_mock_imports:
     if mock_target in sys.modules:

@@ -503,10 +503,10 @@ class RouterMetricsManager:
         )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
-                running_requests[
-                    replica_id.to_full_id_str()
-                ] = self.metrics_store.data.get(
-                    replica_id, [TimeStampedValue(timestamp, num_requests)]
+                running_requests[replica_id.to_full_id_str()] = (
+                    self.metrics_store.data.get(
+                        replica_id, [TimeStampedValue(timestamp, num_requests)]
+                    )
                 )
         handle_metric_report = HandleMetricReport(
             deployment_id=self._deployment_id,
@@ -2017,9 +2017,9 @@ class SharedRouterLongPollClient:
 
         # We use a WeakSet to store the Routers so that we don't prevent them
         # from being garbage-collected.
-        self.routers: MutableMapping[
-            DeploymentID, weakref.WeakSet[AsyncioRouter]
-        ] = defaultdict(weakref.WeakSet)
+        self.routers: MutableMapping[DeploymentID, weakref.WeakSet[AsyncioRouter]] = (
+            defaultdict(weakref.WeakSet)
+        )
 
         # Creating the LongPollClient implicitly starts it
         self.long_poll_client = LongPollClient(

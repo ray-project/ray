@@ -71,9 +71,9 @@ class LocalityMixin:
         self._self_availability_zone = self_availability_zone
 
         # Colocated replicas (e.g. wrt node, AZ)
-        self._colocated_replica_ids: defaultdict[
-            LocalityScope, set[ReplicaID]
-        ] = defaultdict(set)
+        self._colocated_replica_ids: defaultdict[LocalityScope, set[ReplicaID]] = (
+            defaultdict(set)
+        )
         self._replica_id_set: set[ReplicaID] = set()
 
     def _discard_colocated_replica_ids_on_replica_actor_died(
@@ -194,9 +194,9 @@ class MultiplexMixin:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._multiplexed_model_id_to_replica_ids: defaultdict[
-            str, set[ReplicaID]
-        ] = defaultdict(set)
+        self._multiplexed_model_id_to_replica_ids: defaultdict[str, set[ReplicaID]] = (
+            defaultdict(set)
+        )
 
         # When there is no match for a multiplexed model id, we will try to fall back
         # to all replicas immediately. This set is used to make sure we only fall back
@@ -548,9 +548,9 @@ class RequestRouter(ABC):
         self._pending_requests_by_id: dict[str, PendingRequest] = {}
         # Maps multiplexed_model_id -> deque of PendingRequests for fast lookup by model.
         # Using deque allows O(1) popleft for cleaning done entries at the front.
-        self._pending_requests_by_model_id: defaultdict[
-            str, deque[PendingRequest]
-        ] = defaultdict(deque)
+        self._pending_requests_by_model_id: defaultdict[str, deque[PendingRequest]] = (
+            defaultdict(deque)
+        )
 
         # Prepare request router metrics.
         self.num_routing_tasks_gauge = metrics.Gauge(
@@ -1295,9 +1295,9 @@ class RequestRouter(ABC):
                 request_metadata = pending_request.metadata
                 routing_task = asyncio.current_task(loop=self._event_loop)
                 assert routing_task is not None
-                self._routing_task_by_pending_request_future[
-                    pending_request.future
-                ] = routing_task
+                self._routing_task_by_pending_request_future[pending_request.future] = (
+                    routing_task
+                )
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )

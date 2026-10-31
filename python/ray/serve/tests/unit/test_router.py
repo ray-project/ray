@@ -285,9 +285,9 @@ class FakeRequestRouter(RequestRouter):
         if self._replica_to_return is not None:
             replicas[self._replica_to_return.replica_id] = self._replica_to_return
         if self._replica_to_return_on_retry is not None:
-            replicas[
-                self._replica_to_return_on_retry.replica_id
-            ] = self._replica_to_return_on_retry
+            replicas[self._replica_to_return_on_retry.replica_id] = (
+                self._replica_to_return_on_retry
+            )
 
         return replicas
 
@@ -2464,11 +2464,11 @@ class TestRouterMetricsManager:
             ):
                 metrics_manager.push_autoscaling_metrics_to_controller()
             mock_controller_handle.record_autoscaling_metrics_from_handle.remote.assert_called_once()
-            (
-                payload,
-            ) = mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
-                0
-            ]
+            (payload,) = (
+                mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
+                    0
+                ]
+            )
             assert isinstance(payload, bytes)
             assert autoscaling_metrics_codec.is_columnar(payload) is columnar
             if columnar:

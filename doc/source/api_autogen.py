@@ -147,37 +147,20 @@ def generate_api_stubs(srcdir, app=None):
     """
     from sphinx.ext.autodoc.mock import mock
 
-    from api_mock_imports import absent_mock_modules, BUILD_ONLY_MOCK_MODULES
+    from api_mock_imports import absent_mock_modules
 
     sources = [os.path.join(srcdir, file) for file in AUTOGEN_FILES]
     if app is None:
         app = _build_standalone_app(srcdir)
 
-    # Mock two categories of modules that would otherwise break autosummary's
-    # plain ``import_module`` resolution of Ray API names:
-    #
-    # 1. Genuinely-absent optional backends (vllm, sglang, ...). These are
-    #    third-party packages installed in some environments (e.g. dev laptops
-    #    with full ML stacks) but not in others (e.g. the RTD docbuild image).
-    #    Mocking only the *actually* absent ones avoids shadowing an installed
-    #    library, which would break ``import ray.data`` -- Ray's real modules
-    #    eagerly import those libraries at package-init time and a mock in the
-    #    way aborts the whole import chain (autodoc tolerates this; the raw
-    #    autosummary path here does not).
-    #
-    # 2. Ray's compiled/generated modules (ray._raylet, ray.core.generated.*,
-    #    ray.serve.generated.*). These are *always* absent from a source-tree
-    #    checkout and are what make ``import ray.serve`` fail before we reach
-    #    any documented symbol. Unlike the autodoc_mock_imports full list we do
-    #    NOT shadow installed third-party libraries here -- only these three
-    #    Ray subtrees, which are never installed as real code and are safe to
-    #    mock unconditionally.
-    #
-    # Together these let autosummary resolve documented names like
-    # ``ray.serve.Deployment`` without the full set of autodoc mocks that
-    # autodoc uses for the main Sphinx render.
-    mock_modules = list(dict.fromkeys(absent_mock_modules() + BUILD_ONLY_MOCK_MODULES))
-    with mock(mock_modules):
+    # Mock only the genuinely-absent optional backends (vllm, sglang, ...), so a
+    # stub for a class whose module eagerly imports them generates instead of
+    # failing. NOT the full autodoc_mock_imports list: that mocks installed
+    # libraries too (e.g. pandas), and shadowing an installed library breaks the
+    # plain autosummary ``import ray.data`` here (autodoc tolerates it; this raw
+    # path does not). The Jinja filter functions above import_module() at
+    # generation time, so they run under the mock too. ray.* is never mocked.
+    with mock(absent_mock_modules()):
         written = generate.generate_autosummary_docs(sources, app=app)
 
     if not written:
