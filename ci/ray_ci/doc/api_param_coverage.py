@@ -120,6 +120,44 @@ def has_non_public_annotation(node: _FuncNode) -> bool:
     return False
 
 
+# Decorators that mark a callable as something other than a Python API whose
+# parameters a docstring Args: block documents. Pydantic validators receive the
+# field value from the framework (``v``), and Click commands document their
+# options with ``help=`` on each ``@click.option``.
+_NON_DOCSTRING_PARAM_DECORATORS = frozenset(
+    {
+        "field_validator",
+        "model_validator",
+        "validator",
+        "root_validator",
+        "command",
+        "group",
+        "setter",
+    }
+)
+
+
+def has_non_docstring_param_decorator(node: _FuncNode) -> bool:
+    """Whether a callable's parameters are documented somewhere other than Args:.
+
+    Matches pydantic validators (``@field_validator``, ``@model_validator``, and
+    the v1 ``@validator`` and ``@root_validator``) and Click commands and groups
+    (``@click.command()``, ``@cli.command()``, ``@click.group()``), in bare,
+    called, and attribute spellings. Also matches property setters
+    (``@x.setter``), whose value is documented on the getter.
+    """
+    for dec in node.decorator_list:
+        target = dec.func if isinstance(dec, ast.Call) else dec
+        name = None
+        if isinstance(target, ast.Name):
+            name = target.id
+        elif isinstance(target, ast.Attribute):
+            name = target.attr
+        if name in _NON_DOCSTRING_PARAM_DECORATORS:
+            return True
+    return False
+
+
 def signature_params(func: _FuncNode) -> List[str]:
     """Return every named signature parameter, in order.
 
@@ -259,12 +297,16 @@ def _undocumented_for_func(
 ) -> Optional[Callable_]:
     """Coverage state for one function/method, or None if it is not in scope.
 
-    Out of scope: private names other than ``__init__``, and callables with no
-    signature parameters (nothing to document).
+    Out of scope: private names other than ``__init__``, pydantic validators and
+    Click commands, and callables with no public signature parameters (nothing
+    to document). A parameter whose name starts with ``_`` is private by
+    convention and isn't counted.
     """
     if func.name.startswith("_") and func.name != "__init__":
         return None
-    sig = signature_params(func)
+    if has_non_docstring_param_decorator(func):
+        return None
+    sig = [p for p in signature_params(func) if not p.startswith("_")]
     if not sig:
         return None
 
