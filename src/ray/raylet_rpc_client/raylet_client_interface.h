@@ -85,6 +85,13 @@ class RayletClientInterface {
       const std::vector<WorkerID> &workers_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) = 0;
 
+  /// Notify raylets to cancel actor creation leases that are still queued on it.
+  /// Used by GCS after restart, since it doesn't know the leases requested by the
+  /// previous GCS.
+  /// \param callback Called when the raylet has cancelled the leases.
+  virtual void CancelStaleActorLeases(
+      const rpc::ClientCallback<rpc::CancelStaleActorLeasesReply> &callback) = 0;
+
   virtual void CancelWorkerLease(
       const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
