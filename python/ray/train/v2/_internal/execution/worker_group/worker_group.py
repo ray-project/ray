@@ -3,9 +3,10 @@ import copy
 import logging
 import os
 import traceback
-from typing import Any, Collection, Dict, List, Optional, Union
+from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.ray_constants import env_float
 from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
@@ -93,6 +94,14 @@ _SERIALIZATION_FAILURE_MARKERS = (
     "PicklingError",
     "ray/cloudpickle/cloudpickle.py",
 )
+
+
+def _get_tpu_node_info() -> Tuple[Optional[str], Optional[int]]:
+    """Return the TPU slice name and integer host worker ID for the current node."""
+    return (
+        get_current_pod_name(),
+        TPUAcceleratorManager.get_current_node_tpu_worker_id(),
+    )
 
 
 class WorkerGroup(ExecutionGroup):
@@ -1023,18 +1032,27 @@ class WorkerGroup(ExecutionGroup):
         """Sort workers by their TPU Pod name to ensure deterministic
         topology mapping for TPU multi-slice. The TPU Pod name is based on
         TPU_NAME env var, which is unique and indexed within the Ray worker group
-        requesting TPUs.
+        requesting TPUs. Within each pod, order hosts by TPU worker ID and sort
+        workers on the same host by their lowest assigned TPU ID.
         """
-        pod_name_refs = [
-            worker.execute_async(get_current_pod_name) for worker in workers
-        ]
-        pod_names = ray.get(pod_name_refs)
+        node_infos = ray.get(
+            [worker.execute_async(_get_tpu_node_info) for worker in workers]
+        )
 
-        # Zip workers with names and sort by name.
-        worker_name_pairs = list(zip(workers, pod_names))
-        worker_name_pairs.sort(key=lambda pair: pair[1] or "")
+        def sort_key(pair):
+            worker, (pod_name, tpu_worker_id) = pair
+            return (
+                pod_name or "",
+                float("inf") if tpu_worker_id is None else tpu_worker_id,
+                # Keeps each host's workers contiguous when TPU_WORKER_ID is unset.
+                worker.metadata.node_id,
+                min(
+                    (int(i) for i in worker.metadata.accelerator_ids.get("TPU", [])),
+                    default=0,
+                ),
+            )
 
-        return [w for w, name in worker_name_pairs]
+        return [worker for worker, _ in sorted(zip(workers, node_infos), key=sort_key)]
 
     @staticmethod
     def _assign_worker_ranks(
