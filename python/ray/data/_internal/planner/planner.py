@@ -1,6 +1,16 @@
 import warnings
 from functools import partial
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -280,6 +290,10 @@ class Planner:
     def __init__(self):
         self._supports_checkpointing = False
         self._plan_fns_for_checkpointing = {}
+        # The reads that get a checkpoint filter, by ``id``: on each path from
+        # the sink, the first one. A read further up, such as one that lists
+        # the inputs of another read, has rows without the id column.
+        self._checkpoint_filter_ops: Set[int] = set()
 
     def plan(
         self, logical_plan: LogicalPlan
@@ -298,6 +312,7 @@ class Planner:
                     logical_plan, checkpoint_config.generated_id_column
                 )
             self._supports_checkpointing = True
+            self._checkpoint_filter_ops = self._nearest_reads(logical_plan.dag)
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
             checkpoint_callback = self._create_checkpoint_callback(
@@ -346,7 +361,10 @@ class Planner:
         return physical_plan, callbacks
 
     def get_plan_fn(self, logical_op: LogicalOperator) -> PlanLogicalOpFn:
-        if self._supports_checkpointing:
+        upstream_read = isinstance(logical_op, self._CHECKPOINT_FILTER_OPS) and (
+            id(logical_op) not in self._checkpoint_filter_ops
+        )
+        if self._supports_checkpointing and not upstream_read:
             assert self._plan_fns_for_checkpointing
             plan_fn = find_plan_fn(logical_op, self._plan_fns_for_checkpointing)
             if plan_fn is not None:
@@ -547,6 +565,18 @@ class Planner:
             Write: plan_write_op_with_checkpoint_writer,
         }
         return plan_fns
+
+    def _nearest_reads(self, root: LogicalOperator) -> Set[int]:
+        """The ``id`` of the first checkpoint-filter op on each path from ``root``."""
+        found: Set[int] = set()
+        pending = [root]
+        while pending:
+            op = pending.pop()
+            if isinstance(op, self._CHECKPOINT_FILTER_OPS):
+                found.add(id(op))
+            else:
+                pending.extend(op.input_dependencies)
+        return found
 
     def _check_supports_checkpointing(self, logical_plan: LogicalPlan) -> bool:
         """Check if the logical plan supports checkpointing.
