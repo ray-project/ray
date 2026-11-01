@@ -118,3 +118,20 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+
+  - name: data_hive_auth_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - data_mongo_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/hive-auth.txt
+    constraints:
+      - python/deplocks/ci/data-mongo-ci_depset_py${PYTHON_VERSION}.lock
+    output: python/deplocks/ci/data-hive-auth-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310

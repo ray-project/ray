@@ -2,11 +2,8 @@
 
 import os
 import socket
-import uuid
-from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal, Optional, TypedDict, cast
 
 import pyarrow as pa
 import pytest
@@ -15,6 +12,12 @@ import ray
 import ray.data
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
     _connect as connect_read_hive,
+)
+from ray.data.tests.datasource._hive_test_utils import (
+    _connection_options as _shared_connection_options,
+    _ConnectionOptions,
+    _make_connection_factory,
+    _temporary_table,
 )
 
 _HOST = os.environ.get("RAY_HIVE_TEST_HOST")
@@ -26,87 +29,12 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class _ConnectionOptions(TypedDict):
-    """Non-secret connection settings captured by the test factory."""
-
-    host: str
-    port: int
-    auth_mechanism: Literal["NOSASL", "PLAIN", "GSSAPI"]
-    user: str
-    kerberos_service_name: str
-    use_ssl: bool
-    ca_cert: Optional[str]
-
-
 def _connection_options() -> _ConnectionOptions:
-    if _AUTH not in ("NOSASL", "PLAIN", "GSSAPI"):
-        pytest.fail("RAY_HIVE_TEST_AUTH must be NOSASL, PLAIN, or GSSAPI")
-    password = os.environ.get("HIVE_TEST_PASSWORD") or os.environ.get(
-        "RAY_HIVE_TEST_PASSWORD"
-    )
-    if _AUTH == "PLAIN" and not password:
-        pytest.fail("PLAIN integration requires HIVE_TEST_PASSWORD")
-    ssl_setting = os.environ.get("RAY_HIVE_TEST_USE_SSL", "false").lower()
-    if ssl_setting not in ("true", "false", "1", "0"):
-        pytest.fail("RAY_HIVE_TEST_USE_SSL must be true or false")
-    options: _ConnectionOptions = {
-        "host": cast(str, _HOST),
-        "port": int(os.environ.get("RAY_HIVE_TEST_PORT", "10000")),
-        "auth_mechanism": cast(Literal["NOSASL", "PLAIN", "GSSAPI"], _AUTH),
-        "user": os.environ.get("RAY_HIVE_TEST_USER", "hive"),
-        "kerberos_service_name": os.environ.get(
-            "RAY_HIVE_TEST_KERBEROS_SERVICE", "hive"
-        ),
-        "use_ssl": ssl_setting in ("true", "1"),
-        "ca_cert": os.environ.get("RAY_HIVE_TEST_CA_CERT"),
-    }
-    return options
-
-
-def _make_connection_factory(options: _ConnectionOptions):
-    def connection_factory():
-        from impala.dbapi import connect
-
-        password = None
-        if options["auth_mechanism"] == "PLAIN":
-            password = os.environ.get("HIVE_TEST_PASSWORD") or os.environ.get(
-                "RAY_HIVE_TEST_PASSWORD"
-            )
-            if not password:
-                raise ValueError("PLAIN integration requires HIVE_TEST_PASSWORD")
-        return connect(
-            **options, password=password, verify_cert=options["use_ssl"], retries=1
-        )
-
-    return connection_factory
+    return _shared_connection_options(_HOST, _AUTH)
 
 
 def _connect(options: _ConnectionOptions):
     return connect_read_hive(_make_connection_factory(options))
-
-
-@contextmanager
-def _temporary_table(options, columns, insert_clause, storage_clause=""):
-    connection = _connect(options)
-    cursor = None
-    table = f"ray_hive_it_{uuid.uuid4().hex[:12]}"
-    created = False
-    try:
-        cursor = connection.cursor(user=options["user"])
-        cursor.execute(f"CREATE TABLE {table} ({columns}) {storage_clause}")
-        created = True
-        cursor.execute(f"INSERT INTO TABLE {table} {insert_clause}")
-        yield table, cursor
-    finally:
-        try:
-            if created and cursor is not None:
-                cursor.execute(f"DROP TABLE IF EXISTS {table}")
-        finally:
-            try:
-                if cursor is not None:
-                    cursor.close()
-            finally:
-                connection.close()
 
 
 def test_hive_table_query_limit_and_ignored_block_hint():
