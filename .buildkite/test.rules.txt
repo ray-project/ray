@@ -437,6 +437,7 @@ doc/update_cache_env.py
 doc/rtd_doctor.py
 doc/test_no_new_rst.py
 doc/test_prose_doctest_targets.py
+doc/test_doc_assets.py
 doc/test_llms_txt.py
 .vale.ini
 .vale/
