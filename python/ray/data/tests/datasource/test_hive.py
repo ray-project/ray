@@ -93,5 +93,138 @@ def test_public_api_rejects_replaced_connection_keywords(keyword):
         )
 
 
+def test_read_hive_driver_validation_fails_before_task():
+    def failing_factory():
+        import ssl
+
+        raise ssl.SSLCertVerificationError(
+            1,
+            "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+            "self-signed certificate in certificate chain",
+        )
+
+    with pytest.raises(
+        RuntimeError,
+        match="TLS certificate verification failed.*self-signed certificate",
+    ):
+        read_hive("analytics.events", connection_factory=failing_factory)
+
+
+def test_read_hive_worker_validation_fails_in_ray_task(
+    shutdown_only, restore_data_context
+):
+    import ray
+
+    def failing_worker_factory():
+        import ssl
+
+        raise ssl.CertificateError(
+            "hostname 'hive.internal' doesn't match 'hive.external.com'"
+        )
+
+    if not ray.is_initialized():
+        ray.init(num_cpus=2, include_dashboard=False)
+    schema = pa.schema([("id", pa.int64()), ("name", pa.string())])
+    ds = read_hive(
+        query="SELECT id, name FROM events",
+        schema=schema,
+        connection_factory=failing_worker_factory,
+    )
+    with pytest.raises(
+        Exception,
+        match="TLS certificate verification failed due to hostname mismatch",
+    ):
+        ds.take_all()
+
+
+def test_read_hive_driver_succeeds_worker_fails_kerberos(
+    shutdown_only, restore_data_context, tmp_path
+):
+    import ray
+
+    marker_file = tmp_path / "driver_done.txt"
+
+    def hybrid_factory():
+        if not marker_file.exists():
+            marker_file.write_text("done")
+
+            class DriverCursor:
+                def get_table_schema(self, table, database):
+                    return [("id", "BIGINT"), ("name", "STRING")]
+
+                def close(self):
+                    pass
+
+            class DriverConnection:
+                def cursor(self, user=None):
+                    return DriverCursor()
+
+                def close(self):
+                    pass
+
+            return DriverConnection()
+
+        raise RuntimeError(
+            "Major (851968): Miscellaneous failure, "
+            "Minor (2529639053): No Kerberos credentials available (default cache: /tmp/krb5cc_1000)"
+        )
+
+    if not ray.is_initialized():
+        ray.init(num_cpus=2, include_dashboard=False)
+    ds = read_hive("analytics.events", connection_factory=hybrid_factory)
+    assert len(ds.schema().names) == 2
+    assert marker_file.exists()
+
+    with pytest.raises(Exception, match="Kerberos/GSSAPI authentication failed"):
+        ds.take_all()
+
+
+def test_read_hive_worker_successful_read(shutdown_only):
+    import ray
+
+    def success_factory():
+        class MockCursor:
+            def __init__(self):
+                self.rows = [(1, "item1")]
+                self.description = [
+                    ("id", "BIGINT", None, None, None, None, None),
+                    ("name", "STRING", None, None, None, None, None),
+                ]
+
+            def execute(self, statement):
+                pass
+
+            def fetchmany(self, size):
+                r = self.rows
+                self.rows = []
+                return r
+
+            def cancel_operation(self):
+                pass
+
+            def close(self):
+                pass
+
+        class MockConnection:
+            def cursor(self, user=None):
+                return MockCursor()
+
+            def close(self):
+                pass
+
+        return MockConnection()
+
+    if not ray.is_initialized():
+        ray.init(num_cpus=2, include_dashboard=False)
+    schema = pa.schema([("id", pa.int64()), ("name", pa.string())])
+    ds = read_hive(
+        query="SELECT id, name FROM events",
+        schema=schema,
+        connection_factory=success_factory,
+    )
+    rows = ds.take_all()
+    assert rows == [{"id": 1, "name": "item1"}]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

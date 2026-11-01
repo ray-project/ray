@@ -1,5 +1,6 @@
 """Unit tests for HiveServer2 connections, metadata, and batch conversion."""
 
+import ssl
 import sys
 from datetime import datetime
 from typing import Generator, List, Optional, Sequence, Tuple, cast
@@ -590,6 +591,228 @@ def test_early_close_cancels_operation():
     next(batches)
     batches.close()
     assert cursor.cancelled and cursor.closed and connection.closed
+
+
+def test_connect_validates_connection_object():
+    with pytest.raises(TypeError, match="connection_factory returned None"):
+        hive_hs2._connect(lambda: None)
+
+    class MissingCursor:
+        def close(self):
+            pass
+
+    with pytest.raises(TypeError, match="missing callable 'cursor' method"):
+        hive_hs2._connect(lambda: MissingCursor())
+
+    class MissingClose:
+        def cursor(self, *, user=None):
+            pass
+
+    with pytest.raises(TypeError, match="missing callable 'close' method"):
+        hive_hs2._connect(lambda: MissingClose())
+
+
+@pytest.mark.parametrize(
+    "error,match_detail",
+    [
+        (
+            ssl.SSLCertVerificationError(
+                1,
+                "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+                "self-signed certificate in certificate chain (_ssl.c:1000)",
+            ),
+            "untrusted certificate or self-signed certificate in chain",
+        ),
+        (
+            ssl.SSLError(
+                "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+                "unable to get local issuer certificate"
+            ),
+            "untrusted certificate or self-signed certificate in chain",
+        ),
+        (
+            ssl.SSLCertVerificationError(
+                1,
+                "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+                "certificate has expired",
+            ),
+            "certificate has expired",
+        ),
+    ],
+)
+def test_connect_tls_certificate_verification_error(error, match_detail):
+    with pytest.raises(
+        RuntimeError, match=f"TLS certificate verification failed.*{match_detail}"
+    ) as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(error))
+    assert exc.value.__cause__ is error
+
+
+def test_connect_tls_nested_exception_chain():
+    inner = ssl.SSLCertVerificationError(
+        1, "certificate verify failed: self-signed certificate"
+    )
+    outer = RuntimeError("Thrift transport failed to connect")
+    outer.__cause__ = inner
+
+    with pytest.raises(
+        RuntimeError, match="TLS certificate verification failed.*untrusted certificate"
+    ) as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(outer))
+    assert exc.value.__cause__ is outer
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ssl.CertificateError(
+            "hostname 'hive.wrong.com' doesn't match either of 'hive.example.com'"
+        ),
+        ssl.SSLCertVerificationError(
+            1,
+            "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+            "Hostname mismatch, certificate is not valid for 'hive.wrong.com'",
+        ),
+    ],
+)
+def test_connect_tls_hostname_mismatch(error):
+    with pytest.raises(
+        RuntimeError,
+        match="TLS certificate verification failed due to hostname mismatch",
+    ) as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(error))
+    assert exc.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError("No such file or directory: '/etc/ssl/certs/hive-ca.pem'"),
+        ssl.SSLError("cannot load certificate: No such file or directory"),
+        OSError("Cannot read ca_cert file '/path/to/missing.pem'"),
+    ],
+)
+def test_connect_tls_certificate_file_error(error):
+    with pytest.raises(
+        RuntimeError, match="TLS certificate or credential file error"
+    ) as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(error))
+    assert exc.value.__cause__ is error
+
+
+def test_connect_tls_handshake_error():
+    error = ssl.SSLError(
+        "[SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1000)"
+    )
+    with pytest.raises(RuntimeError, match="TLS/SSL handshake failed") as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(error))
+    assert exc.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    "error,module_name",
+    [
+        (ImportError("No module named 'kerberos'"), "kerberos"),
+        (ModuleNotFoundError("No module named 'gssapi'"), "gssapi"),
+    ],
+)
+def test_connect_kerberos_missing_dependency(error, module_name):
+    with pytest.raises(
+        RuntimeError,
+        match=r"Kerberos/GSSAPI dependency missing.*install impyla\[kerberos\]",
+    ) as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(error))
+    assert exc.value.__cause__ is error
+
+
+class _MockGSSError(Exception):
+    pass
+
+
+_MockGSSError.__name__ = "GSSError"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        _MockGSSError(
+            "Major (851968): Miscellaneous failure, "
+            "Minor (2529639053): No Kerberos credentials available (default cache: /tmp/krb5cc_1000)"
+        ),
+        RuntimeError("GSSAPI Error: Ticket expired"),
+        RuntimeError("Credentials cache permissions error"),
+        RuntimeError("Could not start SASL: sasl_client_start: gssapi error"),
+    ],
+)
+def test_connect_kerberos_missing_or_expired_credentials(error):
+    with pytest.raises(
+        RuntimeError, match="Kerberos/GSSAPI authentication failed"
+    ) as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(error))
+    assert exc.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Server not found in Kerberos database (hive/wrong-host@REALM)"),
+        RuntimeError("Hostname cannot be canonicalized for kerberos_service_name"),
+    ],
+)
+def test_connect_kerberos_service_configuration_error(error):
+    with pytest.raises(
+        RuntimeError, match="Kerberos/GSSAPI service configuration error"
+    ) as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(error))
+    assert exc.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError(
+            "Could not start SASL: Error in sasl_client_start (-13) (user not found)"
+        ),
+        ValueError("PLAIN authentication requires a password"),
+        RuntimeError("Bad status: 3 (PLAIN auth failed: Invalid credentials)"),
+        RuntimeError("Authentication failed: Access denied"),
+    ],
+)
+def test_connect_authentication_credentials_failure(error):
+    with pytest.raises(
+        RuntimeError, match="Authentication failed \\(missing or invalid credentials"
+    ) as exc:
+        hive_hs2._connect(lambda: (_ for _ in ()).throw(error))
+    assert exc.value.__cause__ is error
+
+
+def test_table_schema_lookup_and_batch_read_classified_errors():
+    class FailingCursor(_Cursor):
+        def get_table_schema(self, table, database):
+            raise ssl.SSLCertVerificationError(
+                1, "certificate verify failed: self-signed certificate"
+            )
+
+        def execute(self, statement):
+            raise RuntimeError("Authentication failed: Invalid credentials")
+
+    cursor = FailingCursor()
+    connection = _Connection(cursor)
+    spec = HiveReadSpec(lambda: connection, table="analytics.events")
+
+    with pytest.raises(
+        RuntimeError,
+        match="table schema lookup failed: TLS certificate verification failed",
+    ):
+        hive_hs2.infer_table_schema(spec)
+    assert connection.closed
+
+    query_spec = _query_spec(connection_factory=lambda: connection)
+    with pytest.raises(
+        RuntimeError, match="HiveServer2 read failed: Authentication failed"
+    ):
+        list(hive_hs2.read_hs2_batches(query_spec, query_spec.schema))
+    assert connection.closed
 
 
 if __name__ == "__main__":
