@@ -34,6 +34,13 @@ class SGLangTaskType(TaskType):
     # Generate text.
     GENERATE = "generate"
 
+    # Score items against a query, optionally with embedding overrides.
+    SCORE = "score"
+
+
+# Same value as `sglang.srt.constants.MIS_DELIMITER_TOKEN_ID`; copied so the
+# processor and CPU stages don't import SGLang.
+SGLANG_MIS_DELIMITER_TOKEN_ID = 9999
 
 TypeVLLMTaskType = Literal[tuple(vLLMTaskType.values())]
 TypeSGLangTaskType = Literal[tuple(SGLangTaskType.values())]

@@ -8,7 +8,10 @@ from pydantic import Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
-from ray.llm._internal.batch.constants import SGLangTaskType, TypeSGLangTaskType
+from ray.llm._internal.batch.constants import (
+    SGLangTaskType,
+    TypeSGLangTaskType,
+)
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     TelemetryAgent,
@@ -19,6 +22,12 @@ from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorBuilder,
 )
+from ray.llm._internal.batch.processor.sglang_generate_task import _SGLangGenerateTask
+from ray.llm._internal.batch.processor.sglang_score_task import (
+    SGLangScoreOptions,
+    _SGLangScoreTask,
+)
+from ray.llm._internal.batch.processor.sglang_task import _SGLangTask
 from ray.llm._internal.batch.processor.utils import (
     build_cpu_stage_map_kwargs,
     get_value_or_fallback,
@@ -36,6 +45,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
+# The processor setup for each task type.
+_TASKS: Dict[str, _SGLangTask] = {
+    SGLangTaskType.GENERATE: _SGLangGenerateTask(),
+    SGLangTaskType.SCORE: _SGLangScoreTask(),
+}
+
 
 class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     """The configuration for the SGLang engine processor."""
@@ -49,8 +64,11 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     )
     task_type: TypeSGLangTaskType = Field(
         default=SGLangTaskType.GENERATE,
-        description="The task type to use. If not specified, will use "
-        "'generate' by default.",
+        description="The task type to use: 'generate' (default) or 'score'.",
+    )
+    score_options: SGLangScoreOptions = Field(
+        default_factory=SGLangScoreOptions,
+        description="Options for task_type='score'.",
     )
 
     @root_validator(pre=True)
@@ -109,7 +127,6 @@ def build_sglang_engine_processor(
         ChatTemplateStage,
         DetokenizeStage,
         SGLangEngineStage,
-        TokenizeStage,
     )
     from ray.llm._internal.common.utils.download_utils import (
         NodeModelDownloadable,
@@ -119,6 +136,9 @@ def build_sglang_engine_processor(
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
+
+    task = _TASKS[config.task_type]
+    config = task.prepare_config(config)
 
     # Prepare processor defaults for merging into stage configs
     trust_remote_code = config.engine_kwargs.get("trust_remote_code", False)
@@ -157,26 +177,27 @@ def build_sglang_engine_processor(
         TokenizerStageConfig,
         processor_defaults,
     )
+    task_options = task.engine_task_options(
+        config, tokenize_stage_cfg.model_source or config.model_source
+    )
     if tokenize_stage_cfg.enabled:
         stages.append(
-            TokenizeStage(
-                fn_constructor_kwargs=dict(
-                    model=tokenize_stage_cfg.model_source,
-                    trust_remote_code=trust_remote_code,
-                ),
-                map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
-            )
+            task.build_tokenize_stage(config, tokenize_stage_cfg, task_options)
         )
 
     # Core stage -- the SGLang engine.
+    engine_stage_kwargs = dict(
+        model=config.model_source,
+        engine_kwargs=config.engine_kwargs,
+        task_type=config.task_type,
+        max_pending_requests=config.max_pending_requests,
+    )
+    # Pass only when the task has options, so generate's kwargs are unchanged.
+    if task_options is not None:
+        engine_stage_kwargs["task_options"] = task_options
     stages.append(
         SGLangEngineStage(
-            fn_constructor_kwargs=dict(
-                model=config.model_source,
-                engine_kwargs=config.engine_kwargs,
-                task_type=config.task_type,
-                max_pending_requests=config.max_pending_requests,
-            ),
+            fn_constructor_kwargs=engine_stage_kwargs,
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
                 # The number of running replicas. This is a deprecated field, but
@@ -248,6 +269,8 @@ def build_sglang_engine_processor(
 
     architectures = getattr(hf_config, "architectures", [])
     architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
+
+    task.validate_model(config, hf_config)
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(

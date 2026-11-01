@@ -35,6 +35,10 @@ _LAZY_ATTRS = {
     "PrepareMultimodalStage": ("prepare_multimodal_stage", "PrepareMultimodalStage"),
     "ServeDeploymentStage": ("serve_deployment_stage", "ServeDeploymentStage"),
     "SGLangEngineStage": ("sglang_engine_stage", "SGLangEngineStage"),
+    "SGLangScoreTokenizeStage": (
+        "sglang_score_tokenize_stage",
+        "SGLangScoreTokenizeStage",
+    ),
     "TokenizeStage": ("tokenize_stage", "TokenizeStage"),
     "DetokenizeStage": ("tokenize_stage", "DetokenizeStage"),
     "vLLMEngineStage": ("vllm_engine_stage", "vLLMEngineStage"),
@@ -80,6 +84,9 @@ if TYPE_CHECKING:
     from ray.llm._internal.batch.stages.sglang_engine_stage import (  # noqa: F401
         SGLangEngineStage,
     )
+    from ray.llm._internal.batch.stages.sglang_score_tokenize_stage import (  # noqa: F401
+        SGLangScoreTokenizeStage,
+    )
     from ray.llm._internal.batch.stages.tokenize_stage import (  # noqa: F401
         DetokenizeStage,
         TokenizeStage,
@@ -98,6 +105,7 @@ __all__ = [
     "DetokenizeStage",
     "vLLMEngineStage",
     "SGLangEngineStage",
+    "SGLangScoreTokenizeStage",
     "ServeDeploymentStage",
     "wrap_preprocess",
     "wrap_postprocess",
