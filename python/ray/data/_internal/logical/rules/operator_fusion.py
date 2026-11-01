@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -33,7 +33,11 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
+from ray.data._internal.logical.interfaces import (
+    HashPartitioning,
+    PhysicalPlan,
+    Rule,
+)
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractMap,
@@ -47,9 +51,13 @@ from ray.data._internal.logical.operators import (
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.util.annotations import DeveloperAPI
 
+if TYPE_CHECKING:
+    from ray.data._internal.execution.operators.map_transformer import MapTransformer
+
 __all__ = [
     "FuseOperators",
     "are_remote_args_compatible",
+    "fuse_map_into_shuffle_reduce_op",
 ]
 
 
@@ -396,50 +404,18 @@ class FuseOperators(Rule):
         down_op: TaskPoolMapOperator,
         up_op: Union[ShuffleReduceOp, DiskHashShuffleReduceOp],
     ) -> Union[ShuffleReduceOp, DiskHashShuffleReduceOp]:
-        name = up_op.name + "->" + down_op.name
-
         up_logical_op = self._op_map.pop(up_op)
         self._op_map.pop(down_op)
 
-        if isinstance(up_op, DiskHashShuffleReduceOp):
-            fused_op = DiskHashShuffleReduceOp(
-                up_op.input_dependencies,
-                up_op.data_context,
-                num_partitions=up_op._num_partitions,
-                reduce_fn=up_op._reduce_fn,
-                disallow_block_splitting=up_op._disallow_block_splitting,
-                reduce_ray_remote_args=up_op._reduce_ray_remote_args,
-                peak_memory_multiplier=up_op._peak_memory_multiplier,
-                should_emit_empty_partitions=up_op._emit_empty_partitions,
-                # The fused map (filter/flat_map/...) may change the row count.
-                preserves_row_count=False,
-                name=name,
-                fused_output_map_transformer=down_op.get_map_transformer(),
-                fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
-                fused_output_map_target_max_block_size_override=(
-                    down_op.target_max_block_size_override
-                ),
-            )
-        else:  # object-store ShuffleReduceOp (may be multi-input for Join)
-            fused_op = ShuffleReduceOp(
-                up_op.input_dependencies,
-                up_op.data_context,
-                num_partitions=up_op._num_partitions,
-                reduce_fn=up_op._reduce_fn,
-                disallow_block_splitting=up_op._disallow_block_splitting,
-                reduce_ray_remote_args=up_op._reduce_ray_remote_args,
-                preserve_partition_order=up_op._preserve_partition_order,
-                peak_memory_multiplier=up_op._peak_memory_multiplier,
-                should_emit_empty_partitions=up_op._emit_empty_partitions,
-                # The fused map (filter/flat_map/...) may change the row count.
-                preserves_row_count=False,
-                name=name,
-                fused_output_map_transformer=down_op.get_map_transformer(),
-                fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
-                fused_output_map_target_max_block_size_override=(
-                    down_op.target_max_block_size_override
-                ),
-            )
+        fused_op = fuse_map_into_shuffle_reduce_op(
+            up_op,
+            name=up_op.name + "->" + down_op.name,
+            map_transformer=down_op.get_map_transformer(),
+            map_task_kwargs=down_op.get_map_task_kwargs(),
+            target_max_block_size_override=down_op.target_max_block_size_override,
+            # The map decides what the fused op's output looks like.
+            output_partitioning=down_op.output_partitioning,
+        )
         fused_op.set_logical_operators(
             *up_op._logical_operators, *down_op._logical_operators
         )
@@ -873,6 +849,46 @@ class FuseOperators(Rule):
             return False
 
         return True
+
+
+def fuse_map_into_shuffle_reduce_op(
+    up_op: Union[ShuffleReduceOp, DiskHashShuffleReduceOp],
+    *,
+    name: str,
+    map_transformer: "MapTransformer",
+    map_task_kwargs: Dict[str, Any],
+    target_max_block_size_override: Optional[int],
+    output_partitioning: Optional[HashPartitioning],
+) -> Union[ShuffleReduceOp, DiskHashShuffleReduceOp]:
+    """Rebuild ``up_op`` to also run ``map_transformer`` in its reduce tasks."""
+    common_kwargs: Dict[str, Any] = dict(
+        num_partitions=up_op._num_partitions,
+        reduce_fn=up_op._reduce_fn,
+        disallow_block_splitting=up_op._disallow_block_splitting,
+        reduce_ray_remote_args=up_op._reduce_ray_remote_args,
+        peak_memory_multiplier=up_op._peak_memory_multiplier,
+        should_emit_empty_partitions=up_op._emit_empty_partitions,
+        # The fused map (filter/flat_map/...) may change the row count.
+        preserves_row_count=False,
+        name=name,
+        fused_output_map_transformer=map_transformer,
+        fused_output_map_task_kwargs=map_task_kwargs,
+        fused_output_map_target_max_block_size_override=(
+            target_max_block_size_override
+        ),
+        output_partitioning=output_partitioning,
+    )
+    if isinstance(up_op, DiskHashShuffleReduceOp):
+        return DiskHashShuffleReduceOp(
+            up_op.input_dependencies, up_op.data_context, **common_kwargs
+        )
+    # Object-store ShuffleReduceOp (may be multi-input for Join).
+    return ShuffleReduceOp(
+        up_op.input_dependencies,
+        up_op.data_context,
+        preserve_partition_order=up_op._preserve_partition_order,
+        **common_kwargs,
+    )
 
 
 def are_op_remote_args_compatible(
