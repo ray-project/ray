@@ -731,6 +731,24 @@ def test_calculate_blocks_rows_updates_metadata_and_batches_ray_get():
     assert remote_calls == ["block_0", "block_2"]
     mock_ray_get.assert_called_once_with(["ref:block_0", "ref:block_2"])
 
+    # Verify immutable sequences (e.g., tuples) still return resolved row counts
+    # without raising TypeError on in-place assignment.
+    immutable_blocks = (
+        ("block_0", meta_unknown_1),
+        ("block_1", meta_known),
+    )
+    with (
+        patch(
+            "ray.data._internal.split.cached_remote_fn",
+            return_value=FakeRemoteFn(),
+        ),
+        patch(
+            "ray.data._internal.split.ray.get",
+            return_value=[2],
+        ),
+    ):
+        assert _calculate_blocks_rows(immutable_blocks) == [2, 4]
+
 
 def test_equalize_with_unknown_num_rows_metadata(ray_start_regular_shared_2_cpus):
     from dataclasses import replace
