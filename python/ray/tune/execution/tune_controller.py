@@ -847,7 +847,9 @@ class TuneController:
         with warn_if_slow("choose_trial_to_run"):
             trial_to_run = self._scheduler_alg.choose_trial_to_run(self._wrapped())
 
-        if trial_to_run:
+        if trial_to_run and (
+            trial_to_run in self._trial_to_actor or not self._at_max_concurrent_trials()
+        ):
             if _dedup_logs("trial_to_run_chosen", trial_to_run.trial_id):
                 logger.debug(
                     f"Chose trial to run from scheduler: {trial_to_run} [dedup]"
@@ -896,6 +898,11 @@ class TuneController:
                     self._maybe_reuse_cached_actor(trial)
                     continue
 
+                # The searcher does not limit the trials restored by `Tuner.restore`.
+                if self._at_max_concurrent_trials():
+                    new_candidates.append(trial)
+                    break
+
                 logger.debug(f"Scheduling actor for enqueued trial: {trial}")
                 self._staged_trials.add(trial)
                 self._actor_cache.increase_max(trial.placement_group_factory)
@@ -927,6 +934,11 @@ class TuneController:
                         self._actor_cache.increase_max(
                             start_trial.placement_group_factory
                         )
+
+    def _at_max_concurrent_trials(self) -> bool:
+        """Whether `max_concurrent_trials` trials already hold an actor."""
+        max_concurrent = _get_max_concurrent_trials(self._search_alg)
+        return 0 < max_concurrent <= len(self._trial_to_actor)
 
     def _maybe_reuse_cached_actor(self, trial: Trial) -> bool:
         """Maybe reuse a cached actor for a trial.
@@ -2118,6 +2130,21 @@ class TrialRunnerWrapper:
         return getattr(self._tune_controller, attr)
 
 
+def _get_max_concurrent_trials(search_alg: SearchAlgorithm) -> int:
+    """Returns `max_concurrent_trials`, or 0 if it is not set."""
+    if isinstance(search_alg, BasicVariantGenerator):
+        return search_alg.max_concurrent
+
+    # With a custom searcher, it is wrapped in
+    # SearchGenerator(ConcurrencyLimiter(searcher, max_concurrent=N)).
+    searcher = getattr(search_alg, "searcher", None)
+    while searcher:
+        if isinstance(searcher, ConcurrencyLimiter):
+            return searcher.max_concurrent
+        searcher = getattr(searcher, "searcher", None)
+    return 0
+
+
 def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     max_pending_trials = os.getenv("TUNE_MAX_PENDING_TRIALS_PG", "auto")
 
@@ -2127,15 +2154,8 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     # Else, auto detect.
 
     # For custom searchers, respect max_concurrent_trials if the user set it.
-    # When max_concurrent_trials is specified, the searcher is wrapped in
-    # SearchGenerator(ConcurrencyLimiter(searcher, max_concurrent=N)).
     if not isinstance(search_alg, BasicVariantGenerator):
-        searcher = getattr(search_alg, "searcher", None)
-        while searcher:
-            if isinstance(searcher, ConcurrencyLimiter):
-                return searcher.max_concurrent
-            searcher = getattr(searcher, "searcher", None)
-        return 1
+        return _get_max_concurrent_trials(search_alg) or 1
 
     # Allow up to at least 200 pending trials to trigger fast autoscaling
     min_autoscaling_rate = 200
