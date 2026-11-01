@@ -156,6 +156,97 @@ def test_read_parquet_v2_include_paths(tmp_path, restore_ctx):
     assert "path" in schema.names
 
 
+@pytest.mark.parametrize(
+    "partitioning", [None, Partitioning(PartitionStyle.HIVE, field_names=["path"])]
+)
+@pytest.mark.parametrize(
+    "predicate, expected_ids",
+    [
+        (lambda path: col("path") == path, [1, 2]),
+        (lambda path: col("path") == "foo", []),
+        (lambda path: (col("path") == path) & (col("id") == 2), [2]),
+        (lambda path: (col("path") == "foo") | (col("id") == 2), [2]),
+        (lambda path: ~(col("path") == "foo"), [1, 2]),
+        (
+            lambda path: ((col("path") == path) | (col("id") == 1)) & (col("id") == 2),
+            [2],
+        ),
+        (lambda path: ~((col("path") == "foo") | (col("id") == 2)), [1]),
+    ],
+    ids=["path", "directory", "and", "or", "not", "nested", "mixed_not"],
+)
+def test_synthesized_path_filters_use_output_values(
+    tmp_path, restore_ctx, partitioning, predicate, expected_ids
+):
+    directory = tmp_path / "path=foo"
+    directory.mkdir()
+    file = directory / "data with spaces.parquet"
+    _write(file, pa.table({"id": [1, 2]}))
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        include_paths=True,
+        partitioning=partitioning,
+        override_num_blocks=1,
+    )
+
+    rows = ds.filter(expr=predicate(str(file))).take_all()
+
+    assert sorted(row["id"] for row in rows) == expected_ids
+    assert all(row["path"] == str(file) for row in rows)
+
+
+@pytest.mark.parametrize(
+    "partitioning", [None, Partitioning(PartitionStyle.HIVE, field_names=["path"])]
+)
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_synthesized_path_filter_preserves_projection_limit_and_count(
+    tmp_path, restore_ctx, partitioning, merge_schema
+):
+    directory = tmp_path / "path=foo"
+    directory.mkdir()
+    first = directory / "first.parquet"
+    matching = directory / "matching.parquet"
+    _write(first, pa.table({"id": [1]}))
+    _write(matching, pa.table({"id": [2]}))
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        [str(first), str(matching)],
+        include_paths=True,
+        partitioning=partitioning,
+        override_num_blocks=1,
+        merge_schema=merge_schema,
+    )
+    selected = ds.filter(expr=col("path") == str(matching)).select_columns(["id"])
+
+    assert selected.limit(1).take_all() == [{"id": 2}]
+    assert selected.count() == 1
+    empty = ds.filter(expr=col("path") == "foo").select_columns(["id"])
+    assert empty.limit(1).take_all() == []
+    assert empty.count() == 0
+    assert any(
+        isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(selected).dag)
+    )
+
+
+def test_path_filter_without_synthesis_preserves_partition_values(
+    tmp_path, restore_ctx
+):
+    directory = tmp_path / "path=foo"
+    directory.mkdir()
+    _write(directory / "data.parquet", pa.table({"id": [1, 2]}))
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        include_paths=False,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["path"]),
+    )
+
+    assert ds.filter(expr=(col("path") == "foo") & (col("id") == 2)).take_all() == [
+        {"id": 2, "path": "foo"}
+    ]
+
+
 def test_read_parquet_v2_include_row_hash(tmp_path, restore_ctx):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 

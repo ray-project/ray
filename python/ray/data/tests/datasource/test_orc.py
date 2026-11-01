@@ -17,6 +17,7 @@ from ray.data._internal.datasource.orc_datasource import ORCDatasource
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
 
@@ -358,6 +359,55 @@ def test_read_orc_include_paths(ray_start_regular_shared, tmp_path, orc_reader_v
     rows = ds.take_all()
     assert all("path" in row for row in rows)
     assert all(row["path"].endswith("data.orc") for row in rows)
+
+
+@pytest.mark.parametrize(
+    "partitioning", [None, Partitioning(PartitionStyle.HIVE, field_names=["path"])]
+)
+@pytest.mark.parametrize(
+    "operation", ["path", "directory", "and", "or", "not", "limit_count"]
+)
+def test_read_orc_v2_synthesized_path_filters(
+    ray_start_regular_shared, tmp_path, monkeypatch, partitioning, operation
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    directory = tmp_path / "path=foo"
+    directory.mkdir()
+    first = directory / "first.orc"
+    matching = directory / "matching with spaces.orc"
+    _write_orc(str(first), pa.table({"id": [1]}))
+    _write_orc(str(matching), pa.table({"id": [2]}))
+    ds = ray.data.read_orc(
+        [str(first), str(matching)],
+        include_paths=True,
+        partitioning=partitioning,
+        override_num_blocks=1,
+    )
+    predicates = {
+        "path": col("path") == str(matching),
+        "directory": col("path") == "foo",
+        "and": (col("path") == str(matching)) & (col("id") == 2),
+        "or": (col("path") == "foo") | (col("id") == 2),
+        "not": ~(col("path") == "foo"),
+        "limit_count": col("path") == str(matching),
+    }
+    selected = ds.filter(expr=predicates[operation])
+    if operation == "limit_count":
+        selected = selected.select_columns(["id"])
+        assert selected.limit(1).take_all() == [{"id": 2}]
+        assert selected.count() == 1
+        assert ds.filter(expr=col("path") == "foo").select_columns(["id"]).count() == 0
+    else:
+        rows = selected.take_all()
+        expected = (
+            [] if operation == "directory" else [1, 2] if operation == "not" else [2]
+        )
+        assert sorted(row["id"] for row in rows) == expected
+        assert all(
+            row["path"] == str(first if row["id"] == 1 else matching) for row in rows
+        )
 
 
 def test_read_orc_ignore_missing_paths(
