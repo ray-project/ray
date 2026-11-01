@@ -229,6 +229,11 @@ class MultiplexMixin:
         # once for concurrent requests for the same model id.
         # Whenever there is a match, we will remove the model id from this set.
         self._multiplexed_model_id_fallback_match: Set[str] = set()
+        # Reserve a replica for a cold model ID before the replica manager has
+        # published its loading state.  Without this small piece of local state,
+        # a burst of distinct cold IDs all observes the same loaded-model counts
+        # and is routed to the same least-loaded replica.
+        self._multiplexed_model_id_reserved_replica_ids: Dict[str, ReplicaID] = {}
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
 
@@ -279,6 +284,46 @@ class MultiplexMixin:
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
+        active_replica_ids = {replica.replica_id for replica in replicas}
+        for model_id, replica_id in list(
+            self._multiplexed_model_id_reserved_replica_ids.items()
+        ):
+            if (
+                model_id in new_multiplexed_model_id_to_replica_ids
+                or replica_id not in active_replica_ids
+            ):
+                self._multiplexed_model_id_reserved_replica_ids.pop(model_id, None)
+
+    def _reserve_replica_for_cold_model(self, model_id: str) -> Set[ReplicaID]:
+        """Reserve the least-loaded replica for a not-yet-visible model load."""
+        reserved_replica_id = self._multiplexed_model_id_reserved_replica_ids.get(
+            model_id
+        )
+        if (
+            reserved_replica_id is not None
+            and reserved_replica_id in self._replica_id_set
+        ):
+            return {reserved_replica_id}
+
+        candidates = self._get_replica_ids_with_fewest_multiplexed_models()
+        if not candidates:
+            return set()
+
+        # Include reservations in the score so concurrent cold IDs are spread
+        # across replicas even before the replica state update arrives.
+        reservation_counts: DefaultDict[ReplicaID, int] = defaultdict(int)
+        for replica_id in self._multiplexed_model_id_reserved_replica_ids.values():
+            if replica_id in self._replica_id_set:
+                reservation_counts[replica_id] += 1
+        reserved_replica_id = min(
+            candidates,
+            key=lambda replica_id: (
+                reservation_counts[replica_id],
+                replica_id.unique_id,
+            ),
+        )
+        self._multiplexed_model_id_reserved_replica_ids[model_id] = reserved_replica_id
+        return {reserved_replica_id}
 
     def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[ReplicaID]:
         """Get the set of replicas that have the fewest multiplexed models loaded."""
@@ -342,18 +387,25 @@ class MultiplexMixin:
             candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
                 multiplexed_model_id, set()
             )
-            if (
-                not candidate_replica_ids
-                and multiplexed_model_id
-                not in self._multiplexed_model_id_fallback_match
-            ) or pending_request.routing_context.tried_first_multiplexed_models:
+            if not candidate_replica_ids and (
+                multiplexed_model_id not in self._multiplexed_model_id_fallback_match
+                or pending_request.routing_context.tried_first_multiplexed_models
+            ):
                 # When there is no match for a multiplexed model id
-                # or when the replica(s) with the matching model id is busy,
-                # first try to fall back to replicas with the fewest models.
+                # first try to reserve one of the replicas with the fewest models.
+                candidate_replica_ids = self._reserve_replica_for_cold_model(
+                    multiplexed_model_id
+                )
+                self._multiplexed_model_id_fallback_match.add(multiplexed_model_id)
+            elif (
+                candidate_replica_ids
+                and pending_request.routing_context.tried_first_multiplexed_models
+            ):
+                # The warm replica(s) were busy. Try all least-loaded replicas
+                # instead of pinning the retry to a cold-model reservation.
                 candidate_replica_ids = (
                     self._get_replica_ids_with_fewest_multiplexed_models()
                 )
-                self._multiplexed_model_id_fallback_match.add(multiplexed_model_id)
             elif candidate_replica_ids:
                 self._multiplexed_model_id_fallback_match.discard(multiplexed_model_id)
             pending_request.routing_context.tried_first_multiplexed_models = True
