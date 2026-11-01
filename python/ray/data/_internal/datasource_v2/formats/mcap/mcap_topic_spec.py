@@ -339,7 +339,8 @@ class TopicSpec:
         pad: What a step that no message fills holds, such as one past the
             clip's edge. ``"edge"`` repeats the nearest real step, or the clip's
             first or last message on the topic when the window has none.
-            ``"zeros"`` gives an empty payload. ``"raise"`` fails the read,
+            ``"zeros"`` gives an empty payload, or a black frame when the topic
+            is decoded. ``"raise"`` fails the read,
             naming the sample. ``valid:<topic>`` marks a padded step ``False``.
             A window of every message has no fixed steps to pad: ``"raise"``
             fails the read when it reaches past the clip, and the other two cut

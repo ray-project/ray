@@ -1314,6 +1314,103 @@ def test_read_mcap_samples_refuses_a_row_id_checkpoint(
         ray.data.read_mcap(samples=samples, topics={"/cam": TopicSpec(steps.last(1))})
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("av") is None,
+    reason="av not available. Install with: pip install av",
+)
+def test_read_mcap_decode_samples(ray_start_regular_shared, tmp_path, datasource_v2):
+    """With ``video``, a sample read decodes its camera topics: each row holds
+    one frame per step, resized to one shape. A read of paths refuses
+    ``video``."""
+    from ray.data.datasource import TopicSpec, VideoOptions
+    from ray.data.datasource.mcap import steps
+    from ray.data.tests.unit.datasource_v2.mcap_testing import (
+        FRAME_NS,
+        encode_h264,
+        write_payloads,
+    )
+
+    if not datasource_v2:
+        pytest.skip("sample reads are V2 only")
+    path = os.path.join(tmp_path, "h264.mcap")
+    # 30 frames at about 30 fps, a keyframe every 10, in small chunks.
+    write_payloads(
+        path, encode_h264(30), schema_name="foxglove.CompressedVideo", chunk_size=400
+    )
+    # Anchored at frames 5, 15 and 25; the clip holds the whole stream.
+    samples = ray.data.from_items(
+        [
+            {
+                "files": [path],
+                "clip_start": 0,
+                "clip_end": 30 * FRAME_NS,
+                "anchor": k * FRAME_NS,
+            }
+            for k in (5, 15, 25)
+        ]
+    )
+    topics = {"/camera": TopicSpec(steps.before(frames=3, fps=10))}
+
+    ds = ray.data.read_mcap(
+        samples=samples, topics=topics, video=VideoOptions(resize=(24, 32))
+    )
+    rows = sorted(ds.take_all(), key=lambda row: row["anchor"])
+
+    assert "frames:/camera" in ds.schema().names
+    assert "data:/camera" not in ds.schema().names
+    assert [row["frames:/camera"].shape for row in rows] == [(3, 24, 32, 3)] * 3
+    # Frame 5's steps reach before the stream starts and repeat its first frame.
+    assert rows[0]["valid:/camera"] == [False, True, True]
+    assert all(row["valid:/camera"] == [True] * 3 for row in rows[1:])
+    with pytest.raises(ValueError, match="only to a sample read"):
+        ray.data.read_mcap(path, video=VideoOptions())
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("av") is None,
+    reason="av not available. Install with: pip install av",
+)
+def test_read_mcap_decode_samples_reports_a_null_file(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """With ``video``, planning settles the decoded topics from the files the
+    samples name and skips a null one, which the read then reports."""
+    from ray.data.datasource import TopicSpec, VideoOptions
+    from ray.data.datasource.mcap import steps
+    from ray.data.tests.unit.datasource_v2.mcap_testing import (
+        FRAME_NS,
+        encode_h264,
+        write_payloads,
+    )
+
+    if not datasource_v2:
+        pytest.skip("sample reads are V2 only")
+    path = os.path.join(tmp_path, "h264.mcap")
+    write_payloads(path, encode_h264(10), schema_name="foxglove.CompressedVideo")
+    rows = [
+        {
+            "sample_id": f"s{i}",
+            "files": files,
+            "clip_start": 0,
+            "clip_end": 10 * FRAME_NS,
+            "anchor": 5 * FRAME_NS,
+        }
+        for i, files in enumerate([[None], [path]])
+    ]
+    # From Arrow, so the null stays inside a list of strings.
+    samples = ray.data.from_arrow(pa.Table.from_pylist(rows))
+
+    ds = ray.data.read_mcap(
+        samples=samples,
+        topics={"/camera": TopicSpec(steps.last(2))},
+        video=VideoOptions(),
+    )
+
+    assert "frames:/camera" in ds.schema().names
+    with pytest.raises(Exception, match="Sample 's0' lists no file"):
+        ds.materialize()
+
+
 if __name__ == "__main__":
     import sys
 
