@@ -11,7 +11,6 @@ from typing import Any, Iterable, List, Tuple
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.datasource_v2.common.listing_utils import partition_files
 from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
 from ray.data._internal.datasource_v2.formats.mcap import mcap_datasource_v2
 from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
@@ -31,6 +30,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     CHUNKED_FILE_MESSAGES,
     STEP,
     list_manifests,
+    pack,
     read_all,
     round_robin_messages,
     scanner_for,
@@ -51,26 +51,6 @@ pytestmark = pytest.mark.skipif(
 def unit_ids(chunk_metadata: Any) -> List[int]:
     """The chunk offsets a listing row reads, from its ``unit_ids``."""
     return [int(i) for i in chunk_metadata["unit_ids"]]
-
-
-def pack(datasource: MCAPDatasourceV2, shard: List[str]) -> List[FileManifest]:
-    """List ``shard`` and pack its rows into read tasks, as one ``ListFiles``
-    task does."""
-    indexer = datasource._get_file_indexer()
-    partitioner = datasource.get_file_partitioner()
-    assert partitioner is not None
-    blocks = [
-        m.as_block()
-        for m in indexer.list_files(pa.array(shard), filesystem=datasource.filesystem)
-    ]
-    return [
-        FileManifest(block)
-        for block in partition_files(
-            blocks,
-            None,  # pyrefly: ignore[bad-argument-type]  (TaskContext unused)
-            partitioner,
-        )
-    ]
 
 
 def chunk_units(tasks: Iterable[FileManifest]) -> List[Tuple[str, int]]:
@@ -219,17 +199,7 @@ def test_file_without_index_is_one_whole_file_row(tmp_path):
 
 def test_summary_without_channels_is_one_whole_file_row(chunked_file, monkeypatch):
     """A file whose summary lists no channels is listed whole and still read."""
-    from ray.data._internal.datasource_v2.formats.mcap import mcap_summary
-
-    real_read_summary = mcap_summary.read_summary
-
-    def without_channels(filesystem, path):
-        summary = real_read_summary(filesystem, path)
-        assert summary is not None
-        summary.channels = {}
-        return summary
-
-    monkeypatch.setattr(mcap_summary, "read_summary", without_channels)
+    without_summary_records(monkeypatch, "channels")
     datasource = MCAPDatasourceV2([chunked_file], topics=["/a"])
 
     (manifest,) = list_manifests(datasource)
@@ -456,6 +426,30 @@ def test_packer_packs_per_listing_shard(tmp_path):
     assert len(set(chunk_units(per_shard))) == len(chunk_units(per_shard)) == 16
     # Two shards may each leave one bin under-filled.
     assert len(per_shard) <= len(whole) + 1
+
+
+def listed_rows(datasource: MCAPDatasourceV2) -> List[Tuple[str, List[int], int]]:
+    """Every listing row in listing order: its path, chunk offsets and weight."""
+    return [
+        (str(path), unit_ids(md), int(md["size_bytes"]))
+        for manifest in list_manifests(datasource)
+        for path, md in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ]
+
+
+def test_listing_order_does_not_depend_on_summary_concurrency(tmp_path, monkeypatch):
+    """Listing 30 files with one summary read at a time or 32 at once gives the
+    same rows in the same order, so the packer forms the same read tasks."""
+    for i in range(30):
+        write_mcap(os.path.join(tmp_path, f"f{i:02d}.mcap"), round_robin_messages(4))
+
+    monkeypatch.setenv("RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", "1")
+    one_at_a_time = listed_rows(MCAPDatasourceV2([str(tmp_path)]))
+    monkeypatch.setenv("RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", "32")
+    many_at_once = listed_rows(MCAPDatasourceV2([str(tmp_path)]))
+
+    assert len(one_at_a_time) == 30 * 4
+    assert many_at_once == one_at_a_time
 
 
 if __name__ == "__main__":
