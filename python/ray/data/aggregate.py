@@ -1392,7 +1392,7 @@ class CountDistinct(Unique):
 
 
 @PublicAPI
-class ValueCounter(AggregateFnV2):
+class ValueCounter(VectorizedAggregateFnV2[Dict[str, List], Dict[str, List]]):
     """Counts the number of times each value appears in a column.
 
     This aggregation computes value counts for a specified column, similar to pandas'
@@ -1465,6 +1465,35 @@ class ValueCounter(AggregateFnV2):
                 counts.append(c_new)
 
         return current_accumulator
+
+    def _combine_column(
+        self, accumulator_col: BlockColumn
+    ) -> Optional[Dict[str, List]]:
+        if len(accumulator_col) == 0:
+            return None
+
+        values: List[Any] = []
+        counts: List[int] = []
+        value_to_index: Dict[Any, int] = {}
+        has_non_null = False
+
+        for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+            if accumulator is None:
+                continue
+            has_non_null = True
+            for v_new, c_new in zip(accumulator["values"], accumulator["counts"]):
+                idx = value_to_index.get(v_new)
+                if idx is not None:
+                    counts[idx] += c_new
+                else:
+                    value_to_index[v_new] = len(values)
+                    values.append(v_new)
+                    counts.append(c_new)
+
+        if not has_non_null:
+            return None
+
+        return {"values": values, "counts": counts}
 
 
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
