@@ -609,7 +609,8 @@ def _iter_rows_from_batch_with_tensors(
 
     For pyarrow native FixedShapeTensorArrays, we must manually convert them
     to ndarrays which preserve shape/ndim. Without this, FixedShapeTensorArrays
-    would be translated to contiguous 1d arrays.
+    would be translated to contiguous 1d arrays. A null tensor row becomes
+    ``None``.
 
     See: https://arrow.apache.org/docs/python/generated/pyarrow.FixedShapeTensorArray.html
 
@@ -624,7 +625,7 @@ def _iter_rows_from_batch_with_tensors(
     col_values = []
     for column in batch.columns:
         if _is_native_tensor_type(column.type):
-            col_values.append(column.to_numpy_ndarray())
+            col_values.append(transform_pyarrow.to_numpy(column))
         else:
             col_values.append(column.to_pylist())
 

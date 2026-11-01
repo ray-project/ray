@@ -1417,13 +1417,30 @@ def table_to_numpy_dict_chunked(
     return numpy_batch
 
 
+def _native_tensor_rows_to_numpy(array: "pyarrow.Array") -> np.ndarray:
+    """Convert a native tensor array to a 1D object ndarray holding each row's
+    tensor, or ``None`` for a null row."""
+    # A fixed-size list keeps a slot for each null row, so every valid row of
+    # to_numpy_ndarray() is that row's own tensor.
+    tensors = array.to_numpy_ndarray()
+    is_null = array.is_null().to_numpy(zero_copy_only=False)
+
+    rows = np.empty(len(array), dtype=object)
+    for i in range(len(array)):
+        rows[i] = None if is_null[i] else tensors[i]
+    return rows
+
+
 def to_numpy(
     array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
     *,
     zero_copy_only: bool = True,
 ) -> np.ndarray:
     """Wrapper for `Array`s and `ChunkedArray`s `to_numpy` API,
-    handling API divergence b/w Arrow versions"""
+    handling API divergence b/w Arrow versions.
+
+    A native tensor array with null rows converts to a 1D object ndarray with
+    ``None`` for each null row."""
 
     import pyarrow as pa
 
@@ -1433,6 +1450,8 @@ def to_numpy(
         if pa.types.is_null(array.type):
             return np.full(len(array), np.nan, dtype=np.float32)
         if _is_native_tensor_type(array.type):
+            if array.null_count > 0:
+                return _native_tensor_rows_to_numpy(array)
             # This is zero-copy. We use to_numpy_ndarray() because to_numpy
             # will flatten n-dim array into 1d.
             return array.to_numpy_ndarray()
@@ -1441,6 +1460,10 @@ def to_numpy(
         if pa.types.is_null(array.type):
             return np.full(array.length(), np.nan, dtype=np.float32)
         if _is_native_tensor_type(array.type):
+            if array.null_count > 0:
+                return np.concatenate(
+                    [_native_tensor_rows_to_numpy(chunk) for chunk in array.chunks]
+                )
             # Convert each chunk to numpy, then stack them
             numpy_chunks = [chunk.to_numpy_ndarray() for chunk in array.chunks]
             if len(numpy_chunks) == 0:
