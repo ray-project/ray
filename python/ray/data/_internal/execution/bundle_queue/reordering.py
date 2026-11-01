@@ -38,9 +38,11 @@ class ReorderingBundleQueue(BaseBundleQueue):
         This method should only be called when the current task is complete and all
         outputs have been taken.
         """
-        assert len(self._inner[self._current_key]) == 0
+        assert not self._inner.get(self._current_key)
         assert self._current_key in self._finalized_keys
 
+        self._inner.pop(self._current_key, None)
+        self._finalized_keys.remove(self._current_key)
         self._current_key += 1
 
     @override
@@ -50,13 +52,12 @@ class ReorderingBundleQueue(BaseBundleQueue):
 
     @override
     def has_next(self) -> bool:
-        while (
-            self._current_key in self._finalized_keys
-            and len(self._inner[self._current_key]) == 0
+        while self._current_key in self._finalized_keys and not self._inner.get(
+            self._current_key
         ):
             self._move_to_next_key()
 
-        return len(self._inner[self._current_key]) > 0
+        return bool(self._inner.get(self._current_key))
 
     @override
     def _get_next_inner(self) -> RefBundle:
