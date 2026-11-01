@@ -281,16 +281,16 @@ doc/redirects/README.md:
 # such as rllib/README.rst, used to match that tree's directory rule and fan a
 # content-only edit out to the whole library suite (rllib/README.rst alone
 # pulled in the rllib component tests); release/*.md emitted `tools`. The global
-# rule also subsumes the standalone README.rst/SECURITY.md/CONTRIBUTING.rst skip
+# rule also subsumes the standalone README.md/SECURITY.md/CONTRIBUTING.rst skip
 # entries and the release/*.md route, which were removed as dead code.
 python/ray/rllib/README.md:
 python/ray/rllib/algorithms/ppo/README.md:
 python/ray/data/tests/unit/README.md:
-python/ray/tune/README.rst:
-src/ray/design_docs/task_states.rst:
+python/ray/tune/README.md:
+src/ray/design_docs/task_states.md:
 release/benchmarks/README.md:
 AGENTS.md:
-README.rst:
+README.md:
 CONTRIBUTING.rst:
 SECURITY.md:
 # Guard: source, tests, and config beside a skipped README still route to their
