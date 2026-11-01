@@ -13,7 +13,7 @@ import shutil
 import struct
 from collections import defaultdict
 from fractions import Fraction
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pyarrow as pa
 from pyarrow.fs import LocalFileSystem
@@ -261,6 +261,24 @@ def read_all(datasource, *manifests, scanner=None) -> pa.Table:
     return pa.concat_tables(tables)
 
 
+def read_rows(datasource, manifests, columns=None) -> List[Dict[str, Any]]:
+    """Read ``manifests`` with the planned scanner into row dicts.
+
+    ``columns`` prunes the read, as a projection does. Every table must match
+    the read schema.
+    """
+    scanner = scanner_for(datasource)
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
+    reader = scanner.create_reader()
+    rows: List[Dict[str, Any]] = []
+    for manifest in manifests:
+        for table in reader.read(manifest):
+            assert table.schema.equals(scanner.read_schema()), table.schema
+            rows.extend(table.to_pylist())
+    return rows
+
+
 def selected_messages(path: str):
     """Every message of the local, indexed file ``path``, as the reader yields them."""
     reader = SelectedMessageReader(MCAPSelection(), log_time_order=True)
@@ -327,6 +345,23 @@ def write_corrupt_chunk_header(path: str, source: str, index: int) -> str:
     return path
 
 
+def edit_summaries(monkeypatch, edit: Callable[[Any], None]) -> None:
+    """Pass every later summary read through ``edit``, which changes it in place.
+
+    Stands in for a writer whose summary leaves out some records.
+    """
+    from ray.data._internal.datasource_v2.formats.mcap import mcap_io
+
+    real_parse = mcap_io._collect_summary_records
+
+    def parse(section):
+        summary = real_parse(section)
+        edit(summary)
+        return summary
+
+    monkeypatch.setattr(mcap_io, "_collect_summary_records", parse)
+
+
 def without_summary_records(monkeypatch, *names: str) -> None:
     """Make every later summary read return the record maps ``names`` empty.
 
@@ -347,29 +382,42 @@ def without_summary_records(monkeypatch, *names: str) -> None:
 
 
 class SeekLog:
-    """A filesystem whose files record, per path, every offset they seek to."""
+    """A filesystem whose files record, per path, every offset they seek to and
+    how many reads they serve."""
 
     def __init__(self):
         self._filesystem = LocalFileSystem()
         self.seeks: Dict[str, List[int]] = defaultdict(list)
+        self.reads: Dict[str, int] = defaultdict(int)
 
     def open_input_file(self, path):
         return _SeekLoggingFile(
-            self._filesystem.open_input_file(path), self.seeks[path]
+            self._filesystem.open_input_file(path), self.seeks[path], self, path
         )
 
 
 class _SeekLoggingFile:
-    """A file that appends every absolute seek offset to ``seeks``."""
+    """A file that appends every absolute seek offset to ``seeks`` and counts
+    its reads in ``log.reads[path]``."""
 
-    def __init__(self, f, seeks: List[int]):
+    def __init__(self, f, seeks: List[int], log: SeekLog, path: str):
         self._f = f
         self._seeks = seeks
+        self._log = log
+        self._path = path
 
     def seek(self, offset, whence=0):
         if whence == 0:
             self._seeks.append(offset)
         return self._f.seek(offset, whence)
+
+    def read(self, *args):
+        self._log.reads[self._path] += 1
+        return self._f.read(*args)
+
+    def readinto(self, buffer):
+        self._log.reads[self._path] += 1
+        return self._f.readinto(buffer)
 
     def __getattr__(self, name):
         return getattr(self._f, name)

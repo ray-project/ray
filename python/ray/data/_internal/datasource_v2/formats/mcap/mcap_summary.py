@@ -160,6 +160,35 @@ def _read_concurrently(
             yield pending.popleft()
 
 
+def attachment_unit_id(path: str, offset: int) -> str:
+    """Stable ``ReadUnit.id`` and ``row_id`` of one Attachment record."""
+    return f"{path}#a={offset}"
+
+
+def metadata_unit_id(path: str, offset: int) -> str:
+    """Stable ``ReadUnit.id`` and ``row_id`` of one Metadata record."""
+    return f"{path}#md={offset}"
+
+
+def unindexed_record_row_id(path: str, kind: str, ordinal: int) -> str:
+    """Id of an Attachment or Metadata record of a file without an index."""
+    return f"{path}#{kind}-m={ordinal}"
+
+
+def record_run(offset: int, size_bytes: int) -> FileChunk:
+    """The listing row for one Attachment or Metadata record.
+
+    One record is one row. The count is exact (``fully_matched``) because the
+    indexer lists only the records the reader keeps.
+    """
+    return FileChunk(
+        unit_ids=(offset,),
+        num_rows=1,
+        size_bytes=max(size_bytes, 1),
+        fully_matched=True,
+    )
+
+
 def chunk_unit_id(path: str, chunk_start_offset: int) -> str:
     """Stable ``ReadUnit.id`` of one chunk: the file plus the chunk's byte offset.
 
