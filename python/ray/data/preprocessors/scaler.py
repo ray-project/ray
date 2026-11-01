@@ -664,10 +664,11 @@ class RobustScaler(SerializablePreprocessorBase):
 
             diff = s_high_q - s_low_q
 
-            # Handle division by zero.
-            # Return all zeros.
-            if diff == 0:
-                return np.zeros_like(s)
+            # Handle division by zero and near-zero values for numerical stability.
+            # Return zeros for observed values while preserving missing values
+            # (pd.NA / np.nan) and promoting integer dtypes to float.
+            if diff < _EPSILON:
+                return (s - s) * 0.0
 
             return (s - s_median) / diff
 
