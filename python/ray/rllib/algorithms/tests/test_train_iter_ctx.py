@@ -102,8 +102,9 @@ def test_train_iter_ctx_resets_no_progress_watchdog_after_sampling_progress():
             ctx.should_stop(True)
 
 
-def test_train_iter_ctx_does_not_watchdog_blocking_sampling():
-    algo = _fake_algo(sample_progress_tolerance=0, sample_timeout_s=None)
+@pytest.mark.parametrize("sample_timeout_s", [None, float("inf")])
+def test_train_iter_ctx_does_not_watchdog_blocking_sampling(sample_timeout_s):
+    algo = _fake_algo(sample_progress_tolerance=0, sample_timeout_s=sample_timeout_s)
 
     with TrainIterCtx(algo) as ctx:
         assert ctx.should_stop(None) is False
