@@ -10,6 +10,7 @@ import ray
 from ray._private.grpc_utils import init_grpc_channel
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
+    ActorHandleNotFoundError,
     DeploymentID,
     ReplicaID,
     ReplicaQueueLengthInfo,
@@ -445,17 +446,22 @@ class RunningReplica:
         Uses the sync handle resolver (with process-level caching) since
         callers don't await this fire-and-forget RPC.
 
-        If the replica actor has already died (``ray.get_actor`` raises
-        ``ValueError``), silently skip — the controller will send a new
-        replica update on the next tick.  Any other error from handle
+        If the replica actor has already died (``ActorHandleNotFoundError``
+        from the lazy handle resolver, which wraps the raw ``ValueError``
+        from ``ray.get_actor``), silently skip — the controller will send
+        a new replica update on the next tick.  Any other error from handle
         resolution is re-raised so the caller knows something went wrong.
         """
         try:
             actor_handle = self._get_actor_handle_sync()
-        except ValueError:
+        except ActorHandleNotFoundError:
             # Replica actor is gone (e.g. died between controller listing
-            # and our update tick).  Nothing more we can do here; the
-            # controller will notice and send a corrected replica list.
+            # and our update tick).  ``get_actor_handle`` in common.py
+            # converts the raw ``ValueError`` from ``ray.get_actor`` into
+            # this narrower exception so we don't accidentally swallow
+            # unrelated ``ValueError`` sources (e.g. Java-call argument
+            # mistakes).  Nothing more we can do here; the controller will
+            # notice and send a corrected replica list.
             return
         actor_handle.push_proxy_handle.remote(handle)
 
