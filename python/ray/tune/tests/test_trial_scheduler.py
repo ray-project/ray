@@ -216,6 +216,30 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(runner, best, result(2, 1000)), TrialScheduler.CONTINUE
         )
 
+    def testMedianStoppingFinalResultCountedOnce(self):
+        # The controller hands a finished trial's last result to the scheduler again, as a
+        # duplicate "done" result and in `on_trial_complete`. It must not be averaged in again.
+        rule = MedianStoppingRule(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=0,
+            min_samples_required=1,
+        )
+        runner = mock_tune_controller()
+        finished = Trial(MOCK_TRAINABLE_NAME)
+        for t, reward in [(1, 0), (2, 0), (3, 90)]:
+            rule.on_trial_result(runner, finished, result(t, reward))
+        rule.on_trial_result(runner, finished, result(3, 90))
+        rule.on_trial_complete(runner, finished, result(3, 90))
+
+        # Running mean of `finished` at t=3 is (0 + 0 + 90) / 3 = 30, below this trial's 40.
+        other = Trial(MOCK_TRAINABLE_NAME)
+        for t in (1, 2, 3):
+            self.assertEqual(
+                rule.on_trial_result(runner, other, result(t, 40)),
+                TrialScheduler.CONTINUE,
+            )
+
     def testMedianStoppingSoftStop(self):
         rule = MedianStoppingRule(
             metric="episode_reward_mean",

@@ -155,7 +155,7 @@ class MedianStoppingRule(FIFOScheduler):
             return TrialScheduler.CONTINUE
 
         time = result[self._time_attr]
-        self._results[trial].append(result)
+        self._record_result(trial, result)
 
         if time < self._grace_period:
             return TrialScheduler.CONTINUE
@@ -206,12 +206,26 @@ class MedianStoppingRule(FIFOScheduler):
     def on_trial_complete(
         self, tune_controller: "TuneController", trial: Trial, result: Dict
     ):
-        self._results[trial].append(result)
+        self._record_result(trial, result)
 
     def debug_string(self) -> str:
         return "Using MedianStoppingRule: num_stopped={}.".format(
             len(self._stopped_trials)
         )
+
+    def _record_result(self, trial: Trial, result: Dict):
+        results = self._results[trial]
+        # The controller passes a finished trial's last result again, as a duplicate
+        # "done" result and in `on_trial_complete`. Keep one entry per time so it
+        # is not averaged in more than once.
+        if (
+            results
+            and self._time_attr in result
+            and results[-1].get(self._time_attr) == result[self._time_attr]
+        ):
+            results[-1] = result
+        else:
+            results.append(result)
 
     def _on_insufficient_samples(
         self, tune_controller: "TuneController", trial: Trial, time: float
