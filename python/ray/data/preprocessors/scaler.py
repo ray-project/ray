@@ -667,8 +667,8 @@ class RobustScaler(SerializablePreprocessorBase):
             # Handle division by zero and near-zero values for numerical stability.
             # Return zeros for observed values while preserving missing values
             # (pd.NA / np.nan) and promoting integer dtypes to float.
-            if diff < _EPSILON:
-                return (s - s) * 0.0
+            if abs(diff) < _EPSILON:
+                return s * 0.0
 
             return (s - s_median) / diff
 

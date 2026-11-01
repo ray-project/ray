@@ -910,6 +910,14 @@ def test_robust_scaler_zero_and_near_zero_iqr():
         assert np.allclose(out_df[col].iloc[:5], 0.0)
         assert pd.isna(out_df[col].iloc[5])
 
+    # Inverted quantile_range (diff < 0 with abs(diff) >= _EPSILON) should still
+    # scale with a sign flip rather than being zeroed out.
+    inv_df = pd.DataFrame.from_dict({"X": [-2.0, -1.0, 0.0, 1.0, 2.0]})
+    inv_ds = ray.data.from_pandas(inv_df)
+    inv_scaler = RobustScaler(["X"], quantile_range=(0.75, 0.25))
+    inv_scaler.fit(inv_ds)
+    inv_out = inv_scaler.transform(inv_ds).to_pandas()
+    assert np.allclose(inv_out["X"], [1.0, 0.5, 0.0, -0.5, -1.0])
 
 
 if __name__ == "__main__":
