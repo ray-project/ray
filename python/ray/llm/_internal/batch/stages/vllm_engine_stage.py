@@ -721,6 +721,9 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             The output dict, with __inference_error__ set if an error occurred.
         """
         idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
+        # Save before generate_async pops it. A tokenized_prompt row can have
+        # prompt=None when other rows in the block set a prompt.
+        original_prompt = row.get("prompt") or ""
         try:
             request, output, time_taken_llm = await self.llm.generate_async(row)
             return {
@@ -765,7 +768,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 error_msg,
             )
             # Include snippet of failed prompt for debuggability
-            prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
+            prompt = truncate_str(original_prompt, _MAX_PROMPT_LENGTH_IN_ERROR)
 
             # Construct default vLLMOutputData for schema consistency with success rows
             default_output = vLLMOutputData(
