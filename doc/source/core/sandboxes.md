@@ -334,6 +334,27 @@ Writes past the cap fail inside the sandbox with `ENOSPC` ("No space left on dev
 
 A `readonly=True` sandbox keeps its root filesystem read-only, so `disk` caps its `workdir` instead. The `workdir`'s writes then go to a file on the node's disk that the cap bounds, rather than straight to the `workdir`'s directory on the node. A read-only sandbox without a `workdir` has nothing writable to cap, so `disk` requires `readonly=False` or a `workdir`.
 
+### Commit a sandbox to an image
+
+Call `SandboxRuntime.commit()` to push a sandbox's base image and root filesystem changes to a registry.
+Commit leaves the sandbox in the state it was in: a running sandbox is paused only while its changes are exported, and a paused sandbox stays paused.
+The image doesn't include bind mounts or changes made from the host.
+Registry credentials come from `$DOCKER_CONFIG/config.json` and must allow push.
+
+```python
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+runtime = SandboxRuntime()
+instance = runtime.create("python:3.12-slim", readonly=False)
+runtime.exec(instance, ["pip", "install", "httpx"])
+image = runtime.commit(instance, "myregistry.azurecr.io/tools/python:with-httpx")
+runtime.create(image, readonly=False)
+```
+
+The method returns an immutable image reference such as `myregistry.azurecr.io/tools/python@sha256:...`.
+Commit requires a registry base image with a cached manifest and config.
+For an image cached without this metadata, pull it into a fresh cache and recreate the sandbox before committing.
+
 ### Schedule a Sandbox actor with custom resources
 
 Because `Sandbox` is a standard Ray actor, you can instantiate it directly with Ray actor scheduling options such as `num_cpus`, `memory`, and custom accelerator or placement constraints.

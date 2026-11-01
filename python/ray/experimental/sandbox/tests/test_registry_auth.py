@@ -78,6 +78,7 @@ class _Registry(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", 0), _RegistryHandler)
         self.auth = auth
         self.requests = []
+        self.token_scopes = []
         layer = io.BytesIO()
         with tarfile.open(fileobj=layer, mode="w") as tar:
             info = tarfile.TarInfo("etc/app.txt")
@@ -135,6 +136,9 @@ class _RegistryHandler(BaseHTTPRequestHandler):
             # Like an OAuth2 token endpoint, it reads a body only as a form.
             is_form = self.headers.get("Content-Type") == _FORM_TYPE
             form = parse_qs(body) if is_form else {}
+            registry.token_scopes.append(
+                (form if is_form else parse_qs(urlparse(self.path).query)).get("scope")
+            )
             if authorization == _basic(_USER, _PASSWORD):
                 self._send(200, json.dumps({"token": _TOKEN}).encode())
             elif form.get("refresh_token") == [_REFRESH_TOKEN]:
@@ -292,6 +296,24 @@ def test_bearer_pull_trades_auths_credentials_for_a_token(
     probe, *authorized = registry.authorizations("/v2/")
     assert probe is None
     assert authorized and set(authorized) == {f"Bearer {_TOKEN}"}
+
+
+@pytest.mark.parametrize("identity", [False, True])
+def test_push_scopes_reach_bearer_and_refresh_grants(
+    start_registry, docker_config, identity
+):
+    registry = start_registry("bearer")
+    credentials = (
+        {"identitytoken": _REFRESH_TOKEN}
+        if identity
+        else {"auth": _b64(f"{_USER}:{_PASSWORD}")}
+    )
+    docker_config({"auths": {registry.host: credentials}})
+    scopes = [f"repository:{_REPO}:pull,push", "repository:base:pull"]
+    assert get_registry_auth_headers(
+        f"http://{registry.host}", _REPO, reference="1", scopes=scopes
+    ) == {"Authorization": f"Bearer {_TOKEN}"}
+    assert registry.token_scopes == [scopes]
 
 
 def test_identity_token_takes_the_oauth2_refresh_grant(

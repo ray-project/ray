@@ -243,6 +243,7 @@ def get_registry_auth_headers(
     repo: str,
     reference: str = "latest",
     timeout: float = 30.0,
+    scopes: Optional[List[str]] = None,
 ) -> Dict[str, str]:
     """Answer a registry's authentication challenge for pulling ``repo``.
 
@@ -260,6 +261,8 @@ def get_registry_auth_headers(
         repo: Repository path within the registry.
         reference: Tag or digest whose manifest is requested.
         timeout: Network and credential helper timeout in seconds.
+        scopes: Override the challenge's scopes, such as pull,push on the
+            target repository and pull on the source repository.
 
     Returns:
         The ``Authorization`` header for the pull's registry requests, or no
@@ -310,8 +313,7 @@ def get_registry_auth_headers(
         params = {}
         if service:
             params["service"] = service
-        if scope:
-            params["scope"] = scope
+        params["scope"] = scopes or [scope]
 
         if creds is not None and creds.identity_token:
             # The token spec's OAuth2 refresh-token grant.
@@ -324,13 +326,15 @@ def get_registry_auth_headers(
             )
             auth_req = urllib.request.Request(
                 auth_url,
-                data=urllib.parse.urlencode(form).encode("utf-8"),
+                data=urllib.parse.urlencode(form, doseq=True).encode("utf-8"),
                 headers={"User-Agent": _USER_AGENT},
             )
         else:
             sep = "&" if "?" in realm else "?"
             auth_url = (
-                f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
+                f"{realm}{sep}{urllib.parse.urlencode(params, doseq=True)}"
+                if params
+                else realm
             )
             basic = None
             if creds is not None and creds.username:
@@ -1350,7 +1354,8 @@ def _extract_image_layers(
     """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
 
     ``image`` is a local tar archive or a registry reference. A registry
-    image's config is written to ``image_dir/.image_config.json`` and its
+    image's config and manifest are written to ``image_dir/.image_config.json``
+    and ``image_dir/.manifest.json``, respectively, and its
     layer blobs come from the shared layer cache under ``blob_dir``.
 
     Args:
@@ -1430,6 +1435,8 @@ def _extract_image_layers(
             )
             with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
                 manifest_data = json.loads(resp.read().decode("utf-8"))
+        with open(os.path.join(image_dir, ".manifest.json"), "w") as f:
+            json.dump(manifest_data, f)
 
         # extract image config so we can reference metadata bout the image later.
         config_desc = manifest_data.get("config")
