@@ -5035,6 +5035,7 @@ class TrainIterCtx:
         if (
             min_sample_ts
             and self.algo.config.sample_timeout_s is not None
+            and np.isfinite(self.algo.config.sample_timeout_s)
             and sampled < min_sample_ts
         ):
             if sampled > self._last_sampled:
