@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
@@ -56,6 +57,12 @@ void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
               RayConfig::instance().enable_pipe_based_agent_to_parent_health_check()
                   ? "1"
                   : "0"});
+  env.insert({"RAY_enable_worker_fork_server",
+              RayConfig::instance().enable_worker_fork_server() ? "1" : "0"});
+  if (!RayConfig::instance().preload_python_modules().empty()) {
+    env.insert({"RAY_preload_python_modules",
+                absl::StrJoin(RayConfig::instance().preload_python_modules(), ",")});
+  }
 
   // Launch the process to create the agent.
   std::error_code ec;

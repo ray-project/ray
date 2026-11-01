@@ -2590,6 +2590,14 @@ cdef execute_task_with_cancellation_handler(
             if omp_num_threads_overriden:
                 # Reset the OMP_NUM_THREADS environ if it was set.
                 os.environ.pop("OMP_NUM_THREADS", None)
+                # Restore default single-thread fallback (set_omp_num_threads_if_unset()
+                # sets OMP_NUM_THREADS when unset) if modules were imported pre-fork.
+                for module_name in ray_constants.THREAD_POOL_MODULES:
+                    if module_name in sys.modules:
+                        try:
+                            sys.modules[module_name].set_num_threads(1)
+                        except Exception:
+                            pass
 
 
     if execution_info.max_calls != 0:
