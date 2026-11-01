@@ -1,12 +1,17 @@
 import copy
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.core.generated import autoscaler_pb2
+from ray.data._internal.cluster_autoscaler import (
+    default_autoscaling_coordinator as coordinator_module,
+)
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
+    ResourceRequestPriority,
     ResourceRequestStrategy,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
@@ -14,6 +19,7 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     DefaultAutoscalingCoordinator,
     _AutoscalingCoordinatorActor,
     _format_node_resources_for_log,
+    _sticky_node_order,
     get_or_create_autoscaling_coordinator,
 )
 from ray.data._internal.util import GiB
@@ -307,6 +313,9 @@ def cluster():
     cluster = Cluster()
     cluster.add_node(num_cpus=0)
     cluster.wait_for_nodes()
+    # Disconnect from any instance an earlier test left up (e.g. the shared
+    # one), since ``connect`` would otherwise silently stay attached to it.
+    ray.shutdown()
     cluster.connect()
     yield cluster
     ray.shutdown()
@@ -1073,6 +1082,311 @@ def test_forced_read_drops_a_node_that_has_since_died():
     assert coord.get_reserved_resources("train", recompute=True) == {"n1": {"GPU": 1}}
 
 
+def test_draining_node_is_excluded_until_the_drain_clears():
+    """A draining node still reports ``Alive``, but the scheduler won't place
+    new work on it, so reserving it promises capacity nobody can use."""
+    nodes = _nodes(n1={"GPU": 4}, n2={"GPU": 4})
+    draining = {"n1"}
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: nodes,
+        get_draining_node_ids=lambda: draining,
+    )
+    coord.request_resources(
+        requester_id="train", resources=[{"GPU": 4}] * 2, expire_after_s=10
+    )
+    assert coord.get_reserved_resources("train") == {"n2": {"GPU": 4}}
+
+    draining.clear()
+
+    assert coord.get_reserved_resources("train", recompute=True) == {
+        "n1": {"GPU": 4},
+        "n2": {"GPU": 4},
+    }
+
+
+def test_default_draining_query_against_a_cluster(cluster):
+    """The default query reaches the GCS and returns the draining node's id."""
+    worker_node = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+    assert coordinator_module._default_get_draining_node_ids() == set()
+
+    # A busy node drained for preemption stays alive until its deadline.
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote(), timeout=60)
+    is_accepted, _ = ray._private.worker.global_worker.gcs_client.drain_node(
+        worker_node.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preempted",
+        2**63 - 1,
+    )
+    assert is_accepted
+
+    assert coordinator_module._default_get_draining_node_ids() == {worker_node.node_id}
+
+
+def test_failing_draining_query_does_not_break_the_tick():
+    """Losing draining info must not stop the rest of the view refreshing, and
+    a query that keeps failing warns once, not on every tick."""
+    nodes = _nodes(n1={"GPU": 4})
+    get_draining_node_ids = Mock(side_effect=ray.exceptions.RpcError("GCS unavailable"))
+    with patch.object(coordinator_module.logger, "warning") as warning:
+        coord = _AutoscalingCoordinatorActor(
+            get_current_time=lambda: 0,
+            send_resources_request=Mock(),
+            get_cluster_nodes=lambda: nodes,
+            get_draining_node_ids=get_draining_node_ids,
+        )
+        coord.request_resources(
+            requester_id="train", resources=[{"GPU": 4}] * 2, expire_after_s=10
+        )
+        assert coord.get_reserved_resources("train") == {"n1": {"GPU": 4}}
+
+        # A node joining while the query keeps failing is still picked up.
+        nodes.extend(_nodes(n2={"GPU": 4}))
+        coord._tick()
+
+        assert coord.get_reserved_resources("train") == {
+            "n1": {"GPU": 4},
+            "n2": {"GPU": 4},
+        }
+        assert get_draining_node_ids.call_count == 2
+        assert warning.call_count == 1
+
+        # Once the query recovers, a later failure is worth warning about again.
+        get_draining_node_ids.side_effect = None
+        get_draining_node_ids.return_value = set()
+        coord._tick()
+        get_draining_node_ids.side_effect = ray.exceptions.RpcError("GCS unavailable")
+        coord._tick()
+
+        assert warning.call_count == 2
+
+
+def _gpu_node(node_id, memory_gib, num_gpus=4):
+    """A GPU node. Nodes of the same type differ only in ``memory``, which Ray
+    derives from the free system memory when the raylet starts."""
+    return {
+        "NodeID": node_id,
+        "Resources": {
+            "CPU": 12 * num_gpus,
+            "GPU": num_gpus,
+            "memory": memory_gib * GiB,
+            "object_store_memory": 20 * GiB,
+        },
+        "Labels": {},
+        "Alive": True,
+    }
+
+
+def test_node_joining_does_not_move_existing_reservations():
+    """Two runs each hold a node when a node of the same type with slightly more
+    ``memory`` joins. Neither reservation may move, or a restarting run would be
+    placed on the node where the other run's workers are still running."""
+    nodes = [
+        _gpu_node("n1", memory_gib=140.1),
+        _gpu_node("n2", memory_gib=140.0),
+        _gpu_node("n3", memory_gib=139.9),
+    ]
+    now = 0
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: now,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: nodes,
+    )
+    for requester_id in ("train-A", "train-B"):
+        now += 1
+        coord.request_resources(
+            requester_id=requester_id,
+            resources=[{"GPU": 1}] * 4,
+            expire_after_s=180,
+            priority=ResourceRequestPriority.HIGH,
+        )
+
+    def reservations():
+        return {
+            requester_id: copy.deepcopy(
+                coord.get_reserved_resources(requester_id, recompute=True)
+            )
+            for requester_id in ("train-A", "train-B")
+        }
+
+    before = reservations()
+    assert before == {"train-A": {"n1": {"GPU": 4}}, "train-B": {"n2": {"GPU": 4}}}
+
+    nodes.append(_gpu_node("n0", memory_gib=140.2))
+
+    assert reservations() == before
+
+
+def test_sticky_node_order():
+    """A requester's own nodes come first in their previous order, then nodes
+    nobody held, then nodes other requesters hold."""
+    assert _sticky_node_order(
+        node_ids=["a", "b", "c", "d", "e"],
+        # "gone" has left the cluster since.
+        held=["d", "gone", "b"],
+        held_by_others={"a", "b"},
+    ) == ["d", "b", "c", "e", "a"]
+
+
+def test_requester_on_a_dead_node_moves_without_moving_others():
+    """Only the requester that lost its node is re-placed, and it takes a free
+    node rather than the node another requester holds."""
+    nodes = _nodes(n1={"GPU": 4}, n2={"GPU": 4}, n3={"GPU": 4})
+    coord = _make_coordinator(nodes)
+    _request_resources(coord, None, [{"GPU": 4}], requester_id="A")
+    _request_resources(coord, None, [{"GPU": 4}], requester_id="B")
+    assert coord.get_reserved_resources("A") == {"n1": {"GPU": 4}}
+    assert coord.get_reserved_resources("B") == {"n2": {"GPU": 4}}
+
+    nodes[0]["Alive"] = False
+
+    assert coord.get_reserved_resources("A", recompute=True) == {"n3": {"GPU": 4}}
+    assert coord.get_reserved_resources("B") == {"n2": {"GPU": 4}}
+
+
+def test_later_higher_priority_requester_prefers_free_nodes():
+    """A higher-priority requester placed ahead of an existing one takes free
+    capacity before the existing requester's nodes."""
+    coord = _make_coordinator(_nodes(n1={"GPU": 4}, n2={"GPU": 4}))
+    coord.request_resources(
+        requester_id="low",
+        resources=[{"GPU": 4}],
+        expire_after_s=10,
+        priority=ResourceRequestPriority.LOW,
+    )
+    coord.request_resources(
+        requester_id="high",
+        resources=[{"GPU": 4}],
+        expire_after_s=10,
+        priority=ResourceRequestPriority.HIGH,
+    )
+
+    assert coord.get_reserved_resources("high") == {"n2": {"GPU": 4}}
+    assert coord.get_reserved_resources("low") == {"n1": {"GPU": 4}}
+
+
+def test_later_higher_priority_requester_still_outranks_stickiness():
+    """When the only capacity is held by a lower-priority requester, a
+    higher-priority requester that arrives later still gets it."""
+    coord = _make_coordinator(_nodes(n1={"GPU": 4}))
+    coord.request_resources(
+        requester_id="low",
+        resources=[{"GPU": 4}],
+        expire_after_s=10,
+        priority=ResourceRequestPriority.LOW,
+    )
+    assert coord.get_reserved_resources("low") == {"n1": {"GPU": 4}}
+
+    coord.request_resources(
+        requester_id="high",
+        resources=[{"GPU": 4}],
+        expire_after_s=10,
+        priority=ResourceRequestPriority.HIGH,
+    )
+
+    assert coord.get_reserved_resources("high") == {"n1": {"GPU": 4}}
+    assert coord.get_reserved_resources("low") == {}
+
+
+def test_strict_spread_stays_on_distinct_nodes_when_its_nodes_change():
+    nodes = _nodes(n1={"GPU": 4}, n2={"GPU": 4}, n3={"GPU": 4})
+    coord = _make_coordinator(nodes)
+    _request_resources(coord, ResourceRequestStrategy.STRICT_SPREAD, [{"GPU": 1}] * 2)
+    assert coord.get_reserved_resources("train") == {
+        "n1": {"GPU": 1},
+        "n2": {"GPU": 1},
+    }
+
+    # A larger node joins and sorts first, but the reservation stays put.
+    nodes.extend(_nodes(n0={"GPU": 8}))
+    assert coord.get_reserved_resources("train", recompute=True) == {
+        "n1": {"GPU": 1},
+        "n2": {"GPU": 1},
+    }
+
+    # n1 dies. Its bundle moves to a node the other bundle isn't on, and the
+    # bundle on n2 stays.
+    nodes[0]["Alive"] = False
+    assert coord.get_reserved_resources("train", recompute=True) == {
+        "n2": {"GPU": 1},
+        "n0": {"GPU": 1},
+    }
+
+
+def test_strict_pack_stays_on_one_node_when_its_nodes_change():
+    nodes = _nodes(n1={"GPU": 4}, n2={"GPU": 4})
+    coord = _make_coordinator(nodes)
+    for requester_id in ("A", "B"):
+        _request_resources(
+            coord,
+            ResourceRequestStrategy.STRICT_PACK,
+            [{"GPU": 1}] * 4,
+            requester_id=requester_id,
+        )
+    assert coord.get_reserved_resources("A") == {"n1": {"GPU": 4}}
+    assert coord.get_reserved_resources("B") == {"n2": {"GPU": 4}}
+
+    # A leaves. B stays on n2 rather than moving to n1, which sorts first.
+    coord.cancel_request("A")
+    assert coord.get_reserved_resources("B") == {"n2": {"GPU": 4}}
+
+    # B outgrows every node. It's never split, and it moves whole to a node
+    # that can hold all of it once one joins.
+    _request_resources(
+        coord, ResourceRequestStrategy.STRICT_PACK, [{"GPU": 1}] * 6, requester_id="B"
+    )
+    assert coord.get_reserved_resources("B") == {}
+    nodes.extend(_nodes(n3={"GPU": 8}))
+    assert coord.get_reserved_resources("B", recompute=True) == {"n3": {"GPU": 6}}
+
+
+def test_leftover_shares_follow_the_current_view():
+    """Only bundle placements are sticky. Every refresh splits the capacity
+    left over among ``request_remaining`` requesters node by node, including a
+    node that just joined."""
+    nodes = _nodes(n1={"CPU": 8}, n2={"CPU": 8})
+    coord = _make_coordinator(nodes)
+    for requester_id in ("data-1", "data-2"):
+        coord.request_resources(
+            requester_id=requester_id,
+            resources=[{"CPU": 2}],
+            expire_after_s=10,
+            request_remaining=["CPU"],
+        )
+    # Each explicit bundle is on its own node, and the 6 CPUs left on each node
+    # are split evenly.
+    assert coord.get_reserved_resources("data-1") == {
+        "n1": {"CPU": 2 + 3},
+        "n2": {"CPU": 3},
+    }
+    assert coord.get_reserved_resources("data-2") == {
+        "n2": {"CPU": 2 + 3},
+        "n1": {"CPU": 3},
+    }
+
+    nodes.extend(_nodes(n3={"CPU": 8}))
+    coord._tick()
+
+    assert coord.get_reserved_resources("data-1") == {
+        "n1": {"CPU": 2 + 3},
+        "n2": {"CPU": 3},
+        "n3": {"CPU": 4},
+    }
+    assert coord.get_reserved_resources("data-2") == {
+        "n2": {"CPU": 2 + 3},
+        "n1": {"CPU": 3},
+        "n3": {"CPU": 4},
+    }
+
+
 def test_strategy_is_per_requester():
     """Two requesters in the same cluster each get their own layout."""
     coord = _make_coordinator(
@@ -1095,8 +1409,8 @@ def test_strategy_is_per_requester():
     )
 
     assert coord.get_reserved_resources("packer") == {"n1": {"GPU": 2}}
-    # The spreader starts scanning at n1 (which has 2 GPU left after the
-    # packer) and then rotates to n2.
+    # The spreader starts scanning at n2, which no other requester holds, and
+    # then rotates to n1 (which has 2 GPU left after the packer).
     assert coord.get_reserved_resources("spreader") == {
         "n1": {"GPU": 1},
         "n2": {"GPU": 1},

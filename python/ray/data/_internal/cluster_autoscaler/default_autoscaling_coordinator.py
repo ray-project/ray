@@ -42,6 +42,10 @@ RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
     "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
 )
 
+# Bounds the draining-nodes GCS query, which runs under the actor's lock on
+# every view refresh.
+_GET_DRAINING_NODES_TIMEOUT_S = 3.0
+
 
 def _format_resource_value_for_log(resource_name: str, value: float) -> str:
     """Format a numerical resource value to a human-readable string.
@@ -169,6 +173,11 @@ class OngoingRequest:
     # which bundle (e.g. Ray Train subtracts its trainer bundle, always
     # submitted first, from the first node it fits on), so don't reorder it.
     reserved_resources: ReservedResources
+    # The nodes ``requested_resources`` were placed on, in placement order.
+    # Unlike ``reserved_resources``, this leaves out leftover shares, which
+    # cover every node. The next refresh tries these nodes first, so the
+    # reservation stays put when other nodes join or leave.
+    bundle_node_ids: List[NodeIdStr]
     # Per-bundle label selectors, parallel to ``requested_resources``.
     # Empty dicts mean no label constraint on that bundle. Required to have
     # the same length as ``requested_resources``.
@@ -321,6 +330,17 @@ def _default_send_resources_request(
     )
 
 
+def _default_get_draining_node_ids() -> Set[NodeIdStr]:
+    """Default ``get_draining_node_ids`` implementation for the actor."""
+    # Unit tests build the actor without ``ray.init()``. There's no cluster
+    # then, so nothing is draining.
+    if not ray.is_initialized():
+        return set()
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    # Maps each draining node's id to its drain deadline; only the ids matter.
+    return set(gcs_client.get_draining_nodes(timeout=_GET_DRAINING_NODES_TIMEOUT_S))
+
+
 class _AutoscalingCoordinatorActor:
     """An actor to coordinate autoscaling resource requests from different components.
 
@@ -338,10 +358,14 @@ class _AutoscalingCoordinatorActor:
             [List[ResourceDict], Optional[List[LabelSelector]]], None
         ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
+        get_draining_node_ids: Callable[
+            [], Set[NodeIdStr]
+        ] = _default_get_draining_node_ids,
     ):
         self._get_current_time = get_current_time
         self._send_resources_request = send_resources_request
         self._get_cluster_nodes = get_cluster_nodes
+        self._get_draining_node_ids = get_draining_node_ids
 
         self._ongoing_reqs: Dict[RequesterId, OngoingRequest] = {}
         # Map from requester id to its subcluster selector.
@@ -349,6 +373,9 @@ class _AutoscalingCoordinatorActor:
         # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
         # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
         self._cluster_node_resources: Dict[Optional[LabelValue], NodeResources] = {}
+        # Whether the last draining-nodes query failed. Used to warn once per
+        # run of failures instead of on every tick.
+        self._draining_query_failing = False
         # Lock for thread-safe access to shared state from the background
         self._lock = threading.RLock()
         self._update_cluster_node_resources()
@@ -479,6 +506,7 @@ class _AutoscalingCoordinatorActor:
                     priority=priority.value,
                     expiration_time=now + expire_after_s,
                     reserved_resources={},
+                    bundle_node_ids=[],
                     strategy=strategy,
                 )
             # Write subcluster after all validations so a rejected call
@@ -578,12 +606,37 @@ class _AutoscalingCoordinatorActor:
                 return {}
             return self._ongoing_reqs[requester_id].reserved_resources
 
+    def _get_draining_node_ids_or_empty(self) -> Set[NodeIdStr]:
+        """Get the ids of draining nodes, or an empty set if the query fails.
+
+        Draining info only narrows the view, so a failed query shouldn't fail
+        the whole refresh. Warns on the first failure of a run, not every tick.
+        """
+        try:
+            draining_node_ids = set(self._get_draining_node_ids())
+        except Exception:
+            if not self._draining_query_failing:
+                logger.warning(
+                    "AutoscalingCoordinator failed to get draining nodes;"
+                    " treating every alive node as available until it succeeds.",
+                    exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
+                )
+            self._draining_query_failing = True
+            return set()
+        self._draining_query_failing = False
+        return draining_node_ids
+
     def _update_cluster_node_resources(self) -> bool:
         """Update cluster resources bucketed by subcluster. Return True if changed."""
+        draining_node_ids = self._get_draining_node_ids_or_empty()
 
         def _is_node_eligible(node):
             # Exclude dead nodes.
             if not node["Alive"]:
+                return False
+            # Exclude draining nodes. They still report as alive, but the
+            # scheduler won't place new work on them.
+            if node.get("NodeID", "") in draining_node_ids:
                 return False
             resources = node["Resources"]
             # Exclude the head node if it doesn't have CPUs and GPUs,
@@ -630,6 +683,12 @@ class _AutoscalingCoordinatorActor:
 
         Each requester's subcluster comes from its ``subcluster_selector``.
         A requester without one is eligible only for the ``None`` bucket.
+
+        Bundle placements are sticky. In priority order, each requester
+        tries the nodes it held last time first, then nodes no other requester
+        held, then the rest. So a node joining or leaving doesn't move
+        requesters that weren't on it, and a requester that has to move takes
+        free capacity before capacity another requester holds.
         """
         now = self._get_current_time()
         cluster_node_resources = copy.deepcopy(self._cluster_node_resources)
@@ -644,15 +703,33 @@ class _AutoscalingCoordinatorActor:
             selector = self._subcluster_selectors.get(requester_id)
             return (selector or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
 
+        # Nodes each requester's bundles were on before this refresh.
+        previously_held = {req_id: req.bundle_node_ids for req_id, req in live_items}
+
         # TODO(hchen): Optimize the following triple loop.
         for requester_id, ongoing_req in live_items:
             ongoing_req.reserved_resources = {}
             subcluster = _subcluster_of(requester_id)
             node_resources = cluster_node_resources.get(subcluster, {})
+            held_by_others = {
+                node_id
+                for other_id, node_ids in previously_held.items()
+                if other_id != requester_id
+                for node_id in node_ids
+            }
+            node_order = _sticky_node_order(
+                node_ids=list(node_resources),
+                held=previously_held[requester_id],
+                held_by_others=held_by_others,
+            )
             reservations = _compute_reservations(
                 ongoing_request=ongoing_req,
-                node_resources=node_resources,
+                # tries nodes in insertion order.
+                node_resources={
+                    node_id: node_resources[node_id] for node_id in node_order
+                },
             )
+            ongoing_req.bundle_node_ids = list(reservations)
             for node_id, bundle in reservations.items():
                 _subtract_bundle_in_place(node_resources[node_id], bundle)
                 _add_bundle_in_place(
@@ -707,6 +784,55 @@ class _AutoscalingCoordinatorActor:
                     f"has {reserved_resources_log_str}\n"
                 )
             logger.debug(msg)
+
+
+def _sticky_node_order(
+    node_ids: List[NodeIdStr],
+    held: List[NodeIdStr],
+    held_by_others: Set[NodeIdStr],
+) -> List[NodeIdStr]:
+    """Order the nodes one requester tries, so its reservation doesn't move.
+
+    Every refresh places every requester from scratch, trying nodes in order.
+    With the cluster's order alone, a node joining or leaving shifts where each
+    requester lands, even requesters whose nodes are all still there, often
+    onto a node where another requester's workers are still running. This
+    order fixes that in three tiers:
+
+    1. ``held``: the nodes this requester's bundles were on last refresh, in
+       the order the bundles were placed, so each bundle lands where it was.
+       Nodes that have left the cluster are skipped.
+    2. Nodes no other requester's bundles were on, e.g. a node that just
+       joined. A requester that has to move takes free capacity first.
+    3. Nodes other requesters' bundles were on, so a requester only crowds
+       onto another's nodes when nothing else fits.
+
+    Tiers 2 and 3 keep the cluster's order (largest node first). This only
+    sets the order nodes are tried in; capacity is still subtracted in priority
+    order, so a higher-priority requester placed earlier in the refresh still
+    wins over a lower-priority one's stickiness.
+
+    For example, with ``node_ids=[a, b, c, d]``, ``held=[c]`` and
+    ``held_by_others={a}``, the order is ``[c, b, d, a]``.
+
+    Args:
+        node_ids: The nodes in the requester's subcluster, in the cluster's
+            order.
+        held: The nodes of this requester's bundles last refresh, in
+            placement order. May include nodes no longer in ``node_ids``.
+        held_by_others: The nodes of other live requesters' bundles last
+            refresh.
+
+    Returns:
+        Every node in ``node_ids``, in the order to try them.
+    """
+    available = set(node_ids)
+    own = [node_id for node_id in held if node_id in available]
+    held_set = set(held)
+    rest = [node_id for node_id in node_ids if node_id not in held_set]
+    free = [node_id for node_id in rest if node_id not in held_by_others]
+    taken = [node_id for node_id in rest if node_id in held_by_others]
+    return own + free + taken
 
 
 def _compute_reservations(
