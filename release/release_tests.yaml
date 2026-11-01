@@ -4857,7 +4857,7 @@
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_no_accelerator.yaml --skip-hf-token true --run-serve-llm-profiler
 
 
-- name: llm_serve_llama_3dot1_8B_lora
+- name: llm_serve_qwen3dot5_0dot8B_lora
   frequency: nightly
   python: "3.12"
   group: llm-serve
@@ -4875,7 +4875,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml --timeout 900
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_lora.yaml --skip-hf-token true --timeout 900
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly

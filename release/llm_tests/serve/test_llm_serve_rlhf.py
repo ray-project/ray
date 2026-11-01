@@ -20,6 +20,7 @@ end-to-end story is finalized. Class names and endpoint names may change.
 """
 
 import time
+from pathlib import Path
 
 import pytest
 import ray
@@ -114,6 +115,10 @@ def call_collective_rpc_sync(method: str, args: list = None) -> dict:
 def test_collective_rpc_weight_sync():
     """Test the complete RLHF weight synchronization workflow."""
 
+    ray.init(
+        runtime_env={"py_modules": [str(Path(__file__).with_name("rlhf_utils.py"))]}
+    )
+
     # Start Ray Serve with DevIngress
     llm_config = get_llm_config()
     app = build_dev_openai_app({"llm_configs": [llm_config]})
@@ -200,4 +205,4 @@ def test_collective_rpc_weight_sync():
 
 
 if __name__ == "__main__":
-    pytest.main(["-xvs", __file__])
+    raise SystemExit(pytest.main(["-xvs", __file__]))

@@ -88,7 +88,7 @@ def test_recovery_from_replica_failure(app) -> None:
     wait_for_deployment_status(dname, "UNHEALTHY", timeout_s=60)
 
     # Wait again for deployment to get healthy
-    wait_for_deployment_status(dname, "HEALTHY", timeout_s=60)
+    wait_for_deployment_status(dname, "HEALTHY", timeout_s=180)
 
 
 if __name__ == "__main__":

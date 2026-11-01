@@ -1,0 +1,16 @@
+model_loading_config:
+  model_id: qwen3.5-0.8b-lora-test
+  model_source: Qwen/Qwen3.5-0.8B
+
+engine_kwargs:
+  revision: 2fc06364715b967f1860aea9cf38778875588b17
+  language_model_only: true
+  default_chat_template_kwargs:
+    enable_thinking: false
+  max_model_len: 2048
+  enable_lora: true
+  enforce_eager: true
+
+lora_config:
+  dynamic_lora_loading_path: "s3://anonymous@air-example-data/rayllm-ossci/lora/qwen3.5-0.8b/v2"
+  max_num_adapters_per_replica: 2
