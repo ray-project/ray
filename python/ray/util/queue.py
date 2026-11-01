@@ -318,6 +318,7 @@ class _QueueActor:
 
     async def put(self, item, timeout=None):
         try:
+            # asyncio.wait_for(..., 0) times out before the coroutine runs.
             if timeout == 0:
                 self.queue.put_nowait(item)
             else:
@@ -327,6 +328,7 @@ class _QueueActor:
 
     async def get(self, timeout=None):
         try:
+            # asyncio.wait_for(..., 0) times out before the coroutine runs.
             if timeout == 0:
                 return self.queue.get_nowait()
             return await asyncio.wait_for(self.queue.get(), timeout)
