@@ -4588,7 +4588,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1.yaml --skip-hf-token true --run-vllm-profiler --run-serve-llm-profiler
 
 - name: llm_serve_qwen3dot5_9B_quantized_tp_1_direct_streaming
   frequency: nightly
@@ -4612,7 +4612,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1.yaml --skip-hf-token true --run-vllm-profiler --run-serve-llm-profiler
 
 # Direct streaming with the prefix-cache-aware request router. Guards #64326,
 # where a body-aware router got no routing key on the direct-streaming path.
@@ -4638,7 +4638,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_prefix_cache.yaml
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_prefix_cache.yaml --skip-hf-token true
 
 # Routing cost of PrefixCacheAffinityRouter with replicas that reply immediately,
 # on a CPU node: throughput, latency and router event loop stalls.
@@ -4680,7 +4680,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_tp2.yaml --skip-hf-token true --run-vllm-profiler --run-serve-llm-profiler
 
 - name: llm_serve_qwen3dot5_0dot8B_tp_2_direct_streaming
   frequency: nightly
@@ -4704,7 +4704,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_tp2.yaml --skip-hf-token true --run-vllm-profiler --run-serve-llm-profiler
 
 - name: llm_serve_multi_node
   frequency: nightly
@@ -4833,7 +4833,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_no_accelerator.yaml --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_no_accelerator.yaml --skip-hf-token true --run-serve-llm-profiler
 
 
 - name: llm_serve_llama_3dot1_8B_lora
@@ -4963,6 +4963,11 @@
         cluster_compute: ../cluster_compute/2xh100.yaml
       run:
         script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py -m "requires_2GPU"
+    - __suffix__: 4gpu
+      cluster:
+        cluster_compute: ../cluster_compute/4xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py -m "requires_4GPU"
 
 - name: llm_serve_vllm_integration_tests_direct_streaming
   frequency: nightly

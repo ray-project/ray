@@ -329,7 +329,7 @@ def is_default_app_running():
 
 
 @pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V2-Lite"])
-@pytest.mark.requires_2GPU
+@pytest.mark.requires_4GPU
 def test_deepseek_model(model_name):
     """
     Test that the deepseek model can be loaded successfully.

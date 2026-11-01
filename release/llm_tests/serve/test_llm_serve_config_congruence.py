@@ -19,10 +19,11 @@ from vllm.config import VllmConfig
 from vllm.entrypoints.openai.api_server import build_async_engine_client
 from vllm.platforms.interface import DeviceCapability
 
+from ray import PlacementGroupID
 from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.util import remove_placement_group
-from ray.util.placement_group import placement_group_table
+from ray.util.placement_group import PlacementGroup, placement_group_table
 
 TEST_MODEL = "Qwen/Qwen3.5-0.8B"
 TEST_MAX_MODEL_LEN = 10500
@@ -62,15 +63,12 @@ LLM_CONFIG = LLMConfig(
 
 @pytest.fixture(autouse=True)
 def setup_placement_group_cleanup():
-    """Automatically clean up placement groups before each test."""
+    """Automatically clean up placement groups after each test."""
+    yield
     pg_table = placement_group_table()
-    for pg_info in pg_table.values():
-        if pg_info["state"] in ["CREATED", "CREATING"]:
-            try:
-                remove_placement_group(pg_info["placement_group_id"])
-            except Exception:
-                # Placement group may have already been removed
-                pass
+    for pg_id, pg_info in pg_table.items():
+        if pg_info["state"] != "REMOVED":
+            remove_placement_group(PlacementGroup(PlacementGroupID.from_hex(pg_id)))
 
 
 def deep_compare(dict1: Any, dict2: Any) -> bool:
@@ -114,7 +112,7 @@ async def get_ray_serve_llm_vllm_config() -> Tuple[Any, str]:
 
     with patch("vllm.v1.engine.async_llm.AsyncLLM", side_effect=mock_async_llm_class):
         try:
-            engine = VLLMEngine(LLM_CONFIG)
+            engine = VLLMEngine(LLM_CONFIG.model_copy(deep=True))
             await engine.start()
         except Exception:
             # Expected since we're mocking the constructor
@@ -159,7 +157,7 @@ async def get_vllm_standalone_config() -> Tuple[Any, str]:
             str(TEST_GPU_MEMORY_UTILIZATION),
             "--distributed-executor-backend",
             "ray",
-            "--disable-log-requests",
+            "--no-enable-log-requests",
         ]
     )
 
