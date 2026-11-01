@@ -1,6 +1,6 @@
 import copy
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -23,7 +23,10 @@ from ray.data._internal.execution.operators.map_operator import (
     _map_task,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.remote_fn import (
+    _add_system_error_to_retry_exceptions,
+    cached_remote_fn,
+)
 from ray.data._internal.utils.cached_ray_internals import (
     get_local_ongoing_lineage_reconstruction_tasks,
 )
@@ -183,13 +186,13 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
+        dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
+            ray_retried_exceptions=_ray_retried_exceptions(dynamic_ray_remote_args),
         )
-
-        dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
 
@@ -325,3 +328,19 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 "to increase the number of concurrent tasks by configuring "
                 "`override_num_blocks` earlier in the pipeline."
             )
+
+
+def _ray_retried_exceptions(ray_remote_args: Dict[str, Any]) -> Union[bool, List[type]]:
+    """The exceptions Ray reruns a task with ``ray_remote_args`` on.
+
+    ``cached_remote_fn`` defaults ``max_retries`` to -1 (unlimited); with 0, Ray
+    reruns on nothing. Otherwise it also reruns on ``RaySystemError``, which
+    ``cached_remote_fn`` adds to ``retry_exceptions``.
+    """
+    if ray_remote_args.get("max_retries", -1) == 0:
+        return False
+    retried = ray_remote_args.get("retry_exceptions", False)
+    # A copy, since adding ``RaySystemError`` appends to a list in place.
+    args = {"retry_exceptions": list(retried) if isinstance(retried, list) else retried}
+    _add_system_error_to_retry_exceptions(args)
+    return args["retry_exceptions"]

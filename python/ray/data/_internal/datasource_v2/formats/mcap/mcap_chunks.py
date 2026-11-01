@@ -25,6 +25,7 @@ from typing import (
 
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     ChunkReads,
+    OnCorrupt,
     read_chunk,
     read_chunks,
 )
@@ -75,13 +76,21 @@ def _scan_declarations(f: Any, chunk_index: "ChunkIndex", declared: _Declared) -
     """Add the channel and schema records of one chunk to ``declared``.
 
     A record already in ``declared`` is not replaced. The chunk is marked as
-    scanned.
+    scanned. A chunk that does not decode adds nothing, so the walk goes on to
+    the next earlier chunk; the task that owns it reports it. An error reading
+    ``f`` still raises.
     """
     from mcap.records import Channel, Schema
     from mcap.stream_reader import breakup_chunk
 
     declared.scanned.add(chunk_index.chunk_start_offset)
-    for record in breakup_chunk(read_chunk(f, chunk_index)):
+    try:
+        records = list(breakup_chunk(read_chunk(f, chunk_index)))
+    except OSError:
+        raise
+    except Exception:  # noqa: BLE001 - a corrupt chunk declares nothing here
+        return
+    for record in records:
         if isinstance(record, Channel):
             declared.channels.setdefault(record.id, record)
         elif isinstance(record, Schema):
@@ -113,6 +122,7 @@ class SelectedMessageReader:
         summary: "Summary",
         offsets: Optional[Set[int]],
         file_summary: Optional[Callable[[], "Summary"]] = None,
+        on_corrupt: Optional[OnCorrupt] = None,
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the owned chunks of an indexed file.
 
@@ -120,6 +130,10 @@ class SelectedMessageReader:
         ``log_time_order``. ``summary`` may index only the owned chunks, as a
         read task's summary does (``mcap_task_summary``). Then ``file_summary``
         returns the whole summary, which reading back a declaration needs.
+
+        With ``on_corrupt``, a chunk that cannot be decoded is handed to it and
+        skipped, so the file's other chunks are still read. An error reading
+        ``f`` still raises.
         """
         selected = self._selection.selected_channel_ids(
             summary.channels, summary.schemas
@@ -136,13 +150,14 @@ class SelectedMessageReader:
             file_summary or (lambda: summary),
         )
         if not self._log_time_order:
-            for chunk_index, chunk in read_chunks(f, chunk_indexes, self._chunk_reads):
-                yield from self._chunk_messages(
-                    f, path, summary, chunk_index, chunk, selected, declared
+            chunks = read_chunks(f, chunk_indexes, self._chunk_reads, on_corrupt)
+            for chunk_index, chunk in chunks:
+                yield from self._decoded_messages(
+                    f, path, summary, chunk_index, chunk, selected, declared, on_corrupt
                 )
             return
         yield from self._merge_chunks_by_log_time(
-            f, path, summary, chunk_indexes, selected, declared
+            f, path, summary, chunk_indexes, selected, declared, on_corrupt
         )
 
     def candidate_chunks(
@@ -176,6 +191,7 @@ class SelectedMessageReader:
         chunk_indexes: List["ChunkIndex"],
         selected: Set[int],
         declared: _Declared,
+        on_corrupt: Optional[OnCorrupt],
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the chunks in log-time order.
 
@@ -194,14 +210,14 @@ class SelectedMessageReader:
         heapq.heapify(heap)
         # Chunks leave the heap in ``_merge_order``, so they are read in it.
         chunks = read_chunks(
-            f, sorted(chunk_indexes, key=_merge_order), self._chunk_reads
+            f, sorted(chunk_indexes, key=_merge_order), self._chunk_reads, on_corrupt
         )
         while heap:
             _, kind, offset, _, item = heapq.heappop(heap)
             if kind == 0:
                 chunk_index, chunk = next(chunks)
                 assert chunk_index.chunk_start_offset == offset
-                for index, selected_message in self._chunk_messages(
+                for index, selected_message in self._decoded_messages(
                     f,
                     path,
                     summary,
@@ -209,6 +225,7 @@ class SelectedMessageReader:
                     chunk,
                     selected,
                     declared,
+                    on_corrupt,
                     with_index=True,
                 ):
                     heapq.heappush(
@@ -223,6 +240,39 @@ class SelectedMessageReader:
                     )
             else:
                 yield item
+
+    def _decoded_messages(
+        self,
+        f: Any,
+        path: str,
+        summary: "Summary",
+        chunk_index: "ChunkIndex",
+        chunk: Optional["Chunk"],
+        selected: Set[int],
+        declared: "_Declared",
+        on_corrupt: Optional[OnCorrupt],
+        with_index: bool = False,
+    ) -> Iterator[Any]:
+        """``_chunk_messages``, or the messages before a decoding error.
+
+        ``chunk`` is ``None`` when its record did not parse, which
+        ``read_chunks`` has already handed to ``on_corrupt``. A chunk that fails
+        while it is decompressed or parsed stops there and goes to
+        ``on_corrupt``. Without ``on_corrupt``, or for an error reading ``f``,
+        the error raises.
+        """
+        if chunk is None:
+            return
+        try:
+            yield from self._chunk_messages(
+                f, path, summary, chunk_index, chunk, selected, declared, with_index
+            )
+        except OSError:
+            raise
+        except Exception as e:  # noqa: BLE001 - a corrupt chunk costs only itself
+            if on_corrupt is None:
+                raise
+            on_corrupt(chunk_index, e)
 
     def _chunk_messages(
         self,

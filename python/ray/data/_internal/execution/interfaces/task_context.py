@@ -1,7 +1,7 @@
 import contextlib
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
@@ -46,6 +46,16 @@ class TaskContext:
 
     # Override of the target max-block-size for the task
     target_max_block_size_override: Optional[int] = None
+
+    # The exceptions Ray reruns this task on: its ``retry_exceptions`` remote
+    # arg, or ``False`` when ``max_retries`` is 0. ``True`` means any exception.
+    ray_retried_exceptions: Union[bool, List[type]] = False
+
+    # Set by ``_map_task`` for each attempt: how many more times it reruns the
+    # transform, and the ``retried_map_errors`` patterns it reruns on (``None``
+    # means any error).
+    map_retries_left: int = 0
+    map_retried_errors: Optional[List[str]] = field(default_factory=list)
 
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)
