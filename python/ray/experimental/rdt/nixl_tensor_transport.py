@@ -1,18 +1,21 @@
 import functools
 import glob
+import itertools
 import logging
 import math
 import os
 import threading
 import time
 import traceback
-from collections import OrderedDict
+from collections import Counter, OrderedDict
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
 from ray._private.ray_constants import (
     NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
+    RDT_FETCH_FAIL_TIMEOUT_SECONDS,
 )
 from ray.experimental.rdt.nixl_memory_pool import (
     MemoryPoolManager,
@@ -112,6 +115,92 @@ class TensorDesc:
     size: int
 
 
+class _AgentGuard:
+    """Reader-writer lock per remote agent.
+
+    In-flight transfers are readers and never block each other. Removing a remote
+    agent is the writer: it kills every transfer on that agent, so it must wait for
+    them. A writer cannot wait for its own thread's transfers, since only that thread
+    completes them, so it first drains all of them, on every agent.
+    """
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        # agent -> {reader key: [owner thread id, xfer handle or None until posted]}
+        self._reads: Dict[str, Dict[int, list]] = {}
+        self._waiting_writers = Counter()
+        self._writing = set()
+        self._keys = itertools.count()
+
+    def acquire_read(self, agent: str) -> int:
+        me = threading.get_ident()
+        with self._cond:
+            # A thread that already has transfers on the agent must not queue behind
+            # a waiting writer, which is itself waiting for those transfers.
+            self._cond.wait_for(
+                lambda: agent not in self._writing
+                and (
+                    not self._waiting_writers[agent]
+                    or any(t == me for t, _ in self._reads.get(agent, {}).values())
+                )
+            )
+            key = next(self._keys)
+            self._reads.setdefault(agent, {})[key] = [me, None]
+            return key
+
+    def set_handle(self, agent: str, key: int, handle: Any) -> None:
+        with self._cond:
+            if agent in self._reads and key in self._reads[agent]:
+                self._reads[agent][key][1] = handle
+
+    def release_read(self, agent: str, key: int) -> None:
+        with self._cond:
+            reads = self._reads.get(agent)
+            if reads is not None:
+                reads.pop(key, None)
+                if not reads:
+                    del self._reads[agent]
+            self._cond.notify_all()
+
+    @contextmanager
+    def write(self, agent: str, wait_done: Callable[[Any], None]):
+        me = threading.get_ident()
+        with self._cond:
+            # Drain every agent, not just this one: a thread waiting here must hold no
+            # reads, or two writers on different agents can wait on each other.
+            own = [
+                (reader_agent, key, handle)
+                for reader_agent, reads in self._reads.items()
+                for key, (t, handle) in reads.items()
+                if t == me
+            ]
+        for reader_agent, key, handle in own:
+            if handle is not None:
+                wait_done(handle)
+            self.release_read(reader_agent, key)
+        with self._cond:
+            self._waiting_writers[agent] += 1
+            try:
+                acquired = self._cond.wait_for(
+                    lambda: agent not in self._writing and not self._reads.get(agent),
+                    timeout=RDT_FETCH_FAIL_TIMEOUT_SECONDS,
+                )
+            finally:
+                self._waiting_writers[agent] -= 1
+                if not self._waiting_writers[agent]:
+                    del self._waiting_writers[agent]
+                self._cond.notify_all()
+            if not acquired:
+                raise TimeoutError(f"Timed out waiting for transfers on {agent}.")
+            self._writing.add(agent)
+        try:
+            yield
+        finally:
+            with self._cond:
+                self._writing.discard(agent)
+                self._cond.notify_all()
+
+
 @dataclass
 class NixlFetchRequest(FetchRequest):
     """NIXL-specific FetchRequest carrying the async transfer state.
@@ -128,6 +217,7 @@ class NixlFetchRequest(FetchRequest):
         registered_tensors: Tensors that were registered with NIXL, to deregister
             on cleanup. These are the buffers behind ``tensors``, which for a
             group transfer are views into fewer, larger buffers.
+        reader_key: Key of this transfer's read hold on the remote agent, until released.
     """
 
     xfer_handle: Any = None
@@ -136,9 +226,11 @@ class NixlFetchRequest(FetchRequest):
     remove_tensor_descs: bool = False
     transport: Any = None
     registered_tensors: List["torch.Tensor"] = field(default_factory=list)
+    reader_key: Optional[int] = None
 
     def __del__(self):
         if self.transport is not None:
+            self.transport._release_reader(self)
             self.transport._cleanup_transfer(
                 self.obj_id,
                 self.registered_tensors,
@@ -166,6 +258,11 @@ class NixlTensorTransport(TensorTransportManager):
         # LRU cache of remote agent names. When full, the least
         # recently used remote agent is evicted and remove_remote_agent is called.
         self._remote_agents: OrderedDict = OrderedDict()
+        # Keeps remote agents from being removed while transfers on them are in flight.
+        self._agent_guard = _AgentGuard()
+        # Agents claimed by an in-progress eviction, so concurrent evictors pick different ones.
+        self._evicting: set = set()
+        self._evicting_lock = threading.Lock()
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         self._memory_pool: Optional[MemoryPoolManager] = None
@@ -420,6 +517,7 @@ class NixlTensorTransport(TensorTransportManager):
 
         remote_name = None
         xfer_handle = None
+        reader_key = None
         added_tensor_descs = False
         registered_tensors: List["torch.Tensor"] = []
         tensors: List["torch.Tensor"] = []
@@ -497,21 +595,63 @@ class NixlTensorTransport(TensorTransportManager):
 
             # Nixl agent reuse is enabled.
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
-                if remote_name in self._remote_agents:
-                    # If the remote agent metadata version is different from the cached one,
-                    # it means there was memory deregistered. We need to remove the remote agent
-                    # before adding it, because `nixlRemoteSection` currently does not support
-                    # updating descriptor list in such a case (there is potential memory overlap).
-                    if remote_agent_meta_version != self._remote_agents[remote_name]:
-                        nixl_agent.remove_remote_agent(remote_name)
-                    self._remote_agents.move_to_end(remote_name)
-                elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
-                    evicted_agent_name, _ = self._remote_agents.popitem(last=False)
-                    nixl_agent.remove_remote_agent(evicted_agent_name)
+                cached_version = self._remote_agents.get(remote_name)
+                if (
+                    cached_version is None
+                    and len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE
+                ):
+                    with self._evicting_lock:
+                        evicted_agent_name = next(
+                            (n for n in list(self._remote_agents) if n not in self._evicting),
+                            None,
+                        )
+                        if evicted_agent_name is not None:
+                            self._evicting.add(evicted_agent_name)
+                    if evicted_agent_name is not None:
+                        try:
+                            with self._agent_guard.write(
+                                evicted_agent_name, self._wait_done
+                            ):
+                                # Dropped from the cache only once its removal is certain, so a
+                                # concurrent refresh never sees it missing while NIXL still has it.
+                                if (
+                                    self._remote_agents.pop(evicted_agent_name, None)
+                                    is not None
+                                ):
+                                    nixl_agent.remove_remote_agent(evicted_agent_name)
+                        finally:
+                            with self._evicting_lock:
+                                self._evicting.discard(evicted_agent_name)
 
-                self._remote_agents[remote_name] = remote_agent_meta_version
+                if cached_version is not None:
+                    if remote_agent_meta_version > cached_version:
+                        # If the remote agent metadata version is newer than the cached one,
+                        # it means there was memory deregistered. We need to remove the remote agent
+                        # before adding it, because `nixlRemoteSection` currently does not support
+                        # updating descriptor list in such a case (there is potential memory overlap).
+                        # Add and cache update happen under the lock, so a cached version always
+                        # means the agent holds it.
+                        with self._agent_guard.write(remote_name, self._wait_done):
+                            agents = self._remote_agents
+                            current = agents.get(remote_name)
+                            if current is not None and current < remote_agent_meta_version:
+                                nixl_agent.remove_remote_agent(remote_name)
+                                nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+                                agents[remote_name] = remote_agent_meta_version
+                    if remote_name in self._remote_agents:
+                        self._remote_agents.move_to_end(remote_name)
 
-            nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+            reader_key = self._agent_guard.acquire_read(remote_name)
+            # While we hold a reader the version can't change. Don't re-add metadata
+            # that a concurrent fetch has already replaced with a newer version.
+            cached_now = self._remote_agents.get(remote_name, remote_agent_meta_version)
+            if cached_now <= remote_agent_meta_version:
+                nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+                if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+                    # Published only after the add, so a cached version means it is there.
+                    self._remote_agents.setdefault(
+                        remote_name, remote_agent_meta_version
+                    )
 
             xfer_handle = nixl_agent.initialize_xfer(
                 "READ",
@@ -520,6 +660,7 @@ class NixlTensorTransport(TensorTransportManager):
                 remote_name,
                 b"UUID",
             )
+            self._agent_guard.set_handle(remote_name, reader_key, xfer_handle)
 
             state = nixl_agent.transfer(xfer_handle)
             if state == "ERR":
@@ -534,8 +675,11 @@ class NixlTensorTransport(TensorTransportManager):
                 remove_tensor_descs=added_tensor_descs,
                 transport=self,
                 registered_tensors=registered_tensors,
+                reader_key=reader_key,
             )
         except Exception:
+            if reader_key is not None:
+                self._agent_guard.release_read(remote_name, reader_key)
             self._cleanup_transfer(
                 obj_id,
                 registered_tensors,
@@ -573,6 +717,7 @@ class NixlTensorTransport(TensorTransportManager):
         obj_id = fetch_request.obj_id
 
         if not fetch_request.tensors:
+            self._release_reader(fetch_request)
             return fetch_request.tensors
 
         try:
@@ -599,16 +744,38 @@ class NixlTensorTransport(TensorTransportManager):
                 elif state == "DONE":
                     break
 
+            self._release_reader(fetch_request)
             return fetch_request.tensors
         except TimeoutError:
             raise
         except Exception:
+            self._release_reader(fetch_request)
             from ray.exceptions import RayDirectTransportError
 
             raise RayDirectTransportError(
                 f"The NIXL transfer failed for object id: {obj_id}. The source actor may have died during the transfer. "
                 f"The exception thrown from nixl transfer was:\n {traceback.format_exc()}"
             ) from None
+
+    def _release_reader(self, fetch_request: NixlFetchRequest) -> None:
+        key, fetch_request.reader_key = fetch_request.reader_key, None
+        if key is not None:
+            self._agent_guard.release_read(fetch_request.remote_name, key)
+
+    def _wait_done(self, xfer_handle: Any) -> None:
+        """Polls until the transfer leaves PROC so its final state is recorded on the handle."""
+        nixl_agent = self.get_nixl_agent()
+        # On timeout the removal fails the stuck transfer instead of hanging here.
+        deadline = time.monotonic() + RDT_FETCH_FAIL_TIMEOUT_SECONDS
+        try:
+            while (
+                nixl_agent.check_xfer_state(xfer_handle) == "PROC"
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.001)
+        except Exception:
+            # The error surfaces from wait_fetch_complete.
+            pass
 
     def _cleanup_transfer(
         self,
