@@ -1482,12 +1482,15 @@ class ValueCounter(VectorizedAggregateFnV2[Dict[str, List], Dict[str, List]]):
                 continue
             has_non_null = True
             for v_new, c_new in zip(accumulator["values"], accumulator["counts"]):
-                idx = value_to_index.get(v_new)
+                v_norm = _to_hashable(v_new)
+                if isinstance(v_norm, float) and np.isnan(v_norm):
+                    v_norm = np.nan
+                idx = value_to_index.get(v_norm)
                 if idx is not None:
                     counts[idx] += c_new
                 else:
-                    value_to_index[v_new] = len(values)
-                    values.append(v_new)
+                    value_to_index[v_norm] = len(values)
+                    values.append(v_norm)
                     counts.append(c_new)
 
         if not has_non_null:

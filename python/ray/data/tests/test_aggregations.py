@@ -1016,6 +1016,27 @@ class TestValueCounter:
         )
         assert agg._combine_column(all_null_col) is None
 
+    def test_value_counter_combine_column_nan(self):
+        agg = ValueCounter(on="v")
+        blocks = [
+            pa.table({"v": [np.nan, 1.0, 1.0]}),
+            pa.table({"v": [float("nan"), 2.0]}),
+        ]
+        partials = [agg.aggregate_block(block) for block in blocks]
+        combined = agg._combine_column(self._accumulator_column(partials))
+        assert self._as_counts(combined) == {np.nan: 2, 1.0: 2, 2.0: 1}
+
+        list_col = self._accumulator_column(
+            [
+                {"values": [["a", "b"], ["c"]], "counts": [2, 1]},
+                {"values": [["a", "b"]], "counts": [3]},
+            ]
+        )
+        assert self._as_counts(agg._combine_column(list_col)) == {
+            ("a", "b"): 5,
+            ("c",): 1,
+        }
+
     def test_value_counter_end_to_end_and_groupby(
         self, ray_start_regular_shared_2_cpus
     ):
