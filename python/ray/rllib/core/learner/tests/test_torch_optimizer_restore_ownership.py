@@ -32,7 +32,7 @@ def test_torch_cpu_restored_optimizer_buffers_own_storage():
         config = BaseTestingAlgorithmConfig()
         learner = config.build_learner(env=env)
         reader = get_cartpole_dataset_reader(batch_size=32)
-        batch = reader.next().as_multi_agent()
+        batch = next(reader).as_multi_agent()
         learner.update(batch=learner._convert_batch_type(copy.deepcopy(batch)))
 
         checkpoint = copy.deepcopy(learner.get_state())
