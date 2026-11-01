@@ -564,7 +564,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             view = view.copy(deep=True)
         return view
 
-    def take(self, indices: List[int]) -> "pandas.DataFrame":
+    def take(self, indices: Union[List[int], np.ndarray]) -> "pandas.DataFrame":
         table = self._table.take(indices)
         table.reset_index(drop=True, inplace=True)
         return table
