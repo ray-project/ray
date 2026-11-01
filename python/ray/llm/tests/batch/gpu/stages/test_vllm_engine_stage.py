@@ -908,11 +908,8 @@ async def test_vllm_udf_should_continue_on_error_yields_error_row(mock_vllm_wrap
 @pytest.mark.asyncio
 async def test_vllm_udf_error_row_keeps_prompt_popped_by_wrapper(mock_vllm_wrapper):
     """The real wrapper pops the prompt off the row before the engine fails."""
-    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
-    wrapper.task_type = vLLMTaskType.GENERATE
-    wrapper.idx_in_batch_column = "__idx_in_batch"
+    wrapper = _make_bare_wrapper()
     wrapper.model = "/tmp/fake-model"
-    wrapper.request_id = 0
     wrapper.semaphore = asyncio.Semaphore(1)
     wrapper.engine = MagicMock()
     wrapper.engine.generate = MagicMock(side_effect=ValueError("prompt too long"))
