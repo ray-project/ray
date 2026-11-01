@@ -268,6 +268,7 @@ def read_data_pages(metadata: FileMetaData) -> Optional[List[List[Optional[int]]
 
 
 def _row_group_pages(reader: _CompactReader) -> List[Optional[int]]:
+    """One row group's data page counts, by leaf."""
     chunks: List[Optional[int]] = []
     for field_id, field_type in reader._fields():
         if field_id == _ROW_GROUP_COLUMNS and field_type == _THRIFT_LIST:
@@ -279,6 +280,7 @@ def _row_group_pages(reader: _CompactReader) -> List[Optional[int]]:
 
 
 def _chunk_pages(reader: _CompactReader) -> Optional[int]:
+    """One chunk's data page count, or ``None`` without ``encoding_stats``."""
     pages = None
     for field_id, field_type in reader._fields():
         if field_id == _COLUMN_CHUNK_META_DATA and field_type == _STRUCT:
@@ -326,6 +328,7 @@ def _dictionary_bytes(leaf: LeafChunk) -> int:
 
 
 def _list_offset_width(leaf: LeafChunk) -> int:
+    """Bytes per offset of the widest list above ``leaf``, 4 if none."""
     return max(
         (node.width for node in leaf.profile.nodes[:-1] if node.kind == _LIST),
         default=4,
@@ -341,12 +344,14 @@ def _hash_table_bytes(distinct: int) -> int:
 
 
 def _reads_dictionary(leaf: LeafChunk, read: Read) -> bool:
+    """Whether PyArrow reads ``leaf`` as a dictionary."""
     return detect_dictionary_columns(
         chunk=leaf.chunk, format_kwargs=read.format_kwargs
     ) or detect_dictionary_type(arrow_type=leaf.type)
 
 
 def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
+    """Whether PyArrow hands the decoded values to Arrow without a copy."""
     if physical_type in ("INT32", "INT64"):
         return arrow_type in (pa.int32(), pa.int64()) or (
             physical_type == "INT64" and pa.types.is_timestamp(arrow_type)
@@ -358,6 +363,7 @@ def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
 
 
 def _nested_or_view(arrow_type: pa.DataType) -> bool:
+    """Whether ``arrow_type`` has a list, map or view, which casts copy per piece."""
     if isinstance(arrow_type, pa.ExtensionType):
         arrow_type = arrow_type.storage_type
     if (
