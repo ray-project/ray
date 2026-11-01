@@ -698,6 +698,12 @@ class RunningReplicaInfo:
     _actor_handle_cache: ClassVar[dict[tuple[str, str], ActorHandle]] = {}
     # Guards both the cache dict and the in-flight coroutine map below.
     _cache_lock: ClassVar[threading.Lock] = threading.Lock()
+    # Per-key invalidation version: incremented each time invalidate_actor_handle
+    # is called.  get_actor_handle snapshots the version before the blocking
+    # ray.get_actor call and only writes the handle back to cache if the version
+    # hasn't changed — this cleanly distinguishes "normal first populate" from
+    # "invalidation raced our lookup" (the stale-handle problem).
+    _cache_versions: ClassVar[dict[tuple[str, str], int]] = {}
     # Single-flight: track async resolution tasks per key so multiple
     # coroutines awaiting the same handle share one GCS round-trip.
     _inflight_resolutions: ClassVar[dict[tuple[str, str], asyncio.Future]] = {}
@@ -767,6 +773,14 @@ class RunningReplicaInfo:
             cached = self._actor_handle_cache.get(key)
             if cached is not None:
                 return cached
+            # Snapshot the current invalidation version BEFORE we release the
+            # lock and go do the blocking ray.get_actor.  If invalidate_actor_handle
+            # runs in another thread while we're waiting on GCS, it bumps this
+            # version; on our return we can detect that and refuse to re-cache
+            # a stale handle.  This also fixes the "cache never populates" bug:
+            # the first call snapshots version 0, finishes ray.get_actor, and
+            # finds the version still 0 → safe to store.
+            version_before = self._cache_versions.get(key, 0)
 
         try:
             handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
@@ -780,19 +794,20 @@ class RunningReplicaInfo:
             raise ActorHandleNotFoundError(str(e)) from e
 
         with self._cache_lock:
-            # Re-check: another thread may have populated the cache while
-            # we were blocked in ray.get_actor(), OR invalidate_actor_handle
-            # may have popped the key because the replica died in the
-            # meantime.  If the key is gone, the invalidation won the race
-            # and we must not put a stale handle back.
-            if key not in self._actor_handle_cache:
-                # invalidate_actor_handle was called while we were in
-                # ray.get_actor.  Discard the freshly-resolved handle —
-                # it's stale.
-                return handle  # caller still gets it, but we don't cache
+            # Another thread may have populated the cache while we were blocked
+            # in ray.get_actor(); if so, use its fresher handle.
             cached = self._actor_handle_cache.get(key)
             if cached is not None:
                 return cached
+            # If the invalidation version changed between our snapshot and now,
+            # invalidate_actor_handle ran during our lookup — the actor died
+            # or was removed.  Discard our freshly-resolved handle (it would
+            # be stale if we stored it) but still return it to the caller so
+            # a single miss doesn't bubble up as ActorHandleNotFoundError on
+            # every concurrent waiter.  The next caller will get a fresh GCS
+            # lookup and (hopefully) find the replacement actor.
+            if self._cache_versions.get(key, 0) != version_before:
+                return handle
             self._actor_handle_cache[key] = handle
 
         return handle
@@ -862,11 +877,19 @@ class RunningReplicaInfo:
     def invalidate_actor_handle(cls, actor_name: str) -> None:
         """Remove a cached actor handle (e.g. when the replica dies).
 
-        Safe to call from any thread.
+        Safe to call from any thread.  Also bumps the per-key invalidation
+        version so any in-flight ``get_actor_handle`` lookup that raced us
+        can detect the invalidate and refuse to write its stale handle
+        back to the cache.
         """
         key = (actor_name, SERVE_NAMESPACE)
         with cls._cache_lock:
             cls._actor_handle_cache.pop(key, None)
+            # Bump the version so concurrent lookups that passed the
+            # version snapshot before us will see a mismatch and drop
+            # their (stale) freshly-resolved handle instead of re-caching
+            # it.
+            cls._cache_versions[key] = cls._cache_versions.get(key, 0) + 1
 
     @classmethod
     def clear_actor_handle_cache(cls) -> None:
@@ -874,6 +897,7 @@ class RunningReplicaInfo:
         controller restart / shutdown to drop stale handles."""
         with cls._cache_lock:
             cls._actor_handle_cache.clear()
+            cls._cache_versions.clear()
             # Cancel any in-flight resolutions; their results will be
             # discarded since the cache is now empty.
             for task in list(cls._inflight_resolutions.values()):
