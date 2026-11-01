@@ -572,12 +572,13 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
     auto actor_iter = iter->second.find(actor->GetActorID());
     if (actor_iter == iter->second.end()) {
       // if actor is not in leasing state, it means it is cancelled.
+      // The actor may have been killed (DEAD) or restarted and rescheduled
+      // (RESTARTING). In either case, the granted worker is no longer needed
+      // and must be released to avoid a worker leak on the raylet.
       RAY_LOG(INFO).WithField(actor->GetActorID()).WithField(actor->GetActorID().JobId())
-          << "Ignoring granted lease for canceled lease request.";
-      if (actor->GetState() == rpc::ActorTableData::DEAD) {
-        // If the actor has been killed, we need to kill the worker too
-        // otherwise, the worker will be leaked.
-        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
+          << "Ignoring granted lease for canceled lease request, actor state: "
+          << rpc::ActorTableData::ActorState_Name(actor->GetState());
+      if (!reply.worker_address().node_id().empty()) {
         auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
             node_id, node->node_manager_address(), node->node_manager_port());
         KillLeasedWorkerForActor(raylet_address, reply.worker_address(), ActorID::Nil());
@@ -627,10 +628,17 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
     } else {
       RetryLeasingWorkerFromNode(actor, node);
     }
-  } else if (actor->GetState() == rpc::ActorTableData::DEAD) {
-    // If the actor has been killed, we need to kill the worker too
-    // otherwise, the worker will be leaked.
-    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
+  } else if (!reply.worker_address().node_id().empty()) {
+    // The actor's node is not in the leasing map at all. This can happen when:
+    // 1. The node died, or
+    // 2. CancelOnLeasing removed the last actor for this node, erasing the entry.
+    // In either case, the granted worker is no longer needed and must be released
+    // to avoid a worker leak.
+    RAY_LOG(INFO).WithField(actor->GetActorID())
+        << "Lease reply arrived but node " << node_id
+        << " not in leasing map, actor state: "
+        << rpc::ActorTableData::ActorState_Name(actor->GetState())
+        << ". Killing leaked worker.";
     auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node->node_manager_address(), node->node_manager_port());
     KillLeasedWorkerForActor(raylet_address, reply.worker_address(), ActorID::Nil());

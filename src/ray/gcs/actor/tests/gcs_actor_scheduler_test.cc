@@ -463,7 +463,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
 
-  // Grant a worker, which will influence nothing.
+  // Grant a worker.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
                                                node->node_manager_port(),
                                                WorkerID::FromRandom(),
@@ -472,6 +472,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
+  // The granted worker should be killed because the node failed.
+  ASSERT_EQ(1, raylet_client_->killed_actors.size());
 
   ASSERT_EQ(0, success_actors_.size());
   ASSERT_EQ(0, failure_actors_.size());
@@ -500,7 +502,7 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
 
-  // Grant a worker, which will influence nothing.
+  // Grant a worker.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
                                                node->node_manager_port(),
                                                WorkerID::FromRandom(),
@@ -509,7 +511,45 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
+  // The granted worker must be killed because the lease was canceled.
+  ASSERT_EQ(1, raylet_client_->killed_actors.size());
+  ASSERT_EQ(0, success_actors_.size());
+  ASSERT_EQ(0, failure_actors_.size());
+}
 
+TEST_F(GcsActorSchedulerTest, TestCanceledLeaseKillsWorkerOnRestart) {
+  auto node = GenNodeInfo();
+  auto node_id = NodeID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
+
+  // Schedule the actor
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+
+  // Cancel the Lease request.
+  gcs_actor_scheduler_->CancelOnLeasing(
+      node_id, actor->GetActorID(), actor->GetLeaseSpecification().LeaseId());
+
+  // Simulate RestartActor
+  actor->UpdateState(rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(0, raylet_client_->killed_actors.size());
+
+  // Grant a worker for the old (canceled) lease request.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(),
+                                               WorkerID::FromRandom(),
+                                               node_id,
+                                               NodeID::Nil()));
+
+  // The worker must be killed.
+  ASSERT_EQ(1, raylet_client_->killed_actors.size());
   ASSERT_EQ(0, success_actors_.size());
   ASSERT_EQ(0, failure_actors_.size());
 }
