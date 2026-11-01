@@ -8,7 +8,7 @@ from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 
 from test_utils import create_openai_client, wait_for_server_ready
 
-MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_ID = "Qwen/Qwen3.5-0.8B"
 RAY_MODEL_ID = "qwen-0.5b"
 MAX_OUTPUT_TOKENS = 256
 SEED = 42
@@ -129,9 +129,9 @@ class VllmServer:
     "tensor_parallel_size, pipeline_parallel_size",
     [
         (1, 1),
-        (2, 1),
-        (1, 2),
-        (2, 2),
+        pytest.param(2, 1, marks=pytest.mark.requires_2GPU),
+        pytest.param(1, 2, marks=pytest.mark.requires_2GPU),
+        pytest.param(2, 2, marks=pytest.mark.requires_4GPU),
     ],
 )
 def test_llm_serve_correctness(

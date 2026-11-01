@@ -25,7 +25,7 @@ from ray.serve.schema import ApplicationStatus
 
 from test_utils import get_total_gpu_memory_mb
 
-MODEL_ID = "Qwen/Qwen2-0.5B-Instruct"
+MODEL_ID = "Qwen/Qwen3.5-0.8B"
 BASE_URL = "http://localhost:8000"
 
 
@@ -81,6 +81,7 @@ def wait_for_server_ready(timeout: int = 240) -> None:
     )
 
 
+@pytest.mark.requires_4GPU
 def test_sleep_wakeup_lifecycle():
     """Test the complete sleep/wakeup lifecycle with GPU memory verification."""
     # Start Ray Serve with DevIngress

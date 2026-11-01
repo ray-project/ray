@@ -1,12 +1,39 @@
 import sys
 
 import pytest
+import requests
 
 import ray
 from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+
+@pytest.fixture(scope="session")
+def model_smolvlm_256m(tmp_path_factory):
+    checkpoint_dir = tmp_path_factory.mktemp("smolvlm-256m")
+    remote_url = (
+        "https://air-example-data.s3.amazonaws.com/rayllm-ossci/smolvlm-256m-instruct/"
+    )
+    for file_name in [
+        "added_tokens.json",
+        "chat_template.json",
+        "config.json",
+        "generation_config.json",
+        "merges.txt",
+        "model.safetensors",
+        "preprocessor_config.json",
+        "processor_config.json",
+        "special_tokens_map.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.json",
+    ]:
+        response = requests.get(remote_url + file_name)
+        response.raise_for_status()
+        (checkpoint_dir / file_name).write_bytes(response.content)
+    return str(checkpoint_dir)
 
 
 @pytest.mark.asyncio
@@ -60,7 +87,8 @@ async def test_vllm_engine_start_with_custom_resource_bundle(
     await actor.start.remote()
     await actor.check_health.remote()
     await actor.shutdown.remote()
-    del pg
+    ray.kill(actor)
+    ray.util.remove_placement_group(pg)
 
 
 if __name__ == "__main__":

@@ -781,6 +781,19 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(1, 0, "minuscule")
         test_concurrency(33, 0, "small")
 
+    def testLLMH100ConcurrencyGroup(self):
+        for working_dir in (
+            "llm_tests/serve",
+            "llm_tests/batch",
+            "llm_tests/kv_router_test",
+        ):
+            test = Test({"name": "llm_test", "working_dir": working_dir})
+            self.assertEqual(get_concurrency_group(test), ("llm-h100", 4))
+        test = Test(
+            {"name": "llm_doc_tests", "working_dir": "//doc", "group": "llm-doc"}
+        )
+        self.assertEqual(get_concurrency_group(test), ("llm-h100", 4))
+
     def testConcurrencyGroupSmokeTest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cluster_config_full = {

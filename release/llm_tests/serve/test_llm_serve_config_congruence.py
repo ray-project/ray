@@ -11,6 +11,7 @@
         capability: DeviceCapability object with compute capability version
 """
 
+import asyncio
 from typing import Any, Dict, Tuple
 from unittest.mock import MagicMock, patch
 
@@ -19,12 +20,16 @@ from vllm.config import VllmConfig
 from vllm.entrypoints.openai.api_server import build_async_engine_client
 from vllm.platforms.interface import DeviceCapability
 
-from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
+from ray import PlacementGroupID
+from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+    VLLMEngine,
+    _get_vllm_engine_config,
+)
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.util import remove_placement_group
-from ray.util.placement_group import placement_group_table
+from ray.util.placement_group import PlacementGroup, placement_group_table
 
-TEST_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+TEST_MODEL = "Qwen/Qwen3.5-0.8B"
 TEST_MAX_MODEL_LEN = 10500
 TEST_TENSOR_PARALLEL_SIZE = 1
 TEST_GPU_MEMORY_UTILIZATION = 0.95
@@ -62,15 +67,12 @@ LLM_CONFIG = LLMConfig(
 
 @pytest.fixture(autouse=True)
 def setup_placement_group_cleanup():
-    """Automatically clean up placement groups before each test."""
+    """Automatically clean up placement groups after each test."""
+    yield
     pg_table = placement_group_table()
-    for pg_info in pg_table.values():
-        if pg_info["state"] in ["CREATED", "CREATING"]:
-            try:
-                remove_placement_group(pg_info["placement_group_id"])
-            except Exception:
-                # Placement group may have already been removed
-                pass
+    for pg_id, pg_info in pg_table.items():
+        if pg_info["state"] != "REMOVED":
+            remove_placement_group(PlacementGroup(PlacementGroupID.from_hex(pg_id)))
 
 
 def deep_compare(dict1: Any, dict2: Any) -> bool:
@@ -102,7 +104,7 @@ def get_config_differences(dict1: Dict[str, Any], dict2: Dict[str, Any]) -> list
     return differences
 
 
-async def get_ray_serve_llm_vllm_config() -> Tuple[Any, str]:
+async def get_ray_serve_llm_vllm_config(capability) -> Tuple[Any, str]:
     """Get VllmConfig by hooking into Ray Serve LLM's AsyncLLM instantiation."""
     captured_configs = []
 
@@ -112,13 +114,29 @@ async def get_ray_serve_llm_vllm_config() -> Tuple[Any, str]:
         mock_obj._dummy_engine = True
         return mock_obj
 
-    with patch("vllm.v1.engine.async_llm.AsyncLLM", side_effect=mock_async_llm_class):
+    def get_engine_config(llm_config):
+        with patch(
+            "vllm.platforms.cuda.NvmlCudaPlatform.get_device_capability",
+            return_value=capability,
+        ):
+            return _get_vllm_engine_config(llm_config)
+
+    with (
+        patch("vllm.v1.engine.async_llm.AsyncLLM", side_effect=mock_async_llm_class),
+        patch(
+            "ray.llm._internal.serve.engines.vllm.vllm_engine._get_vllm_engine_config",
+            get_engine_config,
+        ),
+    ):
         try:
-            engine = VLLMEngine(LLM_CONFIG)
+            engine = VLLMEngine(LLM_CONFIG.model_copy(deep=True))
+            pg = engine.llm_config.get_or_create_callback().ctx.placement_group
+            await asyncio.wait_for(pg.ready(), timeout=60)
             await engine.start()
         except Exception:
             # Expected since we're mocking the constructor
-            pass
+            if not captured_configs:
+                raise
 
     if not captured_configs:
         raise RuntimeError("Failed to capture VllmConfig from Ray Serve LLM path")
@@ -159,7 +177,7 @@ async def get_vllm_standalone_config() -> Tuple[Any, str]:
             str(TEST_GPU_MEMORY_UTILIZATION),
             "--distributed-executor-backend",
             "ray",
-            "--disable-log-requests",
+            "--no-enable-log-requests",
         ]
     )
 
@@ -189,7 +207,7 @@ async def test_vllm_config_ray_serve_vs_cli_comparison(
         "vllm.platforms.cuda.NvmlCudaPlatform.get_device_capability",
         return_value=capability,
     ):
-        ray_vllm_config = await get_ray_serve_llm_vllm_config()
+        ray_vllm_config = await get_ray_serve_llm_vllm_config(capability)
         cli_vllm_config = await get_vllm_standalone_config()
 
         ray_config_dict = {

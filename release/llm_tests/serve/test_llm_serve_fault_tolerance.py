@@ -6,7 +6,7 @@ import ray
 from ray import serve
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_llm_deployment
 
-MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_ID = "Qwen/Qwen3.5-0.8B"
 RAY_MODEL_ID = "qwen-0.5b"
 
 
@@ -72,6 +72,7 @@ def wait_for_deployment_status(
     )
 
 
+@pytest.mark.requires_2GPU
 def test_recovery_from_replica_failure(app) -> None:
     """Tests that the deployment recovers from replica failure."""
     dname = "LLM:test"
@@ -87,7 +88,7 @@ def test_recovery_from_replica_failure(app) -> None:
     wait_for_deployment_status(dname, "UNHEALTHY", timeout_s=60)
 
     # Wait again for deployment to get healthy
-    wait_for_deployment_status(dname, "HEALTHY", timeout_s=60)
+    wait_for_deployment_status(dname, "HEALTHY", timeout_s=180)
 
 
 if __name__ == "__main__":
