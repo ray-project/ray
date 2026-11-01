@@ -160,6 +160,15 @@ class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     daemon_threads = True
 
 
+class _ReusePortThreadingWSGIServer(_ThreadingWSGIServer):
+    """Sets SO_REUSEPORT so several processes on one host can share the port.
+    Set by hand: socketserver's allow_reuse_port only exists from Python 3.11."""
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        super().server_bind()
+
+
 class _SilentHandler(WSGIRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -171,20 +180,30 @@ def start_metrics_http_server(port: int, registry, addr: str = "0.0.0.0") -> Non
     auth is on."""
     from prometheus_client import make_wsgi_app
 
+    start_metrics_wsgi_server(port, make_wsgi_app(registry), addr)
+
+
+def start_metrics_wsgi_server(
+    port: int, app, addr: str = "0.0.0.0", reuse_port: bool = False
+) -> WSGIServer:
+    """Serve the WSGI metrics ``app`` on ``addr:port`` from a daemon thread,
+    behind the same token check as start_metrics_http_server. With
+    ``reuse_port``, other processes that set SO_REUSEPORT can bind the same
+    port. Returns the server so the caller can shut it down."""
     family, _, _, _, sockaddr = socket.getaddrinfo(
         addr, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
     )[0]
-    server_class = type(
-        "_MetricsWSGIServer", (_ThreadingWSGIServer,), {"address_family": family}
-    )
+    base_class = _ReusePortThreadingWSGIServer if reuse_port else _ThreadingWSGIServer
+    server_class = type("_MetricsWSGIServer", (base_class,), {"address_family": family})
     httpd = make_server(
         sockaddr[0],
         port,
-        get_token_auth_wsgi_app(make_wsgi_app(registry)),
+        get_token_auth_wsgi_app(app),
         server_class,
         _SilentHandler,
     )
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
 
 
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:

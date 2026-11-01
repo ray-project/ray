@@ -19,7 +19,7 @@ When two rules conflict, follow this order:
 1. This guide.
 1. The [Google developer documentation style guide](https://developers.google.com/style), as the general fallback for anything this guide doesn't cover.
 
-Vale enforces an automated subset of the Google style guide in CI, currently on the Ray Data docs and the example gallery. Passing Vale is the baseline, not the whole standard. This guide is broader than what Vale checks, so a page can pass Vale and still need edits to meet the standard here. For how to run Vale, see {ref}`vale`.
+Vale checks an automated subset of the Google style guide. Its CI check, which covers the Ray Data docs and the example gallery, is temporarily off. Passing Vale is the baseline, not the whole standard. This guide is broader than what Vale checks, so a page can pass Vale and still need edits to meet the standard here. For how to run Vale, see {ref}`vale`.
 
 New pages are MyST Markdown (`.md`). A lint check rejects newly added reStructuredText (`.rst`) files, though edits to existing `.rst` files are fine. The examples in this guide use MyST. The prose rules apply to both formats. Only the formatting and cross-reference syntax differs.
 
@@ -249,7 +249,7 @@ Choose the level by severity. Use `tip` for optional advice, `note` for supporti
 
 Tag every fenced code block with a language: `python`, `bash`, `yaml`, `json`, `text`, or `dockerfile`. Don't prefix shell commands with `$` or `#`, so readers can copy and paste them.
 
-Every runnable snippet in the docs is tested. Write examples that run out of the box, and use `literalinclude` or a testable code cell rather than pasting untested code. See {ref}`How to write code snippets <writing-code-snippets_ref>`.
+Write examples that run out of the box. Ray CI tests code in two forms: a `testcode` block, which CI runs when the page has a doctest target in `doc/BUILD.bazel`, and a script under the library's `doc_code/` directory that you include with `literalinclude`. Use either one only for code that runs as written and that CI should test. Reserve `>>>` doctest-style examples for docstrings. CI doesn't run a plain fenced code block, so use one for code you've run yourself but CI can't, and don't present it as tested. See {ref}`How to write code snippets <writing-code-snippets_ref>`.
 
 In code comments, start with a capital letter and use the imperative.
 

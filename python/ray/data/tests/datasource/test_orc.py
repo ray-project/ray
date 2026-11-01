@@ -2,6 +2,8 @@ import json
 import os
 from dataclasses import fields
 from decimal import Decimal
+from pathlib import Path
+from typing import Iterator
 
 import pandas as pd
 import pyarrow as pa
@@ -41,6 +43,246 @@ def _read_orc_dir(directory):
     return pa.concat_tables(
         orc.read_table(os.path.join(directory, filename))
         for filename in _list_visible_files(directory)
+    )
+
+
+def _write_typed_partition_orc_files(root, style, arrow_type=pa.int64()):
+    from ray.data.datasource.partitioning import PartitionStyle
+
+    paths = []
+    for year, ids in [(2023, [0, 1, 2, 3]), (2024, [4, 5, 6, 7])]:
+        directory = root / (
+            f"year={year}" if style == PartitionStyle.HIVE else str(year)
+        )
+        directory.mkdir(parents=True)
+        path = directory / "data.orc"
+        _write_orc(
+            str(path),
+            pa.table({"id": ids, "year": pa.array([year] * 4, type=arrow_type)}),
+        )
+        paths.append(str(path))
+    return paths
+
+
+@pytest.mark.parametrize("style", ["hive", "dir"])
+@pytest.mark.parametrize("arrow_type", [pa.int32(), pa.int64()])
+@pytest.mark.parametrize("expr", [col("year") == 2024, col("year") > 2023])
+def test_read_orc_v2_partition_predicate_matches_memory_logical_schema(
+    ray_start_regular_shared, tmp_path, monkeypatch, style, arrow_type, expr
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    partition_style = PartitionStyle(style)
+    paths = _write_typed_partition_orc_files(tmp_path, partition_style, arrow_type)
+    partitioning = Partitioning(
+        partition_style, base_dir=str(tmp_path), field_names=["year"]
+    )
+
+    def read():
+        return ray.data.read_orc(
+            paths, partitioning=partitioning, override_num_blocks=2
+        )
+
+    source = read()
+    schema = source.schema().base_schema
+    assert isinstance(schema, pa.Schema)
+    assert schema.field("year").type == arrow_type
+    memory = ray.data.from_arrow(pa.Table.from_pylist(source.take_all(), schema=schema))
+    assert memory.schema().base_schema.equals(schema, check_metadata=True)
+    expected = [{"id": i, "year": 2024} for i in [4, 5, 6, 7]]
+    assert (
+        sorted(memory.filter(expr=expr).take_all(), key=lambda row: row["id"])
+        == expected
+    )
+    assert (
+        sorted(read().filter(expr=expr).take_all(), key=lambda row: row["id"])
+        == expected
+    )
+    assert partitioning.field_types == {}
+
+
+def test_read_orc_v2_partition_predicate_uses_float32_logical_type(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    directory = tmp_path / "year=16777217"
+    directory.mkdir()
+    path = directory / "data.orc"
+    _write_orc(
+        str(path),
+        pa.table(
+            {
+                "id": [1],
+                "year": pa.array([16777217.0], type=pa.float32()),
+            }
+        ),
+    )
+
+    source = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+        override_num_blocks=1,
+    )
+    schema = source.schema().base_schema
+    assert isinstance(schema, pa.Schema)
+    assert schema.field("year").type == pa.float32()
+
+    rows = source.filter(expr=col("year") == 16777216.0).take_all()
+    assert rows == [{"id": 1, "year": 16777216.0}]
+
+
+def test_read_orc_v2_partition_predicate_does_not_cast_unused_invalid_field(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    directory = tmp_path / "year=invalid" / "country=US"
+    directory.mkdir(parents=True)
+    path = directory / "data.orc"
+    _write_orc(
+        str(path),
+        pa.table(
+            {
+                "id": [1],
+                "year": pa.array([2024], type=pa.int32()),
+            }
+        ),
+    )
+
+    source = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year", "country"]),
+        override_num_blocks=1,
+    )
+    schema = source.schema().base_schema
+    assert isinstance(schema, pa.Schema)
+    assert schema.field("year").type == pa.int32()
+
+    rows = source.filter(expr=col("country") == "US").select_columns(["id"]).take_all()
+    assert rows == [{"id": 1}]
+
+
+@pytest.mark.parametrize("reverse_paths", [False, True])
+@pytest.mark.parametrize(
+    "operation", ["and", "or", "limit", "empty", "count", "empty_count"]
+)
+def test_read_orc_v2_typed_partition_filter_combinations(
+    ray_start_regular_shared, tmp_path, monkeypatch, reverse_paths, operation
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    paths = _write_typed_partition_orc_files(tmp_path, PartitionStyle.HIVE)
+    if reverse_paths:
+        paths.reverse()
+    ds = ray.data.read_orc(
+        paths,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+        override_num_blocks=2,
+    )
+    predicate = col("year") == 2024
+    if operation == "and":
+        predicate = predicate & (col("id") > 5)
+    elif operation == "or":
+        predicate = predicate | (col("id") == 0)
+    elif operation == "empty":
+        predicate = col("year") == 2025
+    filtered = ds.filter(expr=predicate)
+    if operation in {"count", "empty_count"}:
+        if operation == "empty_count":
+            filtered = filtered.select_columns([])
+        assert filtered.count() == 4
+        return
+    filtered = filtered.select_columns(["id"])
+    if operation == "limit":
+        rows = filtered.limit(2).take_all()
+        assert len(rows) == 2
+        assert all(row["id"] in [4, 5, 6, 7] for row in rows)
+    else:
+        expected = {"and": [6, 7], "or": [0, 4, 5, 6, 7], "empty": []}[operation]
+        assert sorted(row["id"] for row in filtered.take_all()) == expected
+
+
+def test_read_orc_v2_typed_partition_prunes_before_worker_read(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import (
+        OrcFileReader,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    paths = _write_typed_partition_orc_files(tmp_path / "input", PartitionStyle.HIVE)
+    trace_path = str(tmp_path / "reader-requests.jsonl")
+    original_create_scanner = OrcDatasourceV2.create_scanner
+
+    class RecordingScanner(OrcScanner):
+        def create_reader(self):
+            reader = super().create_reader()
+            original_read = reader.read
+
+            def traced_read(input_split: FileManifest) -> Iterator[pa.Table]:
+                import inspect
+
+                with open(trace_path, "a") as trace:
+                    trace.write(
+                        json.dumps(
+                            {
+                                "paths": input_split.paths.tolist(),
+                                "pid": os.getpid(),
+                                "source": str(
+                                    Path(inspect.getfile(OrcFileReader)).resolve()
+                                ),
+                            }
+                        )
+                        + "\n"
+                    )
+                yield from original_read(input_split)
+
+            reader.read = traced_read
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return RecordingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(OrcDatasourceV2, "create_scanner", create_scanner)
+    rows = (
+        ray.data.read_orc(
+            paths,
+            partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+            override_num_blocks=2,
+        )
+        .filter(expr=col("year") == 2024)
+        .select_columns(["id"])
+        .take_all()
+    )
+    assert sorted(row["id"] for row in rows) == [4, 5, 6, 7]
+    records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
+    assert records
+    assert {path for record in records for path in record["paths"]} == {paths[1]}
+    assert all(record["pid"] != os.getpid() for record in records)
+    assert all(
+        record["source"].endswith(
+            "python/ray/data/_internal/datasource_v2/formats/orc/orc_file_reader.py"
+        )
+        for record in records
     )
 
 
@@ -218,6 +460,26 @@ def test_read_orc_v2_unifies_schema_and_hive_partitions(
     assert rows[1]["year"] == "2024"
     assert rows[1]["path"].endswith("second.orc")
     assert materialized.num_blocks() == 1
+
+
+def test_read_orc_v2_list_files_keeps_caller_source_paths(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data._internal.logical.operators import ListFiles
+    from ray.data.context import DataContext
+
+    # Lineage tracking reads ``ListFiles.source_paths``. ``paths`` holds the
+    # resolved paths, which lose the URI scheme.
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    _write_orc(str(tmp_path / "data.orc"), pa.table({"id": [1, 2]}))
+    uri = f"file://{tmp_path}"
+
+    ds = ray.data.read_orc(uri)
+
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    assert list_files_op.paths == [str(tmp_path)]
+    assert list_files_op.source_paths == [uri]
 
 
 def test_read_orc_v1_fallback(ray_start_regular_shared, tmp_path, monkeypatch):
@@ -888,6 +1150,139 @@ def test_read_orc_v2_stored_partition_logical_types(
         assert rows == [{"id": 0, "key": root_value}] + [
             {"id": value, "key": expected} for value in [1, 2, 3]
         ]
+
+
+def _trace_orc_batch_sizing(monkeypatch, trace_path):
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+
+    original_create_scanner = OrcDatasourceV2.create_scanner
+
+    class TracingScanner(OrcScanner):
+        def create_reader(self):
+            import uuid
+
+            reader = super().create_reader()
+            reader_id = uuid.uuid4().hex
+            read_count = 0
+            original_read = reader.read
+            original_iter = reader._iter_fragment_tables
+
+            def traced_read(input_split):
+                nonlocal read_count
+                read_count += 1
+                yield from original_read(input_split)
+
+            def traced_iter(fragment, scanner_kwargs):
+                with open(trace_path, "a") as trace:
+                    trace.write(
+                        json.dumps(
+                            {
+                                "event": "scan",
+                                "reader": reader_id,
+                                "read_count": read_count,
+                                "path": fragment.path,
+                                "target": reader._target_block_size,
+                                "batch_size": scanner_kwargs["batch_size"],
+                            }
+                        )
+                        + "\n"
+                    )
+                for table in original_iter(fragment, scanner_kwargs):
+                    with open(trace_path, "a") as trace:
+                        trace.write(
+                            json.dumps(
+                                {
+                                    "event": "batch",
+                                    "rows": table.num_rows,
+                                    "nbytes": table.nbytes,
+                                }
+                            )
+                            + "\n"
+                        )
+                    yield table
+
+            reader.read = traced_read
+            reader._iter_fragment_tables = traced_iter
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return TracingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(OrcDatasourceV2, "create_scanner", create_scanner)
+
+
+@pytest.mark.parametrize("file_count", [1, 2])
+def test_read_orc_v2_batch_sizing_fallback(
+    ray_start_regular_shared, tmp_path, monkeypatch, file_count
+):
+    from ray.data._internal.datasource_v2.common.file_reader import (
+        _ARROW_DEFAULT_BATCH_SIZE,
+    )
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(DataContext.get_current(), "target_max_block_size", 128)
+    trace_path = str(tmp_path / "batch-sizing.jsonl")
+    _trace_orc_batch_sizing(monkeypatch, trace_path)
+    for index in range(file_count):
+        _write_orc(
+            str(tmp_path / f"part-{index}.orc"),
+            pa.table({"id": [index], "payload": [[None, "x" * 512]]}),
+        )
+    rows = ray.data.read_orc(str(tmp_path), override_num_blocks=file_count).take_all()
+    assert sorted(rows, key=lambda row: row["id"]) == [
+        {"id": index, "payload": [None, "x" * 512]} for index in range(file_count)
+    ]
+    with open(trace_path) as trace:
+        records = [json.loads(line) for line in trace]
+    requests = [record for record in records if record["event"] == "scan"]
+    assert len(requests) == file_count
+    assert all(request["read_count"] == 1 for request in requests)
+    assert all(request["target"] == 128 for request in requests)
+    assert all(
+        request["batch_size"] == _ARROW_DEFAULT_BATCH_SIZE for request in requests
+    )
+
+
+@pytest.mark.parametrize("target", [65536, 131072])
+@pytest.mark.parametrize("project_narrow", [False, True])
+def test_read_orc_v2_initial_batch_sizing(
+    ray_start_regular_shared, tmp_path, monkeypatch, target, project_narrow
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(DataContext.get_current(), "target_max_block_size", target)
+    trace_path = str(tmp_path / "initial-batch-sizing.jsonl")
+    _trace_orc_batch_sizing(monkeypatch, trace_path)
+    table = pa.table({"id": range(256), "payload": ["x" * 4096] * 256})
+    path = str(tmp_path / "data.orc")
+    _write_orc(path, table)
+    dataset = ray.data.read_orc(path, override_num_blocks=1)
+    if project_narrow:
+        dataset = dataset.select_columns(["id"])
+    rows = sorted(dataset.take_all(), key=lambda row: row["id"])
+    assert rows == (table.select(["id"]) if project_narrow else table).to_pylist()
+    with open(trace_path) as trace:
+        records = [json.loads(line) for line in trace]
+    scans = [record for record in records if record["event"] == "scan"]
+    batches = [record for record in records if record["event"] == "batch"]
+    expected_size = 256 if project_narrow else target // 4096
+    assert len(scans) == 1
+    assert scans[0]["read_count"] == 1
+    assert scans[0]["target"] == target
+    assert scans[0]["batch_size"] == expected_size
+    assert batches[0]["rows"] == expected_size
+    assert sum(batch["rows"] for batch in batches) == 256
+    assert all(batch["rows"] <= expected_size for batch in batches)
+    if not project_narrow:
+        assert batches[0]["nbytes"] < table.nbytes
 
 
 def test_read_orc_v1_fallback_preserves_columns_outside_v2_sample(

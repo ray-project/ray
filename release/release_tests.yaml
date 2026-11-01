@@ -162,7 +162,7 @@
     - __suffix__: aws
 
 - name: hello_world_custom_byod_depset_only
-  python: "3.10"
+  python: "3.11"
   team: reef
   group: hello_world
   frequency: nightly
@@ -171,7 +171,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
 
@@ -235,6 +235,26 @@
     anyscale_sdk_2026: true
     byod:
       type: gpu-cu130
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    num_retries: 3
+    script: python hello_world.py
+
+- name: "hello_world_cu133_py{{python}}"
+  python: "{{python}}"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu-cu133
     cluster_compute: hello_world_compute_config.yaml
 
   run:
@@ -330,7 +350,7 @@
 
 # Ray Train distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_gpu_4x4
-  python: "3.10"
+  python: "3.11"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -340,7 +360,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -378,7 +398,7 @@
   alert: default
 
 - name: air_benchmark_tune_torch_mnist
-  python: "3.10"
+  python: "3.11"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -388,7 +408,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -1174,7 +1194,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1184,7 +1204,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1205,7 +1225,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1215,7 +1235,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1236,7 +1256,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1245,7 +1265,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -1262,7 +1282,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   team: reef
 
@@ -1271,7 +1291,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -1336,8 +1356,31 @@
     wait_for_nodes:
       num_nodes: 2
 
+- name: "jobs_check_cuda_version_torch_cu133_py{{python}}"
+  python: "{{python}}"
+  group: Jobs tests
+  team: reef
+  frequency: nightly
+  working_dir: jobs_tests
+  matrix:
+    setup:
+      python: ["3.11", "3.14"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      # 'type: torch-cu133' means: use the cu133 'ray-torch' image.
+      type: torch-cu133
+    cluster_compute: compute_tpl_gpu_node_cu130.yaml
+  run:
+    timeout: 600
+    # torch comes from the cu130 index (no cu133 wheels), so torch.version.cuda
+    # is 13.0 on the 13.3 image; check the major only.
+    script: python workloads/jobs_check_cuda_version.py --expected-cuda-version 13
+    wait_for_nodes:
+      num_nodes: 2
+
 - name: jobs_specify_num_gpus
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   team: serve
 
@@ -1346,7 +1389,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -1549,7 +1592,7 @@
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: pytest_serve_autoscaling_load_test
-  python: "3.10"
+  python: "3.11"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1559,7 +1602,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1746,7 +1789,7 @@
           --router-type capacity_queue
 
 - name: pytest_serve_resnet_benchmark
-  python: "3.10"
+  python: "3.11"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1756,7 +1799,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_serve_resnet_py3.11.lock
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -2163,7 +2207,7 @@
   alert: default
 
 - name: train_async_checkpointing_validation_benchmark
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/async_checkpointing_validation_benchmark
   frequency: nightly
@@ -2171,7 +2215,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_aws.yaml
   run:
     timeout: 10800
@@ -2181,7 +2225,7 @@
   alert: default
 
 - name: train_preemption_benchmark
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/preemption
   frequency: nightly
@@ -2189,7 +2233,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_aws.yaml
   run:
     timeout: 10800
@@ -2197,6 +2241,27 @@
     wait_for_nodes:
       num_nodes: 9
   alert: default
+
+- name: "mid_epoch_resume_benchmark_{{scale}}"
+  python: "3.10"
+  group: Train tests
+  working_dir: train_tests/mid_epoch_resume_benchmark
+
+  matrix:
+    setup:
+      scale: [10M, 3B]
+
+  frequency: nightly
+  team: data
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+    cluster_compute: "compute_configs/{{scale}}.yaml"
+
+  run:
+    timeout: 2700
+    script: RAY_TRAIN_V2_ENABLED=1 python microbenchmark.py --num_rows={{scale}} --generate_id_column --error_at=0.9 --num_epochs=1
 
 - name: train_colocate_trainer
   python: "3.10"
@@ -2223,7 +2288,7 @@
 
 
 - name: torch_local_mode
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/local_mode
 
@@ -2232,7 +2297,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_gpu_2x4_aws.yaml
 
@@ -2342,7 +2407,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
@@ -2355,7 +2420,8 @@
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_xgboost_lightgbm_py3.11.lock
     anyscale_sdk_2026: true
     cluster_compute: compute_aws_{{size}}.yaml
 
@@ -2372,7 +2438,7 @@
   alert: default
 
 - name: train_elastic_e2e_with_node_killing
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/elastic_training
 
@@ -2381,7 +2447,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_gpu_aws.yaml
 
@@ -2398,7 +2464,7 @@
   alert: default
 
 - name: elastic_benchmark
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2407,7 +2473,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_8x4_aws.yaml
 
@@ -2790,40 +2856,6 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
-- name: compiled_graphs_GPU
-  python: "3.10"
-  group: core-daily-test
-  team: core
-  frequency: manual
-  working_dir: microbenchmark
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: experimental/compute_t4_gpu.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/compiled_graph_gpu_microbenchmark.py
-
-- name: compiled_graphs_GPU_multinode
-  python: "3.10"
-  group: core-daily-test
-  team: core
-  frequency: manual
-  working_dir: microbenchmark
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
-
 - name: "compiled_graphs_GPU_cu130_py{{python}}"
   python: "{{python}}"
   group: core-daily-test
@@ -2867,7 +2899,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: rdt_single_node_T4_microbenchmark
-  python: "3.10"
+  python: "3.11"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2876,12 +2908,34 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
     timeout: 1800
     # NIXL currently only works on T4's for <100mb tensors so not enabling.
+    script: python experimental/rdt_single_node_microbenchmark.py
+
+# Exercises the cu133 ray-torch image on real GPUs. The NCCL tensor transport
+# goes through cupy.cuda.nccl, so this fails if the cupy-cuda13x swap is
+# broken. There is no cu133 torch wheel index, so torch comes from the cu130
+# index (CUDA 13.x minor-version compatible). One 4xT4 node, so NCCL transfers
+# stay intra-node.
+- name: rdt_single_node_T4_microbenchmark_torch_cu133
+  python: "3.11"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: torch-cu133
+    cluster_compute: experimental/compute_t4_gpu.yaml
+
+  run:
+    timeout: 1800
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark
@@ -2923,7 +2977,7 @@
 #     script: python experimental/rdt_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
-  python: "3.10"
+  python: "3.11"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2932,7 +2986,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:
@@ -4177,7 +4231,7 @@
 # Observability tests
 #####################
 - name: agent_stress_test
-  python: "3.10"
+  python: "3.11"
   group: core-observability-test
   working_dir: dashboard
 
@@ -4186,7 +4240,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
       runtime_env:
         RAY_INTERNAL_MEM_PROFILE_COMPONENTS: "dashboard_agent"
       post_build_script: byod_agent_stress_test.sh

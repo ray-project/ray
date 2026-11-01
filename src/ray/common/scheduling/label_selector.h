@@ -126,18 +126,18 @@ inline bool operator==(const LabelSelector &lhs, const LabelSelector &rhs) {
 }
 
 template <typename H>
-H AbslHashValue(H h, const LabelSelector &label_selector) {
-  h = H::combine(std::move(h), label_selector.GetConstraints().size());
-  for (const auto &constraint : label_selector.GetConstraints()) {
-    h = H::combine(std::move(h),
-                   constraint.GetLabelKey(),
-                   static_cast<int>(constraint.GetOperator()));
+H AbslHashValue(H h, const LabelConstraint &constraint) {
+  // Hash the values set as a set, the way operator== above compares it. absl hashes its
+  // unordered containers order-independently and mixes in the size.
+  return H::combine(std::move(h),
+                    constraint.GetLabelKey(),
+                    static_cast<int>(constraint.GetOperator()),
+                    constraint.GetLabelValues());
+}
 
-    for (const auto &value : constraint.GetLabelValues()) {
-      h = H::combine(std::move(h), value);
-    }
-  }
-  return h;
+template <typename H>
+H AbslHashValue(H h, const LabelSelector &label_selector) {
+  return H::combine(std::move(h), label_selector.GetConstraints());
 }
 
 inline std::optional<absl::flat_hash_set<std::string>> GetHardNodeAffinityValues(

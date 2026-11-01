@@ -616,6 +616,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             exc: Optional[Exception],
             worker_stats=None,
             driver_stats=None,
+            aborted: bool = False,
             rank: int = -1,
         ) -> None:
             self._extraction_tasks.pop(rank, None)

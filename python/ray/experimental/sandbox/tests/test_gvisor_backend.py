@@ -1,6 +1,7 @@
 import contextlib
 import ctypes
 import errno
+import hashlib
 import ipaddress
 import json
 import os
@@ -18,9 +19,14 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
+from ray.experimental.sandbox._internal import image_utils, overlayfs
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     image_cache_name,
+)
+from ray.experimental.sandbox._internal.overlayfs import (
+    ImageMountMode,
+    UserNamespaceType,
 )
 from ray.experimental.sandbox.backend import gvisor
 from ray.experimental.sandbox.backend.base import SandboxStatus
@@ -218,17 +224,11 @@ def test_gvisor_backend_container_image_overlay_isolation():
         backend.delete_sandbox(sb3)
 
 
-# readonly=True with an explicit workdir needs runsc to keep the rootfs
-# overlay for a read-only root (it drops it today, and an immutable EROFS
-# image cannot grow the workdir mount point), so the sandbox runs on a
-# private writable overlay instead; test_readonly_rootfs_with_workdir pins
-# that behavior. This test states the intended one, for when runsc's
-# initGoferConfs honors an explicitly requested overlay on a read-only root.
-@pytest.mark.skip(
-    reason="readonly + explicit workdir runs on a private writable overlay "
-    "until runsc keeps the rootfs overlay for read-only roots"
-)
-def test_gvisor_backend_readonly_rootfs():
+# readonly=True with an explicit workdir boots from a kernel overlay, where
+# runsc can create the workdir's mount point, so the rest of the rootfs stays
+# read-only. A worker that can't mount one runs the sandbox on a private
+# writable overlay instead.
+def test_gvisor_backend_readonly_rootfs(ensure_overlayfs_mount):
     backend = GVisorSandboxBackend()
     # Default is readonly=True
     cfg = GVisorSandboxConfig(
@@ -315,9 +315,10 @@ def test_disk_caps_the_writable_overlay():
         runtime.delete(instance_id)
 
 
-def test_disk_caps_a_readonly_sandbox_with_a_workdir():
-    """readonly + workdir runs on a private writable overlay. The cap bounds
-    it, and the workdir is inside it rather than a directory on the node."""
+def test_disk_caps_a_readonly_sandbox_with_a_workdir(ensure_overlayfs_mount):
+    """A readonly sandbox's cap bounds its workdir, whose writes go to a file
+    in the sandbox's directory on the node. The rest of the rootfs stays
+    read-only."""
     runtime = SandboxRuntime()
     instance_id = runtime.create(
         image="busybox:latest", shell="/bin/sh", workdir="/workspace", disk="64Mi"
@@ -328,12 +329,65 @@ def test_disk_caps_a_readonly_sandbox_with_a_workdir():
         )
         assert result.exit_code != 0
         assert "No space left on device" in result.stderr
-        # The rest of the rootfs shares the cap.
         result = runtime.exec(instance_id, "dd if=/dev/zero of=/fill bs=1M count=8")
         assert result.exit_code != 0
-        assert "No space left on device" in result.stderr
+        assert "Read-only file system" in result.stderr
     finally:
         runtime.delete(instance_id)
+
+
+# A createContainer hook that writes a file into the sandbox's rootfs, read
+# from the bundle path in the container state runsc passes it on stdin.
+_WRITE_HOOKED_FILE = (
+    'b=$(sed -n \'s/.*"bundle": *"\\([^"]*\\)".*/\\1/p\'); '
+    'echo hooked > "$b/rootfs/hooked"'
+)
+
+
+def _add_createcontainer_hook(spec):
+    hooks = spec.setdefault("hooks", {}).setdefault("createContainer", [])
+    hooks.append({"path": "/bin/sh", "args": ["sh", "-c", _WRITE_HOOKED_FILE]})
+    return spec
+
+
+@pytest.mark.skipif(
+    os.geteuid() != 0, reason="checkpoints need rootless=False, which needs root"
+)
+def test_checkpoint_restore_keeps_an_overlayfs_sandboxs_files(
+    ensure_overlayfs_mount, tmp_path
+):
+    """An overlayfs sandbox's own writes come back from gVisor's checkpoint
+    image, and files its hooks write come back because runsc reruns its hooks
+    on restore, both when it's restored in place and into a new sandbox."""
+    backend = GVisorSandboxBackend()
+    config = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        rootless=False,
+        readonly=False,
+        _oci_spec_transform_fn=_add_createcontainer_hook,
+    )
+    sandbox_ids = [backend.create_sandbox(config)]
+    try:
+        assert backend._sandbox_metadata[sandbox_ids[0]]["rootfs_overlay"] is not None
+        assert (
+            backend.exec_command(sandbox_ids[0], "echo inside > /inside").exit_code == 0
+        )
+        backend.checkpoint_sandbox(
+            sandbox_ids[0], checkpoint_path=str(tmp_path / "checkpoint")
+        )
+        sandbox_ids.append(
+            backend.restore_sandbox(
+                str(tmp_path / "checkpoint"),
+                _oci_spec_transform_fn=_add_createcontainer_hook,
+            )
+        )
+        for sandbox_id in sandbox_ids:
+            result = backend.exec_command(sandbox_id, "cat /hooked /inside")
+            assert result.stdout.split() == ["hooked", "inside"], result.stderr
+    finally:
+        for sandbox_id in sandbox_ids:
+            backend.delete_sandbox(sandbox_id)
 
 
 def _procfs_dump(*procs):
@@ -451,10 +505,12 @@ def test_exec_replaces_output_that_is_not_utf8():
         runtime.delete(instance_id)
 
 
-def test_readonly_rootfs_with_workdir_runs_on_private_overlay():
-    """readonly + explicit workdir currently runs on a private writable
-    overlay: the workdir works, and rootfs writes land in the overlay and are
-    discarded with the sandbox rather than rejected."""
+def test_readonly_rootfs_with_workdir_runs_on_private_overlay(monkeypatch):
+    """On a worker that can't mount an overlayfs rootfs, readonly + explicit
+    workdir runs on a private writable overlay. The workdir works, and rootfs
+    writes land in the overlay and are discarded with the sandbox rather
+    than rejected."""
+    monkeypatch.setattr(overlayfs, "can_mount_rootfs_overlay", lambda: False)
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(
         GVisorSandboxConfig(
@@ -491,8 +547,8 @@ def test_workdir_writability_matrix():
         runtime.delete(instance_id)
 
     # readonly=True, explicit workdir: the workdir is writable and is the
-    # cwd (the rest of the root runs on a private writable overlay today;
-    # see the note above test_gvisor_backend_readonly_rootfs).
+    # cwd. Whether the rest of the root stays read-only depends on whether
+    # this worker can mount a kernel overlay.
     instance_id = runtime.create(
         image="busybox:latest", workdir="/data", shell="/bin/sh"
     )
@@ -793,6 +849,602 @@ def test_build_run_command_other_modes_exec_runsc(network, rootless):
     assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
 
 
+_ID_MAPS = overlayfs.IdMaps(
+    uid_map=((0, 1000, 1), (1, 100000, 65536)),
+    gid_map=((0, 1000, 1), (1, 100000, 65536)),
+)
+
+
+def _rootfs_overlay_for(in_userns: bool):
+    return overlayfs.RootfsOverlay(
+        image="/cache/rootfs.erofs",
+        mountpoint="/tmp/rd/rootfs",
+        tmpfs_dir="/tmp/rd/overlayfs-tmpfs",
+        userns=UserNamespaceType.PRIVATE if in_userns else UserNamespaceType.HOST,
+        image_mount_mode=ImageMountMode.FUSE if in_userns else ImageMountMode.KERNEL,
+        id_maps=_ID_MAPS if in_userns else None,
+    )
+
+
+# wrap's own argv is pinned in test_overlayfs, so these tests only check the
+# command _build_run_command wraps, behind this marker.
+_WRAPPED = "<wrapped by the rootfs overlay>"
+
+
+def _launched(cmd: list) -> list:
+    """The command the launch shell that ignores SIGINT and SIGQUIT execs."""
+    assert cmd[:4] == ["sh", "-c", "trap '' INT QUIT; exec \"$@\"", "sh"]
+    return cmd[4:]
+
+
+def _mark_overlay_wrap(monkeypatch):
+    monkeypatch.setattr(
+        overlayfs.RootfsOverlay, "wrap", lambda self, command: [_WRAPPED, *command]
+    )
+
+
+def _boot_from_overlays(monkeypatch, overlay=True):
+    """Have every sandbox created from here on need a kernel overlay, or
+    none, whatever its spec."""
+    monkeypatch.setattr(overlayfs, "needs_rootfs_overlay", lambda spec: overlay)
+
+
+def _overlayfs_run_argv(
+    network: str,
+    in_userns: bool,
+    rootless: bool = True,
+    writable: bool = True,
+    disk: str = "0",
+) -> list:
+    """`_build_run_command` for an overlayfs sandbox over fixed paths."""
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        network=network,
+        rootless=rootless,
+        readonly=not writable,
+        disk=disk,
+    )
+    return GVisorSandboxBackend()._build_run_command(
+        cfg, "/tmp/rd", "sb-1", rootfs_overlay=_rootfs_overlay_for(in_userns)
+    )
+
+
+@pytest.mark.parametrize("in_userns", [True, False])
+@pytest.mark.parametrize(
+    "network,rootless",
+    [("none", True), ("none", False), ("host", True), ("sandbox", False)],
+)
+def test_build_run_command_overlayfs_sandbox_wraps_runsc_in_mount_namespace(
+    monkeypatch, in_userns, network, rootless
+):
+    """An overlayfs sandbox's runsc starts in a private mount namespace that
+    first mounts the sandbox's kernel overlay, under the launch shell that
+    ignores interrupts. gVisor keeps writes made inside the sandbox in its
+    --overlay2 layer."""
+    _mark_overlay_wrap(monkeypatch)
+    cmd = _launched(_overlayfs_run_argv(network, in_userns, rootless=rootless))
+
+    assert cmd[0] == _WRAPPED
+    runsc = cmd[1:]
+    assert runsc[0] == "runsc"
+    assert runsc[runsc.index("--overlay2") + 1] == "root:dir=/tmp/rd/runsc-overlay2"
+    assert runsc[runsc.index("--network") + 1] == network
+    assert runsc[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+
+
+@pytest.mark.parametrize("in_userns", [True, False])
+@pytest.mark.parametrize("rootless", [True, False])
+@pytest.mark.parametrize("network", ["none", "public"])
+def test_build_run_command_overlayfs_userns_drops_rootless(
+    monkeypatch, in_userns, rootless, network
+):
+    """Inside a user namespace, runsc runs as mapped root without --rootless
+    and keeps rootless mode's cgroup tolerance. Without one, its flags stay
+    as they are, for network="public" too."""
+    # --ignore-cgroups below must come from rootless mode alone.
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+    cmd = _overlayfs_run_argv(network, in_userns, rootless=rootless)
+
+    # With network="public", runsc's argv is inside a bash script.
+    words = " ".join(cmd).split()
+    runsc = words[words.index("runsc") :]
+    if in_userns:
+        assert "--rootless" not in runsc
+        assert ("--ignore-cgroups" in runsc) is rootless
+    else:
+        assert ("--rootless" in runsc) is rootless
+        assert "--ignore-cgroups" not in runsc
+
+
+@pytest.mark.parametrize("in_userns", [True, False])
+@pytest.mark.parametrize("network", ["none", "public"])
+def test_build_run_command_overlayfs_userns_gets_its_own_gofer_netns(
+    in_userns, network
+):
+    """In a private user namespace, runsc's gofer gets a network namespace of
+    its own, since it can't join the one runsc shares between gofers under
+    --root when a sandbox outside that user namespace created it."""
+    cmd = _overlayfs_run_argv(network, in_userns)
+
+    words = " ".join(cmd).split()
+    runsc = words[words.index("runsc") :]
+    assert ("--gofer-network-namespace=new" in runsc) is in_userns
+
+
+def test_build_run_command_disk_caps_an_overlayfs_sandboxs_overlay2():
+    """disk caps a writable overlayfs sandbox's --overlay2 layer, as the rootfs
+    annotations cap an EROFS sandbox's overlay."""
+    cmd = _overlayfs_run_argv("none", in_userns=True, disk="64Mi")
+    assert "--overlay2 root:dir=/tmp/rd/runsc-overlay2,size=67108864" in " ".join(cmd)
+
+
+@pytest.mark.parametrize("overlayfs_sandbox", [True, False])
+def test_build_run_command_disk_caps_a_readonly_sandboxs_workdir(overlayfs_sandbox):
+    """A readonly sandbox's cap applies to its workdir, so gVisor's overlay
+    covers that bind mount too, whether the sandbox boots from a kernel
+    overlay or, where none can mount, from its EROFS image."""
+    cfg = GVisorSandboxConfig(image="busybox:latest", workdir="/work", disk="64Mi")
+    rootfs_overlay = _rootfs_overlay_for(True) if overlayfs_sandbox else None
+    cmd = GVisorSandboxBackend()._build_run_command(
+        cfg, "/tmp/rd", "sb-1", rootfs_overlay=rootfs_overlay
+    )
+    assert "--overlay2 all:dir=/tmp/rd/runsc-overlay2,size=67108864" in " ".join(cmd)
+
+
+def test_build_run_command_readonly_overlayfs_sandbox_has_overlay2():
+    """A readonly overlayfs sandbox gets --overlay2 too, which runsc ignores
+    for a read-only root."""
+    cmd = _overlayfs_run_argv("none", in_userns=True, writable=False)
+    assert "--overlay2 root:dir=/tmp/rd/runsc-overlay2" in " ".join(cmd)
+
+
+@pytest.mark.parametrize("in_userns", [True, False])
+def test_build_run_command_public_overlayfs_sandbox_runs_in_its_overlay(
+    monkeypatch, in_userns
+):
+    """With network="public", an overlayfs sandbox's whole namespace setup
+    runs inside its overlay's namespaces. If those include a user namespace,
+    the holder only adds a network namespace. Otherwise the holder adds a
+    user namespace to own it, which slirp4netns and nft enter to get
+    CAP_NET_ADMIN there, while runsc joins only the network namespace and
+    keeps the overlay's owners."""
+    _mark_overlay_wrap(monkeypatch)
+    cmd = _launched(_overlayfs_run_argv("public", in_userns))
+
+    assert cmd[0] == _WRAPPED
+    inner = cmd[1:]
+    assert inner[:2] == ["bash", "-c"]
+    script = inner[2]
+    holder_userns = "" if in_userns else "--user --map-root-user "
+    assert (
+        f"setpriv --pdeathsig KILL -- unshare {holder_userns}--net --fork "
+        "--kill-child bash -c 'echo $$ > /tmp/rd/netns.pid; exec sleep infinity' & "
+    ) in script
+    nft_userns = "" if in_userns else "-U "
+    assert (
+        f"nsenter --preserve-credentials {nft_userns}-n -t $NSPID -- "
+        "nft -f /tmp/rd/egress.nft"
+    ) in script
+    assert (
+        "nsenter --preserve-credentials -n -t $NSPID -- "
+        "setpriv --pdeathsig KILL -- runsc"
+    ) in script
+    assert ("--userns-path /proc/$NSPID/ns/user" in script) is not in_userns
+    assert "--overlay2 root:dir=/tmp/rd/runsc-overlay2" in script
+
+
+class _StopBeforeRun(Exception):
+    pass
+
+
+class _BundleRecordingImageManager:
+    """Records what create_sandbox asks of it, and writes a bundle whose
+    root.path is relative, as an _oci_spec_transform_fn may leave it."""
+
+    def __init__(self, image):
+        self.image = image
+        self.bundle_kwargs = None
+        self.rootfs_image_calls = []
+        self.released = []
+
+    def pull_image(self, image, **kwargs):
+        return None
+
+    def release_image(self, image, instance_id):
+        self.released.append(image)
+
+    def get_workdir(self, image):
+        return None
+
+    def get_rootfs_image(self, image):
+        self.rootfs_image_calls.append(image)
+        return self.image
+
+    def prepare_oci_bundle(self, root_dir, **kwargs):
+        self.bundle_kwargs = kwargs
+        spec = {"root": {"path": "rootfs"}}
+        transform = kwargs.get("_oci_spec_transform_fn")
+        if transform is not None:
+            spec = transform(spec) or spec
+        path = os.path.join(root_dir, "config.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(spec, f)
+        return path
+
+
+def _stub_overlay_mount(monkeypatch, userns, image_mount_mode):
+    """Have overlayfs sandboxes mount their rootfs this way, without probing."""
+    monkeypatch.setattr(overlayfs.UserNamespaceType, "detect", lambda: userns)
+    monkeypatch.setattr(
+        overlayfs.ImageMountMode, "detect", lambda userns: image_mount_mode
+    )
+    monkeypatch.setattr(overlayfs.IdMaps, "detect", lambda: _ID_MAPS)
+
+
+def _create_until_run(
+    tmp_path,
+    monkeypatch,
+    overlay,
+    userns=UserNamespaceType.PRIVATE,
+    image_mount_mode=ImageMountMode.FUSE,
+    readonly=False,
+):
+    """Run create_sandbox with a recording image manager up to the point it
+    would start runsc, and return what _build_run_command got and the
+    manager."""
+    monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(tmp_path / "sandboxes"))
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    _stub_overlay_mount(monkeypatch, userns, image_mount_mode)
+    _boot_from_overlays(monkeypatch, overlay)
+    captured = {}
+
+    def _capture(config, root_dir, sandbox_id, restore=None, rootfs_overlay=None):
+        # The failed create deletes its bundle, so check its directories now.
+        captured.update(
+            root_dir=root_dir,
+            rootfs_overlay=rootfs_overlay,
+            has_tmpfs_dir=rootfs_overlay is not None
+            and os.path.isdir(rootfs_overlay.tmpfs_dir),
+            has_overlay2_dir=os.path.isdir(os.path.join(root_dir, "runsc-overlay2")),
+        )
+        raise _StopBeforeRun()
+
+    manager = _BundleRecordingImageManager(image=str(tmp_path / "rootfs.erofs"))
+    backend = GVisorSandboxBackend(image_manager=manager)
+    monkeypatch.setattr(backend, "_build_run_command", _capture)
+    with pytest.raises(SandboxCreationError) as err:
+        backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", readonly=readonly)
+        )
+    assert isinstance(err.value.__cause__, _StopBeforeRun)
+    return captured, manager
+
+
+@pytest.mark.parametrize(
+    "userns, image_mount_mode",
+    [
+        (UserNamespaceType.HOST, ImageMountMode.KERNEL),
+        (UserNamespaceType.HOST, ImageMountMode.FUSE),
+        (UserNamespaceType.PRIVATE, ImageMountMode.FUSE),
+    ],
+)
+def test_create_sandbox_prepares_overlayfs_sandbox(
+    tmp_path, monkeypatch, userns, image_mount_mode
+):
+    """A sandbox that needs a kernel overlay boots from one over its cached
+    EROFS image, which create_sandbox mounts at root.path resolved against
+    the bundle."""
+    captured, manager = _create_until_run(
+        tmp_path, monkeypatch, True, userns, image_mount_mode
+    )
+
+    overlay = captured["rootfs_overlay"]
+    assert manager.rootfs_image_calls == ["busybox:latest"]
+    assert overlay.image == str(tmp_path / "rootfs.erofs")
+    # The fake bundle's root.path is relative, so this checks it resolves
+    # against the bundle.
+    assert overlay.mountpoint == os.path.join(captured["root_dir"], "rootfs")
+    assert overlay.userns is userns
+    assert overlay.image_mount_mode is image_mount_mode
+    assert captured["has_tmpfs_dir"]
+    assert captured["has_overlay2_dir"]
+
+
+def test_create_sandbox_readonly_overlayfs_sandbox_has_overlay2_dir(
+    tmp_path, monkeypatch
+):
+    """A readonly overlayfs sandbox gets a directory for gVisor's --overlay2
+    layer too, which stays empty."""
+    captured, _ = _create_until_run(tmp_path, monkeypatch, True, readonly=True)
+    assert captured["has_overlay2_dir"]
+
+
+def test_create_sandbox_erofs_sandbox_skips_overlay(tmp_path, monkeypatch):
+    """A sandbox that doesn't need a kernel overlay boots straight from its
+    EROFS image."""
+    captured, manager = _create_until_run(tmp_path, monkeypatch, False)
+
+    assert captured["rootfs_overlay"] is None
+    assert manager.rootfs_image_calls == []
+
+
+def _create_overlayfs_sandbox(tmp_path, monkeypatch, manager):
+    """Run create_sandbox for an overlayfs sandbox with ``manager``, which is
+    expected to fail before runsc starts, release the image, and remove the
+    sandbox's bundle directory."""
+    sandboxes_dir = tmp_path / "sandboxes"
+    monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(sandboxes_dir))
+    _boot_from_overlays(monkeypatch)
+    backend = GVisorSandboxBackend(image_manager=manager)
+    try:
+        backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+    finally:
+        assert manager.released == ["busybox:latest"]
+        assert not any(sandboxes_dir.glob("ray-sandbox-*"))
+
+
+def test_create_sandbox_overlayfs_fails_where_overlays_cant_mount(
+    tmp_path, monkeypatch
+):
+    """Where the overlay can't mount, an overlayfs sandbox fails with the
+    reason the test mount gave."""
+    fuse_error = "bash: line 1: erofsfuse: command not found"
+    monkeypatch.setattr(overlayfs, "_has_mount_privileges", lambda: False)
+    monkeypatch.setattr(overlayfs.IdMaps, "detect", lambda: _ID_MAPS)
+    monkeypatch.setattr(
+        overlayfs, "_probe_mount", lambda userns, image: (False, fuse_error)
+    )
+    manager = _BundleRecordingImageManager(image=str(tmp_path / "rootfs.erofs"))
+    with pytest.raises(SandboxCreationError, match=fuse_error):
+        _create_overlayfs_sandbox(tmp_path, monkeypatch, manager)
+
+
+def test_overlayfs_mount_keeps_the_image_owners(tmp_path, overlay_mount):
+    """Through the overlay, a file a user other than root owns in the image
+    keeps its owner, whichever way the image is mounted, unless a worker
+    running as a user other than root has no subordinate ids to map it to in a
+    private user namespace."""
+    tree = tmp_path / "tree"
+    (tree / "home" / "app").mkdir(parents=True)
+    (tree / "home" / "app" / "g").write_text("app")
+    image = str(tmp_path / "rootfs.erofs")
+    owners = {"home/app": (1000, 1000), "home/app/g": (1000, 1000)}
+    image_utils.build_erofs_image(str(tree), owners, image)
+
+    bundle = tmp_path / "bundle"
+    overlay = overlayfs.prepare(
+        image=image,
+        mountpoint=str(bundle / "rootfs"),
+        bundle_dir=str(bundle),
+    )
+    stat = ["stat", "-c", "%u:%g", os.path.join(overlay.mountpoint, "home/app/g")]
+    res = subprocess.run(overlay.wrap(stat), capture_output=True, text=True, timeout=60)
+    assert res.returncode == 0, res.stderr
+    maps_only_root = (
+        overlay.userns is UserNamespaceType.PRIVATE
+        and overlay.id_maps is None
+        and os.getuid() != 0
+    )
+    if maps_only_root:
+        assert res.stdout.strip() == "65534:65534"
+    else:
+        assert res.stdout.strip() == "1000:1000"
+
+
+def _pids_running(argv: list) -> list:
+    """The pids of the processes whose command line is ``argv``."""
+    target = "\0".join(argv) + "\0"
+    pids = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/cmdline") as f:
+                if f.read() == target:
+                    pids.append(int(entry))
+        except OSError:
+            pass
+    return pids
+
+
+def test_killing_the_overlay_wrapper_stops_its_command(tmp_path, overlay_mount):
+    """Killing the process that wraps a command in its kernel overlay, as a
+    failed create or a wedged teardown does, stops the command too, rather
+    than leaving it running with its mounts."""
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    image = str(tmp_path / "rootfs.erofs")
+    image_utils.build_erofs_image(str(tree), {}, image)
+    bundle = tmp_path / "bundle"
+    overlay = overlayfs.prepare(
+        image=image,
+        mountpoint=str(bundle / "rootfs"),
+        bundle_dir=str(bundle),
+    )
+    command = ["sleep", f"{1000 + os.getpid() % 1000}"]
+    wrapper = subprocess.Popen(overlay.wrap(command))
+    try:
+        deadline = time.monotonic() + 30
+        while not _pids_running(command):
+            assert wrapper.poll() is None, "the wrapper exited early"
+            assert time.monotonic() < deadline, "the command never started"
+            time.sleep(0.1)
+    finally:
+        wrapper.kill()
+        wrapper.wait()
+    deadline = time.monotonic() + 10
+    while _pids_running(command):
+        assert time.monotonic() < deadline, "the command outlived its wrapper"
+        time.sleep(0.1)
+
+
+def _file_digest(path: str) -> str:
+    """The SHA-256 of the file at ``path``."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def test_overlayfs_sandbox_leaves_cached_image_untouched(monkeypatch, overlay_mount):
+    """Overlayfs sandboxes boot from an overlay over the cached EROFS image.
+    Their writes never reach the image or another sandbox. The overlay's root
+    matches the image's."""
+    backend = GVisorSandboxBackend()
+    manager = backend._image_manager
+    manager.pull_image("busybox:latest", instance_id="image-snapshot")
+    try:
+        image = manager.get_rootfs_image("busybox:latest")
+        before = _file_digest(image)
+        erofs = backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+        )
+        _boot_from_overlays(monkeypatch)
+        writable = backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", readonly=False)
+        )
+        readonly = backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+        )
+        try:
+            assert backend.exec_command(writable, "touch /etc/probe").exit_code == 0
+            assert backend.exec_command(readonly, "touch /etc/probe").exit_code != 0
+            assert backend.exec_command(readonly, "test -e /etc/probe").exit_code != 0
+            stat_root_mode = "stat -c %a /"
+            assert (
+                backend.exec_command(writable, stat_root_mode).stdout
+                == backend.exec_command(erofs, stat_root_mode).stdout
+            )
+        finally:
+            for sb in (erofs, readonly, writable):
+                backend.delete_sandbox(sb)
+        assert _file_digest(image) == before
+    finally:
+        manager.release_image("busybox:latest", "image-snapshot")
+
+
+def test_overlayfs_sandbox_with_host_network_can_write_rootfs(
+    monkeypatch, overlay_mount
+):
+    """A network="host" overlayfs sandbox boots and can write its rootfs."""
+    _boot_from_overlays(monkeypatch)
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="host",
+            readonly=False,
+        )
+    )
+    try:
+        res = backend.exec_command(sb, "touch /probe && echo ok")
+        assert res.exit_code == 0, res.stderr
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_overlayfs_sandbox_disk_caps_its_writes(monkeypatch, overlay_mount):
+    """disk caps the writes made inside a writable overlayfs sandbox. Writes
+    past it fail with ENOSPC, and the sandbox keeps working."""
+    _boot_from_overlays(monkeypatch)
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest", shell="/bin/sh", readonly=False, disk="64Mi"
+        )
+    )
+    try:
+        res = backend.exec_command(sb, "dd if=/dev/zero of=/fill bs=1M count=128")
+        assert res.exit_code != 0
+        assert "No space left on device" in res.stderr
+        # Deleting frees the space, and the sandbox keeps working.
+        res = backend.exec_command(
+            sb, "rm /fill && dd if=/dev/zero of=/again bs=1M count=32 && echo ok"
+        )
+        assert res.stdout.endswith("ok\n"), res.stderr
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_overlayfs_sandbox_with_public_network(
+    monkeypatch, ensure_slirp4netns, overlay_mount
+):
+    """A network="public" overlayfs sandbox boots with a writable rootfs and
+    its tap device."""
+    _boot_from_overlays(monkeypatch)
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="public",
+            readonly=False,
+        )
+    )
+    try:
+        res = backend.exec_command(sb, "touch /probe && ip addr show tap0")
+        assert res.exit_code == 0, res.stderr
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def _with_prestart_hook(spec):
+    """Add an OCI hook that runs on the host before the sandbox starts, and
+    writes /hook-marker into its rootfs, as hooks that set up a sandbox do.
+    runsc passes the hook the sandbox's state, whose bundle holds the rootfs."""
+    script = (
+        'bundle=$(sed -n \'s/.*"bundle":"\\([^"]*\\)".*/\\1/p\'); '
+        'echo hook > "$bundle/rootfs/hook-marker"'
+    )
+    hook = {"path": "/bin/sh", "args": ["sh", "-c", script]}
+    spec.setdefault("hooks", {})["createRuntime"] = [hook]
+    return spec
+
+
+def test_overlayfs_sandbox_runs_prestart_hooks_in_its_overlay(overlay_mount):
+    """Sandboxes with hooks that run before they start boot from an overlay
+    over the cached EROFS image, which the hooks write into. The hooks' writes
+    never reach the image or a sandbox without them."""
+    backend = GVisorSandboxBackend()
+    manager = backend._image_manager
+    manager.pull_image("busybox:latest", instance_id="image-snapshot")
+    try:
+        image = manager.get_rootfs_image("busybox:latest")
+        before = _file_digest(image)
+        writable = backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest",
+                shell="/bin/sh",
+                readonly=False,
+                _oci_spec_transform_fn=_with_prestart_hook,
+            )
+        )
+        readonly = backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest",
+                shell="/bin/sh",
+                _oci_spec_transform_fn=_with_prestart_hook,
+            )
+        )
+        erofs = backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+        )
+        try:
+            for sb in (writable, readonly):
+                res = backend.exec_command(sb, "cat /hook-marker")
+                assert res.stdout.strip() == "hook", res.stderr
+            assert backend.exec_command(erofs, "test -e /hook-marker").exit_code != 0
+            assert backend.exec_command(readonly, "touch /etc/probe").exit_code != 0
+        finally:
+            for sb in (erofs, readonly, writable):
+                backend.delete_sandbox(sb)
+        assert _file_digest(image) == before
+    finally:
+        manager.release_image("busybox:latest", "image-snapshot")
+
+
 @pytest.mark.parametrize("binary", ["slirp4netns", "nsenter", "setpriv"])
 def test_create_sandbox_requires_netns_binaries(monkeypatch, binary):
     """A missing helper fails fast, before the image pull, with remediation."""
@@ -976,8 +1628,11 @@ class _StubImageManager:
     def get_workdir(self, image):
         return None
 
-    def prepare_oci_bundle(self, **kwargs):
-        return None
+    def prepare_oci_bundle(self, root_dir, **kwargs):
+        path = os.path.join(root_dir, "config.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"root": {"path": "rootfs"}}, f)
+        return path
 
     def release_image(self, image, instance_id):
         self.released.append(instance_id)
@@ -1183,6 +1838,63 @@ def test_holder_namespace_ids_reject_a_pid_in_the_workers_namespaces(tmp_path):
     for pid in (str(os.getpid()), "not-a-pid"):
         (tmp_path / "netns.pid").write_text(f"{pid}\n")
         assert _holder_namespace_ids(str(tmp_path)) is None
+
+
+def test_holder_namespace_ids_accept_a_holder_in_the_workers_user_namespace(
+    tmp_path, monkeypatch
+):
+    """An overlayfs sandbox on a worker with mount privileges keeps the
+    worker's user namespace, so only a holder in the worker's network
+    namespace is taken for a pid that isn't the holder."""
+    own = [(1, 10), (1, 20)]
+    holder = [(1, 10), (1, 21)]
+    monkeypatch.setattr(
+        gvisor, "_namespace_ids", lambda pid: holder if pid == 12345 else own
+    )
+    (tmp_path / "netns.pid").write_text("12345\n")
+    assert _holder_namespace_ids(str(tmp_path)) == holder
+
+
+@_needs_proc_ns
+def test_set_egress_allowlist_skips_the_workers_own_user_namespace(
+    tmp_path, monkeypatch
+):
+    """A sandbox in this process's user namespace has its ruleset reloaded in
+    its network namespace alone, since nsenter can't enter the user
+    namespace it's already in."""
+    (tmp_path / "netns.pid").write_text(f"{os.getpid()}\n")
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        network="public",
+        cidr_allowlist=["0.0.0.0/0"],
+    )
+    _write_egress_ruleset(str(tmp_path), cfg.cidr_allowlist, cfg.dns)
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-1"] = {
+        "root_dir": str(tmp_path),
+        "config": cfg,
+        "egress_allowlist": ["0.0.0.0/0"],
+        "netns_ids": _namespace_ids(os.getpid()),
+        "enter_userns": False,
+    }
+    calls = []
+
+    class _Completed:
+        returncode = 0
+        stderr = b""
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return _Completed()
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", fake_run
+    )
+    backend.set_egress_allowlist("sb-1", ["52.0.0.1"])
+    ((args),) = calls
+    assert not any(a.startswith("--user=") for a in args)
+    assert any(a.startswith("--net=") for a in args)
 
 
 @_needs_proc_ns

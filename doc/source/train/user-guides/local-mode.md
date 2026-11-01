@@ -293,7 +293,7 @@ You can also use `torchrun` to launch multi-node training with local mode. The f
 On the master node at `192.168.1.1`, run the following command:
 
 ```bash
-RAY_TRAIN_V2_ENABLED=1 torchrun \
+torchrun \
     --nnodes=2 \
     --nproc-per-node=4 \
     --node_rank=0 \
@@ -306,7 +306,7 @@ RAY_TRAIN_V2_ENABLED=1 torchrun \
 On the worker node, run the following command:
 
 ```bash
-RAY_TRAIN_V2_ENABLED=1 torchrun \
+torchrun \
     --nnodes=2 \
     --nproc-per-node=4 \
     --node_rank=1 \

@@ -539,6 +539,111 @@ async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
     wrapper.shutdown()
 
 
+@pytest.mark.parametrize("truncation_side", ["left", "right"])
+@pytest.mark.asyncio
+async def test_vllm_wrapper_generate_long_prompt(model_llama_3_2_216M, truncation_side):
+    """A generate row's tokenization_kwargs must reach the engine.
+
+    Without it the over-length prompt is rejected ("maximum context length")
+    and the row fails. `max_length` leaves room for `max_tokens`, which is the
+    caller's job: vLLM reserves no output budget when truncating to max_length.
+    """
+    max_model_len = 2048
+    max_tokens = 16
+    max_length = max_model_len - max_tokens
+    wrapper = vLLMEngineWrapper(
+        model=model_llama_3_2_216M,
+        model_source=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        max_model_len=max_model_len,
+        task_type=vLLMTaskType.GENERATE,
+        # Older GPUs (e.g. T4) don't support bfloat16.
+        dtype="half",
+    )
+
+    # Distinct token IDs, so the surviving slice shows which end was cut.
+    prompt_token_ids = list(range(100, 100 + 2 * max_model_len))
+    row = {
+        "__idx_in_batch": 0,
+        "tokenized_prompt": prompt_token_ids,
+        "sampling_params": {"max_tokens": max_tokens, "ignore_eos": True},
+        "tokenization_kwargs": {
+            "truncation": True,
+            "max_length": max_length,
+            "truncation_side": truncation_side,
+        },
+    }
+
+    _, output, _ = await wrapper.generate_async(row)
+    expected = (
+        prompt_token_ids[-max_length:]
+        if truncation_side == "left"
+        else prompt_token_ids[:max_length]
+    )
+    assert output["prompt_token_ids"] == expected
+    assert output["num_input_tokens"] == max_length
+    assert output["num_generated_tokens"] == max_tokens
+
+    # Clean up GPU memory
+    wrapper.shutdown()
+
+
+@pytest.mark.parametrize(
+    "tokenization_kwargs",
+    [{"truncation": True, "max_length": 8, "truncation_side": "left"}, None],
+)
+@pytest.mark.asyncio
+async def test_vllm_generate_forwards_tokenization_kwargs(tokenization_kwargs):
+    """The generate call carries the row's tokenization_kwargs, and None when absent."""
+    from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMEngineRequest
+
+    finished = MagicMock(finished=True)
+
+    async def stream():
+        yield finished
+
+    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
+    wrapper.task_type = vLLMTaskType.GENERATE
+    wrapper.engine = MagicMock()
+    wrapper.engine.generate = MagicMock(side_effect=lambda **_: stream())
+
+    request = vLLMEngineRequest(
+        request_id=0,
+        idx_in_batch=0,
+        prompt_token_ids=list(range(32)),
+        params=MagicMock(),
+        tokenization_kwargs=tokenization_kwargs,
+    )
+    with (
+        patch.dict(sys.modules, {"vllm": MagicMock()}),
+        patch(
+            "ray.llm._internal.batch.stages.vllm_engine_stage._get_vllm_prompt_classes",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+    ):
+        assert await wrapper._generate_async(request) is finished
+
+    assert (
+        wrapper.engine.generate.call_args.kwargs["tokenization_kwargs"]
+        == tokenization_kwargs
+    )
+
+
+def test_vllm_stage_generate_declares_tokenization_kwargs():
+    stage = vLLMEngineStage(
+        fn_constructor_kwargs=dict(
+            model="model", task_type=vLLMTaskType.GENERATE, engine_kwargs={}
+        ),
+        map_batches_kwargs=dict(),
+    )
+    assert "tokenization_kwargs" in stage.get_optional_input_keys()
+
+
 @pytest.mark.asyncio
 async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora):
     wrapper = vLLMEngineWrapper(

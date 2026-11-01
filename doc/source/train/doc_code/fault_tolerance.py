@@ -1,7 +1,3 @@
-import os
-
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
-
 # __failure_config_start__
 import ray.train
 

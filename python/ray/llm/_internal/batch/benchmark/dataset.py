@@ -1,6 +1,4 @@
-"""
-This module defines a dataset framework for sampling benchmark requests.
-"""
+"""This module defines a dataset framework for sampling benchmark requests."""
 
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -17,8 +15,7 @@ class BenchmarkDataset(ABC):
         dataset_path: Optional[str] = None,
         random_seed: int = DEFAULT_RANDOM_SEED,
     ) -> None:
-        """
-        Abstract base class for benchmark datasets.
+        """Abstract base class for benchmark datasets.
 
         All benchmark datasets should inherit from this class and implement
         the required abstract methods.
@@ -32,8 +29,7 @@ class BenchmarkDataset(ABC):
 
     @abstractmethod
     def load_data(self) -> None:
-        """
-        Load data from the dataset source into memory.
+        """Load data from the dataset source into memory.
 
         Raises:
             NotImplementedError: If the method is not implemented in subclasses.
@@ -42,8 +38,7 @@ class BenchmarkDataset(ABC):
 
     @abstractmethod
     def sample(self, num_requests: int) -> List[Dict]:
-        """
-        Sample prompts from the loaded dataset.
+        """Sample prompts from the loaded dataset.
 
         Args:
             num_requests: The number of prompts to sample from the dataset.
@@ -68,8 +63,7 @@ class ShareGPTDataset(BenchmarkDataset):
         hf_split: str = "train",
         truncate_prompt: Optional[int] = None,
     ) -> None:
-        """
-        Initializes the ShareGPTDataset.
+        """Initializes the ShareGPTDataset.
 
         Args:
             dataset_path: The path to the dataset on disk.
@@ -150,8 +144,7 @@ class ShareGPTDataset(BenchmarkDataset):
         return data
 
     def _extract_prompt(self, item: Dict) -> Dict | None:
-        """
-        Extracts the first human message of a conversation or None.
+        """Extracts the first human message of a conversation or None.
 
         The ShareGPT schema uses {"role": "human", "value": ...} for user
         turns.

@@ -1,5 +1,4 @@
-"""
-DataSourceV2 API - Unified Abstraction for Reading Data Sources
+"""DataSourceV2 API - Unified Abstraction for Reading Data Sources
 
 This module defines a unified, extensible API for reading data from diverse sources
 in Ray Data. The API provides a common abstraction layer that enables datasources to
@@ -288,6 +287,17 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         ``_resolve_paths_and_filesystem``.
         """
         ...
+
+    @property
+    def source_paths(self) -> List[str]:
+        """The paths as the caller passed them, recorded on ``ListFiles`` for
+        lineage tracking.
+
+        Defaults to :attr:`paths`. Override this when :attr:`paths` holds
+        resolved paths: ``_resolve_paths_and_filesystem`` strips the URI scheme,
+        so ``s3://bucket/a`` becomes ``bucket/a``.
+        """
+        return self.paths
 
     @property
     def file_extensions(self) -> Optional[List[str]]:

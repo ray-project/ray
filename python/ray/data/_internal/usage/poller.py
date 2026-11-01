@@ -106,6 +106,10 @@ def get_poller() -> ClusterMetricsPoller:
                     collector.METRIC_UNEXPECTED_WORKER_KILLS: (
                         collector.cluster_unexpected_worker_kills
                     ),
+                    collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS: (
+                        collector.cluster_object_reconstruction_attempts
+                    ),
+                    collector.METRIC_TASK_RETRIES: collector.cluster_task_retries,
                 }
             )
             _poller._start_thread_if_not_running()

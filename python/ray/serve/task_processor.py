@@ -40,10 +40,15 @@ CELERY_DEFAULT_APP_CONFIG = [
 
 @PublicAPI(stability="alpha")
 class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
-    """
-    Celery-based task processor adapter.
+    """Celery-based task processor adapter.
     This adapter does NOT support any async operations.
     All operations must be performed synchronously.
+
+    Args:
+        config: The task processor configuration. Its ``adapter_config`` must
+            be a ``CeleryAdapterConfig``.
+        *args: Passed to ``TaskProcessorAdapter.__init__``.
+        **kwargs: Passed to ``TaskProcessorAdapter.__init__``.
     """
 
     _app: Celery
@@ -77,6 +82,12 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         # self._async_capabilities is already an empty set from parent class
 
     def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
+        """Create the Celery app and configure its queues.
+
+        Args:
+            consumer_concurrency: Number of tasks the Celery worker processes
+                concurrently.
+        """
         self._app = Celery(
             self._config.queue_name,
             backend=self._config.adapter_config.backend_url,
@@ -234,25 +245,28 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         self._worker_thread = None
 
     def cancel_task_sync(self, task_id):
-        """
-        Cancels a task synchronously. Only supported for Redis and RabbitMQ brokers by Celery.
+        """Cancels a task synchronously. Only supported for Redis and RabbitMQ brokers by Celery.
         More details can be found here: https://docs.celeryq.dev/en/stable/userguide/workers.html#revoke-revoking-tasks
         """
         self._app.control.revoke(task_id)
 
     def get_metrics_sync(self) -> Dict[str, Any]:
-        """
-        Returns the metrics of the Celery worker synchronously.
+        """Returns the metrics of the Celery worker synchronously.
         More details can be found here: https://docs.celeryq.dev/en/stable/reference/celery.app.control.html#celery.app.control.Inspect.stats
+
+        Returns:
+            The worker statistics that Celery reports.
         """
         return self._app.control.inspect().stats()
 
     def health_check_sync(self) -> List[Dict]:
-        """
-        Checks the health of the Celery worker synchronously.
+        """Checks the health of the Celery worker synchronously.
         Returns a list of dictionaries, each containing the worker name and a dictionary with the health status.
         Example: [{'celery@192.168.1.100': {'ok': 'pong'}}]
         More details can be found here: https://docs.celeryq.dev/en/stable/reference/celery.app.control.html#celery.app.control.Control.ping
+
+        Returns:
+            One dict per worker that responded to the ping.
         """
         return self._app.control.ping()
 

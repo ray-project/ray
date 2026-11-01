@@ -1,5 +1,4 @@
-"""
-Serialization handlers for preprocessor save/load functionality.
+"""Serialization handlers for preprocessor save/load functionality.
 
 This module implements a factory pattern to abstract different serialization formats,
 making it easier to add new formats and maintain existing ones.
@@ -103,8 +102,7 @@ class PickleSerializationHandler(SerializationHandler):
     def serialize(
         self, data: Union["Preprocessor", Dict[str, Any]]  # noqa: F821
     ) -> str:
-        """
-        Serialize using pickle format (for backward compatibility).
+        """Serialize using pickle format (for backward compatibility).
         data is ignored, but kept for consistency
 
         """

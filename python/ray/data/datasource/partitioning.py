@@ -288,11 +288,22 @@ class PathPartitionParser:
         partitions: Dict[str, str] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
+            if field not in partitions:
+                raise ValueError(
+                    f"Expected partition field {field!r} (declared in "
+                    f"`field_types`) in path {path!r}, but found {sorted(partitions)}."
+                )
             partitions[field] = _cast_value(partitions[field], data_type)
 
         return partitions
 
-    def evaluate_predicate_on_partition(self, path: str, predicate: "Expr") -> bool:
+    def evaluate_predicate_on_partition(
+        self,
+        path: str,
+        predicate: "Expr",
+        *,
+        schema: Optional["pyarrow.Schema"] = None,
+    ) -> bool:
         """Evaluate a predicate expression against partition values from a path.
 
         This method enables partition pruning by evaluating predicates that reference
@@ -301,6 +312,8 @@ class PathPartitionParser:
         Args:
             path: File path to parse partition values from.
             predicate: Expression that references partition columns.
+            schema: Logical schema used to cast path values to the reader's types.
+                If omitted, infer types from the parsed values as before.
 
         Returns:
             True if the partition satisfies the predicate (should read the file),
@@ -322,10 +335,26 @@ class PathPartitionParser:
             return False
 
         try:
-            # Create a single-row table with partition values
-            partition_table = pa.table(
-                {col: [val] for col, val in partition_values.items()}
-            )
+            if schema is None:
+                partition_table = pa.table(
+                    {col: [val] for col, val in partition_values.items()}
+                )
+            else:
+                from ray.data._internal.planner.plan_expression.expression_visitors import (
+                    get_column_references,
+                )
+
+                # Only cast fields used by the predicate. The reader can omit
+                # other partition columns after projection; validating them
+                # here would introduce failures for columns it never reads.
+                referenced_columns = set(get_column_references(predicate))
+                partition_table = pa.table(
+                    {
+                        name: _broadcast_partition_value(name, value, 1, schema)
+                        for name, value in partition_values.items()
+                        if name in referenced_columns
+                    }
+                )
 
             # Evaluate using Ray Data's native evaluator
             evaluator = NativeExpressionEvaluator(partition_table)
@@ -361,6 +390,10 @@ class PathPartitionParser:
                 return bool(result.as_py())
 
             return bool(result)
+        except pa.ArrowInvalid as exc:
+            raise pa.ArrowInvalid(
+                f"Failed to evaluate predicate for partition path {path!r}: {exc}"
+            ) from exc
         except KeyError:
             # Only a missing partition column is a genuine "can't tell" -- keep
             # the file. Narrow, so a type mismatch (ArrowNotImplementedError,
@@ -564,12 +597,52 @@ class PathPartitionFilter:
         return filtered_paths
 
     def apply(self, path: str) -> bool:
+        """Decide whether to read a file, based on the partitions in its path.
+
+        Args:
+            path: The file path to parse partition keys and values from.
+
+        Returns:
+            ``True`` if the filter function keeps the file, ``False`` to skip it.
+        """
         return self._filter_fn(self._parser(path))
 
     @property
     def parser(self) -> PathPartitionParser:
         """Returns the path partition parser for this filter."""
         return self._parser
+
+
+def _broadcast_partition_value(
+    name: str,
+    value: Any,
+    num_rows: int,
+    schema: Optional["pyarrow.Schema"] = None,
+) -> "pyarrow.Array":
+    """Broadcast a path value using the reader's logical field type.
+
+    Missing schema fields retain the reader's string fallback. Stringify
+    parsed values first so explicit Python partition types follow the same
+    conversion path as untyped directory values.
+
+    Args:
+        name: Partition field name.
+        value: Parsed path value.
+        num_rows: Number of rows to produce.
+        schema: Logical schema, or None to retain string values.
+
+    Returns:
+        An Arrow array with the logical field type, or string type if unknown.
+    """
+    import pyarrow as pa
+
+    str_val = None if value is None else str(value)
+    arr = pa.repeat(pa.scalar(str_val, type=pa.string()), num_rows)
+    if schema is not None:
+        idx = schema.get_field_index(name)
+        if idx != -1 and schema.field(idx).type != pa.string():
+            arr = arr.cast(schema.field(idx).type)
+    return arr
 
 
 def _partition_field_types_to_pa_schema(
