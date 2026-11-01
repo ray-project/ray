@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import uuid
 from collections import Counter
@@ -418,6 +419,13 @@ class TestCapacityQueueRouterFailures:
                 if crash:
                     import os
 
+                    # Die mid-request, but only after the router has had time
+                    # to receive this replica's "accepted" message. Exiting
+                    # right away can kill the process before that message is
+                    # sent; the router then treats the request as never
+                    # delivered and retries it on another replica, which
+                    # crashes too, so more than one replica dies.
+                    await asyncio.sleep(0.5)
                     os._exit(1)
                 return self.unique_id
 

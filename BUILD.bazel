@@ -8,8 +8,8 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
-load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto//proto:defs.bzl", "proto_library")
