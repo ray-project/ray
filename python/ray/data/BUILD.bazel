@@ -2705,7 +2705,7 @@ py_test(
 
 py_test(
     name = "test_checkpoint",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_checkpoint.py"],
     tags = [
         "exclusive",
