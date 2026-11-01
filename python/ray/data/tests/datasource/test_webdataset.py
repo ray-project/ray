@@ -13,6 +13,7 @@ import pytest
 import webdataset as wds
 
 import ray
+from ray.data.datasource.partitioning import Partitioning
 from ray.tests.conftest import *  # noqa
 
 
@@ -244,6 +245,23 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
     chained_path = tmp_path / "chained"
     ds.write_webdataset(path=chained_path, encoder=[prefix_a, encode_a])
     assert_archive(chained_path, lambda i: f"encoded-prefixed-{i}")
+
+
+def test_webdataset_partitioning(ray_start_2_cpus, tmp_path):
+    """Read back a hive-partitioned directory and check the partition column is
+    injected from the path."""
+    data = [dict(__key__=str(i), txt=str(i)) for i in range(10)]
+    ray.data.from_items(data).repartition(1).write_webdataset(
+        path=tmp_path / "split=train", try_create_dir=True
+    )
+
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], partitioning=Partitioning("hive"), override_num_blocks=1
+    )
+
+    rows = ds.take_all()
+    assert len(rows) == 10
+    assert all(row["split"] == "train" for row in rows)
 
 
 def custom_decoder(sample):
