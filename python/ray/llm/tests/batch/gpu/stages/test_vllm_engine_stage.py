@@ -906,6 +906,49 @@ async def test_vllm_udf_should_continue_on_error_yields_error_row(mock_vllm_wrap
 
 
 @pytest.mark.asyncio
+async def test_vllm_udf_error_row_keeps_prompt_popped_by_wrapper(mock_vllm_wrapper):
+    """The real wrapper pops the prompt off the row before the engine fails."""
+    wrapper = _make_bare_wrapper()
+    wrapper.model = "/tmp/fake-model"
+    wrapper.semaphore = asyncio.Semaphore(1)
+    wrapper.engine = MagicMock()
+    wrapper.engine.generate = MagicMock(side_effect=ValueError("prompt too long"))
+    mock_vllm_wrapper.return_value.generate_async.side_effect = wrapper.generate_async
+
+    udf = vLLMEngineStageUDF(
+        data_column="__data",
+        expected_input_keys=["sampling_params"],
+        model="/tmp/fake-model",
+        task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
+        engine_kwargs={},
+        should_continue_on_error=True,
+    )
+
+    long_prompt = "a" * 1000
+    batch = {
+        "__data": [
+            {"prompt": long_prompt, "sampling_params": {"max_tokens": 4}},
+            # A tokenized row in a batch where other rows set the prompt.
+            {
+                "prompt": None,
+                "tokenized_prompt": [1, 2, 3],
+                "sampling_params": {"max_tokens": 4},
+            },
+        ]
+    }
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert all("prompt too long" in r["__inference_error__"] for r in results)
+    assert results[0]["prompt"] == "a" * 500 + "...[truncated]"
+    assert results[1]["prompt"] == ""
+
+
+@pytest.mark.asyncio
 async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
     """Mixed batch: some rows succeed, some fail."""
     call_count = 0
