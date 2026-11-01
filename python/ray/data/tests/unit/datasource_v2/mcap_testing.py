@@ -261,24 +261,6 @@ def read_all(datasource, *manifests, scanner=None) -> pa.Table:
     return pa.concat_tables(tables)
 
 
-def read_rows(datasource, manifests, columns=None) -> List[Dict[str, Any]]:
-    """Read ``manifests`` with the planned scanner into row dicts.
-
-    ``columns`` prunes the read, as a projection does. Every table must match
-    the read schema.
-    """
-    scanner = scanner_for(datasource)
-    if columns is not None:
-        scanner = scanner.prune_columns(columns)
-    reader = scanner.create_reader()
-    rows: List[Dict[str, Any]] = []
-    for manifest in manifests:
-        for table in reader.read(manifest):
-            assert table.schema.equals(scanner.read_schema()), table.schema
-            rows.extend(table.to_pylist())
-    return rows
-
-
 def selected_messages(path: str):
     """Every message of the local, indexed file ``path``, as the reader yields them."""
     reader = SelectedMessageReader(MCAPSelection(), log_time_order=True)
@@ -456,6 +438,24 @@ def record_parsed_chunks(monkeypatch) -> List[int]:
     return offsets
 
 
+def read_rows(datasource, manifests, columns=None) -> List[Dict[str, Any]]:
+    """Read ``manifests`` with the planned scanner into row dicts.
+
+    ``columns`` prunes the read, as a projection does. Every table must match
+    the read schema.
+    """
+    scanner = scanner_for(datasource)
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
+    reader = scanner.create_reader()
+    rows: List[Dict[str, Any]] = []
+    for manifest in manifests:
+        for table in reader.read(manifest):
+            assert table.schema.equals(scanner.read_schema()), table.schema
+            rows.extend(table.to_pylist())
+    return rows
+
+
 def read_samples(
     samples: List[Dict[str, Any]],
     topics: Dict[str, Any],
@@ -609,7 +609,7 @@ VP9_KEYFRAME = b"\x82" + VP9_SYNC_CODE + bytes(16)
 VP9_PFRAME = b"\x86" + bytes(16)
 
 
-GOP = 10  # frames between keyframes of ``encode_h264``
+GOP = 10  # frames between keyframes of ``encode_h264`` and ``encode_h265``
 
 # -- encoded video (the decode tests) -----------------------------------------
 
@@ -620,20 +620,20 @@ HALF_SIZE = (HEIGHT // 2, WIDTH // 2)  # a ``resize`` target, or a smaller camer
 H264_FILE_FRAMES = 30  # frames in the ``h264_file`` fixture
 
 
-def encode_h264(num_frames, width=WIDTH, height=HEIGHT):
-    """H.264 Annex-B access units, one per frame, a keyframe every ``GOP``."""
+def encode_h264(num_frames, width=WIDTH, height=HEIGHT, b_frames=0):
+    """H.264 Annex-B access units in decode order, one per frame, a keyframe
+    every ``GOP``. ``b_frames`` is the most B-frames between two references."""
     import av
     import numpy as np
 
     container = av.open(io.BytesIO(), mode="w", format="h264")
-    # A fixed GOP, no B-frames and no scene-cut keyframes make the keyframe
-    # positions predictable. Without a global header, libx264 repeats SPS/PPS
-    # before every keyframe, as recorders do.
-    stream = container.add_stream(
-        "libx264",
-        rate=30,
-        options={"g": str(GOP), "bf": "0", "sc_threshold": "0", "tune": "zerolatency"},
-    )
+    # A fixed GOP and no scene-cut keyframes make the keyframe positions
+    # predictable. Without a global header, libx264 repeats SPS/PPS before
+    # every keyframe, as recorders do.
+    options = {"g": str(GOP), "bf": str(b_frames), "sc_threshold": "0"}
+    if not b_frames:
+        options["tune"] = "zerolatency"
+    stream = container.add_stream("libx264", rate=30, options=options)
     stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
     packets = []
     for i in range(num_frames):
@@ -674,6 +674,30 @@ def encode_vp9(num_frames, width=WIDTH, height=HEIGHT):
         frame.pts = i
         packets.extend(bytes(p) for p in context.encode(frame))
     packets.extend(bytes(p) for p in context.encode(None))
+    return packets
+
+
+def encode_h265(num_frames, width=WIDTH, height=HEIGHT):
+    """H.265 Annex-B access units, one per frame, a keyframe every ``GOP``.
+
+    As ``encode_h264``: libx265 repeats VPS, SPS and PPS before every keyframe.
+    """
+    import av
+    import numpy as np
+
+    container = av.open(io.BytesIO(), mode="w", format="hevc")
+    params = f"keyint={GOP}:min-keyint={GOP}:scenecut=0:bframes=0:open-gop=0"
+    stream = container.add_stream(
+        "libx265", rate=30, options={"x265-params": params + ":log-level=error"}
+    )
+    stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
+    packets = []
+    for i in range(num_frames):
+        array = np.full((height, width, 3), i * 8 % 256, dtype=np.uint8)
+        array[:, :, 1] = (i * 3) % 256
+        frame = av.VideoFrame.from_ndarray(array, format="rgb24")
+        packets.extend(bytes(p) for p in stream.encode(frame))
+    packets.extend(bytes(p) for p in stream.encode())
     return packets
 
 
@@ -722,6 +746,35 @@ def parameter_sets_once(packets, codec: str, keep_first: bool = True):
         if stripped != packet:
             kept = False
     return out
+
+
+class LateContext:
+    """A codec context that releases frames ``delay`` packets late, as libdav1d may."""
+
+    def __init__(self, context, delay=1):
+        self._context = context
+        self._delay = delay
+        # The frames of each packet fed and not released yet, oldest first.
+        self._held = []
+
+    def decode(self, packet):
+        if packet is None:
+            frames = [frame for held in self._held for frame in held]
+            self._held = []
+            return frames + list(self._context.decode(None))
+        self._held.append(list(self._context.decode(packet)))
+        return self._held.pop(0) if len(self._held) > self._delay else []
+
+
+class UnstampedAtFlushContext(LateContext):
+    """Releases each frame one packet late, and those left at the end unstamped."""
+
+    def decode(self, packet):
+        frames = super().decode(packet)
+        if packet is None:
+            for frame in frames:
+                frame.pts = None
+        return frames
 
 
 def write_payloads(
@@ -790,3 +843,94 @@ def write_payloads(
                     sequence=i,
                 )
         writer.finish()
+
+
+def write_two_cameras(path, offset_frames, packets=None):
+    """Write the same 30-frame H.264 stream on ``/a`` and ``/b``, one message per
+    chunk, ``/b`` running ``offset_frames`` frames behind ``/a``.
+
+        log time / FRAME_NS   0  1  ...  8  9  ...  29  30  ...  37
+        /a frame              0  1  ...  8  9  ...  29
+        /b frame, offset 8               0  1  ...  21  22  ...  29
+
+    Both streams have keyframes at frames 0, 10 and 20. ``packets`` replaces the
+    stream, ``encode_h264(30)`` by default. Returns the channel id of each topic.
+    """
+    from mcap.writer import CompressionType, Writer
+
+    packets = encode_h264(30) if packets is None else packets
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=1, compression=CompressionType.ZSTD)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo", encoding="ros2msg", data=b"video\n"
+        )
+        channels = {
+            topic: writer.register_channel(
+                schema_id=schema_id, topic=topic, message_encoding="cdr"
+            )
+            for topic in ("/a", "/b")
+        }
+        for i, payload in enumerate(packets):
+            for topic, shift in (("/a", 0), ("/b", offset_frames)):
+                log_time = (i + shift) * FRAME_NS
+                writer.add_message(
+                    channel_id=channels[topic],
+                    log_time=log_time,
+                    publish_time=log_time,
+                    data=payload,
+                    sequence=i,
+                )
+        writer.finish()
+    return channels
+
+
+def manifest_for_frames(datasource, path, channels, offset_frames, frames):
+    """Return a manifest that owns exactly ``frames``, and the whole file's manifest.
+
+    ``frames`` holds ``(topic, index)`` pairs. The file has one message per chunk.
+    """
+    (manifest,) = list_manifests(datasource)
+    summary = summary_of(path)
+    by_channel = {cid: topic for topic, cid in channels.items()}
+    wanted_offsets = set()
+    for chunk in summary.chunk_indexes:
+        (channel_id,) = chunk.message_index_offsets
+        topic = by_channel[channel_id]
+        shift = offset_frames if topic == "/b" else 0
+        if (topic, chunk.message_start_time // FRAME_NS - shift) in frames:
+            wanted_offsets.add(chunk.chunk_start_offset)
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    rows = [
+        i
+        for i, md in enumerate(manifest.file_chunk_metadatas)
+        if md is not None and int(md["unit_ids"][0]) in wanted_offsets
+    ]
+    assert len(rows) == len(frames)
+    return FileManifest(block.take(rows)), manifest
+
+
+def split_at_first_idr(packet):
+    """Split an access unit just before the start code of its IDR NAL unit."""
+    i = 0
+    while True:
+        j = packet.find(b"\x00\x00\x01", i)
+        assert j >= 0, "no IDR NAL unit"
+        if packet[j + 3] & 0x1F == H264_IDR:
+            cut = j - 1 if j > 0 and packet[j - 1] == 0 else j
+            return packet[:cut], packet[cut:]
+        i = j + 3
+
+
+def listed_if_custom(schema_name):
+    """``video_topics`` for the test camera: needed only for a custom schema."""
+    return ["/camera"] if schema_name.startswith("custom_msgs/") else None
+
+
+def split_after(manifest, first):
+    """Split a manifest into a task owning its first ``first`` chunks and one
+    owning the rest."""
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    return [FileManifest(block.slice(0, first)), FileManifest(block.slice(first))]

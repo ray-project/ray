@@ -55,6 +55,10 @@ _INT32_BYTES = 4
 # a buffer is sealed into its own chunk before it passes this many bytes.
 _MAX_BUFFER_BYTES = 2**31 - 1
 
+# Bytes of a ``frame`` value besides its pixels: the int64 offset of a
+# fixed-shape tensor. A table that mixes frame sizes adds its shape too.
+_FRAME_OFFSET_BYTES = 8
+
 # Decoded JSON is held as Python objects until a table is built, at 6-7 times
 # the payload's bytes for dicts of numbers, so a row counts this many bytes per
 # payload byte.
@@ -87,6 +91,7 @@ def message_schema(
     include_metadata: bool,
     include_row_id: bool,
     data_type: Optional[pa.DataType] = None,
+    frame_type: Optional[pa.DataType] = None,
 ) -> pa.Schema:
     """The Arrow schema of message rows, before partition and synthesized columns.
 
@@ -103,12 +108,16 @@ def message_schema(
         include_row_id: Whether ``row_id`` is present.
         data_type: Type of the ``data`` column when it holds decoded JSON
             values; ``None`` for ``binary``.
+        frame_type: With ``VideoOptions``, the tensor type of the ``frame``
+            column that replaces ``data``.
 
     Returns:
         The schema, columns in output order.
     """
     fields = [
-        pa.field("data", data_type if data_type is not None else pa.binary()),
+        pa.field("frame", frame_type)
+        if frame_type is not None
+        else pa.field("data", data_type if data_type is not None else pa.binary()),
         pa.field("topic", pa.string()),
         pa.field("log_time", pa.int64()),
         pa.field("publish_time", pa.int64()),
@@ -306,6 +315,9 @@ class _MessageTableBuilder:
     ``row_id`` and the appended ones (``extra_row_bytes``) included, and equals
     the size of the table ``build`` returns, except for decoded JSON, which is
     held as Python objects until then.
+
+    With ``decoded``, a row is a decoded video frame: a ``frame`` tensor column
+    replaces ``data``, and each frame is held as its array until ``build``.
     """
 
     def __init__(
@@ -316,6 +328,7 @@ class _MessageTableBuilder:
         include_row_id: bool,
         decode_json: bool,
         extra_row_bytes: int = 0,
+        decoded: bool = False,
     ):
         """Initialize the builder.
 
@@ -328,8 +341,12 @@ class _MessageTableBuilder:
                 bytes. Fixed by the planned schema for every row of the dataset.
             extra_row_bytes: Bytes per row of the columns the caller appends to
                 each table, such as ``path``.
+            decoded: Whether each row is a decoded video frame
+                (``VideoOptions``), passed to ``add`` with its message.
         """
         names = list(DATA_COLUMNS)
+        if decoded:
+            names[names.index("data")] = "frame"
         if include_metadata:
             names += METADATA_COLUMNS
         if include_row_id:
@@ -343,6 +360,8 @@ class _MessageTableBuilder:
         for name in ("data", ROW_ID_COLUMN):
             if name in self._names:
                 self._fixed_row_bytes += _INT32_BYTES
+        if "frame" in self._names:
+            self._fixed_row_bytes += _FRAME_OFFSET_BYTES
         self.reset()
 
     def reset(self) -> None:
@@ -368,8 +387,10 @@ class _MessageTableBuilder:
         self._row_ids: Optional[_VarWidthBuffer] = (
             _VarWidthBuffer(pa.string()) if ROW_ID_COLUMN in self._names else None
         )
+        self._frames: Optional[List[Any]] = [] if "frame" in self._names else None
 
-    def add(self, selected: _Selected) -> None:
+    def add(self, selected: _Selected, frame: Any = None) -> None:
+        """Add one row: a message, or with ``decoded`` its decoded ``frame``."""
         schema, channel, message, row_id = selected
         slot = self._slot(channel, schema)
         self._slot_ids.append(slot)
@@ -377,7 +398,12 @@ class _MessageTableBuilder:
         self.estimated_bytes += self._slots[slot].row_bytes
         for name, values in self._ints.items():
             values.append(getattr(message, name))
-        if self._payloads is not None:
+        if self._frames is not None:
+            # Each row carries its frame, or the columns would differ in length.
+            assert frame is not None, "a decoded row without its frame"
+            self._frames.append(frame)
+            self.estimated_bytes += frame.nbytes
+        elif self._payloads is not None:
             self._payloads.append(message.data)
             self.estimated_bytes += len(message.data)
         elif self._json_values is not None:
@@ -468,6 +494,10 @@ class _MessageTableBuilder:
         if name == ROW_ID_COLUMN:
             assert self._row_ids is not None
             return self._row_ids.finish()
+        if name == "frame":
+            # Same-shaped frames become a fixed-shape tensor column. A table
+            # that mixes resolutions gets the variable-shaped tensor type.
+            return convert_to_pyarrow_array(self._frames, "frame")
         if self._json_values is not None:
             # Ray's converter infers a struct from the decoded values.
             # Blocks whose structs differ are unified downstream with nulls.

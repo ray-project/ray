@@ -1,7 +1,7 @@
 """Message filters and video options of ``read_mcap``.
 
 ``TimeRange`` is the public time filter of ``read_mcap``, and ``VideoOptions``
-how a sample read decodes its video topics. Both are re-exported from
+how a read decodes its video topics. Both are re-exported from
 ``ray.data.datasource``.
 
 ``MCAPSelection`` bundles the ``topics``, ``message_types`` and ``time_range``
@@ -85,21 +85,25 @@ class TimeRange:
 @PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class VideoOptions:
-    """Decode the video topics of a sample read (``read_mcap(samples=...)``)
-    inside the read task.
+    """Decode the video topics of a ``read_mcap`` inside the read task.
 
-    Each video topic's steps become a ``frames:<topic>`` tensor of shape
-    ``(steps, height, width, 3)``, and the other topics keep their payloads.
-    A sample row whose frames exceed ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails the
+    In a read of paths every selected topic must be video, and each row is one
+    RGB frame in a ``frame`` column, ``uint8`` of shape ``(height, width, 3)``,
+    in place of ``data``. Every message's frame is kept: for frames at a lower
+    rate, use a sample read with ``steps.across(fps=...)`` over clips of each
+    recording. In a sample read (``read_mcap(samples=...)``), each
+    video topic's steps become a ``frames:<topic>`` tensor of shape
+    ``(steps, height, width, 3)``, and the other topics keep their payloads. A
+    sample row whose frames exceed ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails the
     read, so use ``resize`` to keep rows small.
 
     A topic is video when its schema name is a known video schema or
     ``read_mcap(video_topics=...)`` lists it. Its codec comes from the
     message's ``format`` field or its bytes (JPEG, PNG, H.264, H.265, VP9,
-    AV1). Every frame is complete: a step's frame is decoded from the last
-    keyframe before it, at most ``RAY_DATA_MCAP_MAX_LEAD_IN_S`` (10 s) back.
-    Requires ``av`` for H.264, H.265, VP9 and AV1, and ``Pillow`` for JPEG and
-    PNG.
+    AV1). Every frame is complete, even when a read task starts mid-stream: it
+    is decoded from the last keyframe before it, at most
+    ``RAY_DATA_MCAP_MAX_LEAD_IN_S`` (10 s) back. Requires ``av`` for H.264,
+    H.265, VP9 and AV1, and ``Pillow`` for JPEG and PNG.
 
     Attributes:
         resize: Scale frames to exactly this ``(height, width)``. A frame of
