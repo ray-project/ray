@@ -8,9 +8,19 @@ from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, T
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
-from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
+from pyarrow.parquet import (
+    ColumnSchema,
+    FileMetaData,
+    ParquetSchema,
+    RowGroupMetaData,
+)
 
 import ray
+from ray._common.utils import env_bool
+from ray.data._internal.datasource_v2.formats.parquet.parquet_bloom_filter import (
+    prepare_bloom_probes,
+    row_group_may_match,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
 )
@@ -24,6 +34,7 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
+    get_equality_predicate_values,
 )
 from ray.data._internal.util import call_with_retry
 
@@ -156,6 +167,18 @@ class FooterReader:
             if projected_cols is not None
             else None
         )
+        # Equality literals per column, for bloom filter row-group pruning:
+        # the ``==`` / ``is_in`` literals a file's bloom filters can rule row
+        # groups out on. Empty when the predicate has no equality conjunct,
+        # when nothing usable can be extracted, or when the feature is
+        # disabled via ``RAY_DATA_PARQUET_BLOOM_FILTER_PRUNING`` -- in every
+        # such case bloom pruning is a no-op.
+        self._bloom_predicates: dict[str, list] = (
+            get_equality_predicate_values(filter_expr)
+            if filter_expr is not None
+            and env_bool("RAY_DATA_PARQUET_BLOOM_FILTER_PRUNING", True)
+            else {}
+        )
         # Reused across files; make_fragment is what lets us apply
         # split_by_row_group.
         self.file_format = pds.ParquetFileFormat()
@@ -281,6 +304,44 @@ class FooterReader:
             )
             return None
 
+    def _prune_row_groups_by_bloom_filter(
+        self,
+        metadata: FileMetaData,
+        path: str,
+        rg_indices: Iterable[int],
+    ) -> list[int]:
+        """Row groups the file's bloom filters do not rule out.
+
+        Runs after statistics pruning, on the groups it kept, and only when
+        the predicate carries equality literals (``==`` / ``is_in``) to probe
+        with. Each group's predicate columns are checked against their bloom
+        filters; a "definitely not present" answer drops the group before a
+        read task is ever built. That is the point: an unsorted column's
+        min/max bounds span every row group, while its bloom filter does not
+        (ray-project/ray#67569).
+
+        Fails closed everywhere -- no bloom filter, an unreadable or
+        malformed one, an unsupported type, any exception -- by keeping the
+        group. ``fully_matched`` is deliberately untouched: a bloom filter
+        has a false-positive rate and so can never prove a group *fully*
+        matches, which leaves the limit push-down classification exactly as
+        the statistics pass left it.
+        """
+        probes = prepare_bloom_probes(metadata.schema, self._bloom_predicates)
+        if not probes:
+            return list(rg_indices)
+        return [
+            rg_idx
+            for rg_idx in rg_indices
+            if row_group_may_match(
+                filesystem=self.filesystem,
+                path=path,
+                row_group=metadata.row_group(rg_idx),
+                probes=probes,
+                retried_io_errors=self.retried_io_errors,
+            )
+        ]
+
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
         path = file.path
         fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
@@ -363,6 +424,14 @@ class FooterReader:
             # No predicate -> nothing to disqualify a group, so the lookup below
             # falls through to its fully-matched default for every group.
             fully_by_idx = {}
+
+        if self._bloom_predicates and rg_indices:
+            # Second pruning pass over the statistics survivors: bloom filters
+            # rule out row groups whose min/max bounds cannot, which is the
+            # unsorted-column point-lookup case (ray-project/ray#67569).
+            rg_indices = self._prune_row_groups_by_bloom_filter(
+                metadata, path, rg_indices
+            )
 
         per_rg = [
             self._row_group_run(

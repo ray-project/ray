@@ -1,6 +1,6 @@
 from collections import Counter
 from dataclasses import dataclass, replace
-from typing import Dict, Hashable, List, TypeVar
+from typing import Any, Dict, Hashable, List, Optional, TypeVar
 
 from ray.data.expressions import (
     AliasExpr,
@@ -154,6 +154,99 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
             None (only collects columns as a side effect).
         """
         self.visit(expr.expr)
+
+
+class _EqualityPredicateCollector(_ExprVisitorBase):
+    """Collects ``column -> equality literals`` from conjunctive predicates.
+
+    Bloom filters answer "could this value occur in this row group?" with
+    "definitely not" or "maybe", so only equality predicates (``==``,
+    ``is_in``) can act on the answer -- and only where the predicate is a
+    *conjunction*: under AND, a "definitely not" rules the whole conjunction
+    out for that row group, while under OR it rules nothing out (the other
+    arm may still hold) and under NOT it flips to "definitely everywhere".
+    Non-conjunctive subtrees therefore contribute nothing: an ``OR``, a
+    ``NOT``, a UDF or an alias around an equality is skipped whole, and a
+    comparison or arithmetic operand of an ``==`` is not a column-vs-literal
+    equality at all.
+    """
+
+    def __init__(self):
+        """Initialize with an empty predicate map."""
+        self._predicates: Dict[str, List[Any]] = {}
+
+    def get_predicates(self) -> Dict[str, List[Any]]:
+        """Get the collected per-column equality literals."""
+        return dict(self._predicates)
+
+    def visit_column(self, expr: ColumnExpr) -> None:
+        # A bare column leaf contributes nothing; only an == or IN around one
+        # does. (Concrete here because the base visitor leaves it abstract.)
+        pass
+
+    def visit_binary(self, expr: BinaryExpr) -> None:
+        if expr.op == Operation.AND:
+            self.visit(expr.left)
+            self.visit(expr.right)
+        elif expr.op == Operation.EQ:
+            column, literal = _column_literal_pair(expr.left, expr.right)
+            if column is not None and literal is not None:
+                self._record(column.name, [literal.value])
+        elif expr.op == Operation.IN:
+            column, literal = _column_literal_pair(expr.left, expr.right)
+            if (
+                column is not None
+                and literal is not None
+                and isinstance(literal.value, (list, tuple, set))
+            ):
+                self._record(column.name, list(literal.value))
+        # Every other operator -- OR, comparisons, arithmetic -- heads a
+        # subtree whose equalities (if any) are not conjuncts, so it is not
+        # traversed.
+
+    def visit_unary(self, expr: UnaryExpr) -> None:
+        # NOT flips the polarity of any equality beneath it, and the null
+        # checks contribute nothing either way, so no subtree of a unary
+        # operator is a conjunct.
+        pass
+
+    def visit_udf(self, expr: UDFExpr) -> None:
+        # Arguments feed a computation; an equality nested inside one is not
+        # a conjunct of the predicate.
+        pass
+
+    def visit_alias(self, expr: AliasExpr) -> None:
+        # The lowered filter keeps the underlying column, but what a rename
+        # does to the values it compares is enough of a question to skip.
+        pass
+
+    def _record(self, column_name: str, values: List[Any]) -> None:
+        """Record one column's allowed values, intersecting on repeats.
+
+        AND of two equalities on the same column admits only values both
+        allow, so the probe set narrows to the intersection. An empty
+        intersection means no literal to probe with -- the predicate is
+        unsatisfiable, which the ordinary filter path reports anyway -- not
+        that every row group may be dropped.
+        """
+        existing = self._predicates.get(column_name)
+        if existing is None:
+            self._predicates[column_name] = list(values)
+        else:
+            self._predicates[column_name] = [
+                v for v in existing if any(v == other for other in values)
+            ]
+
+
+def _column_literal_pair(
+    left: Expr, right: Expr
+) -> tuple[Optional[ColumnExpr], Optional[LiteralExpr]]:
+    """The (column, literal) orientation of an equality's operands, or Nones."""
+    if isinstance(left, ColumnExpr) and isinstance(right, LiteralExpr):
+        return left, right
+    if isinstance(left, LiteralExpr) and isinstance(right, ColumnExpr):
+        return right, left
+    return None, None
 
 
 class _IdempotencyVisitor(_ExprVisitor[bool]):
@@ -829,6 +922,29 @@ class _StructuralFingerprintOccurrenceCollector(_ExprVisitor[Hashable]):
 
     def visit_uuid(self, expr: UUIDExpr) -> Hashable:
         return self._record(expr, _uuid_fingerprint_key(expr))
+
+
+def get_equality_predicate_values(expr: Optional[Expr]) -> Dict[str, List[Any]]:
+    """Extract the equality literals each column is conjunctively compared to.
+
+    Backs Parquet bloom filter row-group pruning: for ``col("u") == 4711``
+    the answer is ``{"u": [4711]}``; for ``(a == 1) & (b.is_in([2, 3]))`` it
+    is ``{"a": [1], "b": [2, 3]}``; for anything disjunctive -- ``|``,
+    ``~``, ``!=`` -- it is whatever the conjunctive arms alone contribute.
+    Literals of any Python type are returned; deciding whether a type can be
+    probed against a particular Parquet column is the caller's job.
+
+    Args:
+        expr: The expression to extract from, or ``None``.
+
+    Returns:
+        Mapping from column name to the literal values it is compared to.
+    """
+    if expr is None:
+        return {}
+    collector = _EqualityPredicateCollector()
+    collector.visit(expr)
+    return collector.get_predicates()
 
 
 def get_column_references(expr: Expr) -> List[str]:
