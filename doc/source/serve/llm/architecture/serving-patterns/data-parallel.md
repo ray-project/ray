@@ -163,7 +163,7 @@ The key difference from basic serving is that all the `dp_size` replicas coordin
 Data parallel attention deployments support autoscaling based on request queue length. Specify `min_replicas`, `max_replicas`, and `initial_replicas` to configure the autoscaling bounds and starting point. All three refer to the number of DP groups, where each group has `dp_size` engine instances.
 
 
-```{literalinclude} ../../../../llm/doc_code/serve/multi_gpu/dp_autoscaling_example.py
+```{literalinclude} ../../doc_code/multi_gpu/dp_autoscaling_example.py
 :language: python
 :start-after: __dp_autoscaling_example_start__
 :end-before: __dp_autoscaling_example_end__

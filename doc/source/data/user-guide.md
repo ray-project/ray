@@ -26,7 +26,7 @@ working-with-images
 working-with-text
 working-with-tensors
 working-with-pytorch
-working-with-llms
+llm/working-with-llms
 how-to-avoid-ooms
 monitoring-your-workload
 execution-configurations

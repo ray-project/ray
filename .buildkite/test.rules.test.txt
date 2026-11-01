@@ -117,9 +117,9 @@ doc/.claude/agents/reviewer.md:
 # Every llm doc example test is a GPU test, and docs examples never run GPU
 # tests in premerge or microcheck, so llm doc assets emit nothing. Neither
 # reaches the raw `llm` tag, which would start the llm library suites.
-doc/source/llm/doc_code/example.py:
-doc/source/llm/examples/batch/vllm-with-lora.ipynb:
-doc/source/data/doc_code/working-with-llms/example.py:
+doc/source/serve/llm/doc_code/example.py:
+doc/source/data/llm/doc_code/example.py:
+doc/source/data/examples/llm/vllm-with-lora.ipynb:
 # Unowned doc dirs and doc-root executables go to the opt-in step too.
 doc/source/cluster/example.py: doc_example
 doc/code.py: doc_example
@@ -132,7 +132,7 @@ doc/source/data/examples/BUILD.bazel: data_doc
 doc/source/train/examples/pytorch/BUILD.bazel: ml_doc
 doc/source/tune/tutorials/BUILD.bazel: ml_doc
 doc/source/core/examples/BUILD.bazel: core_doc
-doc/source/llm/examples/batch/BUILD.bazel: llm
+doc/source/data/examples/llm/BUILD.bazel: llm
 doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
 # All prose under doc/source/ routes to the opt-in step, whether or not a
 # per-file doctest target names the page: the opt-in selects targets by changed

@@ -35,7 +35,7 @@ Consider this pattern when:
 
 The following example shows how to deploy with data parallel attention. Each data parallel deployment requires `num_replicas * data_parallel_size * tensor_parallel_size` GPUs.
 
-```{literalinclude} ../../../llm/doc_code/serve/multi_gpu/dp_basic_example.py
+```{literalinclude} ../doc_code/multi_gpu/dp_basic_example.py
 :language: python
 :start-after: __dp_basic_example_start__
 :end-before: __dp_basic_example_end__
@@ -145,7 +145,7 @@ You can combine data parallel attention with prefill-decode disaggregation to sc
 
 The following example shows a complete, functional deployment:
 
-```{literalinclude} ../../../llm/doc_code/serve/multi_gpu/dp_pd_example.py
+```{literalinclude} ../doc_code/multi_gpu/dp_pd_example.py
 :language: python
 :start-after: __dp_pd_example_start__
 :end-before: __dp_pd_example_end__

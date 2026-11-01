@@ -30,7 +30,7 @@ Then build and deploy a single-model application:
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ../../../llm/doc_code/serve/direct_streaming/direct_streaming_example.py
+```{literalinclude} ../doc_code/direct_streaming/direct_streaming_example.py
 :start-after: __direct_streaming_example_start__
 :end-before: __direct_streaming_example_end__
 :language: python
@@ -38,7 +38,7 @@ Then build and deploy a single-model application:
 :::
 
 :::{tab-item} YAML
-```{literalinclude} ../../../llm/doc_code/serve/direct_streaming/direct_streaming_config.yaml
+```{literalinclude} ../doc_code/direct_streaming/direct_streaming_config.yaml
 :language: yaml
 ```
 
@@ -126,7 +126,7 @@ Direct streaming works with the single-model builders for the OpenAI, data paral
 
 Direct streaming uses the deployment's `request_router_config`, so you select a routing policy the same way you would for any LLM deployment. Set it on the model's `deployment_config`:
 
-```{literalinclude} ../../../llm/doc_code/serve/direct_streaming/direct_streaming_custom_router_example.py
+```{literalinclude} ../doc_code/direct_streaming/direct_streaming_custom_router_example.py
 :start-after: __direct_streaming_custom_router_example_start__
 :end-before: __direct_streaming_custom_router_example_end__
 :language: python

@@ -111,7 +111,7 @@ With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel 
 The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
 
 * **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
-* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The scheduled post-merge builds run the GPU examples.
+* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes in an `llm/` directory under a library's docs, such as `doc/source/serve/llm/`, don't start the opt-in step. The scheduled post-merge builds run the GPU examples.
 * **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
 
 To see what the label would run before you push, run the selector locally:
