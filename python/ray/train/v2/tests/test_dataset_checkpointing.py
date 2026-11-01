@@ -42,7 +42,10 @@ def read_checkpoint_files_for_state_dict(
 
 
 @pytest.mark.parametrize("restore_from_end_of_epoch", [True, False])
-def test_e2e_with_ray_train(ray_start_4_cpus, tmp_path, restore_from_end_of_epoch):
+@pytest.mark.parametrize("generate_id_column", [True, False])
+def test_e2e_with_ray_train(
+    ray_start_4_cpus, tmp_path, restore_from_end_of_epoch, generate_id_column
+):
     """Test that the checkpointing works end-to-end with Ray Train.
 
     Run for 2 epochs.
@@ -76,7 +79,11 @@ def test_e2e_with_ray_train(ray_start_4_cpus, tmp_path, restore_from_end_of_epoc
     ctx = ray.data.DataContext.get_current()
     ctx.default_hash_shuffle_parallelism = 1
 
-    id_column = "id"
+    id_column = "generated_id" if generate_id_column else "id"
+    if generate_id_column:
+        # Generated IDs require a Parquet read.
+        ds.write_parquet(str(tmp_path / "parquet"))
+        ds = ray.data.read_parquet(str(tmp_path / "parquet"))
 
     def train_fn(config):
         rank = ray.train.get_context().get_world_rank()
@@ -120,6 +127,10 @@ def test_e2e_with_ray_train(ray_start_4_cpus, tmp_path, restore_from_end_of_epoc
 
             seen_ids = []
             for batch in ds_iter.iter_batches(batch_size=batch_size):
+                if generate_id_column:
+                    # The generated id column should be auto-filtered out of the batch.
+                    assert "generated_id" not in batch.keys()
+
                 seen_ids.extend(batch["id"].tolist())
 
                 consumed_batches_this_epoch += 1
@@ -141,8 +152,9 @@ def test_e2e_with_ray_train(ray_start_4_cpus, tmp_path, restore_from_end_of_epoc
                         == consumed_batches_this_epoch * batch_size * world_size
                     )
 
-                    # Check that the checkpointed row ids contains all seen batches from workers.
-                    assert set(seen_ids) <= set(checkpointed_row_ids)
+                    if not generate_id_column:
+                        # Check that the checkpointed row ids contains all seen batches from workers.
+                        assert set(seen_ids) <= set(checkpointed_row_ids)
 
                     with create_dict_checkpoint(
                         {
@@ -213,6 +225,7 @@ def test_e2e_with_ray_train(ray_start_4_cpus, tmp_path, restore_from_end_of_epoc
                 "train": DatasetCheckpointConfig(
                     checkpoint_path=str(data_checkpoint_path),
                     id_column=id_column,
+                    generate_id_column=generate_id_column,
                 )
             }
         ),
