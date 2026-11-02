@@ -1405,6 +1405,50 @@ def _make_worker(node_id, node_ip, gpu_ids=None):
             ],
             id="replica_group_size_2_replace",
         ),
+        pytest.param(
+            # CPU workers on the same node have identical metadata in _make_worker;
+            # local_rank must still increment sequentially per peer on each node.
+            [
+                _make_worker("node1", "10.0.0.2"),
+                _make_worker("node0", "10.0.0.1"),
+                _make_worker("node1", "10.0.0.2"),
+                _make_worker("node0", "10.0.0.1"),
+            ],
+            0,
+            None,
+            None,
+            [
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=0,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=1,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=2,
+                    world_size=4,
+                    node_rank=1,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=3,
+                    world_size=4,
+                    node_rank=1,
+                ),
+            ],
+            id="cpu_workers_multi_node",
+        ),
     ],
 )
 def test_assign_worker_ranks(
