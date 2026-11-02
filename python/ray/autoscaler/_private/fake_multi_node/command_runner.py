@@ -2,6 +2,10 @@ import os
 import subprocess
 from typing import Dict, List, Tuple
 
+from ray.autoscaler._private.auth_token import (
+    AUTH_TOKEN_REMOTE_PATH,
+    token_auth_enabled_locally,
+)
 from ray.autoscaler._private.docker import with_docker_exec
 from ray.autoscaler.command_runner import CommandRunnerInterface
 
@@ -65,6 +69,10 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
         self._run_shell(f"docker cp {self.container_name}:{docker_dir} {target}")
 
     def run_rsync_up(self, source, target, options=None):
+        if target == AUTH_TOKEN_REMOTE_PATH and token_auth_enabled_locally():
+            # In token mode FakeMultiNodeDockerProvider mounts the token as a
+            # read-only volume, which `docker cp` cannot overwrite.
+            return
         docker_dir = os.path.dirname(self._docker_expand_user(target))
         self.run(cmd=f"mkdir -p {docker_dir}")
 

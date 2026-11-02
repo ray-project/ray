@@ -109,6 +109,8 @@ class SimpleImputer(SerializablePreprocessorBase):
 
     _valid_strategies = ["mean", "most_frequent", "constant"]
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -144,18 +146,28 @@ class SimpleImputer(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to apply imputation to."""
         return self._columns
 
     @property
     def strategy(self) -> str:
+        """How imputed values are chosen.
+
+        One of ``"mean"``, ``"most_frequent"``, or ``"constant"``.
+        """
         return self._strategy
 
     @property
     def fill_value(self) -> Optional[Union[str, Number]]:
+        """The value to use when ``strategy`` is ``"constant"``."""
         return self._fill_value
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
