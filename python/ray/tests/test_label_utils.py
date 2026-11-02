@@ -7,16 +7,20 @@ from typing import ContextManager, Dict, Optional, Union
 
 import pytest
 
-from ray._private.label_utils import (
-    parse_node_labels_from_yaml_file,
-    parse_node_labels_json,
-    parse_node_labels_string,
+from ray._common import label_utils as common_label_utils
+from ray._common.label_utils import (
     validate_fallback_strategy,
     validate_label_key,
     validate_label_selector,
     validate_label_selector_value,
     validate_label_value,
     validate_node_label_syntax,
+)
+from ray._private import label_utils as private_label_utils
+from ray._private.label_utils import (
+    parse_node_labels_from_yaml_file,
+    parse_node_labels_json,
+    parse_node_labels_string,
     validate_node_labels,
 )
 
@@ -366,6 +370,24 @@ def test_validate_fallback_strategy(fallback_strategy, expected_error):
         assert expected_error in result
     else:
         assert result is None
+
+
+def test_legacy_label_validation_imports():
+    """Existing imports keep using the same validators and regex constants."""
+    for name in (
+        "LABEL_OPERATORS",
+        "LABEL_PREFIX_REGEX",
+        "LABEL_REGEX",
+        "LABEL_SELECTOR_REGEX",
+        "OPERATOR_PATTERN",
+        "validate_fallback_strategy",
+        "validate_label_key",
+        "validate_label_selector",
+        "validate_label_selector_value",
+        "validate_label_value",
+        "validate_node_label_syntax",
+    ):
+        assert getattr(private_label_utils, name) is getattr(common_label_utils, name)
 
 
 if __name__ == "__main__":
