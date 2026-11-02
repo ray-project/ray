@@ -585,6 +585,31 @@ class OptunaSearch(Searcher):
         pruned: bool = False,
         intermediate_values: Optional[List[float]] = None,
     ):
+        """Add a prior evaluation using the configured static search space.
+
+        Only names in the configured Optuna distributions are imported. Values
+        can be supplied with flat names or nested configurations; all other
+        keys are ignored, including keys that were searched in a source run.
+        The caller must ensure the historical objective values are comparable
+        and the evaluations are suitable for the target experiment and space.
+
+        Required parameters must be present and their values must fit the
+        target distributions. Validation errors and lookup errors from malformed
+        nested configurations propagate to the caller. The input dictionary is
+        not modified.
+
+        Args:
+            parameters: Parameter values to import, using flat distribution
+                names or nested configurations. None-valued categories are
+                preserved.
+            value: Objective value. May be ``None`` for an errored point and is
+                ignored when ``error=True``.
+            error: Whether to store the point as a failed trial.
+            pruned: Whether to store the point as a pruned trial, unless
+                ``error=True``.
+            intermediate_values: Objective values for intermediate iterations,
+                indexed from zero.
+        """
         if not self._space:
             raise RuntimeError(
                 UNDEFINED_SEARCH_SPACE.format(

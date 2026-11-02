@@ -397,6 +397,8 @@ def test_set_max_concurrency():
         (Trial.PENDING, {}, None, True),
         (Trial.RUNNING, {}, None, True),
         (Trial.PAUSED, {}, None, True),
+        # Legacy compatibility: metric-bearing nonterminal trials are forwarded.
+        # Defining an import policy for unfinished trials is a separate change.
         (
             Trial.PENDING,
             {"metric": 4.0},
@@ -426,9 +428,9 @@ def test_set_max_concurrency():
         "pending-no-metric",
         "running-no-metric",
         "paused-no-metric",
-        "pending-metric",
-        "running-metric",
-        "paused-metric",
+        "legacy-pending-metric",
+        "legacy-running-metric",
+        "legacy-paused-metric",
     ],
 )
 def test_add_evaluated_trials(

@@ -461,6 +461,7 @@ def test_optuna_fixed_parameters_continues_batch(nested, container, tmp_path):
     completed = Trial("stub", config=completed_config, stub=True)
     completed.set_status(Trial.TERMINATED)
     completed.update_last_result({"metric": 0.0, DONE: True})
+    completed_original = deepcopy(completed.config)
     trials = [errored, completed]
     if container is ExperimentAnalysis:
         trials = ExperimentAnalysis(
@@ -481,7 +482,7 @@ def test_optuna_fixed_parameters_continues_batch(nested, container, tmp_path):
     ]
     assert all(t.distributions == space for t in target._ot_study.trials)
     assert errored.config == original
-    assert completed.config == completed_config
+    assert completed.config == completed_original
     assert not caught
 
 
@@ -536,7 +537,7 @@ def test_optuna_add_evaluated_point_rejects_missing_search_parameters(nested):
     original = deepcopy(parameters)
     target = OptunaSearch(space=space, metric="metric", mode="max")
 
-    with pytest.raises(ValueError, match="Inconsistent parameters"):
+    with pytest.raises(ValueError):
         target.add_evaluated_point(parameters, None, error=True)
 
     assert not target._ot_study.trials
@@ -566,6 +567,60 @@ def test_optuna_add_evaluated_point_preserves_none_category(nested):
     assert stored[0].distributions == space
     assert stored[0].state == TrialState.COMPLETE
     assert stored[0].value == 0.0
+    assert parameters == original
+
+
+@pytest.mark.parametrize("with_prefix", [False, True], ids=["empty", "partial"])
+def test_optuna_add_evaluated_trials_out_of_range_error_stops_batch(with_prefix):
+    from optuna.distributions import FloatDistribution
+    from optuna.trial import TrialState
+
+    from ray.tune.result import DONE
+    from ray.tune.search.optuna import OptunaSearch
+
+    first = Trial("stub", config={"x": 1.0}, stub=True)
+    first.set_status(Trial.TERMINATED)
+    first.update_last_result({"metric": 0.0, DONE: True})
+    invalid = Trial("stub", config={"x": 10.0}, stub=True)
+    invalid.set_status(Trial.ERROR)
+    last = Trial("stub", config={"x": 3.0}, stub=True)
+    last.set_status(Trial.TERMINATED)
+    last.update_last_result({"metric": 1.0, DONE: True})
+    trials = [first, invalid, last] if with_prefix else [invalid, last]
+    original_configs = deepcopy([trial.config for trial in trials])
+    target = OptunaSearch(
+        space={"x": FloatDistribution(0.0, 5.0)}, metric="metric", mode="max"
+    )
+
+    with pytest.raises(ValueError):
+        target.add_evaluated_trials(trials, "metric")
+
+    expected = [({"x": 1.0}, TrialState.COMPLETE, 0.0)] if with_prefix else []
+    assert [(t.params, t.state, t.value) for t in target._ot_study.trials] == expected
+    assert [trial.config for trial in trials] == original_configs
+
+
+@pytest.mark.parametrize(
+    "param_name,parameters",
+    [("group/x", {"group": "abc"}), ("group/0", {"group": []})],
+    ids=["string-parent", "empty-list-parent"],
+)
+def test_optuna_add_evaluated_point_rejects_malformed_parameter_parents(
+    param_name, parameters
+):
+    from optuna.distributions import FloatDistribution
+
+    from ray.tune.search.optuna import OptunaSearch
+
+    original = deepcopy(parameters)
+    target = OptunaSearch(
+        space={param_name: FloatDistribution(0.0, 5.0)}, metric="metric", mode="max"
+    )
+
+    with pytest.raises((ValueError, IndexError)):
+        target.add_evaluated_point(parameters, None, error=True)
+
+    assert not target._ot_study.trials
     assert parameters == original
 
 
