@@ -400,9 +400,10 @@ class Reconciler:
 
         # Sort the request instance by the increasing request time.
         instances_with_launch_requests.sort(
-            key=lambda instance: InstanceUtil.get_status_transition_times_ns(
+            key=lambda instance: instance_manager.get_first_status_transition_time_ns(
                 instance, IMInstance.REQUESTED
             )
+            or 0
         )
 
         # Fail at most the summed LaunchNodeError.count instances per
@@ -921,6 +922,7 @@ class Reconciler:
             return
 
         to_launch = Reconciler._compute_to_launch(
+            instance_manager,
             queued_instances,
             requested_instances,
             running_instances,
@@ -956,6 +958,7 @@ class Reconciler:
 
     @staticmethod
     def _compute_to_launch(
+        instance_manager: InstanceManager,
         queued_instances: List[IMInstance],
         requested_instances: List[IMInstance],
         running_instances: List[IMInstance],
@@ -969,11 +972,13 @@ class Reconciler:
             return instances_by_type
 
         # Sort the instances by the time they were queued.
-        def _sort_by_earliest_queued(instance: IMInstance) -> List[int]:
-            queue_times = InstanceUtil.get_status_transition_times_ns(
-                instance, IMInstance.QUEUED
+        def _sort_by_earliest_queued(instance: IMInstance) -> int:
+            return (
+                instance_manager.get_first_status_transition_time_ns(
+                    instance, IMInstance.QUEUED
+                )
+                or 0
             )
-            return sorted(queue_times)
 
         queued_instances_by_type = _group_by_type(queued_instances)
         running_instances_by_type = _group_by_type(running_instances)
@@ -1120,6 +1125,7 @@ class Reconciler:
         # in the REQUESTED state.
         for instance in instances_by_status[IMInstance.REQUESTED]:
             update = Reconciler._handle_stuck_requested_instance(
+                instance_manager,
                 instance,
                 reconcile_config.request_status_timeout_s,
                 reconcile_config.max_num_retry_request_to_allocate,
@@ -1643,12 +1649,16 @@ class Reconciler:
 
     @staticmethod
     def _handle_stuck_requested_instance(
-        instance: IMInstance, timeout_s: int, max_num_retry_request_to_allocate: int
+        instance_manager: InstanceManager,
+        instance: IMInstance,
+        timeout_s: int,
+        max_num_retry_request_to_allocate: int,
     ) -> Optional[IMInstanceUpdateEvent]:
         """
         Fail the cloud instance allocation if it's stuck in the REQUESTED state.
 
         Args:
+            instance_manager: The instance manager tracking lifetime transitions.
             instance: The instance to handle.
             timeout_s: The timeout in seconds.
             max_num_retry_request_to_allocate: The maximum number of times an instance
@@ -1664,19 +1674,17 @@ class Reconciler:
             # Not timeout yet, be patient.
             return None
 
-        all_request_times_ns = sorted(
-            InstanceUtil.get_status_transition_times_ns(
-                instance, select_instance_status=IMInstance.REQUESTED
-            )
+        num_requests = instance_manager.get_status_transition_count(
+            instance, IMInstance.REQUESTED
         )
         # Fail the allocation if we have tried too many times.
-        if len(all_request_times_ns) > max_num_retry_request_to_allocate:
+        if num_requests > max_num_retry_request_to_allocate:
             return IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
                 details=(
                     "failed to allocate cloud instance after "
-                    f"{len(all_request_times_ns)} attempts > "
+                    f"{num_requests} attempts > "
                     f"max_num_retry_request_to_allocate={max_num_retry_request_to_allocate}"  # noqa
                 ),
             )

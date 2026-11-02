@@ -158,6 +158,24 @@ class InstanceUtilTest(unittest.TestCase):
             instance, Instance.QUEUED
         ) == [1, 3]
 
+    @patch("ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH", 10)
+    @patch("time.time_ns")
+    def test_status_history_is_bounded(self, mock_time):
+        mock_time.return_value = 0
+        instance = InstanceUtil.new_instance("i-123", "type_1", Instance.QUEUED)
+        for attempt in range(100):
+            mock_time.return_value = 2 * attempt + 1
+            assert InstanceUtil.set_status(instance, Instance.REQUESTED)
+            mock_time.return_value += 1
+            assert InstanceUtil.set_status(instance, Instance.QUEUED)
+
+        instance = Instance.FromString(instance.SerializeToString())
+        assert len(instance.status_history) == 10
+        assert instance.status_history[0].timestamp_ns == 191
+        assert instance.status_history[-1].timestamp_ns == 200
+        mock_time.return_value += 2 * 1_000_000_000
+        assert InstanceUtil.has_timeout(instance, timeout_s=1)
+
     @patch("time.time_ns")
     def test_get_last_status_transition(self, mock_time):
         mock_time.return_value = 1
