@@ -50,9 +50,6 @@ def relieve_output_limit_deadlock(
 
     At most one operator is upgraded per call; ``upgrade_output_limit`` itself
     is debounced, so the upgrade is only "spent" on a call that took effect.
-
-    Also refreshes each visited actor-pool operator's output-backpressure stat
-    (``notify_in_task_output_backpressure``), since the walk computes it anyway.
     """
     # Stack entries: (op, downstream_rows_needed, downstream_has_active_tasks).
     # downstream_rows_needed: output rows ``op`` must supply before the data
@@ -68,10 +65,6 @@ def relieve_output_limit_deadlock(
 
         if isinstance(curr_op, ExperimentalActorPoolMapOperator):
             in_output_backpressure = curr_op.is_output_backpressured()
-            curr_op.notify_in_task_output_backpressure(
-                in_backpressure=in_output_backpressure,
-                policy_name="Output",
-            )
             # The producer's OWN output store holds the refs its consumer waits
             # on, so that is where starvation is measured.
             pulled_output_rows = resource_bank.live_object_store(

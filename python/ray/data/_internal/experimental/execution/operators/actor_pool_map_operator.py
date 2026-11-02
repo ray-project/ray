@@ -802,6 +802,11 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         # evolution).
         self._notify_first_input(bundled_input)
 
+    def has_queued_bundle(self) -> bool:
+        """Whether a bundle is ready to dispatch (it may still wait on an
+        actor)."""
+        return self._bundle_queue.peek_next() is not None
+
     def _pick_next_actor(self) -> Tuple[ActorHandle, RefBundle] | None:
         bundle = self._bundle_queue.peek_next()
         if bundle is None:
@@ -1141,6 +1146,14 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         # NOTE: the bytes_to_read are a soft upper bound, because we can't
         # read the exact bytes from a streaming generator.
         return self._actor_pull_budget(actor_id)
+
+    def remaining_pull_bytes(self) -> float:
+        """Bytes still pullable across this op's actors: the sum of their
+        remaining per-actor pull budgets."""
+        return sum(
+            self._actor_pull_budget(actor_id).bytes_to_read
+            for actor_id in self.actor_pool.running_actor_ids()
+        )
 
     def _actor_pull_budget(self, actor_id: LogicalActorId) -> TaskPullRequest:
         """Remaining per-actor pull budget: limit minus pulled and prebuffered
