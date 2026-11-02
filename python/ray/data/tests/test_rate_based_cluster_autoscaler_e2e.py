@@ -270,24 +270,26 @@ def test_blocked_on_consumer_when_consumer_is_slow(
     )
     ds = make_dataset()
     it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
-    next(it)
+    try:
+        next(it)
 
-    # The consumer has pulled a single output and now pauses, like a slow consumer.
-    gauge = RollingLogicalUtilizationGauge(
-        ds._current_executor._resource_manager, cluster_util_avg_window_s=3
-    )
-    start = time.time()
+        # The consumer has pulled a single output and now pauses, like a slow
+        # consumer.
+        gauge = RollingLogicalUtilizationGauge(
+            ds._current_executor._resource_manager, cluster_util_avg_window_s=3
+        )
+        start = time.time()
 
-    def blocked_on_consumer():
-        gauge.observe()
-        # Look at a full window, not just the first readings.
-        return time.time() - start >= 3 and gauge.is_blocked_on_consumer()
+        def blocked_on_consumer():
+            gauge.observe()
+            # Look at a full window, not just the first readings.
+            return time.time() - start >= 3 and gauge.is_blocked_on_consumer()
 
-    wait_for_condition(blocked_on_consumer, timeout=30)
-
-    # Drain so the iteration threads exit before the fixture shuts Ray down.
-    for _ in it:
-        pass
+        wait_for_condition(blocked_on_consumer, timeout=30)
+    finally:
+        # Drain so the iteration threads exit before Ray shuts down.
+        for _ in it:
+            pass
 
 
 if __name__ == "__main__":
