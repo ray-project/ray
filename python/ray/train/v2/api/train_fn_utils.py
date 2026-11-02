@@ -1,7 +1,10 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
+from ray._common.observability.annotation import parse_severity
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.train.v2._internal.constants import TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2._internal.util import requires_train_worker
 from ray.train.v2.api.context import TrainContext
@@ -10,7 +13,7 @@ from ray.train.v2.api.report_config import (
     CheckpointUploadMode,
 )
 from ray.train.v2.api.validation_config import ValidationTaskConfig
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -29,7 +32,7 @@ def report(
     delete_local_checkpoint_after_upload: Optional[bool] = None,
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
     validation: Union[bool, ValidationTaskConfig] = False,
-):
+) -> None:
     """Save a checkpoint of the training state so that training can recover from failures.
 
     The checkpoint is :ref:`persisted to storage <persistent-storage-guide>`.
@@ -372,4 +375,87 @@ def get_dataset_shard(
             world_rank=train_fn_utils.get_context().get_world_rank(),
             state_dict=state_dict,
         )
+    )
+
+
+@DeveloperAPI
+@requires_train_worker(raise_in_tune_session=True)
+def annotate(
+    message: str,
+    severity: Union[str, int] = "info",
+    rank_zero_only: bool = True,
+    **fields: Any,
+) -> None:
+    """Emit a custom annotation that Grafana can visualize.
+
+    Use this to mark a moment of interest on the same timeline as your training
+    metrics, such as an evaluation completing, a learning-rate change, or a
+    phase transition. To render it on the Train Grafana dashboard, the cluster
+    operator also has to ship these log lines to Loki. See
+    :ref:`Overlay event annotations on the dashboards
+    <grafana-dashboard-annotations>`.
+
+    You control what the dashboard tooltip shows. Grafana shows the ``message``
+    as the annotation text, and shows any ``**fields`` together as a single JSON
+    tag. All custom annotations share one dashboard layer, because Ray emits
+    them under a fixed internal event name, and ``severity`` colors them.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray.train
+
+            def train_func(config):
+                for epoch in range(config["num_epochs"]):
+                    # Do training...
+                    ray.train.annotate(
+                        message=f"Finished epoch {epoch}",
+                        epoch=epoch,
+                        loss=loss,
+                    )
+
+    Args:
+        message: Human-readable description of the event. Grafana shows it as
+            the annotation text and tooltip. Ray emits it as the ``message``
+            field.
+        severity: Severity of the event, as a Python logging level: a
+            case-insensitive name, one of ``"debug"``, ``"info"``,
+            ``"warning"``, ``"error"`` or ``"critical"``, or its number, such
+            as ``logging.WARNING``. Defaults to ``"info"``. This drives the
+            annotation color, because Grafana colors annotations per query
+            layer.
+        rank_zero_only: If ``True``, the default, only the rank 0 worker emits
+            the annotation, producing a single point on the dashboard. If
+            ``False``, every worker emits its own annotation and carries
+            ``ray_train_worker_world_rank`` for LogQL to distinguish ranks.
+        **fields: Arbitrary additional key-value pairs to include in the emitted
+            JSON payload, such as ``epoch=3`` or ``loss=0.1``. Ray serializes
+            them together into a single JSON string under the ``custom_fields``
+            key, so the dashboard annotation displays them as one JSON tag.
+            Because ``custom_fields`` parses as a single string label, LogQL
+            can't filter on individual keys within it. Filter on ``severity``,
+            or on the run and rank tags, instead.
+    """
+    # Raised here rather than swallowed by the annotation, which would otherwise
+    # match none of the dashboard layers and silently never appear.
+    parse_severity(severity)
+
+    try:
+        train_context = get_train_context()
+    except Exception:
+        # No worker train context (e.g. local mode), not an annotation failure
+        return
+
+    if rank_zero_only and train_context.get_world_rank() != 0:
+        return
+
+    train_context.annotation.annotate(
+        event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
+        message=message,
+        severity=severity,
+        # Serialized into a single field rather than one per key, so that the
+        # dashboard can show them as one tag without knowing their names.
+        **({"custom_fields": fields} if fields else {}),
     )

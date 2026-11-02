@@ -1,11 +1,14 @@
+import json
 import logging
 import os
+from unittest.mock import MagicMock
 
 import pytest
 
 import ray
 from ray import runtime_context
 from ray._common import utils as ray_utils
+from ray._common.observability import annotation as annotation_mod
 from ray.cluster_utils import Cluster
 
 # * `propagate_logs` is re-exported so tests in this directory can request it
@@ -81,6 +84,31 @@ def shutdown_only():
 def disable_state_actor_polling(monkeypatch):
     monkeypatch.setenv(ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR, "0")
     yield
+
+
+@pytest.fixture
+def captured_annotations(monkeypatch):
+    """Capture the annotations Train emits, without needing a Ray session.
+
+    Yields the list of emitted annotation records, each as the dict parsed from
+    its JSON line. The file writing itself is covered by
+    ``test_observability_annotation.py``.
+    """
+    import ray._private.worker as worker_mod
+
+    records = []
+
+    monkeypatch.setattr(
+        worker_mod,
+        "_global_node",
+        MagicMock(session_name="session_test", get_logs_dir_path=lambda: ""),
+    )
+    monkeypatch.setattr(
+        annotation_mod,
+        "_write_line",
+        lambda line, *args: records.append(json.loads(line)),
+    )
+    yield records
 
 
 @pytest.fixture
