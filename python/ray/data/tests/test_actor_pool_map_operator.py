@@ -94,6 +94,10 @@ def _make_bundle_queue(n_or_bundles) -> HashLinkedQueue:
     return queue
 
 
+def _dummy_bundle() -> RefBundle:
+    return make_ref_bundles([[0]])[0]
+
+
 def _schedule_bundles(
     pool: _ActorPool,
     queue: HashLinkedQueue,
@@ -101,13 +105,17 @@ def _schedule_bundles(
 ) -> list:
     """Schedule all bundles via select_actors; return list of actors."""
     results = []
-    while queue.has_next() and pool.can_schedule_task():
-        bundle = queue.get_next()
+    while queue.has_next():
+        bundle = queue.peek_next()
+        if not pool.can_schedule_task(
+            bundle=bundle, actor_locality_enabled=actor_locality_enabled
+        ):
+            break
         actor = pool.select_actors(
             bundle=bundle,
             actor_locality_enabled=actor_locality_enabled,
         )
-        pool.on_task_submitted(actor)
+        pool.on_task_submitted(actor, bundle)
         results.append(actor)
     return results
 
@@ -131,7 +139,12 @@ class TestActorPool(unittest.TestCase):
     ) -> Optional[ActorHandle]:
         queue = _make_bundle_queue([bundle] if bundle is not None else 1)
 
-        if not pool.can_schedule_task() or not queue.has_next():
+        if (
+            not pool.can_schedule_task(
+                bundle=None, actor_locality_enabled=actor_locality_enabled
+            )
+            or not queue.has_next()
+        ):
             return None
 
         bundle = queue.get_next()
@@ -139,7 +152,7 @@ class TestActorPool(unittest.TestCase):
             bundle=bundle,
             actor_locality_enabled=actor_locality_enabled,
         )
-        pool.on_task_submitted(actor)
+        pool.on_task_submitted(actor, bundle)
         return actor
 
     def _create_actor_fn(
@@ -358,7 +371,7 @@ class TestActorPool(unittest.TestCase):
         )
 
         # Return the actor
-        pool.on_task_completed(picked_actor)
+        pool.on_task_completed(picked_actor, _dummy_bundle())
         assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
@@ -393,12 +406,12 @@ class TestActorPool(unittest.TestCase):
             picked_actor = self._assign_actor(pool)
         # Return the actor as many times as it was picked.
         for _ in range(10):
-            pool.on_task_completed(picked_actor)
+            pool.on_task_completed(picked_actor, _dummy_bundle())
 
         # Returning the actor more times than it has been picked should raise an
         # AssertionError.
         with pytest.raises(AssertionError):
-            pool.on_task_completed(picked_actor)
+            pool.on_task_completed(picked_actor, _dummy_bundle())
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
@@ -472,7 +485,7 @@ class TestActorPool(unittest.TestCase):
         # Double-check that both actors were picked.
         assert set(picked_actors) == {actor1, actor2}
         # Return actor 2, implying that it's now idle.
-        pool.on_task_completed(actor2)
+        pool.on_task_completed(actor2, _dummy_bundle())
         # Check that actor 2 is the next actor that's picked.
         picked_actor = self._assign_actor(pool)
         assert picked_actor == actor2
@@ -551,7 +564,7 @@ class TestActorPool(unittest.TestCase):
         # Check that the idle actor is still in the pool.
         picked_actor = self._assign_actor(pool)
         assert picked_actor == idle_actor
-        pool.on_task_completed(idle_actor)
+        pool.on_task_completed(idle_actor, _dummy_bundle())
         # Check that the pending actor is not in pool.
         assert pool.get_pending_actor_refs() == []
         # Check that actor is dead.
@@ -637,12 +650,14 @@ class TestActorPool(unittest.TestCase):
         actor1 = self._add_ready_actor(pool, node_id="node1")
 
         # Schedule one bundle on actor1
-        assert bundle_queue.has_next() and pool.can_schedule_task()
+        assert bundle_queue.has_next() and pool.can_schedule_task(
+            bundle=None, actor_locality_enabled=True
+        )
         bundle = bundle_queue.get_next()
         res1 = pool.select_actors(bundle=bundle, actor_locality_enabled=True)
-        pool.on_task_submitted(res1)
+        pool.on_task_submitted(res1, bundle)
         assert res1 == actor1
-        pool.on_task_completed(actor1)
+        pool.on_task_completed(actor1, bundle)
 
         # Add another actor to the pool
         self._add_ready_actor(pool, node_id="node2")
@@ -659,7 +674,7 @@ class TestActorPool(unittest.TestCase):
         assert len(set(first_half)) == 2
         assert len(set(last_half)) == 2
 
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=True)
 
     def test_selector_select_actors_strict(self):
         """Tests that `select_actors` returns None when no capacity."""
@@ -676,7 +691,7 @@ class TestActorPool(unittest.TestCase):
         assert _estimate_total_available_task_slots(pool) == 1
 
         # Verify still can schedule
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Assign another task (exhaust both slots)
         picked = self._assign_actor(pool)
@@ -686,7 +701,7 @@ class TestActorPool(unittest.TestCase):
         assert _estimate_total_available_task_slots(pool) == 0
 
         # Verify can_schedule_task() returns False when actor is busy
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # select_actors() returns None when no capacity
         bundle = make_ref_bundles([[0]])[0]
@@ -698,59 +713,59 @@ class TestActorPool(unittest.TestCase):
 
         # Empty pool
         assert pool.select_actors() is None
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # One actor ready
         actor = self._add_ready_actor(pool)
         assert pool.select_actors() is not None
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Exhaust capacity
-        pool.on_task_submitted(actor)
-        pool.on_task_submitted(actor)
+        pool.on_task_submitted(actor, _dummy_bundle())
+        pool.on_task_submitted(actor, _dummy_bundle())
         assert pool.select_actors() is None
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Free a slot
-        pool.on_task_completed(actor)
+        pool.on_task_completed(actor, _dummy_bundle())
         assert pool.select_actors() is not None
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
     def test_selector_can_schedule_task_basic(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Case 1: Empty pool - no actors at all
         assert pool.current_size() == 0
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Case 2: Only pending actors (not yet ready)
         _, ready_ref = self._add_pending_actor(pool)
         assert pool.num_pending_actors() == 1
         assert pool.num_running_actors() == 0
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Case 3: Actor becomes ready - should be schedulable
         self._wait_for_actor_ready(pool, ready_ref)
         assert pool.num_running_actors() == 1
         assert _estimate_total_available_task_slots(pool) == 2
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Case 4: Actor partially busy (1 of 2 slots used) - still schedulable
         actor = self._assign_actor(pool)
         assert actor is not None
         assert _estimate_total_available_task_slots(pool) == 1
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Case 5: Actor fully busy (2 of 2 slots used) - not schedulable
         actor2 = self._assign_actor(pool)
         assert actor2 == actor
         assert _estimate_total_available_task_slots(pool) == 0
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Case 6: Task completes, slot freed - schedulable again
-        pool.on_task_completed(actor)
+        pool.on_task_completed(actor, _dummy_bundle())
         assert _estimate_total_available_task_slots(pool) == 1
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Case 7: Actor restarting - not schedulable (mock _get_local_state)
         with patch.object(
@@ -760,7 +775,7 @@ class TestActorPool(unittest.TestCase):
         ):
             pool.refresh_actor_state()
         assert pool.num_restarting_actors() == 1
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Case 8: Actor recovered from restart - schedulable again
         with patch.object(
@@ -770,7 +785,7 @@ class TestActorPool(unittest.TestCase):
         ):
             pool.refresh_actor_state()
         assert pool.num_restarting_actors() == 0
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
     def test_selector_can_schedule_task_multi_actor(self):
         pool = self._create_actor_pool(max_tasks_in_flight=1)
@@ -779,7 +794,7 @@ class TestActorPool(unittest.TestCase):
         actor1 = self._add_ready_actor(pool)
         actor2 = self._add_ready_actor(pool)
         assert pool.num_running_actors() == 2
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Make actor1 busy
         assigned = self._assign_actor(pool)
@@ -788,18 +803,18 @@ class TestActorPool(unittest.TestCase):
         idle_actor = actor2 if busy_actor == actor1 else actor1
 
         # Still schedulable (actor2 or actor1 is free)
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Make both busy
         assigned2 = self._assign_actor(pool)
         assert assigned2 == idle_actor
         assert _estimate_total_available_task_slots(pool) == 0
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Free one actor
-        pool.on_task_completed(busy_actor)
+        pool.on_task_completed(busy_actor, _dummy_bundle())
         assert _estimate_total_available_task_slots(pool) == 1
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Make one actor restarting (mock _get_local_state), but other is still available
         with patch.object(
@@ -810,11 +825,11 @@ class TestActorPool(unittest.TestCase):
             pool.refresh_actor_state()
         # assigned now has 0 tasks but is restarting
         # assigned2 still has 1 task (at max)
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Free the non-restarting actor
-        pool.on_task_completed(assigned2)
-        assert pool.can_schedule_task()
+        pool.on_task_completed(assigned2, _dummy_bundle())
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
     def test_actor_pool_info_metrics(self):
         """Test that ActorPoolInfo includes utilization metrics."""
@@ -900,7 +915,7 @@ class TestActorPool(unittest.TestCase):
         assert info.tasks_in_flight == 1
 
         # Complete the task
-        pool.on_task_completed(actor)
+        pool.on_task_completed(actor, _dummy_bundle())
         info = pool.get_actor_info()
         assert info.running == 1
         assert info.active == 0
@@ -922,7 +937,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.get_pool_util() == 1.0
 
         # Complete the task
-        pool.on_task_completed(actor)
+        pool.on_task_completed(actor, _dummy_bundle())
         assert pool.get_pool_util() == 0.0
 
 

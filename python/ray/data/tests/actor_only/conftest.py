@@ -35,3 +35,18 @@ def actor_only_session_env() -> Iterator[None]:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = old
+
+
+@pytest.fixture(scope="module", autouse=True)
+def shutdown_ray_after_module():
+    """Tear down whatever Ray session a module leaves behind.
+
+    Tests in this directory manage clusters per class or per fixture, but a
+    module-level test that touches ``ray.put`` / ``.remote`` auto-inits a
+    session that would otherwise leak into the next module's ``ray.init``.
+    (Do not mix with session-scoped shared-cluster fixtures.)
+    """
+    yield
+    import ray
+
+    ray.shutdown()
