@@ -21,6 +21,9 @@ def get_local_ongoing_lineage_reconstruction_tasks():
 
 @timed_cache(ttl=1)
 def get_draining_nodes() -> Dict[str, int]:
+    """Map each draining node's hex id to its drain deadline in ms (0 = none)."""
+    if not ray.is_initialized():
+        return {}
     return ray._private.state.state.get_draining_nodes()
 
 

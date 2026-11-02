@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, FrozenSet, List, Optional, Set
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Set
 
 import ray
 import ray.exceptions
@@ -327,16 +327,6 @@ def _default_send_resources_request(
     )
 
 
-def _default_get_draining_node_ids() -> Set[NodeIdStr]:
-    """Default ``get_draining_node_ids`` implementation for the actor."""
-    # Unit tests build the actor without ``ray.init()``. There's no cluster
-    # then, so nothing is draining.
-    if not ray.is_initialized():
-        return set()
-    # Maps each draining node's hex id to its drain deadline; only the ids matter.
-    return set(get_draining_nodes())
-
-
 class _AutoscalingCoordinatorActor:
     """An actor to coordinate autoscaling resource requests from different components.
 
@@ -354,9 +344,8 @@ class _AutoscalingCoordinatorActor:
             [List[ResourceDict], Optional[List[LabelSelector]]], None
         ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
-        get_draining_node_ids: Callable[
-            [], Set[NodeIdStr]
-        ] = _default_get_draining_node_ids,
+        # Returns the draining nodes' ids, e.g. a dict keyed by node id.
+        get_draining_node_ids: Callable[[], Iterable[NodeIdStr]] = get_draining_nodes,
     ):
         self._get_current_time = get_current_time
         self._send_resources_request = send_resources_request
@@ -675,7 +664,7 @@ class _AutoscalingCoordinatorActor:
         return True
 
     def _refresh_resource_reservations(self):
-        """Rereserve cluster resources.
+        """Re-reserve cluster resources.
 
         Each requester's subcluster comes from its ``subcluster_selector``.
         A requester without one is eligible only for the ``None`` bucket.

@@ -312,9 +312,6 @@ def cluster():
     cluster = Cluster()
     cluster.add_node(num_cpus=0)
     cluster.wait_for_nodes()
-    # Disconnect from any instance an earlier test left up (e.g. the shared
-    # one), since ``connect`` would otherwise silently stay attached to it.
-    ray.shutdown()
     cluster.connect()
     yield cluster
     ray.shutdown()
@@ -1103,17 +1100,6 @@ def test_draining_node_is_excluded_until_the_drain_clears():
         "n1": {"GPU": 4},
         "n2": {"GPU": 4},
     }
-
-
-def test_default_draining_query_returns_node_ids():
-    """The default query keeps only the draining nodes' ids, not their deadlines."""
-    with patch.object(coordinator_module.ray, "is_initialized", return_value=True):
-        with patch.object(
-            coordinator_module,
-            "get_draining_nodes",
-            return_value={"n1": 0, "n2": 1_000},
-        ):
-            assert coordinator_module._default_get_draining_node_ids() == {"n1", "n2"}
 
 
 def test_failing_draining_query_does_not_break_the_tick():
