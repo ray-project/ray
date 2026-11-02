@@ -1521,6 +1521,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         compression: str = "none",
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
+        remote: bool = False,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -1668,6 +1669,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         cwd=meta["cwd"],
                         workdir=meta.get("workdir"),
                         leave_running=leave_running,
+                        remote=remote,
                         node_id=node_id,
                         compression=compression,
                         # set_egress_allowlist may have changed it since.
@@ -1713,6 +1715,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         ckpt_path_obj = CheckpointPath(
             checkpoint_path,
             node_id=node_id,
+            remote=remote,
             cpu=config.cpu,
             memory=config.memory,
         )
@@ -1723,6 +1726,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "duration_seconds": duration,
             "leave_running": leave_running,
             "image": config.image,
+            "remote": remote,
             "node_id": node_id,
         }
 
@@ -1814,6 +1818,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         memory: Optional[Union[str, int, float]] = None,
         background: Optional[bool] = None,
         direct: bool = False,
+        remote: Optional[bool] = None,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> str:
@@ -1837,21 +1842,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             **kwargs,
         )
 
-        # A checkpoint is node-local: its memory image and filesystem copy
-        # are only on the node that took it.
-        checkpoint_node_id = manifest.get("node_id")
-        current_node_id = get_current_node_id()
-        if (
-            checkpoint_node_id
-            and current_node_id
-            and checkpoint_node_id != current_node_id
-        ):
-            raise SandboxError(
-                f"Checkpoint at '{checkpoint_path}' was taken on node "
-                f"'{checkpoint_node_id}', but restore is running on node "
-                f"'{current_node_id}'. Checkpoints are node-local: restore on the "
-                "node that took it (sandbox.restore() schedules there)."
-            )
+        is_remote = (
+            remote if remote is not None else bool(manifest.get("remote", False))
+        )
+        if not is_remote:
+            checkpoint_node_id = manifest.get("node_id")
+            current_node_id = get_current_node_id()
+            if (
+                checkpoint_node_id
+                and current_node_id
+                and checkpoint_node_id != current_node_id
+            ):
+                raise SandboxError(
+                    f"Checkpoint at '{checkpoint_path}' was created as a node-local "
+                    f"checkpoint on node '{checkpoint_node_id}', but restore is running "
+                    f"on a different node '{current_node_id}'. To restore checkpoints "
+                    f"across different VM nodes, create or restore the checkpoint with "
+                    f"remote=True on a shared mount path."
+                )
 
         if config.rootless:
             raise SandboxError(

@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
@@ -150,6 +151,7 @@ def restore(
     memory: Optional[Union[str, int, float]] = None,
     ttl_seconds: Optional[int] = None,
     timeout_seconds: float = 30.0,
+    remote: Optional[bool] = None,
     resources: Optional[Dict[str, float]] = None,
     **kwargs,
 ) -> ActorHandle:
@@ -160,10 +162,6 @@ def restore(
     sandbox. Cgroup resource allocations (cpu, memory) and lifecycle limits
     (ttl_seconds, timeout_seconds) can optionally be overridden.
 
-    A checkpoint lives on the node that took it, so the restored actor is
-    scheduled there, with the checkpointed sandbox's CPU and memory unless
-    overridden.
-
     Args:
         checkpoint_path: Path to the checkpoint bundle directory, or a
             :class:`~ray.experimental.sandbox.backend.checkpoint_utils.CheckpointPath`
@@ -173,6 +171,10 @@ def restore(
         memory: Optional memory allocation override.
         ttl_seconds: Optional time-to-live in seconds.
         timeout_seconds: Timeout in seconds for restore.
+        remote: If True, allow restore to be scheduled on any VM node in the cluster
+            (for shared/remote mounts). If False, pin restore to the VM node where
+            the checkpoint was created. If None (default), inherits from the
+            checkpoint manifest or CheckpointPath metadata.
         resources: Custom logical resource requirements for the Ray actor.
         **kwargs: Additional options.
 
@@ -181,19 +183,43 @@ def restore(
     """
     recorded_cpu = None
     recorded_memory = None
+    manifest_remote = False
     target_node_id = None
 
     if isinstance(checkpoint_path, CheckpointPath):
         recorded_cpu = checkpoint_path.cpu
         recorded_memory = checkpoint_path.memory
+        manifest_remote = checkpoint_path.remote
         target_node_id = checkpoint_path.node_id
-    else:
-        # A plain path must be readable here to find the node and resources.
+
+    manifest_file = os.path.join(str(checkpoint_path), "manifest.json")
+    if os.path.isfile(manifest_file):
         manifest, _ = load_checkpoint_manifest(str(checkpoint_path))
         recorded_config = manifest.get("config", {})
-        recorded_cpu = recorded_config.get("cpu")
-        recorded_memory = recorded_config.get("memory")
-        target_node_id = manifest.get("node_id")
+        if recorded_cpu is None:
+            recorded_cpu = recorded_config.get("cpu")
+        if recorded_memory is None:
+            recorded_memory = recorded_config.get("memory")
+        if "remote" in manifest:
+            manifest_remote = bool(manifest.get("remote"))
+        if target_node_id is None:
+            target_node_id = manifest.get("node_id")
+    elif not isinstance(checkpoint_path, CheckpointPath):
+        if remote is not True:
+            # Raises the usual "missing manifest" error.
+            load_checkpoint_manifest(str(checkpoint_path))
+        elif cpu is None or memory is None:
+            # Without the manifest, the actor would get Ray's default
+            # reservation while the restored sandbox keeps its recorded
+            # cgroup limits, oversubscribing the node.
+            raise SandboxError(
+                f"Can't read the checkpoint at '{checkpoint_path}' from this "
+                "process to find the CPU and memory to reserve for the restored "
+                "sandbox. Pass the CheckpointPath that checkpoint() returned, or "
+                "cpu and memory explicitly."
+            )
+
+    is_remote = remote if remote is not None else manifest_remote
 
     effective_cpu = cpu if cpu is not None else recorded_cpu
     effective_memory = memory if memory is not None else recorded_memory
@@ -214,22 +240,25 @@ def restore(
     if resources:
         actor_opts["resources"] = resources
 
-    if target_node_id and "scheduling_strategy" not in actor_opts:
+    if not is_remote and target_node_id and "scheduling_strategy" not in actor_opts:
         try:
             actor_opts["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 node_id=target_node_id,
                 soft=False,
             )
         except (ValueError, TypeError):
-            # A checkpoint taken outside Ray records a hostname, which can't
-            # pin the actor; the backend still rejects a restore elsewhere.
             pass
+
+    remote_arg = (
+        remote if remote is not None else (manifest_remote if manifest_remote else None)
+    )
 
     return Sandbox.options(**actor_opts).remote(
         restore_from=checkpoint_path,
         cpu=cpu,
         memory=memory,
         ttl_seconds=ttl_seconds,
+        remote=remote_arg,
         timeout_seconds=timeout_seconds,
         **kwargs,
     )
