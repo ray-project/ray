@@ -11,7 +11,6 @@ from typing import AbstractSet, Dict, List, Tuple
 from typing_extensions import override
 
 from ray.data._internal.execution.interfaces import ExecutionResources, NodeIdStr
-from ray.data._internal.execution.interfaces.common import LogicalActorId
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     _COLLOCATE_BYTES_PER_ACTOR,
     ActorPlacementStrategy,
@@ -249,38 +248,13 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
                 placed_per_node[node_id] += k
 
     @override
-    def pick_downscale_victims(
+    def pick_downscale_nodes(
         self,
         view: OpPlacementView,
         *,
         count: int,
         favored_nodes: AbstractSet[NodeIdStr],
-    ) -> List[LogicalActorId]:
-        all_pending = [aid for ids in view.pending_ids_by_node.values() for aid in ids]
-        all_running = [aid for ids in view.victim_ids_by_node.values() for aid in ids]
-        # Full drain: everyone goes; pendings first (cancelled without a drain).
-        if count >= len(all_pending) + len(all_running):
-            return all_pending + all_running
-
-        victims: List[LogicalActorId] = []
-
-        def take(actor_ids: List[LogicalActorId]) -> None:
-            for actor_id in actor_ids:
-                if len(victims) >= count:
-                    return
-                victims.append(actor_id)
-
-        def cheap(node_id: NodeIdStr) -> List[LogicalActorId]:
-            """Pendings + idle actors: evicting frees capacity ~immediately."""
-            pendings = view.pending_ids_by_node.get(node_id, [])
-            num_idle = view.idle_actors_by_node.get(node_id, 0)
-            return [*pendings, *view.victim_ids_by_node.get(node_id, [])[:num_idle]]
-
-        def busy(node_id: NodeIdStr) -> List[LogicalActorId]:
-            """Everyone else, least-busy first: frees capacity after a drain."""
-            num_idle = view.idle_actors_by_node.get(node_id, 0)
-            return view.victim_ids_by_node.get(node_id, [])[num_idle:]
-
+    ) -> List[NodeIdStr]:
         nodes = sorted(
             set(view.victim_ids_by_node) | set(view.pending_ids_by_node),
             key=lambda node_id: (
@@ -289,23 +263,37 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
                 node_id,
             ),
         )
+
+        # Per node: cheap victims (pendings + idle actors, whose capacity
+        # frees ~immediately) and busy ones (capacity frees after a drain).
+        cheap_by_node: Dict[NodeIdStr, int] = {}
+        busy_by_node: Dict[NodeIdStr, int] = {}
+        for node_id in nodes:
+            num_pending = len(view.pending_ids_by_node.get(node_id, []))
+            num_running = len(view.victim_ids_by_node.get(node_id, []))
+            num_idle = min(view.idle_actors_by_node.get(node_id, 0), num_running)
+            cheap_by_node[node_id] = num_pending + num_idle
+            busy_by_node[node_id] = num_running - num_idle
+
         # Cost-class-major: every cheap victim across all nodes before any
         # busy actor. Killing a busy actor wastes its in-flight work AND
         # delivers the capacity late. Within a class, favored nodes go first.
-        for node_id in nodes:
-            take(cheap(node_id))
-        for node_id in nodes:
-            take(busy(node_id))
+        picked: List[NodeIdStr] = []
+        for available_by_node in (cheap_by_node, busy_by_node):
+            for node_id in nodes:
+                remaining = count - len(picked)
+                if remaining <= 0:
+                    break
+                picked.extend([node_id] * min(available_by_node[node_id], remaining))
 
         logger.debug(
-            "pick_downscale_victims[%s]: wanted=%d picked=%d favored=%s victims=%s",
+            "pick_downscale_nodes[%s]: wanted=%d picked=%s favored=%s",
             view.op_id,
             count,
-            len(victims),
+            dict(Counter(picked)),
             sorted(favored_nodes),
-            victims,
         )
-        return victims
+        return picked
 
     @override
     def compute_favored_nodes(

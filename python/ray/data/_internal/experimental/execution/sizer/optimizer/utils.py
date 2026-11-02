@@ -3,11 +3,11 @@ upscale requests, and reading a pool's pending actors."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, List, Optional, Set
 
 from ray.data._internal.execution.interfaces.common import LogicalActorId, NodeIdStr
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-    ExperimentalActorPoolScalingRequest,
+    ScaleUpRequest,
 )
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     pack_actors,
@@ -71,25 +71,10 @@ def fill_pg_bundles(
 
 
 def upscale_request(
-    op: "ExperimentalActorPoolMapOperator",
-    *,
-    delta: int,
-    reason: str,
-    target_nodes: Tuple[NodeIdStr, ...] = (),
-    num_to_reclaim: int = 0,
+    op: "ExperimentalActorPoolMapOperator", request: ScaleUpRequest
 ) -> PlacedSizingRequest:
-    """A one-op upscale. Empty ``target_nodes`` leaves placement to the op's
-    placement group; ``num_to_reclaim`` revives that many draining actors."""
-    return PlacedSizingRequest(
-        request={
-            op: ExperimentalActorPoolScalingRequest(
-                delta=delta,
-                reason=reason,
-                target_nodes_to_scale_actors_on=target_nodes,
-                num_to_reclaim=num_to_reclaim,
-            )
-        }
-    )
+    """``request`` as a one-op placed request."""
+    return PlacedSizingRequest(request={op: request})
 
 
 def pending_actor_ids(pool: "_ExperimentalActorPool") -> Set[LogicalActorId]:
