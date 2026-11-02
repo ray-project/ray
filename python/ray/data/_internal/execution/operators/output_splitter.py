@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Tuple
 if TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
 
 from typing_extensions import override
 
@@ -140,13 +141,16 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.
             self._locality_hints = None
             self._max_buffer_size = 0
 
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
 
     def maybe_warn_memory_constrained(
         self,
@@ -395,6 +399,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             else:
                 input_refs = {entry.ref for entry in b.blocks}
                 left, right = _split(b, nrow - acc, label_selector)
+                output_refs = {
+                    entry.ref for part in (left, right) for entry in part.blocks
+                }
                 # Only register genuinely new blocks created by _split_block.
                 for part in (left, right):
                     for entry in part.blocks:
@@ -404,6 +411,16 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                                 entry.metadata.size_bytes or 0,
                                 self.id,
                             )
+                            if self._resource_bank is not None:
+                                self._resource_bank.on_new_output(
+                                    op=self,
+                                    ref=entry.ref,
+                                    bm=entry.metadata,
+                                )
+                # Withdraw the replaced original so live accounting does not leak.
+                if self._resource_bank is not None:
+                    for ref in input_refs - output_refs:
+                        self._resource_bank.on_block_consumed(input_ref=ref)
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)
@@ -482,12 +499,14 @@ def _split_meta(
         size_bytes=left_bytes,
         input_files=m.input_files,
         exec_stats=None,
+        node_id=m.node_id,
     )
     right = BlockMetadata(
         num_rows=m.num_rows - left_size,
         size_bytes=m.size_bytes - left_bytes,
         input_files=m.input_files,
         exec_stats=None,
+        node_id=m.node_id,
     )
     return left, right
 

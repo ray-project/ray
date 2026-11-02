@@ -106,6 +106,29 @@ py_test_module_list(
     ],
 )
 
+# Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
+py_test_module_list(
+    size = "small",
+    env = {
+        "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
+    },
+    files = glob(["tests/actor_only/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":actor_only_conftest",
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_library(
+    name = "actor_only_conftest",
+    srcs = ["tests/actor_only/conftest.py"],
+)
+
 py_test(
     name = "test_arrow",
     size = "small",
