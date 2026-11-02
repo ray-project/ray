@@ -7,6 +7,8 @@ import mmap
 import os
 import re
 import shutil
+import signal
+import subprocess
 import sys
 import tarfile
 import threading
@@ -939,6 +941,8 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     args = (bin_dir / "mkfs.args").read_text().split()
     assert args[:3] == ["--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data"]
+    # The tar streams in on stdin: the image path is the last argument.
+    assert len(args) == 4 and args[3].endswith(image_utils.ROOTFS_IMAGE)
     marker = open(os.path.join(image_dir, ".extracted"), encoding="utf-8").read()
     assert marker == expected_extract_marker()
     # The fake image *is* the flattened tar: check the owners it carries.
@@ -950,6 +954,127 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     # runsc's mount points, which an immutable image cannot grow on demand.
     for mountpoint in ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp"):
         assert owners[mountpoint] == (0, 0)
+
+
+def _tar_members(path):
+    """Each member of a tar as (name, type, mode, owner, mtime, link, sha256)."""
+    with tarfile.open(path) as tar:
+        return [
+            (
+                m.name,
+                m.type,
+                m.mode,
+                (m.uid, m.gid),
+                m.mtime,
+                m.linkname,
+                hashlib.sha256(tar.extractfile(m).read()).hexdigest()
+                if m.isreg()
+                else None,
+            )
+            for m in tar.getmembers()
+        ]
+
+
+def _put_mkfs_on_path(bin_dir, body, monkeypatch):
+    """A mkfs.erofs first on PATH that advertises --tar, then runs ``body``."""
+    bin_dir.mkdir()
+    script = bin_dir / "mkfs.erofs"
+    script.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
+        + body
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def test_build_erofs_image_streams_the_tree_and_frees_it(tmp_path):
+    """mkfs.erofs reads the same tar the tree used to be packed into, and
+    each file leaves the tree once it's in the stream, except hard links."""
+    tree = tmp_path / "rootfs"
+    (tree / "etc").mkdir(parents=True)
+    (tree / "etc" / "passwd").write_bytes(b"root:x:0:0::/root:/bin/sh\n")
+    (tree / "usr" / "bin").mkdir(parents=True)
+    # Larger than a pipe holds, so the stream has to wait on mkfs.erofs.
+    (tree / "usr" / "bin" / "tool").write_bytes(os.urandom(3 << 20))
+    (tree / "usr" / "bin" / "tool").chmod(0o755)
+    os.link(tree / "usr" / "bin" / "tool", tree / "usr" / "bin" / "tool-alias")
+    (tree / "usr" / "bin" / "sh").symlink_to("tool")
+    (tree / "empty").mkdir()
+    # A read-only directory, as images ship them: its mode must reach the
+    # image unchanged, and its file must still go.
+    (tree / "ro").mkdir()
+    (tree / "ro" / "data").write_bytes(b"read-only dir")
+    (tree / "ro").chmod(0o555)
+    ownership = {"etc/passwd": (0, 0), "usr/bin/tool": (38, 38)}
+    # The tar the build used to write before running mkfs.erofs.
+    expected = tmp_path / "expected.tar"
+    with tarfile.open(expected, "w") as tar:
+        tar.add(tree, arcname=".", filter=_owner_filter(ownership))
+
+    image = tmp_path / "rootfs.erofs"
+    image_utils.build_erofs_image(str(tree), ownership, str(image))
+
+    # The fake mkfs.erofs writes what it read on stdin.
+    assert _tar_members(image) == _tar_members(expected)
+    assert not (tree / "etc" / "passwd").exists()
+    assert (tree / "usr" / "bin" / "tool").exists()
+    assert (tree / "usr" / "bin" / "tool-alias").exists()
+    assert (tree / "usr" / "bin" / "sh").is_symlink()
+    assert (tree / "empty").is_dir()
+    assert not (tree / "ro" / "data").exists()
+
+
+def test_build_erofs_image_reports_mkfs_failure(tmp_path, monkeypatch):
+    """A mkfs.erofs that exits before reading the tar fails the build with
+    its message instead of leaving the writer blocked."""
+    _put_mkfs_on_path(
+        tmp_path / "failing-bin",
+        'echo "mkfs.erofs: No space left on device" >&2\nexit 1\n',
+        monkeypatch,
+    )
+    tree = tmp_path / "rootfs"
+    tree.mkdir()
+    (tree / "big").write_bytes(os.urandom(4 << 20))
+
+    with pytest.raises(SandboxCreationError, match="No space left on device"):
+        image_utils.build_erofs_image(str(tree), {}, str(tmp_path / "rootfs.erofs"))
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def test_build_erofs_image_stops_mkfs_when_reading_the_tree_fails(
+    tmp_path, monkeypatch
+):
+    """If reading the tree fails, mkfs.erofs is killed and reaped before the
+    error propagates, so it can't keep writing into a directory the caller
+    is about to delete."""
+    tree = tmp_path / "rootfs"
+    tree.mkdir()
+    (tree / "f").write_bytes(b"x")
+
+    def failing_filter(ownership):
+        def _filter(ti):
+            raise OSError("read error")
+
+        return _filter
+
+    builds = []
+    real_popen = subprocess.Popen
+
+    def recording_popen(args, *rest, **kwargs):
+        proc = real_popen(args, *rest, **kwargs)
+        if "--tar=f" in args:
+            builds.append(proc)
+        return proc
+
+    monkeypatch.setattr(image_utils, "_owner_filter", failing_filter)
+    monkeypatch.setattr(image_utils.subprocess, "Popen", recording_popen)
+    with pytest.raises(OSError, match="read error"):
+        image_utils.build_erofs_image(str(tree), {}, str(tmp_path / "rootfs.erofs"))
+
+    # The fake mkfs.erofs waits on stdin forever unless killed.
+    assert len(builds) == 1 and builds[0].returncode == -signal.SIGKILL
 
 
 def test_erofs_superblock_fingerprint(tmp_path):

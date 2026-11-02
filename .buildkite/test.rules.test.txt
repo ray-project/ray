@@ -179,9 +179,10 @@ doc/source/ray-contribute/doc_code/example_module.py: doc
 doc/source/cluster/doc_code/README.md:
 doc/source/ray-contribute/doc_code/README.md:
 doc/source/cluster/doc_code/diagram.png:
-# The authoring boilerplate is excluded from the Sphinx build and backs no bazel
-# target, so it emits nothing at all.
-doc/source/_templates/template.ipynb:
+# Nothing under _templates/ is a page, and no bazel target names it. No rule
+# names the directory either, so its theme templates fall through to the broad
+# `doc/` skip and emit nothing.
+doc/source/_templates/layout.html:
 # Documentation validation infra stays on the `doc` tag. The Sphinx config, the
 # modules it imports, the in-repo build extensions, and the doc-build helper
 # scripts build the docs, so they route to the `doc` build and validation only,

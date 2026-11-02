@@ -1096,6 +1096,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             exc: Optional[Exception],
             task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
+            aborted: bool,
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
             #       emitted (current limitation, since it's emitted along with

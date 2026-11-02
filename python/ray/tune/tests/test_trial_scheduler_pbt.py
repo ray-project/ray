@@ -169,7 +169,14 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                     print("Object memory use: ", object_memory_usage())
                     print("Virtual Mem:", self.get_virt_mem() >> 30, "gb")
                     print("File Descriptors:", len(all_files))
-                assert len(all_files) < 20
+                # Tune syncs the experiment directory to storage in a background
+                # thread, which briefly holds extra handles on the files it copies.
+                # A leak keeps the count high, so only fail if it doesn't drop.
+                deadline = time.monotonic() + 10
+                while len(all_files) >= 20 and time.monotonic() < deadline:
+                    time.sleep(0.1)
+                    all_files = self.process.open_files()
+                assert len(all_files) < 20, all_files
 
             @classmethod
             def get_virt_mem(cls):
