@@ -408,11 +408,9 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
 
     # Work is done, scale down the actor pool.
     for pool in op.get_autoscaling_actor_pools():
-        num_scaled_down = pool.scale(
-            ActorPoolScalingRequest(delta=-pool.current_size())
-        )
+        num_scaled_down = pool.scale(ActorPoolScalingRequest(delta=-pool.total_size()))
         # NOTE: Actor Pool will retain the min-size
-        assert num_scaled_down == pool.current_size() - pool.min_size()
+        assert num_scaled_down == pool.total_size() - pool.min_size()
 
         min_usage = min_usage.add(
             pool.per_actor_resource_usage().scale(pool.min_size())
@@ -433,11 +431,9 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
 
     # Work is done, scale down the actor pool, and outputs have been consumed.
     for pool in op.get_autoscaling_actor_pools():
-        num_scaled_down = pool.scale(
-            ActorPoolScalingRequest(delta=-pool.current_size())
-        )
+        num_scaled_down = pool.scale(ActorPoolScalingRequest(delta=-pool.total_size()))
         # NOTE: Actor Pool will retain the min-size
-        assert num_scaled_down == pool.current_size() - pool.min_size()
+        assert num_scaled_down == pool.total_size() - pool.min_size()
 
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
@@ -604,11 +600,9 @@ def test_actor_pool_scheduling_with_bundling(
 
     # Work is done, scale down the actor pool.
     for pool in op.get_autoscaling_actor_pools():
-        num_scaled_down = pool.scale(
-            ActorPoolScalingRequest(delta=-pool.current_size())
-        )
+        num_scaled_down = pool.scale(ActorPoolScalingRequest(delta=-pool.total_size()))
         # NOTE: Actor Pool will retain the min-size
-        assert num_scaled_down == pool.current_size() - pool.min_size()
+        assert num_scaled_down == pool.total_size() - pool.min_size()
 
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(12000, rel=0.5)
@@ -623,11 +617,9 @@ def test_actor_pool_scheduling_with_bundling(
 
     # Work is done, scale down the actor pool, and outputs have been consumed.
     for pool in op.get_autoscaling_actor_pools():
-        num_scaled_down = pool.scale(
-            ActorPoolScalingRequest(delta=-pool.current_size())
-        )
+        num_scaled_down = pool.scale(ActorPoolScalingRequest(delta=-pool.total_size()))
         # NOTE: Actor Pool will retain the min-size
-        assert num_scaled_down == pool.current_size() - pool.min_size()
+        assert num_scaled_down == pool.total_size() - pool.min_size()
 
         min_usage = min_usage.add(
             pool.per_actor_resource_usage().scale(pool.min_size())

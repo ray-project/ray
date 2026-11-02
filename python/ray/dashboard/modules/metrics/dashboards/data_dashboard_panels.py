@@ -1484,9 +1484,8 @@ ACTOR_DRAIN_OUTCOMES_PANEL = Panel(
         "Actors whose drain ended over the last 5m, by outcome. completed: "
         "torn down with nothing left to serve | interrupted: the actor died "
         "mid-drain (e.g. its node was torn down under it) | cancelled: "
-        "rejoined the pool (cause: reclaimed by an upscale, or core_restart "
-        "of an actor that still owes work). The reason says why the drain "
-        "started, not why it ended."
+        "rejoined the pool (cause: reclaimed by an upscale). The reason says "
+        "why the drain started, not why it ended."
     ),
     unit="actors",
     targets=[
