@@ -7,8 +7,9 @@ no RLModules are added or removed during the run.
 
 Every training iteration, a probe actor on each node reads the USS of every Learner,
 AggregatorActor and EnvRunner process. After a warmup, the script fits a line to each
-process's USS over time and fails if any slope exceeds its category's limit. All
-slopes are also reported as perf metrics, so slow growth shows up across runs.
+process's USS over time and fails if any slope exceeds its category's limit, or if a
+process dies or restarts during that window. All slopes are also reported as perf
+metrics, so slow growth shows up across runs.
 
 Run on a cluster with 2 GPUs (one per Learner) and enough CPUs for the EnvRunners,
 e.g. `multi_node_2x1gpu_2x16cpus.yaml`:
@@ -18,6 +19,7 @@ e.g. `multi_node_2x1gpu_2x16cpus.yaml`:
 import argparse
 import json
 import os
+import statistics
 import sys
 import time
 from pathlib import Path
@@ -71,7 +73,7 @@ class _NodeProbe:
             try:
                 out[pid] = psutil.Process(pid).memory_full_info().uss / 2**20
             except psutil.Error:
-                out[pid] = None  # The process is gone (e.g. restarted).
+                out[pid] = None  # The process died or was restarted.
         return out
 
 
@@ -249,14 +251,16 @@ if __name__ == "__main__":
         "env_runner": args.max_env_runner_growth,
     }
     slopes = {cat: {} for cat in CATEGORIES}
+    lost = []
     for cat in CATEGORIES:
-        for proc in rows[-1]["memory"].get(cat, {}):
-            points = [
-                (r["t"], r["memory"][cat][proc])
-                for r in rows
-                if r["memory"].get(cat, {}).get(proc) is not None
-            ]
-            if len(points) >= 5:
+        for proc in sorted({p for r in rows for p in r["memory"].get(cat, {})}):
+            points = [(r["t"], r["memory"].get(cat, {}).get(proc)) for r in rows]
+            # The processes are found once, on the first iteration, so a failed
+            # reading means the process died (e.g. out of memory) or was restarted.
+            failed = sum(v is None for _, v in points)
+            if failed:
+                lost.append(f"{cat} {proc}: {failed} of {len(points)} readings failed")
+            else:
                 slopes[cat][proc] = _slope_per_hour(points)
 
     too_fast = [
@@ -269,7 +273,7 @@ if __name__ == "__main__":
     window_h = (rows[-1]["t"] - rows[0]["t"]) / 3600
     module_steps = rows[-1]["module_steps_trained"] - rows[0]["module_steps_trained"]
     env_steps = rows[-1]["env_steps_sampled"] - rows[0]["env_steps_sampled"]
-    passed = not too_fast and not missing
+    passed = not too_fast and not missing and not lost
 
     perf_metrics = []
     summary = {}
@@ -280,7 +284,7 @@ if __name__ == "__main__":
         summary[cat] = {
             "num_processes": len(values),
             "max_growth_mib_per_h": max(values),
-            "median_growth_mib_per_h": values[len(values) // 2],
+            "median_growth_mib_per_h": statistics.median(values),
             "growth_mib_per_h": dict(sorted(slopes[cat].items())),
             "uss_mib_at_end": {
                 p: rows[-1]["memory"][cat][p] for p in sorted(slopes[cat])
@@ -316,6 +320,7 @@ if __name__ == "__main__":
         "memory": summary,
         "too_fast": too_fast,
         "missing_categories": missing,
+        "lost_processes": lost,
         "perf_metrics": perf_metrics,
     }
     print(json.dumps(out, indent=2))
@@ -323,5 +328,5 @@ if __name__ == "__main__":
     if not passed:
         sys.exit(
             "Memory grows too fast or wasn't measured: "
-            + "; ".join(too_fast + [f"no {cat} readings" for cat in missing])
+            + "; ".join(too_fast + lost + [f"no {cat} readings" for cat in missing])
         )
