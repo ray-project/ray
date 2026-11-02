@@ -1,4 +1,6 @@
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import numpy as np
@@ -6,10 +8,12 @@ import pandas as pd
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import memory_summary
 from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
@@ -374,6 +378,236 @@ def test_streaming_backpressure_e2e(
     # If backpressure is not working right, we will spill.
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
+
+
+_NUM_BLOCKS = 200
+_ROWS_PER_BLOCK = 1024
+
+
+def _make_payload_dataset():
+    """A ~200 MiB dataset of 1 MiB blocks, larger than the test object stores."""
+
+    def add_payload(batch):
+        num_rows = len(batch["id"])
+        return {"id": batch["id"], "payload": np.zeros((num_rows, 1024), np.uint8)}
+
+    return ray.data.range(
+        _NUM_BLOCKS * _ROWS_PER_BLOCK, override_num_blocks=_NUM_BLOCKS
+    ).map_batches(add_payload)
+
+
+def _executor_threads():
+    return [
+        thread
+        for thread in threading.enumerate()
+        if thread.name.startswith("StreamingExecutor-")
+    ]
+
+
+def _iterate_until_output_backpressured():
+    """Start iterating a dataset much larger than the object store, take one
+    batch, then stop consuming until the executor has been output-backpressured
+    for several consecutive scheduling steps.
+
+    Returns the iterator, the ids consumed so far, and the scheduling-step stats.
+    """
+    ray.init(num_cpus=4, object_store_memory=100 * MiB)
+    stats = {"num_steps": 0, "backpressured_streak": 0}
+
+    class SchedulingStepCounter(ExecutionCallback):
+        def on_execution_step(self, executor):
+            stats["num_steps"] += 1
+            if any(op._in_task_output_backpressure for op in executor._topology):
+                stats["backpressured_streak"] += 1
+            else:
+                stats["backpressured_streak"] = 0
+
+    ray.data.DataContext.get_current().custom_execution_callback_classes.append(
+        SchedulingStepCounter
+    )
+
+    it = iter(_make_payload_dataset().iter_batches(batch_size=_ROWS_PER_BLOCK))
+    ids = list(next(it)["id"])
+    wait_for_condition(lambda: stats["backpressured_streak"] >= 5)
+    return it, ids, stats
+
+
+def test_output_backpressure_does_not_busy_spin(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    it, ids, stats = _iterate_until_output_backpressured()
+
+    steps_before = stats["num_steps"]
+    time.sleep(1)
+    idle_steps = stats["num_steps"] - steps_before
+    # Each blocked iteration waits WAIT_FOR_TASK_COMPLETION_TIMEOUT_S (0.1s), so
+    # one second allows ~10. Busy-spinning runs thousands.
+    assert idle_steps < 50, idle_steps
+
+    for batch in it:
+        ids.extend(batch["id"])
+    assert sorted(ids) == list(range(_NUM_BLOCKS * _ROWS_PER_BLOCK))
+
+
+def test_executor_shuts_down_while_output_backpressured(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    it, _, _ = _iterate_until_output_backpressured()
+
+    assert _executor_threads()
+    it.close()
+    assert not _executor_threads()
+
+
+def test_streaming_split_consumers_get_every_row_once(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    ray.init(num_cpus=4, object_store_memory=100 * MiB)
+
+    def consume(split):
+        return [
+            row_id
+            for batch in split.iter_batches(batch_size=_ROWS_PER_BLOCK)
+            for row_id in batch["id"]
+        ]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ids_per_split = list(
+            pool.map(consume, _make_payload_dataset().streaming_split(2))
+        )
+
+    assert sorted(ids_per_split[0] + ids_per_split[1]) == list(
+        range(_NUM_BLOCKS * _ROWS_PER_BLOCK)
+    )
+
+
+class _DispatchGate:
+    """Backpressure policy that blocks new tasks while closed, without limiting
+    output reads, so running tasks drain and the executor is left with no active
+    task. Stands in for downstream-capacity backpressure."""
+
+    name = "DispatchGate"
+    closed = False
+
+    def can_add_input(self, op):
+        return not _DispatchGate.closed
+
+    def max_task_output_bytes_to_read(self, op):
+        return None
+
+
+def _iterate_until_idle_with_unread_output():
+    """Start iterating, close ``_DispatchGate`` once a few outputs are queued, and
+    wait until the executor has had no active task, while the consumer has output
+    it isn't reading, for several consecutive scheduling steps.
+
+    Returns the iterator, the ids consumed so far, and the scheduling-step stats.
+    """
+    ray.init(num_cpus=4, object_store_memory=100 * MiB)
+    _DispatchGate.closed = False
+    stats = {"num_steps": 0, "idle_streak": 0}
+
+    class GateAndStepCounter(ExecutionCallback):
+        def before_execution_starts(self, executor):
+            executor._backpressure_policies.append(_DispatchGate())
+
+        def on_execution_step(self, executor):
+            stats["num_steps"] += 1
+            if len(executor._output_node[1].output_queue) >= 4:
+                _DispatchGate.closed = True
+            if not executor._consumer_idling() and all(
+                op.num_active_tasks() == 0 for op in executor._topology
+            ):
+                stats["idle_streak"] += 1
+            else:
+                stats["idle_streak"] = 0
+
+    ray.data.DataContext.get_current().custom_execution_callback_classes.append(
+        GateAndStepCounter
+    )
+
+    it = iter(_make_payload_dataset().iter_batches(batch_size=_ROWS_PER_BLOCK))
+    ids = list(next(it)["id"])
+    wait_for_condition(lambda: stats["idle_streak"] >= 5)
+    return it, ids, stats
+
+
+# Raised so that only consumer activity can end the executor's idle wait in time.
+_patch_long_idle_wait_timeout = patch(
+    "ray.data._internal.execution.streaming_executor."
+    "WAIT_FOR_TASK_COMPLETION_TIMEOUT_S",
+    60,
+)
+
+
+def _consume_rest(it, ids):
+    _DispatchGate.closed = False
+    for batch in it:
+        ids.extend(batch["id"])
+    assert sorted(ids) == list(range(_NUM_BLOCKS * _ROWS_PER_BLOCK))
+
+
+def test_no_active_tasks_with_unread_output_does_not_busy_spin(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    it, ids, stats = _iterate_until_idle_with_unread_output()
+
+    steps_before = stats["num_steps"]
+    time.sleep(1)
+    idle_steps = stats["num_steps"] - steps_before
+    assert idle_steps < 50, idle_steps
+
+    _consume_rest(it, ids)
+
+
+def test_consumer_read_wakes_executor_with_no_active_tasks(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    it, ids, stats = _iterate_until_idle_with_unread_output()
+    with _patch_long_idle_wait_timeout:
+        # Let the executor enter a wait that only consumer activity can end soon.
+        time.sleep(0.5)
+        steps_before = stats["num_steps"]
+        start = time.monotonic()
+        # Batches the iterator already prefetched don't touch the executor, so
+        # read until one does.
+        while stats["num_steps"] == steps_before:
+            ids.extend(next(it)["id"])
+            time.sleep(0.1)
+        assert time.monotonic() - start < 10
+
+        start = time.monotonic()
+        _consume_rest(it, ids)
+        assert time.monotonic() - start < 30
+
+
+def test_multi_operator_pipeline_never_waits_out_idle_timeout(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    ray.init(num_cpus=4, object_store_memory=100 * MiB)
+    dataset = _make_payload_dataset().map_batches(lambda batch: batch, num_cpus=0.5)
+
+    with _patch_long_idle_wait_timeout:
+        start = time.monotonic()
+        ids = [
+            row_id
+            for batch in dataset.iter_batches(batch_size=_ROWS_PER_BLOCK)
+            for row_id in batch["id"]
+        ]
+        elapsed = time.monotonic() - start
+
+    assert elapsed < 30, elapsed
+    assert sorted(ids) == list(range(_NUM_BLOCKS * _ROWS_PER_BLOCK))
+
+
+def test_executor_shuts_down_while_idle_with_unread_output(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    it, _, _ = _iterate_until_idle_with_unread_output()
+
+    assert _executor_threads()
+    it.close()
+    assert not _executor_threads()
 
 
 if __name__ == "__main__":
