@@ -52,6 +52,7 @@ from ray.data._internal.execution.bundle_queue import (
     RebundleQueue,
     ReorderingBundleQueue,
 )
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
     ExecutionOptions,
@@ -60,6 +61,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.common import LogicalActorId
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
@@ -242,6 +244,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
+        generator_backpressure_disabled: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -252,7 +255,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         if ray_remote_args is None:
             ray_remote_args = {}
 
-        ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args)
+        ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args, data_context)
 
         # Configure a default logical memory to improve memory safety when the user has
         # specified memory for some UDFs but not others.
@@ -268,12 +271,18 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = ray_remote_args
         self._ray_remote_args_fn = ray_remote_args_fn
+        # When True, subclasses emit no streaming-generator backpressure keys
+        # for this operator's tasks (Ray core treats an absent key as
+        # disabled).
+        self._generator_backpressure_disabled = generator_backpressure_disabled
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
-        self._block_ref_bundler = ref_bundler
-        if self._block_ref_bundler is None:
-            self._block_ref_bundler = RebundleQueue(EstimateSize(min_rows_per_bundle))
+        self._block_ref_bundler = (
+            RebundleQueue(EstimateSize(min_rows_per_bundle))
+            if ref_bundler is None
+            else ref_bundler
+        )
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: Optional[BaseBundleQueue] = None
@@ -369,6 +378,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             name += f"->SplitBlocks({self._additional_split_factor})"
         return name
 
+    @override
+    def min_num_rows_needed_to_make_progress(self) -> int:
+        return self._block_ref_bundler.min_rows_per_bundle
+
     @classmethod
     def create(
         cls,
@@ -389,6 +402,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        generator_backpressure_disabled: bool = False,
         is_read_op: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
@@ -430,6 +444,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            generator_backpressure_disabled: If ``True``, apply no streaming-generator
+                backpressure to this operator's tasks (no per-task or actor-wide
+                buffer bounds). For fast, lightweight operators (e.g. file listing)
+                that default backpressure would starve downstream of inputs.
             is_read_op: Whether this op reads from a datasource.
 
         Returns:
@@ -449,7 +467,9 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         # The actor-only backend transparently promotes ``TaskPoolStrategy`` to
         # ``ActorPoolStrategy`` here; this is a no-op otherwise. The decision is
         # self-gated inside the helper so this factory stays backend-agnostic.
-        compute_strategy = maybe_promote_compute_strategy(compute_strategy)
+        compute_strategy = maybe_promote_compute_strategy(
+            compute_strategy, data_context
+        )
 
         # Apply per-block limit to the map transformer if set
         if per_block_limit is not None:
@@ -478,6 +498,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 on_start=on_start,
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                generator_backpressure_disabled=generator_backpressure_disabled,
             )
             task_op.is_read_op = is_read_op
             return task_op
@@ -508,6 +529,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                generator_backpressure_disabled=generator_backpressure_disabled,
                 is_read_op=is_read_op,
             )
         else:
@@ -524,11 +546,18 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
         )
         # Create output queue with desired ordering semantics.
-        if options.preserve_order:
-            self._output_queue = ReorderingBundleQueue()
-        else:
-            self._output_queue = FIFOBundleQueue()
+        self._output_queue = self._create_output_queue(options.preserve_order)
+        self._apply_additional_block_split()
 
+    def _create_output_queue(self, preserve_order: bool) -> BaseBundleQueue:
+        """Build the operator's output queue. Overridable so a backend can pick a
+        different implementation (e.g. the actor-only backend uses a priority
+        queue that serves draining actors' outputs first)."""
+        if preserve_order:
+            return ReorderingBundleQueue()
+        return FIFOBundleQueue()
+
+    def _apply_additional_block_split(self) -> None:
         map_transformer = self._map_transformer
         # Apply additional block split if needed.
         if self.get_additional_split_factor() > 1:
@@ -570,6 +599,16 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         self._block_ref_bundler.add(refs)
         self._metrics.on_input_queued(refs, input_index=0)
 
+        self._maybe_dispatch_next_bundle()
+
+    def _maybe_dispatch_next_bundle(self) -> None:
+        """Dispatch a task for the next full bundle, if the bundler has one.
+
+        Extension point used after each input is added. The base (push)
+        implementation self-dispatches a task as soon as a full bundle is
+        available. The actor-only backend overrides this so inputs are instead
+        enqueued for the scheduling loop to pull via ``launch_task()``.
+        """
         if self._block_ref_bundler.has_next():
             # The ref bundler combines one or more `RefBundle`s into a new
             # `RefBundle`. To update metrics appropriately, we need to deque
@@ -581,12 +620,17 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle, input_index=0)
 
-            # If the bundler has a full bundle, add it to the operator's task submission
-            # queue
+            # If the bundler has a full bundle, add it to the operator's task
+            # submission queue.
             #
-            # NOTE: This is a strict path, hence operator is *required* to launch
-            #       at least 1 task
-            self._try_schedule_task(bundled_input, strict=True)
+            # NOTE: The standard backend keeps this a strict path (the operator
+            #       is *required* to launch at least 1 task). Under the
+            #       actor-only backend admission is enforced by per-actor
+            #       budgets instead, so a bundle that cannot be placed right
+            #       now is queued rather than forced.
+            self._try_schedule_task(
+                bundled_input, strict=not actor_only_backend_enabled(self.data_context)
+            )
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -643,7 +687,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         self,
         gen: ObjectRefGenerator,
         inputs: RefBundle,
-        task_done_callback: Optional[Callable[[], None]] = None,
+        task_output_ready_callback: Optional[Callable[[RefBundle], None]] = None,
+        task_done_callback: Optional[
+            Callable[[RefBundle, int, Optional[Exception]], None]
+        ] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -751,8 +798,13 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     lineage_tracker.register_block_queued(lineage_task_id, output_index)
 
             # Notify output queue that the task has produced an new output.
-            self._output_queue.add(output, key=task_index)
+            # ``_output_add_kwargs`` lets subclasses tag the bundle differently
+            # (e.g. the actor-only backend keys by producing actor id).
+            self._output_queue.add(output, **self._output_add_kwargs(task_index))
             self._metrics.on_output_queued(output)
+
+            if task_output_ready_callback:
+                task_output_ready_callback(output)
 
         def _task_done_callback(
             task_index: int,
@@ -768,6 +820,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 exception or task_exec_driver_stats
             ), "Driver's task execution stats must be provided on task's successful completion"
 
+            inputs = self._metrics._running_tasks[task_index].inputs
             if aborted:
                 self._metrics.on_task_aborted(task_index)
             else:
@@ -805,7 +858,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             # Notify output queue that this task is complete.
             self._output_queue.finalize(key=task_index)
             if task_done_callback:
-                task_done_callback()
+                task_done_callback(inputs, task_index, exception)
 
         data_task = DataOpTask(
             task_index,
@@ -876,9 +929,15 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     def _get_next_inner(self) -> RefBundle:
         assert self._started
         bundle = self._output_queue.get_next()
+        self._record_output_dequeued(bundle)
+        return bundle
+
+    def _record_output_dequeued(self, bundle: RefBundle) -> None:
         self._metrics.on_output_dequeued(bundle)
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
-        return bundle
+
+    def _output_add_kwargs(self, task_index: int) -> Dict[str, Any]:
+        return {"key": task_index}
 
     @abstractmethod
     def progress_str(self) -> str:
@@ -932,6 +991,7 @@ def _map_task(
     data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
+    actor_id: Optional[LogicalActorId] = None,
     slices: Optional[List[BlockSlice]] = None,
     **kwargs: Dict[str, Any],
 ) -> Iterator[Union[Block, "BlockMetadataWithSchema"]]:
@@ -944,6 +1004,7 @@ def _map_task(
         ctx: The :class:`TaskContext` for the task, used to look up
             per-task settings and propagate context to the UDF.
         *blocks: The concrete block values from the task ref bundle.
+        actor_id: The globally unique logical actor id created by Ray Data.
         slices: List of block slices for this task to process.
         **kwargs: Additional keyword arguments stored on ``ctx.kwargs`` and
             forwarded to the map transformer.
@@ -1039,6 +1100,7 @@ def _map_task(
                         output_build_time_s=phase_times.output_build_s,
                         stage_time_s=phase_times.stage_s,
                         task_idx=ctx.task_idx,
+                        actor_id=actor_id,
                     )
                     # NOTE: This tracks task duration up to this point, though we're
                     # primarily interested in task total duration.
@@ -1066,7 +1128,9 @@ def _map_task(
                 blk_exec_stats_builder = BlockExecStats.builder()
 
 
-def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
+def _canonicalize_ray_remote_args(
+    ray_remote_args: Dict[str, Any], data_context: DataContext
+) -> Dict[str, Any]:
     """Enforce rules on ray remote args for map tasks.
 
     Map tasks default to 1 CPU. GPU map tasks that don't specify ``num_cpus`` also
@@ -1091,6 +1155,16 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
         # reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
         # doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
         # explicitly passing num_cpus=0.
+        ray_remote_args["num_cpus"] = 1
+    elif (
+        "num_cpus" not in ray_remote_args
+        and ray_remote_args.get("num_gpus")
+        and actor_only_backend_enabled(data_context)
+    ):
+        # A GPU map op left at the default reserves 0 CPU, so the scheduler sees
+        # its node as fully CPU-free and overpacks CPU producers onto it. Reserve
+        # a CPU so the GPU op is accounted on its node -- GPU UDFs always use
+        # some CPU.
         ray_remote_args["num_cpus"] = 1
 
     return ray_remote_args

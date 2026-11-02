@@ -2,10 +2,21 @@ import pickle
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from types import GeneratorType
-from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray.data.block import Block, BlockAccessor, CallableClass
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray._raylet import StreamingGeneratorStats
@@ -80,10 +91,15 @@ def locality_string(locality_hits: int, locality_misses) -> str:
     return f"[{locality_hits}/{locality_hits + locality_misses} objects local]"
 
 
+# One item of a map task's streaming-generator output: a block, its pickled
+# metadata, or both grouped into one yield (core actor backpressure).
+_BlockStreamItem = Union[Block, bytes, Tuple[Block, bytes]]
+
+
 def yield_block_with_stats(
     block: Block,
     build_metadata: "Callable[[Optional[float]], BlockMetadataWithSchema]",
-) -> Generator[Union[Block, bytes], "StreamingGeneratorStats", None]:
+) -> Generator[_BlockStreamItem, "StreamingGeneratorStats", None]:
     """Yield a block then its pickled metadata, per the streaming-gen protocol.
 
     Args:
@@ -92,9 +108,21 @@ def yield_block_with_stats(
             if Ray didn't report it), returns the block's metadata to pickle.
 
     Yields:
-        Union[Block, bytes]: The block, followed by its pickled
-        ``BlockMetadataWithSchema``.
+        _BlockStreamItem: The block, followed by its pickled
+        ``BlockMetadataWithSchema``; or a single grouped tuple of both when
+        core actor backpressure is enabled.
     """
+    if DataContext.get_current()._use_grouped_streaming_generator_yields:
+        # MapWorker.submit sets ``@ray.method(_num_objects_per_yield=2)`` so the
+        # actor-wide backpressure budget reserves block + metadata atomically.
+        # Block serialization time isn't available before the grouped yield, so
+        # metrics use 0.0 for ``block_ser_time_s`` in this mode.
+        yield (
+            block,
+            pickle.dumps(build_metadata(0.0)),
+        )
+        return
+
     gen_stats: "StreamingGeneratorStats" = yield block
     block_ser_time_s = gen_stats.object_creation_dur_s if gen_stats else None
     yield pickle.dumps(build_metadata(block_ser_time_s))

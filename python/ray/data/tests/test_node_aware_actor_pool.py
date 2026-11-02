@@ -20,6 +20,7 @@ _MODULE = "ray.data._internal.execution.operators.actor_pool_map_operator"
 
 _make_bundle_queue = oss_test_module._make_bundle_queue
 _schedule_bundles = oss_test_module._schedule_bundles
+_dummy_bundle = oss_test_module._dummy_bundle
 
 
 class TestNodeAwareActorPool(oss_test_module.TestActorPool):
@@ -68,14 +69,14 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         assert pool.num_running_actors() == 2
 
         mock_get_actor_locations.return_value = {
-            pool._get_actor_logical_id(actor1): "node1",
-            pool._get_actor_logical_id(actor2): "node2",
+            pool.get_actor_logical_id(actor1): "node1",
+            pool.get_actor_logical_id(actor2): "node2",
         }
 
         # Case 1: No draining nodes, both actors should be schedulable
         mock_get_draining_nodes.return_value = set()
         pool.refresh_actor_state()
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         results = _schedule_bundles(pool, _make_bundle_queue(2))
         assert len(results) == 2
@@ -83,22 +84,22 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
 
         # Return the actors so we can schedule again
         for actor in results:
-            pool.on_task_completed(actor)
+            pool.on_task_completed(actor, _dummy_bundle())
 
         # Case 2: node1 is draining, only actor2 should be schedulable
         mock_get_draining_nodes.return_value = {"node1"}
         pool.refresh_actor_state()
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         results = _schedule_bundles(pool, _make_bundle_queue(1))
         assert results == [actor2]
 
-        pool.on_task_completed(actor2)
+        pool.on_task_completed(actor2, _dummy_bundle())
 
         # Case 3: Both nodes draining - no actors should be schedulable
         mock_get_draining_nodes.return_value = {"node1", "node2"}
         pool.refresh_actor_state()
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         bundle = _make_bundle_queue(1).get_next()
         assert pool.select_actors(bundle=bundle, actor_locality_enabled=False) is None
@@ -106,7 +107,7 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         # Case 4: node1 stops draining (actor1 becomes schedulable again)
         mock_get_draining_nodes.return_value = {"node2"}
         pool.refresh_actor_state()
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         results = _schedule_bundles(pool, _make_bundle_queue(1))
         assert results == [actor1]
@@ -125,14 +126,14 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         assert pool.num_running_actors() == 3
 
         mock_get_actor_locations.return_value = {
-            pool._get_actor_logical_id(actor1): "node1",
-            pool._get_actor_logical_id(actor2): "node2",
-            pool._get_actor_logical_id(actor3): "node3",
+            pool.get_actor_logical_id(actor1): "node1",
+            pool.get_actor_logical_id(actor2): "node2",
+            pool.get_actor_logical_id(actor3): "node3",
         }
         mock_get_draining_nodes.return_value = {"node2"}
         pool.refresh_actor_state()
 
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
         # Schedule 4 tasks (2 per actor max); only actor1 and actor3 should be used
         results = _schedule_bundles(pool, _make_bundle_queue(4))
         assert len(results) == 4
@@ -187,12 +188,12 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         actor1 = self._add_ready_actor(pool)
         self._add_ready_actor(pool)
 
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
         results = _schedule_bundles(pool, _make_bundle_queue(2))
         assert len(results) == 2
-        assert not pool.can_schedule_task()
-        pool.on_task_completed(actor1)
-        assert pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
+        pool.on_task_completed(actor1, _dummy_bundle())
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
     @patch(f"{_MODULE}.get_draining_nodes", return_value=set())
     @patch(f"{_MODULE}.get_actor_locations")
@@ -210,11 +211,11 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         assert pool.num_running_actors() == 2
 
         mock_get_actor_locations.return_value = {
-            pool._get_actor_logical_id(actor1): "node1",
-            pool._get_actor_logical_id(actor2): "node2",
+            pool.get_actor_logical_id(actor1): "node1",
+            pool.get_actor_logical_id(actor2): "node2",
         }
         pool.refresh_actor_state()
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         with patch.object(
             actor1,
@@ -227,15 +228,15 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         assert pool.num_alive_actors() == 1
         assert pool.num_running_actors() == 2
         # Should still be schedulable (actor2 is alive)
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # select_actors should return actor2, not actor1
         bundle = _make_bundle_queue(1).get_next()
         actor = pool.select_actors(bundle=bundle, actor_locality_enabled=False)
         assert actor == actor2
-        pool.on_task_submitted(actor)
+        pool.on_task_submitted(actor, _dummy_bundle())
         # No more schedulable actors
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
         assert pool.num_idle_actors() == 1
         assert pool.num_running_actors() == 2
         assert pool.num_restarting_actors() == 1
@@ -249,10 +250,10 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         assert pool.num_restarting_actors() == 0
         assert pool.num_alive_actors() == 2
         assert pool.num_running_actors() == 2
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
         assert pool.num_idle_actors() == 1
 
-        pool.on_task_completed(actor2)
+        pool.on_task_completed(actor2, _dummy_bundle())
         assert pool.num_idle_actors() == 2
 
     @patch(f"{_MODULE}.get_draining_nodes", return_value=set())
@@ -266,10 +267,10 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         assert pool.num_running_actors() == 1
 
         mock_get_actor_locations.return_value = {
-            pool._get_actor_logical_id(actor): "node1",
+            pool.get_actor_logical_id(actor): "node1",
         }
         pool.refresh_actor_state()
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         with patch.object(
             actor,
@@ -280,7 +281,7 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
 
         assert pool.num_restarting_actors() == 1
         assert pool.num_alive_actors() == 0
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         bundle = _make_bundle_queue(1).get_next()
         assert pool.select_actors(bundle=bundle, actor_locality_enabled=False) is None
@@ -295,33 +296,33 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
 
         # Empty pool
         assert pool.select_actors() is None
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         actor = self._add_ready_actor(pool, node_id="node1")
         mock_get_actor_locations.return_value = {
-            pool._get_actor_logical_id(actor): "node1",
+            pool.get_actor_logical_id(actor): "node1",
         }
         mock_get_draining_nodes.return_value = set()
         pool.refresh_actor_state()
 
         assert pool.select_actors() is not None
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Exhaust capacity
-        pool.on_task_submitted(actor)
+        pool.on_task_submitted(actor, _dummy_bundle())
         assert pool.select_actors() is None
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Free a slot
-        pool.on_task_completed(actor)
+        pool.on_task_completed(actor, _dummy_bundle())
         assert pool.select_actors() is not None
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Drain the node
         mock_get_draining_nodes.return_value = {"node1"}
         pool.refresh_actor_state()
         assert pool.select_actors() is None
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
     @patch(f"{_MODULE}.get_draining_nodes", return_value={"node1"})
     def test_ready_actor_on_draining_node_is_not_schedulable(
@@ -339,12 +340,12 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         # pending_to_running() path on its own.
         draining = self._add_ready_actor(pool, node_id="node1")
         assert pool.num_running_actors() == 1
-        assert not pool.can_schedule_task()
+        assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
         assert pool.select_actors() is None
 
         # An actor on an active node is still schedulable via the same path.
         active = self._add_ready_actor(pool, node_id="node2")
-        assert pool.can_schedule_task()
+        assert pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
         assert pool.select_actors() == active
         assert draining not in pool._alive_actors_to_in_flight_tasks_heap
 
@@ -368,8 +369,8 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         actor1 = self._add_ready_actor(pool, node_id="node1")
         actor2 = self._add_ready_actor(pool, node_id="node2")
         mock_get_actor_locations.return_value = {
-            pool._get_actor_logical_id(actor1): "node1",
-            pool._get_actor_logical_id(actor2): "node2",
+            pool.get_actor_logical_id(actor1): "node1",
+            pool.get_actor_logical_id(actor2): "node2",
         }
         pool.refresh_actor_state()
 
