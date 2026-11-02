@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import pprint
 import shlex
@@ -88,16 +89,23 @@ def _parse_resource_amounts(
     parsed = {}
     for name, amount in resources.items():
         try:
-            parsed[name] = int(amount)
+            value = int(amount)
         except ValueError:
             try:
-                parsed[name] = float(amount)
+                value = float(amount)
             except ValueError:
                 cli_logger.abort(
                     f"`{option}`: amount `{amount}` for resource `{name}` "
                     "is not a number.",
                     no_format=True,
                 )
+        if not math.isfinite(value) or value < 0:
+            cli_logger.abort(
+                f"`{option}`: amount `{amount}` for resource `{name}` "
+                "must be a non-negative finite number.",
+                no_format=True,
+            )
+        parsed[name] = value
     return parsed
 
 

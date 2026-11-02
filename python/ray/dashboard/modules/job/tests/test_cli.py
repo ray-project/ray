@@ -644,6 +644,9 @@ class TestSubmit:
             (["--entrypoint-resource", "custom"], "NAME=AMOUNT"),
             (["--entrypoint-resource", "=1"], "NAME=AMOUNT"),
             (["--entrypoint-resource", "custom=lots"], "is not a number"),
+            (["--entrypoint-resource", "custom=-1"], "non-negative finite number"),
+            (["--entrypoint-resource", "custom=nan"], "non-negative finite number"),
+            (["--entrypoint-resource", "custom=inf"], "non-negative finite number"),
         ],
     )
     def test_key_value_invalid(self, mock_sdk_client, args, error):
