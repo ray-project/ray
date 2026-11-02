@@ -90,7 +90,7 @@ class PlacementGroupBundles:
         """Each bundle's shape minus what the PG ops already hold in it.
 
         Ray core picks the bundle and never reports it back, so held actors
-        (``current_size``: a draining actor keeps its bundle until dead) are
+        (``total_size``: a draining actor keeps its bundle until dead) are
         assumed packed first-fit, most constrained op first. If core packed
         differently the result is optimistic; the excess pendings wait and
         are released by the stuck-pending expiry.
@@ -102,6 +102,6 @@ class PlacementGroupBundles:
                 free,
                 self.bundles_by_op[op],
                 pool.per_actor_resource_usage(),
-                pool.current_size(),
+                pool.total_size(),
             )
         return free
