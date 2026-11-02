@@ -104,7 +104,20 @@ def datasource_v2_unsupported_reason(
             == "true"
         ):
             return "the table's data files aren't under partition directories"
-        if include_paths and "path" in pa.schema(table.schema().to_arrow()).names:
+        schema = pa.schema(table.schema().to_arrow())
+        # Delta writes a timestamp partition value in UTC without an offset,
+        # which doesn't cast to a timestamp type with a time zone.
+        zoned_partitions = [
+            name
+            for name in metadata.partition_columns
+            if pa.types.is_timestamp(schema.field(name).type)
+            and schema.field(name).type.tz is not None
+        ]
+        if zoned_partitions:
+            return (
+                f"the timestamp partition columns {zoned_partitions} have a time zone"
+            )
+        if include_paths and "path" in schema.names:
             return "the table has its own `path` column and include_paths is set"
     except Exception as e:  # Fail closed: when in doubt, read with V1.
         return f"the table couldn't be inspected ({type(e).__name__}: {e})"
@@ -178,7 +191,11 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         )
         self._synthesized_columns = (PathColumn(),) if include_paths else ()
         if columns is not None:
-            unknown = [c for c in columns if c not in self._table_schema.names]
+            # ``columns`` may name the ``path`` column, as with the V1 reader.
+            known = set(self._table_schema.names) | {
+                column.name for column in self._synthesized_columns
+            }
+            unknown = [c for c in columns if c not in known]
             if unknown:
                 raise ValueError(
                     f"Columns {unknown} don't exist in the Delta table "
@@ -187,14 +204,14 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
                 )
         # Pinned on the scanner so the output keeps the table's (or the
         # caller's) column order: unprojected, the reader would append the
-        # partition columns, which it takes from the path, at the end.
+        # partition columns, which it takes from the path, at the end. The
+        # ``path`` column comes last even when ``columns`` names it, as with
+        # the V1 reader.
+        synthesized = [column.name for column in self._synthesized_columns]
         projected = list(columns) if columns is not None else self._table_schema.names
-        projected.extend(
-            column.name
-            for column in self._synthesized_columns
-            if column.name not in projected
+        self._projected_columns = tuple(
+            [name for name in projected if name not in synthesized] + synthesized
         )
-        self._projected_columns = tuple(projected)
         _validate_shuffle_arg(shuffle)
         # ``_read_datasource_v2`` gives a metadata-backed source's listing no
         # file shuffle, so the indexer applies it. As for file sources, the seed

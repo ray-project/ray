@@ -15,6 +15,7 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
+    AbstractSet,
     Any,
     Dict,
     Iterable,
@@ -57,6 +58,7 @@ logger = logging.getLogger(__name__)
 # Columns of ``DeltaTable.get_add_actions(flatten=True)``.
 ADD_ACTION_PATH_COLUMN = "path"
 ADD_ACTION_SIZE_COLUMN = "size_bytes"
+ADD_ACTION_PARTITION_PREFIX = "partition."
 
 
 @dataclass(frozen=True)
@@ -151,7 +153,7 @@ def make_partitioning(partition_columns: Sequence[str]) -> Optional[Partitioning
 
 
 def _check_partition_directories(
-    parser: PathPartitionParser, path: str, partition_columns: Sequence[str]
+    parser: PathPartitionParser, path: str, partition_columns: AbstractSet[str]
 ) -> None:
     """Fail unless ``path`` sits under Hive directories for every partition column.
 
@@ -163,14 +165,45 @@ def _check_partition_directories(
         found = set(parser(path))
     except ValueError:
         found = set()
-    if found != set(partition_columns):
+    if found != partition_columns:
         raise ValueError(
             f"Delta data file {path!r} isn't under Hive-style directories for the "
-            f"table's partition columns {list(partition_columns)}. The DataSourceV2 "
+            f"table's partition columns {sorted(partition_columns)}. The DataSourceV2 "
             "reader for `read_delta` reads partition values from those "
             "directories. Set `DataContext.use_delta_datasource_v2 = False` to "
             "read this table with the V1 reader."
         )
+
+
+def _check_no_literal_null_partition_values(
+    add_actions: pa.Table, partition_columns: Sequence[str]
+) -> None:
+    """Fail if a partition value is the string Delta writes for a null value.
+
+    Delta writes a file whose partition value is the string
+    ``__HIVE_DEFAULT_PARTITION__`` to the same directory as a file whose value
+    is null; only the log tells them apart. The reader takes partition values
+    from the directories, so it would read that string back as null.
+    """
+    for column in partition_columns:
+        name = ADD_ACTION_PARTITION_PREFIX + column
+        if name not in add_actions.column_names:
+            continue
+        values = add_actions[name]
+        if not (
+            pa.types.is_string(values.type) or pa.types.is_large_string(values.type)
+        ):
+            continue
+        if values.index(HIVE_DEFAULT_PARTITION).as_py() != -1:
+            raise ValueError(
+                f"The Delta table's partition column {column!r} holds the string "
+                f"{HIVE_DEFAULT_PARTITION!r}, which Delta writes to the same "
+                "directory as null values. The DataSourceV2 reader for "
+                "`read_delta` reads partition values from those directories and "
+                "can't tell the two apart. Set "
+                "`DataContext.use_delta_datasource_v2 = False` to read this table "
+                "with the V1 reader."
+            )
 
 
 class _DeltaLogListing:
@@ -218,6 +251,7 @@ class _DeltaLogListing:
         listing does.
         """
         add_actions = self._snapshot.add_actions()
+        _check_no_literal_null_partition_values(add_actions, self._partition_columns)
         file_infos = sorted(
             (
                 FileInfo(path=resolve_data_file_path(path), size=size)
@@ -241,9 +275,10 @@ class _DeltaLogListing:
     ) -> Iterator[FileInfo]:
         partitioning = make_partitioning(self._partition_columns)
         parser = PathPartitionParser(partitioning) if partitioning else None
+        expected_partitions = frozenset(self._partition_columns)
         for info in file_infos:
             if parser is not None:
-                _check_partition_directories(parser, info.path, self._partition_columns)
+                _check_partition_directories(parser, info.path, expected_partitions)
             if not info.size:
                 logger.warning(f"Skipping zero-size file: {info.path!r}")
                 continue

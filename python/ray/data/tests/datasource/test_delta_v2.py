@@ -151,7 +151,7 @@ def test_columns_match_v1(partitioned_table, columns):
     _assert_matches_v1(partitioned_table, columns=columns)
 
 
-@pytest.mark.parametrize("columns", [None, ["id", "grp"]])
+@pytest.mark.parametrize("columns", [None, ["id", "grp"], ["path", "id"]])
 def test_include_paths_matches_v1(partitioned_table, columns):
     """Paths are relative to the table directory, as V1 reports them."""
     _assert_matches_v1(partitioned_table, include_paths=True, columns=columns)
@@ -223,18 +223,6 @@ def test_seeded_shuffle_permutes_the_files(tmp_path):
     assert shuffled != unshuffled
     # The same seed, the same order.
     assert listed_paths(_read(path, shuffle=FileShuffleConfig(seed=11))) == shuffled
-
-
-def test_empty_table_keeps_the_log_schema(tmp_path):
-    path = str(tmp_path / "empty")
-    schema = pa.schema([("x", pa.int64()), ("y", pa.string())])
-    deltalake.write_deltalake(path, schema.empty_table())
-
-    ds = _read(path)
-
-    assert ds.schema().names == ["x", "y"]
-    assert ds.count() == 0
-    assert ds.take_all() == []
 
 
 def test_unknown_columns_are_rejected(partitioned_table):
@@ -336,6 +324,45 @@ def test_falls_back_to_v1(tmp_path, write_kwargs, read_kwargs):
 
     assert not _uses_v2(ds)
     assert sorted(row["x"] for row in ds.take_all()) == [1, 2]
+
+
+def test_utc_timestamp_partitions_fall_back_to_v1(tmp_path):
+    """Delta writes the partition directory without a zone offset, which
+    doesn't cast to ``timestamp[us, tz=UTC]``; V1 takes it from the log."""
+    path = str(tmp_path / "by_time")
+    ts = datetime.datetime(2024, 1, 1, 12, 30, tzinfo=datetime.timezone.utc)
+    deltalake.write_deltalake(
+        path,
+        pa.table(
+            {"id": [1, 2], "ts": pa.array([ts, None], pa.timestamp("us", tz="UTC"))}
+        ),
+        partition_by=["ts"],
+    )
+
+    ds = _read(path)
+
+    assert not _uses_v2(ds)
+    assert _rows(ds) == [{"id": 1, "ts": ts}, {"id": 2, "ts": None}]
+
+
+def test_literal_null_partition_string_is_rejected(tmp_path):
+    """The string ``__HIVE_DEFAULT_PARTITION__`` and a null share a directory;
+    only the log tells them apart, so V2 must fail rather than read a null."""
+    path = str(tmp_path / "literal")
+    deltalake.write_deltalake(
+        path,
+        pa.table({"id": [1, 2, 3], "grp": [HIVE_DEFAULT_PARTITION, None, "a"]}),
+        partition_by=["grp"],
+    )
+
+    v1_rows = _read(path, v2=False).take_all()
+    assert sorted(v1_rows, key=lambda row: row["id"]) == [
+        {"id": 1, "grp": HIVE_DEFAULT_PARTITION},
+        {"id": 2, "grp": None},
+        {"id": 3, "grp": "a"},
+    ]
+    with pytest.raises(ValueError, match="use_delta_datasource_v2 = False"):
+        _read(path).take_all()
 
 
 def test_falls_back_to_v1_when_the_flag_is_off(partitioned_table):

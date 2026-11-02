@@ -160,14 +160,21 @@ def test_delta_read_storage_options(tmp_path, storage_options):
     assert rows_same(ds.to_pandas(), df)
 
 
-def test_delta_read_empty_table(tmp_path):
+def test_delta_read_empty_table(tmp_path, delta_reader):
     from deltalake import write_deltalake
 
     path = os.path.join(tmp_path, "tmp_test_delta_empty")
-    write_deltalake(path, pa.table({"x": pa.array([], type=pa.int64())}))
+    write_deltalake(
+        path, pa.schema([("x", pa.int64()), ("y", pa.string())]).empty_table()
+    )
 
     ds = ray.data.read_delta(path)
     assert ds.count() == 0
+    assert ds.take_all() == []
+    if delta_reader == "v2":
+        # The V2 reader takes the schema from the log. The V1 reader takes it
+        # from the data files, and an empty table has none.
+        assert ds.schema().names == ["x", "y"]
 
 
 def test_delta_read_rejects_multiple_paths():

@@ -189,6 +189,23 @@ def test_rejects_data_files_outside_partition_directories(
         _listed_paths(indexer)
 
 
+def test_rejects_the_literal_null_partition_string(tmp_path):
+    """It shares a directory with null values, so the reader would read it as
+    null; only the log tells them apart."""
+    path = str(tmp_path / "literal")
+    _write(
+        path,
+        pa.table({"id": [1, 2], "grp": [HIVE_DEFAULT_PARTITION, "a"]}),
+        partition_by=["grp"],
+    )
+    indexer = _datasource(path)._get_file_indexer()
+
+    with pytest.raises(ValueError, match="can't tell the two apart"):
+        _listed_paths(indexer)
+    with pytest.raises(ValueError, match="can't tell the two apart"):
+        _listed_paths(indexer.as_whole_file_indexer())
+
+
 @pytest.mark.parametrize("excluded_index", [0, 1])
 def test_whole_file_listing_honors_excluded_read_units(tmp_path, excluded_index):
     path = str(tmp_path / "table")
@@ -247,6 +264,8 @@ def test_datasource_takes_schema_and_partitioning_from_the_log(partitioned_table
         (["value", "grp"], False, ("value", "grp")),
         (["value"], True, ("value", "path")),
         (None, True, ("id", "grp", "value", "path")),
+        # ``path`` comes last, as with the V1 reader.
+        (["path", "value"], True, ("value", "path")),
     ],
 )
 def test_datasource_projects_columns_in_order(
@@ -266,6 +285,9 @@ def test_datasource_projects_columns_in_order(
 def test_datasource_rejects_unknown_columns(partitioned_table):
     with pytest.raises(ValueError, match=r"\['missing'\] don't exist"):
         _datasource(partitioned_table, columns=["id", "missing"])
+    # ``path`` exists only with ``include_paths``.
+    with pytest.raises(ValueError, match=r"\['path'\] don't exist"):
+        _datasource(partitioned_table, columns=["id", "path"])
 
 
 def test_datasource_paths_and_partitioner(partitioned_table):
@@ -302,14 +324,22 @@ def test_listing_applies_the_read_shuffle(tmp_path):
     assert shuffled != _log_paths(path)
 
 
-def test_indexer_scanner_and_reader_survive_worker_serialization(partitioned_table):
+def test_indexer_and_scanner_survive_worker_serialization(partitioned_table):
+    """Listing and read tasks receive the indexer and the scanner pickled, and
+    a read task creates its reader from the scanner."""
     datasource = _datasource(partitioned_table)
     scanner = datasource.create_scanner(schema=datasource.infer_schema(None))
 
     indexer = cloudpickle.loads(cloudpickle.dumps(datasource._get_file_indexer()))
-    cloudpickle.loads(cloudpickle.dumps(scanner.create_reader()))
+    reader = cloudpickle.loads(cloudpickle.dumps(scanner)).create_reader()
 
     assert _listed_paths(indexer) == _log_paths(partitioned_table)
+    manifests = indexer.as_whole_file_indexer().list_files(
+        pa.array(["label"]), filesystem=None
+    )
+    rows = [row for m in manifests for t in reader.read(m) for row in t.to_pylist()]
+    assert sorted(row["id"] for row in rows) == [1, 2, 3, 4]
+    assert {row["grp"] for row in rows} == {"a b", "e=f", None}
 
 
 def test_reads_through_a_filesystem_rooted_at_the_table(partitioned_table):
@@ -328,9 +358,11 @@ def _stub_table(
     configuration: Optional[dict] = None,
     partition_columns: Optional[List[str]] = None,
     column_names: Sequence[str] = ("x",),
+    schema: Optional[pa.Schema] = None,
 ) -> SimpleNamespace:
     """A stand-in for ``DeltaTable`` with just what the eligibility check reads."""
-    schema = pa.schema([(name, pa.int64()) for name in column_names])
+    if schema is None:
+        schema = pa.schema([(name, pa.int64()) for name in column_names])
     return SimpleNamespace(
         protocol=lambda: SimpleNamespace(
             min_reader_version=reader_version, reader_features=reader_features
@@ -371,6 +403,26 @@ def _stub_table(
         # Random prefixes don't matter without partition columns.
         (
             _stub_table(configuration={"delta.randomizeFilePrefixes": "true"}),
+            {},
+            None,
+        ),
+        (
+            _stub_table(
+                schema=pa.schema([("x", pa.int64()), ("t", pa.timestamp("us", "UTC"))]),
+                partition_columns=["t"],
+            ),
+            {},
+            "time zone",
+        ),
+        # Without a time zone the directory value casts, and data columns
+        # aren't parsed from paths.
+        (
+            _stub_table(
+                schema=pa.schema(
+                    [("t", pa.timestamp("us")), ("u", pa.timestamp("us", "UTC"))]
+                ),
+                partition_columns=["t"],
+            ),
             {},
             None,
         ),
