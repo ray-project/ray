@@ -54,6 +54,13 @@ class AuthenticationTokenLoader {
   /// \return Shared pointer to the authentication token, or nullptr if auth is disabled.
   std::shared_ptr<const AuthenticationToken> GetToken(bool ignore_auth_mode = false);
 
+  /// Create the default token file (~/.ray/auth_token) with a new random token,
+  /// unless a token source already holds a token. A file whose first non-blank line
+  /// holds a token is never overwritten; a missing file, or one with no token, is
+  /// written in place. Ignores RAY_AUTH_MODE: callers decide whether they need a token.
+  /// \return An error message, or an empty string on success.
+  std::string CreateTokenIfMissing();
+
   /// Try to load a token, returning error message instead of crashing.
   /// Use this for Python entry points where we want to raise AuthenticationError.
   /// \param ignore_auth_mode If true, bypass auth mode check.
@@ -102,6 +109,11 @@ class AuthenticationTokenLoader {
 /// in this process's environment, which the `ray start` subprocess inherits and which
 /// survives later RayConfig re-initialization.
 void MaybeEnableTokenAuthIfTokenAvailable();
+
+/// For a driver that starts its own cluster with `ray start --head`, which never
+/// creates a token: when token auth is enabled, create a missing token first.
+/// \return An error message, or an empty string on success.
+std::string CreateTokenIfMissingForOwnCluster();
 
 }  // namespace rpc
 }  // namespace ray

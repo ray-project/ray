@@ -1,5 +1,4 @@
-"""
-[1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
+"""[1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
 Luo et al. 2020
 https://arxiv.org/pdf/1912.00167
 """
