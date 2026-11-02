@@ -1891,11 +1891,13 @@ class ApproximateQuantile(AggregateFnV2):
         block_acc = BlockAccessor.for_block(block)
         table = block_acc.to_arrow()
         column = table.column(self.get_target_column())
+        if pa.types.is_temporal(column.type):
+            raise TypeError(
+                f"ApproximateQuantile does not support column type {column.type}"
+            )
         sketch = self.zero(self._quantile_precision)
-        for value in column:
-            # we ignore nulls here
-            if value.as_py() is not None:
-                sketch.update(float(value.as_py()))
+        values = pc.drop_null(column).to_numpy(zero_copy_only=False)
+        sketch.update(values.astype(np.float32, copy=False))
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
