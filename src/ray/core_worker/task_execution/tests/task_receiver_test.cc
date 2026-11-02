@@ -46,6 +46,22 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   return task;
 }
 
+rpc::PushTaskRequest CreateActorCreationRequestHelper(ActorID actor_id,
+                                                      int max_concurrency,
+                                                      bool is_asyncio) {
+  rpc::PushTaskRequest request;
+  auto *spec = request.mutable_task_spec();
+  spec->set_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
+  spec->set_type(TaskType::ACTOR_CREATION_TASK);
+  spec->set_num_returns(0);
+  auto *creation_spec = spec->mutable_actor_creation_task_spec();
+  creation_spec->set_actor_id(actor_id.Binary());
+  creation_spec->set_max_concurrency(max_concurrency);
+  creation_spec->set_is_asyncio(is_asyncio);
+  creation_spec->set_allow_out_of_order_execution(is_asyncio);
+  return request;
+}
+
 rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id,
                                                  int64_t counter,
                                                  WorkerID caller_worker_id,
@@ -261,6 +277,33 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
 
   StopIOService();
 }
+
+class TaskReceiverStopTest : public TaskReceiverTest,
+                             public ::testing::WithParamInterface<bool> {};
+
+TEST_P(TaskReceiverStopTest, StopJoinsActorPoolWithoutActorTasks) {
+  // The actor queues stop the pools, but they are only created on the first actor
+  // task. Without a task, destroying the receiver would destroy joinable threads.
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  auto request =
+      CreateActorCreationRequestHelper(actor_id, /*max_concurrency=*/4, GetParam());
+  rpc::PushTaskReply reply;
+  bool created = false;
+  receiver_->QueueTaskForExecution(
+      request,
+      &reply,
+      [&created](Status status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+        created = true;
+      });
+  receiver_->ExecuteQueuedNormalTasks();
+  ASSERT_TRUE(created);
+
+  receiver_->Stop();
+  StopIOService();
+}
+
+INSTANTIATE_TEST_SUITE_P(ThreadedAndAsyncio, TaskReceiverStopTest, ::testing::Bool());
 
 }  // namespace core
 }  // namespace ray
