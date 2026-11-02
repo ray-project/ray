@@ -103,8 +103,16 @@ class ObjectRefGenerator:
         raise NotImplementedError("`gen.throw` is not supported.")
 
     def close(self):
-        """Not supported. Always raises ``NotImplementedError``."""
-        raise NotImplementedError("`gen.close` is not supported.")
+        """Not supported. Always raises ``NotImplementedError``.
+
+        To stop the generator task, cancel it with :func:`ray.cancel`. After
+        cancellation, ``next(gen)`` can return an object ref that contains a
+        :class:`~ray.exceptions.TaskCancelledError`.
+        """
+        raise NotImplementedError(
+            "`gen.close` is not supported. To stop the generator task, "
+            "call `ray.cancel(gen)`."
+        )
 
     def __aiter__(self) -> "ObjectRefGenerator":
         return self
@@ -129,8 +137,16 @@ class ObjectRefGenerator:
         raise NotImplementedError("`gen.athrow` is not supported.")
 
     async def aclose(self):
-        """Not supported. Always raises ``NotImplementedError``."""
-        raise NotImplementedError("`gen.aclose` is not supported.")
+        """Not supported. Always raises ``NotImplementedError``.
+
+        To stop the generator task, cancel it with :func:`ray.cancel`. After
+        cancellation, ``next(gen)`` can return an object ref that contains a
+        :class:`~ray.exceptions.TaskCancelledError`.
+        """
+        raise NotImplementedError(
+            "`gen.aclose` is not supported. To stop the generator task, "
+            "call `ray.cancel(gen)`."
+        )
 
     def completed(self) -> "ray.ObjectRef":
         """Returns an object ref that is ready when
