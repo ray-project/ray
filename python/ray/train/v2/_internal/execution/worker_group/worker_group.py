@@ -1139,27 +1139,23 @@ class WorkerGroup(ExecutionGroup):
         # Group workers by local world i.e. (node) or (node, replica group).
         local_world_to_workers = collections.defaultdict(list)
         local_ranks: List[int] = []
-        if replica_group_size is not None:
-            group_to_node_ranks: Dict[int, Dict[str, int]] = collections.defaultdict(
-                dict
-            )
-            for idx, worker in enumerate(workers):
+        group_to_node_ranks: Dict[int, Dict[str, int]] = collections.defaultdict(dict)
+        node_ranks: Dict[str, int] = {}
+
+        for idx, worker in enumerate(workers):
+            node_ip = worker.metadata.node_ip
+            if replica_group_size is not None:
                 group_idx = idx // replica_group_size
-                node_ip = worker.metadata.node_ip
                 key = (node_ip, group_idx)
-                peers = local_world_to_workers[key]
-                local_ranks.append(len(peers))
-                peers.append(worker)
-                node_ranks = group_to_node_ranks[group_idx]
-                node_ranks.setdefault(node_ip, len(node_ranks))
-        else:
-            node_ranks: Dict[str, int] = {}
-            for worker in workers:
-                node_ip = worker.metadata.node_ip
-                peers = local_world_to_workers[node_ip]
-                local_ranks.append(len(peers))
-                peers.append(worker)
-                node_ranks.setdefault(node_ip, len(node_ranks))
+                curr_node_ranks = group_to_node_ranks[group_idx]
+            else:
+                key = node_ip
+                curr_node_ranks = node_ranks
+
+            peers = local_world_to_workers[key]
+            local_ranks.append(len(peers))
+            peers.append(worker)
+            curr_node_ranks.setdefault(node_ip, len(curr_node_ranks))
 
         effective_world_size = world_size if world_size is not None else len(workers)
         for world_rank, (worker, local_rank) in enumerate(zip(workers, local_ranks)):
