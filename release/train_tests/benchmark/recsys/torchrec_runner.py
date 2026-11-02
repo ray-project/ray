@@ -58,7 +58,11 @@ class TorchRecRunner(TrainLoopRunner):
                 name="start_sparse_data_dist",
                 runnable=sdd.start_sparse_data_dist,
                 stream=sdd.data_dist_stream,
-                fill_callback=sdd.wait_sparse_data_dist,
+                # Waits and advances the per-batch context while the pipeline
+                # fills; plain wait_sparse_data_dist leaves the model forward on
+                # the wrong context (KeyError in PipelinedForward).
+                fill_callback=sdd.wait_sdd_fill_callback,
+                data_exhausted_callback=sdd.data_exhausted_callback,
             ),
             # PipelineStage(
             #     name="prefetch",
@@ -71,10 +75,16 @@ class TorchRecRunner(TrainLoopRunner):
         pipeline = StagedTrainPipeline(pipeline_stages=pipeline)
 
         def dataloader_with_torchrec_pipeline():
-            while batch := pipeline.progress(dataloader_iter):
-                yield batch
+            try:
+                while batch := pipeline.progress(dataloader_iter):
+                    yield batch
 
-            pipeline.flush_end()
+                pipeline.flush_end()
+            finally:
+                # Restore the original module forwards and drop the forward
+                # hook, so the next loader's SparseDataDistUtil (e.g.
+                # validation after training) starts from an unpipelined model.
+                sdd.detach()
 
         return super()._wrap_dataloader(
             dataloader_with_torchrec_pipeline(), train=train
