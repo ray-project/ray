@@ -140,6 +140,26 @@ def test_power_transformer_serialization():
     assert "B" in result.columns
 
 
+@pytest.mark.parametrize("method", ["yeo-johnson", "box-cox"])
+@pytest.mark.parametrize("power", [0.0, 0.5, 2.0])
+def test_power_transformer_empty_batch_and_index(method, power):
+    """Tests PowerTransformer on empty batches and non-default DataFrame indices."""
+    transformer = PowerTransformer(columns=["A", "B"], power=power, method=method)
+
+    empty_df = pd.DataFrame(
+        {"A": pd.Series([], dtype="float64"), "B": pd.Series([], dtype="float64")}
+    )
+    empty_out = transformer.transform_batch(empty_df)
+    assert len(empty_out) == 0
+    assert list(empty_out.columns) == ["A", "B"]
+
+    df = pd.DataFrame({"A": [1.0, 2.0], "B": [3.0, 4.0]}, index=[10, 20])
+    out = transformer.transform_batch(df)
+    assert list(out.index) == [10, 20]
+    assert not out["A"].isna().any()
+    assert not out["B"].isna().any()
+
+
 if __name__ == "__main__":
     import sys
 
