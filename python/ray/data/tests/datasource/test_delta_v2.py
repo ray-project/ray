@@ -231,6 +231,51 @@ def test_unknown_columns_are_rejected(partitioned_table):
 
 
 @pytest.fixture
+def clustered_table(tmp_path) -> str:
+    """Four commits whose files hold disjoint ranges, like a Z-ordered table:
+    the log statistics can rule out whole files."""
+    path = str(tmp_path / "clustered")
+    for i, start in enumerate((0, 100, 200, 300)):
+        values = list(range(start, start + 10))
+        deltalake.write_deltalake(
+            path,
+            pa.table(
+                {
+                    "val": values,
+                    "name": [f"{chr(ord('a') + i)}{v:03d}" for v in values],
+                    "day": [datetime.date(2024, 1 + i, 1 + v % 10) for v in values],
+                    "score": [v / 3 if v % 7 else None for v in values],
+                }
+            ),
+            mode="append",
+        )
+    return path
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        col("val") > 250,
+        col("val") < 5,
+        col("val") > 1000,
+        col("val") >= 0,
+        col("val") != 3,
+        col("val").is_in([5, 305]),
+        (col("val") > 105) & (col("val") < 205),
+        (col("val") < 5) | (col("val") > 305),
+        col("name") < "b",
+        col("name") > "c050",
+        col("name") == "d305",
+        col("day") >= datetime.date(2024, 3, 1),
+        col("score") > 90.0,
+    ],
+    ids=str,
+)
+def test_log_statistics_pruning_matches_v1(clustered_table, predicate):
+    _assert_matches_v1(clustered_table, lambda ds: ds.filter(expr=predicate))
+
+
+@pytest.fixture
 def row_group_table(tmp_path) -> str:
     """One data file with 5 row groups of 20 rows."""
     path = str(tmp_path / "row_groups")
