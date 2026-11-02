@@ -323,7 +323,7 @@ class JobSubmissionClient(SubmissionClient):
             True
 
         Args:
-            job_id: submission ID for the job to be deleted.
+            job_id: The job ID or submission ID for the job to be deleted.
 
         Returns:
             True if the job was deleted, otherwise False.
