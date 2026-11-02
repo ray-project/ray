@@ -1,6 +1,6 @@
 from dataclasses import InitVar, dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -11,7 +11,6 @@ from ray.data._internal.logical.operators.n_ary_operator import NAry
 
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
-    from ray.data.expressions import Expr
 
 __all__ = [
     "Join",
@@ -162,56 +161,12 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.CONDITIONAL
 
-    def which_side_to_push_predicate(
-        self, predicate_expr: "Expr"
-    ) -> Optional[JoinSide]:
-        """Determine which side of the join to push a predicate to.
-
-        Returns the side to push to, or None if pushdown is not safe.
-
-        Predicate pushdown is safe for:
-        - INNER: Can push to either side
-        - LEFT_OUTER/SEMI/ANTI: Can push to left side (preserved/output side)
-        - RIGHT_OUTER/SEMI/ANTI: Can push to right side (preserved/output side)
-        - FULL_OUTER: Cannot push (both sides can generate nulls)
-
-        The predicate must reference columns from exactly one side of the join,
-        OR reference only join key columns that all exist on one side.
+    def allows_predicate_pushdown_to(self, side: JoinSide) -> bool:
+        """Whether filtering side's input ahead of the join cannot change the
+        result: INNER either side; the preserved side of an outer / semi / anti
+        join; neither side of a FULL_OUTER, since both can generate nulls.
         """
-        # Get predicate columns and schemas
-        predicate_columns = self._get_referenced_columns(predicate_expr)
-        left_schema = self.input_dependencies[0].infer_schema()
-        right_schema = self.input_dependencies[1].infer_schema()
-
-        if not left_schema or not right_schema:
-            return None
-
-        # Get column sets for each side
-        left_columns = set(left_schema.names)
-        right_columns = set(right_schema.names)
-        left_join_keys = set(self.left_key_columns)
-        right_join_keys = set(self.right_key_columns)
-
-        # Get pushdown rules for this join type
-        can_push_left, can_push_right = self._get_pushdown_rules()
-
-        # Check if predicate can be evaluated on left side
-        # Condition: ALL predicate columns must exist on left (either as regular columns or join keys)
-        can_evaluate_on_left = predicate_columns.issubset(
-            left_columns
-        ) or predicate_columns.issubset(left_join_keys)
-        if can_evaluate_on_left and can_push_left:
-            return JoinSide.LEFT
-
-        # Check if predicate can be evaluated on right side
-        can_evaluate_on_right = predicate_columns.issubset(
-            right_columns
-        ) or predicate_columns.issubset(right_join_keys)
-        if can_evaluate_on_right and can_push_right:
-            return JoinSide.RIGHT
-
-        # Cannot push down
-        return None
+        return self._get_pushdown_rules()[side.value]
 
     def _get_pushdown_rules(self) -> Tuple[bool, bool]:
         """Get pushdown rules for the current join type.
@@ -232,15 +187,51 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         }
         return pushdown_rules.get(self.join_type, (False, False))
 
-    def _get_referenced_columns(self, expr: "Expr") -> set[str]:
-        """Extract all column names referenced in an expression."""
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            _ColumnReferenceCollector,
-        )
+    def output_to_input_columns(
+        self,
+    ) -> Optional[Tuple[Dict[str, str], Dict[str, str]]]:
+        """The mapping table of output column names to input"""
+        left_schema = self.input_dependencies[0].infer_schema()
+        right_schema = self.input_dependencies[1].infer_schema()
+        if not left_schema or not right_schema:
+            return None
+        left_columns = list(left_schema.names)
+        right_columns = list(right_schema.names)
 
-        visitor = _ColumnReferenceCollector()
-        visitor.visit(expr)
-        return set(visitor.get_column_refs())
+        # Semi / anti joins emit one side unchanged.
+        if self.join_type in (JoinType.LEFT_SEMI, JoinType.LEFT_ANTI):
+            return {c: c for c in left_columns}, {}
+        if self.join_type in (JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI):
+            return {}, {c: c for c in right_columns}
+
+        left_keys = set(self.left_key_columns)
+        right_keys = set(self.right_key_columns)
+        shared_keys = {
+            l for l, r in zip(self.left_key_columns, self.right_key_columns) if l == r
+        }
+        collisions = set(left_columns) & (set(right_columns) - right_keys)
+        left_renamed = collisions - left_keys if self.left_columns_suffix else set()
+        right_renamed = collisions if self.right_columns_suffix else set()
+
+        def output_name(column: str, renamed: Set[str], suffix: Optional[str]) -> str:
+            return f"{column}{suffix}" if column in renamed else column
+
+        # Map the output to input based on suffix
+        left = {
+            output_name(c, left_renamed, self.left_columns_suffix): c
+            for c in left_columns
+        }
+        right = {
+            output_name(c, right_renamed, self.right_columns_suffix): c
+            for c in right_columns
+        }
+        # Same-name keys are the one name both sides may emit: they hold the
+        # same values, so a predicate on them can go to either side.
+        emitted_by_both = (left.keys() & right.keys()) - shared_keys
+        return (
+            {name: c for name, c in left.items() if name not in emitted_by_both},
+            {name: c for name, c in right.items() if name not in emitted_by_both},
+        )
 
     def infer_schema(self) -> Optional["Schema"]:
         """Infer the output schema by running the shared ``join_tables``
