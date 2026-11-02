@@ -38,10 +38,9 @@ GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
 
 # Prefix of the implicit extended resource name that Kubernetes Dynamic
 # Resource Allocation (DRA) derives from a DeviceClass, e.g.
-# "deviceclass.resource.kubernetes.io/gpu.nvidia.com". Device classes for
-# GPUs conventionally use a "gpu." prefixed name, so a container that
-# requests such a resource should be treated as requesting GPUs. This mirrors
-# the KubeRay operator's GPU resource key detection.
+# "deviceclass.resource.kubernetes.io/gpu.nvidia.com". GPU device classes
+# conventionally use a "gpu." prefixed name, matching the DRA branch of the
+# KubeRay operator's IsGPUResourceKey.
 DRA_IMPLICIT_EXTENDED_RESOURCE_PREFIX = "deviceclass.resource.kubernetes.io/"
 
 # Logical group name for the KubeRay head group.
