@@ -11,6 +11,7 @@ from ray.llm._internal.batch.stages.sglang_engine_stage import (
     SGLangEngineStage,
     SGLangEngineStageUDF,
     SGLangEngineWrapper,
+    SGLangOutputData,
     SGLangTaskType,
 )
 
@@ -274,6 +275,306 @@ async def test_sglang_invalid_task_type(model_llama_3_2_216M, mock_sgl_engine):
                 "__idx_in_batch": 0,
             }
         )
+
+
+@pytest.mark.asyncio
+async def test_sglang_wrapper_uses_explicit_multimodal_data(
+    model_llama_3_2_216M, mock_sgl_engine
+):
+    """Explicit multimodal data is propagated to the engine request and
+    popped from the row.
+    """
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+    )
+
+    sentinel_image = object()
+    sentinel_audio = object()
+    sentinel_video = object()
+
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "multimodal_data": {
+            "image": [sentinel_image],
+            "audio": [sentinel_audio],
+            "video": [sentinel_video],
+        },
+        "multimodal_uuids": {"image": ["uuid-1"]},
+        "mm_processor_kwargs": {"crop_size": 224},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+
+    assert request.image_data == [sentinel_image]
+    assert request.audio_data == [sentinel_audio]
+    assert request.video_data == [sentinel_video]
+
+    # Verify that media columns are popped from the row to avoid memory leaks
+    assert "multimodal_data" not in row
+    assert "multimodal_uuids" not in row
+    assert "mm_processor_kwargs" not in row
+
+
+@pytest.mark.asyncio
+async def test_sglang_wrapper_direct_media_columns(
+    model_llama_3_2_216M, mock_sgl_engine
+):
+    """Direct media columns (image_data, audio_data, video_data) are accepted
+    and popped, while generic columns (e.g. image, audio, video) are not stolen.
+    """
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+    )
+
+    sentinel_image = object()
+    sentinel_audio = object()
+    sentinel_video = object()
+    sentinel_user_image = object()
+
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image_data": [sentinel_image],
+        "audio_data": sentinel_audio,
+        "video_data": sentinel_video,
+        "image": sentinel_user_image,  # Generic column that should not be stolen
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+
+    assert request.image_data == [sentinel_image]
+    assert request.audio_data == sentinel_audio
+    assert request.video_data == sentinel_video
+
+    assert "image_data" not in row
+    assert "audio_data" not in row
+    assert "video_data" not in row
+    assert row["image"] is sentinel_user_image
+
+
+@pytest.mark.asyncio
+async def test_sglang_wrapper_unsupported_modality_fails_closed(
+    model_llama_3_2_216M, mock_sgl_engine
+):
+    """Unsupported modalities raise an explicit ValueError rather than
+    silently degrading.
+    """
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+    )
+
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "multimodal_data": {"pointcloud": [1, 2, 3]},
+        "sampling_params": {"temperature": 0.0},
+    }
+
+    with pytest.raises(ValueError, match="Unsupported multimodal modality"):
+        await wrapper._prepare_llm_request(row)
+
+
+@pytest.mark.asyncio
+async def test_sglang_wrapper_conflicting_media_columns(
+    model_llama_3_2_216M, mock_sgl_engine
+):
+    """Providing both multimodal_data and direct columns for the same modality
+    raises an error.
+    """
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+    )
+
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "multimodal_data": {"image": ["img1"]},
+        "image_data": ["img2"],
+        "sampling_params": {"temperature": 0.0},
+    }
+
+    with pytest.raises(ValueError, match="Conflicting image data provided"):
+        await wrapper._prepare_llm_request(row)
+
+
+@pytest.mark.asyncio
+async def test_sglang_wrapper_generate_forwards_media_kwargs(model_llama_3_2_216M):
+    """Verify that _generate_async forwards media kwargs to engine.async_generate."""
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+    )
+
+    mock_engine = AsyncMock()
+
+    async def mock_async_generate(**kwargs):
+        assert kwargs["image_data"] == ["test_image"]
+        assert kwargs["audio_data"] == ["test_audio"]
+        assert kwargs["video_data"] == ["test_video"]
+
+        async def _stream():
+            yield {
+                "meta_info": {
+                    "finish_reason": "stop",
+                    "prompt_tokens": 5,
+                    "completion_tokens": 10,
+                },
+                "output_ids": [1, 2, 3],
+                "text": "test output",
+            }
+
+        return _stream()
+
+    mock_engine.async_generate = mock_async_generate
+    wrapper.engine = mock_engine
+
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "Describe image, audio, and video",
+        "multimodal_data": {
+            "image": ["test_image"],
+            "audio": ["test_audio"],
+            "video": ["test_video"],
+        },
+        "sampling_params": {"temperature": 0.7},
+    }
+
+    request, output, time_taken = await wrapper.generate_async(row)
+    assert request is not None
+    assert output["prompt"] == "Describe image, audio, and video"
+    assert output["generated_text"] == "test output"
+    assert output["num_input_tokens"] == 5
+    assert output["num_generated_tokens"] == 10
+    # Output schema alignment fields
+    assert "embeddings" in output
+    assert "logprobs" in output
+    assert "prompt_logprobs" in output
+    assert time_taken > 0
+
+
+@pytest.mark.asyncio
+async def test_sglang_wrapper_engine_type_error_handling(model_llama_3_2_216M):
+    """Verify that TypeError from engine on media kwargs is re-raised with a
+    clear message.
+    """
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+    )
+
+    mock_engine = AsyncMock()
+    mock_engine.async_generate.side_effect = TypeError(
+        "async_generate() got an unexpected keyword argument 'audio_data'"
+    )
+    wrapper.engine = mock_engine
+
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "Listen to this",
+        "multimodal_data": {"audio": ["test_audio"]},
+        "sampling_params": {"temperature": 0.7},
+    }
+
+    with pytest.raises(
+        ValueError, match="The underlying SGLang engine rejected the multimodal input"
+    ):
+        await wrapper.generate_async(row)
+
+
+def test_sglang_output_data_schema():
+    """Verify SGLangOutputData schema contains all standard fields."""
+    output = {
+        "prompt": "hello",
+        "prompt_token_ids": [1, 2],
+        "meta_info": {
+            "prompt_tokens": 2,
+            "completion_tokens": 3,
+            "finish_reason": "stop",
+            "output_token_logprobs": [0.1, 0.2],
+        },
+        "output_ids": [3, 4, 5],
+        "text": "world",
+    }
+    data = SGLangOutputData.from_sglang_engine_output(output)
+    dump = data.model_dump()
+    expected_fields = {
+        "prompt",
+        "prompt_token_ids",
+        "num_input_tokens",
+        "generated_tokens",
+        "generated_text",
+        "num_generated_tokens",
+        "embeddings",
+        "metrics",
+        "logprobs",
+        "prompt_logprobs",
+    }
+    assert expected_fields.issubset(set(dump.keys()))
+    assert dump["logprobs"] == [0.1, 0.2]
+    assert dump["embeddings"] is None
+
+
+@pytest.mark.asyncio
+async def test_sglang_wrapper_tokenized_prompt_only(
+    model_llama_3_2_216M, mock_sgl_engine
+):
+    """Token-only requests without 'prompt' are accepted when skip_tokenizer_init=True."""
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+        skip_tokenizer_init=True,
+    )
+
+    row = {
+        "__idx_in_batch": 0,
+        "tokenized_prompt": [101, 2054, 2003, 102],
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+
+    assert request.prompt is None
+    assert request.prompt_token_ids == [101, 2054, 2003, 102]
+    assert "tokenized_prompt" not in row
+
+
+def test_sglang_engine_stage_input_keys(gpu_type, model_llama_3_2_216M):
+    """Verify get_required_input_keys does not require 'prompt'."""
+    stage = SGLangEngineStage(
+        fn_constructor_kwargs=dict(
+            model=model_llama_3_2_216M,
+            task_type=SGLangTaskType.GENERATE,
+        ),
+        map_batches_kwargs=dict(
+            compute=ActorPoolStrategy(size=1),
+            accelerator_type=gpu_type,
+        ),
+    )
+    required_keys = stage.get_required_input_keys()
+    assert "prompt" not in required_keys
+    assert "sampling_params" in required_keys
+
+    optional_keys = stage.get_optional_input_keys()
+    assert "prompt" in optional_keys
+    assert "tokenized_prompt" in optional_keys
+    assert "multimodal_data" in optional_keys
+    assert "image_data" in optional_keys
+    assert "audio_data" in optional_keys
+    assert "video_data" in optional_keys
 
 
 if __name__ == "__main__":

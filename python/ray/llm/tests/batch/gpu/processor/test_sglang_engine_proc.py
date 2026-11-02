@@ -12,6 +12,7 @@ from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.sglang_engine_proc import (
     build_sglang_engine_processor,
 )
+from ray.llm._internal.batch.stages.configs import PrepareMultimodalStageConfig
 
 
 def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
@@ -72,6 +73,36 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         "accelerator_type": gpu_type,
         "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
     }
+
+
+def test_prepare_multimodal_stage_sglang_engine_processor(
+    gpu_type, model_llama_3_2_216M
+):
+    config = SGLangEngineProcessorConfig(
+        model_source=model_llama_3_2_216M,
+        engine_kwargs=dict(
+            context_length=8192,
+        ),
+        accelerator_type=gpu_type,
+        concurrency=1,
+        batch_size=16,
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+            model_config_kwargs=dict(
+                allowed_local_media_path="/tmp",
+            ),
+        ),
+    )
+    processor = ProcessorBuilder.build(config)
+
+    assert "PrepareMultimodalStage" in processor.list_stage_names()
+    stage = processor.get_stage_by_name("PrepareMultimodalStage")
+    fn_kwargs = stage.fn_constructor_kwargs
+
+    assert "model_config_kwargs" in fn_kwargs
+    model_config_kwargs = fn_kwargs["model_config_kwargs"]
+    assert model_config_kwargs["allowed_local_media_path"] == "/tmp"
+    assert model_config_kwargs["model"] == model_llama_3_2_216M
 
 
 class TestSGLangEngineProcessorConfig:

@@ -257,6 +257,11 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
+        prepare_multimodal_stage: Multimodal preprocessing stage config
+            (bool | dict | PrepareMultimodalStageConfig). Defaults to False.
+            Use nested config for per-stage control over batch_size, concurrency,
+            runtime_env, num_cpus, memory, ``model_config_kwargs``,
+            ``chat_template_content_format``, and ``apply_sys_msg_formatting``.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.

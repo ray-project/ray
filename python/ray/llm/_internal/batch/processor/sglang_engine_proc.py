@@ -26,6 +26,7 @@ from ray.llm._internal.batch.processor.utils import (
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
+    PrepareMultimodalStageConfig,
     TokenizerStageConfig,
     resolve_stage_config,
 )
@@ -38,7 +39,12 @@ DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
 
 class SGLangEngineProcessorConfig(OfflineProcessorConfig):
-    """The configuration for the SGLang engine processor."""
+    """The configuration for the SGLang engine processor.
+
+    Supports multimodal inputs (images, audio, video) when
+    ``prepare_multimodal_stage`` is enabled or when direct media
+    columns or ``multimodal_data`` are provided in the dataset.
+    """
 
     # SGLang stage configurations.
     engine_kwargs: Dict[str, Any] = Field(
@@ -108,6 +114,7 @@ def build_sglang_engine_processor(
     from ray.llm._internal.batch.stages import (
         ChatTemplateStage,
         DetokenizeStage,
+        PrepareMultimodalStage,
         SGLangEngineStage,
         TokenizeStage,
     )
@@ -128,6 +135,39 @@ def build_sglang_engine_processor(
         "runtime_env": config.runtime_env,
         "model_source": config.model_source,
     }
+
+    # Resolve and build PrepareMultimodalStage if enabled.
+    prepare_multimodal_stage_cfg = resolve_stage_config(
+        config.prepare_multimodal_stage,
+        PrepareMultimodalStageConfig,
+        processor_defaults,
+    )
+
+    if prepare_multimodal_stage_cfg.enabled:
+        base_model_config_kwargs = (
+            prepare_multimodal_stage_cfg.model_config_kwargs or {}
+        )
+        # Respect the model source from the processor
+        model_config_kwargs = {
+            **base_model_config_kwargs,
+            "model": processor_defaults.get("model_source"),
+        }
+        stages.append(
+            PrepareMultimodalStage(
+                fn_constructor_kwargs=dict(
+                    model_config_kwargs=model_config_kwargs,
+                    chat_template_content_format=(
+                        prepare_multimodal_stage_cfg.chat_template_content_format
+                    ),
+                    apply_sys_msg_formatting=(
+                        prepare_multimodal_stage_cfg.apply_sys_msg_formatting
+                    ),
+                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(
+                    prepare_multimodal_stage_cfg
+                ),
+            )
+        )
 
     # Resolve and build ChatTemplateStage if enabled
     chat_template_stage_cfg = resolve_stage_config(
