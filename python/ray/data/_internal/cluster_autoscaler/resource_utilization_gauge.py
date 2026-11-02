@@ -1,12 +1,33 @@
 import abc
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
 
 from ray._common.utils import env_bool
 from ray.data._internal.average_calculator import TimeWindowAverageCalculator
-from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.util.metrics import Gauge
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import ExecutionResources
+
+
+@runtime_checkable
+class ResourceReporter(Protocol):
+    """Minimal resource-reporting surface the utilization gauge depends on.
+
+    Both the standard ``ResourceManager`` and the actor-only backend's
+    ``ActorOnlyResourceReporter`` satisfy this so the gauge works
+    for either execution path without knowing which one produced the numbers.
+    """
+
+    def get_global_usage(self) -> "ExecutionResources":
+        ...
+
+    def get_global_limits(self) -> "ExecutionResources":
+        ...
+
+    def is_blocked_on_consumer(self) -> bool:
+        ...
 
 
 @dataclass(frozen=True)
@@ -54,7 +75,7 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
 
     def __init__(
         self,
-        resource_manager: ResourceManager,
+        resource_reporter: ResourceReporter,
         *,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         execution_id: Optional[str] = None,
@@ -62,7 +83,7 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
             SKIP_SCALE_UP_WHEN_BLOCKED_ON_CONSUMER
         ),
     ):
-        self._resource_manager = resource_manager
+        self._resource_reporter = resource_reporter
         self._execution_id = execution_id
         self._skip_scale_up_when_blocked_on_consumer = (
             skip_scale_up_when_blocked_on_consumer
@@ -120,8 +141,8 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
             else:
                 return numerator / denominator
 
-        global_usage = self._resource_manager.get_global_usage()
-        global_limits = self._resource_manager.get_global_limits()
+        global_usage = self._resource_reporter.get_global_usage()
+        global_limits = self._resource_reporter.get_global_limits()
 
         cpu_util = save_div(global_usage.cpu, global_limits.cpu)
         gpu_util = save_div(global_usage.gpu, global_limits.gpu)
@@ -137,7 +158,7 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
 
         if self._skip_scale_up_when_blocked_on_consumer:
             self._blocked_on_consumer_calculator.report(
-                float(self._resource_manager.is_blocked_on_consumer())
+                float(self._resource_reporter.is_blocked_on_consumer())
             )
 
         if self._execution_id is not None:
