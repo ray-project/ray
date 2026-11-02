@@ -158,7 +158,6 @@ depsets:
     output: release/ray_release/byod/torch_${CUDA_CODE}_train_recsys_py${PYTHON_VERSION}.lock
     append_flags:
       - --no-deps
-      - --index https://download.pytorch.org/whl/${CUDA_CODE}
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:

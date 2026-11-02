@@ -3,9 +3,11 @@
 # expanded from the image lock. It's the closure of torchrec + fbgemm-gpu
 # resolved against the image's other pins, installed --no-deps on top.
 # fbgemm-gpu is built against one torch release (1.5.x <-> torch 2.10); keep it
-# in step with the image's torch.
-fbgemm-gpu==1.5.0+cu128
-torchrec==1.5.0+cu128
+# in step with the image's torch. Both come from PyPI, whose fbgemm-gpu is a
+# CUDA 12 build: the download.pytorch.org +cu128 wheel failed hash checks in
+# CI (a different file than the index lists).
+fbgemm-gpu==1.5.0
+torchrec==1.5.0
 torchmetrics==1.0.3
 iopath==0.1.10
 lightning-utilities==0.15.3
