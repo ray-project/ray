@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Callable, FrozenSet, List, Optional
+from typing import Callable, Dict, FrozenSet, List, Optional
 
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
@@ -31,6 +31,7 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         self,
         get_time: Callable[[], float] = time.time,
         initial_cluster_resources: Optional[List[ResourceDict]] = None,
+        initial_cluster_resources_by_node: Optional[Dict[str, ResourceDict]] = None,
     ):
         """Initialize the coordinator.
 
@@ -42,12 +43,18 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
                 resources (filtered to the requested remaining types) to the
                 requester. Otherwise, the coordinator reserves the requested
                 resources.
+            initial_cluster_resources_by_node: Per-node allocation returned by
+                ``get_reserved_resources`` while an unexpired
+                allocation exists.
         """
         if initial_cluster_resources is None:
             initial_cluster_resources = []
+        if initial_cluster_resources_by_node is None:
+            initial_cluster_resources_by_node = {}
 
         self._get_time = get_time
         self._initial_cluster_resources = initial_cluster_resources
+        self._initial_cluster_resources_by_node = initial_cluster_resources_by_node
         self._allocation: Optional[FakeAutoscalingCoordinator.Allocation] = None
 
     def request_resources(
@@ -92,4 +99,10 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
             self._allocation = None
             return {}
 
+        # An explicit per-node seed wins (its docstring promises exactly this);
+        # otherwise synthesize one node per reserved bundle.
+        if self._initial_cluster_resources_by_node:
+            return {
+                n: r.copy() for n, r in self._initial_cluster_resources_by_node.items()
+            }
         return {f"node_{i}": r.copy() for i, r in enumerate(self._allocation.resources)}
