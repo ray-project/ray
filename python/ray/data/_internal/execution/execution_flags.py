@@ -64,18 +64,12 @@ PER_ACTOR_INPUT_BACKPRESSURE_LIMIT: int = env_integer(
     2,  # roughly 2 * 128MiB = 256 MiB
 )
 
-# If True, refresh each running actor's GCS-reported state (ALIVE/RESTARTING/
-# DEAD) and location on every pool refresh. This is an expensive operation and
-# should only be enabled where actors may move or die out from under the pool
-# (spot preemption, node/actor OOMs).
-REFRESH_ACTOR_STATE: bool = env_bool("RAY_DATA_REFRESH_ACTOR_STATE", True)
-
 # Seconds a PENDING actor may stay not-ready before the pool releases it,
 # kills the handle, and frees its claim for re-placement. Covers pendings that
-# can never resolve: the readiness probe is a task retried forever, so an
-# actor stuck dying and restarting on a bad node is never ready AND never
-# surfaces a RayError -- without this timeout the pending gate holds the
-# operator's sizing indefinitely. Also covers stuck runtime-env installs.
+# can never resolve: an actor pinned (hard node affinity) to a node that went
+# away is never placed AND never surfaces a RayError -- without this timeout
+# the pending gate holds the operator's sizing indefinitely. Also covers stuck
+# runtime-env installs.
 # Generous by design: ordinary starts (model download included) finish well
 # inside it.
 PENDING_ACTOR_EXPIRY_S: int = env_integer("RAY_DATA_PENDING_ACTOR_EXPIRY_S", 300)

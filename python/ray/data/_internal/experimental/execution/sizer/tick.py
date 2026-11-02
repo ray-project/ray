@@ -291,11 +291,11 @@ class SizingTicker:
         """How many more actors each op whose PG capacity is unknown may add
         under its pool's max size.
 
-        Counts ``current_size``, not ``serving_size``: a draining actor keeps
+        Counts ``total_size``, not ``serving_size``: a draining actor keeps
         its PG until it is actually dead.
         """
         return {
-            op: max(0, cap - op.actor_pool.current_size())
+            op: max(0, cap - op.actor_pool.total_size())
             for op, cap in self._unknown_pg_cap_by_op.items()
         }
 
