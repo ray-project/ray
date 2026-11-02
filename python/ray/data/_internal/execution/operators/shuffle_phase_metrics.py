@@ -138,25 +138,29 @@ class ShufflePhaseMetrics:
 
     def estimate_totals(
         self, num_tasks_submitted: int, upstream_op_num_outputs: int
-    ) -> Tuple[int, int]:
-        """Estimate this phase's total output bundles and rows."""
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Estimate this phase's total output bundles and rows, or ``None`` for
+        both until a finished task gives a per-task average to scale."""
         if self.total_num_tasks is not None:
             # ``estimate_total_num_of_blocks`` returns 0 when tasks have empty
             # input bundles, as finalize tasks do, so scale by task count instead.
             outputs_per_task = self.metrics.average_num_outputs_per_task
             rows_per_task = self.metrics.average_rows_outputs_per_task
-            if not outputs_per_task or rows_per_task is None:
-                return 0, 0
+            if outputs_per_task is None or rows_per_task is None:
+                return None, None
             return (
                 round(self.total_num_tasks * outputs_per_task),
                 round(self.total_num_tasks * rows_per_task),
             )
-        _, num_bundles, num_rows = estimate_total_num_of_blocks(
+        estimated_num_tasks, num_bundles, num_rows = estimate_total_num_of_blocks(
             num_tasks_submitted,
             upstream_op_num_outputs,
             self.metrics,
             total_num_tasks=None,
         )
+        # The helper reports zero tasks when it lacks the averages it needs.
+        if estimated_num_tasks == 0:
+            return None, None
         return num_bundles, num_rows
 
     def as_dict(self) -> Dict[str, Any]:
@@ -236,9 +240,14 @@ class ShuffleOperatorMetrics:
         return {pm.name: pm.as_dict() for pm in self.phase_metrics.values()}
 
     def runtime_metrics_by_phase(self) -> Dict[str, OpRuntimeMetrics]:
-        if self._aliased:
-            return {}
-        return {pm.name: pm.metrics for pm in self.phase_metrics.values()}
+        # The output phase forwards into the operator's own metrics, so the
+        # operator's series already is its view; exporting it again would
+        # count its values twice in any sum across series.
+        return {
+            pm.name: pm.metrics
+            for pm in self.phase_metrics.values()
+            if not pm.is_output_phase
+        }
 
     def progress_bar_names(self) -> List[str]:
         return [pm.spec.progress_bar_name for pm in self.phase_metrics.values()]
