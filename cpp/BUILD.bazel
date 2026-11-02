@@ -435,11 +435,10 @@ cc_test(
     ],
     data = [
         "metric_example.so",
-        ":auth_token_file",
     ],
-    # RAY_AUTH_MODE is left unset: the driver must enable token auth on its own
-    # because the `ray start --head` it spawns does when a token exists.
-    env = {"RAY_AUTH_TOKEN_PATH": "$(location :auth_token_file)"},
+    # No token is set, so the driver creates one under HOME, which the example
+    # points at TEST_TMPDIR, before it runs `ray start --head`.
+    env = {"RAY_AUTH_MODE": "token"},
     linkstatic = True,
     tags = ["team:core"],
     deps = [

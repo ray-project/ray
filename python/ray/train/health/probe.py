@@ -41,6 +41,11 @@ class Probe(abc.ABC):
 
     @classmethod
     def probe_name(cls) -> str:
+        """Return the name that identifies this probe's readings.
+
+        Returns:
+            The ``name`` class attribute, or the class name if ``name`` isn't set.
+        """
         return cls.name or cls.__name__
 
 

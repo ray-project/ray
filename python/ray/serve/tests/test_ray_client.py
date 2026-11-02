@@ -1,4 +1,3 @@
-import random
 import subprocess
 import sys
 import time
@@ -11,14 +10,14 @@ from ray import serve
 from ray._common.test_utils import run_string_as_driver
 from ray.serve._private.utils import inside_ray_client_context
 
-# https://tools.ietf.org/html/rfc6335#section-6
-MIN_DYNAMIC_PORT = 49152
-MAX_DYNAMIC_PORT = 65535
 
-
-@pytest.fixture
-def ray_client_instance(scope="module"):
-    port = random.randint(MIN_DYNAMIC_PORT, MAX_DYNAMIC_PORT)
+@pytest.fixture(scope="module")
+def ray_client_instance():
+    # A killed local run can leave its cluster up, and `ray start --head` would then
+    # fail against that stale GCS.
+    subprocess.check_output(["ray", "stop", "--force"])
+    # ray start's default; outside the ephemeral range, so nothing grabs it mid-start.
+    port = 10001
     subprocess.check_output(
         [
             "ray",
@@ -28,6 +27,9 @@ def ray_client_instance(scope="module"):
             "16",
             "--ray-client-server-port",
             f"{port}",
+            # Bazel points usage reports at 127.0.0.1:8000, so the first one, sent 60s
+            # after start, would hit whichever test app holds route "/".
+            "--disable-usage-stats",
         ]
     )
     try:
@@ -37,28 +39,30 @@ def ray_client_instance(scope="module"):
 
 
 @pytest.fixture
-def serve_with_client(ray_client_instance, ray_init_kwargs=None):
-    if ray_init_kwargs is None:
-        ray_init_kwargs = dict()
+def serve_with_client(request, ray_client_instance):
     ray.init(
         f"ray://{ray_client_instance}",
         namespace="default_test_namespace",
-        **ray_init_kwargs,
+        **getattr(request, "param", {}),
     )
     assert inside_ray_client_context()
 
     yield
 
-    serve.shutdown()
-    ray.util.disconnect()
+    # After a test disconnects itself, serve.shutdown() would start a new local Ray
+    # instance; reconnect as a client so Serve stops before the next test.
+    try:
+        if not ray.is_initialized():
+            ray.init(f"ray://{ray_client_instance}", namespace="default_test_namespace")
+        serve.shutdown()
+    finally:
+        ray.util.disconnect()
 
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "win32", reason="Buggy on MacOS"
 )
-def test_ray_client(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="default_test_namespace")
-
+def test_ray_client(ray_client_instance, serve_with_client):
     start = """
 import ray
 ray.util.connect("{}", namespace="default_test_namespace")
@@ -129,9 +133,6 @@ serve.run(A.bind(), route_prefix="/A")
     run_string_as_driver(fastapi)
 
     assert httpx.get("http://localhost:8000/A", follow_redirects=True).json() == "hello"
-
-    serve.shutdown()
-    ray.util.disconnect()
 
 
 def test_quickstart_class(serve_with_client):

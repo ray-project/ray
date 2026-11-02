@@ -1,5 +1,4 @@
-"""
-Multi-agent RLlib Footsies Simplified Example (PPO)
+"""Multi-agent RLlib Footsies Simplified Example (PPO)
 
 About:
     - This example as a simplified version of "rllib/examples/ppo/multi_agent_footsies_ppo.py",
