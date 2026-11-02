@@ -1657,7 +1657,7 @@ Note, for the nodes of type `head_node_type` the default number of max workers i
 
 ### `available_node_types.<node_type_name>.worker_setup_commands`
 
-A list of commands to run to set up worker nodes of this type. These commands will replace the general {ref}`worker setup commands <cluster-configuration-worker-setup-commands>` for the node.
+A list of commands to run to set up worker nodes of this type. When you set this field, these commands replace both the general {ref}`setup commands <cluster-configuration-setup-commands>` and the general {ref}`worker setup commands <cluster-configuration-worker-setup-commands>` for nodes of this type. Ray doesn't merge them with either list, so repeat any general setup commands these nodes still need.
 
 * **Required:** No
 * **Importance:** Low

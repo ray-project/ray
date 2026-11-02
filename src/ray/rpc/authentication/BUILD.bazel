@@ -59,6 +59,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/util:env",
         "//src/ray/util:logging",
+        "@boringssl//:crypto",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
     ],

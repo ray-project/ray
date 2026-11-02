@@ -650,6 +650,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_nixl_agent_lock.py",
         "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
@@ -719,6 +720,22 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_autoscaler_fake_docker_auth_token",
+    size = "large",
+    srcs = ["test_autoscaler_fake_docker_auth_token.py"],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "ha_integration",
         "team:core",
     ],
     deps = [
@@ -800,6 +817,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler.py",
+        "test_autoscaler_auth_token.py",
         "test_symmetric_run.py",
     ],
     tags = [
