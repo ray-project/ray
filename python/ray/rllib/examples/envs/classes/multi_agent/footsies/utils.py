@@ -306,10 +306,11 @@ class MixManagerCallback(RLlibCallback):
                     algorithm.env_runner_group,
                     algorithm.eval_env_runner_group,
                 ):
-                    env_runner_group.foreach_env_runner(
-                        lambda er, w=new_weights: er.module.set_state(w),
-                        local_env_runner=True,
-                    )
+                    if env_runner_group is not None:
+                        env_runner_group.foreach_env_runner(
+                            lambda er, w=new_weights: er.module.set_state(w),
+                            local_env_runner=True,
+                        )
 
                 # STEP 2: CRITICAL - Update aggregator actors with the new module
                 # Aggregators run the learner connector pipeline which needs all modules.
