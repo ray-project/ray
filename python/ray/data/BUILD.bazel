@@ -191,6 +191,63 @@ py_test(
 )
 
 py_test(
+    name = "test_hive",
+    size = "small",
+    srcs = ["tests/datasource/test_hive.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_no_replay",
+    size = "medium",
+    srcs = ["tests/datasource/test_hive_no_replay.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_lifecycle",
+    size = "medium",
+    srcs = ["tests/datasource/test_hive_lifecycle.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_integration",
+    size = "medium",
+    srcs = ["tests/datasource/test_hive_integration.py"],
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_snowflake",
     size = "small",
     srcs = ["tests/datasource/test_snowflake.py"],
@@ -1102,7 +1159,7 @@ py_test(
 
 py_test(
     name = "test_orc",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_orc.py"],
     tags = [
         "exclusive",
@@ -1158,7 +1215,7 @@ py_test(
 
 py_test(
     name = "test_read_parquet_v2",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_read_parquet_v2.py"],
     tags = [
         "exclusive",
@@ -1642,6 +1699,20 @@ py_test(
 )
 
 py_test(
+    name = "test_lineage_reconstruction",
+    size = "medium",
+    srcs = ["tests/test_lineage_reconstruction.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_block_ref_counter",
     size = "small",
     srcs = ["tests/test_block_ref_counter.py"],
@@ -1781,9 +1852,12 @@ py_test(
     ],
 )
 
+# Several distributed sorts plus hundreds of serial ray.get calls. Passing
+# runs land at 36-59s, so the small-test default of 60s times out under load.
 py_test(
     name = "test_random_access",
     size = "small",
+    timeout = "moderate",
     srcs = ["tests/test_random_access.py"],
     tags = [
         "exclusive",
@@ -1874,6 +1948,20 @@ py_test(
     tags = [
         "data_non_parallel",
         "data_non_parallel_postmerge_only",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_push_split_coordinator",
+    size = "large",
+    srcs = ["tests/test_push_split_coordinator.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],
@@ -2404,7 +2492,7 @@ py_test(
 
 py_test(
     name = "test_download_expression",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_download_expression.py"],
     tags = [
         "exclusive",
@@ -2556,6 +2644,23 @@ py_test(
     ],
 )
 
+# The Azure tests start Azurite as a container via `testcontainers`, the same
+# way `test_kafka` starts its broker, and skip if no usable Docker and no local
+# `azurite` binary is found.
+py_test(
+    name = "test_catalog_azure",
+    size = "medium",
+    srcs = ["tests/datasource/test_catalog_azure.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test(
     name = "test_aggregations",
     size = "medium",
@@ -2602,6 +2707,20 @@ py_test(
     name = "test_checkpoint",
     size = "medium",
     srcs = ["tests/test_checkpoint.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_data_iterator_checkpointer",
+    size = "medium",
+    srcs = ["tests/test_data_iterator_checkpointer.py"],
     tags = [
         "exclusive",
         "team:data",

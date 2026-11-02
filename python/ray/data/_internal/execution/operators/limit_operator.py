@@ -8,9 +8,6 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    OneToOneOperator,
-)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockStats
@@ -18,7 +15,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-class LimitOperator(OneToOneOperator):
+class LimitOperator(PhysicalOperator):
     """Physical operator for limit."""
 
     def __init__(
@@ -33,7 +30,7 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_blocks_stats: List[BlockStats] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op, data_context)
+        super().__init__(self._name, [input_op], data_context)
         if self._limit <= 0:
             self.mark_execution_finished()
 

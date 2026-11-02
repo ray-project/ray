@@ -15,10 +15,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ray import serve
-from ray.llm._internal.common.patches.vllm.tokenize_once import (
-    install as _install_tokenize_once,
-    reuse_prompt_token_ids as _reuse_prompt_token_ids,
-)
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -172,14 +168,79 @@ class PDOrchestratorMixin:
                 ids = getattr(choices[0], "prompt_token_ids", None)
         return ids
 
+    @staticmethod
+    def _can_reuse_prompt_token_ids(request: RequestType) -> bool:
+        """Allow reuse for single-prompt completions and text-only chats, no echo."""
+        if isinstance(request, CompletionRequest):
+            # Prefill returns ids for the first prompt only, so batched or
+            # embeds prompts would be collapsed. Echo needs the prompt text.
+            prompt = request.prompt
+            return (
+                not request.echo
+                and request.prompt_embeds is None
+                and (
+                    isinstance(prompt, str)
+                    or (
+                        isinstance(prompt, list)
+                        and len(prompt) > 0
+                        and (
+                            len(prompt) == 1
+                            or all(isinstance(token, int) for token in prompt)
+                        )
+                    )
+                )
+            )
+        if not isinstance(request, ChatCompletionRequest):
+            return False
+        if request.echo or request.return_prompt_text:
+            return False
+        for message in request.messages:
+            if not isinstance(message, dict):
+                return False
+            content = message.get("content")
+            if content is None or isinstance(content, str):
+                continue
+            if not isinstance(content, list):
+                return False
+            for part in content:
+                if isinstance(part, str):
+                    continue
+                if not (
+                    isinstance(part, dict)
+                    and part.get("type") == "text"
+                    # vLLM parses UUID-bearing parts by their media fields,
+                    # even when an explicit type is present.
+                    and part.get("uuid") is None
+                ):
+                    return False
+        return True
+
     def _request_prefill_token_ids(self, prefill_request) -> None:
         """Ask prefill to echo its prompt token ids so decode can reuse them.
 
         No-op when disabled or the request lacks the field. Used on sequential handoff
         only. Concurrent decode starts before prefill returns, so it has nothing to
         reuse."""
-        if self._pd_tokenize_once and hasattr(prefill_request, "return_token_ids"):
+        if (
+            self._pd_tokenize_once
+            and self._can_reuse_prompt_token_ids(prefill_request)
+            and hasattr(prefill_request, "return_token_ids")
+        ):
             prefill_request.return_token_ids = True
+
+    def _forward_prefill_token_ids(self, decode_request, prefill_chunk) -> None:
+        """Forward prefill ids through vLLM's native reuse interface."""
+        ids = self._decode_reuse_ids(prefill_chunk)
+        if not ids or not self._can_reuse_prompt_token_ids(decode_request):
+            return
+        if isinstance(decode_request, CompletionRequest):
+            decode_request.prompt = ids
+            return
+        kv_transfer_params = getattr(decode_request, "kv_transfer_params", None)
+        if not isinstance(kv_transfer_params, dict):
+            kv_transfer_params = {}
+            decode_request.kv_transfer_params = kv_transfer_params
+        kv_transfer_params["prompt_token_ids"] = ids
 
     # ---- Orchestrated Request Flow ----
 
@@ -287,12 +348,12 @@ class PDOrchestratorMixin:
                 decode_request = backend.prepare_decode_request(
                     request=request, peer=peer, prefill_response=prefill_chunk
                 )
-                with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
-                    local_gen = await getattr(super(), method)(
-                        decode_request, raw_request_info
-                    )
-                    async for chunk in local_gen:
-                        yield chunk
+                self._forward_prefill_token_ids(decode_request, prefill_chunk)
+                local_gen = await getattr(super(), method)(
+                    decode_request, raw_request_info
+                )
+                async for chunk in local_gen:
+                    yield chunk
                 return
 
         # Default path: no pre-dispatch peer binding; dispatch prefill via the
@@ -330,11 +391,10 @@ class PDOrchestratorMixin:
         decode_request = backend.prepare_decode_request(
             request=request, peer=None, prefill_response=prefill_chunk
         )
-        # Reuse prefill's ids for this decode so the render skips re-tokenizing.
-        with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
-            local_gen = await getattr(super(), method)(decode_request, raw_request_info)
-            async for chunk in local_gen:
-                yield chunk
+        self._forward_prefill_token_ids(decode_request, prefill_chunk)
+        local_gen = await getattr(super(), method)(decode_request, raw_request_info)
+        async for chunk in local_gen:
+            yield chunk
 
     async def _concurrent_decode(
         self,
@@ -665,11 +725,8 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
             engine_cls=engine_cls,
             model_downloader=model_downloader,
         )
-        # Active only if enabled and the renderer wrap installs. The `and`
-        # short-circuits so install() is not called when disabled.
-        self._pd_tokenize_once = (
-            bool(self._llm_config.experimental_configs.get("pd_tokenize_once"))
-            and _install_tokenize_once()
+        self._pd_tokenize_once = bool(
+            self._llm_config.experimental_configs.get("pd_tokenize_once")
         )
         await self._maybe_prewarm()
 

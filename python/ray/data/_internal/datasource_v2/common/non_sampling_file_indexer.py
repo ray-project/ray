@@ -77,8 +77,6 @@ class OrderedFileResult:
     """File result with its seed-path index, sorted on when preserve_order is True."""
 
     input_path_index: int
-    # The leaf file path.
-    file_path: str
     file_info: FileInfo
 
 
@@ -161,8 +159,19 @@ class NonSamplingFileIndexer(FileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
-        # This per-file listing path ignores predicate/limit/projected_columns;
-        # they're consumed by metadata-aware indexers (e.g. the footer indexer).
+        """Emit one manifest row per file, with ``__file_chunk_metadata`` unset.
+
+        Override this when the file format has some form of horizontal
+        partitioning, like row groups or stripes. Your implementation should:
+
+            1. Take the file paths from :meth:`list_file_infos`.
+            2. Read each file's metadata and drop the pieces that
+               ``predicate`` rules out or ``excluded_read_unit_ids`` names.
+            3. Emit one ``FileChunk`` row per run of remaining pieces.
+
+        ``FooterFileIndexer`` is the Parquet example. This default ignores
+        ``predicate``, ``limit`` and ``projected_columns``.
+        """
         # ``list_file_infos`` already skips zero-size files and applies pruners,
         # so this method only batches them into manifests, one row per file.
         # Shuffle, when requested, happens after path discovery and before the
@@ -176,6 +185,29 @@ class NonSamplingFileIndexer(FileIndexer):
             execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
         )
+        yield from self._process_file_infos_to_manifests(file_infos)
+
+    def list_files_from_file_infos(
+        self,
+        file_infos: Iterable[FileInfo],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        limit: Optional[int] = None,
+        projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
+    ) -> Iterable[FileManifest]:
+        if excluded_read_unit_ids:
+            file_infos = (
+                info for info in file_infos if info.path not in excluded_read_unit_ids
+            )
+        if shuffle_config is not None:
+            file_infos = _shuffle_file_infos(
+                list(file_infos), seed=shuffle_config.get_seed(execution_idx)
+            )
         yield from self._process_file_infos_to_manifests(file_infos)
 
     def _iter_file_infos_for_list(
@@ -237,13 +269,12 @@ class NonSamplingFileIndexer(FileIndexer):
             resolved_paths, _ = _resolve_paths_and_filesystem(input_path, filesystem)
             assert len(resolved_paths) == 1
 
-            for path, file_size in _get_file_infos(
+            yield from _get_file_infos(
                 resolved_paths[0],
                 filesystem,
                 self._ignore_missing_paths,
                 self._skip_paths,
-            ):
-                yield FileInfo(path=path, size=file_size)
+            )
 
     def _get_file_info_iterator_threaded(
         self,
@@ -298,14 +329,12 @@ class NonSamplingFileIndexer(FileIndexer):
                 self._skip_paths,
                 root_path=root_path,
             )
-            for file_path, file_size in contents.files:
-                file_info = FileInfo(path=file_path, size=file_size)
+            for file_info in contents.files:
                 if preserve_order:
                     assert input_path_index is not None
                     add_result(
                         OrderedFileResult(
                             input_path_index=input_path_index,
-                            file_path=file_path,
                             file_info=file_info,
                         )
                     )
@@ -326,7 +355,7 @@ class NonSamplingFileIndexer(FileIndexer):
         ) -> Tuple[int, str]:
             # Only called when preserve_order is True, where every result is wrapped.
             assert isinstance(result, OrderedFileResult)
-            return (result.input_path_index, result.file_path)
+            return (result.input_path_index, result.file_info.path)
 
         results = parallel_process_work_stealing(
             seed_items=seed_items,

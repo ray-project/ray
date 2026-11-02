@@ -26,7 +26,11 @@ from ray.data._internal.tensor_extensions.arrow import (
     fixed_shape_extension_scalar_to_ndarray,
     unify_tensor_arrays,
 )
-from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
+from ray.data._internal.tensor_extensions.pandas import (
+    TensorArray,
+    TensorArrayElement,
+    TensorDtype,
+)
 from ray.data._internal.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
@@ -58,6 +62,19 @@ def test_tensor_array_validation():
 
     with pytest.raises(TypeError):
         TensorArray([object(), object()])
+
+
+def test_tensor_array_from_tensor_array_element():
+    # NumPy 2 made ``np.array(..., copy=False)`` raise whenever a copy is needed,
+    # which is always the case for the single-element list built here.
+    arr = TensorArray(np.arange(12).reshape((3, 2, 2)))
+    element = arr[1]
+    assert isinstance(element, TensorArrayElement)
+
+    t_arr = TensorArray(element)
+
+    assert len(t_arr) == 1
+    np.testing.assert_array_equal(t_arr.to_numpy(), np.arange(4, 8).reshape((1, 2, 2)))
 
 
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):

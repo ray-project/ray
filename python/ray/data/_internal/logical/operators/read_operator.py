@@ -76,17 +76,14 @@ class Read(
         return None
 
     def set_detected_parallelism(self, parallelism: int) -> "Read":
-        """
-        Set the true parallelism that should be used during execution. This
+        """Set the true parallelism that should be used during execution. This
         should be specified by the user or detected by the optimizer.
         """
         object.__setattr__(self, "detected_parallelism", parallelism)
         return self
 
     def get_detected_parallelism(self) -> int:
-        """
-        Get the true parallelism that should be used during execution.
-        """
+        """Get the true parallelism that should be used during execution."""
         return self.detected_parallelism
 
     def estimated_num_outputs(self) -> Optional[int]:
@@ -269,6 +266,10 @@ class ReadFiles(
     # here). Applied in ``plan_read_files_op.do_read`` after each
     # table is read.
     block_udf: Optional[Callable[[Block], Block]] = None
+    # Columns that a known post-read transform may modify. ``None`` means
+    # that the transform's effects are unknown, so predicate pushdown must
+    # stay disabled. Currently populated only for tensor-column decoding.
+    block_udf_modified_columns: Optional[Set[str]] = field(default=None, kw_only=True)
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
@@ -364,6 +365,10 @@ class ReadFiles(
         return replace(self, scanner=new_scanner)
 
     def supports_predicate_pushdown(self) -> bool:
+        if self.block_udf is not None and self.block_udf_modified_columns is None:
+            # An arbitrary post-read transform can change any field's values.
+            return False
+
         from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsFilterPushdown,
             SupportsPartitionPruning,
@@ -380,6 +385,25 @@ class ReadFiles(
         return getattr(self.scanner, "predicate", None)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
+        if self.block_udf is not None:
+            if self.block_udf_modified_columns is None:
+                # The transform's effects are unknown; keep every predicate
+                # above it, including callers that skip the capability check.
+                return self
+
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                get_column_references,
+            )
+
+            if (
+                set(get_column_references(predicate_expr))
+                & self.block_udf_modified_columns
+            ):
+                # Predicates on transformed fields must observe post-UDF values.
+                # Keep mixed predicates intact too; splitting them could change
+                # the result when the expression contains OR or other nesting.
+                return self
+
         from ray.data._internal.datasource_v2.common.pushdown_utils import (
             _split_predicate_by_columns,
             combine_predicates,
@@ -476,6 +500,9 @@ class ListFiles(LogicalOperator, SourceOperator):
     # Original user-supplied paths. Lineage-tracking pins this to the
     # caller's intent rather than the resolved absolute paths.
     source_paths: List[str]
+    # Path and size blocks discovered during full schema inference. When set,
+    # execution processes this candidate set instead of walking ``paths`` again.
+    prelisted_file_infos: Optional[List["pa.Table"]] = None
     file_partitioner: Optional["FilePartitioner"] = None
     file_extensions: Optional[List[str]] = None
     partition_filter: Optional["PathPartitionFilter"] = None

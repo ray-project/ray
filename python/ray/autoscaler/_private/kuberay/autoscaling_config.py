@@ -304,7 +304,7 @@ def _get_ray_resources_from_group_spec(
         else:
             logger.error(
                 f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
-                "See https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/tpu.html#configuring-ray-pods-for-tpu-usage "
+                "See https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#configuring-kubernetes-pods-for-tpu-usage "
                 "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
             )
 

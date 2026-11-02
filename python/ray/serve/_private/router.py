@@ -1316,6 +1316,19 @@ class AsyncioRouter:
                 finally:
                     await candidates.aclose()
                 slot_token = None
+                # Pick-only callers send the request themselves (e.g. the
+                # direct-streaming LLM ingress router through HAProxy), so this
+                # pick is the routing decision. Report it so stateful policies
+                # (e.g. PrefixCacheAffinityRouter) can update their state.
+                try:
+                    self._active_request_router.on_request_routed(
+                        pr, replica.replica_id, None
+                    )
+                except Exception:
+                    logger.warning(
+                        "on_request_routed failed for pick-only selection; continuing.",
+                        exc_info=True,
+                    )
 
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,

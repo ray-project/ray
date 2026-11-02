@@ -53,7 +53,9 @@ steps:
     env:
       PYTHON: "3.12"
     depends_on: oss-ci-base_gpu-multipy(python=3.12)
-    tags: cibase
+    tags:
+      - oss
+      - cibase
 
   # type check
   - label: ":python: pyrefly type check"
@@ -232,7 +234,6 @@ steps:
     depends_on: datalbuild-multipy(python=3.12)
 
   - label: ":database: data: docs example tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - data_doc
@@ -255,7 +256,6 @@ steps:
     depends_on: datalbuild-multipy(python=3.10)
 
   - label: ":database: data: dask docs example tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - data_doc
@@ -269,7 +269,6 @@ steps:
     depends_on: datalbuild-multipy(python=3.12)
 
   - label: ":database: data: docs example gpu tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - data_doc

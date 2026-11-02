@@ -23,6 +23,10 @@ This section assumes that you have a list of machines and that the nodes in the 
 pip install -U "ray[default]"
 ```
 
+### Open the ports Ray uses
+
+Ray needs bidirectional network access between every pair of nodes, not only from the worker nodes to the head node. Each node listens on several ports, and the head node listens on a few more, such as 6379 for the GCS server and 8265 for the dashboard. Several of the per-node ports default to random values, so a firewall that allows only a fixed list of ports blocks them. Either allow all traffic between the cluster's nodes, or pin each port with its `ray start` option and open those ports. For the full list of ports and options, see {ref}`ray-ports`.
+
 ### Start the Head Node
 Choose any node to be the head node and run the following. If the `--port` argument is omitted, Ray will first choose port 6379, and then fall back to a random port if in 6379 is in use.
 

@@ -79,6 +79,7 @@ from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
@@ -93,6 +94,7 @@ from ray._raylet import (
 from ray.actor import ActorClass
 from ray.exceptions import (
     ActorHandleNotFoundError,
+    AuthenticationError,
     ObjectStoreFullError,
     RayError,
     RaySystemError,
@@ -1803,9 +1805,10 @@ def init(
             # None means there was a conflict.
             raise ValueError(
                 "Failed to merge the Job's runtime env "
-                f"{injected_job_config.runtime_env} with "
-                f"a ray.init's runtime env {driver_runtime_env} because "
-                "of a conflict. Specifying the same runtime_env fields "
+                f"{redact_runtime_env(injected_job_config.runtime_env)} with "
+                f"a ray.init's runtime env {redact_runtime_env(driver_runtime_env)} "
+                "because of a conflict. "
+                "Specifying the same runtime_env fields "
                 "or the same environment variable keys is not allowed. "
                 "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
                 "combine Job and Driver's runtime environment in the event of "
@@ -1996,6 +1999,9 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
+        except AuthenticationError:
+            # A ConnectionError subclass; keep its fix text instead of wrapping it.
+            raise
         except (ConnectionError, RuntimeError) as e:
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
@@ -2924,10 +2930,10 @@ def get(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/ray-get-loop`
-    - :doc:`/ray-core/patterns/unnecessary-ray-get`
-    - :doc:`/ray-core/patterns/ray-get-submission-order`
-    - :doc:`/ray-core/patterns/ray-get-too-many-objects`
+    - :doc:`/core/patterns/ray-get-loop`
+    - :doc:`/core/patterns/unnecessary-ray-get`
+    - :doc:`/core/patterns/ray-get-submission-order`
+    - :doc:`/core/patterns/ray-get-too-many-objects`
 
 
     Args:
@@ -3056,9 +3062,9 @@ def put(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/return-ray-put`
-    - :doc:`/ray-core/patterns/pass-large-arg-by-value`
-    - :doc:`/ray-core/patterns/closure-capture-large-objects`
+    - :doc:`/core/patterns/return-ray-put`
+    - :doc:`/core/patterns/pass-large-arg-by-value`
+    - :doc:`/core/patterns/closure-capture-large-objects`
 
     Args:
         value: The Python object to be stored.
@@ -3144,8 +3150,8 @@ def wait(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/limit-pending-tasks`
-    - :doc:`/ray-core/patterns/ray-get-submission-order`
+    - :doc:`/core/patterns/limit-pending-tasks`
+    - :doc:`/core/patterns/ray-get-submission-order`
 
     Args:
         ray_waitables: List of :class:`~ObjectRef` or

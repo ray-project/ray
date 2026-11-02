@@ -21,26 +21,21 @@
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs_client/gcs_client.h"
-#include "mock/ray/object_manager/object_directory.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/object_manager/common.h"
+#include "ray/object_manager/fake_object_directory.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/object_manager_rpc_client/fake_object_manager_client.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/path_utils.h"
 
 namespace ray {
-
-using ::testing::_;
-using ::testing::Invoke;
-using ::testing::Return;
 
 namespace {
 
@@ -102,16 +97,16 @@ class ObjectManagerTest : public ::testing::Test {
     config_.huge_pages = false;
 
     local_node_id_ = NodeID::FromRandom();
-    mock_gcs_client_ = std::make_unique<gcs::MockGcsClient>();
-    mock_object_directory_ = std::make_unique<MockObjectDirectory>();
+    fake_gcs_client_ = std::make_unique<gcs::FakeGcsClient>();
+    fake_object_directory_ = std::make_unique<FakeObjectDirectory>();
     fake_plasma_client_ = std::make_shared<plasma::FakePlasmaClient>();
 
     object_manager_ = std::make_unique<ObjectManager>(
         io_context_,
         local_node_id_,
         config_,
-        *mock_gcs_client_,
-        mock_object_directory_.get(),
+        *fake_gcs_client_,
+        fake_object_directory_.get(),
         // RestoreSpilledObjectCallback
         [](const ObjectID &object_id,
            int64_t object_size,
@@ -152,8 +147,10 @@ class ObjectManagerTest : public ::testing::Test {
     object_info.owner_ip_address = "127.0.0.1";
     object_info.owner_port = 9999;
     object_info.owner_worker_id = WorkerID::FromRandom();
-    EXPECT_CALL(*mock_object_directory_, ReportObjectAdded(object_id, _, _));
+    const size_t added_before = fake_object_directory_->added_objects.size();
     object_manager_->HandleObjectAdded(object_info);
+    EXPECT_EQ(fake_object_directory_->added_objects.size(), added_before + 1);
+    EXPECT_EQ(fake_object_directory_->added_objects.back(), object_id);
   }
 
   /// Makes GetRpcClient() able to resolve `node_id` to a FakeObjectManagerClient.
@@ -162,9 +159,7 @@ class ObjectManagerTest : public ::testing::Test {
     node_info.set_node_id(node_id.Binary());
     node_info.set_node_manager_address("127.0.0.1");
     node_info.set_object_manager_port(8076);
-    EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
-                GetNodeAddressAndLiveness(node_id, _))
-        .WillRepeatedly(Return(node_info));
+    fake_gcs_client_->fake_node_accessor->SetNodeAddressAndLiveness(node_id, node_info);
   }
 
   /// Whether Push() took the queue-and-wait path for this object.
@@ -203,8 +198,8 @@ class ObjectManagerTest : public ::testing::Test {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> rpc_work_;
 
-  std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_;
-  std::unique_ptr<MockObjectDirectory> mock_object_directory_;
+  std::unique_ptr<gcs::FakeGcsClient> fake_gcs_client_;
+  std::unique_ptr<FakeObjectDirectory> fake_object_directory_;
   std::unique_ptr<ObjectManager> object_manager_;
   std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
 };

@@ -1130,8 +1130,7 @@ class _StatsManager:
     def _aggregate_per_node_metrics(
         op_metrics: List[OpRuntimeMetrics],
     ) -> Optional[Mapping[str, Mapping[str, int | float]]]:
-        """
-        Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
+        """Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
 
         If per-node metrics are disabled in the current DataContext, returns None.
         Otherwise, it sums up all NodeMetrics fields across the provided metrics and
@@ -1832,10 +1831,11 @@ class OperatorStatsSummary:
                     for acc, seconds in zip(stage_time_accs, es.stage_time_s):
                         acc.add(seconds)
                 tasks_per_node[es.node_id].add(es.task_idx)
-                if es.start_time_s is not None:
-                    earliest_start_time = min(earliest_start_time, es.start_time_s)
-                if es.end_time_s is not None:
-                    latest_end_time = max(latest_end_time, es.end_time_s)
+                if es.start_unix_time_s is not None and es.wall_time_s is not None:
+                    earliest_start_time = min(earliest_start_time, es.start_unix_time_s)
+                    latest_end_time = max(
+                        latest_end_time, es.start_unix_time_s + es.wall_time_s
+                    )
                 if block_meta.num_rows is not None:
                     rows_per_task[es.task_idx] += block_meta.num_rows
 

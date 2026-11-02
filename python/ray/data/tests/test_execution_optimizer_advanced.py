@@ -84,8 +84,11 @@ def test_random_shuffle_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_m
     "shuffle",
     [True, False],
 )
-def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
+def test_repartition_operator(
+    ray_start_regular_shared_2_cpus, restore_data_context, shuffle
+):
     ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
@@ -114,6 +117,19 @@ def test_repartition_e2e(
         _check_usage_record(["ReadRange", "Repartition"])
         ds_stats: DatasetStats = ds._raw_stats()
         if shuffle:
+            context = DataContext.get_current()
+            if context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+                prefix = "Disk" if context.use_disk_based_hash_shuffle else ""
+                num_partitions = ds._logical_plan.initial_num_blocks()
+                map_name = f"{prefix}SliceShuffleMap(partitions={num_partitions})"
+                reduce_name = f"{prefix}SliceShuffleReduce(partitions={num_partitions})"
+                assert ds_stats.base_name == reduce_name
+                assert reduce_name in ds_stats.metadata
+                map_stats = ds_stats.parents[0]
+                assert map_stats.base_name == map_name
+                assert map_name in map_stats.metadata
+                return
+
             assert ds_stats.base_name == "ReadRange->Repartition"
             assert "ReadRange->RepartitionMap" in ds_stats.metadata
         else:
@@ -121,12 +137,23 @@ def test_repartition_e2e(
             assert "RepartitionSplit" in ds_stats.metadata
         assert "RepartitionReduce" in ds_stats.metadata
 
+    def _check_block_num_rows(ds, expected):
+        block_num_rows = ds._block_num_rows()
+        if (
+            shuffle
+            and DataContext.get_current().shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+        ):
+            # SHUFFLE_V2 reducers emit partitions in completion order, and empty
+            # partitions are emitted without a reduce task.
+            block_num_rows, expected = sorted(block_num_rows), sorted(expected)
+        assert block_num_rows == expected, block_num_rows
+
     ds = ray.data.range(10000, override_num_blocks=10).repartition(20, shuffle=shuffle)
     assert (
         ds._logical_plan.initial_num_blocks() == 20
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(10000))
-    assert ds._block_num_rows() == [500] * 20, ds._block_num_rows()
+    _check_block_num_rows(ds, [500] * 20)
     _check_repartition_usage_and_stats(ds)
 
     # Test num_output_blocks > num_rows to trigger empty block handling.
@@ -136,9 +163,9 @@ def test_repartition_e2e(
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(20))
     if shuffle:
-        assert ds._block_num_rows() == [10] * 2 + [0] * (40 - 2), ds._block_num_rows()
+        _check_block_num_rows(ds, [10] * 2 + [0] * (40 - 2))
     else:
-        assert ds._block_num_rows() == [1] * 20 + [0] * 20, ds._block_num_rows()
+        _check_block_num_rows(ds, [1] * 20 + [0] * 20)
     _check_repartition_usage_and_stats(ds)
 
     # Test case where number of rows does not divide equally into num_output_blocks.
@@ -148,9 +175,14 @@ def test_repartition_e2e(
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(22))
     if shuffle:
-        assert ds._block_num_rows() == [9, 9, 4, 0], ds._block_num_rows()
+        expected_block_num_rows = (
+            [9, 5, 4, 4]
+            if DataContext.get_current().shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+            else [9, 9, 4, 0]
+        )
+        _check_block_num_rows(ds, expected_block_num_rows)
     else:
-        assert ds._block_num_rows() == [5, 6, 5, 6], ds._block_num_rows()
+        _check_block_num_rows(ds, [5, 6, 5, 6])
     _check_repartition_usage_and_stats(ds)
 
     # Test case where we do not split on repartitioning.
@@ -159,7 +191,7 @@ def test_repartition_e2e(
         ds._logical_plan.initial_num_blocks() == 1
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(10))
-    assert ds._block_num_rows() == [10], ds._block_num_rows()
+    _check_block_num_rows(ds, [10])
     _check_repartition_usage_and_stats(ds)
 
 

@@ -2,32 +2,26 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import (
-    TYPE_CHECKING,
-    AbstractSet,
-    Deque,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-)
+from typing import TYPE_CHECKING, AbstractSet, Deque, Iterable, Iterator, List, Optional
+
+import numpy as np
+import pyarrow as pa
 
 import ray
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
+    _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+    ChunkedFile,
     FooterReaderActor,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
-    FileChunks,
-    ParquetRowGroupChunkMetadata,
-)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FILE_CHUNK_METADATA_COLUMN_NAME,
+    FILE_SIZE_COLUMN_NAME,
+    PATH_COLUMN_NAME,
     FileManifest,
-    create_chunk_metadata,
 )
 
 if TYPE_CHECKING:
@@ -48,12 +42,12 @@ logger = logging.getLogger(__name__)
 # A pool of footer-reading actors spread across the cluster, provisioned once
 # per ``list_files`` call. Footer reads are network-bound, so several actors each
 # driving many concurrent reads keeps IO from bottlenecking on a single node.
-_DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 32)
+_DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 8)
 _DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_PARQUET_FOOTER_IO_CONCURRENCY", 128)
 # Files per ``read_footers`` call. Small footers -> batch several per task to
 # amortize the per-task and per-result object-store overhead.
 _DEFAULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", 10)
-# ``FileChunks`` per streamed result. The driver pays one object-store fetch per
+# ``ChunkedFile`` per streamed result. The driver pays one object-store fetch per
 # yielded list, so a large directory costs one fetch per file at ``1``. Raising
 # it trades a little latency-to-first-chunk for far fewer driver-side fetches.
 _DEFAULT_RESULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE", 1)
@@ -67,31 +61,66 @@ _DEFAULT_MAX_INFLIGHT_BATCHES: Optional[int] = env_integer(
 # as a ``FilePartitioner``; see ``ParquetDatasourceV2.get_file_partitioner``.
 
 
-def _file_chunks_to_manifest(file_chunks: FileChunks) -> FileManifest:
+def _chunked_file_to_manifest(chunked_file: ChunkedFile) -> FileManifest:
     """One listing row per row-group run of a file.
 
-    The row carries the run's exact footer stats, so a downstream partitioner
-    can group runs into read units -- and split them at row-group boundaries --
+    The row is the run's ``FileChunk`` with its exact footer stats (``size_bytes``
+    is the projection-scoped uncompressed size), so a downstream partitioner
+    can group runs into read tasks -- and split them at row-group boundaries --
     without re-reading the footer. Grouping is deliberately *not* done here:
     listing discovers, the partitioner groups.
     """
-    n = len(file_chunks.row_groups)
+    n = len(chunked_file.row_groups)
+    assert chunked_file.file.size is not None
     return FileManifest.construct_manifest(
-        paths=[file_chunks.path] * n,
-        sizes=[file_chunks.size] * n,
-        chunk_metadatas=[
-            create_chunk_metadata(
-                ParquetRowGroupChunkMetadata,
-                row_group_ids=tuple(range(rg.rg_idx, rg.rg_idx + rg.rg_count)),
-                num_rows=rg.num_rows,
-                uncompressed_size=rg.uncompressed_size,
-                fully_matched=rg.fully_matched,
-                rg_sizes=rg.rg_sizes,
-                rg_rows=rg.rg_rows,
-            )
-            for rg in file_chunks.row_groups
-        ],
+        paths=[chunked_file.file.path] * n,
+        sizes=[chunked_file.file.size] * n,
+        chunk_metadatas=[run.to_metadata() for run in chunked_file.row_groups],
     )
+
+
+def _shuffle_row_group_runs(
+    manifests: Iterable[FileManifest],
+    *,
+    seed: Optional[int],
+    max_rows_per_output: int,
+) -> Iterator[FileManifest]:
+    """Permute every row-group run across all files, then re-batch.
+
+    Backs ``FileShuffleConfig(small_chunks_shuffle=True)``. It drains the whole
+    listing because a global permutation needs every row. When ``seed`` is set,
+    rows are first sorted by ``(path, first row group)`` so the permutation does
+    not depend on the order footer reads finished in.
+
+    Rows are rebuilt from Python values rather than concatenated as Arrow
+    tables: per-file manifests infer their own chunk-metadata types (an empty
+    ``unit_sizes`` is ``list<null>``, a coalesced one ``list<int64>``), so their
+    schemas need not match.
+    """
+    rows = []
+    for manifest in manifests:
+        block = manifest.as_block()
+        # Listing manifests are always built as Arrow tables.
+        assert isinstance(block, pa.Table)
+        rows.extend(block.to_pylist())
+    n = len(rows)
+    if n == 0:
+        return
+    if seed is not None:
+        rows.sort(
+            key=lambda row: (
+                row[PATH_COLUMN_NAME],
+                row[FILE_CHUNK_METADATA_COLUMN_NAME]["unit_ids"][0],
+            )
+        )
+    rows = [rows[i] for i in np.random.default_rng(seed).permutation(n)]
+    for start in range(0, n, max_rows_per_output):
+        batch = rows[start : start + max_rows_per_output]
+        yield FileManifest.construct_manifest(
+            paths=[row[PATH_COLUMN_NAME] for row in batch],
+            sizes=[row[FILE_SIZE_COLUMN_NAME] for row in batch],
+            chunk_metadatas=[row[FILE_CHUNK_METADATA_COLUMN_NAME] for row in batch],
+        )
 
 
 class FooterFileIndexer(NonSamplingFileIndexer):
@@ -101,6 +130,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
     :class:`NonSamplingFileIndexer`; overrides :meth:`list_files` to attach exact
     footer stats to each run instead of emitting opaque per-file chunks. File
     shuffle, when requested, runs after path discovery and before footer reads.
+    Row-group shuffle (``FileShuffleConfig.small_chunks_shuffle``) coalesces row
+    groups into ~``small_shuffle_chunk_size`` runs and then permutes those runs
+    across all files.
     Grouping runs into read units is the partitioner's job -- see
     :class:`~ray.data._internal.datasource_v2.common.online_bin_packer.OnlineBinPacker`.
     """
@@ -113,6 +145,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
         coalesce_bytes: int = 0,
+        small_shuffle_chunk_size: int = 0,
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
         result_batch_size: Optional[int] = None,
@@ -125,6 +158,10 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             max_paths_per_output=max_paths_per_output,
         )
         self._coalesce_bytes = coalesce_bytes
+        # Coalesce target used instead of ``coalesce_bytes`` (when larger) for a
+        # row-group shuffle, so the shuffle unit is a ~chunk-sized run rather
+        # than a single, possibly tiny, row group.
+        self._small_shuffle_chunk_size = small_shuffle_chunk_size
         # Every knob is re-read here rather than taken from the module-level
         # constant, so ``monkeypatch.setenv`` and release-test env overrides work
         # after this module has already been imported. An explicit ctor argument
@@ -190,13 +227,77 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         )
         # Whole files were dropped above; row-group ids are applied by the
         # footer reader once it knows each file's row groups.
+        yield from self._process_file_infos(
+            file_infos,
+            filesystem=filesystem,
+            preserve_order=preserve_order,
+            predicate=predicate,
+            limit=limit,
+            projected_columns=projected_columns,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
+            excluded_read_unit_ids=excluded_read_unit_ids,
+        )
+
+    def list_files_from_file_infos(
+        self,
+        file_infos: Iterable[FileInfo],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        limit: Optional[int] = None,
+        projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
+    ) -> Iterable[FileManifest]:
+        if excluded_read_unit_ids:
+            file_infos = (
+                info for info in file_infos if info.path not in excluded_read_unit_ids
+            )
+        if shuffle_config is not None:
+            file_infos = _shuffle_file_infos(
+                list(file_infos), seed=shuffle_config.get_seed(execution_idx)
+            )
+        yield from self._process_file_infos(
+            file_infos,
+            filesystem=filesystem,
+            preserve_order=preserve_order,
+            predicate=predicate,
+            limit=limit,
+            projected_columns=projected_columns,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
+            excluded_read_unit_ids=excluded_read_unit_ids,
+        )
+
+    def _process_file_infos(
+        self,
+        file_infos: Iterable[FileInfo],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool,
+        predicate: Optional["Expr"],
+        limit: Optional[int],
+        projected_columns: Optional[List[str]],
+        shuffle_config: Optional["FileShuffleConfig"],
+        execution_idx: int,
+        excluded_read_unit_ids: Optional[AbstractSet[str]],
+    ) -> Iterator[FileManifest]:
+        shuffle_row_groups = (
+            shuffle_config is not None and shuffle_config.small_chunks_shuffle
+        )
+        coalesce_bytes = self._coalesce_bytes
+        if shuffle_row_groups:
+            coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,
                 self._io_concurrency,
                 predicate,
                 projected_columns,
-                self._coalesce_bytes,
+                coalesce_bytes,
                 excluded_read_unit_ids=excluded_read_unit_ids,
             )
             for _ in range(self._num_actors)
@@ -207,9 +308,17 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             self._io_concurrency,
         )
         try:
-            yield from self._read_footers(
+            manifests = self._read_footers(
                 actors, file_infos, limit, preserve_order=preserve_order
             )
+            if shuffle_row_groups:
+                assert shuffle_config is not None
+                manifests = _shuffle_row_group_runs(
+                    manifests,
+                    seed=shuffle_config.get_seed(execution_idx),
+                    max_rows_per_output=self._max_paths_per_output,
+                )
+            yield from manifests
         finally:
             for actor in actors:
                 # ``ActorProxy`` is ``ActorHandle | type[T]``; kill wants a handle.
@@ -259,14 +368,14 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         while pending:
             gen = pending.popleft()
             for ref in gen:  # blocks until this generator's next result lands
-                for file_chunks in ray.get(ref):
-                    yield _file_chunks_to_manifest(file_chunks)
+                for chunked_file in ray.get(ref):
+                    yield _chunked_file_to_manifest(chunked_file)
                     if limit is not None:
                         # Count only fully-matched (exact-survivor) rows so
                         # stopping can never under-deliver under a filter.
                         delivered_fully_matched_rows += sum(
                             rg.num_rows
-                            for rg in file_chunks.row_groups
+                            for rg in chunked_file.row_groups
                             if rg.fully_matched
                         )
                 if limit is not None and delivered_fully_matched_rows >= limit:
@@ -276,14 +385,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             # This generator drained; keep the window full.
             dispatch_next()
 
-    def _batches(
-        self, file_infos: "Iterable[FileInfo]"
-    ) -> Iterator[List[Tuple[str, int]]]:
-        batch: List[Tuple[str, int]] = []
+    def _batches(self, file_infos: "Iterable[FileInfo]") -> Iterator[List[FileInfo]]:
+        batch: List[FileInfo] = []
         for file_info in file_infos:
             if file_info.size is None:
                 continue
-            batch.append((file_info.path, file_info.size))
+            batch.append(file_info)
             if len(batch) >= self._footer_batch_size:
                 yield batch
                 batch = []

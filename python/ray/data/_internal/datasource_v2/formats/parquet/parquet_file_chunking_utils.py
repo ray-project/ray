@@ -1,7 +1,7 @@
 """Parquet chunk helpers for DataSourceV2.
 
-Maps ``ParquetRowGroupChunkMetadata`` (the explicit surviving row groups a bin
-assigns to a file) to PyArrow ``ParquetFileFragment`` subsets for reading, and
+Maps the ``unit_ids`` of a ``FileChunk`` row (the explicit surviving row groups
+a bin assigns to a file) to PyArrow ``ParquetFileFragment`` subsets for reading, and
 names the read unit each subset stands for.
 """
 from typing import Callable, Iterable, List, TypeVar
@@ -51,8 +51,8 @@ def _fragments_from_row_group_ids(
 ) -> List[ReadUnitFragment]:
     """Slice ``fragment`` to the explicit physical ``row_group_ids`` of one bin.
 
-    Used by the footer-based chunking path, where ``ParquetRowGroupChunkMetadata``
-    names the exact surviving row groups for a file (predicate pruning + bin
+    Used by the footer-based chunking path, where a ``FileChunk`` row names
+    the exact surviving row groups for a file (predicate pruning + bin
     packing already happened upstream), so no size-based reconciliation is needed.
 
     Returns one :class:`ReadUnitFragment` per sub-fragment.
@@ -79,7 +79,13 @@ def _fragments_from_row_group_ids(
 
     path = fragment.path
     if not per_row_group_offsets:
-        return [ReadUnitFragment(_subset(ids), ReadUnit(id=path, source=path, count=1))]
+        lazy = fragment.format.make_fragment(
+            path,
+            filesystem=fragment.filesystem,
+            partition_expression=fragment.partition_expression,
+            row_groups=ids,
+        )
+        return [ReadUnitFragment(lazy, ReadUnit(id=path, source=path, count=1))]
 
     metadata = _with_io_retry(
         lambda: fragment.metadata, f"read Parquet footer for {path}"

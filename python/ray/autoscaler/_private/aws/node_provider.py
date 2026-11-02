@@ -477,7 +477,9 @@ class AWSNodeProvider(NodeProvider):
                         # In theory, all ClientError's we expect to get should
                         # have these fields, but just in case we can't parse
                         # it, it's fine, just throw the original error.
-                        logger.warning("Couldn't parse exception.", exc)
+                        logger.warning(
+                            "Couldn't parse exception: %s", exc, exc_info=True
+                        )
                         pass
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",

@@ -224,7 +224,7 @@ def prepare_data_loader(
         at the beginning of each epoch before creating the DataLoader iterator
         is necessary to make shuffling work properly across multiple epochs.
         Otherwise, the same ordering will be always used.
-        See: https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
+        See: https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
 
     Example:
 
@@ -346,7 +346,7 @@ def enable_reproducibility(seed: int = 0) -> None:
     .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
         completely reproducible results across executions. To learn more, read
         the `PyTorch notes on randomness
-        <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+        <https://docs.pytorch.org/docs/stable/notes/randomness.html>`_.
     """
     get_accelerator(_TorchAccelerator).enable_reproducibility(seed)
 
@@ -671,6 +671,7 @@ class _WrappedDataLoader(DataLoader):
             else None
         )
         self.next_batch = None
+        self._supports_record_stream = True
 
     def _move_to_device(self, item):
         if item is None:
@@ -715,11 +716,13 @@ class _WrappedDataLoader(DataLoader):
         if self._memcpy_stream is None:
             return
         # Reference:
-        # https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
+        # https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
         # The training stream (current) needs to wait until
         # the memory copy stream finishes.
         curr_stream = self.device_manager.get_current_stream()
         curr_stream.wait_stream(self._memcpy_stream)
+        if not self._supports_record_stream:
+            return
         # When a tensor is used by CUDA streams different from
         # its original allocator, we need to call ``record_stream``
         # to inform the allocator of all these streams. Otherwise,
@@ -730,7 +733,20 @@ class _WrappedDataLoader(DataLoader):
         for i in self._iter_tensors(item):
             # ``record_stream`` is only implemented for accelerator tensors
             if i.device.type == self.device.type:
-                i.record_stream(curr_stream)
+                try:
+                    i.record_stream(curr_stream)
+                except (NotImplementedError, RuntimeError) as e:
+                    if self.device.type != "tpu":
+                        raise
+                    # ``torch_tpu`` leaves ``recordDataPtrOnStream`` unimplemented
+                    # because PJRT reference-counts device buffers across in-flight ops.
+                    logger.debug(
+                        "record_stream is unsupported on TPU; skipping for subsequent "
+                        "tensors/batches: %s",
+                        e,
+                    )
+                    self._supports_record_stream = False
+                    break
 
     def __len__(self):
         return len(self._dataloader)

@@ -1,3 +1,5 @@
+import atexit
+import contextlib
 import copy
 import datetime
 import hashlib
@@ -12,14 +14,22 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import IO, Any, Dict, List, Optional, Tuple, Union
 
 import click
 import yaml
 
 import ray
 from ray._common.usage import usage_lib
+from ray._private.authentication.authentication_token_setup import (
+    _get_default_token_path,
+)
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.auth_token import (
+    AUTH_TOKEN_REMOTE_PATH,
+    load_or_create_cluster_token,
+    token_auth_enabled_locally,
+)
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.cli_output_helpers import (
@@ -792,6 +802,13 @@ def get_or_create_head_node(
     creating_new_head = _should_create_new_head(
         head_node, launch_hash, head_node_type, provider
     )
+    # Resolve the token before launching a head, so a bad token source fails
+    # first. Keep auth_token_file open until the head updater has synced it.
+    # A digest with no token file mount means the cluster keeps its own token.
+    keep_cluster_auth_token = no_restart and not creating_new_head
+    auth_token_file, auth_token_sha256 = _add_auth_token_file_mount(
+        config, keep_cluster_auth_token
+    )
     if creating_new_head:
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
@@ -834,19 +851,41 @@ def get_or_create_head_node(
         # cf.bold(provider.node_tags(head_node)[TAG_RAY_NODE_NAME]),
         _tags=dict(),
     ):  # add id, ARN to tags?
+        hashed_config = config
+        ships_auth_token = (
+            auth_token_sha256 is not None
+            and AUTH_TOKEN_REMOTE_PATH in config["file_mounts"]
+        )
+        if ships_auth_token:
+            # The mount's source may be a temp file whose path changes on every
+            # run, so hash the token itself: a changed token, or a cluster that
+            # lacked it, syncs it.
+            hashed_config = {
+                **config,
+                "file_mounts": {
+                    remote: local
+                    for remote, local in config["file_mounts"].items()
+                    if remote != AUTH_TOKEN_REMOTE_PATH
+                },
+                "auth_token_sha256": auth_token_sha256,
+            }
         # TODO(ekl) right now we always update the head node even if the
         # hash matches.
         # We could prompt the user for what they want to do here.
         # No need to pass in cluster_sync_files because we use this
         # hash to set up the head node
         (runtime_hash, file_mounts_contents_hash) = hash_runtime_conf(
-            config["file_mounts"], None, config
+            hashed_config["file_mounts"], None, hashed_config
         )
 
         if not no_monitor_on_head:
             # Return remote_config_file to avoid prematurely closing it.
             config, remote_config_file = _set_up_config_for_head_node(
-                config, provider, no_restart
+                config,
+                provider,
+                no_restart,
+                map_head_auth_token=auth_token_sha256 is not None
+                and not ships_auth_token,
             )
             cli_logger.print("Prepared bootstrap config")
 
@@ -994,6 +1033,8 @@ def get_or_create_head_node(
             os.remove(remote_config_file.name)
         except OSError:
             pass  # Ignore cleanup errors
+    if auth_token_file is not None:
+        auth_token_file.close()
 
 
 def _should_create_new_head(
@@ -1057,8 +1098,85 @@ def _should_create_new_head(
     return new_head_required
 
 
+def _ships_local_auth_token(config: Dict[str, Any]) -> bool:
+    """Whether `ray up` ships this machine's token, rather than none or the
+    one the cluster YAML mounts at ~/.ray/auth_token."""
+    return (
+        token_auth_enabled_locally()
+        and AUTH_TOKEN_REMOTE_PATH not in config["file_mounts"]
+    )
+
+
+def _add_auth_token_file_mount(
+    config: Dict[str, Any], keep_cluster_auth_token: bool
+) -> Tuple[Optional[IO[str]], Optional[str]]:
+    """Ship the local auth token to the head node, which ships it to workers.
+
+    Args:
+        config: The cluster config; its file_mounts gain the token.
+        keep_cluster_auth_token: Leave the cluster's current token in place,
+            for a head whose running Ray won't restart to pick up a new one.
+
+    Returns:
+        The temporary file holding a RAY_AUTH_TOKEN value, or None; keep it
+        open until the file mounts are synced. Then the token's SHA-256 hex
+        digest, or None when this process isn't in token auth mode or the YAML
+        mounts the token.
+    """
+    if not _ships_local_auth_token(config):
+        return None, None
+    token = load_or_create_cluster_token()
+    token_sha256 = hashlib.sha256(token.encode()).hexdigest()
+    if keep_cluster_auth_token:
+        cli_logger.warning(
+            "If your local auth token differs from the cluster's, `{}` leaves "
+            "the cluster's in place. Run `ray up` without it to replace it.",
+            cf.bold("--no-restart"),
+        )
+        return None, token_sha256
+
+    token_path = os.environ.get("RAY_AUTH_TOKEN_PATH")
+    if not os.environ.get("RAY_AUTH_TOKEN"):
+        # Mount the token file itself: Ray writes no copy of a token it can read
+        # from a file. rsync would copy a symlink as a dangling link.
+        source_path = os.path.realpath(token_path or _get_default_token_path())
+        # rsync keeps the file's mode, so the head's copy is as readable as this.
+        if os.stat(source_path).st_mode & 0o077:
+            cli_logger.warning(
+                "The auth token file {} can be read by other users, and the "
+                "cluster's copy keeps its mode. Run `chmod 600 {}`.",
+                source_path,
+                source_path,
+            )
+        config["file_mounts"][AUTH_TOKEN_REMOTE_PATH] = source_path
+        return None, token_sha256
+
+    is_windows = sys.platform == "win32"
+    # NamedTemporaryFile creates the file with mode 0600.
+    token_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-auth-token-", delete=not is_windows
+    )
+    token_file.write(token)
+    token_file.flush()
+    if is_windows:
+        # rsync and scp can't open the file while it is open on Windows, so it
+        # is closed now and removed at exit, even when `ray up` fails.
+        token_file.close()
+        atexit.register(_remove_file_if_exists, token_file.name)
+    config["file_mounts"][AUTH_TOKEN_REMOTE_PATH] = token_file.name
+    return token_file, token_sha256
+
+
+def _remove_file_if_exists(path: str) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(path)
+
+
 def _set_up_config_for_head_node(
-    config: Dict[str, Any], provider: NodeProvider, no_restart: bool
+    config: Dict[str, Any],
+    provider: NodeProvider,
+    no_restart: bool,
+    map_head_auth_token: bool,
 ) -> Tuple[Dict[str, Any], Any]:
     """Prepares autoscaling config and, if needed, ssh key, to be mounted onto
     the Ray head node for use by the autoscaler.
@@ -1090,6 +1208,11 @@ def _set_up_config_for_head_node(
     new_mounts = {}
     for remote_path in config["file_mounts"]:
         new_mounts[remote_path] = remote_path
+    if map_head_auth_token:
+        # The head keeps its own token file, which workers launched later need.
+        # A head started before token file mounts has none, and its autoscaler
+        # can't load this config until a `ray up` without --no-restart.
+        new_mounts[AUTH_TOKEN_REMOTE_PATH] = AUTH_TOKEN_REMOTE_PATH
     remote_config["file_mounts"] = new_mounts
     remote_config["no_restart"] = no_restart
 

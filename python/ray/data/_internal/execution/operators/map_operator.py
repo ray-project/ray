@@ -13,12 +13,15 @@ from typing import (
     Callable,
     Dict,
     Final,
+    FrozenSet,
     Iterable,
     Iterator,
     List,
     Optional,
     Union,
 )
+
+from typing_extensions import override
 
 from ray._private.ray_constants import (
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
@@ -30,6 +33,7 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 
 import ray
 from ray import ObjectRef
@@ -64,9 +68,14 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _iter_sliced_blocks,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    InternalQueueOperatorMixin,
-    OneToOneOperator,
+from ray.data._internal.execution.lineage_tracker import (
+    LineageTaskId,
+    ObjectReuseStatus,
+    ParentBlockOutput,
+    ReconstructionPlanId,
+)
+from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
+    LineageReconstructionMixin,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
@@ -200,7 +209,7 @@ def _get_schema_from_bundle(
     return None
 
 
-class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
+class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -271,7 +280,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, input_op, data_context, target_max_block_size_override)
+        super().__init__(name, [input_op], data_context, target_max_block_size_override)
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
@@ -492,8 +501,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self,
         options: "ExecutionOptions",
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
     ):
-        super().start(options, block_ref_counter)
+        super().start(options, block_ref_counter, lineage_tracker)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = ReorderingBundleQueue()
@@ -535,7 +545,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-        # Add RefBundle to the bundler.
+
+        # Add RefBundle to the bundler. A reconstruction input (one carrying a
+        # `reconstruction_stamp`) passes through the bundler unchanged.
         self._block_ref_bundler.add(refs)
         self._metrics.on_input_queued(refs, input_index=0)
 
@@ -603,6 +615,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         """
         pass
 
+    @override
+    def _enqueue_reconstruction_output(self, bundle: RefBundle, task_index: int):
+        self._output_queue.add(bundle, key=task_index)
+        self._metrics.on_output_queued(bundle)
+
     def _submit_data_task(
         self,
         gen: ObjectRefGenerator,
@@ -618,13 +635,101 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
 
+        # Resolve this attempt's lineage identity up front so the callbacks below
+        # can close over it. Both stay None when this operator has no lineage
+        # tracker. The callbacks branch on the tracker, which is set exactly when
+        # the identity is.
+        lineage_tracker = self._lineage_tracker
+        lineage_task_id: Optional[LineageTaskId] = None
+        reconstruction_plan_ids: FrozenSet[ReconstructionPlanId] = frozenset()
+        # The last output this reconstruction task withholds for its child reconstruction tasks. Read
+        # once at submission.
+        last_withheld_output_index: Optional[int] = None
+        if lineage_tracker is not None:
+            (
+                lineage_task_id,
+                reconstruction_plan_ids,
+                dependencies,
+            ) = self._lineage_for_submission(lineage_tracker, task_index, inputs)
+            # Sort by logical task ID for repeatability
+            sorted_reconstruction_plan_ids = sorted(reconstruction_plan_ids)
+            if sorted_reconstruction_plan_ids:
+                for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                    lineage_tracker.register_task_submission(
+                        lineage_task_id, dependencies, reconstruction_plan_id
+                    )
+                last_withheld_output_index = self._last_withheld_output_index(
+                    lineage_task_id, reconstruction_plan_ids
+                )
+            else:
+                lineage_tracker.register_task_submission(lineage_task_id, dependencies)
+                # A fresh seed task retains its input, so reconstruction can resubmit it.
+                if self._is_seed_operator():
+                    lineage_tracker.register_seed_input(lineage_task_id, inputs)
+
+        # This task's next output_index. A per-task closure local, so it is scoped
+        # exactly right and resets naturally on a re-execution.
+        next_output_index = 0
+
         def _output_ready_callback(
             task_index,
             output: RefBundle,
         ):
+            nonlocal next_output_index
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
+            output_index = next_output_index
+            next_output_index += 1
             self._metrics.on_task_output_generated(task_index, output)
+
+            if lineage_tracker is not None:
+                # Attribute the block to (this task, output_index) so whichever
+                # downstream task consumes it can name its own dependencies.
+                lineage_tracker.register_block_output(
+                    lineage_task_id, output.block_refs[0].hex(), output_index
+                )
+                if sorted_reconstruction_plan_ids:
+                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                        status = lineage_tracker.get_object_reuse_status(
+                            lineage_task_id, output_index, reconstruction_plan_id
+                        )
+                        # REUSED: withhold until the child reconstruction task's whole input set is
+                        # re-produced, then release it as one bundle
+                        # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
+                        # child reconstruction task against part of its input.
+                        if status is ObjectReuseStatus.OBJECT_REUSED:
+                            self._reconstruction_outputs.setdefault(
+                                reconstruction_plan_id, {}
+                            )[
+                                ParentBlockOutput(
+                                    parent_lineage_task_id=lineage_task_id,
+                                    output_index=output_index,
+                                )
+                            ] = output
+                        # NEW: no earlier attempt delivered this output, so queue it now.
+                        # Only the plan this task is the target of returns NEW, so this
+                        # runs at most once per output. An output is never both NEW and
+                        # REUSED, so a NEW output is never also withheld.
+                        elif status is ObjectReuseStatus.OBJECT_NEW:
+                            lineage_tracker.register_block_queued(
+                                lineage_task_id, output_index, reconstruction_plan_id
+                            )
+                            self._enqueue_reconstruction_output(output, task_index)
+                    # Outputs arrive in index order. So once the last withheld output
+                    # is produced, every output this task withholds is held, and the
+                    # child reconstruction tasks whose whole input set is held are released now instead
+                    # of when the task completes. Release checks each child reconstruction task's input
+                    # set itself.
+                    if output_index == last_withheld_output_index:
+                        self._release_reconstruction_blocks_to_child(
+                            lineage_task_id, reconstruction_plan_ids, task_index
+                        )
+                    # PRUNED (a copy of the rows outlives the loss) or UNRELATED (the
+                    # plan already finished with this task), so block is dropped.
+                    return
+                else:
+                    # This is a fresh task
+                    lineage_tracker.register_block_queued(lineage_task_id, output_index)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
@@ -635,17 +740,21 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             exception: Optional[Exception],
             task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
+            aborted: bool,
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
             #       emitted (current limitation, since it's emitted along with
             #       `BlockMetadata`)
-            assert exception or (
-                task_exec_driver_stats
+            assert (
+                exception or task_exec_driver_stats
             ), "Driver's task execution stats must be provided on task's successful completion"
 
-            self._metrics.on_task_finished(
-                task_index, exception, task_exec_stats, task_exec_driver_stats
-            )
+            if aborted:
+                self._metrics.on_task_aborted(task_index)
+            else:
+                self._metrics.on_task_finished(
+                    task_index, exception, task_exec_stats, task_exec_driver_stats
+                )
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
@@ -656,6 +765,22 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ) = estimate_total_num_of_blocks(
                 self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
             )
+
+            if lineage_tracker is not None and exception is None:
+                # Child reconstruction tasks are released at the last withheld output. Releasing again
+                # here is the fallback for withheld outputs that index did not
+                # cover, such as ones added by a plan re-traced mid-run. It runs
+                # before reporting the completion itself.
+                if sorted_reconstruction_plan_ids:
+                    self._release_reconstruction_blocks_to_child(
+                        lineage_task_id, reconstruction_plan_ids, task_index
+                    )
+                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                        lineage_tracker.register_task_complete(
+                            lineage_task_id, reconstruction_plan_id
+                        )
+                else:
+                    lineage_tracker.register_task_complete(lineage_task_id)
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -673,6 +798,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ),
             task_done_callback=functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
+            lineage_task_id=lineage_task_id,
+            reconstruction_plan_ids=reconstruction_plan_ids,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()

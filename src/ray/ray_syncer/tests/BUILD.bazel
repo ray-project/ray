@@ -10,10 +10,10 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/mock/ray/ray_syncer:mock_ray_syncer",
         "//src/ray/asio:periodical_runner",
         "//src/ray/common:test_utils",
         "//src/ray/ray_syncer",
+        "//src/ray/ray_syncer:fake_ray_syncer",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/util:env",

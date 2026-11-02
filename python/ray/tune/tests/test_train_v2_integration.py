@@ -4,11 +4,13 @@ import pytest
 
 import ray.train
 import ray.tune
+from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.tune.integration.ray_train import CHECKPOINT_PATH_KEY, TuneReportCallback
+from ray.util.state import list_tasks
 
 TRAIN_DRIVER_RESOURCE_NAME = "train_driver_resource"
 NUM_GPUS_IN_CLUSTER = 4
@@ -133,6 +135,51 @@ def test_errors(ray_start_4_cpus):
     assert "Simulated training error" in str(
         error
     ), f"Expected specific error message, got: {error}"
+
+
+def test_reuse_actors(ray_start_4_cpus, tmp_path):
+    """Trials that reuse one Tune actor get all their results, and waiting for
+    results from Train records no failed tasks."""
+    num_reports = 3
+
+    def train_fn_per_worker():
+        for i in range(num_reports):
+            ray.train.report({"idx": i})
+
+    def launch_training(tune_config):
+        trainer = DataParallelTrainer(
+            train_fn_per_worker,
+            run_config=ray.train.RunConfig(
+                storage_path=tmp_path,
+                name=f"train-{ray.tune.get_context().get_trial_id()}",
+                callbacks=[TuneReportCallback()],
+            ),
+        )
+        trainer.fit()
+
+    tuner = ray.tune.Tuner(
+        launch_training,
+        param_space={"trial": ray.tune.grid_search([0, 1])},
+        tune_config=ray.tune.TuneConfig(reuse_actors=True, max_concurrent_trials=1),
+        run_config=ray.tune.RunConfig(storage_path=tmp_path, name="tune"),
+    )
+    result_grid = tuner.fit()
+
+    assert not result_grid.errors
+    # Both trials ran in the same reused actor process.
+    assert len({result.metrics["pid"] for result in result_grid}) == 1
+    for result in result_grid:
+        assert len(result.metrics_dataframe) == num_reports
+
+    def queue_get_states():
+        tasks = list_tasks(
+            address=ray.get_runtime_context().gcs_address,
+            filters=[("name", "=", "_QueueActor.get")],
+        )
+        return [task.state for task in tasks]
+
+    wait_for_condition(lambda: queue_get_states().count("FINISHED") >= 2 * num_reports)
+    assert "FAILED" not in queue_get_states()
 
 
 if __name__ == "__main__":

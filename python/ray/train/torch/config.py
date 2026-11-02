@@ -47,7 +47,7 @@ class TorchConfigContextManager:
 class TorchConfig(BackendConfig):
     """Configuration for torch process group setup.
 
-    See https://pytorch.org/docs/stable/distributed.html for more info.
+    See https://docs.pytorch.org/docs/stable/distributed.html for more info.
 
     Args:
         backend: The backend to use for training.
@@ -168,7 +168,7 @@ def _shutdown_torch(destroy_process_group=False):
 
 def _set_torch_distributed_env_vars():
     # Same env vars as in
-    # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
+    # https://docs.pytorch.org/docs/stable/elastic/run.html#environment-variables
     from ray.train.torch import get_device
 
     context = ray.train.get_context()
@@ -299,7 +299,7 @@ class _TorchBackend(Backend):
                     self._setup_tpu_multislice(worker_group, master_addr, num_slices)
 
             # PyTorch distributed backends require LOCAL_RANK and other env vars
-            # before init_process_group. See https://pytorch.org/docs/stable/distributed.html
+            # before init_process_group. See https://docs.pytorch.org/docs/stable/distributed.html
             if not isinstance(worker_group, V1WorkerGroup):
                 worker_group.execute(_set_torch_distributed_env_vars)
 

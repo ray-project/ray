@@ -35,7 +35,7 @@ For a more detailed performance comparison between Ray Data and Apache Spark, se
 :::{dropdown} PyTorch Dataset and DataLoader
 Ray Data differs from PyTorch Dataset and DataLoader in the following ways:
 
-* **Framework-agnostic**: Ray Data is framework-agnostic and portable between different distributed training frameworks, while [Torch datasets](https://pytorch.org/docs/stable/data.html) are specific to Torch.
+* **Framework-agnostic**: Ray Data is framework-agnostic and portable between different distributed training frameworks, while [Torch datasets](https://docs.pytorch.org/docs/stable/data.html) are specific to Torch.
 * **No built-in I/O layer**: Torch datasets don't have an I/O layer for common file formats or in-memory exchange with other frameworks. You need to bring in other libraries and build this integration yourself.
 * **Generic distributed data processing**: Ray Data is more general. It can handle generic distributed operations, including global per-epoch shuffling, which would otherwise require stitching together two separate systems. Torch datasets require such stitching for anything more involved than batch-based preprocessing, and they don't natively support shuffling across worker shards. For why this shared infrastructure matters for third-generation ML architectures, see this [Anyscale blog post](https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture).
 * **Lower overhead**: Ray Data has lower overhead. It supports zero-copy exchange between processes, in contrast to the multiprocessing-based pipelines of Torch datasets.

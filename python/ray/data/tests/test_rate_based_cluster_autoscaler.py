@@ -21,6 +21,7 @@ from ray.data._internal.cluster_autoscaler.rate_based_cluster_autoscaler import 
 from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
     ClusterUtil,
     ResourceUtilizationGauge,
+    RollingLogicalUtilizationGauge,
 )
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -36,16 +37,24 @@ from ray.data.tests.conftest import propagate_logs  # noqa
 
 
 class StubUtilizationGauge(ResourceUtilizationGauge):
-    def __init__(self, utilization: Optional[ClusterUtil] = None):
+    def __init__(
+        self,
+        utilization: Optional[ClusterUtil] = None,
+        blocked_on_consumer: bool = False,
+    ):
         if utilization is None:
             utilization = ClusterUtil(cpu=1, gpu=1, object_store_memory=1, memory=1)
         self._utilization = utilization
+        self._blocked_on_consumer = blocked_on_consumer
 
     def observe(self):
         pass
 
     def get(self):
         return self._utilization
+
+    def is_blocked_on_consumer(self):
+        return self._blocked_on_consumer
 
 
 @dataclass(frozen=True)
@@ -694,6 +703,163 @@ def test_fractional_resource_and_high_object_store_utilization_does_not_crash():
     )
 
     autoscaler.try_trigger_scaling()
+
+
+class _MutableUtilizationGauge(ResourceUtilizationGauge):
+    """A gauge whose reading can be changed mid-test."""
+
+    def __init__(self, utilization: ClusterUtil):
+        self.utilization = utilization
+
+    def observe(self):
+        pass
+
+    def get(self):
+        return self.utilization
+
+
+_HIGH_UTIL = ClusterUtil(cpu=0.9, gpu=0.9, memory=0.9, object_store_memory=0.9)
+_LOW_UTIL = ClusterUtil(cpu=0.0, gpu=0.0, memory=0.0, object_store_memory=0.0)
+
+
+def _make_release_delay_autoscaler(gauge, get_time) -> RateBasedClusterAutoscaler:
+    return RateBasedClusterAutoscaler(
+        ops=[_make_fake_op()],
+        execution_id="test_low_util_release",
+        utility_calculator=gauge,
+        autoscaling_coordinator=FakeAutoscalingCoordinator(get_time=get_time),
+        min_gap_between_autoscaling_requests_s=0,
+        autoscaling_request_expire_time_s=3600,
+        low_util_request_release_delay_s=100,
+        get_time=get_time,
+    )
+
+
+def test_low_utilization_grace_period_keeps_explicit_request():
+    """Below the scale-up threshold, the last explicit request is resent briefly.
+
+    This avoids immediately dropping explicit autoscaler demand. Port of OSS
+    #62592's regression tests; same semantics as `DefaultClusterAutoscalerV2`.
+    """
+    current_time = {"t": 0.0}
+    gauge = _MutableUtilizationGauge(_HIGH_UTIL)
+    autoscaler = _make_release_delay_autoscaler(gauge, lambda: current_time["t"])
+
+    current_time["t"] = 10.0
+    request = autoscaler.try_trigger_scaling()
+    assert request
+    reserved = autoscaler.get_total_resources()
+    assert reserved != ExecutionResources.zero()
+
+    # Low utilization within the grace window: the request is kept alive verbatim.
+    gauge.utilization = _LOW_UTIL
+    current_time["t"] = 20.0
+    assert autoscaler.try_trigger_scaling() == request
+    assert autoscaler.get_total_resources() == reserved
+
+
+def test_low_utilization_after_grace_sends_empty_request():
+    """After the grace window, low utilization renews with an empty request.
+
+    This is what lets idle termination scale the cluster down during a long
+    low-utilization tail: without the release, the request sized during the
+    high-throughput phase pins every node until the dataset finishes.
+    """
+    current_time = {"t": 0.0}
+    gauge = _MutableUtilizationGauge(_HIGH_UTIL)
+    autoscaler = _make_release_delay_autoscaler(gauge, lambda: current_time["t"])
+
+    current_time["t"] = 10.0
+    assert autoscaler.try_trigger_scaling()
+
+    # 190s of low utilization > the 100s release delay: the request is released.
+    gauge.utilization = _LOW_UTIL
+    current_time["t"] = 200.0
+    assert autoscaler.try_trigger_scaling() == []
+    assert autoscaler.get_total_resources() == ExecutionResources.zero()
+
+
+def test_high_utilization_after_release_rearms_grace_window():
+    """A new non-empty request after a release re-arms the grace window.
+
+    Also pins that keep-alive resends do NOT refresh the window: the window is
+    measured from the last genuine non-empty request, otherwise it never closes.
+    """
+    current_time = {"t": 0.0}
+    gauge = _MutableUtilizationGauge(_HIGH_UTIL)
+    autoscaler = _make_release_delay_autoscaler(gauge, lambda: current_time["t"])
+
+    current_time["t"] = 10.0
+    assert autoscaler.try_trigger_scaling()
+
+    gauge.utilization = _LOW_UTIL
+    current_time["t"] = 200.0
+    assert autoscaler.try_trigger_scaling() == []
+
+    # Utilization recovers: a fresh non-empty request re-arms the window.
+    gauge.utilization = _HIGH_UTIL
+    current_time["t"] = 210.0
+    request = autoscaler.try_trigger_scaling()
+    assert request
+
+    # Within the new window, the request is kept alive...
+    gauge.utilization = _LOW_UTIL
+    current_time["t"] = 220.0
+    assert autoscaler.try_trigger_scaling() == request
+
+    # ...still kept at t=305, just inside the window armed at t=210...
+    current_time["t"] = 305.0
+    assert autoscaler.try_trigger_scaling() == request
+
+    # ...but the keep-alives did not refresh the window (armed at t=210),
+    # so at t=315 the request is released again.
+    current_time["t"] = 315.0
+    assert autoscaler.try_trigger_scaling() == []
+    assert autoscaler.get_total_resources() == ExecutionResources.zero()
+
+
+@pytest.mark.parametrize("blocked", [False, True])
+def test_no_scale_up_while_blocked_on_consumer(blocked):
+    autoscaler = RateBasedClusterAutoscaler(
+        ops=[_make_fake_op()],
+        execution_id="test_blocked_on_consumer",
+        utility_calculator=StubUtilizationGauge(blocked_on_consumer=blocked),
+        autoscaling_coordinator=FakeAutoscalingCoordinator(),
+        min_gap_between_autoscaling_requests_s=0,
+    )
+
+    request = autoscaler.try_trigger_scaling()
+
+    # Utilization is high, so it scales up unless the consumer is the bottleneck.
+    assert bool(request) == (not blocked)
+
+
+@pytest.mark.parametrize(
+    "blocked_readings, enabled, expected",
+    [
+        # Blocked in most readings.
+        ([True, True, False], True, True),
+        # Blocked in fewer than half of the readings.
+        ([True, False, False], True, False),
+        # The kill switch is off.
+        ([True, True, True], False, False),
+    ],
+)
+def test_gauge_tracks_blocked_on_consumer(blocked_readings, enabled, expected):
+    resource_manager = MagicMock()
+    resource_manager.get_global_limits.return_value = ExecutionResources(cpu=8)
+    resource_manager.get_global_usage.return_value = ExecutionResources(cpu=8)
+    resource_manager.is_blocked_on_consumer.side_effect = blocked_readings
+
+    gauge = RollingLogicalUtilizationGauge(
+        resource_manager, skip_scale_up_when_blocked_on_consumer=enabled
+    )
+    for _ in blocked_readings:
+        gauge.observe()
+
+    assert gauge.is_blocked_on_consumer() == expected
+    # Utilization isn't affected.
+    assert gauge.get().cpu == pytest.approx(1.0)
 
 
 if __name__ == "__main__":
