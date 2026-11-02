@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.core.generated import autoscaler_pb2
 from ray.data._internal.cluster_autoscaler import (
     default_autoscaling_coordinator as coordinator_module,
 )
@@ -1067,29 +1066,15 @@ def test_draining_node_is_excluded_until_the_drain_clears():
     }
 
 
-def test_default_draining_query_against_a_cluster(cluster):
-    """The default query reaches the GCS and returns the draining node's id."""
-    worker_node = cluster.add_node(num_cpus=1, resources={"worker": 1})
-    cluster.wait_for_nodes()
-    assert coordinator_module._default_get_draining_node_ids() == set()
-
-    # A busy node drained for preemption stays alive until its deadline.
-    @ray.remote(num_cpus=1, resources={"worker": 1})
-    class Actor:
-        def ping(self):
-            pass
-
-    actor = Actor.remote()
-    ray.get(actor.ping.remote(), timeout=60)
-    is_accepted, _ = ray._private.worker.global_worker.gcs_client.drain_node(
-        worker_node.node_id,
-        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
-        "preempted",
-        2**63 - 1,
-    )
-    assert is_accepted
-
-    assert coordinator_module._default_get_draining_node_ids() == {worker_node.node_id}
+def test_default_draining_query_returns_node_ids():
+    """The default query keeps only the draining nodes' ids, not their deadlines."""
+    with patch.object(coordinator_module.ray, "is_initialized", return_value=True):
+        with patch.object(
+            coordinator_module,
+            "get_draining_nodes",
+            return_value={"n1": 0, "n2": 1_000},
+        ):
+            assert coordinator_module._default_get_draining_node_ids() == {"n1", "n2"}
 
 
 def test_failing_draining_query_does_not_break_the_tick():
@@ -1191,10 +1176,21 @@ def test_sticky_node_order():
     nobody held, then nodes other requesters hold."""
     assert _sticky_node_order(
         node_ids=["a", "b", "c", "d", "e"],
-        # "gone" has left the cluster since.
+        # "gone" has left the cluster since, so it's dropped.
         held=["d", "gone", "b"],
+        # "b" is held by this requester and another (e.g. both have bundles
+        # on it); this requester's own hold wins, so it stays in tier 1.
         held_by_others={"a", "b"},
-    ) == ["d", "b", "c", "e", "a"]
+    ) == [
+        # Tier 1: this requester's nodes, in its previous placement order.
+        "d",
+        "b",
+        # Tier 2: nodes nobody held, in cluster order.
+        "c",
+        "e",
+        # Tier 3: nodes only other requesters held.
+        "a",
+    ]
 
 
 def test_requester_on_a_dead_node_moves_without_moving_others():

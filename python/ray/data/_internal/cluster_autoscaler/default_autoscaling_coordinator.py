@@ -24,6 +24,7 @@ from .base_autoscaling_coordinator import (
 from ray._common.utils import env_bool
 from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.utils.cached_ray_internals import get_draining_nodes
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -42,10 +43,6 @@ DEFAULT_SUBCLUSTER: Optional[LabelValue] = None
 RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
     "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
 )
-
-# Bounds the draining-nodes GCS query, which runs under the actor's lock on
-# every view refresh.
-_GET_DRAINING_NODES_TIMEOUT_S = 3.0
 
 
 def _format_resource_value_for_log(resource_name: str, value: float) -> str:
@@ -337,9 +334,8 @@ def _default_get_draining_node_ids() -> Set[NodeIdStr]:
     # then, so nothing is draining.
     if not ray.is_initialized():
         return set()
-    gcs_client = ray._private.worker.global_worker.gcs_client
-    # Maps each draining node's id to its drain deadline; only the ids matter.
-    return set(gcs_client.get_draining_nodes(timeout=_GET_DRAINING_NODES_TIMEOUT_S))
+    # Maps each draining node's hex id to its drain deadline; only the ids matter.
+    return set(get_draining_nodes())
 
 
 class _AutoscalingCoordinatorActor:
@@ -794,12 +790,14 @@ def _sticky_node_order(
 ) -> List[NodeIdStr]:
     """Order the nodes one requester tries, so its reservation doesn't move.
 
-    Every refresh places every requester from scratch, trying nodes in order.
-    With the cluster's order alone, a node joining or leaving shifts where each
-    requester lands even for request whose nodes are all still there and often
-    onto a node where another requester's workers are still running. This
-    order fixes that in three tiers:
+    Every refresh clears every requester's reservation and places it again
+    from scratch, trying nodes in order. Nothing carries over between
+    refreshes except this order. With the cluster's order alone, a node
+    joining or leaving shifts where each requester lands, even a requester
+    whose nodes are all still there, and often onto a node where another
+    requester's workers are still running.
 
+    This order has three tiers:
     1. ``held``: the nodes this requester's bundles were on last refresh, in
        the order the bundles were placed, so each bundle lands where it was.
        Nodes that have left the cluster are skipped.
@@ -808,16 +806,13 @@ def _sticky_node_order(
     3. Nodes other requesters' bundles were on, so a requester only crowds
        onto another's nodes when nothing else fits.
 
-    Tiers 2 and 3 keep the cluster's order (largest node first). This only
-    sets the order nodes are tried in; capacity is still subtracted in priority
-    order, so a higher-priority requester placed earlier in the refresh still
-    wins over a lower-priority one's stickiness.
-
     Args:
         node_ids: The nodes in the requester's subcluster, in the cluster's
             order.
         held: The nodes of this requester's bundles last refresh, in
-            placement order. May include nodes no longer in ``node_ids``.
+            placement order. May include nodes no longer in ``node_ids``:
+            nodes that died, were scaled down or started draining since, or
+            nodes outside the requester's subcluster if its selector changed.
         held_by_others: The nodes of other live requesters' bundles last
             refresh.
 
