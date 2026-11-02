@@ -1,4 +1,4 @@
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Optional, Tuple
 
 import pyarrow as pa
@@ -10,14 +10,15 @@ from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
-from ray.data._internal.datasource_v2.common.file_reader import (
-    FileFormat,
-)
+from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
     combine_predicates,
 )
-from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
+from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import (
+    OrcFileReader,
+    validate_statistics_pruning,
+)
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
@@ -25,6 +26,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
+from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
@@ -62,6 +64,12 @@ class OrcScanner(ArrowFileScanner):
 
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
     target_block_size: Optional[int] = None
+    statistics_pruning: str = field(
+        default_factory=lambda: DataContext.get_current().orc_statistics_pruning
+    )
+
+    def __post_init__(self):
+        validate_statistics_pruning(self.statistics_pruning)
 
     @override
     def prune_partitions(self, predicate: Expr) -> "OrcScanner":
@@ -147,4 +155,5 @@ class OrcScanner(ArrowFileScanner):
             synthesized_columns=self.synthesized_columns,
             schema=self.schema,
             target_block_size=self.target_block_size,
+            statistics_pruning=self.statistics_pruning,
         )
