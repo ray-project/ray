@@ -684,7 +684,10 @@ class NixlTensorTransport(TensorTransportManager):
         finally:
             self._local.deferred = None
             for args in deferred:
-                self._cleanup_transfer(*args)
+                try:
+                    self._cleanup_transfer(*args)
+                except Exception:
+                    logger.exception("Failed to run deferred transfer cleanup")
 
     def _finish_transfers(self, remote_name: str) -> None:
         """Polls the transfers in flight on the agent until they are no longer in progress.
@@ -713,7 +716,10 @@ class NixlTensorTransport(TensorTransportManager):
         finally:
             del self._deferred_releases[remote_name]
             for xfer_handle in deferred:
-                nixl_agent.release_xfer_handle(xfer_handle)
+                try:
+                    nixl_agent.release_xfer_handle(xfer_handle)
+                except Exception:
+                    logger.exception("Failed to release deferred transfer handle")
 
     def _prepare_remote_agent(
         self, remote_name: str, version: int, remote_nixl_agent_meta: bytes
