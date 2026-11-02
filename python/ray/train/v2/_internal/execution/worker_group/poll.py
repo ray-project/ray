@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
 from ray.exceptions import RayActorError
+from ray.train.health.probe import ProbeResult
 from ray.train.v2._internal.exceptions import (
     UserExceptionWithTraceback,
     WorkerHealthCheckFailedError,
@@ -54,6 +55,7 @@ class WorkerStatus:
     training_report: Optional[_TrainingReport] = None
     return_value: Any = field(default=None)
     preemption_info: Optional[PreemptionInfo] = None
+    probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
