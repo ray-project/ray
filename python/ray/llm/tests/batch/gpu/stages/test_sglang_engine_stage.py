@@ -2,8 +2,10 @@
 
 import asyncio
 import sys
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
 import pytest
 
 from ray.data import ActorPoolStrategy
@@ -12,6 +14,7 @@ from ray.llm._internal.batch.stages.sglang_engine_stage import (
     SGLangEngineStageUDF,
     SGLangEngineWrapper,
     SGLangTaskType,
+    _truncate_prompt_token_ids,
 )
 
 
@@ -274,6 +277,122 @@ async def test_sglang_invalid_task_type(model_llama_3_2_216M, mock_sgl_engine):
                 "__idx_in_batch": 0,
             }
         )
+
+
+def _make_generate_wrapper(skip_tokenizer_init=True):
+    wrapper = SGLangEngineWrapper.__new__(SGLangEngineWrapper)
+    wrapper.request_id = 0
+    wrapper.idx_in_batch_column = "__idx_in_batch"
+    wrapper.task_type = SGLangTaskType.GENERATE
+    wrapper.skip_tokenizer_init = skip_tokenizer_init
+    wrapper.semaphore = nullcontext()
+    return wrapper
+
+
+def _generate_row(**overrides):
+    row = {
+        "prompt": "unused when token IDs are present",
+        "tokenized_prompt": np.arange(10),
+        "sampling_params": {"max_new_tokens": 4},
+        "__idx_in_batch": 0,
+    }
+    row.update(overrides)
+    return row
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected",
+    [
+        # As in vLLM's generate runner, the last tokens are kept by default.
+        ({"truncation": True, "max_length": 4}, [6, 7, 8, 9]),
+        (
+            {"truncation": True, "max_length": 4, "truncation_side": "right"},
+            [0, 1, 2, 3],
+        ),
+        ({"truncation": "longest_first", "max_length": 4}, [6, 7, 8, 9]),
+        ({"truncate_prompt_tokens": 3, "truncation_side": "right"}, [0, 1, 2]),
+        # A truthy `truncation` overrides truncate_prompt_tokens, as in vLLM.
+        (
+            {"truncate_prompt_tokens": 3, "truncation": True, "max_length": 5},
+            [5, 6, 7, 8, 9],
+        ),
+        # As in vLLM, False counts as unset, so truncate_prompt_tokens applies.
+        ({"truncate_prompt_tokens": 3, "truncation": False}, [7, 8, 9]),
+        (
+            {"truncate_prompt_tokens": 3, "truncation": "do_not_truncate"},
+            list(range(10)),
+        ),
+        ({"truncation": True, "max_length": 50}, list(range(10))),
+        # Ray Data returns struct fields as numpy scalars.
+        ({"truncation": np.bool_(True), "max_length": np.int64(2)}, [8, 9]),
+        # Fields set only on other rows of a struct column arrive as None.
+        (
+            {"truncation": True, "max_length": 2, "padding": None},
+            [8, 9],
+        ),
+    ],
+)
+def test_truncate_prompt_token_ids(kwargs, expected):
+    assert _truncate_prompt_token_ids(list(range(10)), kwargs) == expected
+
+
+@pytest.mark.parametrize(
+    "kwargs,match",
+    [
+        ({"truncation": True}, "without 'max_length'"),
+        ({"truncation": True, "max_length": 0}, "positive integer"),
+        ({"truncation": True, "max_length": True}, "positive integer"),
+        (
+            {"truncation": "only_first", "max_length": 4},
+            "Unsupported tokenization_kwargs",
+        ),
+        ({"truncation": 1, "max_length": 4}, "Unsupported tokenization_kwargs"),
+        (
+            {"truncation": True, "max_length": 4, "truncation_side": "middle"},
+            "'left' or 'right'",
+        ),
+        (
+            {"truncation": True, "max_length": 4, "truncation_side": ""},
+            "'left' or 'right'",
+        ),
+        ({"padding": "max_length"}, "Unsupported tokenization_kwargs"),
+    ],
+)
+def test_truncate_prompt_token_ids_rejects(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        _truncate_prompt_token_ids(list(range(10)), kwargs)
+
+
+@pytest.mark.asyncio
+async def test_generate_request_applies_tokenization_kwargs():
+    wrapper = _make_generate_wrapper()
+    row = _generate_row(
+        tokenization_kwargs={
+            "truncation": True,
+            "max_length": 3,
+            "truncation_side": "right",
+        }
+    )
+    request = await wrapper._prepare_llm_request(row)
+    assert request.prompt_token_ids == [0, 1, 2]
+    assert "tokenization_kwargs" not in row
+
+
+@pytest.mark.asyncio
+async def test_generate_request_refuses_truncation_of_text_prompt():
+    wrapper = _make_generate_wrapper(skip_tokenizer_init=False)
+    row = _generate_row(tokenization_kwargs={"truncation": True, "max_length": 3})
+    del row["tokenized_prompt"]
+    with pytest.raises(ValueError, match="skip_tokenizer_init"):
+        await wrapper._prepare_llm_request(row)
+
+
+def test_sglang_stage_declares_tokenization_kwargs():
+    stage = SGLangEngineStage(
+        fn_constructor_kwargs=dict(model="model", engine_kwargs={}),
+        map_batches_kwargs=dict(),
+    )
+    assert "tokenization_kwargs" in stage.get_optional_input_keys()
 
 
 if __name__ == "__main__":
