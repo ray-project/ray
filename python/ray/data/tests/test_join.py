@@ -1835,6 +1835,34 @@ def test_join_condition_ambiguous_column_is_rejected(ray_start_regular_shared_2_
         )
 
 
+@pytest.mark.parametrize(
+    "condition",
+    [
+        col("k") == col("b"),
+        (col("a") == col("b")) & (col("a") == col("y")),
+        (col("a") == col("b")) & (col("x") == col("b")),
+    ],
+    ids=["reuses_on_column", "left_column_twice", "right_column_twice"],
+)
+def test_join_condition_repeated_key_column_is_rejected(
+    ray_start_regular_shared_2_cpus, condition
+):
+    """Hash partitioning needs distinct key names per side, so a second
+    equality on a column that is already a key is rejected rather than
+    appended as a duplicate key (``validate_schemas`` is off by default)."""
+    left, right = _join_condition_inputs()
+
+    with pytest.raises(ValueError, match="already a join key.*filter"):
+        left.join(
+            right,
+            "inner",
+            num_partitions=4,
+            on=("k",),
+            right_on=("k2",),
+            condition=condition,
+        )
+
+
 def test_join_condition_unresolvable_does_not_break_schema_inference(
     ray_start_regular_shared_2_cpus,
 ):

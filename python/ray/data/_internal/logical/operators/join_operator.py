@@ -286,6 +286,17 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             if pair is None:
                 residual = conjunct if residual is None else residual & conjunct
             elif pair not in pairs:
+                for name, keys, side in (
+                    (pair[0], left_keys, "left"),
+                    (pair[1], right_keys, "right"),
+                ):
+                    if name in keys:
+                        raise ValueError(
+                            f"Column '{name}' of the {side} input is already a "
+                            f"join key, so the equality between '{pair[0]}' and "
+                            f"'{pair[1]}' in `condition` can't become another one. "
+                            "Apply it with `filter()` after the join instead."
+                        )
                 pairs.add(pair)
                 left_keys.append(pair[0])
                 right_keys.append(pair[1])
