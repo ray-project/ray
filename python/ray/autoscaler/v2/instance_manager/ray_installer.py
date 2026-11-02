@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class RayInstaller(object):
-    """
-    RayInstaller is responsible for installing ray on the target instance.
-    """
+    """RayInstaller is responsible for installing ray on the target instance."""
 
     def __init__(
         self,
@@ -30,8 +28,7 @@ class RayInstaller(object):
         self._process_runner = process_runner
 
     def install_ray(self, instance: Instance, head_node_ip: str) -> None:
-        """
-        Install ray on the target instance synchronously.
+        """Install ray on the target instance synchronously.
         TODO:(rickyx): This runs in another thread, and errors are silently
         ignored. We should propagate the error to the main thread.
         """

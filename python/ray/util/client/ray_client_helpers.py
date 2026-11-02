@@ -25,9 +25,7 @@ def ray_start_client_server(metadata=None, ray_connect_handler=None, **kwargs):
 
 @contextmanager
 def ray_start_client_server_for_address(address):
-    """
-    Starts a Ray client server that initializes drivers at the specified address.
-    """
+    """Starts a Ray client server that initializes drivers at the specified address."""
 
     def connect_handler(
         job_config: JobConfig = None, **ray_init_kwargs: Dict[str, Any]
