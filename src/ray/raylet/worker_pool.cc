@@ -880,15 +880,35 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 #if !defined(_WIN32)
   // Save the worker's actual PGID at registration for safe cleanup later.
   // If setpgrp() succeeded in the child, pgid will equal pid; otherwise it will be the
-  // parent's PGID. We save whatever the OS reports and will validate again at cleanup.
-  pid_t pgid = -1;
-  errno = 0;
-  pgid = getpgid(pid);
-  if (pgid != -1) {
-    worker->SetSavedProcessGroupId(pgid);
+  // parent's PGID. We save whatever the OS reports and will validate again at cleanup,
+  // except pgid 0 and 1, which are never a worker's process group: killpg(0, sig)
+  // signals the raylet's own process group and killpg(1, sig) is kill(-1, sig), i.e.
+  // every process the raylet may signal. A worker in another PID namespace (e.g. a
+  // container) can report a pid such as 1 that resolves to one of these here.
+  if (pid <= 1) {
+    // getpgid(0) would return the raylet's own group, and pid 1 is init: neither can be
+    // a worker's pid in the raylet's PID namespace, so don't look them up.
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Worker reported pid " << pid
+        << ", which cannot be a worker in the raylet's PID namespace; skipping "
+           "process-group cleanup for this worker. This can happen when the worker "
+           "runs in another PID namespace (e.g. a container).";
   } else {
-    RAY_LOG(WARNING) << "getpgid(" << pid
-                     << ") failed at registration: " << strerror(errno);
+    errno = 0;
+    pid_t pgid = getpgid(pid);
+    if (pgid > 1) {
+      worker->SetSavedProcessGroupId(pgid);
+    } else if (pgid != -1) {
+      RAY_LOG(WARNING).WithField(worker_id)
+          << "getpgid(" << pid << ") returned " << pgid
+          << " at registration, which cannot be the worker's process group; skipping "
+             "process-group cleanup for this worker. This can happen when the worker "
+             "runs in another PID namespace (e.g. a container) and reports a pid "
+             "that is not valid in the raylet's PID namespace.";
+    } else {
+      RAY_LOG(WARNING) << "getpgid(" << pid
+                       << ") failed at registration: " << strerror(errno);
+    }
   }
 #endif
 
