@@ -380,7 +380,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
 
     cdef cppclass CTaskOptions "ray::core::TaskOptions":
-        c_bool consume_once
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
@@ -404,6 +403,18 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      CLabelSelector label_selector,
                      optional[c_string] tensor_transport,
                      c_vector[CFallbackOption] fallback_strategy)
+        CTaskOptions(c_string name, int num_returns,
+                     unordered_map[c_string, double] &resources,
+                     c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield,
+                     c_string serialized_runtime_env,
+                     c_bool enable_task_events,
+                     const unordered_map[c_string, c_string] &labels,
+                     CLabelSelector label_selector,
+                     optional[c_string] tensor_transport,
+                     c_vector[CFallbackOption] fallback_strategy,
+                     c_bool consume_once)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()

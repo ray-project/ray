@@ -4325,8 +4325,8 @@ cdef class CoreWorker:
                 c_labels,
                 c_label_selector,
                 c_tensor_transport,
-                c_fallback_strategy)
-            task_options.consume_once = consume_once
+                c_fallback_strategy,
+                consume_once)
 
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(

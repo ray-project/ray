@@ -76,7 +76,8 @@ struct TaskOptions {
               std::unordered_map<std::string, std::string> labels_p = {},
               LabelSelector label_selector_p = {},
               std::optional<std::string> tensor_transport_p = std::nullopt,
-              std::vector<FallbackOption> fallback_strategy_p = {})
+              std::vector<FallbackOption> fallback_strategy_p = {},
+              bool consume_once_p = false)
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -88,7 +89,8 @@ struct TaskOptions {
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
         fallback_strategy(std::move(fallback_strategy_p)),
-        tensor_transport(std::move(tensor_transport_p)) {}
+        tensor_transport(std::move(tensor_transport_p)),
+        consume_once(consume_once_p) {}
 
   /// The name of this task.
   std::string name;
