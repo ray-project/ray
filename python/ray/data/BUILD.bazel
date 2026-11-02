@@ -2494,6 +2494,29 @@ py_test(
     name = "test_download_expression",
     size = "medium",
     srcs = ["tests/test_download_expression.py"],
+    args = [
+        "-k",
+        "not (TestDownloadExpressionErrors or TestDownloadTransientFailures)",
+    ],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_download_expression_errors",
+    size = "small",
+    srcs = ["tests/test_download_expression.py"],
+    args = [
+        "-k",
+        "TestDownloadExpressionErrors or TestDownloadTransientFailures",
+    ],
+    main = "tests/test_download_expression.py",
     tags = [
         "exclusive",
         "team:data",
