@@ -323,6 +323,16 @@ class StreamingExecutor(Executor, threading.Thread):
             resource_bank=self._resource_bank,
         )
 
+        if actor_only_backend_enabled():
+            # Reject shuffle / all-to-all ops and unsupported options here,
+            # while the topology is still just a plan: the actor-only backend
+            # has no implementation for them and would otherwise stall midway.
+            from ray.data._internal.experimental.execution.topology_validation import (
+                validate_actor_only_supported_topology,
+            )
+
+            validate_actor_only_supported_topology(self._topology, self._options)
+
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
