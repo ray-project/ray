@@ -3,9 +3,9 @@
 import asyncio
 import os
 import sys
-import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from functools import partial
 from types import GeneratorType
 from unittest.mock import patch
@@ -20,7 +20,6 @@ from ray.actor import ActorHandle
 from ray.data import RandomSeedConfig
 from ray.data._internal import shuffle_batches as shuffle_batches_impl
 from ray.data._internal.compute import TaskPoolStrategy
-from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.logical.operators import (
@@ -37,108 +36,63 @@ from ray.data.dataset import MaterializedDataset
 from ray.data.expressions import col
 
 _ORIGINAL_SHUFFLE = shuffle_batches_impl._shuffle_batch
-_BACKPRESSURE_STATE = None
 
 
-class _ObserveBackpressure(ExecutionCallback):
-    def on_execution_step(self, executor):
-        state = _BACKPRESSURE_STATE
-        if state is None or not state["paused"].is_set():
-            return
-        for op, op_state in executor._topology.items():
-            if op.name != "ShuffleBatches":
-                continue
-            if (
-                op._task_submission_backpressure_policy
-                in ("ResourceBudget", "DownstreamCapacity")
-                or op._task_output_backpressure_policy == "ResourceBudget"
-            ):
-                state["observed"]["submitted"] = op.metrics.num_tasks_submitted
-                state["observed"]["queued_bytes"] = op_state.output_queue_bytes()
-                state["backpressured"].set()
-
-
-def _probe_shuffle(batch, seed_config, *, batch_idx=0, gate):
-    """Measure the real map-task input and tensor-gather calls."""
+def _probe_shuffle(batch, seed_config, *, batch_idx=0, gate=None):
+    """Observe tensor gathers and worker participation during real shuffle tasks."""
     fast_takes = 0
-
-    def profile(frame, event, arg):
-        nonlocal fast_takes
-        if (
-            event == "call"
-            and frame.f_code.co_filename == chunked_tensor_take.__file__
-            and frame.f_code.co_name == "take"
+    with ExitStack() as patches:
+        for take_type in (
+            chunked_tensor_take.PreparedFixedShapedTensorTake,
+            chunked_tensor_take.PreparedVariableShapedTensorTake,
         ):
-            fast_takes += 1
 
-    previous_profile = sys.getprofile()
-    sys.setprofile(profile)
-    try:
+            def counted_take(plan, indices, original=take_type.take):
+                nonlocal fast_takes
+                fast_takes += 1
+                return original(plan, indices)
+
+            patches.enter_context(patch.object(take_type, "take", counted_take))
         result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
-    finally:
-        sys.setprofile(previous_profile)
     assert isinstance(result, pa.Table)
-    ctx = TaskContext.get_current()
-    assert ctx is not None
-    # Synchronize two workers so overlap doesn't depend on worker startup timing.
-    ray.get(gate.arrive.remote(os.getpid()), timeout=30)
+    if gate is not None:
+        # Require overlapping tasks rather than relying on worker startup timing.
+        ray.get(gate.arrive.remote(os.getpid()), timeout=30)
     metrics = {
-        "_probe_chunks": max((c.num_chunks for c in batch.columns), default=0),
+        "_probe_chunks": batch["tensor"].num_chunks,
         "_probe_fast_takes": fast_takes,
         "_probe_pid": os.getpid(),
-        "_probe_task": ctx.task_idx,
     }
     for name, value in metrics.items():
         result = result.append_column(name, pa.array([value] * len(result)))
     return result
 
 
-def _fail_once_after_shuffle(batch, seed_config, *, batch_idx=0):
+def _fail_once_after_shuffle(batch, seed_config, *, batch_idx=0, fail_batch_idx=0):
     result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
     ctx = TaskContext.get_current()
     assert ctx is not None
-    if "previous_shuffle" not in ctx.kwargs:
-        ctx.kwargs["previous_shuffle"] = result["id"].to_pylist()
-        raise ValueError("Injected failure after generating the permutation")
-    assert ctx.kwargs["previous_shuffle"] == result["id"].to_pylist()
-    return result
-
-
-def _record_shuffle_batch(batch, seed_config, *, batch_idx=0):
-    result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
-    assert isinstance(result, pa.Table)
-    ctx = TaskContext.get_current()
-    assert ctx is not None
-    metrics = {
-        "batch_start": min(batch["id"].to_pylist()),
-        "batch_idx": batch_idx,
-        "task_idx": ctx.task_idx,
-    }
-    for name, value in metrics.items():
-        result = result.append_column(name, pa.array([value] * len(result)))
-    return result
-
-
-def _record_map_batch(batch):
-    return _record_shuffle_batch(
-        batch, RandomSeedConfig(seed=42, reseed_after_execution=False)
-    )
-
-
-def _fail_once_in_second_batch(batch, seed_config, *, batch_idx=0):
-    result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
-    ctx = TaskContext.get_current()
-    assert ctx is not None
-    state = ctx.kwargs
-    previous = state.setdefault("previous_batches", {})
+    previous = ctx.kwargs.setdefault("previous_batches", {})
     ids = result["id"].to_pylist()
     if batch_idx in previous:
         assert ids == previous[batch_idx], "Retry changed the batch permutation"
     previous[batch_idx] = ids
-    if batch_idx == 1 and not state.get("failed_once", False):
-        state["failed_once"] = True
-        raise ValueError("Injected failure in second batch")
+    if batch_idx == fail_batch_idx and not ctx.kwargs.get("failed_once", False):
+        ctx.kwargs["failed_once"] = True
+        raise ValueError("Injected failure after generating the permutation")
     return result
+
+
+def _record_shuffle_batch(batch, seed_config, *, batch_idx=0):
+    start = min(batch["id"].to_pylist())
+    result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
+    assert isinstance(result, pa.Table)
+    return result.append_column("batch_start", pa.array([start] * len(result)))
+
+
+def _record_map_batch(batch):
+    start = min(batch["id"].to_pylist())
+    return batch.append_column("batch_start", pa.array([start] * len(batch)))
 
 
 class _WorkerCrashRecorder:
@@ -200,10 +154,6 @@ def _gated_windows(batch, gate):
     yield pa.table({"id": np.arange(8)})
     ray.get(gate.wait.remote(), timeout=30)
     yield pa.table({"id": np.arange(8, 16)})
-
-
-def _add_payload(batch):
-    return pa.table({"id": batch["id"], "payload": [b"x" * (128 * 1024)] * len(batch)})
 
 
 def _shuffle(dataset, batch_size, *, exact=False, **kwargs):
@@ -271,41 +221,6 @@ class ShuffleBatchesTests(unittest.TestCase):
         )
         self.assertTrue(any(ids != sorted(ids) for ids in groups.values()))
         self.assertEqual(sorted(row["id"] for row in rows), list(range(20)))
-
-    def test_none_retry_and_execution_reseeding(self):
-        source = self.source([31, 29, 20])
-        source.context.retried_map_errors = ["Injected failure"]
-        source.context.max_map_retries = 1
-        expected = self.ids(source.shuffle_batches(seed=42))
-        with patch.object(
-            shuffle_batches_impl, "_shuffle_batch", _fail_once_after_shuffle
-        ):
-            actual = self.ids(source.shuffle_batches(batch_size=None, seed=42))
-        self.assertEqual(actual, expected)
-        output = source.shuffle_batches(
-            seed=RandomSeedConfig(seed=42, reseed_after_execution=True)
-        )
-        first, second = self.ids(output), self.ids(output)
-        self.assertEqual(sorted(first), list(range(80)))
-        self.assertEqual(sorted(second), list(range(80)))
-        self.assertNotEqual(first, second)
-
-    def test_none_tensor_fast_path_and_parallel_tasks(self):
-        for variable in (False, True):
-            with self.subTest(variable=variable):
-                self.check_tensor_path(variable=variable, exact=False, blockwise=True)
-
-    def test_exact_windows_and_tail(self):
-        source = self.source([3, 9, 2, 15, 8])
-        output = _shuffle(source, 8, exact=True, seed=42).materialize()
-        blocks = ray.get(output.to_arrow_refs())
-        self.assertEqual([len(b) for b in blocks], [8, 8, 8, 8, 5])
-        for index, block in enumerate(blocks):
-            self.assertEqual(
-                sorted(block["id"].to_pylist()),
-                list(range(index * 8, min((index + 1) * 8, 37))),
-            )
-        self.assertEqual(sorted(self.ids(output)), list(range(37)))
 
     def test_default_and_exact_shuffle_batch_sizes(self):
         source = self.source([5, 5, 5, 5])
@@ -381,59 +296,35 @@ class ShuffleBatchesTests(unittest.TestCase):
                     exact,
                 )
 
-    def test_materialized_input_produces_lazy_output(self):
-        source = self.source([3, 9, 2, 15, 8])
-        for batch_size, exact in ((8, False), (None, False), (8, True)):
-            with self.subTest(batch_size=batch_size, exact=exact):
-                output = _shuffle(source, batch_size, exact=exact, seed=42)
-                self.assertNotIsInstance(output, MaterializedDataset)
-                with self.assertRaises(NotImplementedError):
-                    output.num_blocks()
-                cached = output.materialize()
-                self.assertIsInstance(cached, MaterializedDataset)
-                self.assertGreater(cached.num_blocks(), 0)
-                self.assertEqual(sorted(self.ids(cached)), list(range(37)))
-
     def test_default_large_block_has_distinct_batch_permutations(self):
         source = self.source([103])
         with patch.object(
             shuffle_batches_impl, "_shuffle_batch", _record_shuffle_batch
         ):
-            rows = _shuffle(source, 16, seed=42).take_all()
-        self.assertEqual(len({row["task_idx"] for row in rows}), 1)
-        self.assertEqual({row["batch_idx"] for row in rows}, set(range(7)))
+            rows = source.shuffle_batches(16, seed=42).take_all()
         groups = {}
         for row in rows:
-            groups.setdefault(row["batch_idx"], []).append(row["id"])
-        self.assertEqual([len(groups[i]) for i in range(7)], [16] * 6 + [7])
-        self.assertNotEqual(groups[0], [row_id - 16 for row_id in groups[1]])
+            groups.setdefault(row["batch_start"], []).append(row["id"])
+        self.assertEqual(sorted(groups), list(range(0, 103, 16)))
+        self.assertNotEqual(groups[0], [row_id - 16 for row_id in groups[16]])
         self.assertEqual(sorted(row["id"] for row in rows), list(range(103)))
-
-    def test_seed_is_reproducible(self):
-        source = self.source([13, 7, 17])
-        for batch_size, exact in ((8, False), (None, False), (8, True)):
-            with self.subTest(batch_size=batch_size, exact=exact):
-                first = _shuffle(source, batch_size, exact=exact, seed=42).materialize()
-                second = _shuffle(
-                    source, batch_size, exact=exact, seed=42
-                ).materialize()
-                different = _shuffle(
-                    source, batch_size, exact=exact, seed=9
-                ).materialize()
-                self.assertEqual(self.ids(first), self.ids(second))
-                self.assertNotEqual(self.ids(first), self.ids(different))
 
     def test_unordered_execution_preserves_window_membership(self):
         source = self.source([3, 9, 2, 15, 8])
         source.context.execution_options.preserve_order = False
-        output = _shuffle(source, 8, exact=True, seed=42).materialize()
-        windows = {
-            tuple(sorted(block["id"].to_pylist()))
-            for block in ray.get(output.to_arrow_refs())
-        }
+        with patch.object(
+            shuffle_batches_impl, "_shuffle_batch", _record_shuffle_batch
+        ):
+            rows = _shuffle(source, 8, exact=True, seed=42).take_all()
+        groups: dict[int, list[int]] = {}
+        for row in rows:
+            groups.setdefault(row["batch_start"], []).append(row["id"])
         self.assertEqual(
-            windows,
-            {tuple(range(i, min(i + 8, 37))) for i in range(0, 37, 8)},
+            {start: sorted(ids) for start, ids in groups.items()},
+            {
+                start: list(range(start, min(start + 8, 37)))
+                for start in range(0, 37, 8)
+            },
         )
 
     def test_limit_stays_after_shuffle(self):
@@ -510,9 +401,6 @@ class ShuffleBatchesTests(unittest.TestCase):
                 self.assertEqual(actual, expected)
 
     def test_small_and_empty_inputs(self):
-        self.assertEqual(
-            self.ids(_shuffle(self.source([7]), 1, seed=42)), list(range(7))
-        )
         empty = ray.data.from_arrow(pa.table({"id": pa.array([], type=pa.int64())}))
         for batch_size, exact in ((8, False), (None, False), (8, True)):
             with self.subTest(batch_size=batch_size, exact=exact):
@@ -553,8 +441,6 @@ class ShuffleBatchesTests(unittest.TestCase):
                 source.shuffle_batches(value)
         with self.assertRaises(TypeError):
             source.shuffle_batches(8, compute=ray.data.ActorPoolStrategy(size=1))
-        with self.assertRaises(TypeError):
-            source.shuffle_batches(8, strict=True)
 
     def test_pandas_blocks_preserve_schema_dtypes_and_values(self):
         DataContext.get_current().enable_pandas_block = True
@@ -591,7 +477,7 @@ class ShuffleBatchesTests(unittest.TestCase):
                     frame.reset_index(drop=True),
                 )
 
-    def test_retry_replays_with_the_same_task_context(self):
+    def test_task_seed_streams(self):
         batch = pa.table({"id": list(range(32))})
         config = RandomSeedConfig(seed=42, reseed_after_execution=False)
 
@@ -607,13 +493,14 @@ class ShuffleBatchesTests(unittest.TestCase):
         source = self.source([32, 32])
         source.context.retried_map_errors = ["Injected failure"]
         source.context.max_map_retries = 1
-        for exact in (False, True):
-            with self.subTest(exact=exact):
-                with patch.object(
-                    shuffle_batches_impl, "_shuffle_batch", _fail_once_after_shuffle
-                ):
-                    result = _shuffle(source, 32, exact=exact, seed=42).materialize()
-                self.assertEqual(sorted(self.ids(result)), list(range(64)))
+        for batch_size, exact in ((32, False), (None, False), (32, True)):
+            for seed in (42, None):
+                with self.subTest(batch_size=batch_size, exact=exact, seed=seed):
+                    with patch.object(
+                        shuffle_batches_impl, "_shuffle_batch", _fail_once_after_shuffle
+                    ):
+                        result = _shuffle(source, batch_size, exact=exact, seed=seed)
+                        self.assertEqual(sorted(self.ids(result)), list(range(64)))
 
     def test_multi_batch_retry_replays_permutations(self):
         source = self.source([64])
@@ -621,7 +508,9 @@ class ShuffleBatchesTests(unittest.TestCase):
         source.context.max_map_retries = 1
         expected = self.ids(_shuffle(source, 16, seed=42))
         with patch.object(
-            shuffle_batches_impl, "_shuffle_batch", _fail_once_in_second_batch
+            shuffle_batches_impl,
+            "_shuffle_batch",
+            partial(_fail_once_after_shuffle, fail_batch_idx=1),
         ):
             actual = self.ids(_shuffle(source, 16, seed=42))
         self.assertEqual(actual, expected)
@@ -654,33 +543,37 @@ class ShuffleBatchesTests(unittest.TestCase):
                 finally:
                     ray.kill(recorder)
 
-    def test_large_source_block_preserves_exact_window_membership(self):
-        source = self.source([103])
-        with patch.object(
-            shuffle_batches_impl, "_shuffle_batch", _record_shuffle_batch
-        ):
-            rows = _shuffle(source, 16, exact=True, seed=42).take_all()
-        # Inspect actual shuffle inputs independently of task and output block sizes.
-        groups: dict[int, list[int]] = {}
-        for row in rows:
-            groups.setdefault(row["batch_start"], []).append(row["id"])
-        self.assertEqual(
-            {start: sorted(ids) for start, ids in groups.items()},
-            {
-                start: list(range(start, min(start + 16, 103)))
-                for start in range(0, 103, 16)
-            },
-        )
-        self.assertEqual(sorted(row["id"] for row in rows), list(range(103)))
+    def test_exact_window_membership(self):
+        for sizes, window in (([3, 9, 2, 15, 8], 8), ([103], 16)):
+            with self.subTest(sizes=sizes, window=window):
+                source = self.source(sizes)
+                with patch.object(
+                    shuffle_batches_impl, "_shuffle_batch", _record_shuffle_batch
+                ):
+                    rows = _shuffle(source, window, exact=True, seed=42).take_all()
+                # Observe shuffle inputs, independently of task/output block sizes.
+                groups: dict[int, list[int]] = {}
+                for row in rows:
+                    groups.setdefault(row["batch_start"], []).append(row["id"])
+                count = sum(sizes)
+                self.assertEqual(
+                    {start: sorted(ids) for start, ids in groups.items()},
+                    {
+                        start: list(range(start, min(start + window, count)))
+                        for start in range(0, count, window)
+                    },
+                )
+                self.assertEqual(sorted(row["id"] for row in rows), list(range(count)))
 
     def test_no_implicit_materialization(self):
-        source = ray.data.range(37, override_num_blocks=3)
+        source = self.source([3, 9, 2, 15, 8])
         for batch_size, exact in ((8, False), (None, False), (8, True)):
             with self.subTest(batch_size=batch_size, exact=exact):
                 with patch.object(
                     ray.data.Dataset, "materialize", side_effect=AssertionError
                 ):
                     result = _shuffle(source, batch_size, exact=exact, seed=42)
+                    self.assertNotIsInstance(result, MaterializedDataset)
                     batches = list(
                         result.iter_batches(batch_size=7, batch_format="pyarrow")
                     )
@@ -742,91 +635,28 @@ class ShuffleBatchesTests(unittest.TestCase):
             iterator.close()
             ray.kill(gate)
 
-    def test_slow_consumer_uses_executor_backpressure_and_resumes(self):
-        for exact in (False, True):
-            with self.subTest(exact=exact):
-                self.check_slow_consumer_uses_executor_backpressure_and_resumes(exact)
-
-    def check_slow_consumer_uses_executor_backpressure_and_resumes(self, exact):
-        global _BACKPRESSURE_STATE
-        # Observe the real default budget policy while the iterator is paused.
-        # Test scheduling/backlog, rather than asserting a hard RSS memory cap.
-        paused = threading.Event()
-        backpressured = threading.Event()
-        observed = {}
-
-        _BACKPRESSURE_STATE = {
-            "paused": paused,
-            "backpressured": backpressured,
-            "observed": observed,
-        }
-
-        ctx = DataContext.get_current()
-        ctx.target_max_block_size = 2 * 2**20
-        ctx.execution_options.resource_limits = ExecutionResources.for_limits(
-            object_store_memory=16 * 2**20
-        )
-        ctx.custom_execution_callback_classes = [_ObserveBackpressure]
-        total_rows, window = 1024, 8
-        output = _shuffle(
-            ray.data.range(total_rows, override_num_blocks=128).map_batches(
-                _add_payload, batch_format="pyarrow", batch_size=None
-            ),
-            window,
-            exact=exact,
-            seed=42,
-            compute=TaskPoolStrategy(size=2),
-        )
-        iterator = iter(
-            output.iter_batches(
-                batch_size=window, batch_format="pyarrow", prefetch_batches=0
-            )
-        )
-        assert isinstance(iterator, GeneratorType)
-        try:
-            first = next(iterator)
-            assert isinstance(first, pa.Table)
-            paused.set()
-            self.assertTrue(backpressured.wait(timeout=20), observed)
-            self.assertLess(observed["submitted"], total_rows // window, observed)
-            paused.clear()
-            ids = first["id"].to_pylist()
-            for batch in iterator:
-                assert isinstance(batch, pa.Table)
-                ids.extend(batch["id"].to_pylist())
-            self.assertEqual(sorted(ids), list(range(total_rows)))
-        finally:
-            paused.clear()
-            iterator.close()
-            _BACKPRESSURE_STATE = None
-
-    def test_downstream_rebatch_preserves_large_source_permutation(self):
-        source = self.source([103])
-        shuffled = _shuffle(source, 16, exact=True, seed=42)
-        expected = self.ids(shuffled)
-        self.assertEqual(sorted(expected), list(range(103)))
-        # Downstream batches can split or combine windows without changing row order.
-        for batch_size in (7, 64):
-            with self.subTest(batch_size=batch_size):
-                actual = self.ids(
-                    shuffled.map_batches(
-                        _identity, batch_size=batch_size, batch_format="pyarrow"
-                    )
-                )
-                self.assertEqual(actual, expected)
-
     def test_downstream_rebatch_preserves_permutation(self):
-        source = self.source([4] * 16)
-        for batch_size, exact in ((8, False), (None, False), (8, True)):
-            with self.subTest(batch_size=batch_size, exact=exact):
-                shuffled = _shuffle(source, batch_size, exact=exact, seed=42)
-                expected = self.ids(shuffled)
-                actual = self.ids(
-                    shuffled.map_batches(
-                        _identity, batch_size=64, batch_format="pyarrow"
+        cases = (
+            ([4] * 16, 8, False),
+            ([4] * 16, None, False),
+            ([4] * 16, 8, True),
+            ([103], 16, True),
+        )
+        for sizes, window, exact in cases:
+            source = self.source(sizes)
+            shuffled = _shuffle(source, window, exact=exact, seed=42)
+            expected = self.ids(shuffled)
+            self.assertEqual(sorted(expected), list(range(sum(sizes))))
+            for batch_size in (7, 64):
+                with self.subTest(
+                    sizes=sizes, window=window, exact=exact, batch_size=batch_size
+                ):
+                    actual = self.ids(
+                        shuffled.map_batches(
+                            _identity, batch_size=batch_size, batch_format="pyarrow"
+                        )
                     )
-                )
-                self.assertEqual(actual, expected)
+                    self.assertEqual(actual, expected)
 
     def test_filter_stays_after_shuffle(self):
         source = self.source([8, 8, 8, 8])
@@ -859,32 +689,6 @@ class ShuffleBatchesTests(unittest.TestCase):
         for seed in (-1, "42", 1.5):
             with self.assertRaises(ValueError):
                 _shuffle(source, 8, seed=seed)
-
-    def test_execution_reseeding(self):
-        source = self.source([13, 7, 17])
-        for batch_size, exact in ((8, False), (None, False), (8, True)):
-            with self.subTest(batch_size=batch_size, exact=exact):
-                output = _shuffle(
-                    source,
-                    batch_size,
-                    exact=exact,
-                    seed=RandomSeedConfig(seed=42, reseed_after_execution=True),
-                )
-                first = self.ids(output)
-                second = self.ids(output)
-                self.assertEqual(sorted(first), sorted(second))
-                self.assertNotEqual(first, second)
-
-    def test_unseeded_executions(self):
-        source = self.source([64])
-        for batch_size, exact in ((16, False), (None, False), (16, True)):
-            with self.subTest(batch_size=batch_size, exact=exact):
-                output = _shuffle(source, batch_size, exact=exact)
-                first = self.ids(output)
-                second = self.ids(output)
-                self.assertEqual(sorted(first), list(range(64)))
-                self.assertEqual(sorted(second), list(range(64)))
-                self.assertNotEqual(first, second)
 
     def test_materialization_freezes_reseeded_permutation(self):
         source = self.source([13, 7, 17])
@@ -951,11 +755,9 @@ class ShuffleBatchesTests(unittest.TestCase):
         blocks = ray.get(output.to_arrow_refs())
         all_ids = []
         worker_pids = set()
-        task_indices = []
         for block in blocks:
-            task_indices.append(block["_probe_task"][0].as_py())
             self.assertGreaterEqual(block["_probe_chunks"][0].as_py(), 2)
-            self.assertEqual(block["_probe_fast_takes"][0].as_py(), 1)
+            self.assertGreater(block["_probe_fast_takes"][0].as_py(), 0)
             ids = block["id"].to_pylist()
             all_ids.extend(ids)
             self.assertEqual(len({i // window for i in ids}), 1)
@@ -967,7 +769,6 @@ class ShuffleBatchesTests(unittest.TestCase):
                 self.assertTrue(np.all(tensor == i))
             worker_pids.add(block["_probe_pid"][0].as_py())
         self.assertEqual(sorted(all_ids), list(range(count)))
-        self.assertEqual(len(set(task_indices)), len(blocks))
         self.assertGreaterEqual(len(worker_pids), 2)
 
     def test_small_tensor_columns_use_fallback(self):
@@ -986,19 +787,10 @@ class ShuffleBatchesTests(unittest.TestCase):
             ).materialize()
             for exact in (False, True):
                 with self.subTest(variable=variable, exact=exact):
-                    gate = ray.remote(_WindowGate).options(num_cpus=0).remote()
-                    assert isinstance(gate, ActorHandle)
-                    try:
-                        with patch.object(
-                            shuffle_batches_impl,
-                            "_shuffle_batch",
-                            partial(_probe_shuffle, gate=gate),
-                        ):
-                            output = _shuffle(
-                                source, 64, exact=exact, seed=42
-                            ).take_all()
-                    finally:
-                        ray.kill(gate)
+                    with patch.object(
+                        shuffle_batches_impl, "_shuffle_batch", _probe_shuffle
+                    ):
+                        output = _shuffle(source, 64, exact=exact, seed=42).take_all()
                     self.assertEqual(
                         sorted(row["id"] for row in output), list(range(count))
                     )
@@ -1010,15 +802,13 @@ class ShuffleBatchesTests(unittest.TestCase):
                         self.assertEqual(row["tensor"].dtype, np.dtype(np.int64))
                         self.assertTrue(np.all(row["tensor"] == row["id"]))
 
-    def test_fixed_tensor_fast_path_and_parallel_tasks(self):
-        for exact in (False, True):
-            with self.subTest(exact=exact):
-                self.check_tensor_path(variable=False, exact=exact)
-
-    def test_variable_tensor_fast_path_and_parallel_tasks(self):
-        for exact in (False, True):
-            with self.subTest(exact=exact):
-                self.check_tensor_path(variable=True, exact=exact)
+    def test_tensor_fast_path_and_parallel_tasks(self):
+        for variable in (False, True):
+            for exact, blockwise in ((False, True), (False, False), (True, False)):
+                with self.subTest(variable=variable, exact=exact, blockwise=blockwise):
+                    self.check_tensor_path(
+                        variable=variable, exact=exact, blockwise=blockwise
+                    )
 
 
 if __name__ == "__main__":

@@ -107,6 +107,8 @@ A local shuffle buffer can retain rows as later rows arrive. With `shuffle_batch
 
 Each shuffle batch must fit in task memory, including input, output, indices, and temporary arrays. The `memory` parameter is a scheduling reservation, not a hard limit. `batch_size` doesn't cap input block sizes or peak memory.
 
+Use consistent column dtypes across input blocks. Pandas categorical columns with differing definitions can promote to `object` during batching. Normalize their categorical dtypes to retain the type. Arrow batches spanning different dictionaries can exceed a narrow dictionary index type's capacity and raise `ArrowInvalid`. Use a wider dictionary index type in that case.
+
 :::{tip}
 Combine `shuffle_batches` with {ref}`file order shuffling <shuffling_file_order>` for additional randomness. File order shuffling randomizes which files Ray Data reads first, while `shuffle_batches` randomizes rows within each batch.
 :::

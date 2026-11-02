@@ -2469,59 +2469,26 @@ class Dataset:
         """Shuffle rows within batches using parallel Ray Data tasks.
 
         Each batch receives a uniform random permutation. With ``batch_size=None``,
-        shuffle each input block independently. With a positive ``batch_size``,
-        use the same target-sized batching as :meth:`map_batches`. Batches can
-        span input blocks, and a task can process multiple batches. Each task's
-        final batch can be smaller than ``batch_size``, including in the middle
-        of the dataset. Rows never move between shuffle batches.
+        shuffle each input block independently. A positive ``batch_size`` uses
+        target-sized batching, as in :meth:`map_batches`. Batches can span input
+        blocks, but each task's final batch can be smaller, including in the middle
+        of the dataset. Shuffle batches are independent of consumer batch sizes
+        and output block sizes.
 
-        Input blocks should use consistent column dtypes. Cross-block batching
-        follows Pandas concatenation rules: differing categorical definitions
-        can promote a column to ``object``. Normalize categorical dtypes before
-        shuffling if you need to retain them. Arrow row-selection limits also
-        apply: a batch spanning different dictionaries can exceed a narrow
-        dictionary index type's capacity and raise ``ArrowInvalid``. Use a wider
-        dictionary index type in that case.
+        To construct exact windows, call :meth:`repartition` with
+        ``target_num_rows_per_block`` and ``strict=True``, then shuffle each block
+        with ``batch_size=None``. Only the final window can be smaller. Window
+        boundaries follow the upstream execution order.
 
-        For example, with four consecutive input blocks of five rows each and
-        ``batch_size=8``, task grouping can produce shuffle batches of
-        ``[8, 2, 8, 2]`` rows: each task consumes two blocks and shuffles eight
-        rows followed by its two remaining rows. With ``batch_size=None``, each
-        five-row input block is shuffled separately. These are the batches being
-        shuffled, independent of the batch size you choose when iterating.
-
-        To construct exact consecutive windows, first call :meth:`repartition`
-        with ``target_num_rows_per_block`` and ``strict=True``, then shuffle
-        each resulting block with ``batch_size=None``. Only the final window
-        can be smaller than the requested size. Window boundaries follow the
-        upstream execution order.
-
-        This is a lazy transformation. Batches can be shuffled and consumed
-        before all input arrives. The streaming executor applies backpressure
-        when downstream consumption slows. Blocking upstream operations can
-        still delay output. Call ``materialize()`` to cache a shuffled result;
-        reusing that result also reuses its row order. Output block sizes may
-        differ from shuffle batch sizes due to block shaping.
-
-        A seed is reproducible for the same input layout and task grouping. For
-        reproducible output order, enable ``preserve_order`` on the dataset's
-        execution options. ``RandomSeedConfig`` controls reseeding between
-        executions. Unlike a rolling local shuffle buffer, this operation does
-        not mix rows across shuffle batches. Use :meth:`random_shuffle` for
-        global row shuffling. This operation permutes rows within batches;
-        it does not randomly reorder the batches themselves.
-
-        Each shuffle batch must fit in a task's memory, including input, output,
-        indices, and temporary arrays. Input blocks can exceed ``batch_size``,
-        so it does not cap task input size or peak memory. Backpressure is not
-        a hard memory limit. Eligible chunked tensor columns use Ray's optimized
-        row selection; other columns use existing fallbacks.
+        This operation streams results without materializing the whole dataset.
+        Rows don't move between shuffle batches, and batches aren't randomly
+        reordered. Use :meth:`random_shuffle` for global row shuffling. See
+        :ref:`shuffling_data` for usage, memory sizing, and input type constraints.
 
         Examples:
             >>> import ray
             >>> ds = ray.data.range(20, override_num_blocks=4)
             >>> shuffled = ds.shuffle_batches(batch_size=8, seed=42)
-            >>> # Consumption triggers execution; caching is optional.
             >>> sum(len(b) for b in shuffled.iter_batches(batch_format="pyarrow"))
             20
             >>> # Shuffle exact eight-row windows, except the final remainder.
@@ -2532,20 +2499,17 @@ class Dataset:
             20
 
         Args:
-            batch_size: Target number of rows per shuffle batch, as in
-                :meth:`map_batches`. Task-tail batches can be smaller. If None,
-                shuffle each input block independently. Defaults to None.
+            batch_size: Target rows per shuffle batch. If None, shuffle each
+                input block independently. Defaults to None.
                 A value of one returns the input unchanged.
-            seed: Optional seed or configuration for execution-based reseeding.
-                An integer gives the same permutation across executions under
-                the ordering conditions above. None uses a random base seed
-                pinned at plan construction and reseeds between executions.
-            compute: Optional task-pool strategy limiting parallel shuffle tasks.
-                This limit does not apply to upstream transforms.
+            seed: Optional integer seed or :class:`RandomSeedConfig`. An integer
+                repeats permutations for the same input layout and task grouping.
+                Enable ``preserve_order`` on the dataset's execution options for
+                reproducible output order. None reseeds between executions.
+            compute: Optional task-pool strategy controlling shuffle parallelism.
             num_cpus: CPU reservation for each shuffle map task.
-            memory: Heap-memory scheduling reservation in bytes for each shuffle
-                map task. This is not a hard memory limit and does not include
-                upstream transforms or object-store memory.
+            memory: Heap-memory scheduling reservation per shuffle task, in bytes.
+                This is not a hard memory limit.
 
         Returns:
             A Dataset with rows shuffled within each batch.
