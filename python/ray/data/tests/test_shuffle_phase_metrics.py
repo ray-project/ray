@@ -221,6 +221,27 @@ def test_output_estimates_without_known_task_count_use_helper():
     assert expected_bundles == 8  # 8 upstream outputs / 1 input per task
 
 
+@pytest.mark.parametrize("phase_name", ["shuffle", "finalize"])
+def test_output_estimates_stay_unknown_until_a_task_finishes(phase_name):
+    """A phase with outputs but no finished task has no per-task average yet.
+    Storing 0 would turn "unknown" into a known total of zero."""
+    op, _, som = _make_two_phase()
+    phase = som.phase_metrics[phase_name]
+    if phase_name == "finalize":
+        phase.total_num_tasks = 4
+    phase.on_task_submitted(0, _make_bundle())
+    phase.on_task_output(0, _make_bundle(num_rows=10))
+
+    som.update_output_estimates(phase, num_tasks_submitted=1)
+    assert som.estimated_num_output_bundles is None
+    assert som.estimated_output_num_rows is None
+
+    _finish(phase, 0)
+    som.update_output_estimates(phase, num_tasks_submitted=1)
+    assert som.estimated_num_output_bundles is not None
+    assert som.estimated_output_num_rows is not None
+
+
 def test_stats_manager_exports_phases_and_sums_nodes_from_phases(
     restore_data_context,
 ):
