@@ -1,5 +1,6 @@
 import ipaddress
 import math
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -11,8 +12,41 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 # resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 
-# Default resolvers for network="public" (Google and Cloudflare public DNS).
+# Default resolvers for network="public" (Google and Cloudflare public DNS),
+# unless the node sets RAY_SANDBOX_DEFAULT_DNS (see default_public_dns).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
+
+_DEFAULT_DNS_ENV = "RAY_SANDBOX_DEFAULT_DNS"
+
+
+def default_public_dns() -> Tuple[str, ...]:
+    """Resolvers a network="public" sandbox uses when it names none.
+
+    ``RAY_SANDBOX_DEFAULT_DNS``, a comma-separated list of IP addresses,
+    replaces ``DEFAULT_PUBLIC_DNS`` on a node. Networks that block DNS to
+    public resolvers need it, since a sandbox can't fall back to the node's
+    own resolver.
+
+    Returns:
+        The resolvers.
+
+    Raises:
+        ValueError: If an entry of ``RAY_SANDBOX_DEFAULT_DNS`` isn't an IP
+            address.
+    """
+    value = os.environ.get(_DEFAULT_DNS_ENV, "")
+    servers = tuple(s.strip() for s in value.split(",") if s.strip())
+    if not servers:
+        return DEFAULT_PUBLIC_DNS
+    for server in servers:
+        try:
+            ipaddress.ip_address(server)
+        except ValueError:
+            raise ValueError(
+                f"{_DEFAULT_DNS_ENV} entry {server!r} isn't an IP address"
+            ) from None
+    return servers
+
 
 # The egress allowlist that permits every destination outside the denylist
 # (EGRESS_ALWAYS_DENIED, the Kubernetes API service, and
@@ -287,7 +321,8 @@ class SandboxConfig:
             "sandbox" uses gVisor's netstack and requires ``rootless=False``.
         dns: Nameserver IPs for a generated /etc/resolv.conf, mounted
             read-only (like ``docker --dns``); useful when public DNS is
-            blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public";
+            blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public", or
+            the node's ``RAY_SANDBOX_DEFAULT_DNS``;
             overrides the host file for "host". Only valid with those modes.
         cidr_allowlist: Egress allowlist for network="public". None
             (default) means ``DEFAULT_PUBLIC_ALLOWLIST``, the public

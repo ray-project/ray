@@ -15,7 +15,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     image_cache_name,
     pull_and_extract_container_image,
 )
-from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, parse_memory_bytes
+from ray.experimental.sandbox.config import default_public_dns, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -688,7 +688,7 @@ class ImageManager(BaseImageManager):
         if network in ("public", "host"):
             nameservers = list(dns) if dns else None
             if network == "public" and nameservers is None:
-                nameservers = list(DEFAULT_PUBLIC_DNS)
+                nameservers = list(default_public_dns())
             if nameservers is not None:
                 # Generated and host-independent: no search domains, resolver
                 # VIPs, or ndots options leak in from the host.

@@ -702,6 +702,8 @@ Some virtual private clouds (VPCs) block outbound port 53 to public resolvers, s
 
 When you pass `dns`, Ray checks that the sandbox can reach each resolver before it hands you the sandbox. If the sandbox can't reach one, creation fails with an error that names the resolver, instead of every name lookup failing inside the sandbox.
 
+To change the default for every sandbox on a node, set `RAY_SANDBOX_DEFAULT_DNS` on the worker nodes to a comma-separated list of IPv4 addresses, such as `RAY_SANDBOX_DEFAULT_DNS=10.0.0.2`. A sandbox's own `dns` still takes precedence. Ray doesn't check the node's default resolvers when it creates a sandbox, so set resolvers that every sandbox on the node can reach.
+
 If the sandbox can't reach any resolver, `network="host"` uses the node's own `/etc/resolv.conf`. It also gives the sandbox the node's whole network, including every Ray port and instance metadata, so use it only for trusted code. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
 
 ## Architecture

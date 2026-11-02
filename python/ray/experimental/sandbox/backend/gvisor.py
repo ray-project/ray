@@ -41,11 +41,11 @@ from ray.experimental.sandbox.backend.checkpoint_utils import (
 )
 from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_ALLOWLIST,
-    DEFAULT_PUBLIC_DNS,
     INTERNET,
     INTERNET_EXCLUDED_IPV4,
     INTERNET_IPV6,
     SandboxConfig,
+    default_public_dns,
     normalize_cidr_allowlist,
     parse_cidr_allowlist_entry,
     parse_memory_bytes,
@@ -410,7 +410,7 @@ def _write_egress_ruleset(
             ``RAY_SANDBOX_EGRESS_DENY`` isn't an IP address or network) or
             the file can't be written. Nothing is written then.
     """
-    resolvers = list(dns) if dns else list(DEFAULT_PUBLIC_DNS)
+    resolvers = list(dns) if dns else list(default_public_dns())
     text = _render_egress_ruleset(cidrs, resolvers, denied=egress_guard.always_denied())
     path = os.path.join(root_dir, _EGRESS_RULES_FILE)
     fd, tmp_path = tempfile.mkstemp(dir=root_dir, prefix=_EGRESS_RULES_FILE + ".")
