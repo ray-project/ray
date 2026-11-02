@@ -724,6 +724,18 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertEqual(cpus, 16 + 32 * 4 + 32 * 8)
         self.assertEqual(gpus, 2 * 8)
 
+        cpus, gpus = get_test_resources_from_cluster_compute(
+            {
+                "head_node": {"instance_type": "8CPU-28GB"},
+                "worker_nodes": [
+                    {"instance_type": "23CPU-240GB-1xB200"},
+                    {"instance_type": "184CPU-1920GB-8xB200"},
+                ],
+            },
+            is_new_schema=True,
+        )
+        self.assertEqual((cpus, gpus), (215, 9))
+
     def testInstanceResourcesNewSchemaEmpty(self):
         # New schema: empty config returns 0 resources
         cpus, gpus = get_test_resources_from_cluster_compute({}, is_new_schema=True)
@@ -780,6 +792,26 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(8, 0, "minuscule")
         test_concurrency(1, 0, "minuscule")
         test_concurrency(33, 0, "small")
+
+    def testB200ServiceConcurrencyGroup(self):
+        test = MockTest(
+            {
+                "name": "service_test",
+                "cluster": {"cluster_compute": "cpu.yaml", "anyscale_sdk_2026": True},
+            }
+        )
+        compute = {
+            "cloud_resource": "nscale-osl1-v2",
+            "head_node": {"instance_type": "8CPU-28GB"},
+            "worker_nodes": [],
+        }
+        with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}), patch(
+            "ray_release.buildkite.concurrency.load_test_cluster_compute",
+            return_value=compute,
+        ):
+            step = get_step(test)
+        self.assertEqual(step["concurrency_group"], "b200")
+        self.assertEqual(step["concurrency"], 4)
 
     def testConcurrencyGroupSmokeTest(self):
         with tempfile.TemporaryDirectory() as tmpdir:

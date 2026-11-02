@@ -31,6 +31,11 @@ aws_gpu_cpu_to_concurrency_groups = [
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small", limit=16),
 ]
 
+# CPU test drivers and GPU workloads share the B200 concurrency budget.
+b200_gpu_cpu_to_concurrency_groups = [
+    Condition(min_gpu=0, max_gpu=-1, min_cpu=0, max_cpu=-1, group="b200", limit=4),
+]
+
 gce_gpu_cpu_to_concurrent_groups = [
     Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
     Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=8),
@@ -70,6 +75,13 @@ gcp_gpu_instances = {
 }
 
 
+nscale_instances = {
+    "CPU": 0,
+    "1xB200": 1,
+    "8xB200": 8,
+}
+
+
 def load_instance_types(path: Optional[str] = None) -> Dict[str, Tuple[int, int]]:
     if not path:
         path = bazel_runfile(
@@ -105,6 +117,19 @@ def get_concurrency_group(test: Test) -> Tuple[str, int]:
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
     else:
         concurrent_group = aws_gpu_cpu_to_concurrency_groups
+    if test.get("cluster", {}).get("cluster_compute"):
+        try:
+            compute = load_test_cluster_compute(test)
+            nodes = [compute.get("head_node", compute.get("head_node_type", {}))]
+            nodes += compute.get("worker_nodes", compute.get("worker_node_types", []))
+            if compute.get("cloud_resource") == "nscale-osl1-v2" or any(
+                "b200" in node.get("instance_type", "").lower() for node in nodes
+            ):
+                concurrent_group = b200_gpu_cpu_to_concurrency_groups
+        except Exception as e:
+            logger.debug(
+                f"Couldn't inspect B200 instance types for {test['name']}: {e}"
+            )
     default_concurrent = concurrent_group[-1]
     try:
         test_cpus, test_gpus = get_test_resources(test)
@@ -170,6 +195,12 @@ def get_test_resources_from_cluster_compute(
             instance_cpus, instance_gpus = aws_instance_types[instance]
         elif instance in gcp_gpu_instances:
             instance_cpus, instance_gpus = gcp_gpu_instances[instance]
+        elif "CPU-" in instance:
+            instance_cpus = int(instance.split("CPU-", 1)[0])
+            instance_family = (
+                "CPU" if instance.endswith("GB") else instance.rsplit("-", 1)[-1]
+            )
+            instance_gpus = nscale_instances[instance_family]
         else:
             instance_cpus, instance_gpus = parse_instance_resources(instance)
 

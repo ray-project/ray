@@ -9,12 +9,16 @@
 # --run-serve-llm-profiler and --run-vllm-profiler, the service and vLLM job
 # will run at the same time.
 
-# NOTE: This needs to get imported first because locust does not work
-# well with a lot of libraries including openai, boto3, ray
-# ruff: noqa: I001
-from benchmark.bm import run_bm
 import os
-from pathlib import Path  # noqa: E402
+from pathlib import Path
+
+if token_file := os.environ.get("RELEASE_ANYSCALE_TOKEN_FILE"):
+    os.environ["ANYSCALE_CLI_TOKEN"] = Path(token_file).read_text().strip()
+
+# Locust must be the first third-party import because it does not work well
+# when imported after libraries including openai, boto3, and ray.
+# ruff: noqa: I001
+from benchmark.bm import run_bm  # noqa: E402
 from typing import Optional
 
 import click
@@ -55,11 +59,14 @@ SERVICE_NAME = "serve_llm_release_test_service"
 )
 @click.option("--serve-config-file", type=str, help="Serve config file for this test")
 @click.option(
+    "--cloud", type=str, default=CLOUD, help="Anyscale cloud for the service."
+)
+@click.option(
     "--compute-config",
     type=str,
     default=None,
     help=(
-        "Optional Anyscale compute config name/version to use for the service. "
+        "Optional Anyscale compute config name/version or local YAML file for the service. "
         "Defaults to ANYSCALE_JOB_CLUSTER_COMPUTE_NAME from the release job."
     ),
 )
@@ -97,6 +104,7 @@ def main(
     skip_hf_token: bool,
     timeout: int,
     run_vllm_profiler: bool,
+    cloud: str,
 ):
     if image_uri is None:
         # We expect this environment variable to be set for all release tests
@@ -123,7 +131,7 @@ def main(
         compute_config=compute_config,
         applications=applications,
         working_dir=".",
-        cloud=CLOUD,
+        cloud=cloud,
         env_vars=env_vars,
         timeout_s=timeout,
     ) as service_info:
