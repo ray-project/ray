@@ -122,8 +122,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         )
 
     def _update_ewma_asymmetric(self, prev_value: float, sample: float) -> float:
-        """
-        Update EWMA with asymmetric behavior: fast rise, slow fall.
+        """Update EWMA with asymmetric behavior: fast rise, slow fall.
         Args:
             prev_value: Previous EWMA value
             sample: New sample value

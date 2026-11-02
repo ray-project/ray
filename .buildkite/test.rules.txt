@@ -303,7 +303,7 @@ python/ray/experimental/sandbox/
 
 python/
 # Run library tests on core Python code change.
-@ core_python llm ml tune train data serve
+@ core_python ml tune train data serve
 # Python changes might impact cross language stack in Java.
 # Java also depends on Python CLI to manage processes.
 @ core_python dashboard linux_wheels macos_wheels java
@@ -558,15 +558,6 @@ doc/source/ray-observability/
 # rule only ever sees the snapshots and the script.
 doc/source/_intersphinx/
 @ doc
-;
-
-# The notebook authoring boilerplate. Sphinx never reads it:
-# `_templates/template.ipynb` is a file contributors copy, not a page, nothing
-# includes it, and it backs no bazel target. So the catch-all was starting the
-# core docs example step for a file that step cannot run and the build does not
-# read.
-doc/source/_templates/
-# pass
 ;
 
 # Test harness and target definitions outside the library dirs above keep the

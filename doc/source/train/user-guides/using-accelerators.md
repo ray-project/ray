@@ -150,9 +150,7 @@ When you use {class}`~ray.train.torch.TorchTrainer` with `resources_per_worker={
 
 The following example runs one training step with TorchTPU on 16 per-device workers:
 
-```{testcode}
-:skipif: True
-
+```python
 import torch
 
 import ray.train

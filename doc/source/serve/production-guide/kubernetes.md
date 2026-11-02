@@ -81,6 +81,8 @@ rayservice-sample-serve-svc                   ClusterIP   192.168.145.219   <non
 
 Note that the `rayservice-sample-serve-svc` above is the one that can be used to send queries to the Serve application -- this will be used in the next section.
 
+The KubeRay operator creates the `rayservice-sample-head-svc` and `rayservice-sample-serve-svc` Services only after every Serve application on the cluster reaches the `RUNNING` status. Until then, `kubectl get services` lists only the RayCluster's own head Service, such as `rayservice-sample-raycluster-7wlx2-head-svc`.
+
 ## Querying the application
 
 Once the `RayService` is running, we can query it over HTTP using the service created by the KubeRay controller. This service can be queried directly from inside the cluster, but to access it from your laptop you'll need to configure a [Kubernetes ingress](kuberay-networking) or use port forwarding as below:

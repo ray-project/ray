@@ -1,8 +1,10 @@
 import asyncio
 import pickle
 import sys
+import threading
 from types import SimpleNamespace
 from typing import Union
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,6 +21,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.replica_result import ActorReplicaResult
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.test_utils import send_signal_on_cancellation
@@ -335,6 +338,62 @@ async def test_rejection_does_not_wait_async_until_accepted(
         # Consume is posted to the io thread; wait until it runs.
         await async_wait_for_condition(replica_result._obj_ref_gen._stream_exhausted)
         assert replica_result._cancel_consume_wait is None
+
+
+class _StubUserRef:
+    """User ref whose readiness callback, when fire_on_register is set, runs on
+    another thread before _on_ready returns, as the io thread can for a ready object.
+    """
+
+    def __init__(self, fire_on_register: bool):
+        self._fire_on_register = fire_on_register
+
+    def _on_ready(self, callback):
+        if self._fire_on_register:
+            io_thread = threading.Thread(target=callback, args=(None,))
+            io_thread.start()
+            io_thread.join()
+        return self.cancel_wait
+
+    def cancel_wait(self):
+        pass
+
+
+async def _accept_unary_with_user_ref(user_ref: _StubUserRef):
+    """Accept a unary request whose peeked user ref is user_ref."""
+    obj_ref_gen = MagicMock(spec=ObjectRefGenerator)
+    rejection_frame = asyncio.get_running_loop().create_future()
+    rejection_frame.set_result(
+        pickle.dumps(ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=1))
+    )
+    obj_ref_gen.__anext__.return_value = rejection_frame
+    obj_ref_gen._get_next_ref_n.return_value = [user_ref]
+    replica_result = ActorReplicaResult(
+        obj_ref_gen, _dummy_request_metadata(), with_rejection=True
+    )
+    assert (await replica_result.get_rejection_response()).accepted
+    return replica_result, obj_ref_gen
+
+
+@pytest.mark.asyncio
+async def test_consume_wait_fired_before_registration_leaves_no_cancel_handle():
+    """A wait that fires before _on_ready returns must not leave its spent
+    cancel handle on the result.
+    """
+    replica_result, obj_ref_gen = await _accept_unary_with_user_ref(
+        _StubUserRef(fire_on_register=True)
+    )
+    obj_ref_gen._consume_next_ref_n.assert_called_once_with(1)
+    assert replica_result._cancel_consume_wait is None
+
+
+@pytest.mark.asyncio
+async def test_pending_consume_wait_keeps_cancel_handle():
+    """A wait that has not fired stays cancellable through the result."""
+    user_ref = _StubUserRef(fire_on_register=False)
+    replica_result, obj_ref_gen = await _accept_unary_with_user_ref(user_ref)
+    obj_ref_gen._consume_next_ref_n.assert_not_called()
+    assert replica_result._cancel_consume_wait == user_ref.cancel_wait
 
 
 @pytest.mark.asyncio
