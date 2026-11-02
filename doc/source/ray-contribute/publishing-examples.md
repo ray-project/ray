@@ -1,23 +1,20 @@
 ---
 myst:
   html_meta:
-    description: "How to publish an executable example to the Ray documentation with the recommended template-collections flow: author a template, register it in the docs build, pin its build, and add it to the examples gallery."
+    description: "How to publish an executable example to the Ray documentation with the template-collections flow: author a template, register it in the docs build, pin its build, and add it to the examples gallery."
 ---
 
 (publishing-examples)=
 
 # Publishing an example
 
-This page describes how to publish an executable example to the Ray documentation with the recommended template-collections flow. To add a guide that Ray CI doesn't test, without publishing it as a template, see {ref}`writing-e2e-guide`.
+This page describes how to publish an executable example to the Ray documentation with the template-collections flow. To add a guide that Ray CI doesn't test, without publishing it as a template, see {ref}`writing-e2e-guide`.
 
-## Two ways to publish an example
+## How the template-collections flow works
 
-An example reaches [docs.ray.io](https://docs.ray.io) through one of two paths:
+You author the example as an Anyscale template. The Ray docs build fetches it at build time and renders it in place. Templates are version-tested and automatically kept current, so your example stays working without a per-example release test to maintain.
 
-- **The template-collections flow (recommended).** You author the example as an Anyscale template. The Ray docs build fetches it at build time and renders it in place. Templates are version-tested and automatically kept current, so your example stays working without a per-example release test to maintain. This page covers this flow.
-- **The in-tree notebook flow (legacy).** You commit a notebook directly under `doc/source`, wire its table of contents by hand, and register a release test that reruns it on a schedule. This path is being phased out, and only a couple of examples still use it. See {ref}`publishing-examples-legacy`.
-
-Prefer the template-collections flow for new examples. Use the in-tree notebook flow only for an example that can't be a template.
+Don't publish a new example as an in-tree notebook. Two existing examples still use that legacy flow, which the Ray documentation is retiring. To maintain one of them, see {ref}`publishing-examples-legacy`.
 
 ## Publish with the template-collections flow
 
