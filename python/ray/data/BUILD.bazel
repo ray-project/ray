@@ -1159,7 +1159,7 @@ py_test(
 
 py_test(
     name = "test_orc",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_orc.py"],
     tags = [
         "exclusive",
