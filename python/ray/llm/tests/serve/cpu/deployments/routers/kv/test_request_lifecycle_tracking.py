@@ -3,7 +3,6 @@ import random
 import sys
 from collections import OrderedDict
 from dataclasses import asdict
-from types import SimpleNamespace
 
 import pytest
 from vllm.outputs import CompletionOutput, RequestOutput
@@ -23,6 +22,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     KVTokenTracker,
     get_worker_id,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm import token_tracking
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
     enable_token_tracking,
 )
@@ -40,6 +40,8 @@ WORKER_ID = get_worker_id(REPLICA_UNIQUE_ID)
 PROMPT = {"prompt_token_ids": [1, 2, 3]}
 # SamplingParams.max_tokens the engine reports as the request's expected output.
 MAX_TOKENS = 20
+# Lifecycle endpoint of the LLMRouter replica that selected the request.
+OWNER = "tcp://10.0.0.1:9757"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -127,9 +129,7 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._request_ids_by_worker = {}
-        self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
-        self._replica_forwarder = None
         self._svc = MockSelectionService()
         self._event_log = []
 
@@ -161,15 +161,6 @@ class RecordingKVTokenTracker(KVTokenTracker):
         return sum(1 for s in self._requests.values() if s.worker_id == worker_id)
 
 
-@ray.remote(num_cpus=0)
-class RaisingActor:
-    """A KV-router stand-in whose event ingest always raises, to prove the
-    engine token stream is never disrupted."""
-
-    async def on_lifecycle_events(self, events):
-        raise RuntimeError("actor down")
-
-
 class LocalKVTokenTracker(KVTokenTracker):
     """Router-local KVTokenTracker with the event plane + Serve LongPoll stripped."""
 
@@ -178,9 +169,7 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._request_ids_by_worker = {}
-        self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
-        self._replica_forwarder = None
         self._svc = MockSelectionService()
 
     async def get_request_lifecycle(self, request_id):
@@ -201,60 +190,53 @@ class LocalKVTokenTracker(KVTokenTracker):
         return sum(1 for s in self._requests.values() if s.worker_id == worker_id)
 
 
-class _BroadcastHandle:
-    """Test double for the LLMRouter DeploymentHandle's ``broadcast()``
-    surface, fanning a method call out to each target (a Ray actor handle or a
-    plain object standing in for one ingress replica)."""
+class _OwnerForwarder:
+    """Test double for ``LifecycleEventForwarder`` that delivers each event, in
+    order, straight to the tracker (a Ray actor handle or a local object)
+    registered for its owner endpoint."""
 
-    def __init__(self, *targets):
+    def __init__(self, targets):
         self._targets = targets
+        self._events: asyncio.Queue = asyncio.Queue()
+        self._task = None
 
-    def broadcast(self, method_name, *args, **kwargs):
-        targets = self._targets
+    def report(self, owner, method_name, *args):
+        if self._task is None:
+            self._task = asyncio.get_running_loop().create_task(self._deliver())
+        self._events.put_nowait((self._targets[owner], (method_name, args)))
 
-        async def _call(target):
-            method = getattr(target, method_name)
-            if hasattr(method, "remote"):
-                return await method.remote(*args, **kwargs)
-            return await method(*args, **kwargs)
+    async def _deliver(self):
+        while True:
+            target, event = await self._events.get()
+            try:
+                method = target.on_lifecycle_events
+                if hasattr(method, "remote"):
+                    await method.remote([event])
+                else:
+                    await method([event])
+            finally:
+                self._events.task_done()
 
-        class _Response:
-            async def results_async(self, *, timeout_s=None, return_exceptions=False):
-                gather = asyncio.gather(
-                    *[_call(target) for target in targets],
-                    return_exceptions=return_exceptions,
-                )
-                if timeout_s is None:
-                    return list(await gather)
-                try:
-                    return list(await asyncio.wait_for(gather, timeout=timeout_s))
-                except asyncio.TimeoutError:
-                    raise TimeoutError(
-                        "Timed out waiting for broadcast results."
-                    ) from None
+    async def flush(self):
+        await self._events.join()
 
-        return _Response()
+    def close(self):
+        if self._task is not None:
+            self._task.cancel()
 
 
 @pytest.fixture
 def build_token_tracking_engine(monkeypatch):
-    def _build(script, *targets, report_decode_progress=False, **engine_kwargs):
-        # These actors stand in for ready Serve replicas. Actor startup must
-        # finish before the lifecycle delivery timeout starts.
-        for target in targets:
-            if isinstance(target, ray.actor.ActorHandle):
-                ray.get(target.__ray_ready__.remote())
+    def _build(
+        script, target, report_decode_progress=False, owner=OWNER, **engine_kwargs
+    ):
         monkeypatch.setattr(
-            "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
-            "token_tracking.get_llm_router_handle",
-            lambda: _BroadcastHandle(*targets),
+            token_tracking,
+            "LifecycleEventForwarder",
+            lambda: _OwnerForwarder({OWNER: target}),
         )
         monkeypatch.setattr(
-            serve,
-            "get_replica_context",
-            lambda: SimpleNamespace(
-                replica_id=SimpleNamespace(unique_id=REPLICA_UNIQUE_ID)
-            ),
+            token_tracking, "get_request_lifecycle_owner", lambda: owner
         )
         return enable_token_tracking(
             MockAsyncLLM, report_decode_progress=report_decode_progress
@@ -274,7 +256,7 @@ async def consume(stream, limit=None):
 
 
 async def drain(engine):
-    """Wait for the engine forwarder's queued lifecycle batches to land."""
+    """Wait for the engine forwarder's queued lifecycle events to land."""
     await engine._lifecycle_forwarder.flush()
 
 
@@ -539,120 +521,19 @@ async def test_zero_token_request(build_token_tracking_engine):
     ]
 
 
-@pytest.mark.asyncio
-async def test_actor_failure_isolation(build_token_tracking_engine):
-    """A failing actor never disrupts the engine's output stream."""
-    engine = build_token_tracking_engine(delta_steps(2), RaisingActor.remote())
-
-    outputs = await consume(
-        engine.generate(
-            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
-        )
-    )
-    await drain(engine)  # the failed batches are dropped without raising
-
-    assert len(outputs) == 2
-
-
-@pytest.mark.asyncio
-async def test_events_broadcast(build_token_tracking_engine):
-    """Every LLMRouter replica's tracker receives the same events in the same
-    order."""
-    actors = [RecordingKVTokenTracker.remote(block_size=16) for _ in range(2)]
-    engine = build_token_tracking_engine(delta_steps(2), *actors)
-
-    await consume(
-        engine.generate(
-            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
-        )
-    )
-    await drain(engine)
-
-    logs = [ray.get(actor.get_event_log.remote()) for actor in actors]
-    assert logs[0] == logs[1]
-    assert [name for name, _ in logs[0]] == [
-        "on_prefill_complete",
-        "on_request_completed",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_failing_replica_isolation(build_token_tracking_engine):
-    """A healthy replica still receives every event when a peer's ingest
-    raises."""
-    healthy = RecordingKVTokenTracker.remote(block_size=16)
-    engine = build_token_tracking_engine(delta_steps(2), RaisingActor.remote(), healthy)
-
-    outputs = await consume(
-        engine.generate(
-            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
-        )
-    )
-    await drain(engine)
-
-    assert len(outputs) == 2
-    assert [name for name, _ in ray.get(healthy.get_event_log.remote())] == [
-        "on_prefill_complete",
-        "on_request_completed",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_slow_replica_broadcast_timeout(monkeypatch, build_token_tracking_engine):
-    """A slow broadcast target is dropped without stalling delivery forever."""
-
-    class SlowTarget:
-        async def on_lifecycle_events(self, events):
-            await asyncio.sleep(60)
-
-    class HealthyTarget:
-        def __init__(self):
-            self.events = []
-
-        async def on_lifecycle_events(self, events):
-            self.events.extend(events)
-
-    monkeypatch.setattr(
-        "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
-        "token_tracking.LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S",
-        0.01,
-    )
-    healthy = HealthyTarget()
-    engine = build_token_tracking_engine(delta_steps(2), SlowTarget(), healthy)
-
-    outputs = await consume(
-        engine.generate(
-            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
-        )
-    )
-    await drain(engine)
-
-    assert len(outputs) == 2
-    assert [name for name, _ in healthy.events] == [
-        "on_prefill_complete",
-        "on_request_completed",
-    ]
-
-
 def test_decorator_returns_subclass():
     """The decorator returns an isinstance-compatible subclass."""
     assert issubclass(enable_token_tracking(MockAsyncLLM), MockAsyncLLM)
 
 
 @pytest.mark.asyncio
-async def test_passthrough_without_llm_router(monkeypatch):
-    """Outside a replica (no LLMRouter handle resolvable) the engine is a pure
-    pass-through."""
-
-    def _raise():
-        raise RuntimeError("no LLMRouter")
-
-    monkeypatch.setattr(
-        "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
-        "token_tracking.get_llm_router_handle",
-        _raise,
+async def test_without_owner_reports_nothing(build_token_tracking_engine):
+    """A request no router named (e.g. one HAProxy served through its fallback)
+    streams through untracked."""
+    actor = RecordingKVTokenTracker.remote(block_size=16)
+    engine = build_token_tracking_engine(
+        delta_steps(3), actor, report_decode_progress=True, owner=None
     )
-    engine = enable_token_tracking(MockAsyncLLM)(delta_steps(2))
 
     outputs = await consume(
         engine.generate(
@@ -660,8 +541,9 @@ async def test_passthrough_without_llm_router(monkeypatch):
         )
     )
 
-    assert len(outputs) == 2
-    assert engine._lifecycle_forwarder is None  # resolution failed; retried next call
+    assert len(outputs) == 3
+    assert engine._lifecycle_forwarder is None
+    assert ray.get(actor.get_event_log.remote()) == []
 
 
 @pytest.mark.parametrize(
@@ -833,11 +715,30 @@ async def test_stale_request_evicted_after_ttl():
 
 
 @pytest.mark.asyncio
+async def test_stale_request_already_expired_does_not_fail_selection():
+    """A stale booking the selection service already expired is dropped from the
+    local view without failing the selection whose sweep found it."""
+    actor = LocalKVTokenTracker(block_size=16)
+    await reserve(actor, "stale", 1, list(range(8)))
+    actor._requests["stale"].created_at -= REQUEST_TRACKING_TTL_S + 1
+
+    async def reservation_not_found(reservation_id):
+        raise ValueError(f"reservation {reservation_id} not found")
+
+    actor._svc.free_reservation = reservation_not_found
+    await reserve(actor, "trigger", 2, list(range(16, 24)))
+
+    assert await actor.get_active_request_ids() == ["trigger"]
+
+
+@pytest.mark.asyncio
 async def test_select_worker_books_request_state():
     """Atomic selection reserves in Dynamo and records the local lifecycle state."""
     actor = LocalKVTokenTracker(block_size=16)
 
-    selection = await reserve(actor, "r", 1, list(range(8)), expected_output_tokens=32)
+    selection = await actor.select_worker(
+        "r", list(range(8)), [1], 32, lora_name="adapter-a"
+    )
 
     assert selection["effective_prefill_tokens"] == 8
     assert await actor.get_request_lifecycle("r") == {
@@ -849,6 +750,7 @@ async def test_select_worker_books_request_state():
         "total_blocks": 1,
     }
     assert actor._svc.calls == [("select_and_reserve", "r", 32)]
+    assert actor._svc.selects[0]["lora_name"] == "adapter-a"
 
 
 @pytest.mark.asyncio

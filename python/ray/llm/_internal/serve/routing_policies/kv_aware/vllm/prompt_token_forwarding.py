@@ -5,7 +5,11 @@ from starlette.requests import Request
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_LIFECYCLE_OWNER_HEADER,
     KV_TOKEN_KEY_HEADER,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    set_request_lifecycle_owner,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
     TokenStore,
@@ -116,6 +120,11 @@ def _install_prompt_token_forwarding(
     async def wrapped(request: Any, raw_request: Optional[Request] = None, *args, **kw):
         effective_raw_request = kw.get("raw_request", raw_request)
         inject_prompt_token_ids(request, effective_raw_request, store)
+        set_request_lifecycle_owner(
+            None
+            if effective_raw_request is None
+            else effective_raw_request.headers.get(KV_LIFECYCLE_OWNER_HEADER)
+        )
         if "raw_request" in kw and raw_request is None:
             return await orig(request, *args, **kw)
         return await orig(request, raw_request, *args, **kw)

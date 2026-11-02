@@ -12,9 +12,16 @@ from starlette.datastructures import Headers
 from ray._common.network_utils import find_free_port
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+from ray.llm._internal.serve.routing_policies.kv_aware import (
+    network_utils,
+    token_channel,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_LIFECYCLE_OWNER_HEADER,
     KV_TOKEN_KEY_HEADER,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    get_request_lifecycle_owner,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
     TokenReceiver,
@@ -87,7 +94,7 @@ def test_bad_endpoint_falls_back():
     """A malformed endpoint must degrade to engine tokenization, not raise."""
     sender = TokenSender()
     try:
-        with patch.object(token_channel, "logger") as mock_logger:
+        with patch.object(network_utils, "logger") as mock_logger:
             for _ in range(5):
                 assert (
                     sender.push("not-a-valid-endpoint", "k", _payload([1, 2])) is False
@@ -106,7 +113,7 @@ def test_socket_creation_failure_falls_back():
     sender = TokenSender()
     try:
         with patch.object(
-            token_channel, "_new_socket", side_effect=zmq.ZMQError(errno.EMFILE)
+            network_utils, "new_socket", side_effect=zmq.ZMQError(errno.EMFILE)
         ):
             assert sender.push("tcp://127.0.0.1:5555", "k", _payload([1, 2])) is False
     finally:
@@ -147,7 +154,7 @@ def test_full_queue_keeps_socket():
         # Nothing reads from receiver_socket, so the queue fills and push()
         # reports False via zmq.Again rather than raising.
         refused = 0
-        with patch.object(token_channel, "logger") as mock_logger:
+        with patch.object(network_utils, "logger") as mock_logger:
             for i in range(500):
                 if not sender.push(endpoint, f"k{i}", _payload([i] * 512)):
                     refused += 1
@@ -248,6 +255,27 @@ def test_empty_payload_falls_back():
     inject_prompt_token_ids(request, _raw_request("empty"), store)
 
     assert request.kv_transfer_params is None
+
+
+@pytest.mark.asyncio
+async def test_forwarding_binds_lifecycle_owner():
+    """The serving wrapper binds the router-named owner for the rest of the
+    request, so a streaming response's later generate() still sees it."""
+
+    class Serving:
+        async def create_completion(self, request, raw_request=None):
+            return "stream"
+
+    serving = Serving()
+    _install_forwarding(serving, TokenStore())
+    request = SimpleNamespace(kv_transfer_params=None)
+    for headers, owner in (
+        ({KV_LIFECYCLE_OWNER_HEADER: "tcp://10.0.0.1:9757"}, "tcp://10.0.0.1:9757"),
+        ({}, None),
+    ):
+        raw_request = SimpleNamespace(headers=Headers(headers))
+        assert await serving.create_completion(request, raw_request) == "stream"
+        assert get_request_lifecycle_owner() == owner
 
 
 def test_token_store_skips_chat_tokenization():

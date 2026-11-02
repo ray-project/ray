@@ -1,95 +1,14 @@
-import asyncio
 from typing import Optional, Type
 
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
-from ray import serve
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
-    get_llm_router_handle,
-    get_worker_id,
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    LifecycleEventForwarder,
+    get_request_lifecycle_owner,
 )
 from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
-from ray.serve.handle import DeploymentHandle
-
-logger = get_logger(__name__)
-
-
-class LifecycleEventForwarder:
-    """Ordered, non-blocking bridge from the engine to every LLMRouter
-    replica's KVTokenTracker, which maintains per-replica token load
-    statistics. Each batch is broadcast to all ingress replicas, whose
-    selection services received the reservation through the ingress-side
-    background broadcast.
-
-    ``report`` only enqueues locally, so generation never blocks on delivery.
-    A single delivery task per replica drains the queue to the trackers,
-    awaiting one broadcast at a time so events arrive everywhere in the order
-    they were reported. Events that pile up during a call are sent together in
-    the next one.
-    """
-
-    def __init__(self, handle: DeploymentHandle, worker_id: int):
-        self.handle = handle
-        self.worker_id = worker_id
-        self._events: asyncio.Queue = asyncio.Queue()
-        self._delivery_task: Optional[asyncio.Task] = None
-
-    def report(self, method_name: str, *args) -> None:
-        if self._delivery_task is None or self._delivery_task.done():
-            self._delivery_task = asyncio.get_running_loop().create_task(
-                self._deliver()
-            )
-        self._events.put_nowait((method_name, args))
-
-    async def _deliver(self) -> None:
-        while True:
-            # Wait for the next event, then drain whatever queued up behind it
-            # into the same batch.
-            batch = [await self._events.get()]
-            while not self._events.empty():
-                batch.append(self._events.get_nowait())
-            try:
-                # return_exceptions so one failed replica cannot mask delivery
-                # to the rest; failures are logged and dropped below.
-                results = await self.handle.broadcast(
-                    "on_lifecycle_events", batch
-                ).results_async(
-                    timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
-                    return_exceptions=True,
-                )
-                errors = [r for r in results if isinstance(r, Exception)]
-                if errors:
-                    logger.warning(
-                        "KV lifecycle events dropped on %d/%d ingress replicas: %s",
-                        len(errors),
-                        len(results),
-                        errors[0],
-                    )
-            except Exception as e:
-                # Best-effort delivery: any failure (no LLMRouter replica being
-                # available during a redeploy, backpressure, a booking error) is
-                # dropped so the engine's token stream is never disrupted; report()
-                # restarts the delivery task on the next event.
-                logger.warning("Dropping KV lifecycle events: %s", e)
-            finally:
-                for _ in batch:
-                    self._events.task_done()
-
-    async def flush(self) -> None:
-        """Wait until every reported event has been delivered."""
-        await self._events.join()
-
-    def close(self) -> None:
-        """Cancel the delivery task on engine shutdown."""
-        if self._delivery_task is not None:
-            self._delivery_task.cancel()
-            self._delivery_task = None
 
 
 class RequestTokenTracker:
@@ -99,10 +18,13 @@ class RequestTokenTracker:
         self,
         forwarder: LifecycleEventForwarder,
         request_id: str,
+        owner: str,
         report_decode_progress: bool = False,
     ):
         self._forwarder = forwarder
         self._request_id = request_id
+        # Lifecycle endpoint of the router that selected this request.
+        self._owner = owner
         self._cumulative = 0
         self._prefill_marked = False
         self._finished = False
@@ -122,17 +44,22 @@ class RequestTokenTracker:
         if not self._prefill_marked:
             # The first output token signals prefill completion.
             self._prefill_marked = True
-            self._forwarder.report("on_prefill_complete", self._request_id)
+            self._forwarder.report(self._owner, "on_prefill_complete", self._request_id)
         if self._report_decode_progress:
             self._forwarder.report(
-                "on_decode_progress", self._request_id, self._cumulative
+                self._owner,
+                "on_decode_progress",
+                self._request_id,
+                self._cumulative,
             )
 
     def finish(self) -> None:
         """Report completion exactly once."""
         if not self._finished:
             self._finished = True
-            self._forwarder.report("on_request_completed", self._request_id)
+            self._forwarder.report(
+                self._owner, "on_request_completed", self._request_id
+            )
 
 
 def enable_token_tracking(
@@ -142,27 +69,7 @@ def enable_token_tracking(
 
     class TokenTrackingEngine(engine_cls):
         _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
-        _resolve_warned: bool = False
         _report_decode_progress: bool = report_decode_progress
-
-        def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
-            if self._lifecycle_forwarder is None:
-                try:
-                    # The KVTokenTracker lives inside the LLMRouter, so
-                    # forward lifecycle events to its deployment handle method.
-                    handle = get_llm_router_handle()
-                    worker_id = get_worker_id(
-                        serve.get_replica_context().replica_id.unique_id
-                    )
-                    self._lifecycle_forwarder = LifecycleEventForwarder(
-                        handle, worker_id
-                    )
-                except Exception as e:
-                    # Warn once: resolution is retried per request until it succeeds.
-                    if not self._resolve_warned:
-                        self._resolve_warned = True
-                        logger.warning("KV token tracking disabled: %s", e)
-            return self._lifecycle_forwarder
 
         def shutdown(self, *args, **kwargs):
             if self._lifecycle_forwarder is not None:
@@ -173,22 +80,27 @@ def enable_token_tracking(
             stream = super().generate(
                 prompt, sampling_params, request_id, *args, **kwargs
             )
-            forwarder = self._resolve_lifecycle_forwarder()
+            # No owner: no KV router selected this request (e.g. HAProxy's
+            # fallback path), so there is nothing to report.
+            owner = get_request_lifecycle_owner()
             # CUMULATIVE repeats output-so-far per chunk; our accounting sums
             # deltas, so skip it rather than over-count. vLLM's OpenAI layer only
             # uses DELTA/FINAL_ONLY (*Request.to_sampling_params):
             # https://github.com/vllm-project/vllm/tree/main/vllm/entrypoints/openai
-            if forwarder is None or (
+            if owner is None or (
                 sampling_params.output_kind == RequestOutputKind.CUMULATIVE
             ):
                 async for output in stream:
                     yield output
                 return
 
+            if self._lifecycle_forwarder is None:
+                self._lifecycle_forwarder = LifecycleEventForwarder()
             lifecycle_request_id = get_serve_request_id() or request_id
             tracker = RequestTokenTracker(
-                forwarder,
+                self._lifecycle_forwarder,
                 lifecycle_request_id,
+                owner,
                 report_decode_progress=self._report_decode_progress,
             )
             try:
