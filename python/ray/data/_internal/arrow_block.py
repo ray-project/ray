@@ -470,6 +470,73 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         return sort(self._table, sort_key)
 
+    def top_n(self, sort_key: "SortKey", limit: int) -> Block:
+        assert (
+            sort_key.get_columns()
+        ), f"Sorting columns couldn't be empty (got {sort_key.get_columns()})"
+        assert limit >= 0, limit
+
+        if limit == 0 or self._table.num_rows == 0:
+            return self._table.slice(0, 0)
+
+        import pyarrow.compute as pac
+
+        result_size = min(limit, self._table.num_rows)
+
+        def sort_and_take() -> Block:
+            if result_size == self._table.num_rows:
+                return self.sort(sort_key)
+
+            # Sort only the keys to avoid materializing the full payload.
+            keys = self._table.select(sort_key.get_columns())
+            context = DataContext.get_current()
+
+            if not (context.use_polars or context.use_polars_sort):
+                indices = pac.sort_indices(
+                    keys, sort_keys=sort_key.to_arrow_sort_args()
+                )
+                return self.take(indices.slice(0, result_size))
+
+            # Preserve the original row indices during Polars sorting.
+            index_column = "__top_n_row_index"
+            while index_column in keys.column_names:
+                index_column += "_"
+
+            keys = keys.append_column(
+                index_column, pyarrow.array(np.arange(self._table.num_rows))
+            )
+            sorted_keys = ArrowBlockAccessor(keys).sort(sort_key)
+            result = self.take(sorted_keys[index_column].slice(0, result_size))
+
+            # Preserve Polars schema conversions on selected rows.
+            import polars
+
+            return polars.from_arrow(result).to_arrow()
+
+        primary_column = self._table[sort_key.get_columns()[0]]
+        # SelectK excludes rows whose primary key is null or NaN, while a full
+        # sort places them at the end. Fall back if the result must include them.
+        excluded_primary_values = primary_column.null_count
+
+        if pyarrow.types.is_floating(primary_column.type):
+            nan_mask = pac.is_nan(primary_column)
+            nan_count = pac.sum(nan_mask).as_py()
+            excluded_primary_values += nan_count or 0
+
+        if excluded_primary_values > self._table.num_rows - result_size:
+            return sort_and_take()
+
+        try:
+            indices = pac.select_k_unstable(
+                self._table,
+                k=result_size,
+                sort_keys=sort_key.to_arrow_sort_args(),
+            )
+        except pyarrow.ArrowNotImplementedError:
+            return sort_and_take()
+
+        return self.take(indices)
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:

@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.top_n_operator import TopNMergeOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
@@ -37,6 +38,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     Topology,
     build_streaming_topology,
 )
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
@@ -860,6 +862,37 @@ class TestResourceManager:
         # o5's downstream (o6, o7) has no blocking materializing ops
         assert resource_manager2._is_blocking_materializing_op(o5) is False
         assert resource_manager2._is_blocking_materializing_op(o7) is False
+
+    def test_top_n_merge_preserves_upstream_memory_budget(self, restore_data_context):
+        """TopNMerge consumes inputs incrementally and needs no barrier exemption."""
+        ctx = DataContext.get_current()
+        upstream = mock_map_op(InputDataBuffer(ctx, []))
+        merge = TopNMergeOperator(
+            upstream,
+            ctx,
+            sort_key=SortKey("id"),
+            limit=1,
+            ray_remote_args={},
+            output_schema=None,
+            name="TopNMerge",
+        )
+
+        options = ExecutionOptions()
+        counter = noop_counter()
+        topology = build_streaming_topology(merge, options, counter)
+        resource_manager = ResourceManager(
+            topology,
+            options,
+            lambda: ExecutionResources(cpu=2, object_store_memory=1000),
+            ctx,
+            counter,
+        )
+        resource_manager.update_usages()
+        assert resource_manager.is_op_eligible(merge)
+
+        upstream_budget = resource_manager.get_budget(upstream)
+        assert upstream_budget is not None
+        assert upstream_budget.object_store_memory < math.inf
 
     def test_memory_limit_blocks_task_submission(self, restore_data_context):
         """Test that tasks are blocked when memory limit is exceeded."""

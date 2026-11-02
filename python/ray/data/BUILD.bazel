@@ -1942,6 +1942,48 @@ py_test(
 )
 
 py_test(
+    name = "test_top_n_execution",
+    size = "medium",
+    srcs = ["tests/test_top_n_execution.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_operator",
+    size = "medium",
+    srcs = ["tests/test_top_n_operator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_rewrite",
+    size = "medium",
+    srcs = ["tests/test_top_n_rewrite.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_push_based_shuffle",
     size = "enormous",
     srcs = ["tests/test_push_based_shuffle.py"],
