@@ -34,6 +34,9 @@ class SGLangTaskType(TaskType):
     # Generate text.
     GENERATE = "generate"
 
+    # Generate embeddings.
+    EMBED = "embed"
+
 
 TypeVLLMTaskType = Literal[tuple(vLLMTaskType.values())]
 TypeSGLangTaskType = Literal[tuple(SGLangTaskType.values())]
