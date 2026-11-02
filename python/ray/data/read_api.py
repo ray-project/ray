@@ -6631,6 +6631,7 @@ def read_delta(
                 columns=columns,
                 include_paths=include_paths,
                 shuffle=shuffle,
+                version_pinned_by_caller=version is not None,
             )
             return _read_datasource_v2(
                 datasource_v2,
