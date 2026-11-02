@@ -1,14 +1,26 @@
 import logging
+import time
 from dataclasses import replace
 from typing import Any, Dict, List, Optional, Sequence, Set, Union
 
+import ray
 from ray.train.health._internal.constants import DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
-from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
+from ray.train.health._internal.node_monitor import NodeMonitorStatus
+from ray.train.health._internal.node_monitor_group import (
+    NodeMonitorGroup,
+    NodeMonitorGroupPollStatus,
+)
 from ray.train.health._internal.probe_utils import merge_probes
 from ray.train.health.check import HealthCheck, PeriodicHealthCheck
 from ray.train.health.decision import Diagnose, Evict, HealthDecision, Noop, Reattempt
 from ray.train.health.evaluator import Evaluator
-from ray.train.health.probe import NodeIdStr, ProbeResult
+from ray.train.health.probe import (
+    ControllerProbe,
+    NodeIdStr,
+    NodeProbe,
+    Probe,
+    ProbeResult,
+)
 from ray.train.health.state import HealthState
 
 logger = logging.getLogger(__name__)
@@ -89,15 +101,12 @@ class HealthManager:
             for check in inflight_checks
             for evaluator in check.evaluator_creator()
         ]
+        self._inflight_probes = [p.probe for p in inflight_probes]
         self._node_monitor_group = NodeMonitorGroup(inflight_probes)
-        # {probe name: {node ID: the latest ProbeResult}}, of the NodeProbes.
-        self._latest_results: Dict[str, Dict[Any, ProbeResult]] = {}
-        # {probe name: {key: the latest ProbeResult}, or a ProbeResult with the
-        # error of its latest poll}, of the ControllerProbes.
-        self._latest_controller_results: Dict[
-            str, Union[ProbeResult, Dict[Any, ProbeResult]]
-        ] = {}
-        # The evaluators of the on-demand checks that are running.
+        # The latest status of each NodeMonitor of the in-flight probes.
+        self._latest_status = NodeMonitorGroupPollStatus(node_monitor_statuses={})
+        # The probes and evaluators of the on-demand checks that are running.
+        self._on_demand_probes: List[Probe] = []
         self._on_demand_evaluators: List[Evaluator] = []
         # The IDs of the evaluators whose failure was logged.
         self._failed_evaluators: Set[int] = set()
@@ -116,12 +125,13 @@ class HealthManager:
         Args:
             node_ids: The nodes the attempt's workers run on.
         """
-        self._latest_results.clear()
-        self._latest_controller_results.clear()
+        self._latest_status = NodeMonitorGroupPollStatus(node_monitor_statuses={})
         self._on_demand_evaluators = []
         self._node_monitor_group.shutdown()
         self._node_monitor_group.start_worker_node_monitors(node_ids)
-        self._node_monitor_group.start_controller_node_monitor()
+        self._node_monitor_group.start_controller_node_monitor(
+            ray.get_runtime_context().get_node_id()
+        )
         for evaluator in self._inflight_evaluators:
             try:
                 evaluator.on_reset()
@@ -148,11 +158,8 @@ class HealthManager:
             The health decision to carry out. ``Noop()`` if there is nothing to
             do.
         """
-        self._poll_latest_results(timeout)
-        state = HealthState(
-            probe_results={name: dict(r) for name, r in self._latest_results.items()},
-            controller_probe_results=dict(self._latest_controller_results),
-        )
+        self._poll_latest_status(timeout)
+        state = _to_health_state(self._latest_status, self._inflight_probes)
         return self._decide(self._inflight_evaluators, state)
 
     def start_on_demand_checks(
@@ -167,8 +174,9 @@ class HealthManager:
             timeout: Timeout in seconds for the nodes to answer.
         """
         probes = {p.probe_name(): p for check in checks for p in check.probe_creator()}
+        self._on_demand_probes = list(probes.values())
         self._node_monitor_group.poll_probes_async(
-            list(probes.values()), timeout_s=timeout
+            self._on_demand_probes, timeout_s=timeout
         )
         self._on_demand_evaluators = [
             evaluator for check in checks for evaluator in check.evaluator_creator()
@@ -181,26 +189,31 @@ class HealthManager:
         Returns:
             The health decision to carry out, or ``None`` while the checks run.
         """
-        state = self._node_monitor_group.poll_probe_results()
-        if state is None:
+        status = self._node_monitor_group.poll_probe_results()
+        if status is None:
             return None
         evaluators, self._on_demand_evaluators = self._on_demand_evaluators, []
-        return self._decide(evaluators, state)
+        return self._decide(
+            evaluators, _to_health_state(status, self._on_demand_probes)
+        )
 
-    def _poll_latest_results(self, timeout: float) -> None:
-        """Poll the latest probe results. A ``NodeMonitor`` that failed stops
-        until the next ``reset()``: a worker node's drops its results, and the
-        controller node's leaves each ``ControllerProbe`` a result with its
-        error.
+    def _poll_latest_status(self, timeout: float) -> None:
+        """Poll the latest status of each ``NodeMonitor``. A monitor keeps its
+        latest results while its poll hangs. A worker node's monitor that
+        failed stops, with its results, until the next ``reset()``.
 
         Args:
             timeout: Timeout in seconds to wait for the ``NodeMonitor``\\ s.
         """
         status = self._node_monitor_group.poll_status(timeout)
+        latest = self._latest_status
+        node_monitor_statuses: Dict[NodeIdStr, NodeMonitorStatus] = {}
         for node_id, node_monitor_status in status.node_monitor_statuses.items():
             if node_monitor_status.monitor_error is None:
-                for name, result in node_monitor_status.probe_results.items():
-                    self._latest_results.setdefault(name, {})[node_id] = result
+                node_monitor_statuses[node_id] = _merge(
+                    latest.node_monitor_statuses.get(node_id, NodeMonitorStatus()),
+                    node_monitor_status,
+                )
                 continue
             logger.warning(
                 "Stopped monitoring node %s until the next attempt: %s",
@@ -208,20 +221,13 @@ class HealthManager:
                 node_monitor_status.monitor_error,
             )
             self._node_monitor_group.shutdown_worker_node_monitors([node_id])
-            for results in self._latest_results.values():
-                results.pop(node_id, None)
-
-        controller_status = status.controller_node_monitor_status
-        if controller_status is None:
-            return
-        self._latest_controller_results.update(controller_status.probe_results)
-        if controller_status.monitor_error is not None:
-            logger.warning(
-                "Stopped monitoring the controller's node until the next "
-                "attempt: %s",
-                controller_status.monitor_error,
-            )
-            self._node_monitor_group.shutdown_controller_node_monitor()
+        self._latest_status = NodeMonitorGroupPollStatus(
+            node_monitor_statuses=node_monitor_statuses,
+            controller_node_monitor_status=_merge(
+                latest.controller_node_monitor_status,
+                status.controller_node_monitor_status,
+            ),
+        )
 
     def _decide(
         self, evaluators: List[Evaluator], state: HealthState
@@ -279,3 +285,69 @@ class HealthManager:
                 "Evaluator %s failed.", type(evaluator).__name__, exc_info=error
             )
         return Noop()
+
+
+def _merge(latest: NodeMonitorStatus, status: NodeMonitorStatus) -> NodeMonitorStatus:
+    """Merge a monitor's new status into its latest one, which keeps the
+    results of the probes the new one has none for, such as while a poll
+    hangs."""
+    return NodeMonitorStatus(
+        probe_results={**latest.probe_results, **status.probe_results},
+        monitor_error=status.monitor_error,
+    )
+
+
+def _to_health_state(
+    status: NodeMonitorGroupPollStatus, probes: Sequence[Probe]
+) -> HealthState:
+    """Build the ``HealthState`` of some probes from the statuses of their
+    ``NodeMonitor``\\ s. A monitor that failed gives each of its probes a
+    result with its error, and a ``ControllerProbe`` whose poll failed has its
+    error in ``controller_probe_errors``.
+
+    Args:
+        status: The statuses of the monitors.
+        probes: The probes the monitors poll.
+
+    Returns:
+        The ``HealthState``.
+    """
+    node_probe_names = [p.probe_name() for p in probes if isinstance(p, NodeProbe)]
+    # {node ID: {probe name: result}} -> {probe name: {node ID: result}}
+    probe_results: Dict[str, Dict[Any, ProbeResult]] = {}
+    for node_id, node_monitor_status in status.node_monitor_statuses.items():
+        node_results = _probe_results(node_monitor_status, node_probe_names)
+        for name, result in node_results.items():
+            probe_results.setdefault(name, {})[node_id] = result
+
+    controller_probe_names = [
+        p.probe_name() for p in probes if isinstance(p, ControllerProbe)
+    ]
+    controller_probe_results: Dict[str, Dict[Any, ProbeResult]] = {}
+    controller_probe_errors: Dict[str, Exception] = {}
+    controller_results = _probe_results(
+        status.controller_node_monitor_status, controller_probe_names
+    )
+    for name, result in controller_results.items():
+        if isinstance(result, ProbeResult):
+            controller_probe_errors[name] = result.error
+        else:
+            controller_probe_results[name] = dict(result)
+    return HealthState(
+        probe_results=probe_results,
+        controller_probe_results=controller_probe_results,
+        controller_probe_errors=controller_probe_errors,
+    )
+
+
+def _probe_results(
+    status: NodeMonitorStatus, probe_names: List[str]
+) -> Dict[str, Union[ProbeResult, Dict[Any, ProbeResult]]]:
+    """Get a monitor's probe results, or if the monitor failed, a result with
+    its error for each probe."""
+    if status.monitor_error is None:
+        return status.probe_results
+    return {
+        name: ProbeResult(timestamp_s=time.time(), error=status.monitor_error)
+        for name in probe_names
+    }
