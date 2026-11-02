@@ -3495,6 +3495,41 @@ def test_parquet_sampling_fails_on_permanent_error(
             ray.data.read_parquet(str(tmp_path)).materialize()
 
 
+def test_parquet_sampling_retries_transient_error(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
+    """V2 schema sampling retries a footer read that fails with an error in
+    ``DataContext.retried_io_errors``."""
+    from unittest.mock import patch
+
+    if not DataContext.get_current().use_datasource_v2:
+        pytest.skip("V2 reads the sample's footers on the driver.")
+
+    pq.write_table(pa.table({"col": [1, 2, 3]}), tmp_path / "data.parquet")
+    footer_reads = []
+
+    class _FailFirstFooterRead:
+        def __init__(self, fragment):
+            self._fragment = fragment
+
+        @property
+        def metadata(self):
+            footer_reads.append(1)
+            if len(footer_reads) == 1:
+                raise OSError("AWS Error SLOW_DOWN during GetObject operation")
+            return self._fragment.metadata
+
+    class _Format(pds.ParquetFileFormat):
+        def make_fragment(self, *args, **kwargs):
+            return _FailFirstFooterRead(super().make_fragment(*args, **kwargs))
+
+    with patch("pyarrow.dataset.ParquetFileFormat", new=_Format):
+        rows = ray.data.read_parquet(str(tmp_path)).take_all()
+
+    assert len(footer_reads) == 2
+    assert sorted(row["col"] for row in rows) == [1, 2, 3]
+
+
 @pytest.mark.timeout(30)
 def test_count_parquet_is_fast(ray_start_regular_shared):
     """This is an E2E test that verifies that we pushdown counts. If Ray Data reads the

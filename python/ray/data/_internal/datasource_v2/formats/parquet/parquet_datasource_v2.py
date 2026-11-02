@@ -42,6 +42,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _is_local_scheme,
+    call_with_retry,
     filesystem_for_sized_opens,
 )
 from ray.data.context import DataContext
@@ -341,7 +342,13 @@ class ParquetDatasourceV2(FileDataSourceV2):
                 fragment = pds.ParquetFileFormat().make_fragment(
                     path, filesystem=filesystem, file_size=file_sizes[path]
                 )
-                return fragment.metadata.schema.to_arrow_schema()
+                # ``make_fragment`` is lazy, so this is the footer read itself.
+                metadata = call_with_retry(
+                    lambda: fragment.metadata,
+                    description=f"read Parquet footer for {path}",
+                    match=DataContext.get_current().retried_io_errors,
+                )
+                return metadata.schema.to_arrow_schema()
 
             schema = infer_schema_from_files(
                 sample_paths, _read_schema, format_name="Parquet"
