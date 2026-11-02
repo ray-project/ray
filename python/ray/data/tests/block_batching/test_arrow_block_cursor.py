@@ -285,3 +285,9 @@ def test_column_chunk_visits_are_linear(monkeypatch, batch_size):
         cursor.advance(rows)
     assert pa.concat_tables(batches).equals(source)
     assert len(chunk_reads) <= 2 * sum(c.num_chunks for c in source.columns)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
