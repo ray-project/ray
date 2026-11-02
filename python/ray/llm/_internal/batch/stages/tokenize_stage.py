@@ -6,11 +6,7 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import get_cached_tokenizer
-from ray.llm._internal.common.utils.download_utils import (
-    NodeModelDownloadable,
-    download_model_files,
-)
+from ray.llm._internal.batch.utils import get_cached_tokenizer, load_tokenizer
 
 
 class TokenizeUDF(StatefulStageUDF):
@@ -29,28 +25,8 @@ class TokenizeUDF(StatefulStageUDF):
             model: The model to use for tokenization.
             trust_remote_code: Whether to trust remote code when loading the model.
         """
-        from transformers import AutoTokenizer
-
         super().__init__(data_column, expected_input_keys)
-        # Use EXCLUDE_SAFETENSORS for trust_remote_code models to ensure
-        # Python config files are downloaded.
-        download_mode = (
-            NodeModelDownloadable.EXCLUDE_SAFETENSORS
-            if trust_remote_code
-            else NodeModelDownloadable.TOKENIZER_ONLY
-        )
-        model_path = download_model_files(
-            model_id=model,
-            mirror_config=None,
-            download_model=download_mode,
-            download_extra_files=False,
-        )
-        self.tokenizer = get_cached_tokenizer(
-            AutoTokenizer.from_pretrained(
-                model_path,
-                trust_remote_code=trust_remote_code,
-            )
-        )
+        self.tokenizer = get_cached_tokenizer(load_tokenizer(model, trust_remote_code))
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """Tokenize the given batch.
@@ -97,28 +73,8 @@ class DetokenizeUDF(StatefulStageUDF):
             model: The model to use for detokenization.
             trust_remote_code: Whether to trust remote code when loading the model.
         """
-        from transformers import AutoTokenizer
-
         super().__init__(data_column, expected_input_keys)
-        # Use EXCLUDE_SAFETENSORS for trust_remote_code models to ensure
-        # Python config files are downloaded.
-        download_mode = (
-            NodeModelDownloadable.EXCLUDE_SAFETENSORS
-            if trust_remote_code
-            else NodeModelDownloadable.TOKENIZER_ONLY
-        )
-        model_path = download_model_files(
-            model_id=model,
-            mirror_config=None,
-            download_model=download_mode,
-            download_extra_files=False,
-        )
-        self.tokenizer = get_cached_tokenizer(
-            AutoTokenizer.from_pretrained(
-                model_path,
-                trust_remote_code=trust_remote_code,
-            )
-        )
+        self.tokenizer = get_cached_tokenizer(load_tokenizer(model, trust_remote_code))
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """Detokenize the given batch.

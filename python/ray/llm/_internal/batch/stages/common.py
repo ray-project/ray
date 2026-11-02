@@ -32,3 +32,22 @@ def maybe_convert_ndarray_to_list(
     elif isinstance(params, np.ndarray):
         return params.tolist()
     return params
+
+
+def to_token_id_list(value: Any, name: str) -> List[int]:
+    """Validate that `value` is a list of integer token IDs and return it as one.
+
+    Args:
+        value: A list or ndarray of token IDs.
+        name: The column name, used in error messages.
+
+    Returns:
+        The token IDs as a list of Python ints.
+    """
+    value = maybe_convert_ndarray_to_list(value)
+    if not isinstance(value, list) or not all(
+        isinstance(token_id, (int, np.integer)) and not isinstance(token_id, bool)
+        for token_id in value
+    ):
+        raise ValueError(f"'{name}' must be a list of integer token IDs.")
+    return [int(token_id) for token_id in value]
