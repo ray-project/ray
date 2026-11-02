@@ -15,6 +15,7 @@ from ray.train.health.probe import (
     WorkerProbe,
 )
 from ray.train.health.state import HealthState
+from ray.train.v2.api.health import report
 
 __all__ = [
     "ControllerProbe",
@@ -32,4 +33,7 @@ __all__ = [
     "ProbeResult",
     "Reattempt",
     "WorkerProbe",
+    "report",
 ]
+
+report.__module__ = "ray.train.health"
