@@ -25,6 +25,7 @@
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 
@@ -48,14 +49,16 @@ class ObjectRecoveryManager {
       TaskManagerInterface &task_manager,
       ReferenceCounterInterface &reference_counter,
       CoreWorkerMemoryStore &in_memory_store,
-      ObjectRecoveryFailureCallback recovery_failure_callback)
+      ObjectRecoveryFailureCallback recovery_failure_callback,
+      ray::observability::MetricInterface &object_recovery_attempts_counter)
       : task_manager_(task_manager),
         reference_counter_(reference_counter),
         rpc_address_(std::move(rpc_address)),
         raylet_client_pool_(std::move(raylet_client_pool)),
         object_lookup_(std::move(object_lookup)),
         in_memory_store_(in_memory_store),
-        recovery_failure_callback_(std::move(recovery_failure_callback)) {}
+        recovery_failure_callback_(std::move(recovery_failure_callback)),
+        object_recovery_attempts_counter_(object_recovery_attempts_counter) {}
 
   /// Recover an object that was stored in plasma. This will only succeed for
   /// objects that are lost from memory and are owned by this process.
@@ -128,6 +131,9 @@ class ObjectRecoveryManager {
 
   /// Callback to call if recovery fails.
   ObjectRecoveryFailureCallback recovery_failure_callback_;
+
+  /// Counts recovery attempts, tagged by Type ("Pin" or "Reconstruct").
+  ray::observability::MetricInterface &object_recovery_attempts_counter_;
 
   /// Objects that are currently pending recovery. Calls to RecoverObject for
   /// objects currently in this set are idempotent.

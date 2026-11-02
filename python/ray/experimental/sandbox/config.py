@@ -1,4 +1,5 @@
 import ipaddress
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -326,10 +327,11 @@ class SandboxConfig:
             units ``memory`` takes. Writes past it fail with ENOSPC inside
             the sandbox, and the sandbox keeps running. Zero (default) means
             no cap. Requires ``readonly=False`` or a ``workdir``: a readonly
-            rootfs with an explicit workdir runs on a private writable
-            overlay too, and a cap keeps that workdir inside the overlay
-            instead of a host directory. In-memory mounts such as /dev/shm
-            count toward the sandbox's memory instead.
+            rootfs stays read-only, so the cap applies to its explicit
+            workdir, whose writes then go to a file in the sandbox's
+            directory on the node instead of the workdir's host directory.
+            In-memory mounts such as /dev/shm count toward the sandbox's
+            memory instead.
     """
 
     image: str
@@ -353,6 +355,14 @@ class SandboxConfig:
     disk: Union[str, int, float] = 0
 
     def __post_init__(self):
+        self.cpu = 0.0 if self.cpu is None else float(self.cpu)
+        if not math.isfinite(self.cpu) or self.cpu < 0:
+            raise ValueError("cpu must be finite and non-negative")
+        if 0 < self.cpu < 0.01:
+            raise ValueError("cpu must be at least 0.01 for a cgroup CPU quota")
+        memory_bytes = parse_memory_bytes(self.memory)
+        if memory_bytes is not None and memory_bytes < 0:
+            raise ValueError("memory must be non-negative")
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
             raise ValueError("A valid container image name must be specified.")
         if self.network not in VALID_NETWORK_MODES:

@@ -178,10 +178,13 @@ async def _wait_running(control: ModalClientStub, sandbox_id: str) -> None:
     raise AssertionError("sandbox never reached running")
 
 
-async def _read_stdout(router: TaskCommandRouterStub, exec_id: str) -> bytes:
+async def _read_stdout(
+    router: TaskCommandRouterStub, sandbox_id: str, exec_id: str
+) -> bytes:
     replies = await _replies(
         router.TaskExecStdioRead(
             sr_pb2.TaskExecStdioReadRequest(
+                task_id=sandbox_id,
                 exec_id=exec_id,
                 offset=0,
                 file_descriptor=sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT,
@@ -243,9 +246,9 @@ def test_full_sandbox_lifecycle(tmp_path) -> None:
                         env={"K": "V"},
                     )
                 )
-                out = await _read_stdout(router, "ex-cmd")
+                out = await _read_stdout(router, sandbox_id, "ex-cmd")
                 code = await router.TaskExecWait(
-                    sr_pb2.TaskExecWaitRequest(exec_id="ex-cmd")
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-cmd")
                 )
                 exec_call = runtime.exec_calls[-1]
 
@@ -263,11 +266,15 @@ def test_full_sandbox_lifecycle(tmp_path) -> None:
                 )
                 await router.TaskExecStdinWrite(
                     sr_pb2.TaskExecStdinWriteRequest(
-                        exec_id="ex-write", offset=0, data=payload, eof=True
+                        task_id=sandbox_id,
+                        exec_id="ex-write",
+                        offset=0,
+                        data=payload,
+                        eof=True,
                     )
                 )
                 write_code = await router.TaskExecWait(
-                    sr_pb2.TaskExecWaitRequest(exec_id="ex-write")
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-write")
                 )
 
                 # Filesystem read.
@@ -281,7 +288,7 @@ def test_full_sandbox_lifecycle(tmp_path) -> None:
                         ],
                     )
                 )
-                downloaded = await _read_stdout(router, "ex-read")
+                downloaded = await _read_stdout(router, sandbox_id, "ex-read")
 
                 await control.SandboxTerminate(
                     api_pb2.SandboxTerminateRequest(sandbox_id=sandbox_id)
@@ -472,7 +479,7 @@ def test_exec_start_retry_does_not_rerun_the_command() -> None:
                 await router.TaskExecStart(request)
                 await router.TaskExecStart(request)
                 await router.TaskExecWait(
-                    sr_pb2.TaskExecWaitRequest(exec_id="ex-retry")
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-retry")
                 )
                 return len(runtime.exec_calls)
             finally:
@@ -481,10 +488,84 @@ def test_exec_start_retry_does_not_rerun_the_command() -> None:
     assert asyncio.run(scenario()) == 1
 
 
+def test_any_replica_serves_any_exec_call() -> None:
+    """Two facade replicas share no state, yet a command and a file write
+    started through one are retried, fed, read and waited on through the
+    other."""
+    port_a, port_b = next(_next_port), next(_next_port)
+
+    async def scenario() -> Dict[str, Any]:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        resolver.next_runtime = runtime
+        runtime.exec_results.append(FakeExecResult(exit_code=3, stdout="out"))
+        async with _Facade(resolver, port_a), _Facade(resolver, port_b):
+            channel_a, control, router_a = _channel(port_a)
+            channel_b, _, router_b = _channel(port_b)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                await _wait_running(control, sandbox_id)
+                start = sr_pb2.TaskExecStartRequest(
+                    task_id=sandbox_id, exec_id="ex-cmd", command_args=["cmd"]
+                )
+                await router_a.TaskExecStart(start)
+                await router_b.TaskExecStart(start)  # a retry: joins the first
+                stdout = await _read_stdout(router_b, sandbox_id, "ex-cmd")
+                code = await router_a.TaskExecWait(
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-cmd")
+                )
+
+                await router_a.TaskExecStart(
+                    sr_pb2.TaskExecStartRequest(
+                        task_id=sandbox_id,
+                        exec_id="ex-write",
+                        command_args=[
+                            _FS_TOOLS_PATH,
+                            json.dumps({"WriteFile": {"path": "/tmp/f"}}),
+                        ],
+                    )
+                )
+                for router, offset, data, eof in (
+                    (router_b, 0, b"abc", False),
+                    (router_a, 3, b"de", True),
+                ):
+                    await router.TaskExecStdinWrite(
+                        sr_pb2.TaskExecStdinWriteRequest(
+                            task_id=sandbox_id,
+                            exec_id="ex-write",
+                            offset=offset,
+                            data=data,
+                            eof=eof,
+                        )
+                    )
+                write_code = await router_b.TaskExecWait(
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-write")
+                )
+                return {
+                    "stdout": stdout,
+                    "code": code.code,
+                    "execs": len(runtime.exec_calls),
+                    "write_code": write_code.code,
+                    "written": runtime.written_files.get("/tmp/f"),
+                }
+            finally:
+                await channel_a.close()
+                await channel_b.close()
+
+    assert asyncio.run(scenario()) == {
+        "stdout": b"out",
+        "code": 3,
+        "execs": 1,
+        "write_code": 0,
+        "written": b"abcde",
+    }
+
+
 def test_exec_start_retry_joins_an_in_flight_start(monkeypatch) -> None:
     """A start whose actor call outlives the scheduling grace answers
-    UNAVAILABLE; the SDK's retry must join that start rather than run the
-    command a second time, and is acknowledged once the first start lands."""
+    UNAVAILABLE; the SDK's retry reaches the host again, which joins it to
+    the first start by exec id rather than run the command a second time,
+    and is acknowledged once the first start lands."""
     port = next(_next_port)
 
     async def scenario() -> Tuple[int, int]:
@@ -523,13 +604,58 @@ def test_exec_start_retry_joins_an_in_flight_start(monkeypatch) -> None:
                 gate.set()
                 await retry
                 await router.TaskExecWait(
-                    sr_pb2.TaskExecWaitRequest(exec_id="ex-inflight")
+                    sr_pb2.TaskExecWaitRequest(
+                        task_id=sandbox_id, exec_id="ex-inflight"
+                    )
                 )
                 return starts, len(runtime.exec_calls)
             finally:
                 await channel.close()
 
-    assert asyncio.run(scenario()) == (1, 1)
+    assert asyncio.run(scenario()) == (2, 1)
+
+
+def test_a_start_that_fails_after_the_client_left_is_retrieved(monkeypatch) -> None:
+    """A start that fails after TaskExecStart stopped waiting (UNAVAILABLE)
+    has its exception retrieved, not logged as never retrieved."""
+    port = next(_next_port)
+    unretrieved = []
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(lambda _, ctx: unretrieved.append(ctx))
+        resolver = FakeResolver()
+        resolver.next_runtime = FakeSandboxRuntime()
+        async with _Facade(resolver, port):
+            channel, control, router = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                await _wait_running(control, sandbox_id)
+                host = resolver.get(sandbox_id).host
+                gate = asyncio.Event()
+
+                async def failing_start(*args: Any, **kwargs: Any) -> Any:
+                    await gate.wait()
+                    raise RuntimeError("the host went away")
+
+                host.start_exec = failing_start
+                monkeypatch.setattr(grpc_facade, "_SCHEDULING_GRACE_SECONDS", 0.1)
+                request = sr_pb2.TaskExecStartRequest(
+                    task_id=sandbox_id, exec_id="ex-late", command_args=["true"]
+                )
+                with pytest.raises(grpc.aio.AioRpcError):
+                    await router.TaskExecStart(request)
+                gate.set()
+                await asyncio.sleep(0.1)
+            finally:
+                await channel.close()
+        import gc
+
+        gc.collect()
+        await asyncio.sleep(0)
+
+    asyncio.run(scenario())
+    assert not [c for c in unretrieved if "never retrieved" in c.get("message", "")]
 
 
 def test_network_policy_maps_to_runtime_config() -> None:
@@ -692,23 +818,6 @@ def test_set_network_access_refusals() -> None:
     assert calls == [0, 0]
 
 
-def test_exec_table_evicts_finished_records(monkeypatch) -> None:
-    """Finished execs are evicted past the cap; running ones are kept."""
-    monkeypatch.setattr(grpc_facade, "_MAX_EXEC_RECORDS", 3)
-
-    async def scenario() -> List[str]:
-        state = grpc_facade._FacadeState(FakeResolver(), None, "http://x")
-        running = grpc_facade._ExecRecord(kind="fs", handle=None)
-        state.add_exec("running", running)
-        for i in range(4):
-            record = grpc_facade._ExecRecord(kind="fs", handle=None)
-            record.finish(0)
-            state.add_exec(f"done-{i}", record)
-        return list(state.execs)
-
-    assert asyncio.run(scenario()) == ["running", "done-2", "done-3"]
-
-
 def test_read_missing_file_is_typed() -> None:
     """A missing file surfaces as a NotFound fs error on the exec's stderr."""
     port = next(_next_port)
@@ -734,6 +843,7 @@ def test_read_missing_file_is_typed() -> None:
                 stderr_replies = await _replies(
                     router.TaskExecStdioRead(
                         sr_pb2.TaskExecStdioReadRequest(
+                            task_id=sandbox_id,
                             exec_id="ex-miss",
                             offset=0,
                             file_descriptor=(
@@ -744,7 +854,7 @@ def test_read_missing_file_is_typed() -> None:
                 )
                 stderr_chunks = [reply.data for reply in stderr_replies]
                 code = await router.TaskExecWait(
-                    sr_pb2.TaskExecWaitRequest(exec_id="ex-miss")
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-miss")
                 )
                 return code.code, b"".join(stderr_chunks)
             finally:
@@ -782,30 +892,6 @@ def test_build_step_images_are_rejected() -> None:
 
     message = asyncio.run(scenario())
     assert "prebuilt registry images" in message
-
-
-def test_exec_table_retains_finished_records_then_expires_them() -> None:
-    """Finished execs stay readable for the retention period, well past the
-    old 1000-record count, and are dropped once it has passed."""
-
-    async def scenario() -> Tuple[int, List[str], int]:
-        state = grpc_facade._FacadeState(FakeResolver(), None, "http://x")
-        for i in range(2000):
-            record = grpc_facade._ExecRecord(kind="fs", handle=None)
-            record.finish(0)
-            state.add_exec(f"done-{i}", record)
-        kept = len(state.execs)
-        for key in list(state.execs)[:10]:
-            state.execs[key].finished_at -= (
-                grpc_facade._EXEC_RECORD_RETENTION_SECONDS + 1
-            )
-        state.add_exec("new", grpc_facade._ExecRecord(kind="fs", handle=None))
-        return kept, list(state.execs)[:2], len(state.execs)
-
-    kept, head, total = asyncio.run(scenario())
-    assert kept == 2000
-    assert head == ["done-10", "done-11"]
-    assert total == 2000 - 10 + 1
 
 
 class _StalledTerminateHandle:
@@ -937,13 +1023,17 @@ def test_write_file_stdin_is_capped() -> None:
                 try:
                     await router.TaskExecStdinWrite(
                         sr_pb2.TaskExecStdinWriteRequest(
-                            exec_id="ex-big", offset=0, data=b"0123456789", eof=True
+                            task_id=sandbox_id,
+                            exec_id="ex-big",
+                            offset=0,
+                            data=b"0123456789",
+                            eof=True,
                         )
                     )
                 except grpc.aio.AioRpcError as exc:
                     status = exc.code()
                 code = await router.TaskExecWait(
-                    sr_pb2.TaskExecWaitRequest(exec_id="ex-big")
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-big")
                 )
                 return status, code.code
             finally:
@@ -1215,7 +1305,7 @@ def test_calls_without_the_token_are_rejected_on_the_wire(monkeypatch) -> None:
                     # flow-control window unless the facade releases them.
                     "TaskExecStdinWrite": lambda md: router.TaskExecStdinWrite(
                         sr_pb2.TaskExecStdinWriteRequest(
-                            exec_id="ex", data=b"x" * (3 * 1024 * 1024)
+                            task_id="sb-x", exec_id="ex", data=b"x" * (3 * 1024 * 1024)
                         ),
                         metadata=md,
                     ),
@@ -1283,9 +1373,9 @@ def test_the_token_authenticates_both_planes(monkeypatch) -> None:
                         command_args=["echo", "hello"],
                     )
                 )
-                stdout = await _read_stdout(router, "ex-echo")
+                stdout = await _read_stdout(router, sandbox_id, "ex-echo")
                 code = await router.TaskExecWait(
-                    sr_pb2.TaskExecWaitRequest(exec_id="ex-echo")
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-echo")
                 )
                 # A file write streams its content over the exec's stdin.
                 await router.TaskExecStart(
@@ -1311,7 +1401,7 @@ def test_the_token_authenticates_both_planes(monkeypatch) -> None:
                     ]
                 )
                 write_code = await router.TaskExecWait(
-                    sr_pb2.TaskExecWaitRequest(exec_id="ex-write")
+                    sr_pb2.TaskExecWaitRequest(task_id=sandbox_id, exec_id="ex-write")
                 )
                 # Either form of the token works on either plane.
                 await bearer_control.SandboxGetTaskId(
@@ -1323,7 +1413,7 @@ def test_the_token_authenticates_both_planes(monkeypatch) -> None:
             secret_channel, _, secret_router = _channel(port, _SECRET)
             try:
                 poll = await secret_router.TaskExecPoll(
-                    sr_pb2.TaskExecPollRequest(exec_id="ex-echo")
+                    sr_pb2.TaskExecPollRequest(task_id=sandbox_id, exec_id="ex-echo")
                 )
             finally:
                 await secret_channel.close()
@@ -1357,7 +1447,7 @@ def test_rejected_calls_have_no_side_effects(monkeypatch) -> None:
         resolver = FakeResolver()
         runtime = FakeSandboxRuntime()
         resolver.next_runtime = runtime
-        async with _Facade(resolver, port) as facade:
+        async with _Facade(resolver, port):
             authed, authed_control, _ = _channel(port, _BEARER)
             anonymous, control, router = _channel(port)
             try:
@@ -1395,7 +1485,6 @@ def test_rejected_calls_have_no_side_effects(monkeypatch) -> None:
                     "statuses": statuses,
                     "new_creates": len(resolver.create_options) - creates,
                     "new_execs": len(runtime.exec_calls) - execs,
-                    "exec_table": list(facade.servicer._state.execs),
                     "killed": resolver.killed,
                     "deleted": runtime.deleted,
                 }
@@ -1407,7 +1496,6 @@ def test_rejected_calls_have_no_side_effects(monkeypatch) -> None:
         "statuses": [StatusCode.UNAUTHENTICATED] * 3,
         "new_creates": 0,
         "new_execs": 0,
-        "exec_table": [],
         "killed": [],
         "deleted": [],
     }

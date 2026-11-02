@@ -223,6 +223,27 @@ def test_metrics_endpoints_require_token(
             assert response.status_code == 200, (name, form)
 
 
+@pytest.fixture
+def skip_metrics_auth(monkeypatch):
+    """Run before the cluster fixture so every Ray process inherits the setting."""
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+
+
+def test_skip_metrics_opens_only_metrics_endpoints(
+    autoscaler_version, skip_metrics_auth, setup_cluster_with_token_auth
+):
+    assert is_autoscaler_v2(fetch_from_server=True) == (autoscaler_version == "v2")
+    for name, url in _metrics_endpoints().items():
+        response = requests.get(f"{url}/metrics", timeout=5)
+        assert response.status_code == 200, name
+
+    dashboard_api = requests.get(
+        f"{setup_cluster_with_token_auth['dashboard_url']}/api/component_activities",
+        timeout=5,
+    )
+    assert dashboard_api.status_code == 401
+
+
 def test_metrics_endpoints_open_when_auth_disabled(setup_cluster_without_token_auth):
     for name, url in _metrics_endpoints().items():
         response = requests.get(f"{url}/metrics", timeout=5)

@@ -97,6 +97,26 @@ class AuthenticationTokenLoader:
             return False
         return True
 
+    def create_token_if_missing(self):
+        """Create ~/.ray/auth_token with a new random token, unless a token source
+        already holds a token. Ignores RAY_AUTH_MODE.
+
+        Raises:
+            AuthenticationError: RAY_AUTH_TOKEN_PATH names a file that can't be read.
+            RuntimeError: The token file can't be written.
+        """
+        cdef string error
+
+        # Raises AuthenticationError for token sources that fail to load, so the
+        # error below can only come from writing the file.
+        if self.has_token(ignore_auth_mode=True):
+            return
+        with nogil:
+            error = CAuthenticationTokenLoader.instance().CreateTokenIfMissing()
+
+        if not error.empty():
+            raise RuntimeError(error.decode('utf-8'))
+
     def reset_cache(self):
         """Reset the C++ authentication token cache.
 

@@ -194,8 +194,7 @@ if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
 @PublicAPI(stability="beta")
 @pd.api.extensions.register_extension_dtype
 class TensorDtype(pd.api.extensions.ExtensionDtype):
-    """
-    Pandas extension type for a column of homogeneous-typed tensors.
+    """Pandas extension type for a column of homogeneous-typed tensors.
 
     This extension supports tensors in which the elements have different shapes.
     However, each tensor element must be non-ragged, i.e. each tensor element must have
@@ -297,8 +296,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     base = None
 
     def __init__(self, shape: Tuple[Optional[int], ...], dtype: np.dtype):
-        """
-        Create a new TensorDtype.
+        """Create a new TensorDtype.
 
         Args:
             shape: The shape of the tensor elements.
@@ -309,8 +307,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     @property
     def type(self):
-        """
-        The scalar type for the array, e.g. ``int``
+        """The scalar type for the array, e.g. ``int``
         It's expected ``ExtensionArray[item]`` returns an instance
         of ``ExtensionDtype.type`` for scalar ``item``, assuming
         that value is valid (not NA). NA values do not need to be
@@ -320,15 +317,12 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     @property
     def element_dtype(self):
-        """
-        The dtype of the underlying tensor elements.
-        """
+        """The dtype of the underlying tensor elements."""
         return self._dtype
 
     @property
     def element_shape(self):
-        """
-        The shape of the underlying tensor elements. This will be a tuple of Nones if
+        """The shape of the underlying tensor elements. This will be a tuple of Nones if
         the corresponding TensorArray for this TensorDtype holds variable-shaped tensor
         elements.
         """
@@ -336,16 +330,14 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     @property
     def is_variable_shaped(self):
-        """
-        Whether the corresponding TensorArray for this TensorDtype holds variable-shaped
+        """Whether the corresponding TensorArray for this TensorDtype holds variable-shaped
         tensor elements.
         """
         return all(dim_size is None for dim_size in self.shape)
 
     @property
     def name(self) -> str:
-        """
-        A string identifying the data type.
+        """A string identifying the data type.
         Will be used for display in, e.g. ``Series.dtype``
         """
         return f"TensorDtype(shape={self._shape}, dtype={self._dtype})"
@@ -421,8 +413,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         return TensorArray
 
     def __from_arrow__(self, array: Union[pa.Array, pa.ChunkedArray]):
-        """
-        Convert a pyarrow (chunked) array to a TensorArray.
+        """Convert a pyarrow (chunked) array to a TensorArray.
 
         This and TensorArray.__arrow_array__ make up the
         Pandas extension type + array <--> Arrow extension type + array
@@ -498,15 +489,13 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
 
 class _TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
-    """
-    Mixin for TensorArray operator support, applying operations on the
+    """Mixin for TensorArray operator support, applying operations on the
     underlying ndarrays.
     """
 
     @classmethod
     def _create_method(cls, op, coerce_to_dtype=True, result_dtype=None):
-        """
-        Add support for binary operators by unwrapping, applying, and
+        """Add support for binary operators by unwrapping, applying, and
         rewrapping.
         """
 
@@ -552,9 +541,7 @@ class _TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
 
 
 class _TensorScalarCastMixin:
-    """
-    Mixin for casting scalar tensors to a particular numeric type.
-    """
+    """Mixin for casting scalar tensors to a particular numeric type."""
 
     def _scalarfunc(self, func: Callable[[Any], Any]):
         return func(self._tensor)
@@ -577,13 +564,10 @@ class _TensorScalarCastMixin:
 
 @PublicAPI(stability="beta")
 class TensorArrayElement(_TensorOpsMixin, _TensorScalarCastMixin):
-    """
-    Single element of a TensorArray, wrapping an underlying ndarray.
-    """
+    """Single element of a TensorArray, wrapping an underlying ndarray."""
 
     def __init__(self, values: np.ndarray):
-        """
-        Construct a TensorArrayElement from a NumPy ndarray.
+        """Construct a TensorArrayElement from a NumPy ndarray.
 
         Args:
             values: ndarray that underlies this TensorArray element.
@@ -630,8 +614,7 @@ class TensorArray(
     _TensorOpsMixin,
     _TensorScalarCastMixin,
 ):
-    """
-    Pandas `ExtensionArray` representing a tensor column, i.e. a column
+    """Pandas `ExtensionArray` representing a tensor column, i.e. a column
     consisting of ndarrays as elements.
 
     This extension supports tensors in which the elements have different shapes.
@@ -896,9 +879,7 @@ class TensorArray(
 
     @property
     def dtype(self) -> pd.api.extensions.ExtensionDtype:
-        """
-        An instance of 'ExtensionDtype'.
-        """
+        """An instance of 'ExtensionDtype'."""
         if self.is_variable_shaped:
             # A tensor is only considered variable-shaped if it's non-empty, so no
             # non-empty check is needed here.
@@ -911,18 +892,14 @@ class TensorArray(
 
     @property
     def is_variable_shaped(self):
-        """
-        Whether this TensorArray holds variable-shaped tensor elements.
-        """
+        """Whether this TensorArray holds variable-shaped tensor elements."""
         if self._is_variable_shaped is None:
             self._is_variable_shaped = _is_ndarray_variable_shaped_tensor(self._tensor)
         return self._is_variable_shaped
 
     @property
     def nbytes(self) -> int:
-        """
-        The number of bytes needed to store this object in memory.
-        """
+        """The number of bytes needed to store this object in memory."""
         return self._tensor.nbytes
 
     def isna(self) -> "TensorArray":
@@ -936,6 +913,12 @@ class TensorArray(
         * ``na_values._is_boolean`` should be True
         * ``na_values`` should implement :func:`ExtensionArray._reduce`
         * ``na_values.any`` and ``na_values.all`` should be implemented
+
+        Returns:
+            A boolean NumPy array with one entry per tensor. For object tensors, an
+            entry is ``True`` if the tensor is ``None``. For string tensors, it's
+            ``True`` if every element is an empty string. For other tensors, it's
+            ``True`` if every element is NaN.
         """
         if self._tensor.dtype.type is np.object_:
             # Avoid comparing with __eq__ because the elements of the tensor
@@ -1013,7 +996,11 @@ class TensorArray(
         return TensorArray(values)
 
     def copy(self) -> "TensorArray":
-        """Return a copy of the array."""
+        """Return a copy of the array.
+
+        Returns:
+            A new :class:`TensorArray` that holds a copy of the underlying tensor.
+        """
         # TODO(Clark): Copy cached properties.
         return TensorArray(self._tensor.copy())
 
@@ -1079,9 +1066,7 @@ class TensorArray(
             )
 
     def __contains__(self, item) -> bool:
-        """
-        Return for `item in self`.
-        """
+        """Return for `item in self`."""
         if isinstance(item, TensorArrayElement):
             np_item = np.asarray(item)
             if np_item.size == 1 and np.isnan(np_item).all():
@@ -1130,8 +1115,7 @@ class TensorArray(
         return np.asarray(self._tensor, dtype=dtype, **kwargs)
 
     def __array_ufunc__(self, ufunc: Callable, method: str, *inputs, **kwargs):
-        """
-        Supports NumPy ufuncs without requiring sloppy coercion to an
+        """Supports NumPy ufuncs without requiring sloppy coercion to an
         ndarray.
         """
         out = kwargs.get("out", ())
@@ -1293,8 +1277,7 @@ class TensorArray(
         return result if axis is None else TensorArray(result)
 
     def __arrow_array__(self, type=None):
-        """
-        Convert this TensorArray to an ArrowTensorArray extension array.
+        """Convert this TensorArray to an ArrowTensorArray extension array.
 
         This and TensorDtype.__from_arrow__ make up the
         Pandas extension type + array <--> Arrow extension type + array
