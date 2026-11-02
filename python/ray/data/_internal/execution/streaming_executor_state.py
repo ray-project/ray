@@ -504,8 +504,18 @@ class OpState:
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
 
-        actor_info = self.op.get_actor_info()
+        self.refresh_actor_metrics()
+        # Near zero under the actor-only backend, which moves inputs into the
+        # operator as soon as they arrive.
+        for next_op in self.op.output_dependencies:
+            next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
+            next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
+        self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
+        self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
 
+    def refresh_actor_metrics(self) -> None:
+        """Copy the operator's actor-pool counts into its runtime metrics."""
+        actor_info = self.op.get_actor_info()
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
@@ -514,11 +524,6 @@ class OpState:
         self.op.metrics.num_idle_actors = actor_info.idle
         self.op.metrics.pool_utilization = actor_info.pool_utilization
         self.op.metrics.num_tasks_in_flight = actor_info.tasks_in_flight
-        for next_op in self.op.output_dependencies:
-            next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
-            next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
-        self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
-        self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
 
     def move_input_into_op(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
