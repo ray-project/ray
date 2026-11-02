@@ -6,7 +6,6 @@
 # delete it, delete its line in the same PR. Don't add lines. Delete this file
 # and the notebook check when the list is empty.
 
-doc/source/_templates/template.ipynb
 doc/source/core/examples/batch_prediction.ipynb
 doc/source/core/examples/gentle_walkthrough.ipynb
 doc/source/core/examples/highly_parallel.ipynb
