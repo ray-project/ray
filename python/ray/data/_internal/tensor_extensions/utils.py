@@ -51,6 +51,7 @@ def _should_convert_to_tensor(
 ) -> bool:
     assert len(column_values) > 0
 
+    first = _first_non_null(column_values)
     # We convert passed in column values into a tensor representation (involving
     # Arrow/Pandas extension types) in either of the following cases:
     return (
@@ -67,9 +68,21 @@ def _should_convert_to_tensor(
         #   (excluding Pyarrow arrays). This is done for compatibility with previous
         #   existing behavior where all column values were blindly converted to Numpy
         #   leading to list of ndarrays being converted a tensor):
-        or isinstance(column_values[0], np.ndarray)
-        or _is_ndarray_like_not_pyarrow_array(column_values[0])
+        or isinstance(first, np.ndarray)
+        or _is_ndarray_like_not_pyarrow_array(first)
     )
+
+
+def _first_non_null(values: Union[List[Any], np.ndarray, ArrayLike]) -> Any:
+    """The first element that is not ``None``, or ``None`` if there is none.
+
+    A ``None`` element is a null row, so it says nothing about the type of the
+    column. Only the tensors next to it do.
+    """
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 def _is_ndarray_like_not_pyarrow_array(column_values):
@@ -90,7 +103,7 @@ def _is_ndarray_tensor(t: Any) -> bool:
         return True
 
     # Case of ragged tensor (as produced by `create_ragged_ndarray` utility)
-    elif t.dtype.type is np.object_ and len(t) > 0 and isinstance(t[0], np.ndarray):
+    elif t.dtype.type is np.object_ and isinstance(_first_non_null(t), np.ndarray):
         return True
 
     return False
@@ -106,10 +119,14 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
         return False
     if len(arr) == 0:
         return False
-    if not isinstance(arr[0], np.ndarray):
+    first = _first_non_null(arr)
+    if not isinstance(first, np.ndarray):
         return False
-    shape = arr[0].shape
-    for a in arr[1:]:
+    shape = first.shape
+    for a in arr:
+        if a is None:
+            # A null row has no shape, so it does not decide.
+            continue
         if not isinstance(a, np.ndarray):
             return False
         if a.shape != shape:

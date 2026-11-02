@@ -33,7 +33,10 @@ from ray.data._internal.tensor_extensions.pandas import (
     TensorArrayElement,
     TensorDtype,
 )
+from ray.data.context import DataContext
 from ray.data._internal.tensor_extensions.utils import (
+    _is_ndarray_variable_shaped_tensor,
+    _should_convert_to_tensor,
     create_ragged_ndarray,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -1737,6 +1740,71 @@ def test_tensor_array_to_numpy_with_null_rows(make_tensors):
 
 
 @pytest.mark.parametrize(
+    "values, expected",
+    [
+        ([None, np.ones(2), np.ones(2)], True),
+        ([None, None, np.ones(2)], True),
+        (create_ragged_ndarray([None, np.ones(2)]), True),
+        ([None, 1, 2], False),
+        ([None, [1.0, 2.0]], False),
+        ([None, None], False),
+    ],
+)
+def test_should_convert_to_tensor_skips_leading_nulls(values, expected):
+    """A None at the front of a column is a null row, not the column's type.
+    The decision to make a tensor column looks at the first value that is
+    not None, so a column of ndarrays with a leading None is still a tensor
+    column, and a column with no ndarray is not."""
+    assert _should_convert_to_tensor(values, "x") is expected
+
+
+def test_variable_shaped_check_skips_null_rows():
+    """Null rows have no shape, so they neither make a column variable-shaped
+    nor hide that its tensors differ in shape."""
+    fixed = create_ragged_ndarray([None, np.ones((2, 2)), None, np.ones((2, 2))])
+    ragged = create_ragged_ndarray([None, np.ones((2, 2)), np.ones((3, 2))])
+
+    assert not _is_ndarray_variable_shaped_tensor(fixed)
+    assert _is_ndarray_variable_shaped_tensor(ragged)
+
+
+def test_unify_tensor_arrays_with_only_null_rows(tensor_format_context):
+    """A slice of a tensor column that holds only null rows, as the batcher can
+    cut one, unifies with a column of another shape. It becomes null rows of
+    the variable-shaped type instead of failing to rebuild a tensor from
+    nothing."""
+    with_null = ArrowTensorArray.from_numpy([None, np.ones((2, 2)), None])
+    only_nulls = with_null[0:1]
+    other_shape = ArrowTensorArray.from_numpy(np.ones((1, 3, 2)))
+
+    unified = unify_tensor_arrays([only_nulls, other_shape])
+
+    assert all(isinstance(a.type, ArrowVariableShapedTensorType) for a in unified)
+    assert unified[0].null_count == len(unified[0]) == 1
+    assert _rows(unified[1].to_numpy()) == [[[1, 1], [1, 1], [1, 1]]]
+
+
+def test_tensor_dtype_from_arrow_keeps_shape_with_null_rows(tensor_format_context):
+    """A tensor column with a null row converts to a pandas TensorArray whose
+    rows keep the tensor shape, with None for the null row. pyarrow's native
+    fixed-shape storage reads back flat, so each row is reshaped."""
+    tensor = np.ones((2, 2), np.float32)
+    arrow_array = ArrowTensorArray.from_numpy([None, tensor, tensor])
+    dtype = TensorDtype((2, 2), np.dtype(np.float32))
+
+    single = dtype.__from_arrow__(arrow_array).to_numpy()
+    chunked = dtype.__from_arrow__(
+        pa.chunked_array([arrow_array, arrow_array[1:]])
+    ).to_numpy()
+
+    def shapes(rows):
+        return [None if r is None else r.shape for r in rows]
+
+    assert shapes(single) == [None, (2, 2), (2, 2)]
+    assert shapes(chunked) == [None, (2, 2), (2, 2), (2, 2), (2, 2)]
+
+
+@pytest.mark.parametrize(
     "make_tensors", [_fixed_tensors, _boolean_tensors, _string_tensors]
 )
 def test_tensor_array_to_numpy_slice_after_null_row(make_tensors):
@@ -1753,6 +1821,25 @@ def test_tensor_array_to_numpy_slice_after_null_row(make_tensors):
     assert after_null.null_count == 0
     assert _rows(after_null.to_numpy(zero_copy_only=False)) == expected
     assert _rows(with_null[4:5].to_numpy(zero_copy_only=False)) == expected[1:]
+
+
+@pytest.mark.parametrize(
+    "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+)
+def test_unify_tensor_arrays_with_all_null_chunk(restore_data_context, tensor_format):
+    """A chunk of only null rows, typed as a fixed-shape tensor, unifies with
+    a chunk of another shape into a ragged column. The null rows stay null."""
+    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
+    small = ArrowTensorArray.from_numpy(np.ones((1, 2, 2), np.float32))
+    big = ArrowTensorArray.from_numpy(np.ones((1, 3, 2), np.float32))
+    all_null = pa.nulls(2, type=small.type)
+
+    unified = unify_tensor_arrays([all_null, big])
+    column = pa.chunked_array(unified)
+
+    assert isinstance(column.type, ArrowVariableShapedTensorType)
+    assert column.to_pylist()[:2] == [None, None]
+    np.testing.assert_array_equal(column.to_pylist()[2], np.ones((3, 2), np.float32))
 
 
 @pytest.mark.skipif(

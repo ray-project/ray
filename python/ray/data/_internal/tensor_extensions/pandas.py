@@ -45,6 +45,7 @@ from pandas.core.indexers import check_array_indexer, validate_indices
 
 from ray.data._internal.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
+    _first_non_null,
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
@@ -465,11 +466,19 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 # here, so build the correctly typed empty buffer directly.
                 values = np.empty((0,) + self.element_shape, dtype=self._dtype)
             elif values.dtype != object or array.null_count == 0:
-                # A column with a null row keeps one ndarray per row and None
-                # for the null row, since a dense array cannot mark a row missing.
                 if values.dtype == object:
                     values = np.stack(values)
                 values = values.reshape((num_rows,) + self.element_shape)
+            else:
+                # A column with a null row keeps one ndarray per row and None
+                # for the null row, since a dense array cannot mark a row
+                # missing. Each row still gets the tensor shape.
+                values = create_ragged_ndarray(
+                    [
+                        None if row is None else row.reshape(self.element_shape)
+                        for row in values
+                    ]
+                )
 
         return TensorArray(values)
 
@@ -891,11 +900,15 @@ class TensorArray(
     @property
     def dtype(self) -> pd.api.extensions.ExtensionDtype:
         """An instance of 'ExtensionDtype'."""
+        first = _first_non_null(self._tensor)
         if self.is_variable_shaped:
-            # A tensor is only considered variable-shaped if it's non-empty, so no
-            # non-empty check is needed here.
-            dtype = self._tensor[0].dtype
-            shape = (None,) * self._tensor[0].ndim
+            # A variable-shaped array has at least one tensor.
+            dtype = first.dtype
+            shape = (None,) * first.ndim
+        elif self._tensor.dtype.type is np.object_ and first is not None:
+            # Fixed-shape tensors stored one per element, next to null rows.
+            dtype = first.dtype
+            shape = first.shape
         else:
             dtype = self.numpy_dtype
             shape = self.numpy_shape[1:]

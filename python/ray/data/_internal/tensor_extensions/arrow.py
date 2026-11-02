@@ -1151,6 +1151,12 @@ class ArrowTensorArray(pa.ExtensionArray):
         #       For (deprecated) ``ArrowTensorType`` we fallback to converting to Numpy,
         #       and reconstructing.
         if not isinstance(self.type, ArrowTensorTypeV2):
+            if self.null_count == len(self):
+                # Only null rows, so there is no tensor to convert.
+                return pa.nulls(
+                    len(self),
+                    type=ArrowVariableShapedTensorType(self.type.value_type, ndim),
+                )
             return ArrowVariableShapedTensorArray.from_numpy(self.to_numpy())
 
         # Pad target shape with singleton axis to match target number of
@@ -1720,7 +1726,9 @@ def unify_tensor_arrays(
 
     unified_arrs = []
     for arr in arrs:
-        if pa.types.is_null(arr.type):
+        if pa.types.is_null(arr.type) or arr.null_count == len(arr):
+            # A null-typed array, or a tensor array of only null rows, holds
+            # no tensor to convert.
             arr = pa.nulls(len(arr), type=unified_tensor_type)
         elif _is_native_tensor_type(arr.type):
             # Might be not be performant
