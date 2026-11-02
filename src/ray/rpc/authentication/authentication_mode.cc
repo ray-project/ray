@@ -19,18 +19,31 @@
 
 #include "absl/strings/ascii.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace rpc {
 
 AuthenticationMode GetAuthenticationMode() {
-  std::string auth_mode_lower = absl::AsciiStrToLower(RayConfig::instance().AUTH_MODE());
-
+  const std::string auth_mode_lower =
+      absl::AsciiStrToLower(RayConfig::instance().AUTH_MODE());
   if (auth_mode_lower == "token") {
     return AuthenticationMode::TOKEN;
-  } else {
-    return AuthenticationMode::DISABLED;
   }
+  if (auth_mode_lower != "disabled") {
+    // A config error, not a Ray bug, so not RAY_CHECK.
+    RAY_LOG(FATAL) << InvalidAuthenticationModeError();
+  }
+  return AuthenticationMode::DISABLED;
+}
+
+std::string InvalidAuthenticationModeError() {
+  const std::string &auth_mode = RayConfig::instance().AUTH_MODE();
+  const std::string auth_mode_lower = absl::AsciiStrToLower(auth_mode);
+  if (auth_mode_lower == "token" || auth_mode_lower == "disabled") {
+    return "";
+  }
+  return "Invalid RAY_AUTH_MODE '" + auth_mode + "': set it to 'token' or 'disabled'.";
 }
 
 bool IsK8sTokenAuthEnabled() { return RayConfig::instance().ENABLE_K8S_TOKEN_AUTH(); }

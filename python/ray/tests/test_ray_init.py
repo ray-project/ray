@@ -92,7 +92,7 @@ def test_ray_init_existing_instance(call_ray_start, address):
     os.environ.get("CI") and sys.platform == "win32",
     reason="Flaky when run on windows CI",
 )
-def test_ray_init_existing_instance_via_blocked_ray_start():
+def test_ray_init_existing_instance_via_blocked_ray_start(create_auth_token):
     """Run a blocked ray start command and check that ray.init() connects to it."""
     blocked_start_cmd = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--num-cpus", "1999"],
@@ -173,7 +173,7 @@ def test_ray_init_credentials_with_client(monkeypatch):
     assert stop.value.credentials.name == "test"
 
 
-def test_ray_init_credential(monkeypatch):
+def test_ray_init_credential(monkeypatch, create_auth_token):
     def mock_secure_channel(conn_str, credentials, options=None, compression=None):
         raise (Stop(credentials))
 

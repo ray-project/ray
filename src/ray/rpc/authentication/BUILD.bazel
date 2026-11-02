@@ -5,12 +5,14 @@ ray_cc_library(
     srcs = ["authentication_mode.cc"],
     hdrs = ["authentication_mode.h"],
     visibility = [
+        ":__subpackages__",
         "//src/ray/observability:__pkg__",
         "//src/ray/ray_syncer:__pkg__",
         "//src/ray/rpc:__pkg__",
     ],
     deps = [
         "//src/ray/common:ray_config",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -57,7 +59,6 @@ ray_cc_library(
         ":k8s_constants",
         "//src/ray/common:constants",
         "//src/ray/common:ray_config",
-        "//src/ray/util:env",
         "//src/ray/util:logging",
         "@boringssl//:crypto",
         "@com_google_absl//absl/strings",

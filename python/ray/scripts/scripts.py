@@ -27,7 +27,6 @@ from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
-    maybe_enable_token_auth_if_token_available,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
@@ -1065,8 +1064,6 @@ def start(
                     "Please specify a different port using the `--port`"
                     " flag of `ray start` command."
                 )
-
-        maybe_enable_token_auth_if_token_available()
 
         from ray._raylet import (
             AuthenticationMode,

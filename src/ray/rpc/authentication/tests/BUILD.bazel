@@ -27,6 +27,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "authentication_mode_test",
+    size = "small",
+    srcs = ["authentication_mode_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/rpc/authentication:authentication_mode",
+    ],
+)
+
+ray_cc_test(
     name = "grpc_auth_token_tests",
     size = "small",
     srcs = [

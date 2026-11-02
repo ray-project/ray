@@ -36,7 +36,7 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// will be converted to AuthenticationMode enum defined in
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
-RAY_CONFIG(std::string, AUTH_MODE, "disabled")
+RAY_CONFIG(std::string, AUTH_MODE, "token")
 
 /// Whether to enable Kubernetes token-based authentication for RPC calls.
 RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)

@@ -69,6 +69,7 @@ ray_cc_test(
     srcs = [
         "gcs_server_rpc_test.cc",
     ],
+    auth_token = True,
     data = [
         "//:redis-cli",
         "//:redis-server",
@@ -122,6 +123,7 @@ ray_cc_test(
     srcs = [
         "gcs_health_check_manager_test.cc",
     ],
+    auth_token = True,
     tags = [
         "no_windows",
         "team:core",
