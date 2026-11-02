@@ -1,0 +1,55 @@
+diff -u BUILD
+--- BUILD
++++ BUILD
+@@ -33,7 +33,6 @@
+     default_visibility = ["//visibility:public"],
+     features = [
+         "-parse_headers",
+-        "layering_check",
+     ],
+ )
+ 
+diff -u src/core/BUILD
+--- src/core/BUILD
++++ src/core/BUILD
+@@ -27,7 +27,6 @@
+ package(
+     default_visibility = ["//:__subpackages__"],
+     features = [
+-        "layering_check",
+     ],
+ )
+ 
+diff -u src/cpp/ext/csm/BUILD
+--- src/cpp/ext/csm/BUILD
++++ src/cpp/ext/csm/BUILD
+@@ -24,7 +24,6 @@
+ package(
+     default_visibility = ["//visibility:public"],
+     features = [
+-        "layering_check",
+     ],
+ )
+ 
+diff -u src/cpp/ext/gcp/BUILD
+--- src/cpp/ext/gcp/BUILD
++++ src/cpp/ext/gcp/BUILD
+@@ -24,7 +24,6 @@
+ package(
+     default_visibility = ["//visibility:public"],
+     features = [
+-        "layering_check",
+     ],
+ )
+ 
+diff -u src/cpp/ext/otel/BUILD
+--- src/cpp/ext/otel/BUILD
++++ src/cpp/ext/otel/BUILD
+@@ -24,7 +24,6 @@
+ package(
+     default_visibility = ["//visibility:public"],
+     features = [
+-        "layering_check",
+     ],
+ )
+ 
