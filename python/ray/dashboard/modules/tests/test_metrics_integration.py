@@ -182,11 +182,21 @@ def test_launch_prometheus_exits_before_download_without_token(auth_env, monkeyp
 
 
 @pytest.mark.parametrize("auth_mode", [None, "disabled"])
-def test_launch_prometheus_warns_when_no_token_found(
-    auth_env, monkeypatch, caplog, auth_mode
+@pytest.mark.parametrize(
+    "token_source", ["none", "default", "env", "path", "empty_path"]
+)
+def test_launch_prometheus_requires_explicit_opt_in(
+    auth_env, monkeypatch, caplog, auth_mode, token_source
 ):
     if auth_mode:
         monkeypatch.setenv("RAY_AUTH_MODE", auth_mode)
+    if token_source == "env":
+        monkeypatch.setenv("RAY_AUTH_TOKEN", "a" * 64)
+    elif token_source != "none":
+        auth_env.parent.mkdir(parents=True)
+        auth_env.write_text("" if token_source == "empty_path" else "a" * 64)
+        if token_source in ("path", "empty_path"):
+            monkeypatch.setenv("RAY_AUTH_TOKEN_PATH", str(auth_env))
     reset_auth_token_state()
     monkeypatch.setattr(
         install_and_start_prometheus, "download_prometheus", lambda: (False, "")
@@ -194,6 +204,9 @@ def test_launch_prometheus_warns_when_no_token_found(
 
     with pytest.raises(SystemExit):
         install_and_start_prometheus.main()
+
+    assert os.environ.get("RAY_AUTH_MODE") == auth_mode
+    assert get_prometheus_authorization_config() == ""
 
     # An explicit opt-out is intended, so only the unset mode warns.
     assert ("401" in caplog.text) == (auth_mode is None)

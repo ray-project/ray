@@ -57,7 +57,6 @@ ray_cc_library(
         ":k8s_constants",
         "//src/ray/common:constants",
         "//src/ray/common:ray_config",
-        "//src/ray/util:env",
         "//src/ray/util:logging",
         "@boringssl//:crypto",
         "@com_google_absl//absl/strings",

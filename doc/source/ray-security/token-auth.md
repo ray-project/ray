@@ -22,11 +22,7 @@ The process for generating and configuring authentication tokens differs dependi
 
 Other cluster launching methods require that you generate a token before starting the cluster. You can `ray get-auth-token [--generate]` to retrieve your existing token or generate a new one.
 
-:::{warning}
-**Token authentication rollout.** Ray 2.59 turns on token authentication by default for local clusters. `ray.init()` without an `address` enables authentication and generates a token at `~/.ray/auth_token` when none exists. `ray start --head` enables authentication when a token is already available, and otherwise warns that it started an unauthenticated cluster. Set `RAY_AUTH_MODE=disabled` to opt out.
-
-Ray 2.61 extends the default to all clusters, including remote and multi-node clusters. From that release, every node in a cluster and every client that connects to it needs the same token. Set up token distribution before you upgrade, as described in [Configure token authentication for remote clusters](#configure-token-authentication-for-remote-clusters).
-:::
+Token authentication requires an explicit opt in with `RAY_AUTH_MODE=token` on every node and client. When `RAY_AUTH_MODE` is unset, authentication stays disabled even if a token is available in the environment or on disk. Generating or storing a token doesn't enable authentication.
 
 (what-token-does-ray-use)=
 
@@ -68,17 +64,17 @@ To enable authentication on your local machine for development, set the `RAY_AUT
 
 ### Local development with ray.init()
 
-When you run a script that starts a new local Ray cluster with `ray.init()` (that is, `ray.init()` without an `address`, so it starts a fresh cluster), Ray enables token authentication by default and handles the token automatically:
+When you run a script that starts a new local Ray cluster with `ray.init()` (that is, `ray.init()` without an `address`, so it starts a fresh cluster), Ray handles the token automatically when you explicitly set `RAY_AUTH_MODE=token`:
 
 - If no token exists at `~/.ray/auth_token`, Ray generates one, saves it there, and logs a message confirming the new token.
 - If a token already exists at `~/.ray/auth_token`, Ray reuses it.
 
-This happens even when you haven't set `RAY_AUTH_MODE=token`. To start a new local cluster without authentication, set `RAY_AUTH_MODE=disabled`.
+When `RAY_AUTH_MODE` is unset or set to `disabled`, `ray.init()` leaves authentication disabled and neither generates nor uses a token.
 
 For example:
 
 ```bash
-$ python -c "import ray;ray.init()"
+$ RAY_AUTH_MODE=token python -c "import ray;ray.init()"
 ```
 
 On the first run, this command (or any script that starts Ray) logs a line like:
@@ -87,24 +83,21 @@ On the first run, this command (or any script that starts Ray) logs a line like:
 Generated new authentication token and saved to ~/.ray/auth_token
 ```
 
-Connecting to an existing cluster with `ray.init(address=...)` doesn't generate a token. As with any client, you must have the cluster's token configured when the cluster has token authentication enabled, as described in {ref}`What token does Ray use? <what-token-does-ray-use>`. A `ray.init()` call that finds a running local cluster on its own, with no `address` or with `address="auto"`, behaves differently: if `RAY_AUTH_MODE` isn't set and a token is available from any of the token sources, it enables token authentication and uses that token. A script can then connect to a cluster that `ray start --head` started with the same token, without setting `RAY_AUTH_MODE=token`.
+Connecting to an existing cluster with `ray.init()` doesn't generate a token. To connect to a cluster with token authentication enabled, set `RAY_AUTH_MODE=token` and configure the cluster's token as described in {ref}`What token does Ray use? <what-token-does-ray-use>`. This applies whether Ray finds the cluster automatically, you use `address="auto"`, or you provide an explicit address.
 
 ### Local development with ray start
 
-When you start a local head cluster with `ray start --head`, Ray enables token authentication automatically if a token is already available from any of the token sources, even when you haven't set `RAY_AUTH_MODE=token`. Ray considers a token available when any of the following is set: the `RAY_AUTH_TOKEN` environment variable, a valid file at the path in `RAY_AUTH_TOKEN_PATH`, or the default token file `~/.ray/auth_token`. Generate a token once with `ray get-auth-token --generate` and Ray uses it every time you run `ray start --head` on that machine. To opt out when a token is available, set `RAY_AUTH_MODE=disabled`.
+Both head and worker nodes require `RAY_AUTH_MODE=token` to enable token authentication. An existing token at `~/.ray/auth_token`, `RAY_AUTH_TOKEN`, or `RAY_AUTH_TOKEN_PATH` doesn't enable authentication by itself.
 
-If no token is available from any source, behavior depends on `RAY_AUTH_MODE`:
-
-- If you didn't set `RAY_AUTH_MODE=token`, authentication stays disabled and `ray start --head` logs a warning that the cluster is unauthenticated.
-- If you set `RAY_AUTH_MODE=token`, `ray start` raises an error with instructions to generate a token.
-
-`ray start --head` logs a warning whenever it starts a cluster without token authentication, whether because no token is available or because you set `RAY_AUTH_MODE=disabled`.
-
-Worker nodes don't enable token authentication automatically. When you add a worker node with `ray start --address`, Ray ignores any available token unless you set `RAY_AUTH_MODE=token`, so the worker can't join a head node that has token authentication enabled. The join fails even if the worker runs on the same machine as the head node and `~/.ray/auth_token` exists. It also fails if you set `RAY_AUTH_TOKEN` without `RAY_AUTH_MODE`. To add the worker node, set `RAY_AUTH_MODE=token`:
+Generate a token before starting the head, and explicitly enable authentication on both nodes:
 
 ```bash
+ray get-auth-token --generate
+RAY_AUTH_MODE=token ray start --head
 RAY_AUTH_MODE=token ray start --address=<head-node-ip>:6379
 ```
+
+When `RAY_AUTH_MODE` is unset, `ray start --head` starts without authentication and logs a warning. Setting `RAY_AUTH_MODE=disabled` explicitly also starts without authentication, but suppresses this warning. Worker nodes and clients must use the same authentication mode as the head.
 
 If you set `RAY_AUTH_MODE=token` before a token exists, `ray start --head` raises an error instead of starting:
 
