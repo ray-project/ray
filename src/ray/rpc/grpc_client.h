@@ -16,6 +16,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
@@ -115,9 +116,18 @@ class GrpcClient {
   void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request,
-      const ClientCallback<Reply> &callback,
+      const ClientCallback<Reply> &user_callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
+    num_calls_in_flight_->fetch_add(1);
+    // The counter is shared so a reply that lands after this client is destroyed
+    // still has somewhere to decrement.
+    ClientCallback<Reply> callback = [num_calls_in_flight = num_calls_in_flight_,
+                                      user_callback](const Status &status,
+                                                     Reply &&reply) {
+      num_calls_in_flight->fetch_sub(1);
+      user_callback(status, std::move(reply));
+    };
     testing::RpcFailure failure = skip_testing_intra_node_rpc_failure_
                                       ? testing::RpcFailure::None
                                       : testing::GetRpcFailure(call_name);
@@ -186,9 +196,12 @@ class GrpcClient {
   /// This method detects IDLE in the second case.
   /// Also see https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
   /// for channel connectivity state machine.
+  ///
+  /// The channel state alone is not enough: gRPC leaves IDLE asynchronously once the
+  /// first call starts, so a channel can still report IDLE with a call in flight.
   bool IsChannelIdleAfterRPCs() const {
     return (channel_->GetState(false) == GRPC_CHANNEL_IDLE) &&
-           call_method_invoked_.load();
+           call_method_invoked_.load() && num_calls_in_flight_->load() == 0;
   }
 
  private:
@@ -199,6 +212,9 @@ class GrpcClient {
   std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
+  /// Number of calls whose callback has not run yet.
+  std::shared_ptr<std::atomic<int64_t>> num_calls_in_flight_ =
+      std::make_shared<std::atomic<int64_t>>(0);
   bool skip_testing_intra_node_rpc_failure_ = false;
 };
 
