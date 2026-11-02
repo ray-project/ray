@@ -10,17 +10,16 @@ from ray.train.health.probe import Probe, ProbeResult
 
 @dataclass
 class NodeMonitorStatus:
-    """The latest results of the probes on one ``NodeMonitor``.
+    """The latest results of the probes on one node.
 
     Attributes:
         probe_results: ``{probe name: ProbeResult}``, the latest result of each
-            probe, or ``{probe name: {key: ProbeResult}}`` for a
-            ``ControllerProbe``. A failed poll gives a ``ProbeResult`` with its
-            ``error``.
+            probe, or ``{key: ProbeResult}`` for a ``ControllerProbe``. A failed
+            poll's result is a ``ProbeResult`` that carries its ``error``.
         monitor_error: Set by ``NodeMonitorGroup`` when the monitor itself could
             not answer: Ray's ``RayActorError`` if it died, or a ``TimeoutError``
-            if it has not answered for longer than the health-check timeout.
-            Each probe's result then carries this error.
+            if it has not answered in time. Its probes' results are then
+            unknown.
     """
 
     probe_results: Dict[str, Union[ProbeResult, Dict[Any, ProbeResult]]] = field(
@@ -33,7 +32,7 @@ class NodeMonitor:
     """Samples probes on the node it runs on, and polls probes once when asked.
 
     Each probe is sampled in its own thread every ``poll_interval_s``, and
-    ``poll_status()`` returns the latest result of each.
+    ``poll_status()`` returns the latest sample of each.
 
     Args:
         probes: The probes to sample, each with its poll interval.
@@ -52,10 +51,10 @@ class NodeMonitor:
             ).start()
 
     def poll_status(self) -> NodeMonitorStatus:
-        """Get the latest result of every sampled probe.
+        """Get the latest sample of every probe.
 
         Returns:
-            The latest result of every sampled probe.
+            The latest sample of every probe.
         """
         with self._lock:
             return NodeMonitorStatus(probe_results=dict(self._latest))
@@ -91,27 +90,26 @@ class NodeMonitor:
 
     @staticmethod
     def _poll(probe: Probe) -> Union[ProbeResult, Dict[Any, ProbeResult]]:
-        """Poll a probe. Each result without a ``timestamp_s`` is stamped with
-        the time the probe returned, and a poll that raises returns a result
-        with the ``error``.
+        """Poll a probe. A result without a ``timestamp_s`` is stamped with the
+        time the probe returned, and a poll that raises returns a result with
+        the ``error``.
 
         Args:
             probe: The probe to poll.
 
         Returns:
-            The probe's result, or a ``ControllerProbe``'s ``{key: result}``.
+            The probe's result.
         """
         try:
-            results = probe.poll()
+            result = probe.poll()
         except Exception as e:
             return ProbeResult(timestamp_s=time.time(), error=e)
-        now = time.time()
+        if isinstance(result, ProbeResult):
+            return _stamp(result)
+        return {key: _stamp(r) for key, r in result.items()}
 
-        def stamp(result: ProbeResult) -> ProbeResult:
-            if result.timestamp_s is None:
-                return replace(result, timestamp_s=now)
-            return result
 
-        if isinstance(results, ProbeResult):
-            return stamp(results)
-        return {key: stamp(result) for key, result in results.items()}
+def _stamp(result: ProbeResult) -> ProbeResult:
+    if result.timestamp_s is None:
+        return replace(result, timestamp_s=time.time())
+    return result
