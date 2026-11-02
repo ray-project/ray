@@ -6,6 +6,12 @@ absl-py==2.4.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
     #   dm-tree
+ai-dynamo-runtime==1.5.1 \
+    --hash=sha256:88e5580daf32056dbe2da9d4189ddd2f4e4cc2472ddfebdd19412d223ac4a596 \
+    --hash=sha256:b5297625a4f407b3871e3039a53f49e09102d67039fc1339349802038b84ec3e
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
+    #   -r python/requirements/llm/llm-requirements.txt
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
     --hash=sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8
@@ -1173,6 +1179,23 @@ fastar==0.11.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
     #   fastapi-cloud-cli
+fastokens==0.3.4 \
+    --hash=sha256:2a910a0367923a67d7c2ffbc7b0747397664305fbfd41367d0e32cf5141f5311 \
+    --hash=sha256:2eeb544f374dd4f3e34444e6c2afbea161562fe34ec82ffe8a939dfecf7760f6 \
+    --hash=sha256:68737897414925a072c71a05205d496fdf7c78e9d7bb396ff98950b0bd4a84ae \
+    --hash=sha256:72cf71107ef3d9ae2c5d7b678c342f2cd0c1496bbed22f3d0f98b7c595b72528 \
+    --hash=sha256:80b20b40ccd061489b70fa6bcba32b382b5d18605a32e55d70ccb1742334f8f6 \
+    --hash=sha256:918e5d22d38dbf478481345468e2355d083a3271f192e724dd07e98e792abc64 \
+    --hash=sha256:93b82f6b13ba12ca8f3dd2d23d15a0a58fec6264edd61e5b42d0571dad51101e \
+    --hash=sha256:bc49d3ee432e1420970d32f0fe136275f18174b2f85bbe4012b00c2fc0bd7862 \
+    --hash=sha256:cb64e7efb23e2202d317532eda64022082172df043e4f17004879d1d58e8da98 \
+    --hash=sha256:d1663d1a1c6cf4e282969cd11387496e5025b61c4a8fa44b4f88b8fd7736786d \
+    --hash=sha256:d5955af64555bbbecb379e090ed194ec2a01ae7b169a8add3c109075a4b57169 \
+    --hash=sha256:e6356f124886cdd74df712ca0297afc2c4be2be8aac899a38eee193437117a29 \
+    --hash=sha256:ea0a75cd92ff8b7258eca4b1b6bea24e2c22feef03da2b8a20fcdbdff290f428
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
+    #   -r python/requirements/llm/llm-requirements.txt
 fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
@@ -3958,6 +3981,7 @@ pydantic==2.12.3 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
     #   -r python/requirements.txt
+    #   ai-dynamo-runtime
     #   anthropic
     #   compressed-tensors
     #   fastapi
@@ -5611,7 +5635,7 @@ uvicorn==0.53.0 \
     #   fastapi-cli
     #   fastapi-cloud-cli
     #   mcp
-uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' \
+uvloop==0.22.1 \
     --hash=sha256:017bd46f9e7b78e81606329d07141d3da446f8798c6baeec124260e22c262772 \
     --hash=sha256:0530a5fbad9c9e4ee3f2b33b148c6a64d47bbad8000ea63704fa8260f4cf728e \
     --hash=sha256:05e4b5f86e621cf3927631789999e697e58f0d2d32675b67d9ca9eb0bca55743 \
@@ -5663,6 +5687,7 @@ uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'c
     --hash=sha256:fe94b4564e865d968414598eea1a6de60adba0c040ba4ed05ac1300de402cd42
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
+    #   ai-dynamo-runtime
     #   uvicorn
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
