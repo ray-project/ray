@@ -32,6 +32,7 @@ This walkthrough shows how to create and use RDT with different *tensor transpor
 1. [Gloo](https://github.com/pytorch/gloo): A collective communication library for PyTorch and CPUs.
 1. [NVIDIA NCCL](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html): A collective communication library for NVIDIA GPUs.
 1. [NVIDIA NIXL](https://github.com/ai-dynamo/nixl): A library for accelerating point-to-point transfers through RDMA, especially between various types of memory and NVIDIA GPUs. NIXL runs on [libfabric](https://ofiwg.github.io/libfabric/) on AWS instances with [Elastic Fabric Adapter (EFA)](https://aws.amazon.com/hpc/efa/), and on [Unified Communication X (UCX)](https://github.com/openucx/ucx) everywhere else.
+1. TPU Sync: A one-sided point-to-point transport for Google Cloud TPUs backed by `tpu-sync` and `torch_tpu`.
 
 To keep the walkthrough easy to follow, start with the [Gloo](https://github.com/pytorch/gloo) transport, which works without any physical GPUs.
 
@@ -259,11 +260,76 @@ You can also use NIXL to retrieve the result from references created by {func}`r
 ```
 
 
+### Usage with TPU Sync on Google Cloud TPUs
+
+#### Prerequisites
+
+`TPU_SYNC` requires `torch`, `torch_tpu`, and `tpu-sync` to be installed in the Python environment of every TPU actor participating in the transfer.
+
+#### Walkthrough
+
+`TPU_SYNC` provides one-sided direct tensor transfers between Ray actors on Google Cloud TPUs using `torch_tpu` and `tpu-sync`'s `WeightSynchronizerManager`. Like NIXL, `TPU_SYNC` doesn't require creating a collective group ahead of time, and supports task-to-task transfers with `@ray.method(tensor_transport="tpu_sync")`, {func}`ray.put <ray.put>` with `ray.put(tensor, _tensor_transport="tpu_sync")`, direct {func}`ray.get <ray.get>`, and pre-allocated receive buffers with `set_target_for_ref`.
+
+```python
+import ray
+import torch
+import torch_tpu  # noqa: F401
+from ray.experimental import set_target_for_ref
+
+
+@ray.remote(resources={"TPU": 1}, enable_tensor_transport=True)
+class TpuActor:
+    def __init__(self):
+        self.device = torch.device("tpu:0")
+
+    @ray.method(tensor_transport="tpu_sync")
+    def produce(self):
+        return torch.ones((1024, 1024), dtype=torch.bfloat16, device=self.device)
+
+    def put_weight(self):
+        weight = torch.full((1024, 1024), 2.0, dtype=torch.bfloat16, device=self.device)
+        return ray.put(weight, _tensor_transport="tpu_sync")
+
+    def consume(self, tensor):
+        return float(tensor.float().cpu().sum().item())
+
+    def consume_into_target(self, ref_holder):
+        ref = ref_holder[0]
+        target = torch.empty((1024, 1024), dtype=torch.bfloat16, device=self.device)
+        set_target_for_ref(ref, [target])
+        ray.get(ref)
+        return float(target.float().cpu().mean().item())
+
+
+sender = TpuActor.remote()
+receiver = TpuActor.remote()
+
+ref = sender.produce.remote()
+print(ray.get(receiver.consume.remote(ref)))
+
+put_ref = ray.get(sender.put_weight.remote())
+print(ray.get(receiver.consume_into_target.remote([put_ref])))
+```
+
+#### Configuration and environment variables
+
+* `RAY_TPU_SYNC_MANAGER_ADDRESS`: Optional `host:port` of an external `WeightSynchronizerManager` server. If unset, Ray automatically launches a cluster-wide `WeightSynchronizerManager` coordinator actor (`max_restarts=0`) with soft node affinity toward a TPU node and transfer plan caching enabled. Coordinator failure is fail-fast and requires restarting the actors or job using `TPU_SYNC`.
+* `RAY_TPU_SYNC_PARALLELISM`: Optional positive integer controlling the number of parallel TCP transfer streams per `WeightSynchronizer` (defaults to `1`).
+* `RAY_TPU_SYNC_BIND_IP`: Optional IP address for binding `WeightSynchronizer` listener sockets.
+* `RAY_TPU_SYNC_CONTROL_IP`: Optional IP address override advertised for control-plane RPC endpoints.
+
+:::{note}
+* **`set_target_for_ref` in-place receive**: When receiving into caller-supplied `target_buffers` via `set_target_for_ref`, `TPU_SYNC` receives H2D DMA directly into `target_buffers` in place for tensors with at least one dimension (avoiding extra HBM staging copies).
+* **0-D scalar tensors**: Because TPU PJRT requires at least a 1-D base storage buffer for `WeightSynchronizer`, 0-D scalar TPU tensors are cloned into 1-D storage (`t.reshape(1).clone()`) when the RDT object is created and reshaped (or copied into `target_buffers`) on the receiver. Consequently, in-place modifications to a 0-D scalar tensor after task return or `ray.put` aren't visible to receivers.
+* **Transfer timeouts and failure handling**: Because `tpu-sync` doesn't expose a C++ transfer cancellation API (`can_abort_transport()` is `False`), if a transfer times out (`RAY_rdt_fetch_fail_timeout_milliseconds`) or fails, Ray terminates the involved actors to prevent hung transfers or corrupted in-place buffers.
+:::
+
+
 ### Summary
 
-With RDT, Ray stores objects and passes them directly between Ray actors, using accelerated transports such as Gloo, NCCL, and NIXL. Keep the following main points in mind:
+With RDT, Ray stores objects and passes them directly between Ray actors, using accelerated transports such as Gloo, NCCL, NIXL, and TPU Sync. Keep the following main points in mind:
 
-* If you use a collective-based tensor transport, Gloo or NCCL, you must create a collective group ahead of time. NIXL only requires all involved actors to have NIXL installed.
+* If you use a collective-based tensor transport, Gloo or NCCL, you must create a collective group ahead of time. NIXL and TPU Sync only require all involved actors to have the respective transport package installed.
 * Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference to the stored tensors, not a copy.
 * Otherwise, you can use actors as normal.
 
@@ -284,8 +350,8 @@ RDT is currently in alpha and has the following limitations, which future releas
 
 * Support for `torch.Tensor` objects only.
 * Support for Ray actors only, not Ray tasks.
-* Support for the following transports: Gloo, NCCL, and NIXL.
-* Support for CPUs and NVIDIA GPUs only.
+* Support for the following transports: Gloo, NCCL, NIXL, and TPU Sync.
+* Support for CPUs, NVIDIA GPUs, and Google Cloud TPUs.
 * RDT objects are *mutable*. Ray only holds a reference to the tensor and doesn't copy it until a transfer is requested. If the application code also keeps a reference to a tensor before returning it and modifies the tensor in place, the receiving actor might see some or all of the changes.
 * `await` on an RDT object ref is temporarily unsupported.
 
