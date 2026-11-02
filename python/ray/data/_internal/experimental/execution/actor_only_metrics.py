@@ -184,8 +184,8 @@ class ActorOnlyRecorders:
     # Actor draining. A downscaled actor drains: it takes no new tasks and is
     # released only once it has no in-flight tasks and the ResourceBank counts
     # no outputs against it. A drain ends completed, interrupted (the actor
-    # died still owing work) or cancelled (by an upscale reclaim or a core
-    # restart). ``reason`` is why the drain began (DrainReason in the actor
+    # died still owing work) or cancelled (by an upscale reclaim).
+    # ``reason`` is why the drain began (DrainReason in the actor
     # pool: resize | preemption | alloc_shrink) and never changes.
     num_draining_actors = Gauge(
         "data_num_draining_actors",
@@ -218,8 +218,7 @@ class ActorOnlyRecorders:
         "data_actor_drains_cancelled",
         description=(
             "Actors whose drain was cancelled and rejoined the pool. Tagged by "
-            "drain reason and by cause: reclaimed (an upscale took it back) | "
-            "core_restart (Ray core restarted an actor that still owes work)."
+            "drain reason and by cause: reclaimed (an upscale took it back)."
         ),
         tag_keys=ActorOnlyTags.DATASET_OPERATOR_REASON_CAUSE.value,
     )

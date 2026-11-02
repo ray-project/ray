@@ -164,7 +164,7 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
                 self._resource_reporter.seconds_since_allocation_change()
             ),
         )
-        self._process_draining_and_pending_actors(topology)
+        self._expire_pending_actors(topology)
 
         self._resource_bank.drain_consumed_blocks()
         self._launch_tasks()
@@ -181,21 +181,19 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         return self._finalize_scheduling_loop_step(topology)
 
     @staticmethod
-    def _process_draining_and_pending_actors(topology: Topology) -> None:
-        """Release drained actors and expire stuck pendings, on every step.
+    def _expire_pending_actors(topology: Topology) -> None:
+        """Expire stuck pendings, on every step.
 
-        Runs after sizing, so a same-step upscale can reclaim a draining actor
-        before it would otherwise be released. A pending that can never become
-        ready (failed restart, stuck env install) would hold its op's sizing
-        forever through the pending gate, so it is expired and re-placed
-        against current cluster state on the next sizing tick.
+        A pending that can never become ready (its target node went away, a
+        stuck env install) would hold its op's sizing forever through the
+        pending gate, so it is expired and re-placed against current cluster
+        state on the next sizing tick.
         """
         for op in topology:
             if (
                 isinstance(op, ExperimentalActorPoolMapOperator)
                 and op.get_autoscaling_actor_pools()
             ):
-                op.process_draining_actors()
                 op.actor_pool.release_expired_pending_actors()
 
     def _maybe_run_escape_hatch(self) -> None:

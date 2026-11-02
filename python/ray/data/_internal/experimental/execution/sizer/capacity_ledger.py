@@ -63,7 +63,7 @@ class ConstraintAwareCapacityLedger:
         draining actors included -- reclaiming them needs no new capacity)."""
         reclaimable = op.actor_pool.num_reclaimable_draining_actors()
         if op in self._unknown_pg_headroom:
-            # Headroom is max_size - current_size, and current_size still
+            # Headroom is max_size - total_size, and total_size still
             # counts draining actors, so revivable ones come on top.
             return self._unknown_pg_headroom[op] + reclaimable
         per = self._capacity.per_actor_resources_by_op[op]

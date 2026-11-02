@@ -25,10 +25,13 @@
   tasks but keeps its node resources until it has no in-flight tasks AND the
   ResourceBank no longer counts any output blocks against it
   (``_is_fully_drained``), at which point ``process_draining_actors`` tears it
-  down. A drain can end early (the actor died), or be cancelled (by an
-  upscale reclaim, or by a Ray-core restart of an actor that still owes
-  work). ``draining_generation`` lets the operator cheaply detect changes to
+  down. A drain can end early (the actor died) or be cancelled by an upscale
+  reclaim. ``draining_generation`` lets the operator cheaply detect changes to
   the draining set.
+
+- **Death**: actors are never restarted by Ray core (``max_restarts=0``). A
+  dead actor is released like any other; the sizer places its replacement and
+  Ray Data lineage recovery redoes its lost work.
 """
 
 from __future__ import annotations
@@ -36,7 +39,6 @@ from __future__ import annotations
 import logging
 import math
 import time
-import uuid
 from collections import Counter, defaultdict
 from typing import (
     Callable,
@@ -66,14 +68,13 @@ from ray.data._internal.execution.execution_flags import (
     PENDING_ACTOR_EXPIRY_S,
     PER_ACTOR_OBJECT_STORE_MAX_BYTES,
     PER_ACTOR_OBJECT_STORE_MIN_BYTES,
-    REFRESH_ACTOR_STATE,
 )
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     NodeIdStr,
     RefBundle,
 )
-from ray.data._internal.execution.interfaces.common import ActorStatus, LogicalActorId
+from ray.data._internal.execution.interfaces.common import ActorId, ActorStatus
 from ray.data._internal.execution.interfaces.execution_options import safe_or
 from ray.data._internal.execution.resource_bank import (
     ResourceBankBase,
@@ -84,9 +85,7 @@ from ray.data._internal.experimental.execution.actor_only_op_metrics import (
     _ActorOnlyOpMetrics,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-    _ACTOR_STATE_ALIVE,
     _ACTOR_STATE_DEAD,
-    _ACTOR_STATE_RESTARTING,
     DrainReason,
     ScaleDownRequest,
     ScaleUpRequest,
@@ -96,10 +95,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
     _PendingActorInfo,
 )
 from ray.data._internal.util import MiB
-from ray.data._internal.utils.cached_ray_internals import (
-    get_actor_locations,
-    get_draining_nodes,
-)
+from ray.data._internal.utils.cached_ray_internals import get_draining_nodes
 from ray.data._internal.utils.heapdict import heapdict
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import (
@@ -153,7 +149,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # Timestamp of the last scale up action; drives the downscale debounce.
         self._last_upscaled_at: Optional[float] = None
         self._last_downscaling_debounce_warning_ts: Optional[float] = None
-        # Actors that have started running, including alive and restarting actors.
+        # Actors that have started running (draining ones included).
         self._running_actors: Dict[ActorHandle, _ExperimentalActorState] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ActorHandle] = {}
@@ -174,17 +170,17 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # ``process_draining_actors``): at most one line per
         # ``DRAIN_STALL_WARN_S`` for the whole pool.
         self._last_drain_stall_warn_ts: float = 0.0
-        # Map from actor handle to its logical ID.
-        self._actor_to_logical_id: Dict[ActorHandle, LogicalActorId] = {}
+        # Map from actor handle to its Ray actor id (hex).
+        self._actor_to_id: Dict[ActorHandle, ActorId] = {}
         # Per-actor resource usage, needed because ray_remote_args_fn can
         # produce different resources for each actor.
         self._actor_resource_usage: Dict[ActorHandle, ExecutionResources] = {}
         # Cached aggregate resource counters.
         self._total_usage = ExecutionResources.zero()
-        self._pending_or_restarting_usage = ExecutionResources.zero()
-        # Resources this pool occupies (or has promised) per node. Running,
-        # pending and restarting actors all count: they hold their resources
-        # until they are actually dead. Maintained incrementally at the
+        self._pending_usage = ExecutionResources.zero()
+        # Resources this pool occupies (or has promised) per node. Running and
+        # pending actors both count: they hold their resources until they are
+        # actually dead. Maintained incrementally at the
         # create/ready/death sites (``_add_committed_usage`` /
         # ``_remove_committed_usage``) so readers pay nothing per tick. Running
         # actors are counted at their actual location; pending actors at their
@@ -192,7 +188,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # contribute nothing until they become running). Public: the sizer reads
         # it directly.
         self.committed_usage_by_node: Dict[NodeIdStr, ExecutionResources] = {}
-        # Running actors by status (IDLE / ACTIVE / RESTARTING / DRAINING).
+        # Running actors by status (IDLE / ACTIVE / DRAINING).
         # ``_set_status`` is the only writer of a running actor's status, and
         # ``_register_running_actor`` / ``_release_running_actor`` are the only
         # places an actor enters or leaves the histogram, so the
@@ -215,11 +211,11 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         ] = defaultdict(heapdict[ActorHandle, _ExperimentalActorRank])
 
         # NOTE: Only contains ALIVE actors.
-        self._logical_id_to_actor: Dict[LogicalActorId, ActorHandle] = {}
+        self._id_to_actor: Dict[ActorId, ActorHandle] = {}
 
         # NOTE: Only contains ALIVE actors.
         self._node_to_actor_states: Dict[
-            NodeIdStr, Dict[LogicalActorId, _ExperimentalActorState]
+            NodeIdStr, Dict[ActorId, _ExperimentalActorState]
         ] = {}
         # Nodes hosting at least one actor with ``num_tasks_in_flight > 0``.
         self._node_to_active_actor_count: Dict[NodeIdStr, int] = {}
@@ -284,14 +280,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         Both heaps share the ``_is_available_for_scheduling`` gate, so their
         membership is identical; they differ only in what they index (per-node
         for locality vs. global for fallback).
-
-        Restarting actors stay out of both heaps regardless of capacity;
-        ``refresh_actor_state`` re-syncs them once they are ALIVE again (see
-        ``_update_rank``).
         """
-        if state.status == ActorStatus.RESTARTING:
-            self._remove_from_heaps(actor, state.actor_location)
-            return
         if self._is_available_for_scheduling(state):
             rank = _ExperimentalActorRank(
                 num_tasks_in_flight=state.num_tasks_in_flight,
@@ -313,9 +302,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         tasks.
 
         Invariant: an actor is counted at its ``actor_location`` iff
-        ``num_tasks_in_flight > 0``. ``_relocate_actor`` is the only writer of
-        ``actor_location`` and re-marks the actor across the move, so the
-        paired decrement can always read the location.
+        ``num_tasks_in_flight > 0``. ``actor_location`` never changes (actors
+        are not restarted), so the paired decrement reads the same node.
         """
         node_id = state.actor_location
         self._node_to_active_actor_count[node_id] = (
@@ -331,57 +319,6 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             del self._node_to_active_actor_count[node_id]
         else:
             self._node_to_active_actor_count[node_id] = count
-
-    def _relocate_actor(
-        self, actor: ActorHandle, state: _ExperimentalActorState, node_id: NodeIdStr
-    ) -> None:
-        """Move an actor's node-keyed bookkeeping after it landed on a new node.
-
-        Ray core restarts a lost actor wherever it fits, so ``actor_location``
-        changes mid-run. Several structures are keyed by it but are only written
-        when an actor becomes ready or is released, which leaves them pointing at
-        the node the actor has left:
-
-          - the committed-usage ledger. Release debits the node the actor
-            lives on *now*, so a stale entry leaves the old node with a charge
-            nothing can clear: capacity accounting reads a permanent overdraft
-            on a node that may not even exist.
-          - ``_node_to_actor_states``, which backs ``nodes()`` and per-node
-            victim selection.
-          - the per-node count of actors with in-flight tasks.
-
-        The scheduling heaps need no help here: ``refresh_actor_state`` clears
-        and rebuilds them from ``actor_location`` on every tick.
-
-        A no-op when the location is unchanged, so callers can invoke it on every
-        refresh.
-        """
-        old_node_id = state.actor_location
-        if node_id == old_node_id:
-            return
-
-        usage = self._actor_resource_usage.get(actor)
-        if usage is not None:
-            self._remove_committed_usage(old_node_id, usage)
-            self._add_committed_usage(node_id, usage)
-
-        logical_id = state.logical_id
-        old_states = self._node_to_actor_states.get(old_node_id)
-        if old_states is not None:
-            old_states.pop(logical_id, None)
-            if not old_states:
-                del self._node_to_actor_states[old_node_id]
-        self._node_to_actor_states.setdefault(node_id, {})[logical_id] = state
-
-        # Re-mark rather than edit the counter directly, so the pairing
-        # invariant holds: the decrement reads the old location, the increment
-        # the new one.
-        was_active = state.num_tasks_in_flight > 0
-        if was_active:
-            self._mark_node_actor_inactive(state)
-        state.actor_location = node_id
-        if was_active:
-            self._mark_node_actor_active(state)
 
     def nodes(self) -> Set[NodeIdStr]:
         """Nodes hosting any alive actor in this pool (idle or active)."""
@@ -407,8 +344,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
     @override
     def num_restarting_actors(self) -> int:
-        """Running actors Ray core is currently restarting."""
-        return self._status_counts[ActorStatus.RESTARTING]
+        """Always 0: actors are never restarted (``max_restarts=0``)."""
+        return 0
 
     @override
     def num_active_actors(self) -> int:
@@ -420,8 +357,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
     @override
     def num_idle_actors(self) -> int:
-        # IDLE = schedulable with nothing in flight. DRAINING and RESTARTING
-        # actors are not schedulable, so they are not idle.
+        # IDLE = schedulable with nothing in flight. DRAINING actors are not
+        # schedulable, so they are not idle.
         return self._status_counts[ActorStatus.IDLE]
 
     @override
@@ -448,21 +385,16 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
     @override
     def refresh_actor_state(self):
-        if not REFRESH_ACTOR_STATE:
-            # Even with the (expensive) full refresh disabled, draining actors
-            # must still be observed: one killed before its drain completes
-            # (node loss) must be seen as DEAD so the pool releases it.
-            # Otherwise it stays in the draining set forever and the operator
-            # never sees its resources freed.
-            for actor in list(self._draining_actors):
-                self._update_running_actor_state(actor)
-            return
+        """Release dead actors, rebuild the scheduling heaps, and tear down
+        draining actors that have finished draining. Runs once per scheduling
+        step."""
         self._alive_node_to_available_actor_heap.clear()
         self._available_actors_to_tasks_fallback_heap.clear()
-        # NOTE: Copy the keys -- observing a draining actor as DEAD
-        # releases it from ``_running_actors`` mid-iteration.
+        # NOTE: Copy the keys -- releasing a dead actor removes it from
+        # ``_running_actors`` mid-iteration.
         for actor in list(self._running_actors):
             self._update_running_actor_state(actor)
+        self.process_draining_actors()
 
     @override
     def on_task_submitted(self, actor: ActorHandle, input_bundle: RefBundle):
@@ -488,7 +420,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         if state.num_tasks_in_flight == 1:
             self._mark_node_actor_active(state)
             # 0 -> 1 in flight is IDLE -> ACTIVE: only IDLE actors are
-            # selectable (DRAINING and RESTARTING stay out of the heaps).
+            # selectable (DRAINING actors stay out of the heaps).
             assert state.status is ActorStatus.IDLE, state.status
             self._set_status(state, ActorStatus.ACTIVE)
 
@@ -540,13 +472,13 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         try:
             actor_location: NodeIdStr = ray.get(ready_ref)
             assert actor_location is not None
-            logical_id = self.get_actor_logical_id(actor)
+            actor_id = self.get_actor_logical_id(actor)
             # Building the state also derives the actor's per-actor
             # output-bytes budget from its landing node's capacity. Done inside
             # this try so a failure there (e.g. the actor landed off-target on
             # a node the bank cannot resolve) is cleaned up exactly like an
             # init failure, rather than leaking pending/committed usage.
-            state = self._make_running_state(logical_id, actor_location)
+            state = self._make_running_state(actor_id, actor_location)
         except Exception:
             self._rollback_failed_pending(actor, pending_target_node)
             raise
@@ -627,15 +559,10 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._total_num_tasks_in_flight -= 1
         if state.num_tasks_in_flight == 0:
             self._mark_node_actor_inactive(state)
-            # 1 -> 0 in flight: ACTIVE -> IDLE. A DRAINING or RESTARTING actor
-            # finishing its last task keeps its status; neither is schedulable.
+            # 1 -> 0 in flight: ACTIVE -> IDLE. A DRAINING actor finishing its
+            # last task keeps its status; it is not schedulable.
             if state.status is ActorStatus.ACTIVE:
                 self._set_status(state, ActorStatus.IDLE)
-
-        # A task can complete (as a failure) while its actor is RESTARTING --
-        # the accounting above must still drain so the ALIVE transition derives
-        # the right status from num_tasks_in_flight. The heap sync below keeps
-        # restarting actors out of the scheduling heaps.
 
         # Reconcile both heaps: the completed task decreased
         # ``num_tasks_in_flight``, which may make the actor available for
@@ -643,18 +570,15 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._sync_actor_to_heaps(actor, state)
 
     @override
-    def get_actor_logical_id(self, actor: ActorHandle) -> LogicalActorId:
-        return self._actor_to_logical_id[actor]
+    def get_actor_logical_id(self, actor: ActorHandle) -> ActorId:
+        """The actor's Ray actor id (hex). The base-class name is kept for the
+        shared ``AutoscalingActorPool`` interface."""
+        return self._actor_to_id[actor]
 
     @override
-    def get_logical_ids(self) -> List[LogicalActorId]:
-        """Get the logical IDs for pending and running actors in the actor pool.
-
-        We can't use Ray Core actor IDs because we need to identify actors by labels,
-        but labels must be set before creation, and actor IDs aren't available until
-        after.
-        """
-        return list(self._actor_to_logical_id.values())
+    def get_logical_ids(self) -> List[ActorId]:
+        """Ray actor ids (hex) of the pending and running actors."""
+        return list(self._actor_to_id.values())
 
     @override
     def current_logical_usage(self) -> ExecutionResources:
@@ -662,7 +586,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
     @override
     def pending_logical_usage(self) -> ExecutionResources:
-        return self._pending_or_restarting_usage
+        return self._pending_usage
 
     # === End of overriding methods of AutoscalingActorPool ===
 
@@ -683,8 +607,12 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
         for i in range(num_new):
             target_node_id = req.nodes[i] if req.nodes else None
+            # Hard affinity: the bank and the sizer account for the actor on
+            # its target node, and actors never move afterwards. If the node
+            # goes away first, ``release_expired_pending_actors`` frees the
+            # claim and the sizer re-places it.
             scheduling_strategy = (
-                NodeAffinitySchedulingStrategy(target_node_id, soft=True)
+                NodeAffinitySchedulingStrategy(target_node_id, soft=False)
                 if target_node_id is not None
                 else None
             )
@@ -718,8 +646,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         """
         num_downscaled = sum(
             1
-            for logical_id in req.pending_ids
-            if self._downscale_actor_by_id(logical_id, req.drain_reason)
+            for actor_id in req.pending_ids
+            if self._downscale_actor_by_id(actor_id, req.drain_reason)
         )
         num_downscaled += sum(
             self._shed_on_node(node_id, count, req.drain_reason)
@@ -743,8 +671,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         the ResourceBank still counts against the actor. Sheds fewer if the
         node holds fewer eligible actors than asked.
         """
-        victims: List[LogicalActorId] = [
-            info.logical_id
+        victims: List[ActorId] = [
+            info.actor_id
             for info in self._pending_actor_info.values()
             if info.target_node_id == node_id
         ]
@@ -752,21 +680,21 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             (
                 state.num_tasks_in_flight,
                 self._num_outstanding_outputs(state),
-                logical_id,
+                actor_id,
             )
-            for logical_id, state in self._node_to_actor_states.get(node_id, {}).items()
+            for actor_id, state in self._node_to_actor_states.get(node_id, {}).items()
             if state.status != ActorStatus.DRAINING
         )
-        victims.extend(logical_id for _, _, logical_id in ranked)
+        victims.extend(actor_id for _, _, actor_id in ranked)
 
         num_downscaled = 0
-        for logical_id in victims[:count]:
-            if self._downscale_actor_by_id(logical_id, reason):
+        for actor_id in victims[:count]:
+            if self._downscale_actor_by_id(actor_id, reason):
                 num_downscaled += 1
         return num_downscaled
 
     def _make_running_state(
-        self, logical_id: LogicalActorId, actor_location: NodeIdStr
+        self, actor_id: ActorId, actor_location: NodeIdStr
     ) -> _ExperimentalActorState:
         """Build the initial state for an actor that just became ready."""
         default_max_num_output_bytes = self._derive_default_max_num_output_bytes(
@@ -782,7 +710,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         max_num_outputs = safe_or(self._config.max_num_outputs_per_actor, float("inf"))
         assert max_num_outputs > 0, f"invalid per-actor output cap {max_num_outputs}"
         return _ExperimentalActorState(
-            logical_id=logical_id,
+            actor_id=actor_id,
             num_tasks_in_flight=0,
             num_input_bytes_in_flight=0,
             actor_location=actor_location,
@@ -801,18 +729,16 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         """Undo a failed pending actor's bookkeeping.
 
         Actor init failed, or its per-actor output budget couldn't be derived.
-        Clean up the actor from ``_actor_to_logical_id`` (for all exceptions,
+        Clean up the actor from ``_actor_to_id`` (for all exceptions,
         not just RayError) to prevent memory leaks where dead actor handles
         remain, and roll back its pending/committed usage.
         """
         usage = self._actor_resource_usage.pop(actor)
         self._total_usage = self._total_usage.subtract(usage)
-        self._pending_or_restarting_usage = self._pending_or_restarting_usage.subtract(
-            usage
-        )
+        self._pending_usage = self._pending_usage.subtract(usage)
         if pending_target_node is not None:
             self._remove_committed_usage(pending_target_node, usage)
-        self._actor_to_logical_id.pop(actor, None)
+        self._actor_to_id.pop(actor, None)
 
     def _register_running_actor(
         self,
@@ -830,15 +756,13 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # the pool currently keep alive" -- maintained explicitly here
         # (not via defaultdict-on-access) so cluster autoscaling and the
         # output-limit upgrader can trust their keysets.
-        self._logical_id_to_actor[state.logical_id] = actor
+        self._id_to_actor[state.actor_id] = actor
         self._node_to_actor_states.setdefault(state.actor_location, {})[
-            state.logical_id
+            state.actor_id
         ] = state
         # Actor is no longer pending -- subtract from pending usage.
         usage = self._actor_resource_usage[actor]
-        self._pending_or_restarting_usage = self._pending_or_restarting_usage.subtract(
-            usage
-        )
+        self._pending_usage = self._pending_usage.subtract(usage)
         # Re-attribute committed usage from the (optional) pending target node to
         # the actual landing node now that placement is resolved.
         if pending_target_node is not None:
@@ -880,117 +804,41 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self,
         scheduling_strategy: NodeAffinitySchedulingStrategy | str | None = None,
     ) -> Tuple[ActorHandle, ObjectRef, ExecutionResources]:
-        logical_actor_id = str(uuid.uuid4())
-        labels = {self.get_logical_id_label_key(): logical_actor_id}
         actor, ready_ref, resource_usage = self._create_actor_fn(
-            labels, logical_actor_id, scheduling_strategy=scheduling_strategy
+            {}, None, scheduling_strategy=scheduling_strategy
         )
-        self._actor_to_logical_id[actor] = logical_actor_id
+        self._actor_to_id[actor] = actor._actor_id.hex()
         return actor, ready_ref, resource_usage
 
     def _update_running_actor_state(self, actor: ActorHandle):
-        """Refresh one running actor from its GCS-reported state.
-
-        Dispatches on ALIVE / RESTARTING / DEAD; each observer returns whether
-        the actor was released, in which case there is no rank to update.
-        """
-        actor_state = actor._get_local_state()
-        running_actor_state = self._running_actors[actor]
-        died = False
-
-        if actor_state in (None, _ACTOR_STATE_DEAD):
-            # actor._get_local_state can return None if the state is Unknown.
-            died = True
-            released = self._observe_dead(actor, running_actor_state)
-        elif actor_state != _ACTOR_STATE_ALIVE:
-            assert actor_state == _ACTOR_STATE_RESTARTING, actor_state
-            released = self._observe_restarting(actor, running_actor_state)
+        """Refresh one running actor from its GCS-reported state: release it
+        if dead, else re-admit it to the scheduling heaps."""
+        # actor._get_local_state can return None if the state is Unknown.
+        if actor._get_local_state() in (None, _ACTOR_STATE_DEAD):
+            self.release_dead_actor(actor)
         else:
-            released = self._observe_alive(actor, running_actor_state)
+            self._sync_actor_to_heaps(actor, self._running_actors[actor])
 
-        if not released:
-            self._update_rank(actor=actor, state=running_actor_state, died=died)
-
-    def _observe_dead(self, actor: ActorHandle, state: _ExperimentalActorState) -> bool:
-        """Handle an actor observed DEAD; returns whether it was released."""
+    def release_dead_actor(self, actor: ActorHandle) -> None:
+        """Release an actor that died (any status). Its in-flight tasks fail
+        and are handed to Ray Data's recovery; their completion callbacks find
+        the actor gone and skip the pool bookkeeping. No-op if already
+        released."""
+        state = self._running_actors.get(actor)
+        if state is None:
+            return
         if state.status == ActorStatus.DRAINING:
             self._record_drain_outcome_on_death(actor, state)
-            self._release_running_actor(actor)
-            return True
-        return False
-
-    def _observe_restarting(
-        self, actor: ActorHandle, state: _ExperimentalActorState
-    ) -> bool:
-        """Handle an actor observed RESTARTING; returns whether it was released.
-
-        The subtle case is a draining actor whose process is gone. Left
-        DRAINING it could never finish draining: with ``max_restarts=-1``
-        (what map actors use) a lost actor is reported RESTARTING and never
-        DEAD, so the retire-on-death path can't fire; the status is sticky, so
-        it never rejoins the restarting accounting either; and its in-flight
-        tasks retry against the restarted process, so ``num_tasks_in_flight``
-        never reaches 0 and ``process_draining_actors`` can never tear it
-        down. A sticky DRAINING status would pin its node's capacity for
-        the rest of the run.
-        """
-        if state.status == ActorStatus.DRAINING:
-            if self._is_fully_drained(state):
-                # Nothing left to serve, so this is the teardown
-                # ``process_draining_actors`` would have done anyway. Honor
-                # the decision to shed it.
-                self._teardown_drained_actor(actor)
-                return True
-            # It still owes work, and Ray core is bringing it back precisely
-            # to serve that -- retried tasks, and reconstruction of outputs we
-            # haven't consumed. Killing it would abandon that. Stop draining
-            # it instead and let it rejoin the pool; a later downscale picks a
-            # new victim if the pool should still shrink. (The drain's
-            # stickiness exists to stop an evicted actor being reclaimed on a
-            # node the pool no longer owns, which cannot apply here: the actor
-            # only restarts once that node is gone, so core brings it back
-            # somewhere else.)
-            self._cancel_draining(actor, cause="core_restart")
-
-        if self._set_status(state, ActorStatus.RESTARTING):
-            self._pending_or_restarting_usage = self._pending_or_restarting_usage.add(
-                self._actor_resource_usage[actor]
+        else:
+            logger.warning(
+                "%s actor %s on node %s died with %d task(s) in flight; "
+                "releasing it.",
+                self._map_worker_cls_name,
+                state.actor_id,
+                state.actor_location,
+                state.num_tasks_in_flight,
             )
-        return False
-
-    def _observe_alive(
-        self, actor: ActorHandle, state: _ExperimentalActorState
-    ) -> bool:
-        """Handle an actor observed ALIVE; returns whether it was released."""
-        if state.status is ActorStatus.RESTARTING:
-            self._pending_or_restarting_usage = (
-                self._pending_or_restarting_usage.subtract(
-                    self._actor_resource_usage[actor]
-                )
-            )
-            self._set_status(
-                state,
-                ActorStatus.IDLE
-                if state.num_tasks_in_flight == 0
-                else ActorStatus.ACTIVE,
-            )
-        return False
-
-    def _update_rank(
-        self, actor: ActorHandle, state: _ExperimentalActorState, died: bool
-    ):
-        """Update the scheduling rank for an actor after a state refresh.
-
-        Heap membership requires the actor to be alive and available for
-        scheduling (see ``_is_available_for_scheduling``). Restarting/dead
-        actors are removed from both heaps; the per-node heap is cleared by
-        ``refresh_actor_state`` before this method runs, so the explicit
-        removal there is defensive.
-        """
-        if state.status == ActorStatus.RESTARTING or died:
-            self._remove_from_heaps(actor, state.actor_location)
-            return
-        self._sync_actor_to_heaps(actor, state)
+        self._release_running_actor(actor)
 
     def _add_pending_actor(
         self,
@@ -1013,14 +861,12 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         """
         self._pending_actors[ready_ref] = actor
         self._pending_actor_info[ready_ref] = _PendingActorInfo(
-            logical_id=self._actor_to_logical_id[actor],
+            actor_id=self._actor_to_id[actor],
             target_node_id=target_node_id,
         )
         self._actor_resource_usage[actor] = resource_usage
         self._total_usage = self._total_usage.add(resource_usage)
-        self._pending_or_restarting_usage = self._pending_or_restarting_usage.add(
-            resource_usage
-        )
+        self._pending_usage = self._pending_usage.add(resource_usage)
         # A pending actor is committed to its target node (if one was set);
         # untargeted/core-scheduled pendings contribute nothing until ready.
         if target_node_id is not None:
@@ -1036,25 +882,22 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         info = self._pending_actor_info.pop(ready_ref, None)
         usage = self._actor_resource_usage.pop(actor)
         self._total_usage = self._total_usage.subtract(usage)
-        self._pending_or_restarting_usage = self._pending_or_restarting_usage.subtract(
-            usage
-        )
+        self._pending_usage = self._pending_usage.subtract(usage)
         if info is not None and info.target_node_id is not None:
             self._remove_committed_usage(info.target_node_id, usage)
-        del self._actor_to_logical_id[actor]
+        del self._actor_to_id[actor]
 
     def release_expired_pending_actors(
         self, expiry_s: float = PENDING_ACTOR_EXPIRY_S, now: Optional[float] = None
     ) -> int:
         """Release pending actors older than ``expiry_s``, returning the count.
 
-        A pending whose ready-ref never resolves -- an actor wedged in failed
-        restarts after losing its constructor args (ray#53727), a stuck
-        runtime-env install, or a ghost -- otherwise holds the pool's pending
-        count until the job dies. The handle is force-killed: a never-ready
-        actor cannot be gracefully released, and killing it also breaks a
-        failed-restart loop. The freed claim lets the caller re-place the
-        actor with current cluster information.
+        A pending whose ready-ref never resolves -- its target node went away
+        (placement is hard node affinity), a stuck runtime-env install, or a
+        ghost -- otherwise holds the pool's pending count until the job dies.
+        The handle is force-killed: a never-ready actor cannot be gracefully
+        released. The freed claim lets the caller re-place the actor with
+        current cluster information.
         """
         now = time.time() if now is None else now
         expired = [
@@ -1067,17 +910,15 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             info = self._pending_actor_info.pop(ready_ref)
             usage = self._actor_resource_usage.pop(actor)
             self._total_usage = self._total_usage.subtract(usage)
-            self._pending_or_restarting_usage = (
-                self._pending_or_restarting_usage.subtract(usage)
-            )
+            self._pending_usage = self._pending_usage.subtract(usage)
             if info.target_node_id is not None:
                 self._remove_committed_usage(info.target_node_id, usage)
-            self._actor_to_logical_id.pop(actor, None)
+            self._actor_to_id.pop(actor, None)
             logger.warning(
                 "Releasing pending actor %s: not ready after %.0fs "
                 "(target_node=%s). Killing the handle and freeing its claim so "
                 "it can be re-placed.",
-                info.logical_id,
+                info.actor_id,
                 now - info.created_at,
                 info.target_node_id,
             )
@@ -1095,13 +936,11 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         for ready_ref, actor in pending.items():
             usage = self._actor_resource_usage.pop(actor)
             self._total_usage = self._total_usage.subtract(usage)
-            self._pending_or_restarting_usage = (
-                self._pending_or_restarting_usage.subtract(usage)
-            )
+            self._pending_usage = self._pending_usage.subtract(usage)
             info = pending_info.get(ready_ref)
             if info is not None and info.target_node_id is not None:
                 self._remove_committed_usage(info.target_node_id, usage)
-            self._actor_to_logical_id.pop(actor, None)
+            self._actor_to_id.pop(actor, None)
 
         if force:
             for actor in pending.values():
@@ -1122,12 +961,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
                 ray.kill(actor)
 
     def _release_running_actor(self, actor: ActorHandle):
-        """Remove the given actor from the pool by dropping all pool references."""
-        # NOTE: By default, we remove references to the actor and let ref counting
-        # garbage collect the actor, instead of using ray.kill.
-        #
-        # Otherwise, actor cannot be reconstructed for the purposes of produced
-        # object's lineage reconstruction.
+        """Remove the given actor from the pool by dropping all pool references.
+        Ref counting then garbage collects the actor."""
         if actor not in self._running_actors:
             return
 
@@ -1159,36 +994,31 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # ``_node_to_actor_states`` is meant to reflect "nodes the pool
         # is currently keeping alive".
         node_id = actor_state.actor_location
-        logical_id = actor_state.logical_id
-        self._logical_id_to_actor.pop(logical_id, None)
+        actor_id = actor_state.actor_id
+        self._id_to_actor.pop(actor_id, None)
         node_states = self._node_to_actor_states.get(node_id)
         if node_states is not None:
-            node_states.pop(logical_id, None)
+            node_states.pop(actor_id, None)
             if not node_states:
                 del self._node_to_actor_states[node_id]
 
         del self._running_actors[actor]
-        del self._actor_to_logical_id[actor]
+        del self._actor_to_id[actor]
 
         # Tell ResourceBank to drop this actor from the live-actor
         # indexes. Outputs the actor produced may still be in flight
         # downstream
-        self.resource_bank.deregister_actor(actor_id=logical_id)
+        self.resource_bank.deregister_actor(actor_id=actor_id)
 
         usage = self._actor_resource_usage.pop(actor)
         self._total_usage = self._total_usage.subtract(usage)
         # Release this running actor's committed usage at its node.
         self._remove_committed_usage(node_id, usage)
-        if actor_state.status == ActorStatus.RESTARTING:
-            self._pending_or_restarting_usage = (
-                self._pending_or_restarting_usage.subtract(usage)
-            )
 
     def _teardown_drained_actor(self, actor: ActorHandle) -> None:
         """Tear down a fully-drained actor (no in-flight tasks, no outstanding
         outputs). The pool's references are dropped and Ray core reclaims the
-        actor; an explicit kill would make its produced objects
-        unreconstructable."""
+        actor."""
         if self._metrics is not None:
             info = self._draining_actors[actor]
             self._metrics.record_drain_completed(
@@ -1214,16 +1044,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         state = self._running_actors[actor]
         assert (
             state.status != ActorStatus.DRAINING
-        ), f"Actor {state.logical_id} already draining"
-        # A RESTARTING victim leaves the restarting usage accounting here: it
-        # is otherwise only released on an ALIVE transition, and DRAINING
-        # supersedes that.
-        if state.status is ActorStatus.RESTARTING:
-            self._pending_or_restarting_usage = (
-                self._pending_or_restarting_usage.subtract(
-                    self._actor_resource_usage[actor]
-                )
-            )
+        ), f"Actor {state.actor_id} already draining"
         self._set_status(state, ActorStatus.DRAINING)
         self._remove_from_heaps(actor, state.actor_location)
         self._draining_actors[actor] = _DrainingActorInfo(
@@ -1276,37 +1097,34 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         (pulled but not yet consumed downstream, or prebuffered in its
         generators).
 
-        Both must hold before it is safe to tear the actor down -- releasing it
-        with outstanding outputs can strand blocks that are no longer
-        reconstructable. The in-flight check is the pool's own: the bank's
+        Both must hold before it is safe to tear the actor down. The in-flight
+        check is the pool's own: the bank's
         prebuffered estimate reads zero when the generator buffer is configured
         to zero, so it cannot stand in for it.
         """
         if state.num_tasks_in_flight > 0:
             return False
-        live = self.resource_bank.live_object_store(actor_id=state.logical_id)
+        live = self.resource_bank.live_object_store(actor_id=state.actor_id)
         return live.all_outputs_consumed()
 
     def _num_outstanding_outputs(self, state: _ExperimentalActorState) -> int:
         """Output blocks the ResourceBank still counts against this actor."""
-        live = self.resource_bank.live_object_store(actor_id=state.logical_id)
+        live = self.resource_bank.live_object_store(actor_id=state.actor_id)
         return live.get_output_blocks()
 
     def _cancel_draining(self, actor: ActorHandle, cause: str) -> None:
         """Return a draining actor to the normal lifecycle.
 
-        Inverse of ``begin_draining``'s bookkeeping. The caller
-        decides what the actor becomes next (ALIVE-ish here, RESTARTING at the
-        restart site) and re-syncs the scheduling heaps.
+        Inverse of ``begin_draining``'s bookkeeping; the caller re-syncs the
+        scheduling heaps.
 
         ``cause`` says why the drain was cancelled ("reclaimed" for an upscale
-        reclaim, "core_restart" for a Ray-core restart of an actor that still
-        owes work); the drain reason only records why it started.
+        reclaim); the drain reason only records why it started.
         """
         state = self._running_actors[actor]
         assert (
             state.status == ActorStatus.DRAINING
-        ), f"Actor {state.logical_id} is not draining"
+        ), f"Actor {state.actor_id} is not draining"
         drain_reason = self._draining_actors[actor].reason
         del self._draining_actors[actor]
         self.draining_generation += 1
@@ -1352,17 +1170,15 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
     def alive_actor_states_by_node(
         self,
-    ) -> Mapping[NodeIdStr, Mapping[LogicalActorId, _ExperimentalActorState]]:
+    ) -> Mapping[NodeIdStr, Mapping[ActorId, _ExperimentalActorState]]:
         """Per-node states of the alive actors (draining ones included, with
         ``status == DRAINING``). Read-only: for placement snapshots."""
         return self._node_to_actor_states
 
-    def draining_actor_ids(self) -> Set[LogicalActorId]:
+    def draining_actor_ids(self) -> Set[ActorId]:
         """Logical ids of actors currently draining (marked draining, not yet
         released). Used to keep the output queue's prioritized set in sync."""
-        return {
-            self._running_actors[actor].logical_id for actor in self._draining_actors
-        }
+        return {self._running_actors[actor].actor_id for actor in self._draining_actors}
 
     def reclaim_draining_actors(self, *, limit: int) -> int:
         """Reclaim up to ``limit`` draining actors back into the running pool
@@ -1390,7 +1206,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
     def process_draining_actors(self) -> int:
         """Release every draining actor that is now fully drained.
 
-        Called once per scheduling tick. An actor is "fully drained" once it has
+        Called from ``refresh_actor_state`` once per scheduling step. An actor is "fully drained" once it has
         no in-flight tasks AND no output blocks the ResourceBank still counts
         against it.
 
@@ -1429,52 +1245,50 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
         return num_finalized
 
-    def _downscale_actor_by_id(
-        self, logical_id: LogicalActorId, reason: DrainReason
-    ) -> bool:
+    def _downscale_actor_by_id(self, actor_id: ActorId, reason: DrainReason) -> bool:
         """Shed one actor: a pending one is cancelled, a running one begins
         draining with ``reason``. False if it is gone or already draining."""
         for ready_ref, info in self._pending_actor_info.items():
-            if info.logical_id == logical_id:
+            if info.actor_id == actor_id:
                 self._remove_pending_actor_by_ref(ready_ref)
                 return True
 
-        actor = self._logical_id_to_actor.get(logical_id)
+        actor = self._id_to_actor.get(actor_id)
         if actor is None or self._running_actors[actor].status == ActorStatus.DRAINING:
             logger.debug(
-                f"Skipping {reason.value} downscale of actor {logical_id}: "
+                f"Skipping {reason.value} downscale of actor {actor_id}: "
                 f"{'not found' if actor is None else 'already draining'}."
             )
             return False
         self.begin_draining(actor, reason=reason)
         return True
 
-    def has_actor(self, actor_id: LogicalActorId) -> bool:
+    def has_actor(self, actor_id: ActorId) -> bool:
         """Whether the pool still holds a running actor with this logical id.
 
         False once the actor has been released (downscaled or reaped), even if
         in-flight task refs for it are still resolving.
         """
-        return actor_id in self._logical_id_to_actor
+        return actor_id in self._id_to_actor
 
     def is_actor_draining(self, actor: ActorHandle) -> bool:
         """Whether this (still-running) actor is draining. False if released."""
         state = self._running_actors.get(actor)
         return state is not None and state.status == ActorStatus.DRAINING
 
-    def pending_ids_by_target_node(self) -> Dict[NodeIdStr, List[LogicalActorId]]:
+    def pending_ids_by_target_node(self) -> Dict[NodeIdStr, List[ActorId]]:
         """Logical ids of pending actors, grouped by their target node."""
-        result: DefaultDict[NodeIdStr, List[LogicalActorId]] = defaultdict(list)
+        result: DefaultDict[NodeIdStr, List[ActorId]] = defaultdict(list)
         for info in self._pending_actor_info.values():
             if info.target_node_id is not None:
-                result[info.target_node_id].append(info.logical_id)
+                result[info.target_node_id].append(info.actor_id)
         return dict(result)
 
-    def untargeted_pending_ids(self) -> List[LogicalActorId]:
+    def untargeted_pending_ids(self) -> List[ActorId]:
         """Logical ids of pending actors with no target node (placement-group
         or initial-size actors); ``pending_ids_by_target_node`` omits them."""
         return [
-            info.logical_id
+            info.actor_id
             for info in self._pending_actor_info.values()
             if info.target_node_id is None
         ]
@@ -1519,7 +1333,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         so the map never accumulates stale zero-valued nodes (matching the
         empty-node-omitting semantics callers expect)."""
         # Every debit follows a credit for the same node (pending target,
-        # ready location, or relocation), so the entry must exist.
+        # or ready location), so the entry must exist.
         assert (
             node_id in self.committed_usage_by_node
         ), f"no committed usage recorded for node={node_id}"
@@ -1667,7 +1481,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # stays unset after the bump, which is fine: the tuple key above
         # will still discriminate via the finite dimension on the next call.
 
-        actor = self._logical_id_to_actor[best_state.logical_id]
+        actor = self._id_to_actor[best_state.actor_id]
         logger.debug(
             f"\nname={self._map_worker_cls_name} ({self.get_actor_info()})\n"
             f"Increasing the capacity for actor={actor} "
@@ -1677,8 +1491,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             f"{best_state.max_num_outputs} outputs\n"
         )
 
-    def output_bytes_limit(self, actor_id: LogicalActorId) -> float:
-        actor = self._logical_id_to_actor.get(actor_id)
+    def output_bytes_limit(self, actor_id: ActorId) -> float:
+        actor = self._id_to_actor.get(actor_id)
         if actor is None:
             # The actor was released (killed / died) while one of its data
             # tasks lingers; callers like the output-backpressure path may still
@@ -1686,9 +1500,9 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             return float("inf")
         return self._running_actors[actor].max_num_output_bytes
 
-    def running_actor_ids(self) -> List[LogicalActorId]:
-        """Logical ids of running actors, draining ones included."""
-        return [state.logical_id for state in self._running_actors.values()]
+    def running_actor_ids(self) -> List[ActorId]:
+        """Ray actor ids of running actors, draining ones included."""
+        return [state.actor_id for state in self._running_actors.values()]
 
     def total_output_bytes_limit(self) -> float:
         """Sum of ``output_bytes_limit`` over running actors. Draining ones
@@ -1722,8 +1536,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             return None
         return total * BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO / count
 
-    def output_count_limit(self, actor_id: LogicalActorId) -> float:
-        actor = self._logical_id_to_actor.get(actor_id)
+    def output_count_limit(self, actor_id: ActorId) -> float:
+        actor = self._id_to_actor.get(actor_id)
         if actor is None:
             return float("inf")
         return self._running_actors[actor].max_num_outputs
@@ -1736,59 +1550,34 @@ class _NodeAwareExperimentalActorPool(_ExperimentalActorPool):
     there are put on the draining path (see
     ``_drain_actors_on_draining_nodes``), which both stops new task submissions
     to them and hands their work back before the node is reclaimed.
-    Furthermore, unlike the parent implementation, this actor pool updates
-    actor locations upon restart.
 
     The actor-only counterpart of ``_NodeAwareActorPool``.
     """
 
-    # Snapshots refreshed at the top of ``refresh_actor_state``. Class-level
-    # defaults so ``_update_rank`` (reachable through the parent's
-    # draining-actor observation even with RAY_DATA_REFRESH_ACTOR_STATE off)
-    # never reads unset attributes.
-    _actor_node_id_map_snapshot: Dict[LogicalActorId, NodeIdStr] = {}
     _draining_nodes_snapshot: Dict[NodeIdStr, int] = {}
 
     def __init__(
         self,
         *args,
         get_draining_nodes: Callable[[], Dict[NodeIdStr, int]] = get_draining_nodes,
-        get_actor_locations: Callable[
-            [Tuple[LogicalActorId, ...]], Dict[LogicalActorId, NodeIdStr]
-        ] = get_actor_locations,
         **kwargs,
     ):
-        """``get_draining_nodes`` / ``get_actor_locations`` default to the
-        cached Ray internals; tests inject fakes instead of patching module
-        globals."""
+        """``get_draining_nodes`` defaults to the cached Ray internal; tests
+        inject a fake instead of patching module globals."""
         super().__init__(*args, **kwargs)
         self._get_draining_nodes = get_draining_nodes
-        self._get_actor_locations = get_actor_locations
 
     @override
     def refresh_actor_state(self):
-        if not REFRESH_ACTOR_STATE:
-            # The parent still observes draining actors on this path.
-            super().refresh_actor_state()
-            return
-
-        # Snapshots state that _update_running_actor_state() depends on.
-        # Must be captured before the parent pass runs (see _update_rank).
-        self._actor_node_id_map_snapshot = self._get_actor_locations(
-            tuple(self.get_logical_ids())
-        )
         self._draining_nodes_snapshot = self._get_draining_nodes()
-
         super().refresh_actor_state()
-
-        # Runs after the parent pass so it reads each actor's just-refreshed
-        # location (see _update_rank).
+        # Runs after the parent pass so dead actors are already released.
         self._drain_actors_on_draining_nodes()
 
     @override
     def pending_to_running(self, ready_ref: ray.ObjectRef) -> Optional[ActorHandle]:
         actor = super().pending_to_running(ready_ref)
-        if actor is None or not REFRESH_ACTOR_STATE:
+        if actor is None:
             return actor
 
         # The base class makes every newly ready actor schedulable. Actor-ready
@@ -1828,11 +1617,6 @@ class _NodeAwareExperimentalActorPool(_ExperimentalActorPool):
                 # whatever started the drain.
                 self._draining_actors[actor].reclaimable = False
                 continue
-            if state.status == ActorStatus.RESTARTING:
-                # A restarting actor's recorded location is stale (Ray core may
-                # bring it back on another node), so wait until it is ALIVE
-                # again before judging where it lives.
-                continue
             self.begin_draining(actor, reason=DrainReason.PREEMPTION)
             drained[state.actor_location] += 1
 
@@ -1845,27 +1629,3 @@ class _NodeAwareExperimentalActorPool(_ExperimentalActorPool):
                 len(drained),
                 dict(drained),
             )
-
-    @override
-    def _update_rank(
-        self, actor: ActorHandle, state: _ExperimentalActorState, died: bool
-    ):
-        """Refresh the actor's node location, then rank it as the parent does."""
-        # The ActorLocationTracker may return stale information when
-        #   - the actor is recently created
-        #   - get_actor_locations() returns *cached* information
-        # NOTE:
-        #   - We fall back to the previous location if information is stale
-        #   - Actor locations are not updated in the base implementation
-        logical_id = self.get_actor_logical_id(actor)
-        node_id = (
-            self._actor_node_id_map_snapshot.get(logical_id, None)
-            or state.actor_location
-        )
-        assert node_id is not None, f"{state.actor_location}"
-        # Not a plain assignment: several pool structures are keyed by the
-        # actor's node and have to move with it (see _relocate_actor). No-op
-        # when the location is unchanged.
-        self._relocate_actor(actor, state, node_id)
-
-        super()._update_rank(actor, state, died)

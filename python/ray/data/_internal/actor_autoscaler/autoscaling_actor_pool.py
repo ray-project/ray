@@ -126,7 +126,7 @@ class AutoscalingActorPool(ABC):
         """Number of actors draining prior to release.
 
         These actors still hold their resources but accept no new tasks, so
-        they count towards ``current_size`` but not ``serving_size``.
+        they count towards ``total_size`` but not ``serving_size``.
         """
         ...
 
@@ -305,7 +305,7 @@ class AutoscalingActorPool(ABC):
     def initial_size(self) -> int:
         return self._config.initial_size
 
-    def current_size(self) -> int:
+    def total_size(self) -> int:
         """Total actors this pool holds resources for.
 
         Includes draining actors: they keep their CPU/GPU/memory (and their
@@ -323,7 +323,7 @@ class AutoscalingActorPool(ABC):
         Pending actors count (they are on their way to serving); draining
         actors do not (they will never take another task).
         This is the number sizing decisions want: ``scale()`` only ever adds to
-        or removes from this set, so clamping a delta against ``current_size``
+        or removes from this set, so clamping a delta against ``total_size``
         would let already-dying actors crowd out live ones.
         """
         return self.num_pending_actors() + self.num_running_actors()

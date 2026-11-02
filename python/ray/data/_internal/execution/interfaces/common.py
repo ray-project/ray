@@ -13,7 +13,12 @@ NodeIdStr = str
 #
 # Ray Core actor IDs can't serve this purpose: actors are identified by labels,
 # labels must be set before creation, and the Core ID only exists afterwards.
+# Only the task-based backend needs this; drop it once Ray Data stops
+# supporting tasks and the actor-only backend (``ActorId``) is the default.
 LogicalActorId = str
+
+# Ray Core actor id (hex) of an actor-only backend actor.
+ActorId = str
 
 # Placement-group id strings (``PlacementGroup.id.hex()``).
 PlacementGroupIdStr = str

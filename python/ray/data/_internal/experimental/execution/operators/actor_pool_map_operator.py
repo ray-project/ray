@@ -13,7 +13,7 @@ protocol:
   pull per actor.
 
 - **Draining**: the pool owns the drain lifecycle; the operator keeps the
-  output queue in sync (``process_draining_actors`` prioritizes draining
+  output queue in sync (``_sync_draining_priorities`` prioritizes draining
   actors' blocks so the outputs the ResourceBank still counts against them are
   consumed sooner) and tags each queued output with its producing actor.
 
@@ -69,7 +69,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.common import ActorStatus, LogicalActorId
+from ray.data._internal.execution.interfaces.common import ActorId, ActorStatus
 from ray.data._internal.execution.interfaces.physical_operator import TaskPullRequest
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
@@ -95,7 +95,7 @@ from ray.data._internal.experimental.execution.operators.placement_constraints i
 )
 from ray.data._internal.util import MiB
 from ray.data.context import DataContext
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import ActorUnavailableError, GetTimeoutError, RayActorError
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -220,7 +220,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         super().__init__(*args, **kwargs)
         self._input_queue_bytes_by_node: DefaultDict[NodeIdStr, int] = defaultdict(int)
         # Pool draining-generation last reconciled into the output queue's
-        # prioritized set. -1 forces the first sync. See process_draining_actors.
+        # prioritized set. -1 forces the first sync. See _sync_draining_priorities.
         self._last_synced_draining_generation: int = -1
         # Ray task ids by task index, for ResourceBank attribution.
         self._task_ray_id: Dict[int, ray.TaskID] = {}
@@ -252,14 +252,23 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         ), "The streaming executor provides the ResourceBank via start()"
         return self._resource_bank
 
-    def validate_ray_remote_args(self) -> None:
+    def validate_ray_remote_args(
+        self, fn_resolved_args: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Reject ``ray_remote_args`` the sizer cannot reason about.
+
+        Checks the user's ``ray_remote_args`` by default, or ``fn_resolved_args``
+        if given (the per-actor args a ``ray_remote_args_fn`` resolved to).
 
         The sizer owns actor placement and models capacity in cpu/gpu/memory
         only. ``num_cpus`` / ``num_gpus`` / ``memory`` and non-placement knobs
-        (``max_restarts``, ``runtime_env``, ...) are fine. Everything else is
-        rejected up front, when the ``OperatorSizer`` is built, rather than
+        (``max_task_retries``, ``runtime_env``, ...) are fine. Everything else
+        is rejected up front, when the ``OperatorSizer`` is built, rather than
         silently mis-placed:
+
+        - a non-zero ``max_restarts``: a dead actor is replaced by the sizer and
+          its work is redone by Ray Data lineage recovery, never by a Ray core
+          restart;
 
         - a ``scheduling_strategy`` other than ``NodeAffinitySchedulingStrategy``
           (how local-scheme reads pin to the driver; honored as a node pin) or
@@ -270,12 +279,31 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         - custom ``resources``: the capacity model does not track them;
         - ``max_concurrency`` below 1: Ray accepts 0, but sizing divides by it.
 
-        A ``ray_remote_args_fn`` is allowed if it only assigns a placement
-        group (the vLLM "ray" backend does exactly this). That contract is
-        enforced per actor in ``_merge_ray_remote_args`` because calling the
-        fn here would mint a real placement group.
+        A ``ray_remote_args_fn`` is allowed only if it assigns a placement
+        group and nothing else (the vLLM "ray" backend does exactly this): a fn
+        that pins placement or changes the resource footprint would break
+        capacity accounting. Calling the fn here would mint a real placement
+        group, so ``_merge_ray_remote_args`` validates its output per actor.
         """
-        args = self._user_set_ray_remote_args
+        if fn_resolved_args is None:
+            args = self._user_set_ray_remote_args
+        else:
+            args = fn_resolved_args
+            strategy = args.get("scheduling_strategy")
+            if not isinstance(strategy, PlacementGroupSchedulingStrategy):
+                self._raise_unsupported(
+                    "a ray_remote_args_fn that does not assign a placement group "
+                    f"(resolved scheduling_strategy={strategy!r}); only a fn that "
+                    "assigns a PlacementGroupSchedulingStrategy is supported"
+                )
+            for key in ("num_cpus", "num_gpus", "memory", "resources"):
+                if args.get(key) != self._ray_remote_args.get(key):
+                    self._raise_unsupported(
+                        f"a ray_remote_args_fn that overrides {key!r} "
+                        f"({self._ray_remote_args.get(key)!r} -> {args.get(key)!r}); "
+                        "the fn may only assign a placement group, not change the "
+                        "actor's resource footprint"
+                    )
         strategy = args.get("scheduling_strategy")
         allowed_strategies = (
             NodeAffinitySchedulingStrategy,
@@ -297,6 +325,12 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             self._raise_unsupported(
                 "a custom scheduling_strategy (the sizer owns actor placement)"
             )
+        if args.get("max_restarts", 0) != 0:
+            self._raise_unsupported(
+                f"max_restarts={args['max_restarts']!r} (actors are never "
+                "restarted by Ray core: a dead actor is replaced and its work is "
+                "redone by Ray Data lineage recovery)"
+            )
         if args.get("placement_group_capture_child_tasks"):
             self._raise_unsupported(
                 "placement_group_capture_child_tasks (Data's internal tasks must "
@@ -314,6 +348,28 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 f"max_concurrency must be >= 1, got {max_concurrency} "
                 f"(operator {self.name})"
             )
+
+    @override
+    def _on_actor_init_death(self, error: Exception) -> None:
+        """Charge ``max_consecutive_actor_init_deaths`` only for deaths where
+        the actor's ``__init__`` raised: a broken UDF fails every replacement,
+        so it must exhaust the budget and fail the dataset. A process or node
+        loss while starting (OOM, preemption, chaos) is not the UDF's fault;
+        the pool already dropped the pending actor and the sizer re-places it.
+        """
+        if isinstance(error, RayActorError) and error.actor_init_failed:
+            super()._on_actor_init_death(error)
+            return
+        logger.debug(
+            f"{self.name}: an actor was lost while starting; the sizer replaces it.",
+            exc_info=error,
+        )
+
+    @override
+    def extra_resource_usage(self) -> ExecutionResources:
+        """Always zero: Ray core never recreates these actors for lineage
+        reconstruction (``max_restarts=0``)."""
+        return ExecutionResources.zero()
 
     @override
     def _create_actor_pool(
@@ -496,25 +552,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
     ) -> Dict[str, Any]:
         remote_args = super()._merge_ray_remote_args()
         if self._user_set_ray_remote_args_fn:
-            # A ray_remote_args_fn is allowed ONLY if it assigns a placement
-            # group and nothing else. A fn that overrides resources or pins
-            # placement would break capacity accounting so reject it here.
-            strategy = remote_args.get("scheduling_strategy")
-            if not isinstance(strategy, PlacementGroupSchedulingStrategy):
-                self._raise_unsupported(
-                    "a ray_remote_args_fn that does not assign a placement group "
-                    f"(resolved scheduling_strategy={strategy!r}); only a fn that "
-                    "assigns a PlacementGroupSchedulingStrategy is supported"
-                )
-            for key in ("num_cpus", "num_gpus", "memory", "resources"):
-                if remote_args.get(key) != self._ray_remote_args.get(key):
-                    self._raise_unsupported(
-                        f"a ray_remote_args_fn that overrides {key!r} "
-                        f"({self._ray_remote_args.get(key)!r} -> {remote_args.get(key)!r}); "
-                        "the fn may only assign a placement group, not change the "
-                        "actor's resource footprint (it would break capacity "
-                        "accounting)"
-                    )
+            self.validate_ray_remote_args(fn_resolved_args=remote_args)
         if scheduling_strategy is not None:
             # Placement-resolved creation supersedes the op's default
             # scheduling_strategy (a string). Self-placed (PG /
@@ -541,11 +579,10 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
     # The OperatorSizer sizes this operator through the methods below; the
     # operator never resizes itself (see ``_scale_to_initial_size``).
 
-    def process_draining_actors(self) -> int:
-        """Release fully-drained actors, after syncing the output queue's
-        prioritized set with the pool's draining set so a draining actor's
-        already-queued blocks are served first and it reaches "fully drained"
-        (and is released) sooner.
+    def _sync_draining_priorities(self) -> None:
+        """Sync the output queue's prioritized set with the pool's draining
+        set, so a draining actor's already-queued blocks are served first and
+        it reaches "fully drained" (and is released) sooner.
 
         Newly-draining actors are prioritized (their queued blocks jump the
         line); reclaimed/released actors are deprioritized. The sync is skipped
@@ -566,7 +603,6 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 queue.prioritize_actor(actor_id)
             for actor_id in prioritized - draining:
                 queue.deprioritize_actor(actor_id)
-        return self.actor_pool.process_draining_actors()
 
     def placement_constraint(self) -> PlacementConstraint:
         """This op's scheduling constraints as a label_selector (+ optional
@@ -620,7 +656,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         # draining actors' outputs first.
         return {"key": self._actor_id_for_task(task_index)}
 
-    def _actor_id_for_task(self, task_index: int) -> LogicalActorId:
+    def _actor_id_for_task(self, task_index: int) -> ActorId:
         """The actor running ``task_index``, from the ResourceBank's task ->
         actor binding. Valid while the task is live: outputs are enqueued before
         the task's completion is processed, so the binding is always present
@@ -699,6 +735,12 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         ray_remote_args = super()._apply_default_remote_args(
             ray_remote_args, data_context
         )
+        # Ray core never restarts these actors: a dead actor is released, the
+        # sizer places a replacement, and Ray Data lineage recovery redoes its
+        # work. Core still retries tasks on a live actor (``retry_exceptions``),
+        # which the base only enables when restarts are on.
+        ray_remote_args["max_restarts"] = 0
+        ray_remote_args.setdefault("max_task_retries", -1)
         if not user_set_strategy:
             # Placement is resolved per actor at creation time (NodeAffinity,
             # or an untargeted placement honoring a label_selector); drop the
@@ -889,7 +931,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         self.resource_bank.maybe_register_actor(
             op=self,
             actor_id=actor_logical_id,
-            new_node_id=actor_node_id,
+            node_id=actor_node_id,
         )
 
         self._dequeue_bundle_for_dispatch(bundle)
@@ -968,7 +1010,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         task_index: int,
         ctx: TaskContext,
         actor: ActorHandle,
-        actor_logical_id: LogicalActorId,
+        actor_logical_id: ActorId,
         output: RefBundle,
     ) -> None:
         """Per-output bookkeeping: bank registration and overshoot detection."""
@@ -1046,26 +1088,32 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         exception: Optional[Exception],
         actor_to_return: ActorHandle,
     ) -> None:
-        """Reverse the in-flight accounting a finished task held.
+        """Reverse the in-flight accounting a finished task held, and release
+        the actor right away if the task failed because it died, so nothing
+        else is dispatched to it before the next state refresh.
 
         The bank and pool calls are tolerant of an already-released actor (a
-        forced shutdown releases the actor before its in-flight tasks surface
-        RayActorError)."""
+        forced shutdown, or an earlier failed task on the same dead actor,
+        releases it before its other in-flight tasks finish)."""
         ray_task_id = self._task_ray_id.pop(task_index)
 
         self.resource_bank.on_task_completed(op=self, task_id=ray_task_id)
         self.actor_pool.on_task_completed(actor_to_return, input_bundle=inputs)
         for entry in inputs.blocks:
             self.resource_bank.on_block_consumed(input_ref=entry.ref)
+        if isinstance(exception, RayActorError) and not isinstance(
+            exception, ActorUnavailableError
+        ):
+            self.actor_pool.release_dead_actor(actor_to_return)
 
-    def max_output_bytes_for_actor(self, actor_id: LogicalActorId) -> float:
+    def max_output_bytes_for_actor(self, actor_id: ActorId) -> float:
         """The (soft) maximum number of bytes that we can pull for this actor.
         Actors can handle multiple tasks, so we apply the limit at a per-actor
         level. It's a soft maximum because we cannot be precise in how many
         bytes an actor can produce."""
         return self.actor_pool.output_bytes_limit(actor_id=actor_id)
 
-    def max_outputs_for_actor(self, actor_id: LogicalActorId) -> float:
+    def max_outputs_for_actor(self, actor_id: ActorId) -> float:
         """The (hard) maximum number of outputs that we can pull for this actor.
         Actors can handle multiple tasks, so we apply the limit at a per-actor
         level. It's a hard maximum because ray core provides a way to pull by #
@@ -1074,10 +1122,13 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
 
     @override
     def refresh_state(self):
-        """Updates internal state"""
+        """Updates internal state. The pool refresh releases dead actors and
+        tears down fully-drained ones; priorities are synced first so the
+        draining set it reads is current."""
         info = self.get_actor_info()
         if info.pending > 0:
             self.actor_pool.reset_output_limit()
+        self._sync_draining_priorities()
         return super().refresh_state()
 
     def upgrade_output_limit(self) -> bool:
@@ -1155,7 +1206,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             for actor_id in self.actor_pool.running_actor_ids()
         )
 
-    def _actor_pull_budget(self, actor_id: LogicalActorId) -> TaskPullRequest:
+    def _actor_pull_budget(self, actor_id: ActorId) -> TaskPullRequest:
         """Remaining per-actor pull budget: limit minus pulled and prebuffered
         outputs, clamped at zero. All tasks on an actor share it."""
         actor_object_store = self.resource_bank.live_object_store(actor_id=actor_id)
@@ -1198,7 +1249,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         parts = []
         blocked, _ = self.cached_output_backpressured_actors()
         if blocked > 0:
-            parts.append(f"blocked={blocked}/{self.actor_pool.current_size()}")
+            parts.append(f"blocked={blocked}/{self.actor_pool.total_size()}")
         if not parts:
             return ""
         return f"[{', '.join(parts)}]"
