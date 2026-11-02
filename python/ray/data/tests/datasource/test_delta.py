@@ -3,11 +3,16 @@ from unittest import mock
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
 
 import ray
 from ray.data import DataContext, Schema
+from ray.data._internal.object_extensions.arrow import (
+    ArrowPythonObjectArray,
+    _contains_pickle_object_type,
+)
 from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.conftest import *  # noqa
@@ -175,6 +180,38 @@ def test_delta_read_empty_table(tmp_path, delta_reader):
         # The V2 reader takes the schema from the log. The V1 reader takes it
         # from the data files, and an empty table has none.
         assert ds.schema().names == ["x", "y"]
+
+
+def test_delta_read_does_not_unpickle_a_tampered_data_file(tmp_path):
+    """A data file swapped for one with a pickled-object column must not run
+    its pickle. Both readers read data files with the log's schema, so the
+    column comes back as plain bytes."""
+    from deltalake import DeltaTable, write_deltalake
+
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    path = os.path.join(tmp_path, "tmp_test_delta_tampered")
+    write_deltalake(path, pa.table({"id": [1, 2], "obj": [b"a", b"b"]}))
+    (data_file,) = pa.table(DeltaTable(path).get_add_actions(flatten=True))[
+        "path"
+    ].to_pylist()
+    pq.write_table(
+        pa.table(
+            {"id": [1, 2], "obj": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
+        ),
+        os.path.join(path, data_file),
+    )
+
+    batches = list(ray.data.read_delta(path).iter_batches(batch_format="pyarrow"))
+
+    assert sum(batch.num_rows for batch in batches) == 2
+    for batch in batches:
+        assert not _contains_pickle_object_type(batch.schema.field("obj").type)
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 def test_delta_read_rejects_multiple_paths():
