@@ -65,6 +65,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     NodeIdStr,
+    PhysicalOperator,
     RefBundle,
     TaskContext,
 )
@@ -78,7 +79,7 @@ from ray.data._internal.execution.resource_bank import (
     DEFAULT_BYTES_PER_OUTPUT,
     ResourceBankBase,
 )
-from ray.data._internal.execution.util import memory_string
+from ray.data._internal.execution.util import memory_string, merge_label_selector
 from ray.data._internal.experimental.execution.actor_only_op_metrics import (
     _ActorOnlyOpMetrics,
 )
@@ -89,11 +90,15 @@ from ray.data._internal.experimental.execution.operators.actor_pool import (
     _ExperimentalActorPool,
     _NodeAwareExperimentalActorPool,
 )
+from ray.data._internal.experimental.execution.operators.placement_constraints import (
+    PlacementConstraint,
+)
 from ray.data._internal.util import MiB
 from ray.data.context import DataContext
 from ray.exceptions import GetTimeoutError
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -124,6 +129,19 @@ WAIT_FOR_MIN_ACTORS_BASE_S = 300
 WAIT_FOR_MIN_ACTORS_PER_ACTOR_S = 15
 WAIT_FOR_MIN_ACTORS_MAX_S = 1800
 WAIT_FOR_MIN_ACTORS_STALL_S = 300
+
+# Scheduling strategies Ray Data sets on its own behalf, not placement the user
+# asked for: ``DataContext.scheduling_strategy`` defaults to "SPREAD" (and is
+# deprecated in the new actor-only backend -- Data manages scheduling
+# internally), and ``read_api`` stamps it on every distributed read. They are
+# hints rather than pins, so ``_apply_default_remote_args`` drops them and the
+# sizer places actors itself.
+_IGNORED_SCHEDULING_STRATEGIES = frozenset({"DEFAULT", "SPREAD"})
+
+# The node-id label Ray core stamps on every node; a label_selector on it is a
+# node pin.
+# pyrefly: ignore[missing-attribute]  # Cython module attribute.
+_NODE_ID_LABEL_KEY: str = ray._raylet.RAY_NODE_ID_KEY
 
 
 def wait_for_min_actors_budget_s(num_actors: int) -> float:
@@ -214,6 +232,8 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         # progress-bar path (see ``cached_output_backpressured_actors``).
         self._output_backpressured_actors_cache: Tuple[int, int] = (0, 0)
         self._output_backpressured_actors_cache_ts: float = float("-inf")
+        # Parsed once on first use: constraints are fixed for the op's lifetime.
+        self._placement_constraint: Optional[PlacementConstraint] = None
 
     def set_actor_only_metrics(self, metrics: _ActorOnlyOpMetrics, op_tag: str) -> None:
         self._actor_only_metrics = metrics
@@ -231,6 +251,69 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             self._resource_bank is not None
         ), "The streaming executor provides the ResourceBank via start()"
         return self._resource_bank
+
+    def validate_ray_remote_args(self) -> None:
+        """Reject ``ray_remote_args`` the sizer cannot reason about.
+
+        The sizer owns actor placement and models capacity in cpu/gpu/memory
+        only. ``num_cpus`` / ``num_gpus`` / ``memory`` and non-placement knobs
+        (``max_restarts``, ``runtime_env``, ...) are fine. Everything else is
+        rejected up front, when the ``OperatorSizer`` is built, rather than
+        silently mis-placed:
+
+        - a ``scheduling_strategy`` other than ``NodeAffinitySchedulingStrategy``
+          (how local-scheme reads pin to the driver; honored as a node pin) or
+          ``PlacementGroupSchedulingStrategy`` (honored by capping the pool at
+          the PG's bundle capacity and letting Ray core place into it);
+        - ``placement_group_capture_child_tasks``: Data's internal tasks must
+          not be captured into the user's placement group;
+        - custom ``resources``: the capacity model does not track them;
+        - ``max_concurrency`` below 1: Ray accepts 0, but sizing divides by it.
+
+        A ``ray_remote_args_fn`` is allowed if it only assigns a placement
+        group (the vLLM "ray" backend does exactly this). That contract is
+        enforced per actor in ``_merge_ray_remote_args`` because calling the
+        fn here would mint a real placement group.
+        """
+        args = self._user_set_ray_remote_args
+        strategy = args.get("scheduling_strategy")
+        allowed_strategies = (
+            NodeAffinitySchedulingStrategy,
+            PlacementGroupSchedulingStrategy,
+        )
+        if isinstance(strategy, str):
+            # ``read_datasource`` (read_api.py) stamps
+            # DataContext.scheduling_strategy ("SPREAD") on its read op, so a
+            # string here is the user's unless this is a read.
+            # Either way it never reaches an actor: _apply_default_remote_args
+            # drops it and the sizer places instead.
+            if not self.is_read_op:
+                self._raise_unsupported(
+                    f"scheduling_strategy={strategy!r}; this backend supports "
+                    f"only a label_selector, a placement group, and "
+                    f"num_cpus / num_gpus / memory"
+                )
+        elif strategy is not None and not isinstance(strategy, allowed_strategies):
+            self._raise_unsupported(
+                "a custom scheduling_strategy (the sizer owns actor placement)"
+            )
+        if args.get("placement_group_capture_child_tasks"):
+            self._raise_unsupported(
+                "placement_group_capture_child_tasks (Data's internal tasks must "
+                "not be captured into the user's placement group)"
+            )
+        if args.get("resources"):
+            self._raise_unsupported(
+                "custom resources (the capacity model only tracks cpu/gpu/memory)"
+            )
+        # The merged args: max_concurrency can also come from
+        # ActorPoolStrategy(max_concurrent_calls_per_actor=...).
+        max_concurrency = self._ray_remote_args.get("max_concurrency")
+        if max_concurrency is not None and max_concurrency < 1:
+            raise ValueError(
+                f"max_concurrency must be >= 1, got {max_concurrency} "
+                f"(operator {self.name})"
+            )
 
     @override
     def _create_actor_pool(
@@ -454,6 +537,10 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             f"ray_remote_args_fn={self._user_set_ray_remote_args_fn})"
         )
 
+    # --- sizer surface --------------------------------------------------------
+    # The OperatorSizer sizes this operator through the methods below; the
+    # operator never resizes itself (see ``_scale_to_initial_size``).
+
     def process_draining_actors(self) -> int:
         """Release fully-drained actors, after syncing the output queue's
         prioritized set with the pool's draining set so a draining actor's
@@ -481,6 +568,43 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 queue.deprioritize_actor(actor_id)
         return self.actor_pool.process_draining_actors()
 
+    def placement_constraint(self) -> PlacementConstraint:
+        """This op's scheduling constraints as a label_selector (+ optional
+        placement group). A ``NodeAffinitySchedulingStrategy`` pin becomes a
+        ``ray.io/node-id`` selector entry, so every consumer sees one shape.
+
+        A static placement group reaches us either as the legacy
+        ``placement_group`` remote arg or inside a
+        ``PlacementGroupSchedulingStrategy``; both normalize to the same
+        fields here.
+        """
+        if self._placement_constraint is not None:
+            return self._placement_constraint
+        merged = merge_label_selector(
+            self._ray_remote_args, self.data_context.execution_options.label_selector
+        )
+        selector = dict(merged.get("label_selector") or {})
+        strategy = self._ray_remote_args.get("scheduling_strategy")
+        if isinstance(strategy, NodeAffinitySchedulingStrategy):
+            selector[_NODE_ID_LABEL_KEY] = strategy.node_id
+
+        pg = self._user_set_ray_remote_args.get("placement_group")
+        bundle_index = self._user_set_ray_remote_args.get(
+            "placement_group_bundle_index"
+        )
+        pg_strategy = self._user_set_ray_remote_args.get("scheduling_strategy")
+        if pg is None and isinstance(pg_strategy, PlacementGroupSchedulingStrategy):
+            pg = pg_strategy.placement_group
+            bundle_index = pg_strategy.placement_group_bundle_index
+
+        self._placement_constraint = PlacementConstraint(
+            label_selector=selector or None,
+            placement_group=pg,
+            placement_group_bundle_index=bundle_index,
+            mints_pg_per_actor=self._user_set_ray_remote_args_fn,
+        )
+        return self._placement_constraint
+
     @override
     def _create_output_queue(self, preserve_order: bool) -> BaseBundleQueue:
         # Serve a draining actor's outputs first so it can be released sooner.
@@ -506,9 +630,6 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         )
         assert actor_id is not None, f"task {task_index} has no actor in the bank"
         return actor_id
-
-    def committed_usage_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
-        return self.actor_pool.committed_usage_by_node
 
     def input_queue_bytes_by_node(self) -> Dict[NodeIdStr, int]:
         """Bytes queued for dispatch, by the node that produced them. Nodes
@@ -571,7 +692,10 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
     def _apply_default_remote_args(
         self, ray_remote_args: Dict[str, Any], data_context: DataContext
     ) -> Dict[str, Any]:
-        user_set_strategy = "scheduling_strategy" in (ray_remote_args or {})
+        strategy = (ray_remote_args or {}).get("scheduling_strategy")
+        user_set_strategy = (
+            strategy is not None and strategy not in _IGNORED_SCHEDULING_STRATEGIES
+        )
         ray_remote_args = super()._apply_default_remote_args(
             ray_remote_args, data_context
         )
@@ -951,25 +1075,6 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             self.actor_pool.reset_output_limit()
         return super().refresh_state()
 
-    def has_enough_budget_for_prebuffered_outputs(self) -> bool:
-        """With low object store, the operator may not have enough budget
-        for prebuffered outputs. Returns True if at least one actor has more
-        budget than prebuffered outputs. False if all actors are stalled on
-        prebuffered outputs."""
-        for actor_id in self.actor_pool.get_logical_ids():
-            actor_object_store = self.resource_bank.live_object_store(actor_id=actor_id)
-            limit = TaskPullRequest(
-                bytes_to_read=self.max_output_bytes_for_actor(actor_id=actor_id),
-                blocks_to_read=self.max_outputs_for_actor(actor_id=actor_id),
-            )
-            usage = TaskPullRequest(
-                bytes_to_read=actor_object_store.num_prebuffered_output_bytes,
-                blocks_to_read=actor_object_store.num_prebuffered_output_blocks,
-            )
-            if limit.all_fields_gt(usage):
-                return True
-        return False
-
     def upgrade_output_limit(self) -> bool:
         """In the scenario that
             - the upstream operator cannot produce more outputs (output
@@ -1171,3 +1276,64 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         if age > _OUTPUT_BACKPRESSURE_CACHE_TTL_S:
             return self.output_backpressured_actors()
         return self._output_backpressured_actors_cache
+
+    def has_enough_budget_for_prebuffered_outputs(self) -> bool:
+        """With low object store, the operator may not have enough budget
+        for prebuffered outputs. Returns True if at least one actor with tasks
+        in flight has more budget than its prebuffered outputs; False if every
+        working actor is stalled on them.
+
+        Only working actors count: an idle actor (say, one the sizer just
+        added) has a full budget and no prebuffered outputs, but its spare
+        budget relieves nothing -- the stalled outputs sit on the actors that
+        hold the tasks.
+        """
+        working = False
+        for states in self.actor_pool.alive_actor_states_by_node().values():
+            for actor_id, state in states.items():
+                if state.num_tasks_in_flight == 0:
+                    continue
+                working = True
+                actor_object_store = self.resource_bank.live_object_store(
+                    actor_id=actor_id
+                )
+                limit = TaskPullRequest(
+                    bytes_to_read=self.max_output_bytes_for_actor(actor_id=actor_id),
+                    blocks_to_read=self.max_outputs_for_actor(actor_id=actor_id),
+                )
+                usage = TaskPullRequest(
+                    bytes_to_read=actor_object_store.num_prebuffered_output_bytes,
+                    blocks_to_read=actor_object_store.num_prebuffered_output_blocks,
+                )
+                if limit.all_fields_gt(usage):
+                    return True
+        # Nothing is working, so nothing is stalled.
+        return not working
+
+
+def next_actor_pool_ops(
+    op: PhysicalOperator,
+) -> Tuple[ExperimentalActorPoolMapOperator, ...]:
+    """The nearest downstream actor-pool ops, looking through ops without an
+    actor pool: for ``read -> limit -> write``, write is next for read."""
+    found: List[ExperimentalActorPoolMapOperator] = []
+    for downstream in op.output_dependencies:
+        if isinstance(downstream, ExperimentalActorPoolMapOperator):
+            found.append(downstream)
+        else:
+            found.extend(next_actor_pool_ops(downstream))
+    return tuple(dict.fromkeys(found))
+
+
+def prev_actor_pool_ops(
+    op: PhysicalOperator,
+) -> Tuple[ExperimentalActorPoolMapOperator, ...]:
+    """The nearest upstream actor-pool ops, looking through ops without an
+    actor pool: for ``read -> limit -> map``, read is previous for map."""
+    found: List[ExperimentalActorPoolMapOperator] = []
+    for upstream in op.input_dependencies:
+        if isinstance(upstream, ExperimentalActorPoolMapOperator):
+            found.append(upstream)
+        else:
+            found.extend(prev_actor_pool_ops(upstream))
+    return tuple(dict.fromkeys(found))

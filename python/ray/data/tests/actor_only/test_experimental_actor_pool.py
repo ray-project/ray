@@ -51,7 +51,9 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
+    In,
     NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 
@@ -1084,6 +1086,7 @@ def _make_actor_op(
     ray_remote_args_fn=None,
     compute_strategy: Optional[ActorPoolStrategy] = None,
     generator_backpressure_disabled: bool = False,
+    is_read_op: bool = False,
 ) -> ExperimentalActorPoolMapOperator:
     """Build a real ExperimentalActorPoolMapOperator the way the planner does."""
     ctx = DataContext.get_current()
@@ -1100,7 +1103,16 @@ def _make_actor_op(
         ray_remote_args_fn=ray_remote_args_fn,
         name="Infer",
         generator_backpressure_disabled=generator_backpressure_disabled,
+        is_read_op=is_read_op,
     )
+
+
+@pytest.mark.parametrize("uses_fn", [False, True])
+def test_only_a_ray_remote_args_fn_mints_a_pg_per_actor(uses_fn):
+    """An op mints a PG per actor only when it has a ``ray_remote_args_fn``;
+    otherwise the sizer must place its actors itself."""
+    op = _make_actor_op({}, ray_remote_args_fn=(lambda: {}) if uses_fn else None)
+    assert op.placement_constraint().mints_pg_per_actor is uses_fn
 
 
 def test_system_output_bytes_limit_env_setting():
@@ -1382,6 +1394,44 @@ def test_ray_remote_args_fn_must_only_assign_a_placement_group():
     )
     with pytest.raises(NotImplementedError, match="placement group"):
         non_pg._merge_ray_remote_args()
+
+
+def test_data_default_scheduling_strategy_never_reaches_actors():
+    """Under the actor-only backend the sizer owns placement, so Ray Data's own
+    default ``scheduling_strategy`` ("SPREAD", stamped by read_api on every
+    read) must never reach ``ray.remote`` -- neither on a sizer-targeted
+    creation nor on an untargeted one.
+    """
+    op = _make_actor_op(
+        {"num_cpus": 1, "scheduling_strategy": "SPREAD"}, is_read_op=True
+    )
+    assert op._user_set_ray_remote_args["scheduling_strategy"] == "SPREAD"
+    assert "scheduling_strategy" not in op._ray_remote_args
+    op.validate_ray_remote_args()  # Data's own stamp on a read: not rejected
+    # Untargeted creation: nothing leaks through.
+    assert "scheduling_strategy" not in op._merge_ray_remote_args()
+    # Sizer-targeted creation: the resolved placement is what ray.remote sees.
+    pin = NodeAffinitySchedulingStrategy(node_id="ab" * 28, soft=False)
+    assert (
+        op._merge_ray_remote_args(scheduling_strategy=pin)["scheduling_strategy"] is pin
+    )
+
+
+@pytest.mark.parametrize("strategy", ["SPREAD", "DEFAULT", "PACK"])
+def test_user_scheduling_strategy_string_is_rejected(strategy):
+    """The same string on a non-read op can only have come from the user, and
+    this backend does not honor it -- so say so instead of ignoring it."""
+    op = _make_actor_op({"num_cpus": 1, "scheduling_strategy": strategy})
+    with pytest.raises(NotImplementedError, match="scheduling_strategy"):
+        op.validate_ray_remote_args()
+
+
+def test_user_custom_scheduling_strategy_is_rejected():
+    custom = NodeLabelSchedulingStrategy(hard={"k": In("v")})
+    user_op = _make_actor_op({"num_cpus": 1, "scheduling_strategy": custom})
+    assert user_op._user_set_ray_remote_args["scheduling_strategy"] is custom
+    with pytest.raises(NotImplementedError, match="scheduling_strategy"):
+        user_op.validate_ray_remote_args()
 
 
 def test_node_active_counter_follows_actor_relocation():

@@ -43,6 +43,7 @@ from typing import (
     DefaultDict,
     Dict,
     List,
+    Mapping,
     Optional,
     Set,
     Tuple,
@@ -187,8 +188,8 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # ``_remove_committed_usage``) so readers pay nothing per tick. Running
         # actors are counted at their actual location; pending actors at their
         # ``target_node_id`` (only when one was set -- untargeted pendings
-        # contribute nothing until they become running). Public: the operator's
-        # ``committed_usage_by_node()`` hands it out.
+        # contribute nothing until they become running). Public: the sizer reads
+        # it directly.
         self.committed_usage_by_node: Dict[NodeIdStr, ExecutionResources] = {}
         # Running actors by status (IDLE / ACTIVE / RESTARTING / DRAINING).
         # ``_set_status`` is the only writer of a running actor's status, and
@@ -726,7 +727,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
         applied = reclaimed + num_new
         if applied != req.delta:
-            logger.warning(
+            logger.debug(
                 "Upscale applied partially: requested=%d reclaimed=%d created=%d",
                 req.delta,
                 reclaimed,
@@ -1409,6 +1410,26 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         (``reclaimable=False``) actors, which must not be resurrected."""
         return sum(1 for info in self._draining_actors.values() if info.reclaimable)
 
+    def reclaimable_node_ids(self, *, limit: int) -> List[NodeIdStr]:
+        """Node id of each of the first ``limit`` reclaimable draining actors,
+        in ``reclaim_draining_actors`` order (one entry per actor, so a node
+        repeats once per actor on it). Placement counts these back onto their
+        nodes before deciding where new actors go."""
+        nodes: List[NodeIdStr] = []
+        for actor, info in self._draining_actors.items():
+            if len(nodes) >= limit:
+                break
+            if info.reclaimable:
+                nodes.append(self._running_actors[actor].actor_location)
+        return nodes
+
+    def alive_actor_states_by_node(
+        self,
+    ) -> Mapping[NodeIdStr, Mapping[LogicalActorId, _ExperimentalActorState]]:
+        """Per-node states of the alive actors (draining ones included, with
+        ``status == DRAINING``). Read-only: for placement snapshots."""
+        return self._node_to_actor_states
+
     def draining_actor_ids(self) -> Set[LogicalActorId]:
         """Logical ids of actors currently draining (marked draining, not yet
         released). Used to keep the output queue's prioritized set in sync."""
@@ -1544,6 +1565,20 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             for state in states.values():
                 counts[node_id][state.status] += 1
         return dict(counts)
+
+    def draining_usage_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
+        """Resources draining actors still hold, per node: the part of
+        ``committed_usage_by_node`` that is already on its way out."""
+        usage_by_node: Dict[NodeIdStr, ExecutionResources] = {}
+        for actor in self._draining_actors:
+            usage = self._actor_resource_usage.get(actor)
+            if usage is None:
+                continue
+            node_id = self._running_actors[actor].actor_location
+            usage_by_node[node_id] = usage_by_node.get(
+                node_id, ExecutionResources.zero()
+            ).add(usage)
+        return usage_by_node
 
     def _add_committed_usage(
         self, node_id: NodeIdStr, usage: ExecutionResources
@@ -1692,9 +1727,12 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             f"running actors; pool has nodes={list(self._node_to_actor_states)}"
         )
 
-        candidate_states = [
+        alive = [
             s for s in node_states.values() if s.status != ActorStatus.DRAINING
         ] or list(node_states.values())
+        # Prefer actors with tasks in flight: they hold the stalled outputs, and
+        # raising an idle actor's caps relieves nothing.
+        candidate_states = [s for s in alive if s.num_tasks_in_flight > 0] or alive
         best_state = min(
             candidate_states,
             key=lambda s: (s.max_num_output_bytes, s.max_num_outputs),
@@ -1706,7 +1744,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # will still discriminate via the finite dimension on the next call.
 
         actor = self._logical_id_to_actor[best_state.logical_id]
-        logger.info(
+        logger.debug(
             f"\nname={self._map_worker_cls_name} ({self.get_actor_info()})\n"
             f"Increasing the capacity for actor={actor} "
             f"located on {node_id} by {memory_string(delta_bytes)} / "
