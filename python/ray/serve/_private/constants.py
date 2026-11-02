@@ -1186,6 +1186,8 @@ RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = get_env_bool(
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
 # Key for the wall-clock timestamp when a scaling decision was first observed
 SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY = "__decision_timestamp"
+# Policy state key for a Dict[str, float] the controller exports as gauges
+SERVE_AUTOSCALING_POLICY_METRICS_KEY = "__policy_metrics"
 
 # Event loop monitoring interval in seconds.
 # This is how often the event loop lag is measured.

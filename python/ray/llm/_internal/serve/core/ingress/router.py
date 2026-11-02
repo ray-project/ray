@@ -179,6 +179,10 @@ class LLMRouter:
 
             self._token_sender = token_channel.TokenSender()
         self._handle._init()
+        if self._kv_token_tracker is not None:
+            self._kv_token_tracker.set_autoscaling_metrics_sink(
+                self._handle._set_router_autoscaling_metrics
+            )
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):

@@ -22,6 +22,7 @@ import numpy as np
 from ray.serve._private import autoscaling_metrics_merge
 from ray.serve._private.autoscaling_metrics_codec import FlatHandleReport
 from ray.serve._private.common import (
+    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     DeploymentHandleSource,
@@ -31,9 +32,11 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     TargetCapacityDirection,
     TimeSeries,
+    TimeStampedValue,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    SERVE_AUTOSCALING_POLICY_METRICS_KEY,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -151,6 +154,7 @@ class ColumnarHandleReport:
     queued: MetricSamples
     running: MetricSamples
     running_keys: List[str]
+    router_metrics: Dict[str, MetricSamples]
 
     @property
     def total_requests(self) -> float:
@@ -259,6 +263,18 @@ def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str
     )
 
 
+def _router_metric_samples(payload: FlatHandleReport) -> Dict[str, MetricSamples]:
+    """Return router-owned metrics as zero-copy sample views."""
+    result: Dict[str, MetricSamples] = {}
+    for metric_index, start, length in payload["router_entries"]:
+        name = payload["router_metric_names"][int(metric_index)]
+        a, b = int(start), int(start + length)
+        result[name] = MetricSamples(
+            payload["router_ts"][a:b], payload["router_val"][a:b]
+        )
+    return result
+
+
 def _log_dropped_handle(
     report: HandleReport, timeout_s: float, dead_actor: bool
 ) -> None:
@@ -363,6 +379,16 @@ class DeploymentAutoscalingState:
                 "autoscaling regressions."
             ),
             tag_keys=("deployment", "application"),
+        )
+
+        self.autoscaling_policy_metric_gauge = metrics.Gauge(
+            "serve_autoscaling_policy_metric",
+            description=(
+                "Numeric values an autoscaling policy publishes under the "
+                f"'{SERVE_AUTOSCALING_POLICY_METRICS_KEY}' policy state key, "
+                "tagged by metric name."
+            ),
+            tag_keys=("deployment", "application", "metric"),
         )
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
@@ -607,6 +633,7 @@ class DeploymentAutoscalingState:
                 queued=MetricSamples(payload["q_ts"], payload["q_val"]),
                 running=running,
                 running_keys=running_keys,
+                router_metrics=_router_metric_samples(payload),
             )
         )
 
@@ -647,6 +674,7 @@ class DeploymentAutoscalingState:
         total_num_requests: float,
         policy_execution_time_ms: float,
         policy_scope: str,
+        policy_metrics: Optional[Dict[str, Any]] = None,
     ):
         tags = {
             "deployment": self._deployment_id.name,
@@ -662,6 +690,16 @@ class DeploymentAutoscalingState:
         self.autoscaling_target_ongoing_requests_gauge.set(
             self._config.get_target_ongoing_requests(), tags=tags
         )
+        for name, value in (policy_metrics or {}).items():
+            # Skip malformed entries so a policy bug can't break the control loop.
+            if (
+                isinstance(name, str)
+                and isinstance(value, (int, float))
+                and math.isfinite(value)
+            ):
+                self.autoscaling_policy_metric_gauge.set(
+                    float(value), tags={**tags, "metric": name}
+                )
 
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
@@ -691,6 +729,7 @@ class DeploymentAutoscalingState:
             autoscaling_context.total_num_requests,
             policy_execution_time_ms,
             "deployment",
+            (self._policy_state or {}).get(SERVE_AUTOSCALING_POLICY_METRICS_KEY),
         )
 
         if _skip_bound_check:
@@ -726,6 +765,7 @@ class DeploymentAutoscalingState:
             total_queued_requests=self._get_queued_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics,
             raw_metrics=self._get_raw_custom_metrics,
+            raw_router_metrics=self._get_raw_router_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
         )
@@ -1037,6 +1077,35 @@ class DeploymentAutoscalingState:
 
         return dict(raw_metrics)
 
+    def _get_raw_router_metrics(self) -> Dict[str, Dict[str, TimeSeries]]:
+        """Extract router-owned metric series, keyed by metric and handle ID."""
+        raw_metrics: Dict[str, Dict[str, TimeSeries]] = defaultdict(dict)
+
+        for handle_id, object_report in self._handle_store.objects.items():
+            router_metrics = getattr(
+                object_report,
+                "router_metrics",
+                {QUEUED_REQUESTS_KEY: object_report.queued_requests},
+            )
+            for metric_name, timeseries in router_metrics.items():
+                raw_metrics[metric_name][handle_id] = timeseries
+
+        for handle_id, columnar_report in self._handle_store.columnar.items():
+            raw_metrics[QUEUED_REQUESTS_KEY][handle_id] = [
+                TimeStampedValue(float(timestamp), float(value))
+                for timestamp, value in zip(
+                    columnar_report.queued.timestamps,
+                    columnar_report.queued.values,
+                )
+            ]
+            for metric_name, samples in columnar_report.router_metrics.items():
+                raw_metrics[metric_name][handle_id] = [
+                    TimeStampedValue(float(timestamp), float(value))
+                    for timestamp, value in zip(samples.timestamps, samples.values)
+                ]
+
+        return dict(raw_metrics)
+
 
 class ApplicationAutoscalingState:
     """Manages autoscaling for a single application."""
@@ -1216,6 +1285,9 @@ class ApplicationAutoscalingState:
                     autoscaling_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
                     "application",
+                    (self._policy_state or {})
+                    .get(deployment_id, {})
+                    .get(SERVE_AUTOSCALING_POLICY_METRICS_KEY),
                 )
                 results[deployment_id] = (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(

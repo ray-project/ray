@@ -1,6 +1,6 @@
 import math
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -1604,6 +1604,44 @@ def test_last_decision_total_num_requests_reuses_decision_value():
         policy_scope="deployment",
     )
     assert st.get_last_decision_total_num_requests() == 42.0
+
+
+def test_record_autoscaling_metrics_exports_policy_metrics():
+    """Numeric policy metrics become tagged gauges; malformed entries are skipped."""
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    st.register(
+        DeploymentInfo(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(
+                    min_replicas=1, max_replicas=100, target_ongoing_requests=1
+                )
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        ),
+        curr_target_num_replicas=1,
+    )
+    st.autoscaling_policy_metric_gauge = MagicMock()
+
+    st.record_autoscaling_metrics(
+        decision_num_replicas=3,
+        total_num_requests=42.0,
+        policy_execution_time_ms=1.0,
+        policy_scope="deployment",
+        policy_metrics={
+            "prefill_required_replicas": 2.5,
+            "decode_required_replicas": 1,
+            "bad_value": "x",
+            "nan_value": float("nan"),
+        },
+    )
+
+    tags = {"deployment": "D", "application": "default"}
+    assert st.autoscaling_policy_metric_gauge.set.call_args_list == [
+        call(2.5, tags={**tags, "metric": "prefill_required_replicas"}),
+        call(1.0, tags={**tags, "metric": "decode_required_replicas"}),
+    ]
 
 
 if __name__ == "__main__":
