@@ -244,7 +244,7 @@ class _DummyOp:
 @pytest.mark.parametrize("enforce_schemas", [False, True])
 def test_add_output_emits_warning(enforce_schemas, caplog, propagate_logs):
     op = _DummyOp(enforce_schemas=enforce_schemas)
-    state = OpState(op, [])
+    state = OpState(op, [], index=0)
 
     old_schema = pa.schema(
         [

@@ -1,7 +1,10 @@
 # ruff: noqa: E501
 
+from dataclasses import replace
+
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
+    IdGenerator,
     Panel,
     PanelTemplate,
     Row,
@@ -9,11 +12,17 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     TargetTemplate,
 )
 
+# Panel and row ids only have to be unique within this dashboard, so they are
+# handed out by `_ids` in declaration order rather than picked by hand. Nothing
+# outside this module refers to a Ray Data panel by id; if that ever changes,
+# pin that panel with `_ids.reserve(<id>)` so its id stops moving.
+_ids = IdGenerator()
+
 # When adding a new panels for an OpRuntimeMetric, follow this format:
 # Panel(
 #     title=title,
 #     description=metric.metadata.get("description"),
-#     id=panel_id,
+#     id=_ids.next(),
 #     unit=unit,
 #     targets=[
 #         Target(
@@ -29,7 +38,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 
 # Ray Data Metrics (Overview)
 BYTES_SPILLED_PANEL = Panel(
-    id=1,
+    id=_ids.next(),
     title="Bytes Spilled from Object Store",
     description="Total memory (in bytes) of data blocks moved from the Ray object store to local disk due to memory pressure. This metric is only reported if `DataContext.enable_get_object_locations_for_metrics` is set to True.",
     unit="bytes",
@@ -44,7 +53,7 @@ BYTES_SPILLED_PANEL = Panel(
 )
 
 BYTES_FREED_PANEL = Panel(
-    id=3,
+    id=_ids.next(),
     title="Bytes Freed from Object Store",
     description="Total memory (in bytes) that's been released by dataset operators. This indicates memory that was previously used by blocks and is now available for reuse.",
     unit="bytes",
@@ -59,7 +68,7 @@ BYTES_FREED_PANEL = Panel(
 )
 
 OBJECT_STORE_MEMORY_PANEL = Panel(
-    id=4,
+    id=_ids.next(),
     title="Object Store Memory",
     description="Current amount of memory (in bytes) actively consumed within the Ray object store by dataset operators. Use this metric to monitor in-memory data footprint and identify potential memory bottlenecks.",
     unit="bytes",
@@ -74,7 +83,7 @@ OBJECT_STORE_MEMORY_PANEL = Panel(
 )
 
 CPU_USAGE_PANEL = Panel(
-    id=5,
+    id=_ids.next(),
     title="Logical Slots Being Used (CPU)",
     description="Current number of logical CPU cores assigned to running tasks per dataset operator. This tracks logical resource allocation, not actual physical CPU usage.",
     unit="cores",
@@ -89,7 +98,7 @@ CPU_USAGE_PANEL = Panel(
 )
 
 GPU_USAGE_PANEL = Panel(
-    id=6,
+    id=_ids.next(),
     title="Logical Slots Being Used (GPU)",
     description="Current number of logical GPU cores allocated and actively consumed by running tasks within operators. This graph is active when specifying num_gpus>0 in Ray remote args. This tracks logical resource allocation, not actual physical GPU usage.",
     unit="cores",
@@ -104,7 +113,7 @@ GPU_USAGE_PANEL = Panel(
 )
 
 MEMORY_USAGE_PANEL = Panel(
-    id=92,
+    id=_ids.next(),
     title="Logical Slots Being Used (Memory)",
     description="Current amount of logical heap memory in bytes allocated to running tasks per dataset operator. This tracks logical resource allocation, not actual physical memory usage.",
     unit="bytes",
@@ -119,7 +128,7 @@ MEMORY_USAGE_PANEL = Panel(
 )
 
 BYTES_OUTPUT_PER_SECOND_PANEL = Panel(
-    id=7,
+    id=_ids.next(),
     title="Bytes Output / Second",
     description="Measures the average rate (in bytes per second) at which operators emit output data (processed results sent to downstream operators). This measures throughput and shows how quickly processed data is produced by operators.",
     unit="Bps",
@@ -134,7 +143,7 @@ BYTES_OUTPUT_PER_SECOND_PANEL = Panel(
 )
 
 ROWS_OUTPUT_PER_SECOND_PANEL = Panel(
-    id=11,
+    id=_ids.next(),
     title="Rows Output / Second",
     description="Measures the average rate (in rows per second) at which operators emit output rows (processed results sent to downstream operators). This provides a logical view of throughput, independent of byte size.",
     unit="rows/sec",
@@ -150,7 +159,7 @@ ROWS_OUTPUT_PER_SECOND_PANEL = Panel(
 
 # Ray Data Metrics (Inputs)
 INPUT_BLOCKS_RECEIVED_PANEL = Panel(
-    id=17,
+    id=_ids.next(),
     title="Input Blocks Received by Operator / Second",
     description="Measures the average rate (in blocks per second) at which operators receive input blocks from upstream operators or external data sources. This measures the ingress rate of data into an operator.",
     unit="blocks/sec",
@@ -165,7 +174,7 @@ INPUT_BLOCKS_RECEIVED_PANEL = Panel(
 )
 
 INPUT_BYTES_RECEIVED_PANEL = Panel(
-    id=18,
+    id=_ids.next(),
     title="Input Bytes Received by Operator / Second",
     description="Measures the average rate (in bytes per second) at which operators receive input data. This quantifies data transfer throughput from upstream operators or external data sources.",
     unit="Bps",
@@ -180,7 +189,7 @@ INPUT_BYTES_RECEIVED_PANEL = Panel(
 )
 
 INPUT_BLOCKS_PROCESSED_PANEL = Panel(
-    id=19,
+    id=_ids.next(),
     title="Input Blocks Processed by Tasks / Second",
     description=(
         "Measures the average rate (in blocks per second) at which tasks consume input blocks within an operator. This block-level throughput metric measures how quickly tasks read through their assigned input."
@@ -197,7 +206,7 @@ INPUT_BLOCKS_PROCESSED_PANEL = Panel(
 )
 
 INPUT_BYTES_PROCESSED_PANEL = Panel(
-    id=20,
+    id=_ids.next(),
     title="Input Bytes Processed by Tasks / Second",
     description=(
         "Measures the average rate (in bytes per second) at which tasks consume input data within an operator. This byte-level throughput metric measures how quickly tasks read through their assigned input."
@@ -214,7 +223,7 @@ INPUT_BYTES_PROCESSED_PANEL = Panel(
 )
 
 INPUT_BYTES_SUBMITTED_PANEL = Panel(
-    id=21,
+    id=_ids.next(),
     title="Input Bytes Submitted to Tasks / Second",
     description="Measures the average rate (in bytes per second) at which input blocks are passed to newly submitted tasks for execution. This measures how quickly data's being dispatched from an operator's internal queues to worker tasks.",
     unit="Bps",
@@ -228,29 +237,9 @@ INPUT_BYTES_SUBMITTED_PANEL = Panel(
     stack=False,
 )
 
-CROSS_NODE_INPUT_TRANSFER_PANEL = Panel(
-    id=130,
-    title="Cross-Node Input Transfer / Second",
-    description=(
-        "Rate of input bytes an operator's actors read from a node other than "
-        "their own (fetched over the network). A sustained high rate means "
-        "tasks are being scheduled away from the nodes that hold their input "
-        "blocks. Block counts are in ray_data_num_remote_blocks_read."
-    ),
-    unit="Bps",
-    targets=[
-        Target(
-            expr='sum(rate(ray_data_bytes_remote_inputs_read{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
-            legend="Remote Input Bytes / Second: {{dataset}}, {{operator}}",
-        )
-    ],
-    fill=0,
-    stack=False,
-)
-
 # Ray Data Metrics (Outputs)
 BLOCKS_GENERATED_PANEL = Panel(
-    id=22,
+    id=_ids.next(),
     title="Blocks Generated by Tasks / Second",
     description="Measures the raw throughput of block generation across all concurrent tasks submitted by an operator. Tracks the average rate (in blocks per second) at which tasks emit new output blocks.",
     unit="blocks/sec",
@@ -265,7 +254,7 @@ BLOCKS_GENERATED_PANEL = Panel(
 )
 
 BYTES_GENERATED_PANEL = Panel(
-    id=23,
+    id=_ids.next(),
     title="Bytes Generated by Tasks / Second",
     description="Measures the raw data throughput of output block generation across all concurrent tasks submitted by an operator. Tracks the average rate (in bytes per second) at which tasks emit new output blocks.",
     unit="Bps",
@@ -280,7 +269,7 @@ BYTES_GENERATED_PANEL = Panel(
 )
 
 ROWS_GENERATED_PANEL = Panel(
-    id=24,
+    id=_ids.next(),
     title="Rows Generated by Tasks / Second",
     description="Measures the logical throughput of output row generation across all concurrent tasks submitted by an operator. Tracks the average rate (in rows per second) at which tasks emit output rows.",
     unit="rows/sec",
@@ -295,7 +284,7 @@ ROWS_GENERATED_PANEL = Panel(
 )
 
 OUTPUT_BLOCKS_TAKEN_PANEL = Panel(
-    id=25,
+    id=_ids.next(),
     title="Output Blocks Taken by Downstream Operators / Second",
     description="Measures the average rate (in blocks per second) at which downstream operators consume output blocks from this operator. This metric helps identify bottlenecks in data flow between operators.",
     unit="blocks/sec",
@@ -310,7 +299,7 @@ OUTPUT_BLOCKS_TAKEN_PANEL = Panel(
 )
 
 OUTPUT_BYTES_TAKEN_PANEL = Panel(
-    id=26,
+    id=_ids.next(),
     title="Output Bytes Taken by Downstream Operators / Second",
     description=(
         "Measures the average rate (in bytes per second) at which downstream operators consume output data from this operator. This provides a byte-level view of inter-operator data transfer throughput."
@@ -327,7 +316,7 @@ OUTPUT_BYTES_TAKEN_PANEL = Panel(
 )
 
 AVERAGE_BYTES_PER_BLOCK_PANEL = Panel(
-    id=49,
+    id=_ids.next(),
     title="Average Bytes Generated / Output Block",
     description="Measures the average byte size of output blocks generated by tasks over a recent 5-minute window. This metric helps understand the granularity of data blocks being produced, which can impact performance and memory usage.",
     unit="bytes",
@@ -342,7 +331,7 @@ AVERAGE_BYTES_PER_BLOCK_PANEL = Panel(
 )
 
 AVERAGE_BLOCKS_PER_TASK_PANEL = Panel(
-    id=50,
+    id=_ids.next(),
     title="Average Number of Output Blocks / Task",
     description="Measures the average number of output blocks generated per task over a recent 5-minute window. This indicates how many distinct output blocks each task typically produces upon completion.",
     unit="blocks",
@@ -357,7 +346,7 @@ AVERAGE_BLOCKS_PER_TASK_PANEL = Panel(
 )
 
 OUTPUT_BYTES_BY_NODE_PANEL = Panel(
-    id=43,
+    id=_ids.next(),
     title="Output Bytes from Finished Tasks / Second (by Node)",
     description=(
         "Measures the average rate (in bytes per second) of output produced by finished tasks, grouped by the node where tasks completed. This provides a per-node perspective on output throughput."
@@ -374,7 +363,7 @@ OUTPUT_BYTES_BY_NODE_PANEL = Panel(
 )
 
 BLOCKS_BY_NODE_PANEL = Panel(
-    id=48,
+    id=_ids.next(),
     title="Blocks from Finished Tasks / Second (by Node)",
     description=(
         "Measures the average rate (in blocks per second) of output blocks produced by finished tasks, grouped by the node where tasks completed. This offers a per-node view of logical block throughput."
@@ -392,7 +381,7 @@ BLOCKS_BY_NODE_PANEL = Panel(
 
 # Ray Data Metrics (Tasks)
 SUBMITTED_TASKS_PANEL = Panel(
-    id=29,
+    id=_ids.next(),
     title="Submitted Tasks",
     description="Cumulative count of tasks submitted to the Ray cluster for execution by dataset operators. This metric indicates the total workload generated by the pipeline.",
     unit="tasks",
@@ -407,7 +396,7 @@ SUBMITTED_TASKS_PANEL = Panel(
 )
 
 ACTIVE_TASKS_PANEL = Panel(
-    id=30,
+    id=_ids.next(),
     title="Active Tasks",
     description="Tracks the current number of tasks that have been submitted and have not completed (pending or running) across operators. Provides insight into the degree of parallelism currently utilized for data processing.",
     unit="tasks",
@@ -422,7 +411,7 @@ ACTIVE_TASKS_PANEL = Panel(
 )
 
 TASKS_WITH_OUTPUT_PANEL = Panel(
-    id=31,
+    id=_ids.next(),
     title="Tasks with output blocks",
     description="Current cumulative count of tasks that successfully generated at least one output block, even if the task hasn't yet fully completed. This metric signals early progress in output generation.",
     unit="tasks",
@@ -437,7 +426,7 @@ TASKS_WITH_OUTPUT_PANEL = Panel(
 )
 
 FINISHED_TASKS_PANEL = Panel(
-    id=32,
+    id=_ids.next(),
     title="Finished Tasks",
     description="Cumulative count of tasks that completed their execution, either successfully or with failure. This offers a high-level overview of task completion progress.",
     unit="tasks",
@@ -452,7 +441,7 @@ FINISHED_TASKS_PANEL = Panel(
 )
 
 FAILED_TASKS_PANEL = Panel(
-    id=33,
+    id=_ids.next(),
     title="Failed Tasks",
     description="Cumulative count of tasks that terminated with an error or encountered a failure during execution. This metric is useful for identifying and debugging stability issues within the data pipeline.",
     unit="tasks",
@@ -467,7 +456,7 @@ FAILED_TASKS_PANEL = Panel(
 )
 
 MAX_USS_PER_TASK_PANEL = Panel(
-    id=91,
+    id=_ids.next(),
     title="Max Task USS Memory per Operator",
     description="Maximum unique set size (USS) memory usage in bytes among completed tasks for each operator.",
     unit="bytes",
@@ -482,7 +471,7 @@ MAX_USS_PER_TASK_PANEL = Panel(
 )
 
 TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
-    id=46,
+    id=_ids.next(),
     title="Task Throughput (by Node)",
     description="Average rate (in finished tasks per second) grouped by the node where tasks completed. This metric shows how efficiently different nodes are contributing to overall task processing.",
     unit="tasks/s",
@@ -497,7 +486,7 @@ TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
 )
 
 BLOCK_GENERATION_TIME_PANEL = Panel(
-    id=8,
+    id=_ids.next(),
     title="Block Generation Time",
     description="Average time (in seconds) spent by tasks generating their output blocks over a recent 5-minute window. This metric helps pinpoint performance bottlenecks related to data serialization, transformation, or computation of output blocks within tasks.",
     unit="s",
@@ -512,7 +501,7 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
 )
 
 BLOCK_TRANSFORM_TIME_PANEL = Panel(
-    id=126,
+    id=_ids.next(),
     title="Block Transform Time",
     description="Average time (in seconds) a map, read, or write operator spent transforming data per output block over a recent 5-minute window. This covers the whole transform chain: forming the batches or rows the operator's stages consume, running the stage bodies, and building the output blocks. Block Generation Time measures the same blocks as wall clock over everything between them, so it is always the larger of the two and the gap is Ray Data's own per-block work rather than yours. Neither includes the object store write, which ray_data_block_serialization_time_s reports. Only map, read, and write operators report this; shuffles and aggregations don't.",
     unit="s",
@@ -527,7 +516,7 @@ BLOCK_TRANSFORM_TIME_PANEL = Panel(
 )
 
 BLOCK_TRANSFORM_TIME_BY_PHASE_PANEL = Panel(
-    id=127,
+    id=_ids.next(),
     title="Block Transform Time by Phase",
     description="The Block Transform Time panel broken into the three phases that sum to it, averaged per output block over a recent 5-minute window. Input prep is turning input blocks into the batches or rows your functions receive; Function body is the stage bodies themselves, both yours and the ones Ray Data supplies; Output block build is assembling what they return back into blocks. This panel is empty for row-based transforms such as map and filter unless DataContext.accurate_map_phase_timing is set, because timing each row individually costs more than the breakdown reports; the Block Transform Time panel still plots the total.",
     unit="s",
@@ -550,7 +539,7 @@ BLOCK_TRANSFORM_TIME_BY_PHASE_PANEL = Panel(
 )
 
 TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
-    id=37,
+    id=_ids.next(),
     title="Task Submission Backpressure Time",
     description="Average time (in seconds) that tasks spend waiting due to backpressure during submission over a recent 5-minute window. High values can indicate saturation of task scheduling resources or insufficient downstream processing capacity to accept new work.",
     unit="s",
@@ -566,7 +555,7 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
 
 # Task Completion Time Percentiles
 TASK_COMPLETION_TIME_P50_PANEL = Panel(
-    id=38,
+    id=_ids.next(),
     title="P50 Task Completion Time",
     description="P50 time (in seconds) tasks spend running to completion, including backpressure.",
     targets=[
@@ -581,7 +570,7 @@ TASK_COMPLETION_TIME_P50_PANEL = Panel(
 )
 
 TASK_COMPLETION_TIME_P90_PANEL = Panel(
-    id=82,
+    id=_ids.next(),
     title="P90 Task Completion Time",
     description="P90 time (in seconds) tasks spend running to completion, including backpressure.",
     targets=[
@@ -596,7 +585,7 @@ TASK_COMPLETION_TIME_P90_PANEL = Panel(
 )
 
 TASK_COMPLETION_TIME_P99_PANEL = Panel(
-    id=83,
+    id=_ids.next(),
     title="P99 Task Completion Time",
     description="P99 time (in seconds) tasks spend running to completion, including backpressure.",
     targets=[
@@ -611,7 +600,7 @@ TASK_COMPLETION_TIME_P99_PANEL = Panel(
 )
 
 BLOCK_COMPLETION_TIME_P50_PANEL = Panel(
-    id=84,
+    id=_ids.next(),
     title="P50 Block Completion Time",
     description="P50 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by dividing task time equally among blocks.",
     targets=[
@@ -626,7 +615,7 @@ BLOCK_COMPLETION_TIME_P50_PANEL = Panel(
 )
 
 BLOCK_COMPLETION_TIME_P90_PANEL = Panel(
-    id=61,
+    id=_ids.next(),
     title="P90 Block Completion Time",
     description="P90 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by dividing task time equally among blocks.",
     targets=[
@@ -641,7 +630,7 @@ BLOCK_COMPLETION_TIME_P90_PANEL = Panel(
 )
 
 BLOCK_COMPLETION_TIME_P99_PANEL = Panel(
-    id=85,
+    id=_ids.next(),
     title="P99 Block Completion Time",
     description="P99 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by dividing task time equally among blocks.",
     targets=[
@@ -656,7 +645,7 @@ BLOCK_COMPLETION_TIME_P99_PANEL = Panel(
 )
 
 BLOCK_SIZE_BYTES_P50_PANEL = Panel(
-    id=86,
+    id=_ids.next(),
     title="P50 Block Size (Bytes)",
     description="P50 block size in bytes.",
     targets=[
@@ -671,7 +660,7 @@ BLOCK_SIZE_BYTES_P50_PANEL = Panel(
 )
 
 BLOCK_SIZE_BYTES_P90_PANEL = Panel(
-    id=62,
+    id=_ids.next(),
     title="P90 Block Size (Bytes) Histogram",
     description="P90 block size in bytes. This provides insights into block granularity, which can significantly influence memory usage, I/O efficiency, and task scheduling.",
     targets=[
@@ -686,7 +675,7 @@ BLOCK_SIZE_BYTES_P90_PANEL = Panel(
 )
 
 BLOCK_SIZE_BYTES_P99_PANEL = Panel(
-    id=87,
+    id=_ids.next(),
     title="P99 Block Size (Bytes)",
     description="P99 block size in bytes.",
     targets=[
@@ -701,7 +690,7 @@ BLOCK_SIZE_BYTES_P99_PANEL = Panel(
 )
 
 BLOCK_SIZE_ROWS_P50_PANEL = Panel(
-    id=88,
+    id=_ids.next(),
     title="P50 Block Size (Rows)",
     description="P50 block size in rows.",
     targets=[
@@ -716,7 +705,7 @@ BLOCK_SIZE_ROWS_P50_PANEL = Panel(
 )
 
 BLOCK_SIZE_ROWS_P90_PANEL = Panel(
-    id=63,
+    id=_ids.next(),
     title="P90 Block Size (Rows) Histogram",
     description="P90 block size in rows. This is useful for understanding the logical size and composition of data units, impacting processing logic and batching strategies.",
     targets=[
@@ -731,7 +720,7 @@ BLOCK_SIZE_ROWS_P90_PANEL = Panel(
 )
 
 BLOCK_SIZE_ROWS_P99_PANEL = Panel(
-    id=89,
+    id=_ids.next(),
     title="P99 Block Size (Rows)",
     description="P99 block size in rows. This is useful for understanding the logical size and composition of data units, impacting processing logic and batching strategies.",
     targets=[
@@ -746,7 +735,7 @@ BLOCK_SIZE_ROWS_P99_PANEL = Panel(
 )
 
 TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
-    id=39,
+    id=_ids.next(),
     title="Task Output Backpressure Time",
     description=(
         "Average time (in seconds) tasks spend waiting due to backpressure when attempting to "
@@ -766,7 +755,7 @@ TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
 )
 
 TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
-    id=40,
+    id=_ids.next(),
     title="Task Completion Time Without Backpressure",
     description="Average time (in seconds) tasks spend executing their core logic, excluding backpressure, over a recent 5-minute window. This metric helps isolate actual computation time from delays caused by data flow bottlenecks, aiding in differentiating between computation-bound and data-flow-bound performance issues.",
     unit="s",
@@ -782,7 +771,7 @@ TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
 
 # Ray Data Metrics (Object Store Memory)
 INTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
-    id=13,
+    id=_ids.next(),
     title="Operator Internal Input Queue Size (Blocks)",
     description="Current number of blocks held within an operator's internal input queue. A continuously growing queue can indicate the operator's processing inputs slower than they're being received, potentially leading to increased memory consumption.",
     unit="blocks",
@@ -797,7 +786,7 @@ INTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
 )
 
 INTERNAL_INQUEUE_BYTES_PANEL = Panel(
-    id=14,
+    id=_ids.next(),
     title="Operator Internal Input Queue Size (Bytes)",
     description="Current total byte size of input blocks stored in an operator's internal input queue. This quantifies the memory footprint of pending input data awaiting processing by the operator's tasks.",
     unit="bytes",
@@ -812,7 +801,7 @@ INTERNAL_INQUEUE_BYTES_PANEL = Panel(
 )
 
 INTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
-    id=15,
+    id=_ids.next(),
     title="Operator Internal Output Queue Size (Blocks)",
     description="Current number of blocks waiting in an operator's internal output queue to be consumed by downstream operators.",
     unit="blocks",
@@ -827,7 +816,7 @@ INTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
 )
 
 INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
-    id=16,
+    id=_ids.next(),
     title="Operator Internal Output Queue Size (Bytes)",
     description="Current total byte size of output blocks in an operator's internal output queue. This helps understand memory consumption attributed to buffered output data awaiting transfer to subsequent pipeline operators.",
     unit="bytes",
@@ -842,7 +831,7 @@ INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
 )
 
 EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
-    id=2,
+    id=_ids.next(),
     title="Operator External Input Queue Size (Blocks)",
     description="Current number of blocks in an operator's external input queue. This queue holds bundles of blocks dispatched to the operator but not yet fully processed by its tasks, providing an external view of pending work.",
     unit="blocks",
@@ -857,7 +846,7 @@ EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
 )
 
 EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
-    id=27,
+    id=_ids.next(),
     title="Operator External Input Queue Size (bytes)",
     description="Current total byte size of blocks in an operator's external input queue. This quantifies the memory footprint of externally buffered input data, representing data that's assigned to the operator but not yet internally queued.",
     unit="bytes",
@@ -872,7 +861,7 @@ EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
 )
 
 EXTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
-    id=58,
+    id=_ids.next(),
     title="Operator External Output Queue Size (Blocks)",
     description="Current number of blocks in an operator's external output queue. This queue typically stores references to results produced by the operator's tasks and awaiting collection by downstream operators. A large output queue suggests downstream operators aren't consuming data as quickly as it's being produced.",
     unit="blocks",
@@ -887,7 +876,7 @@ EXTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
 )
 
 EXTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
-    id=59,
+    id=_ids.next(),
     title="Operator External Output Queue Size (bytes)",
     description="Current total byte size of blocks in an operator's external output queue. This helps understand the memory footprint of results produced but still awaiting consumption or transfer. A large output queue suggests downstream operators aren't consuming data as quickly as it's being produced.",
     unit="bytes",
@@ -903,7 +892,7 @@ EXTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
 
 # Combined Input Queue and Output Queue Blocks Panel
 COMBINED_INQUEUE_BLOCKS_PANEL = Panel(
-    id=56,
+    id=_ids.next(),
     title="Operator Combined Internal + External Input Queue Size (Blocks)",
     description="Total number of blocks across both the operator's internal and external input queues. This provides a comprehensive view of all pending input blocks that are either being held internally or awaiting processing by the operator.",
     unit="blocks",
@@ -918,7 +907,7 @@ COMBINED_INQUEUE_BLOCKS_PANEL = Panel(
 )
 
 COMBINED_OUTQUEUE_BLOCKS_PANEL = Panel(
-    id=60,
+    id=_ids.next(),
     title="Operator Combined Internal + External Output Queue Size (Blocks)",
     description="Total number of blocks across both the operator's internal and external output queues. This gives a complete picture of all produced buffered output blocks and awaiting consumption by downstream operators.",
     unit="blocks",
@@ -933,7 +922,7 @@ COMBINED_OUTQUEUE_BLOCKS_PANEL = Panel(
 )
 
 PENDING_TASK_INPUTS_PANEL = Panel(
-    id=34,
+    id=_ids.next(),
     title="Size of Blocks used in Pending Tasks (Bytes)",
     description="Current total byte size of input blocks referenced by submitted tasks not yet running or in a pending state. This represents memory that's conceptually 'reserved' for upcoming task execution.",
     unit="bytes",
@@ -948,7 +937,7 @@ PENDING_TASK_INPUTS_PANEL = Panel(
 )
 
 FREED_MEMORY_PANEL = Panel(
-    id=35,
+    id=_ids.next(),
     title="Freed Memory in Object Store (Bytes)",
     description="Total byte size of memory that's been deallocated from the Ray object store by operators. This reflects the efficiency of memory recycling within the pipeline and indicates memory no longer in use.",
     unit="bytes",
@@ -963,7 +952,7 @@ FREED_MEMORY_PANEL = Panel(
 )
 
 SPILLED_MEMORY_PANEL = Panel(
-    id=36,
+    id=_ids.next(),
     title="Spilled Memory in Object Store (Bytes)",
     description="Total byte size of memory from the Ray object store that's been written to external storage (spilled to disk). This directly indicates instances of memory pressure where data couldn't be held entirely in-memory.",
     unit="bytes",
@@ -979,7 +968,7 @@ SPILLED_MEMORY_PANEL = Panel(
 
 # Ray Data Metrics (Iteration)
 ITERATION_INITIALIZATION_PANEL = Panel(
-    id=12,
+    id=_ids.next(),
     title="Iteration Initialization Time",
     description="Total time (in seconds) spent setting up and initializing the data iterator before it begins yielding batches. This includes overhead such as establishing connections, resolving data sources, and preparing internal structures.",
     unit="s",
@@ -994,7 +983,7 @@ ITERATION_INITIALIZATION_PANEL = Panel(
 )
 
 ITERATION_BLOCKED_PANEL = Panel(
-    id=9,
+    id=_ids.next(),
     title="Iteration Blocked Time",
     description="Total time (in seconds) that the user's application thread is blocked while waiting for `iter_batches()` to produce data. High values indicate the data pipeline isn't generating batches fast enough to keep up with consumption rate, pointing to upstream bottlenecks.",
     unit="s",
@@ -1009,7 +998,7 @@ ITERATION_BLOCKED_PANEL = Panel(
 )
 
 ITERATION_USER_PANEL = Panel(
-    id=10,
+    id=_ids.next(),
     title="Iteration User Time",
     description="Total time (in seconds) spent executing user-defined code during data iteration. This includes time spent in UDFs (User-Defined Functions) and custom batch processing logic, useful for profiling user code performance.",
     unit="s",
@@ -1024,7 +1013,7 @@ ITERATION_USER_PANEL = Panel(
 )
 
 ITERATION_GET_PANEL = Panel(
-    id=70,
+    id=_ids.next(),
     title="Iteration Get Time",
     description="Total time (in seconds) spent performing `ray.get()` calls to resolve Ray object references into actual data blocks during iteration. This indicates latency associated with fetching data from the Ray object store, potentially across the network.",
     unit="seconds",
@@ -1039,7 +1028,7 @@ ITERATION_GET_PANEL = Panel(
 )
 
 ITERATION_NEXT_BATCH_PANEL = Panel(
-    id=71,
+    id=_ids.next(),
     title="Iteration Next Batch Time",
     description="Total time (in seconds) spent retrieving the next batch of data from the internal block buffer of the iterator. This is a fine-grained measure of the efficiency of the batching mechanism before formatting or collation.",
     unit="seconds",
@@ -1054,7 +1043,7 @@ ITERATION_NEXT_BATCH_PANEL = Panel(
 )
 
 ITERATION_FORMAT_BATCH_PANEL = Panel(
-    id=72,
+    id=_ids.next(),
     title="Iteration Format Batch Time",
     description="Total time (in seconds) spent converting raw data blocks into the desired output format (e.g., Pandas DataFrame, PyArrow Table, NumPy array) for consumption by the user or a machine learning framework. This reflects the cost of data marshalling.",
     unit="seconds",
@@ -1069,7 +1058,7 @@ ITERATION_FORMAT_BATCH_PANEL = Panel(
 )
 
 ITERATION_COLLATE_BATCH_PANEL = Panel(
-    id=73,
+    id=_ids.next(),
     title="Iteration Collate Batch Time",
     description="Total time (in seconds) spent applying a `CollateFn` to batches, typically for deep learning frameworks like PyTorch. This includes operations such as stacking tensors, padding, or moving data to a specific device like a GPU.",
     unit="seconds",
@@ -1084,7 +1073,7 @@ ITERATION_COLLATE_BATCH_PANEL = Panel(
 )
 
 ITERATION_FINALIZE_BATCH_PANEL = Panel(
-    id=74,
+    id=_ids.next(),
     title="Iteration Finalize Batch Time",
     description="Total time (in seconds) spent in any final processing steps applied to a batch before it's yielded to the user, as defined by a `finalize_fn`. This can include last-minute transformations or device transfers.",
     unit="seconds",
@@ -1099,7 +1088,7 @@ ITERATION_FINALIZE_BATCH_PANEL = Panel(
 )
 
 ITERATION_BLOCKS_LOCAL_PANEL = Panel(
-    id=75,
+    id=_ids.next(),
     title="Iteration Blocks Local",
     description="Cumulative count of blocks found on the local node (same node as the consuming application) during iteration. Accessing local blocks is generally faster and more efficient as it avoids network transfer.",
     unit="blocks",
@@ -1114,7 +1103,7 @@ ITERATION_BLOCKS_LOCAL_PANEL = Panel(
 )
 
 ITERATION_BLOCKS_REMOTE_PANEL = Panel(
-    id=76,
+    id=_ids.next(),
     title="Iteration Blocks Remote",
     description="Cumulative count of blocks that needed to be fetched from a remote node (different node in the Ray cluster) during iteration. A high number of remote blocks can indicate significant network transfer overhead, potentially bottlenecking iteration performance.",
     unit="blocks",
@@ -1129,7 +1118,7 @@ ITERATION_BLOCKS_REMOTE_PANEL = Panel(
 )
 
 ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
-    id=77,
+    id=_ids.next(),
     title="Iteration Blocks Unknown Location",
     description="Cumulative count of blocks for which the location (local or remote) couldn't be determined during iteration. This might suggest issues with the Ray object store's metadata tracking or liveness of relevant Ray nodes.",
     unit="blocks",
@@ -1144,7 +1133,7 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
 )
 
 ITERATION_PREFETCHED_BYTES_PANEL = Panel(
-    id=90,
+    id=_ids.next(),
     title="Iteration Prefetched Bytes",
     description="Current bytes of prefetched blocks in the iterator",
     unit="bytes",
@@ -1159,7 +1148,7 @@ ITERATION_PREFETCHED_BYTES_PANEL = Panel(
 )
 
 ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
-    id=120,
+    id=_ids.next(),
     title="Iteration Time to First Batch",
     description="Seconds spent waiting for the first batch after starting iteration",
     unit="seconds",
@@ -1174,7 +1163,7 @@ ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
 )
 
 ITERATION_GET_REF_BUNDLES_PANEL = Panel(
-    id=121,
+    id=_ids.next(),
     title="Iteration Get Ref Bundles Time",
     description="Seconds spent getting RefBundles from the dataset iterator",
     unit="seconds",
@@ -1190,7 +1179,7 @@ ITERATION_GET_REF_BUNDLES_PANEL = Panel(
 
 # Ray Data Metrics (Miscellaneous)
 SCHEDULING_LOOP_DURATION_PANEL = Panel(
-    id=47,
+    id=_ids.next(),
     title="Scheduling Loop Duration",
     description="Average duration (in seconds) of the Ray Data scheduling loop over a recent 5-minute window. This loop is responsible for managing task submission, resource allocation, and overall execution flow. Longer durations may indicate scheduling overhead or contention within the system.",
     unit="s",
@@ -1205,7 +1194,7 @@ SCHEDULING_LOOP_DURATION_PANEL = Panel(
 )
 
 MAX_BYTES_TO_READ_PANEL = Panel(
-    id=55,
+    id=_ids.next(),
     title="Max Bytes to Read",
     description="Maximum number of bytes that the streaming generator buffer's configured to read. This helps manage memory usage and apply backpressure for streaming data sources.",
     unit="bytes",
@@ -1226,7 +1215,7 @@ MAX_BYTES_TO_READ_PANEL = Panel(
 DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD = 75
 
 CLUSTER_CPU_UTILIZATION_PANEL = Panel(
-    id=122,
+    id=_ids.next(),
     title="Cluster utilization % (CPU)",
     description="Average cluster CPU utilization percentage used by Ray Data. When utilization exceeds the scaling threshold (default 75%), the cluster autoscaler may request additional resources.",
     unit="percent",
@@ -1247,7 +1236,7 @@ CLUSTER_CPU_UTILIZATION_PANEL = Panel(
 )
 
 CLUSTER_GPU_UTILIZATION_PANEL = Panel(
-    id=123,
+    id=_ids.next(),
     title="Cluster utilization % (GPU)",
     description="Average cluster GPU utilization percentage used by Ray Data. When utilization exceeds the scaling threshold (default 75%), the cluster autoscaler may request additional resources.",
     unit="percent",
@@ -1267,7 +1256,7 @@ CLUSTER_GPU_UTILIZATION_PANEL = Panel(
 )
 
 CLUSTER_MEMORY_UTILIZATION_PANEL = Panel(
-    id=125,
+    id=_ids.next(),
     title="Cluster utilization % (Memory)",
     description="Average cluster memory utilization percentage used by Ray Data. When utilization exceeds the scaling threshold (default 75%), the cluster autoscaler may request additional resources.",
     unit="percent",
@@ -1287,7 +1276,7 @@ CLUSTER_MEMORY_UTILIZATION_PANEL = Panel(
 )
 
 CLUSTER_OBJECT_STORE_MEMORY_UTILIZATION_PANEL = Panel(
-    id=124,
+    id=_ids.next(),
     title="Cluster utilization % (Object Store Memory)",
     description="Average cluster object store memory utilization percentage used by Ray Data. When utilization exceeds the scaling threshold (default 75%), the cluster autoscaler may request additional resources.",
     unit="percent",
@@ -1308,7 +1297,7 @@ CLUSTER_OBJECT_STORE_MEMORY_UTILIZATION_PANEL = Panel(
 
 # Budget Panels
 CPU_BUDGET_PANEL = Panel(
-    id=51,
+    id=_ids.next(),
     title="Budget (CPU)",
     description="Displays the allocated CPU budget (maximum CPU cores) for an operator. Ray Data uses this internal mechanism to manage resource allocation, control concurrency across operators, and prevent overload.",
     unit="cpu",
@@ -1323,7 +1312,7 @@ CPU_BUDGET_PANEL = Panel(
 )
 
 GPU_BUDGET_PANEL = Panel(
-    id=52,
+    id=_ids.next(),
     title="Budget (GPU)",
     description="Displays the allocated GPU budget (maximum GPU resources) for an operator. Ray Data uses this to control GPU resource consumption across operators.",
     unit="gpu",
@@ -1338,7 +1327,7 @@ GPU_BUDGET_PANEL = Panel(
 )
 
 MEMORY_BUDGET_PANEL = Panel(
-    id=53,
+    id=_ids.next(),
     title="Budget (Memory)",
     description="Displays the allocated total memory budget (object store and heap memory combined) for an operator. Ray Data uses this to manage overall memory consumption and apply backpressure to prevent out-of-memory errors.",
     unit="bytes",
@@ -1353,7 +1342,7 @@ MEMORY_BUDGET_PANEL = Panel(
 )
 
 OBJECT_STORE_MEMORY_BUDGET_PANEL = Panel(
-    id=54,
+    id=_ids.next(),
     title="Budget (Object Store Memory)",
     description=(
         "Displays the allocated object store memory budget for an operator. This represents "
@@ -1373,7 +1362,7 @@ OBJECT_STORE_MEMORY_BUDGET_PANEL = Panel(
 )
 
 ALL_RESOURCES_UTILIZATION_PANEL = Panel(
-    id=57,
+    id=_ids.next(),
     title="All logical resources utilization",
     description="Displays combined CPU and GPU resource utilization across operators. Filter to a specific operator to understand its overall resource consumption pattern.",
     unit="cores",
@@ -1392,7 +1381,7 @@ ALL_RESOURCES_UTILIZATION_PANEL = Panel(
 )
 
 OPERATOR_TASK_COMPLETION_TIME_PANEL = Panel(
-    id=78,
+    id=_ids.next(),
     title="Task Completion Time Histogram (s)",
     description="Time (in seconds) spent running tasks to completion, including backpressure. Larger bars mean more tasks finished within that duration range.",
     targets=[
@@ -1409,7 +1398,7 @@ OPERATOR_TASK_COMPLETION_TIME_PANEL = Panel(
 )
 
 OPERATOR_BLOCK_COMPLETION_TIME_PANEL = Panel(
-    id=79,
+    id=_ids.next(),
     title="Block Completion Time Histogram (s)",
     description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by dividing task time equally among blocks. Larger bars mean more blocks finished within that duration range.",
     targets=[
@@ -1426,7 +1415,7 @@ OPERATOR_BLOCK_COMPLETION_TIME_PANEL = Panel(
 )
 
 OPERATOR_BLOCK_SIZE_BYTES_PANEL = Panel(
-    id=80,
+    id=_ids.next(),
     title="Block Size (Bytes) Histogram",
     description="Block size in bytes. Larger bars mean more blocks are within that size range.",
     targets=[
@@ -1446,7 +1435,7 @@ OPERATOR_BLOCK_SIZE_BYTES_PANEL = Panel(
 )
 
 OPERATOR_BLOCK_SIZE_ROWS_PANEL = Panel(
-    id=81,
+    id=_ids.next(),
     title="Block Size (Rows) Histogram",
     description="Block size in rows. Larger bars mean more blocks are within that row count range.",
     targets=[
@@ -1473,7 +1462,7 @@ OPERATOR_BLOCK_SIZE_ROWS_PANEL = Panel(
 # the drain STARTED and never changes, so e.g. interrupted[resize] means an
 # actor draining for a resize died mid-drain (typically its node was lost).
 ACTOR_DRAINING_ACTORS_PANEL = Panel(
-    id=132,
+    id=_ids.next(),
     title="Draining Actors",
     description="Actors currently draining, per operator.",
     unit="actors",
@@ -1488,7 +1477,7 @@ ACTOR_DRAINING_ACTORS_PANEL = Panel(
 )
 
 ACTOR_DRAIN_OUTCOMES_PANEL = Panel(
-    id=133,
+    id=_ids.next(),
     title="Actor Drain Outcomes",
     description=(
         "Actors whose drain ended over the last 5m, by outcome. completed: "
@@ -1518,7 +1507,7 @@ ACTOR_DRAIN_OUTCOMES_PANEL = Panel(
 )
 
 ACTOR_DRAIN_STARTS_BY_REASON_PANEL = Panel(
-    id=128,
+    id=_ids.next(),
     title="Actor Drains Started by Reason",
     description=(
         "Actors that started draining over the last 5m, split by why the "
@@ -1539,7 +1528,7 @@ ACTOR_DRAIN_STARTS_BY_REASON_PANEL = Panel(
 )
 
 ACTOR_DRAIN_COMPLETED_TIME_PANEL = Panel(
-    id=129,
+    id=_ids.next(),
     title="Actor Drain Duration (completed)",
     description=(
         "Time from drain start to graceful teardown. Quantiles are cumulative "
@@ -1573,6 +1562,504 @@ ACTOR_DRAINING_PANELS = [
     ACTOR_DRAIN_COMPLETED_TIME_PANEL,
 ]
 
+# Input locality. Recorded by actor pools under both backends (the standard
+# operator records it too), so it sits in the Inputs row; the id is in the
+# range this tree uses for its own panels.
+CROSS_NODE_INPUT_TRANSFER_PANEL = Panel(
+    id=_ids.next(),
+    title="Cross-Node Input Transfer / Second",
+    description=(
+        "Rate of input bytes an operator's actors read from a node other than "
+        "their own (fetched over the network). A sustained high rate means "
+        "tasks are being scheduled away from the nodes that hold their input "
+        "blocks. Block counts are in ray_data_num_remote_blocks_read."
+    ),
+    unit="Bps",
+    targets=[
+        Target(
+            expr='sum(rate(ray_data_bytes_remote_inputs_read{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            legend="Remote Input Bytes / Second: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+# --- Actor-only backend -------------------------------------------------------
+# Metrics below are emitted only under RAY_DATA_ACTOR_ONLY_BACKEND (see
+# experimental/execution/actor_only_metrics.py); the rows stay empty otherwise.
+
+ACTOR_ONLY_NODE_OBJ_STORE_LIVE_BYTES_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Node Object Store Live by Inputs/Outputs (Bytes)",
+    description="Live object-store usage in bytes on each node attributed to dataset inputs/outputs (actor-only ResourceBank).",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_obj_store{{{global_filters}, node=~"$NodeID", unit="bytes", breakdown=~"inputs|outputs"}}) by (dataset, node, breakdown)',
+            legend="{{breakdown}}: {{dataset}}, {{node}}",
+        ),
+        # inputs + outputs = total live object store per node.
+        Target(
+            expr='sum(ray_data_actor_only_node_obj_store{{{global_filters}, node=~"$NodeID", unit="bytes", breakdown=~"inputs|outputs"}}) by (dataset, node)',
+            legend="total: {{dataset}}, {{node}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_NODE_OBJ_STORE_LIVE_BLOCKS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Node Object Store Live by Inputs/Outputs (Blocks)",
+    description="Live object-store usage in blocks on each node attributed to dataset inputs/outputs (actor-only ResourceBank).",
+    unit="blocks",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_obj_store{{{global_filters}, node=~"$NodeID", unit="blocks", breakdown=~"inputs|outputs"}}) by (dataset, node, breakdown)',
+            legend="{{breakdown}}: {{dataset}}, {{node}}",
+        ),
+        Target(
+            expr='sum(ray_data_actor_only_node_obj_store{{{global_filters}, node=~"$NodeID", unit="blocks", breakdown=~"inputs|outputs"}}) by (dataset, node)',
+            legend="total: {{dataset}}, {{node}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_NODE_OBJ_STORE_FREED_BYTES_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Node Freed Output (Bytes)",
+    description="Cumulative output bytes freed from the live object store on each node (outputs ever pulled minus outputs still live).",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_obj_store{{{global_filters}, node=~"$NodeID", unit="bytes", breakdown="freed"}}) by (dataset, node)',
+            legend="Freed: {{dataset}}, {{node}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_NODE_OBJ_STORE_FREED_BLOCKS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Node Freed Output (Blocks)",
+    description="Cumulative output blocks freed from the live object store on each node (outputs ever pulled minus outputs still live).",
+    unit="blocks",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_obj_store{{{global_filters}, node=~"$NodeID", unit="blocks", breakdown="freed"}}) by (dataset, node)',
+            legend="Freed: {{dataset}}, {{node}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_NODE_LOCALITY_BYTES_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Node Locality Bytes",
+    description="Cumulative local vs remote bytes on each node. Remote applies only to task inputs; outputs are always local to the producing task.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_obj_store{{{global_filters}, node=~"$NodeID", unit="bytes", breakdown=~"local|remote"}}) by (dataset, node, breakdown)',
+            legend="{{breakdown}}: {{dataset}}, {{node}}",
+        )
+    ],
+    fill=1,
+    stack=True,
+)
+
+ACTOR_ONLY_NODE_NUM_ACTORS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Actors per Node by Status",
+    description="Number of actors on each node by lifecycle status (pending/idle/active/restarting/draining), aggregated across actor-pool operators.",
+    unit="short",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_num_actors{{{global_filters}, node=~"$NodeID"}}) by (dataset, node, status)',
+            legend="{{status}}: {{dataset}}, {{node}}",
+        )
+    ],
+    fill=1,
+    stack=True,
+)
+
+ACTOR_ONLY_NODE_OP_NUM_ACTORS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Actors per Node/Operator by Status",
+    description="Number of actors on each node for each operator by lifecycle status.",
+    unit="short",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_operator_num_actors{{{global_filters}, node=~"$NodeID", operator=~"$Operator"}}) by (dataset, node, operator, status)',
+            legend="{{status}}: {{dataset}}, {{operator}}, {{node}}",
+        )
+    ],
+    fill=1,
+    stack=True,
+)
+
+ACTOR_ONLY_OP_NUM_ACTORS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Actors per Operator by Status",
+    description="Number of actors for each operator by lifecycle status, summed across all nodes.",
+    unit="short",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_operator_num_actors{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator, status)',
+            legend="{{status}}: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=1,
+    stack=True,
+)
+
+# Input locality: five panels over one metric,
+# ``ray_data_actor_only_node_operator_input_locality{node, operator, unit,
+# breakdown}``: two cumulative roll-ups (bytes, blocks) and three windowed
+# percentages at each grouping.
+_LOCALITY_METRIC = "ray_data_actor_only_node_operator_input_locality"
+_LOCALITY_WINDOW = "1m"
+
+
+def _locality_selector(group_by: str, unit: str) -> str:
+    """Label matchers for a locality query at the given grouping.
+
+    Only the dimensions the panel groups by are filtered: a roll-up over nodes
+    covers every node, so scoping it to $NodeID would silently make it a
+    partial roll-up.
+    """
+    selector = f'unit="{unit}"'
+    if "node" in group_by:
+        selector += ', node=~"$NodeID"'
+    if "operator" in group_by:
+        selector += ', operator=~"$Operator"'
+    return selector
+
+
+def _locality_cumulative_expr(unit: str) -> str:
+    """Cumulative local/remote input for each operator, split by breakdown."""
+    # Concatenated rather than an f-string: the expression must survive
+    # `.format(global_filters=...)`, so PromQL braces stay doubled while
+    # `{global_filters}` stays single.
+    selector = _locality_selector("dataset, operator", unit)
+    return (
+        "sum("
+        + _LOCALITY_METRIC
+        + "{{{global_filters}, "
+        + selector
+        + "}}) by (dataset, operator, breakdown)"
+    )
+
+
+def _locality_pct_expr(group_by: str) -> str:
+    """Percent of input bytes that were node-local over the last window.
+
+    Cumulative sums answer "how did the run go"; this answers "what is
+    scheduling deciding right now".
+
+    The underlying Gauge carries run-long cumulatives, and an (operator, node)
+    pair keeps being written for the rest of the execution once it first
+    appears, so each series only grows within a run: it is a counter in all
+    but type. ``increase()`` is therefore the right window function; a drop to
+    0 only happens when a series restarts (e.g. a new driver process) and is
+    treated as a counter reset rather than a large negative ``delta()``.
+    """
+    selector = _locality_selector(group_by, "bytes")
+
+    def _windowed_sum(breakdown_matcher: str) -> str:
+        return (
+            "sum(increase("
+            + _LOCALITY_METRIC
+            + "{{{global_filters}, "
+            + selector
+            + ", "
+            + breakdown_matcher
+            + "}}["
+            + _LOCALITY_WINDOW
+            + "])) by ("
+            + group_by
+            + ")"
+        )
+
+    # No clamp on the denominator: an idle window gives 0/0 -> NaN -> a gap, so
+    # "nothing submitted" stays visually distinct from "0% local".
+    return (
+        "100 * "
+        + _windowed_sum('breakdown="local"')
+        + " / "
+        + _windowed_sum('breakdown=~"local|remote"')
+    )
+
+
+ACTOR_ONLY_OP_INPUT_LOCALITY_BYTES_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Operator Input Locality (Bytes)",
+    description=(
+        "Cumulative input bytes submitted to each operator, split by whether the "
+        "block was already on the node of the actor running the task."
+    ),
+    unit="bytes",
+    targets=[
+        Target(
+            expr=_locality_cumulative_expr("bytes"),
+            legend="{{breakdown}}: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=1,
+    stack=True,
+)
+
+ACTOR_ONLY_OP_INPUT_LOCALITY_BLOCKS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Operator Input Locality (Blocks)",
+    description=(
+        "Cumulative input blocks submitted to each operator, split by whether the "
+        "block was already on the node of the actor running the task."
+    ),
+    unit="blocks",
+    targets=[
+        Target(
+            expr=_locality_cumulative_expr("blocks"),
+            legend="{{breakdown}}: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=1,
+    stack=True,
+)
+
+ACTOR_ONLY_NODE_OP_INPUT_LOCALITY_PCT_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Input Locality % (1m, per Node/Operator)",
+    description=(
+        "Share of input bytes submitted in the last minute that were already on "
+        "the actor's node, for each operator on each node. Shows whether "
+        "placement and dispatch improve locality over a run. Gaps mean no input "
+        "was submitted for that pair during the window."
+    ),
+    unit="percent",
+    targets=[
+        Target(
+            expr=_locality_pct_expr("dataset, node, operator"),
+            legend="Local %: {{dataset}}, {{operator}}, {{node}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OP_INPUT_LOCALITY_PCT_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Input Locality % (1m, per Operator)",
+    description=(
+        "Share of input bytes submitted in the last minute that were already on "
+        "the actor's node, per operator (summed across nodes). Source operators "
+        "sit near 0% by construction: their inputs are read tasks or file "
+        "manifests, not the file data itself."
+    ),
+    unit="percent",
+    targets=[
+        Target(
+            expr=_locality_pct_expr("dataset, operator"),
+            legend="Local %: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_NODE_INPUT_LOCALITY_PCT_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Input Locality % (1m, per Node)",
+    description=(
+        "Share of input bytes submitted in the last minute that were already on "
+        "the actor's node, per node (summed across operators). A node that stays "
+        "low is pulling most of its actors' inputs over the network. Counts task "
+        "inputs only, unlike the 'Node Locality Bytes' panel."
+    ),
+    unit="percent",
+    targets=[
+        Target(
+            expr=_locality_pct_expr("dataset, node"),
+            legend="Local %: {{dataset}}, {{node}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OUTPUT_LIMIT_UPGRADES_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Output Limit Upgrades",
+    description="Times the output-limit escape hatch raised an operator's per-actor output limit to break a deadlock.",
+    unit="short",
+    targets=[
+        Target(
+            expr='sum(increase(ray_data_actor_only_output_limit_upgrades_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator)',
+            legend="Upgrades / 5m: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='sum(ray_data_actor_only_output_limit_upgrades_total{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Upgrades Total: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OP_OUTPUT_LIMIT_BYTES_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Operator Output Limit (Bytes)",
+    description="Snapshot distribution (min/p50/p90/max/mean) of per-actor output byte limits for each operator. Unbounded (inf) limits are excluded.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_operator_output_limit{{{global_filters}, unit="bytes", operator=~"$Operator"}}) by (dataset, operator, stat)',
+            legend="{{stat}}: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OP_OUTPUT_LIMIT_BLOCKS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Operator Output Limit (Blocks)",
+    description="Snapshot distribution (min/p50/p90/max/mean) of per-actor output block limits for each operator. Unbounded (inf) limits are excluded.",
+    unit="blocks",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_operator_output_limit{{{global_filters}, unit="blocks", operator=~"$Operator"}}) by (dataset, operator, stat)',
+            legend="{{stat}}: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OP_OUTPUT_BACKPRESSURED_ACTORS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Operator Output-Backpressured Actors",
+    description="Number of an operator's actors whose output pull budget is exhausted (output-backpressured).",
+    unit="short",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_operator_output_backpressured_actors{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Backpressured Actors: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OP_OUTPUT_OVERSHOOTS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Operator Output-Limit Overshoots",
+    description=(
+        "Cumulative count, per operator, of output-limit overshoots by kind: "
+        "'block_size' (a produced block exceeded 150% of its target block "
+        "size) and 'output_bytes' (an actor's outstanding output exceeded 150% "
+        "of its output-bytes limit)."
+    ),
+    unit="short",
+    targets=[
+        Target(
+            expr='sum(increase(ray_data_actor_only_operator_output_overshoots_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator, kind)',
+            legend="Overshoots / 5m: {{kind}}, {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='sum(ray_data_actor_only_operator_output_overshoots_total{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator, kind)',
+            legend="Overshoots Total: {{kind}}, {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+# Overview: totals only. The detailed rows keep the breakdowns.
+ACTOR_ONLY_NODE_OBJ_STORE_LIVE_BYTES_TOTALS_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Node Object Store Live Total (Bytes)",
+    description=(
+        "Total live object-store usage in bytes on each node attributed to "
+        "dataset inputs + outputs (actor-only ResourceBank). See Object Store "
+        "Usage for the inputs/outputs breakdown."
+    ),
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_obj_store{{{global_filters}, node=~"$NodeID", unit="bytes", breakdown=~"inputs|outputs"}}) by (dataset, node)',
+            legend="total: {{dataset}}, {{node}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_ONLY_OP_NUM_ACTORS_TOTAL_PANEL = Panel(
+    id=_ids.next(),
+    title="Actor-Only Total Actors per Operator",
+    description=(
+        "Total actors for each operator (pending + idle + active + restarting + "
+        "draining), summed across all nodes. See Actor Status for the "
+        "per-status breakdown."
+    ),
+    unit="short",
+    targets=[
+        Target(
+            expr='sum(ray_data_actor_only_node_operator_num_actors{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Total Actors: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+# Grafana panel ids must be unique across the dashboard, so the overview
+# re-uses detailed panels as copies with fresh ids.
+ACTOR_ONLY_OVERVIEW_PANELS = [
+    ACTOR_ONLY_OP_NUM_ACTORS_TOTAL_PANEL,
+    ACTOR_ONLY_NODE_OBJ_STORE_LIVE_BYTES_TOTALS_PANEL,
+    replace(ACTOR_ONLY_NODE_OBJ_STORE_FREED_BYTES_PANEL, id=_ids.next()),
+    replace(ACTOR_ONLY_NODE_LOCALITY_BYTES_PANEL, id=_ids.next()),
+    replace(ACTOR_ONLY_OP_INPUT_LOCALITY_BYTES_PANEL, id=_ids.next()),
+    replace(ACTOR_ONLY_OP_OUTPUT_BACKPRESSURED_ACTORS_PANEL, id=_ids.next()),
+]
+
+ACTOR_ONLY_ACTOR_STATUS_PANELS = [
+    ACTOR_ONLY_NODE_NUM_ACTORS_PANEL,
+    ACTOR_ONLY_NODE_OP_NUM_ACTORS_PANEL,
+    ACTOR_ONLY_OP_NUM_ACTORS_PANEL,
+    ACTOR_ONLY_OP_OUTPUT_BACKPRESSURED_ACTORS_PANEL,
+]
+
+ACTOR_ONLY_OBJECT_STORE_USAGE_PANELS = [
+    ACTOR_ONLY_NODE_OBJ_STORE_LIVE_BYTES_PANEL,
+    ACTOR_ONLY_NODE_OBJ_STORE_LIVE_BLOCKS_PANEL,
+    ACTOR_ONLY_NODE_OBJ_STORE_FREED_BYTES_PANEL,
+    ACTOR_ONLY_NODE_OBJ_STORE_FREED_BLOCKS_PANEL,
+]
+
+ACTOR_ONLY_INPUT_LOCALITY_PANELS = [
+    ACTOR_ONLY_NODE_LOCALITY_BYTES_PANEL,
+    ACTOR_ONLY_OP_INPUT_LOCALITY_BYTES_PANEL,
+    ACTOR_ONLY_OP_INPUT_LOCALITY_BLOCKS_PANEL,
+    ACTOR_ONLY_NODE_OP_INPUT_LOCALITY_PCT_PANEL,
+    ACTOR_ONLY_OP_INPUT_LOCALITY_PCT_PANEL,
+    ACTOR_ONLY_NODE_INPUT_LOCALITY_PCT_PANEL,
+]
+
+ACTOR_ONLY_OUTPUT_LIMITS_PANELS = [
+    ACTOR_ONLY_OUTPUT_LIMIT_UPGRADES_PANEL,
+    ACTOR_ONLY_OP_OUTPUT_LIMIT_BYTES_PANEL,
+    ACTOR_ONLY_OP_OUTPUT_LIMIT_BLOCKS_PANEL,
+    ACTOR_ONLY_OP_OUTPUT_OVERSHOOTS_PANEL,
+]
+
 OPERATOR_PANELS = [
     ROWS_OUTPUT_PER_SECOND_PANEL,
     ALL_RESOURCES_UTILIZATION_PANEL,
@@ -1587,7 +2074,7 @@ DATA_GRAFANA_ROWS = [
     # Overview Row
     Row(
         title="Overview",
-        id=99,
+        id=_ids.next(),
         panels=[
             BYTES_GENERATED_PANEL,
             BLOCKS_GENERATED_PANEL,
@@ -1602,7 +2089,7 @@ DATA_GRAFANA_ROWS = [
     # Pending Inputs Row
     Row(
         title="Pending Inputs",
-        id=100,
+        id=_ids.next(),
         panels=[
             INTERNAL_INQUEUE_BLOCKS_PANEL,
             INTERNAL_INQUEUE_BYTES_PANEL,
@@ -1615,7 +2102,7 @@ DATA_GRAFANA_ROWS = [
     # Inputs Row
     Row(
         title="Inputs",
-        id=101,
+        id=_ids.next(),
         panels=[
             INPUT_BLOCKS_RECEIVED_PANEL,
             INPUT_BYTES_RECEIVED_PANEL,
@@ -1629,7 +2116,7 @@ DATA_GRAFANA_ROWS = [
     # Pending Outputs Row
     Row(
         title="Pending Outputs",
-        id=102,
+        id=_ids.next(),
         panels=[
             INTERNAL_OUTQUEUE_BLOCKS_PANEL,
             INTERNAL_OUTQUEUE_BYTES_PANEL,
@@ -1642,7 +2129,7 @@ DATA_GRAFANA_ROWS = [
     # Outputs Row
     Row(
         title="Outputs",
-        id=103,
+        id=_ids.next(),
         panels=[
             BLOCK_SIZE_BYTES_P50_PANEL,
             BLOCK_SIZE_BYTES_P90_PANEL,
@@ -1667,7 +2154,7 @@ DATA_GRAFANA_ROWS = [
     # Tasks
     Row(
         title="Tasks",
-        id=104,
+        id=_ids.next(),
         panels=[
             TASK_COMPLETION_TIME_P50_PANEL,
             TASK_COMPLETION_TIME_P90_PANEL,
@@ -1690,7 +2177,7 @@ DATA_GRAFANA_ROWS = [
     # Resource Budget / Usage Row
     Row(
         title="Resource Budget / Usage",
-        id=105,
+        id=_ids.next(),
         panels=[
             CPU_USAGE_PANEL,
             GPU_USAGE_PANEL,
@@ -1709,7 +2196,7 @@ DATA_GRAFANA_ROWS = [
     # Scheduling Loop Row
     Row(
         title="Scheduling Loop",
-        id=106,
+        id=_ids.next(),
         panels=[
             SCHEDULING_LOOP_DURATION_PANEL,
         ],
@@ -1718,7 +2205,7 @@ DATA_GRAFANA_ROWS = [
     # Cluster Autoscaler Row
     Row(
         title="Cluster Autoscaler",
-        id=109,
+        id=_ids.next(),
         panels=[
             CLUSTER_CPU_UTILIZATION_PANEL,
             CLUSTER_GPU_UTILIZATION_PANEL,
@@ -1730,7 +2217,7 @@ DATA_GRAFANA_ROWS = [
     # Iteration Row
     Row(
         title="Iteration",
-        id=107,
+        id=_ids.next(),
         panels=[
             ITERATION_INITIALIZATION_PANEL,
             ITERATION_BLOCKED_PANEL,
@@ -1752,7 +2239,7 @@ DATA_GRAFANA_ROWS = [
     # Operator Panels Row (these graphs should only be viewed when filtering down to a single operator)
     Row(
         title="Operator Panels",
-        id=108,
+        id=_ids.next(),
         panels=[
             ALL_RESOURCES_UTILIZATION_PANEL,
             OPERATOR_TASK_COMPLETION_TIME_PANEL,
@@ -1762,11 +2249,41 @@ DATA_GRAFANA_ROWS = [
         ],
         collapsed=True,
     ),
-    # Populated only when the actor-only backend
+    # Actor-only rows: populated only when the actor-only backend
     # (RAY_DATA_ACTOR_ONLY_BACKEND) is enabled.
     Row(
+        title="Actor Only Overview",
+        id=_ids.next(),
+        panels=ACTOR_ONLY_OVERVIEW_PANELS,
+        collapsed=True,
+    ),
+    Row(
+        title="Actor Only Actor Status",
+        id=_ids.next(),
+        panels=ACTOR_ONLY_ACTOR_STATUS_PANELS,
+        collapsed=True,
+    ),
+    Row(
+        title="Actor Only Object Store Usage",
+        id=_ids.next(),
+        panels=ACTOR_ONLY_OBJECT_STORE_USAGE_PANELS,
+        collapsed=True,
+    ),
+    Row(
+        title="Actor Only Input Locality",
+        id=_ids.next(),
+        panels=ACTOR_ONLY_INPUT_LOCALITY_PANELS,
+        collapsed=True,
+    ),
+    Row(
+        title="Actor Only Output Limits",
+        id=_ids.next(),
+        panels=ACTOR_ONLY_OUTPUT_LIMITS_PANELS,
+        collapsed=True,
+    ),
+    Row(
         title="Actor Only Draining",
-        id=131,
+        id=_ids.next(),
         panels=ACTOR_DRAINING_PANELS,
         collapsed=True,
     ),
