@@ -117,6 +117,7 @@ def _estimate(path, columns=None, **format_kwargs):
         row_group=row_group,
         leaf_indices=sorted(j for leaf_indices in column_leaves for j in leaf_indices),
         row_group_work=work,
+        file_size=path.stat().st_size,
     )
 
 

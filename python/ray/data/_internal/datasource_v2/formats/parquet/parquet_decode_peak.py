@@ -1,8 +1,9 @@
 """Estimate PyArrow's peak memory decoding a Parquet row group, from its footer.
 
-A row group's peak is the footer read and its compressed chunks, what each leaf
-keeps until the scan ends, the two largest leaves' decode-time buffers (columns
-decode in parallel), and a pin's cast. Modelled on PyArrow 24's reader.
+A row group's peak is the footer read and its compressed chunks (a small file's
+bytes instead), what each leaf keeps until the scan ends, the two largest
+leaves' decode-time buffers (columns decode in parallel), and a pin's cast.
+Modelled on PyArrow 24's reader.
 """
 
 from typing import List, Mapping, Optional, Sequence, Set, Tuple
@@ -15,6 +16,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
     LeafChunk,
     Read,
     detect_binary_or_list_type,
+    detect_delta_byte_array,
     detect_dictionary_columns,
     detect_dictionary_type,
     estimate_added_columns,
@@ -35,11 +37,15 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     footer_bytes,
 )
 
-# A scan without the footer cached reads the file's last 64 KiB in one buffer.
-_FOOTER_BYTES = 64 << 10
-# pre_buffer merges column chunks less than this far apart into one read
-# (``CacheOptions.hole_size_limit``), so it may hold a gap this big per chunk.
-_HOLE_BYTES = 8 << 10
+# A scan without the footer cached reads the file's last 64 KiB in one buffer,
+# and pre_buffer may read an 8 KiB gap between chunks.
+_FOOTER_BYTES = 72 << 10
+# A file under 48 KiB was read whole with its footer; its scan holds that, and
+# the measured peaks are at most 4 KiB more.
+_SMALL_FILE_BYTES = 48 << 10
+_SMALL_FILE_SLACK = 4 << 10
+# A string or binary view builder's first data block.
+_VIEW_BLOCK_BYTES = 32 << 10
 # A dictionary page the footer can't size is taken as at most this big.
 _DICTIONARY_BYTES = 2 << 20
 # The cast estimate runs low for casts to text; this covers what was measured.
@@ -63,13 +69,15 @@ def estimate_row_group_peak(
     row_group: RowGroupMetaData,
     leaf_indices: Sequence[int],
     row_group_work: int,
+    file_size: int,
 ) -> int:
     """PyArrow's peak bytes reading ``row_group``, given its work and cast."""
-    held = _FOOTER_BYTES + sum(
-        row_group.column(leaf_idx).total_compressed_size + _HOLE_BYTES
-        for leaf_idx in leaf_indices
+    if file_size < _SMALL_FILE_BYTES:
+        return file_size + _SMALL_FILE_SLACK + row_group_work
+    compressed = sum(
+        row_group.column(leaf_idx).total_compressed_size for leaf_idx in leaf_indices
     )
-    return held + row_group_work
+    return _FOOTER_BYTES + compressed + row_group_work
 
 
 def estimate_row_group_work(
@@ -81,19 +89,11 @@ def estimate_row_group_work(
     counted: Set[int],
     data_pages: Optional[Sequence[Optional[int]]] = None,
 ) -> int:
-    """Bytes PyArrow allocates decoding one row group's leaves.
+    """What one row group's leaves keep, plus two leaves' decode-time buffers.
 
-    Args:
-        row_group: The row group.
-        columns: The file's Parquet schema columns.
-        column_leaves: Each top-level column read, in ``columns=`` order: its leaves.
-        read: The read options.
-        leaves: The file's unpinned leaves by index; PyArrow casts after decoding.
-        counted: Ancestors already sized.
-        data_pages: This row group's :func:`read_data_pages`.
-
-    Returns:
-        What the leaves keep, plus the two largest leaves' decode-time buffers.
+    ``column_leaves`` holds each column read, in ``columns=`` order, as its leaf
+    indices; ``leaves`` the file's unpinned leaves, as PyArrow casts after
+    decoding; ``counted`` the ancestors already sized.
     """
     kept, temporaries = 0, [0, 0]
     for position, leaf_indices in enumerate(column_leaves):
@@ -133,6 +133,13 @@ def estimate_leaf_work(
     grows = 2 if repeated else 1
     decoded = estimate_leaf(leaf=leaf, read=read)
     dictionary = _dictionary_bytes(leaf)
+    # Without SizeStatistics, a DELTA_BYTE_ARRAY string leaf's decoded size is
+    # already a guess at 128 times its pages, which covers the decoder's buffers.
+    guessed = (
+        chunk.physical_type == "BYTE_ARRAY"
+        and leaf.size_statistics_bytes is None
+        and detect_delta_byte_array(chunk)
+    )
     # 2-byte definition and repetition levels per slot, and the decoded leaf.
     kept = 2 * capacity * (nullable + repeated) + decoded
     temporary = 0
@@ -148,7 +155,7 @@ def estimate_leaf_work(
             else min(uncompressed, 2 * uncompressed // max(pages, 1))
         )
         reader_bytes = max(page, dictionary)
-    if _DELTA_ENCODINGS & set(chunk.encodings):
+    if _DELTA_ENCODINGS & set(chunk.encodings) and not guessed:
         # A DELTA decoder: two lengths per value and its page's rebuilt values.
         reader_bytes += (8 * levels + decoded) // max(pages or 1, 1)
     # A leaf that doesn't repeat keeps its page reader until the scan ends.
@@ -158,10 +165,10 @@ def estimate_leaf_work(
         temporary += list_offsets + reader_bytes
     else:
         kept += reader_bytes
-    if detect_binary_or_list_type(format_kwargs=read.format_kwargs):
-        # The copy at the retyped type.
-        temporary += decoded
     if chunk.physical_type == "BYTE_ARRAY":
+        if detect_binary_or_list_type(format_kwargs=read.format_kwargs):
+            # The copy at the retyped type.
+            temporary += decoded
         if chunk.has_dictionary_page:
             # The decoded dictionary: its bytes and 16 bytes per entry, each
             # entry at least 4 bytes on the page.
@@ -174,13 +181,14 @@ def estimate_leaf_work(
         slots = leaf.slots()
         if pa.types.is_string_view(leaf.type) or pa.types.is_binary_view(leaf.type):
             width = 16
+            kept += _VIEW_BLOCK_BYTES
         elif pa.types.is_large_string(leaf.type) or pa.types.is_large_binary(leaf.type):
             width = 8
         else:
             width = 4
         # Offsets (or views) reserved past the slots used.
         temporary += width * max(grows * capacity - slots, 0)
-        chars = estimate_string_bytes(leaf=leaf)
+        chars = 0 if guessed else estimate_string_bytes(leaf=leaf)
         if _reads_dictionary(leaf=leaf, read=read):
             # The dictionary builder: hash table, values doubled as they grow,
             # int32 indices. Each distinct value is at least 4 decoded bytes.
@@ -194,7 +202,9 @@ def estimate_leaf_work(
     kept += dictionary
     validity = nullable * grows * capacity // 8
     if chunk.physical_type == "FIXED_LEN_BYTE_ARRAY":
+        # The fixed-size binary builder's values, and as much again as it grows.
         values, zero_copy = grows * capacity * column.length, False
+        temporary += values
     else:
         values = grows * capacity * _PHYSICAL_WIDTH[chunk.physical_type]
         zero_copy = _zero_copy(physical_type=chunk.physical_type, arrow_type=leaf.type)
@@ -212,19 +222,11 @@ def estimate_cast(
     pieces: int,
     read: Read,
 ) -> int:
-    """What a pin's cast allocates for one row group: a crude bound.
+    """What a pin's cast allocates for one row group, times 1.5: a crude bound.
 
-    Args:
-        row_group: The row group.
-        column_leaves: Each column read: its leaves, profiled as pinned.
-        file_schema: The file's Arrow schema.
-        pinned_schema: The schema the pin casts to.
-        pieces: How many pieces the scanner yields the row group in; a list,
-            map or view cast copies once per piece.
-        read: The read options, with the columns the pin adds.
-
-    Returns:
-        The cast's bytes, times 1.5 for the casts to text it undercounts.
+    ``column_leaves`` holds each column read as its leaves, profiled as pinned. A
+    list, map or view cast copies once per one of the ``pieces`` the scanner
+    yields the row group in, and 1.5 covers the casts to text it undercounts.
     """
     size = estimate_added_columns(row_group=row_group, read=read)
     for name, leaves in column_leaves.items():
@@ -363,18 +365,13 @@ def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
 
 
 def _nested_or_view(arrow_type: pa.DataType) -> bool:
-    """Whether ``arrow_type`` has a list, map or view, which casts copy per piece."""
+    """Whether ``arrow_type`` has a list, map, union or view: casts copy per piece."""
     if isinstance(arrow_type, pa.ExtensionType):
         arrow_type = arrow_type.storage_type
-    if (
-        pa.types.is_string_view(arrow_type)
-        or pa.types.is_binary_view(arrow_type)
-        or pa.types.is_list(arrow_type)
-        or pa.types.is_large_list(arrow_type)
-        or pa.types.is_fixed_size_list(arrow_type)
-        or pa.types.is_map(arrow_type)
-    ):
-        return True
     if pa.types.is_struct(arrow_type):
         return any(_nested_or_view(field.type) for field in arrow_type)
-    return False
+    return (
+        pa.types.is_nested(arrow_type)
+        or pa.types.is_string_view(arrow_type)
+        or pa.types.is_binary_view(arrow_type)
+    )
