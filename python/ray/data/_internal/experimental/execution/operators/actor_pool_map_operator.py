@@ -1244,6 +1244,11 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         (consumed by prebuffered / still-unconsumed outputs) counts as blocked:
         dispatching to it produces blocks it cannot emit.
 
+        Both counts cover the same population, the serving (IDLE / ACTIVE)
+        actors, so ``blocked == running`` means every serving actor is stuck.
+        Draining and restarting actors are excluded from both: they take no
+        new work, and a stuck drain shows up in the drain metrics instead.
+
         The scan is O(actors) with ResourceBank lookups, so every call also
         write-throughs its result for the progress-bar path (see
         ``cached_output_backpressured_actors``): callers that need exact
@@ -1256,11 +1261,12 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         else:
             zeros = TaskPullRequest.zero()
             blocked = 0
-            for actor_id in self.actor_pool.get_logical_ids():
-                if not self.actor_pool.has_actor(actor_id):
-                    continue
-                if not self._actor_pull_budget(actor_id).all_fields_gt(zeros):
-                    blocked += 1
+            for states in self.actor_pool.alive_actor_states_by_node().values():
+                for actor_id, state in states.items():
+                    if state.status not in (ActorStatus.IDLE, ActorStatus.ACTIVE):
+                        continue
+                    if not self._actor_pull_budget(actor_id).all_fields_gt(zeros):
+                        blocked += 1
             result = (blocked, info.running)
         self._output_backpressured_actors_cache = result
         self._output_backpressured_actors_cache_ts = time.monotonic()

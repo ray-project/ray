@@ -26,5 +26,5 @@ worker_nodes:
       max_nodes: 2
       market_type: ON_DEMAND
       resources:
-        CPU: 0
+        CPU: 4
         GPU: 4
