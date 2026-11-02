@@ -12,6 +12,7 @@ from ray._private.authentication.authentication_utils import is_token_auth_enabl
 from ray._private.runtime_env.context import (
     RuntimeEnvContext,
     expand_run_option,
+    validate_container_env_vars,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
@@ -124,6 +125,10 @@ def _modify_context_impl(
         if os.path.isfile(token_path):
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
             ray_container_env["RAY_AUTH_TOKEN_PATH"] = token_path
+
+    # Written to an --env-file at exec time, but checked here so a bad value
+    # fails runtime_env setup instead of every worker start.
+    validate_container_env_vars(context.env_vars)
 
     run_options = list(run_options or [])
     # Expanded at exec time, but checked here so a malformed item fails
