@@ -1,5 +1,4 @@
-"""
-Default TQC RLModule.
+"""Default TQC RLModule.
 
 TQC uses distributional critics with quantile regression.
 """

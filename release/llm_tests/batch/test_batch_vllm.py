@@ -116,7 +116,7 @@ async def test_vllm_multimodal_utils():
     integration test to verify that the function isn't moved to an unexpected location and its signature isn't changed.
     """
     from vllm.config import ModelConfig
-    from vllm.entrypoints.chat_utils import parse_chat_messages_async
+    from vllm.renderers.chat_utils import parse_chat_messages_async
 
     image_url = "https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/assets/cherry_blossom.jpg"
     image_uuid = str(hash(image_url))
