@@ -132,8 +132,7 @@ class SegmentTree:
         return result
 
     def __setitem__(self, idx: int, val: float) -> None:
-        """
-        Inserts/overwrites a value in/into the tree.
+        """Inserts/overwrites a value in/into the tree.
 
         Args:
             idx: The index to insert to. Must be in [0, `self.capacity`)

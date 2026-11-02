@@ -4594,6 +4594,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/inference/dreamerv3_inference",
+    size = "medium",
+    srcs = ["examples/inference/dreamerv3_inference.py"],
+    main = "examples/inference/dreamerv3_inference.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
 #@OldAPIStack
 py_test(
     name = "examples/_old_api_stack/inference/policy_inference_after_training_with_attention_torch",

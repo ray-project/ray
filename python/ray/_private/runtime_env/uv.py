@@ -17,6 +17,7 @@ from ray._private import ray_constants
 from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
+from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes
 
@@ -114,7 +115,9 @@ class UvProcessor:
                 f"to enable uv runtime env."
             )
 
-        logger.debug("Setting up uv for runtime_env: %s", runtime_env)
+        logger.debug(
+            "Setting up uv for runtime_env: %s", redact_runtime_env(runtime_env)
+        )
         self._target_dir = target_dir
         # An empty directory is created to execute cmd.
         self._exec_cwd = os.path.join(self._target_dir, "exec_cwd")

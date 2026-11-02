@@ -43,6 +43,7 @@ doc/source/core/examples/batch_prediction.ipynb: always lint
 doc/source/data/examples/BUILD.bazel: always lint
 doc/BUILD.bazel: always lint
 doc/test_no_new_rst.py: always lint
+doc/test_prose_doctest_targets.py: always lint
 
 # Config that pre-commit's whitespace hooks can see emits pre_commit, which
 # selects the pre_commit step alone rather than the whole lint matrix.

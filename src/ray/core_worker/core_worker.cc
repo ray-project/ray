@@ -2530,6 +2530,17 @@ Status CoreWorker::CreatePlacementGroup(
                << "allowed to be used in placement group. ";
         return Status::Invalid(stream.str());
       }
+      // Fractional demand >= 1 is invalid for unit-instance resources (GPU, TPU, etc.).
+      if (ResourceID(resource.first).IsUnitInstanceResource()) {
+        double value = resource.second;
+        if (value >= 1.0 && value != std::floor(value)) {
+          return Status::InvalidArgument(
+              absl::StrFormat("%s resource quantities >1 must be whole numbers. "
+                              "The specified quantity %g is invalid.",
+                              resource.first,
+                              value));
+        }
+      }
     }
   }
   const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());

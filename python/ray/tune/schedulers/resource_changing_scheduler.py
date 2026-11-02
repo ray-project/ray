@@ -607,7 +607,7 @@ class ResourceChangingScheduler(TrialScheduler):
     through a user-specified ``resources_allocation_function``.
 
     An example of such a function can be found in
-    :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
+    :doc:`/tune/examples/includes/xgboost-dynamic-resources-example`.
 
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
@@ -663,7 +663,7 @@ class ResourceChangingScheduler(TrialScheduler):
                             my_resources_allocation_function
                         )
 
-        See :doc:`/tune/examples/includes/xgboost_dynamic_resources_example` for a
+        See :doc:`/tune/examples/includes/xgboost-dynamic-resources-example` for a
         more detailed example.
     """
 
@@ -701,10 +701,12 @@ class ResourceChangingScheduler(TrialScheduler):
 
     @property
     def metric(self):
+        """The metric of the base scheduler."""
         return self._base_scheduler._metric
 
     @property
     def base_trial_resources(self) -> Optional[PlacementGroupFactory]:
+        """The resources of the first trial added, or ``None`` before any trial."""
         return self._base_trial_resources
 
     def set_search_properties(
@@ -810,7 +812,16 @@ class ResourceChangingScheduler(TrialScheduler):
     def set_trial_resources(
         self, trial: Trial, new_resources: Union[Dict, PlacementGroupFactory]
     ) -> bool:
-        """Returns True if new_resources were set."""
+        """Returns True if new_resources were set.
+
+        Args:
+            trial: The trial to update.
+            new_resources: The new resources for the trial. If empty, the
+                trial's resources don't change.
+
+        Returns:
+            True if the trial's resources were updated, False otherwise.
+        """
         if new_resources:
             logger.info(
                 f"Setting trial {trial} resource to {new_resources} "
@@ -851,7 +862,16 @@ class ResourceChangingScheduler(TrialScheduler):
     ) -> Optional[Union[dict, PlacementGroupFactory]]:
         """Calls user defined resources_allocation_function. If the returned
         resources are not none and not the same as currently present, returns
-        them. Otherwise, returns None."""
+        them. Otherwise, returns None.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that reported the result.
+            result: The result the trial reported.
+
+        Returns:
+            The new resources for the trial, or ``None`` if they don't change.
+        """
         if self._resources_allocation_function is None:
             return None
 

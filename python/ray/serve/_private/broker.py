@@ -237,8 +237,7 @@ class RedisSocket(RedisBase):
 
 
 class RedisSsl(Redis):
-    """
-    Redis SSL class offering connection to the broker over SSL.
+    """Redis SSL class offering connection to the broker over SSL.
     This does not currently support SSL settings through the url, only through
     the broker_use_ssl celery configuration.
     """

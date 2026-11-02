@@ -28,7 +28,7 @@ Ray Core natively supports the following accelerators:
 * - Intel GPU
   - GPU
   - Experimental, supported by the community
-* - [AWS Neuron Core](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/model-architecture-fit.html)
+* - [AWS Neuron Core](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/arch/index.html)
   - neuron_cores
   - Experimental, supported by the community
 * - Google TPU
@@ -92,7 +92,9 @@ See the [Amazon documentation](https://awslabs.github.io/data-on-eks/docs/ai-ml/
 ::::{tab-item} Google TPU
 :sync: Google TPU
 :::{tip}
-You can set the `TPU_VISIBLE_CHIPS` environment variable before starting a Ray node to limit the Google TPUs that are visible to Ray. For example, `TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'` lets Ray only see devices 1 and 3.
+You can set the `TPU_VISIBLE_CHIPS` environment variable before starting a Ray node to limit the Google TPUs that are visible to Ray. For example, `TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'` makes only devices 1 and 3 visible to Ray.
+
+On TPU7x, each physical chip contains two compute chiplets. To expose one `TPU` resource per logical device on TPU7x, set `RAY_TPU_RESOURCE_PER_CHIP=2`. See {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
 :::
 ::::
 
@@ -107,6 +109,8 @@ You can set the `HABANA_VISIBLE_MODULES` environment variable before starting a 
 :sync: Huawei Ascend
 :::{tip}
 You can set the `ASCEND_RT_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Huawei Ascend NPUs that are visible to Ray. For example, `ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'` lets Ray only see devices 1 and 3.
+
+For the Ascend driver, DCMI, and environment requirements for collecting NPU hardware metrics, see {ref}`Monitor Huawei Ascend NPUs <ascend-npu-monitoring>`.
 :::
 ::::
 
@@ -201,9 +205,7 @@ ray.get(gpu_task.remote())
 ray.shutdown()
 ```
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import ray
 
@@ -226,9 +228,7 @@ ray.get(gpu_actor.ping.remote())
 ray.get(gpu_task.remote())
 ```
 
-```{testoutput}
-:options: +MOCK
-
+```text
 (GPUActor pid=52420) GPU IDs: [0]
 (GPUActor pid=52420) ROCR_VISIBLE_DEVICES: 0
 (gpu_task pid=51830) GPU IDs: [1]
@@ -244,9 +244,7 @@ ray.get(gpu_task.remote())
 ray.shutdown()
 ```
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import ray
 
@@ -269,9 +267,7 @@ ray.get(gpu_actor.ping.remote())
 ray.get(gpu_task.remote())
 ```
 
-```{testoutput}
-:options: +MOCK
-
+```text
 (GPUActor pid=52420) GPU IDs: [0]
 (GPUActor pid=52420) ZE_AFFINITY_MASK: 0
 (gpu_task pid=51830) GPU IDs: [1]
@@ -359,6 +355,8 @@ ray.get(tpu_task.remote())
 (tpu_task pid=51830) TPU IDs: [1]
 (tpu_task pid=51830) TPU_VISIBLE_CHIPS: 1
 ```
+
+When a task or actor requests a subset of a host's TPUs, Ray sets `TPU_VISIBLE_CHIPS` to the assigned physical chip indices. For one- or two-chip allocations, Ray also sets `TPU_CHIPS_PER_HOST_BOUNDS` and `TPU_HOST_BOUNDS` to isolate the sub-host topology. When a task or actor requests all TPUs on the host, Ray clears `TPU_VISIBLE_CHIPS` and those sub-host bounds so that the framework uses the full host. For multi-host slice scheduling, per-device execution, and multiple program, multiple data (MPMD) workloads, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
 :::
 
 :::{tab-item} Intel Gaudi

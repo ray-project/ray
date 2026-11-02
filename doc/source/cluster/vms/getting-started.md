@@ -118,7 +118,7 @@ Make sure to grant the necessary permissions to the RAM user and set the AccessK
 
 :::{tab-item} vSphere
 :sync: vSphere
-Make sure Ray supervisor service is up and running as per [the Ray-on-VCF docs](https://github-vcf.devops.broadcom.net/vcf/vmray)
+Make sure the Ray supervisor service is up and running, as described in [Installing supervisor service for Ray on vSphere](user-guides/launching-clusters/vsphere.md#installing-supervisor-service-for-ray-on-vsphere).
 :::
 ::::
 :::::
@@ -327,3 +327,10 @@ To shut down your cluster, run the following command:
 ```shell
 $ ray down -y config.yaml
 ```
+
+## Next steps
+
+Ray doesn't provide native storage for logs or metrics, so you need to collect them yourself to keep them after the cluster shuts down. See the following pages:
+
+- {ref}`vm-logging` to collect logs from the cluster's nodes.
+- {ref}`collect-metrics` to scrape metrics with Prometheus and view them in Grafana.

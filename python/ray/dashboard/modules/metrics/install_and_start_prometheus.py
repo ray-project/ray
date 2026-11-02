@@ -8,11 +8,78 @@ from pathlib import Path
 
 import requests
 
+from ray._private.authentication.authentication_token_setup import (
+    _get_default_token_path,
+    maybe_enable_token_auth_if_token_available,
+)
+from ray._private.authentication.authentication_utils import (
+    is_metrics_auth_skipped,
+    is_token_auth_enabled,
+)
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 
 FALLBACK_PROMETHEUS_VERSION = "2.48.1"
 DOWNLOAD_BLOCK_SIZE = 8192  # 8 KB
 TEST_MODE_ENV_VAR = "RAY_PROMETHEUS_DOWNLOAD_TEST_MODE"
+
+# Indented to sit inside the 'ray' scrape job of PROMETHEUS_CONFIG_INPUT_PATH.
+PROMETHEUS_AUTHORIZATION_TEMPLATE = """  authorization:
+    type: Bearer
+    {credentials_key}: '{credentials_value}'
+"""
+
+
+def get_prometheus_authorization_config() -> str:
+    """Get the authorization block for the 'ray' scrape job.
+
+    RAY_AUTH_TOKEN takes precedence and goes inline as `credentials`, so the
+    config holding it must be written owner-only. Otherwise Prometheus reads
+    the token from RAY_AUTH_TOKEN_PATH if set, else from ~/.ray/auth_token.
+    The Kubernetes service-account token the loader can also use isn't
+    followed: KubeRay clusters scrape with their own Prometheus.
+
+    Returns:
+        The YAML block to append to PROMETHEUS_CONFIG_INPUT_PATH, or "" when token
+        auth is off or RAY_AUTH_SKIP_METRICS is set.
+
+    Raises:
+        ValueError: Token auth is on, RAY_AUTH_TOKEN isn't set, and the token
+            file is missing, unreadable, empty or holds more than one line.
+    """
+    if not is_token_auth_enabled() or is_metrics_auth_skipped():
+        return ""
+    env_token = os.environ.get("RAY_AUTH_TOKEN", "").strip()
+    if env_token:
+        return PROMETHEUS_AUTHORIZATION_TEMPLATE.format(
+            credentials_key="credentials",
+            # A YAML single-quoted scalar escapes ' as ''.
+            credentials_value=env_token.replace("'", "''"),
+        )
+    token_path = os.path.abspath(
+        os.environ.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
+    )
+    read_error = ""
+    try:
+        file_token = Path(token_path).read_text().strip()
+    except (OSError, UnicodeDecodeError) as e:
+        file_token, read_error = "", f" ({e})"
+    if not file_token:
+        raise ValueError(
+            "Token authentication is enabled, but no token was found for "
+            f"Prometheus: {token_path} is missing, unreadable or empty"
+            f"{read_error}. Set RAY_AUTH_TOKEN, or put the token in a file and "
+            "set RAY_AUTH_TOKEN_PATH to its path."
+        )
+    if "\n" in file_token:
+        # Ray uses the first non-blank line, but Prometheus sends the whole file.
+        raise ValueError(
+            f"{token_path} must hold only the token, on one line, for Prometheus "
+            "to send it. Remove the other lines, or set RAY_AUTH_TOKEN."
+        )
+    return PROMETHEUS_AUTHORIZATION_TEMPLATE.format(
+        credentials_key="credentials_file",
+        credentials_value=token_path.replace("'", "''"),
+    )
 
 
 def get_system_info():
@@ -70,7 +137,31 @@ def install_prometheus(file_path):
         return False
 
 
-def start_prometheus(prometheus_dir):
+def write_prometheus_config(prometheus_dir: str, authorization_config: str) -> Path:
+    """Write Ray's Prometheus config plus the authorization block, owner-only.
+
+    The block can hold the token inline, so the file is created fresh with mode
+    0600, never through a link someone else planted at the path.
+
+    Args:
+        prometheus_dir: The extracted Prometheus folder to write the config into.
+        authorization_config: The block from get_prometheus_authorization_config.
+
+    Returns:
+        The path of the written config.
+    """
+    config_file = Path(prometheus_dir) / "ray_prometheus.yml"
+    config_file.unlink(missing_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(config_file, flags, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(Path(PROMETHEUS_CONFIG_INPUT_PATH).read_text() + authorization_config)
+    return config_file
+
+
+def start_prometheus(prometheus_dir, authorization_config=""):
 
     # The function assumes the Ray cluster to be monitored by Prometheus uses the
     # default configuration with "/tmp/ray" as the default root temporary directory.
@@ -83,6 +174,9 @@ def start_prometheus(prometheus_dir):
 
     if not config_file.exists():
         raise FileNotFoundError(f"Prometheus config file not found: {config_file}")
+
+    if authorization_config:
+        config_file = write_prometheus_config(prometheus_dir, authorization_config)
 
     prometheus_cmd = [
         f"{prometheus_dir}/prometheus",
@@ -177,6 +271,25 @@ def main():
     )
     logging.warning("This script is not intended for production use.")
 
+    # Same auth decision as `ray start`, so local clusters with token auth on by
+    # default are scraped with the token.
+    auth_mode_unset = "RAY_AUTH_MODE" not in os.environ
+    if (
+        not maybe_enable_token_auth_if_token_available(warn_if_disabled=False)
+        and auth_mode_unset
+    ):
+        logging.warning(
+            "No auth token found in RAY_AUTH_TOKEN, RAY_AUTH_TOKEN_PATH or "
+            "~/.ray/auth_token, so the Prometheus config has no authorization "
+            "block. If the cluster runs token auth, every Ray target returns 401 "
+            "unless its nodes set RAY_AUTH_SKIP_METRICS=1."
+        )
+    try:
+        authorization_config = get_prometheus_authorization_config()
+    except ValueError as e:
+        logging.error(e)
+        sys.exit(1)
+
     downloaded, file_name = download_prometheus()
     if not downloaded:
         logging.error("Failed to download Prometheus.")
@@ -191,10 +304,15 @@ def main():
     # TODO: Add a check to see if Prometheus is already running
 
     assert file_name.endswith(".tar.gz")
-    process = start_prometheus(
-        # remove the .tar.gz extension
-        prometheus_dir=file_name.rstrip(".tar.gz")
-    )
+    try:
+        process = start_prometheus(
+            # remove the .tar.gz extension
+            prometheus_dir=file_name.rstrip(".tar.gz"),
+            authorization_config=authorization_config,
+        )
+    except OSError as e:
+        logging.error(f"Failed to prepare the Prometheus config: {e}")
+        sys.exit(1)
     if process:
         print_shutdown_message(process.pid)
 
