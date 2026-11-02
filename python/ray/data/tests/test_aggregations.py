@@ -1053,9 +1053,7 @@ class TestValueCounter:
         global_res = ds.aggregate(ValueCounter(on="v"))["value_counter(v)"]
         assert self._as_counts(global_res) == {"a": 3, "b": 1, "c": 2}
 
-        grouped_res = (
-            ds.groupby("g").aggregate(ValueCounter(on="v")).take_all()
-        )
+        grouped_res = ds.groupby("g").aggregate(ValueCounter(on="v")).take_all()
         by_group = {
             row["g"]: self._as_counts(row["value_counter(v)"]) for row in grouped_res
         }
