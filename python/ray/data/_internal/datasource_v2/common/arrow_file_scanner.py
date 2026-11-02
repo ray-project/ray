@@ -5,7 +5,11 @@ import pyarrow as pa
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
     SupportsFilterPushdown,
@@ -42,6 +46,16 @@ class ArrowFileScanner(
     limit: Optional[int] = None
     filesystem: Optional[FileSystem] = None
     ignore_prefixes: Optional[List[str]] = None
+
+    @override
+    def _create_partition_pruner(self) -> Optional[FilePruner]:
+        if self.partition_predicate is None or self.partitioning is None:
+            return None
+        # Projection only changes ``columns``; the full schema is also what
+        # create_reader uses to synthesize path-derived partition values.
+        return PartitionPredicatePruner(
+            self.partitioning, self.partition_predicate, schema=self.schema
+        )
 
     @override
     def metadata_row_count_is_exact(self) -> bool:

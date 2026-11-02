@@ -1,11 +1,11 @@
 diff --git a/vllm/v1/structured_output/backend_xgrammar.py b/vllm/v1/structured_output/backend_xgrammar.py
-index 3809ba2d91..2b017dd704 100644
+index 0199c5f75d..405c94fe85 100644
 --- a/vllm/v1/structured_output/backend_xgrammar.py
 +++ b/vllm/v1/structured_output/backend_xgrammar.py
-@@ -33,17 +33,44 @@ else:
+@@ -32,6 +32,33 @@ else:
  logger = init_logger(__name__)
-
-
+ 
+ 
 +def _coerce_eos_token_ids(eos_token_id: Any) -> list[int]:
 +    if type(eos_token_id) is int:
 +        return [eos_token_id]
@@ -36,8 +36,9 @@ index 3809ba2d91..2b017dd704 100644
  @dataclass
  class XgrammarBackend(StructuredOutputBackend):
      def __post_init__(self):
-         self.disable_any_whitespace = (
-             self.vllm_config.structured_outputs_config.disable_any_whitespace
+@@ -42,11 +69,11 @@ class XgrammarBackend(StructuredOutputBackend):
+         is_plamo3 = (
+             model_config is not None and model_config.hf_config.model_type == "plamo3"
          )
 +        stop_token_ids = _model_stop_token_ids(self.vllm_config, self.tokenizer)
  
@@ -48,7 +49,7 @@ index 3809ba2d91..2b017dd704 100644
  
              # not self.tokenizer.vocab_size as self.tokenizer.vocab
              # collapses all decoded errors into a single token.
-@@ -55,13 +82,14 @@ class XgrammarBackend(StructuredOutputBackend):
+@@ -58,7 +85,7 @@ class XgrammarBackend(StructuredOutputBackend):
                  if self.tokenizer.is_tekken
                  else xgr.VocabType.BYTE_FALLBACK,
                  vocab_size=self.vocab_size,
@@ -56,7 +57,8 @@ index 3809ba2d91..2b017dd704 100644
 +                stop_token_ids=stop_token_ids or [],
                  add_prefix_space=True,
              )
-         else:
+         elif is_plamo3 and callable(
+@@ -69,6 +96,7 @@ class XgrammarBackend(StructuredOutputBackend):
              tokenizer_info = xgr.TokenizerInfo.from_huggingface(
                  self.tokenizer,
                  vocab_size=self.vocab_size,
