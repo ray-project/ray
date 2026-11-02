@@ -1,12 +1,31 @@
 """Estimate PyArrow's peak memory decoding a Parquet row group, from its footer.
 
-A row group's peak is the footer read and its compressed chunks (a small file's
-bytes instead), what each leaf keeps until the scan ends, the two largest
-leaves' decode-time buffers (columns decode in parallel), and a pin's cast.
-Modelled on PyArrow 24's reader.
+Terms: a column is what ``columns=`` names, and its leaves are the primitive
+columns Parquet stores it as: an ``int64`` column has one leaf, a ``struct<a:
+int64, b: string>`` two. A leaf's data in one row group is a chunk, stored as
+pages. PyArrow decodes a row group leaf by leaf into Arrow arrays, whose
+entries, values or nulls, are slots. A leaf's buffers are either kept until the
+row group is read or temporary, freed once that leaf is decoded.
+
+Nothing is decoded here. The inputs are the footer, its raw Thrift bytes for
+page counts, the file's size, and the dictionary page headers the footer reader
+fetches. Modelled on PyArrow 24's reader, a row group's peak is the sum of:
+
+1. I/O: PyArrow's footer read, the gaps its ``pre_buffer`` option reads between
+   chunks, and the row group's compressed chunks; for a small file, which the
+   footer read took whole, the file's size instead.
+2. Every leaf's kept buffers: levels, decoded values, the decoded dictionary
+   and, mostly, the page reader's decompression buffer.
+3. Temporaries: buffers reserved past what's used, builders and list offsets.
+   A column's leaves decode in turn and columns in parallel, so this is the
+   largest column's temporaries and most of the next one's.
+4. A schema pin's cast.
+
+The rules are fitted to measured peaks and lean high: an underestimate is what
+runs a node out of memory.
 """
 
-from typing import List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, List, Mapping, Optional, Sequence, Set, Tuple
 
 import pyarrow as pa
 from pyarrow.parquet import ColumnSchema, FileMetaData, RowGroupMetaData
@@ -15,7 +34,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
     _LIST,
     LeafChunk,
     Read,
-    detect_binary_or_list_type,
     detect_delta_byte_array,
     detect_dictionary_columns,
     detect_dictionary_type,
@@ -37,19 +55,21 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     footer_bytes,
 )
 
-# A scan without the footer cached reads the file's last 64 KiB in one buffer,
-# and pre_buffer may read an 8 KiB gap between chunks.
-_FOOTER_BYTES = 72 << 10
-# A file under 48 KiB was read whole with its footer; its scan holds that, and
-# the measured peaks are at most 4 KiB more.
+# PyArrow reads a file's last 64 KiB for its footer, and pre_buffer coalesces
+# chunks across gaps of up to 8 KiB; one gap measured short, two cover it.
+_FOOTER_BYTES = 80 << 10
+# Below this the footer read took the whole file; 64 KiB measured one row group
+# under the floor.
 _SMALL_FILE_BYTES = 48 << 10
-_SMALL_FILE_SLACK = 4 << 10
-# A string or binary view builder's first data block.
+# Arrow's string and binary view builders allocate value bytes in 32 KiB blocks.
 _VIEW_BLOCK_BYTES = 32 << 10
-# A dictionary page the footer can't size is taken as at most this big.
+# Twice the 1 MiB dictionary page limit parquet-cpp and parquet-mr default to,
+# for a page the footer can't size.
 _DICTIONARY_BYTES = 2 << 20
-# The cast estimate runs low for casts to text; this covers what was measured.
+# Casts to text measured above the cast estimate; 1.5 covers all but a few, and
+# 3 covered more but raised the worst overestimate by a fifth to a third.
 _CAST_FACTOR = 1.5
+# Bytes per value as PyArrow decodes each fixed-width physical type.
 _PHYSICAL_WIDTH = {
     "BOOLEAN": 1,
     "INT32": 4,
@@ -73,7 +93,12 @@ def estimate_row_group_peak(
 ) -> int:
     """PyArrow's peak bytes reading ``row_group``, given its work and cast."""
     if file_size < _SMALL_FILE_BYTES:
-        return file_size + _SMALL_FILE_SLACK + row_group_work
+        # The footer read took the whole file, which stands in for the footer
+        # and the chunks. 512 bytes and 256 a leaf are the least slack over the
+        # file's size that covered the measured peaks; without it, 5 to 10 row
+        # groups fell under the floor.
+        return file_size + 512 + 256 * len(leaf_indices) + row_group_work
+    # The footer read and gaps, plus the chunks pre_buffer holds compressed.
     compressed = sum(
         row_group.column(leaf_idx).total_compressed_size for leaf_idx in leaf_indices
     )
@@ -89,129 +114,177 @@ def estimate_row_group_work(
     counted: Set[int],
     data_pages: Optional[Sequence[Optional[int]]] = None,
 ) -> int:
-    """What one row group's leaves keep, plus two leaves' decode-time buffers.
+    """What one row group's leaves keep, plus two columns' decode-time buffers.
 
     ``column_leaves`` holds each column read, in ``columns=`` order, as its leaf
-    indices; ``leaves`` the file's unpinned leaves, as PyArrow casts after
-    decoding; ``counted`` the ancestors already sized.
+    indices; ``leaves`` the unpinned leaves; ``counted`` the ancestors sized.
     """
+    # Two zeros, so there is always a largest column and a next.
     kept, temporaries = 0, [0, 0]
     for position, leaf_indices in enumerate(column_leaves):
         # PyArrow 24 reserves the k-th column's leaves for as many slots as the
         # file's k-th *leaf* has values, whichever column that leaf is in.
         reserved = row_group.column(position).num_values
+        # A column's leaves decode in turn: its peak is one leaf's temporaries
+        # on top of what that leaf and the leaves before it keep.
+        column_kept = column_peak = 0
         for leaf_idx in leaf_indices:
             leaf = leaves[leaf_idx]
+            ancestors = estimate_ancestors(leaf=leaf, counted=counted)
+            # Without the footer's page counts, a leaf is taken as one page.
             leaf_kept, leaf_temporary = estimate_leaf_work(
                 leaf=leaf,
                 column=columns[leaf_idx],
                 reserved=reserved,
+                rows=row_group.num_rows,
                 read=read,
+                ancestors=ancestors,
                 pages=data_pages[leaf_idx] if data_pages else None,
             )
-            kept += estimate_ancestors(leaf=leaf, counted=counted) + leaf_kept
-            temporaries.append(leaf_temporary)
-    # Columns decode in parallel, so two leaves' temporaries can overlap.
-    temporaries.sort()
-    return kept + temporaries[-1] + temporaries[-2]
+            column_kept += ancestors + leaf_kept
+            column_peak = max(column_peak, column_kept + leaf_temporary)
+        kept += column_kept
+        temporaries.append(column_peak - column_kept)
+    # Columns decode in parallel but seldom peak together: the measured peaks
+    # fit the largest column's temporaries and three quarters of the next one's
+    # (half left 8 row groups under the floor), or all of it when the two are
+    # within 10%, where three quarters fell short.
+    second, first = sorted(temporaries)[-2:]
+    return kept + first + (second if 10 * second >= 9 * first else 3 * second // 4)
 
 
 def estimate_leaf_work(
     leaf: LeafChunk,
     column: ColumnSchema,
     reserved: int,
+    rows: int,
     read: Read,
+    ancestors: int = 0,
     pages: Optional[int] = None,
 ) -> Tuple[int, int]:
-    """One leaf's buffers: (kept until the scan ends, held while it decodes)."""
+    """One leaf's buffers: (kept until the row group is read, temporary)."""
     chunk = leaf.chunk
     levels = chunk.num_values
-    # Buffers start at ``reserved`` slots and double as the levels fill them.
-    capacity = 1 << max(max(levels, reserved) - 1, 0).bit_length()
+    # Buffers start at ``reserved`` slots and double as the levels fill them,
+    # so they end at a power of two.
+    capacity = 1 << (max(levels, reserved, 1) - 1).bit_length()
     repeated = column.max_repetition_level > 0
     nullable = column.max_definition_level > 0
+    # A repeated leaf's buffers measured up to one doubling past ``capacity``.
     grows = 2 if repeated else 1
     decoded = estimate_leaf(leaf=leaf, read=read)
     dictionary = _dictionary_bytes(leaf)
     # Without SizeStatistics, a DELTA_BYTE_ARRAY string leaf's decoded size is
     # already a guess at 128 times its pages, which covers the decoder's buffers.
-    guessed = (
-        chunk.physical_type == "BYTE_ARRAY"
-        and leaf.size_statistics_bytes is None
-        and detect_delta_byte_array(chunk)
-    )
-    # 2-byte definition and repetition levels per slot, and the decoded leaf.
+    guessed = chunk.physical_type == "BYTE_ARRAY" and leaf.size_statistics_bytes is None
+    guessed = guessed and detect_delta_byte_array(chunk)
+    # Definition and repetition levels per slot, 2 bytes each since PyArrow
+    # decodes them as int16, and the decoded leaf.
     kept = 2 * capacity * (nullable + repeated) + decoded
     temporary = 0
-    # The page reader's decompression buffer: the largest page (at most twice
-    # the average, the whole chunk if the footer has no page count) or the
-    # dictionary page.
     reader_bytes = 0
     if chunk.compression != "UNCOMPRESSED":
+        # A compressed page is decompressed into a buffer the size of the largest
+        # page or the dictionary page, whichever is bigger. An uncompressed page
+        # is decoded where it was read. Writers fill pages to a byte target, so
+        # all but the last are full and the largest is at most twice the
+        # average; without a page count, the whole chunk.
         uncompressed = chunk.total_uncompressed_size
-        page = (
-            uncompressed
-            if pages is None
-            else min(uncompressed, 2 * uncompressed // max(pages, 1))
-        )
-        reader_bytes = max(page, dictionary)
+        page = uncompressed if pages is None else 2 * uncompressed // max(pages, 1)
+        reader_bytes = max(min(page, uncompressed), dictionary)
     if _DELTA_ENCODINGS & set(chunk.encodings) and not guessed:
-        # A DELTA decoder: two lengths per value and its page's rebuilt values.
-        reader_bytes += (8 * levels + decoded) // max(pages or 1, 1)
-    # A leaf that doesn't repeat keeps its page reader until the scan ends.
-    if repeated:
-        # List offsets, built for every slot reserved, then trimmed.
-        list_offsets = _list_offset_width(leaf) * max(levels, reserved)
-        temporary += list_offsets + reader_bytes
+        # A DELTA decoder decodes a page's lengths up front, as int32: 4 bytes a
+        # value. A DELTA_BYTE_ARRAY decoder holds int32 prefix lengths too, 8
+        # bytes a value, and the values it rebuilds. Sized for the largest
+        # page, like the buffer above.
+        state = 4 * levels
+        if "DELTA_BYTE_ARRAY" in chunk.encodings:
+            state = 8 * levels + decoded
+        reader_bytes += min(state, 2 * state // max(pages or 1, 1))
+    if reserved > rows:
+        # Where PyArrow reserved more slots than rows (a list's position), the
+        # measured peaks fit the page reader as held only while the leaf decodes.
+        temporary += reader_bytes
     else:
+        # Elsewhere it stays until the row group is read.
         kept += reader_bytes
+    # A list's offsets, built for every slot reserved, past what its ancestors
+    # keep already; none for a flat leaf.
+    list_offsets = repeated * max(_list_offset_width(leaf) * reserved - ancestors, 0)
     if chunk.physical_type == "BYTE_ARRAY":
-        if detect_binary_or_list_type(format_kwargs=read.format_kwargs):
-            # The copy at the retyped type.
-            temporary += decoded
-        if chunk.has_dictionary_page:
-            # The decoded dictionary: its bytes and 16 bytes per entry, each
-            # entry at least 4 bytes on the page.
-            entries = (
-                leaf.dictionary_page.num_values
-                if leaf.dictionary_page is not None
-                else dictionary // 4
-            )
-            kept += dictionary + 16 * entries
+        # Strings and binaries: offsets or views, the dictionary, a builder.
+        # The dictionary's entries come from its page header; without one, each
+        # entry is at least its 4-byte length prefix.
+        header = leaf.dictionary_page
+        entries = dictionary // 4 if header is None else header.num_values
+        # Arrow's layouts: int32 offsets, int64 for the large types, and a
+        # 16-byte view.
+        view = leaf.type in (pa.string_view(), pa.binary_view())
+        large = leaf.type in (pa.large_string(), pa.large_binary())
+        width = 16 if view else 8 if large else 4
+        # Kept: the decoded dictionary, its bytes and the 16-byte length and
+        # pointer parquet-cpp keeps per entry, and a view builder's first block.
+        kept += dictionary + 16 * entries + view * _VIEW_BLOCK_BYTES
         slots = leaf.slots()
-        if pa.types.is_string_view(leaf.type) or pa.types.is_binary_view(leaf.type):
-            width = 16
-            kept += _VIEW_BLOCK_BYTES
-        elif pa.types.is_large_string(leaf.type) or pa.types.is_large_binary(leaf.type):
-            width = 8
-        else:
-            width = 4
-        # Offsets (or views) reserved past the slots used.
-        temporary += width * max(grows * capacity - slots, 0)
+        # Offsets reserved past the slots used. Views double as their lists grow;
+        # 4- and 8-byte offsets measured within one reservation.
+        temporary += width * max((grows if view else 1) * capacity - slots, 0)
+        # The 128-times guess already covers the value bytes.
         chars = 0 if guessed else estimate_string_bytes(leaf=leaf)
         if _reads_dictionary(leaf=leaf, read=read):
-            # The dictionary builder: hash table, values doubled as they grow,
-            # int32 indices. Each distinct value is at least 4 decoded bytes.
-            distinct = min(slots, max(decoded - slots, 0) // 4 + 1)
+            # Read as an Arrow dictionary, PyArrow builds one: a hash table of the
+            # distinct values, the values (twice, since builders grow by
+            # doubling) and 4-byte int32 indices.
+            # Distinct values are at most one per slot, each taking at least 4
+            # of the decoded bytes, and no fewer than the dictionary page's
+            # entries.
+            distinct = max(min(slots, max(decoded - slots, 0) // 4 + 1), entries)
+            # A flat leaf's table holds exactly the page's entries, unless its data
+            # pages are over twice what their indices need: the writer fell back
+            # to PLAIN, and those pages hold new values. Lists keep the bound: one
+            # measured above it. Twice leaves room for page headers and levels; up
+            # to 10 times measured the same, and 20 let a fallback chunk through.
+            indices = levels * max(entries - 1, 1).bit_length() // 8
+            data = chunk.total_uncompressed_size - dictionary
+            if chunk.has_dictionary_page and not repeated and data <= 2 * indices:
+                distinct = entries
             builder_values = 2 * min(chars, decoded)
             temporary += _hash_table_bytes(distinct) + builder_values + 4 * slots
-        else:
-            # Value bytes doubled from a page's worth: up to twice their size.
+        elif not view:
+            # The value bytes again: the builder doubles them from a page's worth.
             temporary += chars
-        return kept, temporary
+        # A view builder appends fixed blocks, so it holds no second copy.
+        # A string list's offsets are held alongside the builder: both count.
+        return kept, temporary + list_offsets
+    # Fixed width: the decoded dictionary, then values and validity at capacity.
     kept += dictionary
-    validity = nullable * grows * capacity // 8
+    slots = grows * capacity
+    if repeated and _list_offset_width(leaf) == 4:
+        # A list's values start at the slots reserved and grow by the levels
+        # past the rows, at most one value per level. A large_list keeps the
+        # doubling: one measured above this.
+        slots = 1 << (max(levels, reserved + levels - rows, 1) - 1).bit_length()
+    # A validity bit per slot when the leaf can be null.
+    validity = nullable * slots // 8
     if chunk.physical_type == "FIXED_LEN_BYTE_ARRAY":
-        # The fixed-size binary builder's values, and as much again as it grows.
-        values, zero_copy = grows * capacity * column.length, False
-        temporary += values
+        # The fixed-size binary builder's values, and from a dictionary its
+        # values again as it grows.
+        values, zero_copy = slots * column.length, False
+        temporary += chunk.has_dictionary_page * values
     else:
-        values = grows * capacity * _PHYSICAL_WIDTH[chunk.physical_type]
+        values = slots * _PHYSICAL_WIDTH[chunk.physical_type]
         zero_copy = _zero_copy(physical_type=chunk.physical_type, arrow_type=leaf.type)
     if zero_copy:
-        # Values at capacity until PyArrow trims them and hands them over.
-        return kept, temporary + max(values - decoded, 0) + validity
-    return kept + values + validity, temporary
+        # Values at capacity until PyArrow trims them and hands them over: the
+        # decoded size counts what it keeps, the rest is held only while decoding.
+        temporary += max(values - decoded, 0) + validity
+    else:
+        # PyArrow converts the values into a new array, and the decode buffer
+        # measured as staying until the row group is read.
+        kept += values + validity
+    # A fixed-width list's offsets are built after its values, so only the
+    # larger of the two is held at once.
+    return kept, max(temporary, list_offsets)
 
 
 def estimate_cast(
@@ -232,7 +305,9 @@ def estimate_cast(
     for name, leaves in column_leaves.items():
         before, after = file_schema.field(name).type, pinned_schema.field(name).type
         if before == after:
+            # A column the pin leaves as it is isn't cast.
             continue
+        # A nested or view cast copies per piece, any other cast once.
         copies = pieces if _nested_or_view(before) or _nested_or_view(after) else 1
         size += copies * estimate_row_group(
             row_group=row_group,
@@ -250,35 +325,26 @@ def read_data_pages(metadata: FileMetaData) -> Optional[List[List[Optional[int]]
     """
     buf = footer_bytes(metadata)
     if buf is None:
+        # PyArrow didn't hand over the raw footer.
         return None
     reader = _CompactReader(buf)
-    row_groups: List[List[Optional[int]]] = []
     try:
-        for field_id, field_type in reader._fields():
-            if field_id == _FILE_META_ROW_GROUPS and field_type == _THRIFT_LIST:
-                size, _ = reader._list_header()
-                row_groups = [_row_group_pages(reader) for _ in range(size)]
-            else:
-                reader._skip(field_type)
+        row_groups = _list_field(reader, _FILE_META_ROW_GROUPS, _row_group_pages)
     except (IndexError, _ThriftDesync):
+        # A truncated footer, or a field this reader can't skip.
         return None
     if len(row_groups) != metadata.num_row_groups or any(
         len(chunks) != metadata.num_columns for chunks in row_groups
     ):
+        # Counts that don't line up with PyArrow's footer can't be matched to
+        # its chunks.
         return None
     return row_groups
 
 
 def _row_group_pages(reader: _CompactReader) -> List[Optional[int]]:
     """One row group's data page counts, by leaf."""
-    chunks: List[Optional[int]] = []
-    for field_id, field_type in reader._fields():
-        if field_id == _ROW_GROUP_COLUMNS and field_type == _THRIFT_LIST:
-            size, _ = reader._list_header()
-            chunks = [_chunk_pages(reader) for _ in range(size)]
-        else:
-            reader._skip(field_type)
-    return chunks
+    return _list_field(reader, _ROW_GROUP_COLUMNS, _chunk_pages)
 
 
 def _chunk_pages(reader: _CompactReader) -> Optional[int]:
@@ -286,32 +352,38 @@ def _chunk_pages(reader: _CompactReader) -> Optional[int]:
     pages = None
     for field_id, field_type in reader._fields():
         if field_id == _COLUMN_CHUNK_META_DATA and field_type == _STRUCT:
-            for meta_id, meta_type in reader._fields():
-                if meta_id == _ENCODING_STATS and meta_type == _THRIFT_LIST:
-                    pages = _encoding_stats_pages(reader)
-                else:
-                    reader._skip(meta_type)
+            # No data pages counted means no stats to go by.
+            pages = sum(_list_field(reader, _ENCODING_STATS, _data_page_count)) or None
         else:
             reader._skip(field_type)
     return pages
 
 
-def _encoding_stats_pages(reader: _CompactReader) -> int:
-    """The data pages an ``encoding_stats`` list counts."""
-    size, _ = reader._list_header()
-    pages = 0
-    for _ in range(size):
-        page_type, count = None, 0
-        for field_id, field_type in reader._fields():
-            if field_id == _STATS_PAGE_TYPE and field_type == _I32:
-                page_type = reader._zigzag()
-            elif field_id == _STATS_COUNT and field_type == _I32:
-                count = reader._zigzag()
-            else:
-                reader._skip(field_type)
-        if page_type in _DATA_PAGES:
-            pages += count
-    return pages
+def _data_page_count(reader: _CompactReader) -> int:
+    """An ``encoding_stats`` entry's page count if they are data pages, else 0."""
+    page_type, count = None, 0
+    # Its page type and count; the encoding isn't needed.
+    for field_id, field_type in reader._fields():
+        if field_id == _STATS_PAGE_TYPE and field_type == _I32:
+            page_type = reader._zigzag()
+        elif field_id == _STATS_COUNT and field_type == _I32:
+            count = reader._zigzag()
+        else:
+            reader._skip(field_type)
+    return count if page_type in _DATA_PAGES else 0
+
+
+def _list_field(
+    reader: _CompactReader, field_id: int, read_item: Callable[[_CompactReader], Any]
+) -> List[Any]:
+    """Each item of a struct's list field ``field_id``, none without it."""
+    items = []
+    for item_id, item_type in reader._fields():
+        if item_id == field_id and item_type == _THRIFT_LIST:
+            items = [read_item(reader) for _ in range(reader._list_header()[0])]
+        else:
+            reader._skip(item_type)
+    return items
 
 
 def _dictionary_bytes(leaf: LeafChunk) -> int:
@@ -320,17 +392,21 @@ def _dictionary_bytes(leaf: LeafChunk) -> int:
     if not chunk.has_dictionary_page:
         return 0
     if leaf.dictionary_page is not None:
+        # The footer reader fetched the header, which has the exact size.
         return leaf.dictionary_page.uncompressed_page_size
-    # The bytes before the first data page, scaled by the chunk's ratio.
+    # The bytes before the first data page, scaled by the chunk's ratio and
+    # never below them, since a page that doesn't compress is stored as is.
     gap = chunk.data_page_offset - (chunk.dictionary_page_offset or 0)
     if 0 < gap <= chunk.total_compressed_size:
         ratio = chunk.total_uncompressed_size / max(chunk.total_compressed_size, 1)
         return int(gap * max(1.0, ratio))
+    # Offsets that don't bound the page: the chunk's bytes, at most 2 MiB.
     return min(chunk.total_uncompressed_size, _DICTIONARY_BYTES)
 
 
 def _list_offset_width(leaf: LeafChunk) -> int:
     """Bytes per offset of the widest list above ``leaf``, 4 if none."""
+    # A list's offsets are int32, a large_list's int64.
     return max(
         (node.width for node in leaf.profile.nodes[:-1] if node.kind == _LIST),
         default=4,
@@ -339,6 +415,7 @@ def _list_offset_width(leaf: LeafChunk) -> int:
 
 def _hash_table_bytes(distinct: int) -> int:
     """A memo table's 16-byte slots: from 32, quadrupling while half full."""
+    # As Arrow's hashing.h: a 64-bit hash and an int32 index pad to 16 bytes.
     slots = 32
     while slots <= 2 * distinct:
         slots *= 4
@@ -354,6 +431,8 @@ def _reads_dictionary(leaf: LeafChunk, read: Read) -> bool:
 
 def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
     """Whether PyArrow hands the decoded values to Arrow without a copy."""
+    # PyArrow reuses the buffer only for these; it copies into every other
+    # type, even one as wide as its physical type, such as date32.
     if physical_type in ("INT32", "INT64"):
         return arrow_type in (pa.int32(), pa.int64()) or (
             physical_type == "INT64" and pa.types.is_timestamp(arrow_type)
@@ -367,8 +446,10 @@ def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
 def _nested_or_view(arrow_type: pa.DataType) -> bool:
     """Whether ``arrow_type`` has a list, map, union or view: casts copy per piece."""
     if isinstance(arrow_type, pa.ExtensionType):
+        # An extension type casts as its storage.
         arrow_type = arrow_type.storage_type
     if pa.types.is_struct(arrow_type):
+        # A struct copies per piece only through a child that does.
         return any(_nested_or_view(field.type) for field in arrow_type)
     return (
         pa.types.is_nested(arrow_type)
