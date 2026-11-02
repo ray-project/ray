@@ -14,7 +14,7 @@ Starting with Ray 2.45, the `rayproject/ray:2.45.0` image includes `uv` as one o
 
 To learn more about the `uv` integration in Ray, refer to:
 
-* [Environment Dependencies](https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#using-uv-for-package-management)
+* [Environment Dependencies](../../core/handling-dependencies.md#using-uv-for-package-management)
 * [uv + Ray: Pain-Free Python Dependencies in Clusters](https://www.anyscale.com/blog/uv-ray-pain-free-python-dependencies-in-clusters)
 
 # Example
@@ -52,7 +52,7 @@ Follow the [KubeRay Operator Installation](kuberay-operator-deploy) to install t
     ```
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.uv.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.uv.yaml
 ```
 
 ## Step 4: Execute a Ray Python script with `uv`

@@ -117,5 +117,5 @@ To keep your actors alive after the DAG finishes, create them with `Actor.remote
 
 For more application patterns and examples, see the following resources from other Ray libraries built on top of the Ray DAG API:
 
-- [Ray Serve: Deploy compositions of models](https://docs.ray.io/en/master/serve/model_composition.html)
-- [Visualization of Ray Compiled Graph](https://docs.ray.io/en/latest/ray-core/compiled-graph/profiling.html#visualization)
+- [Ray Serve: Deploy compositions of models](../serve/model-composition.md)
+- [Visualization of Ray Compiled Graph](compiled-graph/profiling.md#visualization)

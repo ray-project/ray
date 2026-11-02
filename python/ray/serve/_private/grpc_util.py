@@ -6,7 +6,6 @@ from unittest.mock import Mock
 
 import grpc
 from grpc.aio._server import Server
-from grpc_reflection.v1alpha import reflection
 
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.constants import (
@@ -169,6 +168,16 @@ def enable_server_reflection(server: gRPCGenericServer) -> None:
     The reflection service is registered as a passthrough service so it
     executes on the server itself instead of being routed to replicas.
     """
+    # Imported here because reflection is opt-in: importing Serve shouldn't
+    # need grpcio-reflection (vLLM's Ray metrics import ray.serve, for one).
+    try:
+        from grpc_reflection.v1alpha import reflection
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            f"{e.msg}. gRPC server reflection needs grpcio-reflection. You can run "
+            '`pip install "ray[serve]"` to install all Ray Serve dependencies.'
+        ) from e
+
     service_names = get_service_names(server.generic_rpc_handlers)
     # Advertise only user-defined services, not Serve's built-in API service.
     service_names.discard(

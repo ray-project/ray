@@ -75,8 +75,10 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
 # Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
 # (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
 # Parquet scan issues against S3, especially for row-group-scoped fragments.
-_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 128)
-_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 32)
+# The CPU pool is capped at 1 because each read task holds one Ray CPU; a
+# larger pool oversubscribes the node when many read tasks run concurrently.
+_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 16)
+_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
 
 
 def _estimate_batch_size_from_metadata(
@@ -441,10 +443,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
-        """Use the row-level nested-type fallback path when the fragment has
-        nested columns whose row-group size exceeds Arrow's ~2GB chunking
-        limit (ARROW-5030).
-        """
+        """Use row-level reads for oversized nested types or differing structs."""
         import pyarrow.compute as pc
 
         from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
@@ -464,11 +463,36 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             else None
         )
         read_columns = _resolve_read_columns(columns, filter_expr, filter_columns)
-        if not _needs_nested_type_fallback(fragment, read_columns):
+        needs_nested_type_fallback = _needs_nested_type_fallback(fragment, read_columns)
+        file_dataset_schema = self._file_dataset_schema
+        physical_schema = fragment.physical_schema
+        needs_struct_schema_alignment = False
+        if file_dataset_schema is not None:
+            for field in physical_schema:
+                if read_columns is not None and not any(
+                    column == field.name or column.startswith(f"{field.name}.")
+                    for column in read_columns
+                ):
+                    continue
+                target_index = file_dataset_schema.get_field_index(field.name)
+                if target_index == -1:
+                    continue
+                target_type = file_dataset_schema.field(target_index).type
+                if (
+                    pa.types.is_struct(field.type)
+                    and pa.types.is_struct(target_type)
+                    and field.type != target_type
+                ):
+                    needs_struct_schema_alignment = True
+                    break
+
+        if not needs_nested_type_fallback and not needs_struct_schema_alignment:
             yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
             return
 
-        if log_once(f"parquet_nested_fallback_v2:{fragment.path}"):
+        if needs_nested_type_fallback and log_once(
+            f"parquet_nested_fallback_v2:{fragment.path}"
+        ):
             logger.warning(
                 "Using pyarrow.parquet row-level batched reader for '%s' due "
                 "to Arrow nested type chunking limitation (ARROW-5030). "
@@ -482,6 +506,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         pf = pq.ParquetFile(
             fragment.path,
             filesystem=fragment.filesystem,  # pyrefly: ignore[unexpected-keyword]
+            coerce_int96_timestamp_unit=self._parquet_format_kwargs.get(
+                "coerce_int96_timestamp_unit"
+            ),
         )
 
         # Scope the safe batch-size calculation to the columns actually being
@@ -528,7 +555,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         # fallback and non-fallback fragments concat cleanly downstream.
         # Scoped to ``columns`` (not ``read_columns``) since filter-only
         # columns are projected away before alignment.
-        file_dataset_schema = self._file_dataset_schema
         if file_dataset_schema is not None and columns is not None:
             align_schema = pa.schema(
                 [

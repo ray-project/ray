@@ -23,8 +23,8 @@ As workload demands change, the autoscaler adjusts the cluster size by adding or
 
 You configure worker groups in one of two ways, depending on how you launch the cluster:
 
-- The [available_node_types](https://docs.ray.io/en/releases-2.48.0/cluster/vms/references/ray-cluster-configuration.html#node-types) field in the cluster YAML file, if you're using the `ray up` cluster launcher.
-- The [workerGroupSpecs](https://docs.ray.io/en/releases-2.48.0/cluster/kubernetes/user-guides/config.html#pod-configuration-headgroupspec-and-workergroupspecs) field in the RayCluster CRD, if you're using KubeRay.
+- The [available_node_types](../../cluster/vms/references/ray-cluster-configuration.md#node-types) field in the cluster YAML file, if you're using the `ray up` cluster launcher.
+- The [workerGroupSpecs](../../kuberay/user-guides/config.md#pod-configuration-headgroupspec-and-workergroupspecs) field in the RayCluster CRD, if you're using KubeRay.
 
 The configuration specifies the logical resources of each node in a worker group, along with the minimum and maximum number of nodes for each group.
 
@@ -37,7 +37,7 @@ Although the autoscaler fulfills pending resource demands and releases idle node
 
 The entry point of the autoscaler is [monitor.py](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L332), which starts a GCS client and runs the reconciliation loop.
 
-When you use the `ray up` cluster launcher, the [start_head_processes](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439) function launches this process on the head node. Under KubeRay, the process runs instead as a [separate autoscaler container](https://github.com/ray-project/kuberay/blob/94fa7d3eb793aa1278142f8e585cbe568fec3ae3/ray-operator/controllers/ray/common/pod.go#L191-L194) in the head Pod.
+When you use the `ray up` cluster launcher, the [start_head_processes](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439) function launches this process on the head node. Under KubeRay, the process runs instead as a [separate autoscaler container](https://github.com/kuberay-project/kuberay/blob/94fa7d3eb793aa1278142f8e585cbe568fec3ae3/ray-operator/controllers/ray/common/pod.go#L191-L194) in the head Pod.
 
 :::{warning}
 With the cluster launcher, if the autoscaler process crashes, autoscaling stops. With KubeRay, if the autoscaler container crashes, Kubernetes restarts it according to the default container restart policy.

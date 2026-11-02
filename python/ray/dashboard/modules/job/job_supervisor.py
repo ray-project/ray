@@ -23,6 +23,8 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
     JobInfoStorageClient,
+    shutdown_event_recorder,
+    submission_job_events_enabled,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobErrorType, JobStatus
@@ -79,7 +81,11 @@ class JobSupervisor:
         # built from the creating head's address stays pinned to that address and
         # cannot reconnect after the head is replaced.
         gcs_client = ray._private.worker.global_worker.gcs_client
-        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
+        self._job_info_client = JobInfoStorageClient(
+            gcs_client,
+            logs_dir,
+            session_name=ray._private.worker.global_worker.node.session_name,
+        )
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 
@@ -483,6 +489,14 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
+            # Flush any remaining events before the actor exits.
+            if submission_job_events_enabled():
+                try:
+                    shutdown_event_recorder()
+                except Exception:
+                    self._logger.debug(
+                        "Failed to shutdown event recorder.", exc_info=True
+                    )
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 

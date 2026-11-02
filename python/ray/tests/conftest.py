@@ -51,7 +51,12 @@ from ray._private.test_utils import (
     start_redis_sentinel_instance,
     teardown_tls,
 )
-from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+from ray.cluster_utils import (
+    AutoscalingCluster,
+    Cluster,
+    _TestClusterAuthMode,
+    cluster_not_supported,
+)
 
 import psutil
 
@@ -1429,8 +1434,9 @@ def create_ray_logs_for_failed_test(rep):
     if platform.system() != "Linux" and platform.system() != "Windows":
         return
 
-    # Only archive failed tests after the "call" phase of the test
-    if rep.when != "call" or not rep.failed:
+    # Archive failed tests after the "setup" or "call" phase of the test. We want logs in
+    # both failure modes.
+    if rep.when not in ("setup", "call") or not rep.failed:
         return
 
     # Get dir to write zipped logs to
@@ -1663,7 +1669,7 @@ def _token_auth_env_baseline():
 def _restore_token_auth_env(_token_auth_env_baseline):
     """Restore the auth env vars to the session baseline after each test."""
     yield
-    if ray.is_initialized():
+    if ray.is_initialized() or _TestClusterAuthMode.active_count:
         return
     for key, value in _token_auth_env_baseline.items():
         if value is None:
@@ -1714,7 +1720,7 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     clear_auth_token_sources(remove_default=True)
     reset_auth_token_state()
 
-    cluster = Cluster()
+    cluster = Cluster(enable_token_auth=False)
     # Use dynamic port to avoid port conflicts on Windows where sockets
     # linger in TIME_WAIT state between tests
     cluster.add_node(dashboard_agent_listen_port=find_free_port())

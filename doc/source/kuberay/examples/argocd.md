@@ -38,7 +38,7 @@ spec:
     server: https://kubernetes.default.svc
     namespace: ray-cluster
   source:
-    repoURL: https://github.com/ray-project/kuberay
+    repoURL: https://github.com/kuberay-project/kuberay
     targetRevision: v1.7.0  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
@@ -87,7 +87,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/ray-project/kuberay
+    repoURL: https://github.com/kuberay-project/kuberay
     targetRevision: v1.7.0  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
@@ -400,7 +400,7 @@ spec:
     server: https://kubernetes.default.svc
     namespace: ray-cluster
   source:
-    repoURL: https://github.com/ray-project/kuberay
+    repoURL: https://github.com/kuberay-project/kuberay
     targetRevision: v1.7.0  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
@@ -421,7 +421,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/ray-project/kuberay
+    repoURL: https://github.com/kuberay-project/kuberay
     targetRevision: v1.7.0  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:

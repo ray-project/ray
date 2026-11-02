@@ -214,7 +214,7 @@ TEAM_API_CONFIGS = {
     },
     "rllib": {
         "head_modules": {"ray.rllib"},
-        "head_doc_file": "doc/source/rllib/package_ref/index.rst",
+        "head_doc_file": "doc/source/rllib/api/index.rst",
         # Private-by-name methods RLlib intentionally documents as a public
         # override / customization contract. The RLModule._forward* hooks that
         # were whitelisted here are now exempted generically by their
@@ -279,6 +279,7 @@ UNWALKED_ANNOTATED_ALLOWLIST: Dict[str, str] = {
     "ray.serve.task_consumer": "annotated-not-walked; pending Ray Serve",
     "ray.serve.task_processor": "annotated-not-walked; pending Ray Serve",
     "ray.serve.taskiq_task_processor": "annotated-not-walked; pending Ray Serve",
+    "ray.train.health": "annotated-not-walked; pending Ray Train API docs",
     "ray.train.horovod": "annotated-not-walked; pending Ray Train",
     # unverifiable-import: not importable under the docbuild backend mock (missing
     # optional dependency), so the surface can't be checked here. Resolve by making

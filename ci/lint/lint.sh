@@ -152,8 +152,16 @@ doc_no_new_rst() {
   python doc/test_no_new_rst.py
 }
 
+doc_prose_doctest_targets() {
+  python doc/test_prose_doctest_targets.py
+}
+
 ray_repo_links() {
   python ci/lint/check_ray_repo_links.py
+}
+
+docstring_only_scope() {
+  python ci/ray_ci/doc/check_docstring_only.py
 }
 
 "$@"

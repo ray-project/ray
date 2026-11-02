@@ -17,6 +17,7 @@ steps:
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small-prose
     tags:
+      - oss
       - lint
       - always
     depends_on:
@@ -31,6 +32,10 @@ steps:
       # its lint.sh entry are left in place, so re-enabling is a one-line revert
       # that restores this matrix value.
       - doc_no_new_rst
+      # Every library prose page with a runnable example has a per-file doctest
+      # target, and the doc_example rule routes it. A prose change can fail it
+      # by adding a runnable block to an unlisted page.
+      - doc_prose_doctest_targets
       # Links to files on Ray's master branch. A prose change can fail it,
       # because renaming or deleting a doc file breaks links to it elsewhere.
       - ray_repo_links
@@ -123,18 +128,20 @@ steps:
     commands:
       - ./ci/lint/lint.sh api_param_coverage --blocking
 
-  # Scope guard for the "docs-go" label: runs only when the label is present,
-  # and fails unless the PR is content-only (changes under doc/, excluding
-  # BUILD files). This is the check the label cannot turn off, so the label
-  # can skip doc/library tests on a content PR but never on a code, CI, or
-  # build change.
-  - label: ":lint-roller: lint: validate docs-go scope"
-    key: docs-go-scope
-    if: build.pull_request.labels includes "docs-go"
+  # Scope guard for the "docstring-only" label: runs only when the label is
+  # present, and fails unless every changed file is a modified Python or
+  # Cython file whose code is unchanged once docstrings are removed (an AST
+  # comparison for .py and .pyi, a token comparison for Cython, see
+  # ci/ray_ci/doc/check_docstring_only.py). The label skips library test steps,
+  # so this is the check it can't turn off. Tagged `always` so it runs whatever
+  # the change routes to.
+  - label: ":lint-roller: lint: validate docstring-only scope"
+    key: docstring-only-scope
+    if: build.pull_request.labels includes "docstring-only"
     tags:
       - oss
       - always
     depends_on:
       - forge
     commands:
-      - ./ci/lint/validate_docs_go_scope.sh
+      - ./ci/lint/lint.sh docstring_only_scope
