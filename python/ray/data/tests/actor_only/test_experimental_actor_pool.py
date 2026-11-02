@@ -11,7 +11,6 @@ from typing_extensions import override
 import ray
 import ray.exceptions
 from ray.actor import ActorHandle
-from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorConfig,
     AutoscalingActorPool,
@@ -43,7 +42,9 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     _ACTOR_STATE_ALIVE,
     _ACTOR_STATE_RESTARTING,
-    ExperimentalActorPoolScalingRequest,
+    DrainReason,
+    ScaleDownRequest,
+    ScaleUpRequest,
 )
 from ray.data._internal.util import MiB
 from ray.data.block import UNKNOWN_NODE_ID, Block, BlockMetadata
@@ -233,7 +234,7 @@ class TestExperimentalActorPool(unittest.TestCase):
         self, pool: _ExperimentalActorPool, node_id="node1"
     ) -> Tuple[ActorHandle, Any]:
         self._actor_node_id = node_id
-        num_actors = pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
+        num_actors = pool.scale(ScaleUpRequest.untargeted(1, reason="test"))
         assert num_actors == 1
         assert self._last_created_actor_and_ready_ref is not None
         actor, ready_ref = self._last_created_actor_and_ready_ref
@@ -569,7 +570,7 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert pool.pending_logical_usage() == ExecutionResources(cpu=1)
 
         # The sizer picks it as an eviction victim.
-        pool.begin_draining(actor, reclaimable=False)
+        pool.begin_draining(actor, reason=DrainReason.ALLOC_SHRINK)
 
         assert pool.num_restarting_actors() == 0
         assert pool.num_alive_actors() == 0
@@ -640,16 +641,20 @@ class TestExperimentalActorPool(unittest.TestCase):
         return _RecordingActorOnlyMetrics()
 
     def test_downscale_on_node_picks_cheapest_drain(self):
-        """A node-shaped downscale (victim_node) picks victims by drain cost:
-        fewest in-flight tasks first (each must run to completion and adds more
-        outstanding outputs when it finishes), then fewest output blocks the
-        ResourceBank still counts against the actor (queued blocks drain fast).
-        An actor with fewer outputs but MORE tasks in flight is the more
-        expensive drain."""
-        pool = self._create_pool(max_tasks_in_flight=4, max_size=4)
+        """A node-shaped downscale picks victims by drain cost: pendings
+        first (cancelled outright), then fewest in-flight tasks (each must run
+        to completion and adds more outstanding outputs when it finishes),
+        then fewest output blocks the ResourceBank still counts against the
+        actor (queued blocks drain fast). An actor with fewer outputs but MORE
+        tasks in flight is the more expensive drain."""
+        pool = self._create_pool(max_tasks_in_flight=4, max_size=5)
         idle = self._add_ready_actor(pool, node_id="node1")
         one_task_many_outputs = self._add_ready_actor(pool, node_id="node1")
         two_tasks_no_outputs = self._add_ready_actor(pool, node_id="node1")
+        # A pending actor targeted at node1 (the request path validates hex
+        # node ids, so register it directly).
+        pending, ready_ref, usage = pool._create_actor()
+        pool._add_pending_actor(pending, ready_ref, usage, target_node_id="node1")
 
         pool.on_task_submitted(one_task_many_outputs, _make_bundle(100))
         self._set_outstanding_outputs(pool, one_task_many_outputs, 5)
@@ -660,29 +665,82 @@ class TestExperimentalActorPool(unittest.TestCase):
             # force: bypass the post-upscale debounce (the capacity-transfer
             # donor path sets force=True for the same reason).
             return pool.scale(
-                ExperimentalActorPoolScalingRequest(
-                    delta=-1, force=True, reason="test", victim_node="node1"
-                )
+                ScaleDownRequest.on_nodes(("node1",), force=True, reason="test")
             )
 
         def _status(actor) -> ActorStatus:
             return pool._running_actors[actor].status
 
-        # 1st victim: the idle actor (0 tasks sorts first).
+        # 1st victim: the pending actor (cancelled, nothing to drain).
+        assert _downscale_one() == -1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_draining_actors() == 0
+
+        # 2nd victim: the idle actor (0 tasks sorts first).
         assert _downscale_one() == -1
         assert _status(idle) == ActorStatus.DRAINING
 
-        # 2nd victim: one task in flight beats two, despite its queued outputs.
+        # 3rd victim: one task in flight beats two, despite its queued outputs.
         assert _downscale_one() == -1
         assert _status(one_task_many_outputs) == ActorStatus.DRAINING
         assert _status(two_tasks_no_outputs) != ActorStatus.DRAINING
+
+    def test_scale_down_cancels_untargeted_pendings_by_id(self):
+        """An untargeted pending (placement-group or initial-size actor) has no
+        node, so no node-shaped shed reaches it; ``pending_ids`` cancels it
+        directly, and the running actor is left alone."""
+        pool = self._create_pool(max_size=4)
+        running = self._add_ready_actor(pool, node_id="node1")
+        pending, ready_ref, usage = pool._create_actor()
+        pool._add_pending_actor(pending, ready_ref, usage, target_node_id=None)
+        (pending_id,) = pool.untargeted_pending_ids()
+
+        applied = pool.scale(
+            ScaleDownRequest.on_nodes((), pending_ids=(pending_id,), force=True)
+        )
+
+        assert applied == -1
+        assert pool.num_pending_actors() == 0
+        assert pool.untargeted_pending_ids() == []
+        assert pool._running_actors[running].status != ActorStatus.DRAINING
+
+    def test_scale_down_reports_node_shortfall(self):
+        """Asking a node for more actors than it holds sheds what is there;
+        the applied delta reports the shortfall (the next tick re-requests)."""
+        pool = self._create_pool(max_size=4)
+        self._add_ready_actor(pool, node_id="node1")
+        self._add_ready_actor(pool, node_id="node1")
+        self._add_ready_actor(pool, node_id="node2")
+
+        applied = pool.scale(
+            ScaleDownRequest.on_nodes(("node1",) * 3, force=True, reason="test")
+        )
+        assert applied == -2
+        assert pool.num_draining_actors() == 2
+        assert pool.num_running_actors() == 1
+
+    def test_reclaim_takes_busiest_draining_actor_first(self):
+        """A reclaim takes the busiest draining actor first: it rescues the
+        most in-flight work from a slow drain. ``reclaimable_node_ids`` reports
+        the same order so the sizer's placement view matches apply."""
+        pool = self._create_pool(max_tasks_in_flight=4, max_size=4)
+        idle = self._add_ready_actor(pool, node_id="node1")
+        busy = self._add_ready_actor(pool, node_id="node2")
+        pool.on_task_submitted(busy, _make_bundle(100))
+        pool.begin_draining(idle, reason=DrainReason.RESIZE)
+        pool.begin_draining(busy, reason=DrainReason.RESIZE)
+
+        assert pool.reclaimable_node_ids(limit=2) == ["node2", "node1"]
+        assert pool.reclaim_draining_actors(limit=1) == 1
+        assert pool._running_actors[busy].status == ActorStatus.ACTIVE
+        assert pool._running_actors[idle].status == ActorStatus.DRAINING
 
     def test_drain_metrics_graceful_completion(self):
         metrics = self._drain_metrics()
         pool = self._create_pool_with_metrics(metrics)
         actor = self._add_ready_actor(pool)
 
-        pool.begin_draining(actor, reclaimable=True)
+        pool.begin_draining(actor, reason=DrainReason.RESIZE)
         assert metrics.count("started") == 1
         assert metrics.events[0][1] == "Map"  # tagged with the operator
         assert pool.num_draining_actors() == 1
@@ -699,7 +757,7 @@ class TestExperimentalActorPool(unittest.TestCase):
         actor = self._add_ready_actor(pool)
         self._set_outstanding_outputs(pool, actor, 1)  # one outstanding block
 
-        pool.begin_draining(actor, reclaimable=False)
+        pool.begin_draining(actor, reason=DrainReason.ALLOC_SHRINK)
         # DEAD (not RESTARTING): nothing is coming back to serve the work, so
         # the drain is interrupted.
         with mock.patch.object(ActorHandle, "_get_local_state", return_value=None):
@@ -714,7 +772,7 @@ class TestExperimentalActorPool(unittest.TestCase):
         pool = self._create_pool_with_metrics(metrics)
         actor = self._add_ready_actor(pool)
 
-        pool.begin_draining(actor, reclaimable=False)
+        pool.begin_draining(actor, reason=DrainReason.ALLOC_SHRINK)
         # Fully drained when it died: this is the teardown the next pass would
         # have done anyway, so it counts as a completed drain, not a loss.
         with mock.patch.object(ActorHandle, "_get_local_state", return_value=None):
@@ -728,25 +786,25 @@ class TestExperimentalActorPool(unittest.TestCase):
         metrics = self._drain_metrics()
         pool = self._create_pool_with_metrics(metrics, max_tasks_in_flight=4)
 
-        # Sizer reclaim revives a draining actor: drain cancelled.
+        # Sizer reclaims a draining actor: drain cancelled.
         reclaimed = self._add_ready_actor(pool)
-        pool.begin_draining(reclaimed, reclaimable=True)
-        assert pool.reclaim_draining_actors(1) == 1
+        pool.begin_draining(reclaimed, reason=DrainReason.RESIZE)
+        assert pool.reclaim_draining_actors(limit=1) == 1
         assert metrics.count("cancelled") == 1
-        assert metrics.count("cancelled", "unknown", "reclaimed") == 1
+        assert metrics.count("cancelled", "resize", "reclaimed") == 1
         assert pool.num_draining_actors() == 0
 
         # A core restart of a draining actor that still owes work also
         # cancels the drain (the actor comes back to serve it).
         restarted = self._add_ready_actor(pool)
         pool.on_task_submitted(restarted, _make_bundle(100))
-        pool.begin_draining(restarted, reclaimable=False)
+        pool.begin_draining(restarted, reason=DrainReason.ALLOC_SHRINK)
         with mock.patch.object(
             ActorHandle, "_get_local_state", return_value=_ACTOR_STATE_RESTARTING
         ):
             pool.refresh_actor_state()
         assert metrics.count("cancelled") == 2
-        assert metrics.count("cancelled", "unknown", "core_restart") == 1
+        assert metrics.count("cancelled", "alloc_shrink", "core_restart") == 1
         assert metrics.count("started") == 2
         assert pool.num_draining_actors() == 0
         assert metrics.count("interrupted") == 0
@@ -755,20 +813,30 @@ class TestExperimentalActorPool(unittest.TestCase):
         """Each drain entry point stamps its reason on the started counter,
         and the outcome inherits it."""
         cases = [
-            (lambda pool, actor: pool._try_remove_idle_actor(), "resize"),
             (
-                lambda pool, actor: pool._downscale_actor_by_id(
-                    pool.get_actor_logical_id(actor), reclaimable=True
+                lambda pool, actor: pool.scale(
+                    ScaleDownRequest.on_nodes(("node1",), force=True, reason="test")
                 ),
                 "resize",
             ),
             (
                 lambda pool, actor: pool._downscale_actor_by_id(
-                    pool.get_actor_logical_id(actor), reclaimable=False
+                    pool.get_actor_logical_id(actor), DrainReason.RESIZE
+                ),
+                "resize",
+            ),
+            (
+                lambda pool, actor: pool._downscale_actor_by_id(
+                    pool.get_actor_logical_id(actor), DrainReason.ALLOC_SHRINK
                 ),
                 "alloc_shrink",
             ),
-            (lambda pool, actor: pool.begin_draining(actor), "unknown"),
+            (
+                lambda pool, actor: pool.begin_draining(
+                    actor, reason=DrainReason.PREEMPTION
+                ),
+                "preemption",
+            ),
         ]
         for start_drain, expected_reason in cases:
             with self.subTest(expected_reason=expected_reason):
@@ -851,10 +919,10 @@ class TestExperimentalActorPool(unittest.TestCase):
             pool.refresh_actor_state()
         check(pool, 2, "both recovered")
 
-        # Draining an idle actor, then reclaim revives it.
-        pool.begin_draining(actor1, reclaimable=True)
+        # Draining an idle actor, then reclaiming it.
+        pool.begin_draining(actor1, reason=DrainReason.RESIZE)
         check(pool, 1, "actor1 draining")
-        assert pool.reclaim_draining_actors(1) == 1
+        assert pool.reclaim_draining_actors(limit=1) == 1
         check(pool, 2, "actor1 reclaimed")
 
         # Draining an ACTIVE actor does not change the idle count, and a
@@ -862,13 +930,13 @@ class TestExperimentalActorPool(unittest.TestCase):
         b3 = _make_bundle(100, node_id="node2")
         pool.on_task_submitted(actor2, b3)
         check(pool, 1, "actor2 active")
-        pool.begin_draining(actor2, reclaimable=True)
+        pool.begin_draining(actor2, reason=DrainReason.RESIZE)
         check(pool, 1, "actor2 draining while active")
         pool.on_task_completed(actor2, b3)
         check(pool, 1, "actor2 drained but draining")
 
         # Reclaiming the now-idle draining actor restores it.
-        assert pool.reclaim_draining_actors(1) == 1
+        assert pool.reclaim_draining_actors(limit=1) == 1
         check(pool, 2, "actor2 reclaimed")
 
         # Release of an idle actor decrements; release of an active actor
@@ -956,7 +1024,7 @@ class TestExperimentalActorPool(unittest.TestCase):
         # task completes.
         b6 = _make_bundle(100, node_id="node2")
         pool.on_task_submitted(actor2, b6)
-        pool.begin_draining(actor2, reclaimable=True)
+        pool.begin_draining(actor2, reason=DrainReason.RESIZE)
         check(pool, {"node2"}, "draining actor still active")
         pool.on_task_completed(actor2, b6)
         check(pool, set(), "draining actor drained")
@@ -1015,18 +1083,13 @@ class TestExperimentalActorPool(unittest.TestCase):
         pool = self._create_pool(max_size=10)
         draining = self._add_ready_actor(pool, node_id="node1")
         self._add_ready_actor(pool, node_id="node1")
-        pool.begin_draining(draining, reclaimable=True)
+        pool.begin_draining(draining, reason=DrainReason.RESIZE)
 
         # Ask for 3 total: reclaim 2 (only 1 is reclaimable) + create 1.
         # NodeAffinitySchedulingStrategy validates hex node ids.
         target_node = ray.NodeID.from_random().hex()
         applied = pool.scale(
-            ExperimentalActorPoolScalingRequest(
-                delta=3,
-                num_to_reclaim=2,
-                target_nodes_to_scale_actors_on=(target_node,),
-                reason="test",
-            )
+            ScaleUpRequest.on_nodes((target_node,), num_to_reclaim=2, reason="test")
         )
         assert applied == 2
         assert pool.num_draining_actors() == 0
@@ -1039,7 +1102,7 @@ class TestExperimentalActorPool(unittest.TestCase):
         capacity accounting for the rest of the run."""
         pool = self._create_pool()
         actor = self._add_ready_actor(pool)
-        pool.begin_draining(actor, reclaimable=False)
+        pool.begin_draining(actor, reason=DrainReason.ALLOC_SHRINK)
 
         with mock.patch.object(
             pool_mod, "REFRESH_ACTOR_STATE", False
