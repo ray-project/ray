@@ -15,6 +15,7 @@ from typing import (
 from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -381,6 +382,18 @@ class ResourceManager:
     def get_op_usage_str(self, op: PhysicalOperator, *, verbose: bool) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
+        if actor_only_backend_enabled(op.data_context):
+            # The actor-only backend never calls ``update_usages``, so the
+            # tracked usages below would be stale. Report the operator's own
+            # logical usage instead; its object store usage is reported
+            # separately ("Obj store: ...").
+            usage = op.running_logical_usage()
+            usage_str = f"{usage.cpu:.1f} CPU"
+            if usage.memory:
+                usage_str += f", {usage.memory_str()} memory"
+            if usage.gpu:
+                usage_str += f", {usage.gpu:.1f} GPU"
+            return usage_str
         # Handle case where operator is not in _op_running_usages dict
         if op not in self._op_running_usages:
             usage_str = "n/a"

@@ -80,6 +80,7 @@ def test_actor_pool_scaling():
     op_state = OpState(
         op,
         inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)],
+        index=0,
     )
     op_state._scheduling_status = MagicMock(under_resource_limits=True)
 

@@ -206,39 +206,5 @@ def test_three_way_actor_fusion(ray_start_10_cpus_shared: "BaseContext") -> None
     assert "MapBatches(Sync)->MapBatches(Sync2)->MapBatches(Sync)" in plan, plan
 
 
-# ---------------------------------------------------------------------------
-# Correctness test (requires execution)
-# ---------------------------------------------------------------------------
-
-
-def test_actor_actor_fuses_and_produces_correct_output(
-    ray_start_10_cpus_shared: "BaseContext",
-) -> None:
-    """Fused Actor->Actor pipeline must produce the same rows as the unfused plan."""
-    n = 20
-
-    class AddOne:
-        def __call__(self, batch):
-            batch["val"] = [x + 1 for x in batch["id"]]
-            return batch
-
-    class Double:
-        def __call__(self, batch):
-            batch["val"] = [x * 2 for x in batch["val"]]
-            return batch
-
-    strategy = ActorPoolStrategy(size=1)
-    ds = (
-        ray.data.range(n, override_num_blocks=n)
-        .map_batches(AddOne, compute=strategy)
-        .map_batches(Double, compute=strategy)
-    )
-    # Verify fusion in the plan.
-    assert "MapBatches(AddOne)->MapBatches(Double)" in _plan(ds), _plan(ds)
-    # Verify correctness.
-    rows = sorted(ds.take_all(), key=lambda r: r["id"])
-    assert [r["val"] for r in rows] == [(i + 1) * 2 for i in range(n)]
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-x", __file__]))

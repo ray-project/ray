@@ -1,7 +1,11 @@
 from dataclasses import replace
+from typing import Collection
+
+import pytest
+from typing_extensions import override
 
 import ray
-from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.resource_bank import ResourceBank
@@ -87,9 +91,68 @@ def _total_blocks(usage) -> int:
     )
 
 
+class _RemoteBundleSplitter(OutputSplitter):
+    """Every bundle lives on a node no split prefers, so with locality hints
+    dispatch has to wait for the buffer cap."""
+
+    @staticmethod
+    @override
+    def _get_locations(bundle: RefBundle) -> Collection[str]:
+        return ["elsewhere"]
+
+
+@pytest.mark.parametrize(
+    "n, equal, locality, preserve_order, required_bundles",
+    [
+        # No buffering requirement: the first bundle dispatches.
+        (2, False, False, False, 0),
+        # Locality buffer: no preferred bundle, so wait for 2n bundles.
+        (2, False, True, False, 4),
+        # Equal: dispatching a bundle needs n bundles' rows to rebalance.
+        (3, True, False, False, 3),
+        # Both: the larger requirement wins.
+        (2, True, True, False, 4),
+        # preserve_order disables the locality buffer.
+        (2, False, True, True, 0),
+    ],
+)
+def test_min_rows_needed_matches_dispatch_point(
+    ray_start_regular_shared, n, equal, locality, preserve_order, required_bundles
+):
+    """The escape hatch treats a producer as starved while it has pulled fewer
+    rows than this requirement, so the requirement must be exactly the row
+    count at which the split first dispatches."""
+    rows_per_bundle = 5
+    bundles = make_ref_bundles(
+        [list(range(i * rows_per_bundle, (i + 1) * rows_per_bundle)) for i in range(8)]
+    )
+    ctx = DataContext.get_current()
+    op = _RemoteBundleSplitter(
+        InputDataBuffer(ctx, bundles),
+        n,
+        equal=equal,
+        data_context=ctx,
+        locality_hints=[f"node{i}" for i in range(n)] if locality else None,
+    )
+    op.start(
+        ExecutionOptions(preserve_order=preserve_order, actor_locality_enabled=True),
+        noop_counter(),
+    )
+
+    # The requirement is in rows, sized from the buffered bundles.
+    op.add_input(bundles[0], 0)
+    assert op.min_num_rows_needed_to_make_progress() == (
+        required_bundles * rows_per_bundle
+    )
+
+    dispatch_at = max(1, required_bundles)
+    for num_fed, bundle in enumerate(bundles[1:dispatch_at], start=1):
+        assert not op.has_next(), f"dispatched early after {num_fed} bundles"
+        op.add_input(bundle, 0)
+    assert op.has_next()
+
+
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

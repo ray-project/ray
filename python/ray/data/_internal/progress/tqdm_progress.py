@@ -151,12 +151,19 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
 
     # Operator Progress
     def update_operator_progress(
-        self, opstate: "OpState", resource_manager: "ResourceManager"
+        self,
+        opstate: "OpState",
+        resource_manager: "ResourceManager",
+        extra_summary: str = "",
     ):
         pg = self._op_display.get(opstate)
         if pg is not None:
             pg.update_absolute(
                 opstate.op.metrics.row_outputs_taken, opstate.op.num_output_rows_total()
             )
-            summary_str = format_op_state_summary(opstate, resource_manager)
+            summary_str = format_op_state_summary(
+                opstate,
+                resource_manager,
+                extra_summary=extra_summary,
+            )
             pg.set_description(f"- {opstate.op.name}: {summary_str}")
