@@ -43,6 +43,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
+from ray.data.tests.schema_planning_utils import get_prelisted_blocks
 
 
 def _write(path, table):
@@ -1077,6 +1078,10 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     tmp_path, restore_ctx, monkeypatch
 ):
     from ray.data._internal.datasource_v2.common import listing_utils
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_METADATA_COLUMN_NAME,
+        FILE_METADATA_TYPE,
+    )
 
     monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
     first = tmp_path / "a.parquet"
@@ -1106,7 +1111,13 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     source = discovered_file_info_tables[0]
 
     assert len(blocks) == 2
-    assert all(block.schema == source.schema for block in blocks)
+    assert all(
+        block.select(source.column_names).schema == source.schema for block in blocks
+    )
+    assert all(
+        block.schema.field(FILE_METADATA_COLUMN_NAME).type == FILE_METADATA_TYPE
+        for block in blocks
+    )
     assert [path for block in blocks for path in block["__path"].to_pylist()] == source[
         "__path"
     ].to_pylist()
@@ -1374,6 +1385,73 @@ def test_merge_schema_lineage_retains_candidates(tmp_path, restore_ctx):
     assert [row["id"] for row in restored.take_all()] == [1]
 
 
+@pytest.mark.parametrize("collision", [False, True])
+def test_merge_schema_generated_id_binds_after_read(
+    tmp_path, restore_ctx, monkeypatch, collision
+):
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_METADATA_COLUMN_NAME,
+    )
+    from ray.data._internal.logical.rules.bind_generated_id_column import (
+        BindGeneratedIdColumn,
+    )
+    from ray.data.checkpoint import CheckpointConfig
+    from ray.data.checkpoint.generated_id import GENERATED_ID_COLUMN_TYPE
+    from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+    first, last = tmp_path / "a.parquet", tmp_path / "z.parquet"
+    column = "generated_id" if collision else "late"
+    _write(first, pa.table({"id": [0, 1]}))
+    _write(last, pa.table({"id": [2, 3], column: [20, 30]}))
+    restore_ctx.use_datasource_v2 = True
+    monkeypatch.setattr(restore_ctx, "checkpoint_config", None)
+    dataset = ray.data.read_parquet(
+        [str(first), str(last)], merge_schema=True, override_num_blocks=1
+    )
+    assert dataset.schema(fetch_if_missing=False).names == ["id", column]
+    blocks = get_prelisted_blocks(dataset._logical_plan.dag)
+    assert (
+        sum(
+            v["num_rows"]
+            for b in blocks
+            for v in b[FILE_METADATA_COLUMN_NAME].to_pylist()
+        )
+        == 4
+    )
+    projected = dataset.select_columns(["id", column])
+    monkeypatch.setattr(
+        projected.context,
+        "checkpoint_config",
+        CheckpointConfig(
+            checkpoint_path=str(tmp_path / "checkpoints"),
+            generated_id_column="generated_id",
+        ),
+    )
+    if collision:
+        with pytest.raises(InvalidCheckpointingConfig, match="already exists"):
+            projected.take_all()
+        return
+    schema = projected.schema(fetch_if_missing=False).base_schema
+    assert schema.names == ["id", "late", "generated_id"]
+    assert schema.field("generated_id").type == GENERATED_ID_COLUMN_TYPE
+    bound = BindGeneratedIdColumn().apply(projected._logical_plan)
+    bound_read = next(
+        op for op in bound.dag.post_order_iter() if isinstance(op, ReadFiles)
+    )
+    bound_blocks = get_prelisted_blocks(bound_read)
+    assert len(bound_blocks) == len(blocks)
+    assert all(a.equals(b) for a, b in zip(blocks, bound_blocks))
+    assert projected.count() == 4
+    rows = sorted(projected.take_all(), key=lambda row: row["id"])
+    assert [(r["id"], r["late"]) for r in rows] == [
+        (0, None),
+        (1, None),
+        (2, 20),
+        (3, 30),
+    ]
+    assert len({tuple(sorted(r["generated_id"].items())) for r in rows}) == 4
+
+
 def test_merge_schema_rejects_schema_override_and_v1(tmp_path, restore_ctx):
     path = tmp_path / "a.parquet"
     _write(path, pa.table({"id": [1]}))
@@ -1580,8 +1658,9 @@ def test_partition_logical_type_prunes_before_worker_read(
 
 @pytest.mark.parametrize("change", ["type", "value"])
 @pytest.mark.parametrize("operation", ["filter", "project_limit", "empty_count"])
+@pytest.mark.parametrize("merge_schema", [False, True], ids=["sampled", "full"])
 def test_post_block_udf_partition_filter_matches_memory(
-    tmp_path, restore_ctx, change, operation
+    tmp_path, restore_ctx, change, operation, merge_schema
 ):
     restore_ctx.use_datasource_v2 = True
     paths = _write_typed_partition_files(tmp_path, PartitionStyle.HIVE)
@@ -1600,6 +1679,7 @@ def test_post_block_udf_partition_filter_matches_memory(
             paths,
             partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
             _block_udf=transform,
+            merge_schema=merge_schema,
             override_num_blocks=2,
         )
 

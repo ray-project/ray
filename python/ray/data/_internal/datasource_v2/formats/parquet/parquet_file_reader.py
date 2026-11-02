@@ -661,13 +661,21 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         """
         from pyarrow.fs import LocalFileSystem
 
+        from ray.data._internal.datasource_v2.common.file_metadata import (
+            get_cached_file_metadata,
+        )
+        from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
         from ray.data._internal.util import call_with_retry
         from ray.data.context import DataContext
 
         filesystem = self._filesystem or LocalFileSystem()
         retried_io_errors = DataContext.get_current().retried_io_errors
 
-        def _num_rows(path: str) -> int:
+        def _num_rows(file: FileInfo) -> int:
+            cached = get_cached_file_metadata(file, filesystem, retried_io_errors)
+            if cached is not None and cached.num_rows is not None:
+                return cached.num_rows
+            path = file.path
             # Getting the footer requires network calls, so it may fail with
             # transient errors; retry them.
             metadata = call_with_retry(
@@ -677,9 +685,15 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             )
             return metadata.num_rows
 
-        paths = [str(p) for p in file_manifest.paths]
+        metadatas = file_manifest.file_metadatas or [None] * len(file_manifest)
+        files = [
+            FileInfo(str(path), size, metadata=metadata)
+            for path, size, metadata in zip(
+                file_manifest.paths, file_manifest.file_sizes, metadatas
+            )
+        ]
         with ThreadPoolExecutor() as executor:
-            for num_rows in executor.map(_num_rows, paths):
+            for num_rows in executor.map(_num_rows, files):
                 yield BlockMetadata(
                     num_rows=num_rows,
                     size_bytes=None,

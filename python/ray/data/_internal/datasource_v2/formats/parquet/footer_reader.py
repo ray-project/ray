@@ -11,6 +11,9 @@ import pyarrow.fs as pafs
 from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
 
 import ray
+from ray.data._internal.datasource_v2.common.file_metadata import (
+    get_cached_file_metadata,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
 )
@@ -283,7 +286,19 @@ class FooterReader:
 
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
         path = file.path
-        fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
+        cached = (
+            get_cached_file_metadata(file, self.filesystem, self.retried_io_errors)
+            if file.metadata is not None and file.metadata.parquet_footer is not None
+            else None
+        )
+        if cached is not None and cached.parquet_footer is not None:
+            # Only metadata operations may use this source: data offsets still
+            # point into the original file, not the metadata-only buffer.
+            fragment = self.file_format.make_fragment(
+                pa.py_buffer(cached.parquet_footer)
+            )
+        else:
+            fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
         # ``make_fragment`` is lazy, so this property is the footer read itself
         # (and caches it on the fragment). It raises on a truncated, non-Parquet,
         # or since-deleted file -- terminal conditions that must fail the read
@@ -377,7 +392,10 @@ class FooterReader:
         # coalesce_bytes == 0) so only a handful of descriptors per file reach the
         # driver's bin-packer instead of one per physical row group.
         row_groups = coalesce_row_groups(per_rg, self.coalesce_bytes)
-        return ChunkedFile(file=file, row_groups=row_groups)
+        # Don't send the cached footer back in the actor's chunk descriptors.
+        return ChunkedFile(
+            file=FileInfo(path=file.path, size=file.size), row_groups=row_groups
+        )
 
     @ray.method(num_returns="streaming")
     def read_footers(
