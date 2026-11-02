@@ -2553,6 +2553,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_torch_optimizer_restore_ownership",
+    size = "medium",
+    srcs = ["core/learner/tests/test_torch_optimizer_restore_ownership.py"],
+    tags = [
+        "core",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
