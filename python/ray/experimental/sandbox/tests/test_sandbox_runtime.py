@@ -156,15 +156,19 @@ def test_no_ttl_by_default():
 
 
 class _CountingBackend(_FakeBackend):
-    """Unique ids, and the env of each exec."""
+    """Unique ids, the env of each exec, and each assigned config."""
 
     def __init__(self):
         super().__init__()
         self.exec_envs = []
+        self.assigned = []
 
     def create_sandbox(self, config):
         self.configs.append(config)
         return f"ray-sandbox-{len(self.configs):04d}"
+
+    def assign_config(self, sandbox_id, config):
+        self.assigned.append((sandbox_id, config))
 
     def exec_command(
         self, sandbox_id, command, timeout=None, cwd=None, env=None, **kwargs
@@ -198,24 +202,77 @@ def test_warm_pool_hands_out_booted_sandboxes():
     )
     booted = {f"ray-sandbox-{i:04d}" for i in (1, 2)}
     instance_id = runtime.create(
-        image="img", cpu=0.25, workdir="/w", env={"A": "1"}, timeout_seconds=5
+        image="img",
+        cpu=0.25,
+        workdir="/w",
+        env={"A": "1"},
+        ttl_seconds=60,
+        timeout_seconds=5,
     )
     assert instance_id in booted
-    # The create's env reaches every command; the exec's own env wins.
-    runtime.exec(instance_id, ["true"], env={"A": "2", "C": "3"})
-    assert runtime._backend.exec_envs == [(instance_id, {"A": "2", "C": "3"})]
-    runtime.exec(instance_id, ["true"])
-    assert runtime._backend.exec_envs[-1] == (instance_id, {"A": "1"})
+    # The backend takes the create's config, env and TTL included, so every
+    # reader sees it; the runtime keeps no env of its own.
+    ((assigned_id, config),) = runtime._backend.assigned
+    assert assigned_id == instance_id
+    assert (config.env, config.ttl_seconds) == ({"A": "1"}, 60)
+    runtime.exec(instance_id, ["true"], env={"C": "3"})
+    assert runtime._backend.exec_envs == [(instance_id, {"C": "3"})]
     # A replacement boots in the background.
     assert runtime.wait_for_warm_pool(timeout_seconds=10)
     assert len(runtime._backend.configs) == 3
     runtime.delete(instance_id)
-    assert instance_id not in runtime._exec_env
 
 
-def test_wait_for_warm_pool_retries_a_failed_boot(monkeypatch):
-    """A failed boot pauses refills, and no create comes along to restart
-    them, so the wait retries the boot itself once the pause is over."""
+def test_assigned_config_reaches_get_config_exec_and_checkpoints(tmp_path, monkeypatch):
+    """A pooled sandbox handed to a create stores the create's config, with
+    its env on top of the boot's, and runs every command with that env: the
+    backend's own exec_command, checkpoints and get_config all see it."""
+    import subprocess
+
+    from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+    from ray.experimental.sandbox.config import SandboxConfig
+
+    backend = GVisorSandboxBackend(image_manager=_FakeImageManager())
+    booted = SandboxConfig(image="img", env={"A": "boot", "B": "boot"})
+    backend._sandbox_metadata["sb-1"] = {
+        "config": booted,
+        "root_dir": str(tmp_path),
+        "cwd": "/",
+        "status": SandboxStatus.RUNNING,
+    }
+    create = dataclasses.replace(booted, env={"A": "create"}, ttl_seconds=60)
+    backend.assign_config("sb-1", create)
+
+    config = backend._sandbox_metadata["sb-1"]["config"]
+    assert config.env == {"A": "create", "B": "boot"}
+    assert config.ttl_seconds == 60
+
+    launched = []
+
+    class _Done:
+        returncode = 0
+
+        def __init__(self, args, **kwargs):
+            launched.append(args)
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+    monkeypatch.setattr(subprocess, "Popen", _Done)
+    backend.exec_command("sb-1", ["env"], env={"C": "exec"})
+    backend.exec_command("sb-1", ["env"], env={"A": "exec"})
+    envs = [
+        [args[i + 1] for i, arg in enumerate(args) if arg == "-env"]
+        for args in launched
+    ]
+    # The boot's env is in the sandbox's spec; the create's is passed on
+    # every command, under the command's own.
+    assert envs == [["A=create", "C=exec"], ["A=exec"]]
+
+
+def test_a_failed_boot_is_retried_once_the_pause_is_over(monkeypatch):
+    """A failed boot pauses its profile's refills, and a timer refills it
+    once the pause is over, with no create or retry loop to restart it."""
     from ray.experimental.sandbox.runtime import _WarmPool
 
     monkeypatch.setattr("ray.experimental.sandbox.runtime._WARM_RETRY_SECONDS", 0.2)
@@ -324,11 +381,12 @@ def test_a_failing_profile_is_not_retried_on_every_create():
     runtime._backend.create_sandbox = broken
     runtime._warm = _WarmPool(runtime, [{"image": "img", "size": 2}])
     deadline = time.monotonic() + 5
-    while len(boots) < 2 and time.monotonic() < deadline:
-        time.sleep(0.01)
     key = next(iter(runtime._warm._profiles))
     while runtime._warm._booting[key] and time.monotonic() < deadline:
         time.sleep(0.01)
+    # A boot still queued when the first one failed is skipped.
+    attempts = len(boots)
+    assert 1 <= attempts <= 2
     runtime._backend.create_sandbox = _CountingBackend.create_sandbox.__get__(
         runtime._backend
     )
@@ -336,17 +394,63 @@ def test_a_failing_profile_is_not_retried_on_every_create():
         runtime.create(image="img", timeout_seconds=5)
     time.sleep(0.2)
     # The creates booted cold; the failed profile booted nothing more.
-    assert len(boots) == 2
+    assert len(boots) == attempts
     assert len(runtime._backend.configs) == 3
+    runtime.close()
+
+
+def test_warm_pool_boots_on_a_few_threads():
+    """Filling a large pool runs _WARM_BOOT_CONCURRENCY boots at a time on
+    as many threads, rather than parking a thread per missing sandbox."""
+    from ray.experimental.sandbox.runtime import _WARM_BOOT_CONCURRENCY, _WarmPool
+
+    release = threading.Event()
+
+    class _SlowBackend(_CountingBackend):
+        def __init__(self):
+            super().__init__()
+            self.running = 0
+            self.most_running = 0
+            self.count_lock = threading.Lock()
+
+        def create_sandbox(self, config):
+            with self.count_lock:
+                self.running += 1
+                self.most_running = max(self.most_running, self.running)
+            release.wait(10)
+            with self.count_lock:
+                self.running -= 1
+                self.configs.append(config)
+                return f"ray-sandbox-{len(self.configs):04d}"
+
+    runtime = SandboxRuntime()
+    runtime._image_manager = _FakeImageManager()
+    runtime._backend = _SlowBackend()
+    runtime._warm = _WarmPool(runtime, [{"image": "img", "size": 24}])
+    deadline = time.monotonic() + 5
+    while (
+        runtime._backend.running < _WARM_BOOT_CONCURRENCY
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.01)
+    assert len(runtime._warm._boots._threads) == _WARM_BOOT_CONCURRENCY
+    assert not runtime.wait_for_warm_pool(timeout_seconds=0.1)
+    release.set()
+    assert runtime.wait_for_warm_pool(timeout_seconds=10)
+    assert runtime._backend.most_running == _WARM_BOOT_CONCURRENCY
+    assert len(runtime._backend.configs) == 24
+    runtime.close()
 
 
 def test_a_pooled_sandbox_that_died_is_deleted_not_handed_out():
     runtime = _pooled_runtime([{"image": "img", "size": 2}])
-    dead = "ray-sandbox-0001"
+    # The boots run in parallel, so the pool's order is the order they ended.
+    (pool,) = runtime._warm._ready.values()
+    dead, alive = pool
     runtime._backend.get_status = lambda sandbox_id: (
         SandboxStatus.TERMINATED if sandbox_id == dead else SandboxStatus.RUNNING
     )
-    assert runtime.create(image="img", timeout_seconds=5) == "ray-sandbox-0002"
+    assert runtime.create(image="img", timeout_seconds=5) == alive
     deadline = time.monotonic() + 5
     while dead not in runtime._backend.deleted and time.monotonic() < deadline:
         time.sleep(0.01)

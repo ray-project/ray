@@ -3003,7 +3003,8 @@ def test_resolve_exec_user(monkeypatch):
 
 def test_runtime_warm_pool_serves_matching_creates():
     """A create matching a warm-pool profile takes a booted sandbox, which
-    runs commands with the create's env."""
+    runs commands with the create's env, through the runtime or the
+    backend."""
     runtime = SandboxRuntime(
         warm_pool=[{"image": "busybox:latest", "shell": "/bin/sh", "size": 2}]
     )
@@ -3016,6 +3017,12 @@ def test_runtime_warm_pool_serves_matching_creates():
         assert instance_id in booted
         res = runtime.exec(instance_id, "echo $MODE")
         assert (res.exit_code, res.stdout.strip()) == (0, "warm")
+        # The backend took the create's config, so its own exec_command and
+        # stored config (what get_config and checkpoints read) see it too.
+        res = runtime.backend.exec_command(instance_id, "echo $MODE")
+        assert (res.exit_code, res.stdout.strip()) == (0, "warm")
+        config = runtime.backend._sandbox_metadata[instance_id]["config"]
+        assert config.env == {"MODE": "warm"}
         runtime.delete(instance_id)
         assert runtime.wait_for_warm_pool(timeout_seconds=120)
     finally:

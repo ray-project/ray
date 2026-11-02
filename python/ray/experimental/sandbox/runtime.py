@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import concurrent.futures
 import logging
 import os
 import threading
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 # creates that boot cold meanwhile.
 _WARM_BOOT_CONCURRENCY = 4
 # After a warm-pool boot fails (say, its image can't be pulled), its profile
-# boots no replacements for this long, rather than on every create.
+# boots nothing for this long, and then a timer refills it.
 _WARM_RETRY_SECONDS = 30.0
 
 
@@ -59,12 +60,16 @@ class _WarmPool:
     def __init__(self, runtime: "SandboxRuntime", profiles: List[Dict[str, Any]]):
         self._runtime = runtime
         self._lock = threading.Lock()
-        self._slots = threading.Semaphore(_WARM_BOOT_CONCURRENCY)
+        # Notified whenever a boot ends and on close, for wait_full.
+        self._changed = threading.Condition(self._lock)
         # Boot key -> (SandboxConfig to boot with, pool size).
         self._profiles: Dict[tuple, Any] = {}
         self._ready: Dict[tuple, collections.deque] = {}
         self._booting: Dict[tuple, int] = {}
         self._failed_at: Dict[tuple, float] = {}
+        # Boot key -> the timer that refills a profile once the pause after
+        # its failed boot is over.
+        self._retries: Dict[tuple, threading.Timer] = {}
         self._closed = False
         for profile in profiles:
             kwargs = dict(profile)
@@ -86,6 +91,11 @@ class _WarmPool:
             self._profiles[key] = (cfg, size)
             self._ready[key] = collections.deque()
             self._booting[key] = 0
+        # Boots queue here and run a few at a time.
+        self._boots = concurrent.futures.ThreadPoolExecutor(
+            max_workers=_WARM_BOOT_CONCURRENCY,
+            thread_name_prefix="sandbox-warm-pool",
+        )
         self.refill_all()
 
     def take(self, cfg: SandboxConfig) -> Optional[str]:
@@ -118,19 +128,44 @@ class _WarmPool:
                 "Failed to delete dead warm-pool sandbox %s: %s", instance_id, exc
             )
 
+    def _paused_for(self, key: tuple) -> float:
+        """Seconds until a profile whose boot failed boots again, else <= 0."""
+        failed_at = self._failed_at.get(key)
+        if failed_at is None:
+            return 0.0
+        return failed_at + _WARM_RETRY_SECONDS - time.monotonic()
+
+    def _refill_later(self, key: tuple, delay: float) -> None:
+        """Refill a profile after ``delay`` seconds, unless a timer already will.
+
+        The caller holds the lock.
+        """
+        if self._closed or key in self._retries:
+            return
+        timer = threading.Timer(delay, self._retry, args=(key,))
+        timer.daemon = True
+        self._retries[key] = timer
+        timer.start()
+
+    def _retry(self, key: tuple) -> None:
+        with self._lock:
+            self._retries.pop(key, None)
+        self.refill(key)
+
     def refill(self, key: tuple) -> None:
         with self._lock:
-            failed_at = self._failed_at.get(key)
-            if self._closed or (
-                failed_at is not None
-                and time.monotonic() - failed_at < _WARM_RETRY_SECONDS
-            ):
+            if self._closed:
+                return
+            paused_for = self._paused_for(key)
+            if paused_for > 0:
+                self._refill_later(key, paused_for)
                 return
             size = self._profiles[key][1]
             missing = max(0, size - len(self._ready[key]) - self._booting[key])
             self._booting[key] += missing
-        for _ in range(missing):
-            threading.Thread(target=self._boot, args=(key,), daemon=True).start()
+            # Submitted under the lock, so none lands after close's shutdown.
+            for _ in range(missing):
+                self._boots.submit(self._boot, key)
 
     def refill_all(self) -> None:
         for key in self._profiles:
@@ -138,30 +173,44 @@ class _WarmPool:
 
     def _boot(self, key: tuple) -> None:
         instance_id = None
-        try:
-            with self._slots:
-                if not self._closed:
-                    instance_id = self._runtime._backend.create_sandbox(
-                        self._profiles[key][0]
-                    )
-        except Exception as exc:  # a create after _WARM_RETRY_SECONDS retries
-            logger.warning("A warm-pool sandbox failed to boot: %s", exc)
-            with self._lock:
-                self._failed_at[key] = time.monotonic()
+        with self._lock:
+            # Another boot of this profile failed while this one queued: the
+            # timer that failure started refills the profile.
+            boot = not self._closed and self._paused_for(key) <= 0
+        if boot:
+            try:
+                instance_id = self._runtime._backend.create_sandbox(
+                    self._profiles[key][0]
+                )
+            except Exception as exc:
+                logger.warning("A warm-pool sandbox failed to boot: %s", exc)
+                with self._lock:
+                    self._failed_at[key] = time.monotonic()
+                    self._refill_later(key, _WARM_RETRY_SECONDS)
         with self._lock:
             self._booting[key] -= 1
             if instance_id is not None and not self._closed:
                 self._ready[key].append(instance_id)
                 instance_id = None
+            self._changed.notify_all()
         if instance_id is not None:  # closed while it booted
             self._runtime._backend.delete_sandbox(instance_id)
 
-    def full(self) -> bool:
-        with self._lock:
-            return all(
-                len(self._ready[key]) >= size
-                for key, (_, size) in self._profiles.items()
-            )
+    def _full(self) -> bool:
+        return all(
+            len(self._ready[key]) >= size for key, (_, size) in self._profiles.items()
+        )
+
+    def wait_full(self, timeout_seconds: float) -> bool:
+        """Wait until every profile's pool is full; False on timeout or close."""
+        deadline = time.monotonic() + timeout_seconds
+        with self._changed:
+            while not self._full():
+                remaining = deadline - time.monotonic()
+                if self._closed or remaining <= 0:
+                    return False
+                self._changed.wait(remaining)
+        return True
 
     def close(self) -> List[str]:
         """Stop refilling; the booted sandboxes, for the caller to delete."""
@@ -170,6 +219,14 @@ class _WarmPool:
             ready = [i for pool in self._ready.values() for i in pool]
             for pool in self._ready.values():
                 pool.clear()
+            retries = list(self._retries.values())
+            self._retries.clear()
+            self._changed.notify_all()
+        for timer in retries:
+            timer.cancel()
+        # Queued boots never start. One already booting deletes its sandbox
+        # when it finishes.
+        self._boots.shutdown(wait=False, cancel_futures=True)
         return ready
 
 
@@ -192,9 +249,6 @@ class SandboxRuntime:
         self._image_manager = ImageManager()
         self._backend = GVisorSandboxBackend(image_manager=self._image_manager)
         self._ttl_timers: Dict[str, threading.Timer] = {}
-        # Instance id -> the env its create asked for, for sandboxes taken
-        # from the warm pool (booted before the create, with the profile's).
-        self._exec_env: Dict[str, Dict[str, str]] = {}
         self._warm = _WarmPool(self, warm_pool) if warm_pool else None
 
     @property
@@ -343,8 +397,9 @@ class SandboxRuntime:
         )
         instance_id = self._warm.take(cfg) if self._warm is not None else None
         if instance_id is not None:
-            if cfg.env:
-                self._exec_env[instance_id] = dict(cfg.env)
+            # It booted with the profile's env and TTL; from here on it has
+            # this create's.
+            self._backend.assign_config(instance_id, cfg)
         else:
             instance_id = self._backend.create_sandbox(cfg)
         if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
@@ -389,9 +444,6 @@ class SandboxRuntime:
         Returns:
             ExecResult containing exit code, stdout, and stderr.
         """
-        create_env = self._exec_env.get(instance_id)
-        if create_env:
-            env = {**create_env, **(env or {})}
         return self._backend.exec_command(
             instance_id,
             command,
@@ -629,7 +681,6 @@ class SandboxRuntime:
         timer = self._ttl_timers.pop(instance_id, None)
         if timer is not None:
             timer.cancel()
-        self._exec_env.pop(instance_id, None)
         self._backend.delete_sandbox(instance_id)
 
     def wait_for_warm_pool(self, timeout_seconds: float = 300.0) -> bool:
@@ -643,15 +694,7 @@ class SandboxRuntime:
         """
         if self._warm is None:
             return False
-        deadline = time.monotonic() + timeout_seconds
-        while not self._warm.full():
-            if time.monotonic() >= deadline:
-                return False
-            # A failed boot pauses refills, and only a create would otherwise
-            # start the next one, so retry here once the pause is over.
-            self._warm.refill_all()
-            time.sleep(0.05)
-        return True
+        return self._warm.wait_full(timeout_seconds)
 
     def close(self) -> None:
         """Delete the sandboxes the warm pool keeps booted, and stop refilling it.
