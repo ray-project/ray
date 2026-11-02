@@ -659,6 +659,11 @@ ci/ray_ci/doc/
 @ doc_api tools
 ;
 
+# Service runners must exercise their integration suite as well as CI unit tests.
+ci/ray_ci/data/
+@ data tools
+;
+
 ci/pipeline/
 ci/build/
 ci/ray_ci/

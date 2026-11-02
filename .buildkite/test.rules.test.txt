@@ -311,6 +311,8 @@ release/release_tests.yaml: tools
 
 ci/lint/lint.sh: tools
 ci/ray_ci/tester.py: tools
+ci/ray_ci/data/run_hive_integration.sh: data tools
+ci/ray_ci/data/test_run_hive_integration.py: data tools
 ci/ci.sh: tools
 # Windows CI driver scripts trigger the Windows test steps, not just tools.
 ci/ray_ci/windows/build_base.sh: windows tools
