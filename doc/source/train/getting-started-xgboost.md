@@ -20,9 +20,7 @@ In this tutorial, you learn how to do the following:
 
 For reference, the final code looks similar to the following:
 
-```{testcode}
-:skipif: True
-
+```python
 import ray.train
 from ray.train.xgboost import XGBoostTrainer
 
@@ -65,9 +63,7 @@ Compare an XGBoost training script with and without Ray Train.
 
 First, update your training code to support distributed training. Wrap your [native](https://xgboost.readthedocs.io/en/latest/python/python_intro.html) or [scikit-learn estimator](https://xgboost.readthedocs.io/en/latest/python/sklearn_estimator.html) XGBoost training code in a {ref}`training function <train-overview-training-function>`:
 
-```{testcode}
-:skipif: True
-
+```python
 def train_func():
     # Your native XGBoost training code here.
     dmatrix = ...
@@ -78,9 +74,7 @@ Each distributed training worker executes this function.
 
 You can also pass the input argument for `train_func` as a dictionary through the trainer's `train_loop_config` argument, as in the following example:
 
-```{testcode} python
-:skipif: True
-
+```python
 def train_func(config):
     label_column = config["label_column"]
     num_boost_round = config["num_boost_round"]
@@ -123,9 +117,7 @@ Ray Train automatically sets up the worker communication that distributed XGBoos
 To persist your checkpoints and monitor training progress, add a {class}`ray.train.xgboost.RayTrainReportCallback` utility callback to your `xgboost.train` call:
 
 
-```{testcode} python
-:skipif: True
-
+```python
 import xgboost
 from ray.train.xgboost import RayTrainReportCallback
 
@@ -150,9 +142,7 @@ Report metrics and checkpoints to Ray Train to use {ref}`fault-tolerant training
 In distributed XGBoost training, give each worker a different shard of the dataset.
 
 
-```{testcode} python
-:skipif: True
-
+```python
 def get_train_dataset(world_rank: int) -> xgboost.DMatrix:
     # Define logic to get the DMatrix shard for this worker rank
     ...
@@ -178,9 +168,7 @@ Pre-sharding doesn't adapt well to changes in the number of workers, because som
 
 First, load your entire dataset, rather than a shard of it, as a Ray Data `Dataset`. For details on how to load and preprocess data from different sources, see {ref}`data_quickstart`.
 
-```{testcode} python
-:skipif: True
-
+```python
 train_dataset = ray.data.read_parquet("s3://path/to/entire/train/dataset/dir")
 eval_dataset = ray.data.read_parquet("s3://path/to/entire/eval/dataset/dir")
 ```
@@ -188,9 +176,7 @@ eval_dataset = ray.data.read_parquet("s3://path/to/entire/eval/dataset/dir")
 In the training function, access this worker's dataset shards with {meth}`ray.train.get_dataset_shard`. Convert each shard into a native [`xgboost.DMatrix`](https://xgboost.readthedocs.io/en/stable/python/python_api.html#xgboost.DMatrix).
 
 
-```{testcode} python
-:skipif: True
-
+```python
 def get_dmatrix(dataset_name: str) -> xgboost.DMatrix:
     shard = ray.train.get_dataset_shard(dataset_name)
     df = shard.materialize().to_pandas()
@@ -207,9 +193,7 @@ def train_func():
 Finally, pass the datasets to the trainer, which automatically shards them across the workers. The keys in the `datasets` dictionary must match the keys you pass to `get_dataset_shard` in the training function.
 
 
-```{testcode} python
-:skipif: True
-
+```python
 trainer = XGBoostTrainer(..., datasets={"train": train_dataset, "eval": eval_dataset})
 trainer.fit()
 ```

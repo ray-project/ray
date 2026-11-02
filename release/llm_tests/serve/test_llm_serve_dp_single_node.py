@@ -1,7 +1,7 @@
 """Test several DP gangs sharing a single GPU node.
 
 Cluster: 1 node x 4 GPUs. Two DP=2 gangs fill the node, so their DP masters,
-ports, and per-rank bundles have to coexist on the same host.
+KV-event publishers, and per-rank bundles have to coexist on the same host.
 """
 
 from collections import defaultdict
@@ -14,6 +14,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_dp_deployment
+from ray.serve.llm.request_router import KVAwareRouter
 from ray.serve.schema import ApplicationStatus
 
 from utils import shutdown_serve_and_wait_for_controller
@@ -37,7 +38,7 @@ def is_default_app_running():
 
 
 def test_llm_serve_data_parallelism_multi_group_single_node():
-    """Two DP gangs run side by side on one node."""
+    """Two KV-aware DP gangs bind their event and replay sockets on one node."""
     deployment_name = "DPServer:microsoft--Phi-tiny-MoE-instruct"
     dp_size = 2
     num_replicas = 2
@@ -47,7 +48,10 @@ def test_llm_serve_data_parallelism_multi_group_single_node():
             model_id="microsoft/Phi-tiny-MoE-instruct",
             model_source="microsoft/Phi-tiny-MoE-instruct",
         ),
-        deployment_config=dict(num_replicas=num_replicas),
+        deployment_config=dict(
+            num_replicas=num_replicas,
+            request_router_config=dict(request_router_class=KVAwareRouter),
+        ),
         engine_kwargs=dict(
             tensor_parallel_size=1,
             pipeline_parallel_size=1,
@@ -61,6 +65,8 @@ def test_llm_serve_data_parallelism_multi_group_single_node():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
+    # Each gang reuses DP ranks 0 and 1. All four engines can start only if
+    # their KV-event and replay ports are unique across gangs on this node.
     serve.run(build_dp_deployment(llm_config), blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
 

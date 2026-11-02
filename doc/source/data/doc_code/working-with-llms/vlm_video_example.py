@@ -189,7 +189,6 @@ def create_vlm_video_config():
             },
         ),
         batch_size=1,
-        accelerator_type="L4",
         concurrency=1,
         prepare_multimodal_stage={
             "enabled": True,

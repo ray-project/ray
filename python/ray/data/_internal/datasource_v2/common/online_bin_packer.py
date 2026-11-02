@@ -302,6 +302,7 @@ class OnlineBinPacker(FilePartitioner):
         *,
         max_shared_open_bins: int = 16,
         split_coalesced: bool = False,
+        isolate_heavy_files: bool = True,
     ):
         # ``max_bin_bytes`` doubles as the "file turns heavy" isolate threshold.
         self._cap = max_bin_bytes
@@ -311,6 +312,11 @@ class OnlineBinPacker(FilePartitioner):
         # unit) this is a no-op and the packer behaves exactly as when the flag
         # is False.
         self._split_coalesced = split_coalesced
+        # When False, every item goes to the shared (mixed-file) pool. Used for
+        # row-group shuffle: its input interleaves runs from many files, and the
+        # heavy pool seals its bin on every file switch, which would shred that
+        # input into one-run bins and undo the shuffle's cross-file mixing.
+        self._isolate_heavy_files = isolate_heavy_files
 
         self._seen_bytes_by_path: dict = {}  # running w(f) per file
         self._output: Deque[Bin] = deque()  # sealed bins awaiting drain
@@ -349,7 +355,7 @@ class OnlineBinPacker(FilePartitioner):
             # bin. A splittable oversized run instead falls through and is cut into
             # bin-sized pieces by the placers.
             self._output.append(Bin((item,), item_bytes))
-        elif seen_bytes < self._cap:
+        elif seen_bytes < self._cap or not self._isolate_heavy_files:
             # Prefer keeping a light item whole; fall back to splitting it across
             # the shared bins. This also lets a first, splittable oversized
             # coalesced run fill residual shared-bin space. (With splitting off

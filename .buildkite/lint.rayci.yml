@@ -17,6 +17,7 @@ steps:
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small-prose
     tags:
+      - oss
       - lint
       - always
     depends_on:
@@ -128,8 +129,9 @@ steps:
       - ./ci/lint/lint.sh api_param_coverage --blocking
 
   # Scope guard for the "docstring-only" label: runs only when the label is
-  # present, and fails unless every changed file is a modified .py file whose
-  # code is unchanged once docstrings are removed (an AST comparison, see
+  # present, and fails unless every changed file is a modified Python or
+  # Cython file whose code is unchanged once docstrings are removed (an AST
+  # comparison for .py and .pyi, a token comparison for Cython, see
   # ci/ray_ci/doc/check_docstring_only.py). The label skips library test steps,
   # so this is the check it can't turn off. Tagged `always` so it runs whatever
   # the change routes to.

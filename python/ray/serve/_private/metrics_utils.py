@@ -206,8 +206,7 @@ def time_weighted_average(
     window_end: Optional[float] = None,
     last_window_s: float = 1.0,
 ) -> Optional[float]:
-    """
-    Compute time-weighted average of a step function over a time interval.
+    """Compute time-weighted average of a step function over a time interval.
 
     This function uses a Cython-optimized implementation for improved performance.
 
@@ -260,8 +259,7 @@ def aggregate_timeseries(
 def merge_instantaneous_total(
     replicas_timeseries: List[TimeSeries],
 ) -> TimeSeries:
-    """
-    Merge multiple gauge time series (right-continuous, LOCF) into an
+    """Merge multiple gauge time series (right-continuous, LOCF) into an
     instantaneous total time series as a step function.
 
     This function uses a Cython-optimized implementation for 5-10x performance
@@ -301,9 +299,7 @@ def merge_instantaneous_total(
 def merge_timeseries_dicts(
     *timeseries_dicts: DefaultDict[Hashable, TimeSeries],
 ) -> Dict[Hashable, TimeSeries]:
-    """
-    Merge multiple time-series dictionaries using instantaneous merge approach.
-    """
+    """Merge multiple time-series dictionaries using instantaneous merge approach."""
     merged: DefaultDict[Hashable, List[TimeSeries]] = defaultdict(list)
 
     for ts_dict in timeseries_dicts:

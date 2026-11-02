@@ -165,7 +165,6 @@ def create_omni_audio_config():
             limit_mm_per_prompt={"audio": 1},
         ),
         batch_size=16,
-        accelerator_type="L4",
         concurrency=1,
         prepare_multimodal_stage={
             "enabled": True,

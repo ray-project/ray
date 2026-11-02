@@ -508,6 +508,7 @@ def _read_datasource_v2(
     compute: Optional[ComputeStrategy] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     block_udf: Optional[Callable[[Any], Any]] = None,
+    block_udf_modified_columns: Optional[Set[str]] = None,
     sample_all_files_for_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
@@ -591,12 +592,14 @@ def _read_datasource_v2(
         filesystem = datasource.filesystem
         file_extensions = datasource.file_extensions
         shuffle = datasource.shuffle
+        source_paths = datasource.source_paths
     elif isinstance(datasource, DataSourceWithMetadata):
         # The source's own indexer finds the data: nothing to walk, nothing to
         # filter by extension, no file shuffle.
         filesystem = None
         file_extensions = None
         shuffle = None
+        source_paths = datasource.paths
     else:
         raise TypeError(
             f"{type(datasource).__name__} extends DataSourceV2 directly. Extend "
@@ -634,8 +637,8 @@ def _read_datasource_v2(
         ):
             logger.warning(
                 "Full schema inference discovered %d candidate files, exceeding "
-                "the %d-file warning threshold. Reading every footer before "
-                "read_parquet returns may make planning slow.",
+                "the %d-file warning threshold. Reading every file's schema "
+                "before returning the Dataset may make planning slow.",
                 len(sample),
                 _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
             )
@@ -667,8 +670,9 @@ def _read_datasource_v2(
             prelisted_file_infos.append(file_infos.take(indices))
         assert listing_elapsed is not None and schema_elapsed is not None
         logger.info(
-            "Full Parquet schema inference: %d candidate files, %.2fs listing, "
-            "%.2fs footer merge, %d retained Arrow file-info bytes",
+            "Full schema inference for %s: %d candidate files, %.2fs listing, "
+            "%.2fs schema merge, %d retained Arrow file-info bytes",
+            datasource.name,
             len(sample),
             listing_elapsed,
             schema_elapsed,
@@ -732,7 +736,7 @@ def _read_datasource_v2(
         paths=list(datasource.paths),
         file_indexer=indexer,
         filesystem=filesystem,
-        source_paths=list(datasource.paths),
+        source_paths=list(source_paths),
         prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
@@ -750,6 +754,7 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        block_udf_modified_columns=block_udf_modified_columns,
         input_dependencies=[list_files_op],
     )
 
@@ -1918,6 +1923,15 @@ def read_parquet(
             stacklevel=2,
         )
 
+    # Tensor decoding is a known transform of just the declared tensor
+    # columns. If a caller also supplies a custom block UDF, its effects are
+    # unknown and the read operator must retain the full predicate barrier.
+    block_udf_modified_columns = (
+        set(tensor_column_schema)
+        if tensor_column_schema is not None
+        and arrow_parquet_args.get("_block_udf") is None
+        else None
+    )
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -1926,10 +1940,6 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
-    # Internal: Ray Data's own reads of checkpoint files pass ``False`` so they
-    # don't get the generated ID column the checkpoint config asks for on
-    # data reads.
-    add_generated_id_column = arrow_parquet_args.pop("_add_generated_id_column", True)
 
     ctx = DataContext.get_current()
     if merge_schema and schema is not None:
@@ -1980,14 +1990,11 @@ def read_parquet(
                 parquet_format_kwargs["dictionary_columns"] = parquet_format_kwargs.pop(
                     "read_dictionary"
                 )
-        checkpoint_config = ctx.checkpoint_config
-        generated_id_column_name: Optional[str] = (
-            checkpoint_config.generated_id_column
-            if add_generated_id_column and checkpoint_config is not None
-            else None
-        )
         select_columns_after_read: Optional[List[str]] = None
         if columns is not None:
+            # ``list()`` below would split a bare string into characters.
+            if isinstance(columns, str):
+                raise TypeError("`columns` must be a list of strings.")
             # V1 ``columns=[...]`` implicitly retained the synthetic
             # ``"path"`` / ``"row_hash"`` columns when ``include_paths``
             # / ``include_row_hash`` were set (see
@@ -2000,11 +2007,6 @@ def read_parquet(
                 select_columns_after_read.append("path")
             if include_row_hash and "row_hash" not in select_columns_after_read:
                 select_columns_after_read.append("row_hash")
-            if (
-                generated_id_column_name is not None
-                and generated_id_column_name not in select_columns_after_read
-            ):
-                select_columns_after_read.append(generated_id_column_name)
             warnings.warn(
                 "`columns=` on `read_parquet` is deprecated. Use "
                 "`ray.data.read_parquet(path).select_columns([...])` instead.",
@@ -2020,7 +2022,6 @@ def read_parquet(
         from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
             ParquetDatasourceV2,
         )
-        from ray.data.checkpoint.generated_id import GeneratedIdColumn
 
         datasource_v2 = ParquetDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
@@ -2035,11 +2036,6 @@ def read_parquet(
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
             parquet_format_kwargs=parquet_format_kwargs,
-            extra_synthesized_columns=(
-                (GeneratedIdColumn(generated_id_column_name),)
-                if generated_id_column_name is not None
-                else ()
-            ),
         )
         ds = _read_datasource_v2(
             datasource_v2,
@@ -2057,6 +2053,7 @@ def read_parquet(
             concurrency=concurrency,
             partition_filter=partition_filter,
             block_udf=_block_udf,
+            block_udf_modified_columns=block_udf_modified_columns,
             sample_all_files_for_schema=merge_schema,
         )
         if select_columns_after_read is not None:
@@ -2973,6 +2970,7 @@ def read_orc(
     file_extensions: Optional[List[str]] = ORCDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    merge_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
     fallback_strategy: Optional[List[Dict[str, Any]]] = None,
@@ -2987,7 +2985,12 @@ def read_orc(
     Note:
         The DataSourceV2 reader is selected through the ``use_datasource_v2``
         setting of :class:`~ray.data.context.DataContext`.
-        It samples file schemas and may omit columns absent from the sample.
+        By default, it samples file schemas and may omit columns absent from the
+        sample. Use ``merge_schema=True`` to infer from all eligible files.
+        If you encounter a DataSourceV2 limitation, use the V1 reader by
+        setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
+        or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray. This shared setting also affects ``read_parquet()``.
 
     Examples:
         Read an ORC file in remote storage or local storage.
@@ -3041,6 +3044,10 @@ def read_orc(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        merge_schema: If ``True``, infer the schema from every eligible ORC file
+            before returning the Dataset. Defaults to ``False``, which infers from
+            up to 16 files. Requires the V2 datasource. See the notes below for cost
+            and file-discovery behavior.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -3055,9 +3062,37 @@ def read_orc(
             named remote parameters instead.
     Returns:
         :class:`~ray.data.Dataset` holding records from the ORC files.
+
+    .. note::
+
+        ``merge_schema=True`` lists all eligible files and reads their schemas
+        on the driver during planning, which can be expensive for large or remote
+        datasets. The reader uses the merged schema, but Ray doesn't retain per-file
+        ORC metadata from schema inference for reuse during execution.
+        With more than 10,000 candidate files, Ray warns before schema merging.
+        Retained path and size metadata adds O(files) data to serialized lineage.
+
+        Follow-up work for distributed planning-time schema reads and metadata
+        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+
+        The Dataset retains those candidate paths across actions. Files appended
+        after discovery aren't included. Concurrent directory traversal isn't an
+        atomic snapshot, and replacing a file at the same path is outside this
+        guarantee. This option uses the existing schema unifier and reader; it
+        doesn't add support for otherwise unsupported schema changes. In particular,
+        evolved nested struct fields can fail at read time on PyArrow 17 (see
+        https://github.com/ray-project/ray/issues/67064).
     """
 
-    if DataContext.get_current().use_datasource_v2:
+    ctx = DataContext.get_current()
+    if merge_schema and not ctx.use_datasource_v2:
+        raise NotImplementedError(
+            "`merge_schema=True` on `read_orc` requires the V2 datasource. "
+            "Enable it with `ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
+
+    if ctx.use_datasource_v2:
         from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
             OrcDatasourceV2,
         )
@@ -3086,6 +3121,7 @@ def read_orc(
             runtime_env=runtime_env,
             concurrency=concurrency,
             partition_filter=partition_filter,
+            sample_all_files_for_schema=merge_schema,
         )
 
     datasource = ORCDatasource(
@@ -4153,48 +4189,40 @@ def read_hive(
         HiveServer2 returns ``events.id`` and ``events.name`` as result labels.
         Match the labels returned by your HiveServer2 instance.
 
-        .. testcode::
-            :skipif: True
-
-            import os
-
-            import pyarrow as pa
-            import ray
-
-            def create_connection():
-                from impala.dbapi import connect
-
-                return connect(
-                    host="hive.example.com",
-                    port=10000,
-                    auth_mechanism="PLAIN",
-                    user="reader",
-                    password=os.environ["HIVE_NONE_PLACEHOLDER"],
-                    retries=1,
-                )
-
-            table_ds = ray.data.read_hive(
-                "analytics.events", connection_factory=create_connection
-            )
-            query_ds = ray.data.read_hive(
-                query="SELECT * FROM analytics.events",
-                schema=pa.schema(
-                    [("events.id", pa.int64()), ("events.name", pa.string())]
-                ),
-                connection_factory=create_connection,
-            )
-
-            # Use explicit SQL aliases to choose unqualified result labels.
-            aliased_query_ds = ray.data.read_hive(
-                query=(
-                    "SELECT id AS event_id, name AS event_name "
-                    "FROM analytics.events"
-                ),
-                schema=pa.schema(
-                    [("event_id", pa.int64()), ("event_name", pa.string())]
-                ),
-                connection_factory=create_connection,
-            )
+        >>> import os  # doctest: +SKIP_EXAMPLE
+        >>> import pyarrow as pa
+        >>> import ray
+        >>> def create_connection():
+        ...     from impala.dbapi import connect
+        ...     return connect(
+        ...         host="hive.example.com",
+        ...         port=10000,
+        ...         auth_mechanism="PLAIN",
+        ...         user="reader",
+        ...         password=os.environ["HIVE_NONE_PLACEHOLDER"],
+        ...         retries=1,
+        ...     )
+        >>> table_ds = ray.data.read_hive(
+        ...     "analytics.events", connection_factory=create_connection
+        ... )
+        >>> query_ds = ray.data.read_hive(
+        ...     query="SELECT * FROM analytics.events",
+        ...     schema=pa.schema(
+        ...         [("events.id", pa.int64()), ("events.name", pa.string())]
+        ...     ),
+        ...     connection_factory=create_connection,
+        ... )
+        >>> # Use explicit SQL aliases to choose unqualified result labels.
+        >>> aliased_query_ds = ray.data.read_hive(
+        ...     query=(
+        ...         "SELECT id AS event_id, name AS event_name "
+        ...         "FROM analytics.events"
+        ...     ),
+        ...     schema=pa.schema(
+        ...         [("event_id", pa.int64()), ("event_name", pa.string())]
+        ...     ),
+        ...     connection_factory=create_connection,
+        ... )
 
     Args:
         table: The Hive table to read, optionally qualified as
@@ -4736,8 +4764,7 @@ def read_hudi(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from an
+    """Create a :class:`~ray.data.Dataset` from an
     `Apache Hudi table <https://hudi.apache.org>`_.
 
     Examples:
@@ -5382,8 +5409,7 @@ def read_delta_sharing_tables(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Read data from a Delta Sharing table.
+    """Read data from a Delta Sharing table.
     Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
 
     This function reads data from a Delta Sharing table specified by the URL.
@@ -5934,8 +5960,7 @@ def read_lance(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from one or more
+    """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
@@ -6061,8 +6086,7 @@ def read_clickhouse(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+    """Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
 
     Examples:
         >>> import ray
