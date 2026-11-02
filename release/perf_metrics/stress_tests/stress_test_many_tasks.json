@@ -3,44 +3,44 @@
         {
             "perf_metric_name": "stage_0_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 5.916650772094727
+            "perf_metric_value": 9.40267539024353
         },
         {
             "perf_metric_name": "stage_1_avg_iteration_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 13.974480891227723
+            "perf_metric_value": 13.38959367275238
         },
         {
             "perf_metric_name": "stage_2_avg_iteration_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 35.23652429580689
+            "perf_metric_value": 36.03811597824097
         },
         {
             "perf_metric_name": "stage_3_creation_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 1.6458725929260254
+            "perf_metric_value": 1.6265952587127686
         },
         {
             "perf_metric_name": "stage_3_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 2233.5541713237762
+            "perf_metric_value": 2212.5575079917908
         },
         {
             "perf_metric_name": "stage_4_spread",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 0.29790567267326706
+            "perf_metric_value": 0.31099085117820874
         }
     ],
-    "stage_0_time": 5.916650772094727,
-    "stage_1_avg_iteration_time": 13.974480891227723,
-    "stage_1_max_iteration_time": 14.465687036514282,
-    "stage_1_min_iteration_time": 12.817598104476929,
-    "stage_1_time": 139.74486827850342,
-    "stage_2_avg_iteration_time": 35.23652429580689,
-    "stage_2_max_iteration_time": 36.06356930732727,
-    "stage_2_min_iteration_time": 34.830111265182495,
-    "stage_2_time": 176.18315863609314,
-    "stage_3_creation_time": 1.6458725929260254,
-    "stage_3_time": 2233.5541713237762,
-    "stage_4_spread": 0.29790567267326706
+    "stage_0_time": 9.40267539024353,
+    "stage_1_avg_iteration_time": 13.38959367275238,
+    "stage_1_max_iteration_time": 14.014145374298096,
+    "stage_1_min_iteration_time": 12.047279834747314,
+    "stage_1_time": 133.89602613449097,
+    "stage_2_avg_iteration_time": 36.03811597824097,
+    "stage_2_max_iteration_time": 36.69350457191467,
+    "stage_2_min_iteration_time": 35.15346717834473,
+    "stage_2_time": 180.1911416053772,
+    "stage_3_creation_time": 1.6265952587127686,
+    "stage_3_time": 2212.5575079917908,
+    "stage_4_spread": 0.31099085117820874
 }
