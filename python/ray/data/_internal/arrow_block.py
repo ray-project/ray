@@ -231,12 +231,49 @@ def _get_max_chunk_size(
 #   .to_arrow() coerces all-null columns back to pa.null(), so the
 #   round-trip is unchanged. A column that is all-null in every block
 #   therefore stays null-typed rather than being promoted.
+# - Types with a null type nested inside (list<null>, struct<a: null>, ...)
+#   get _ArrowDtypeWithoutIdentityCast. Before pandas 3.1,
+#   pd.ArrowDtype.__from_arrow__ casts a column even to its own type, and
+#   Arrow's cast resizes a nested null child to the number of rows. A
+#   list<null> [[None, None], [None]] then comes back as [[None, None], []].
 def _arrow_backed_pandas_dtype(t: "pyarrow.DataType") -> Optional["pd.ArrowDtype"]:
     if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(t):
         return None
     if pyarrow.types.is_null(t):
         return None
+    if _has_nested_null_type(t):
+        return _ArrowDtypeWithoutIdentityCast(t)
     return pd.ArrowDtype(t)
+
+
+def _has_nested_null_type(t: "pyarrow.DataType") -> bool:
+    for i in range(t.num_fields):
+        child = t.field(i).type
+        if pyarrow.types.is_null(child) or _has_nested_null_type(child):
+            return True
+    return False
+
+
+# TODO: Remove this class and the nested-null branch of _arrow_backed_pandas_dtype
+# once Ray requires pandas >= 3.1, whose pd.ArrowDtype skips the identity cast.
+class _ArrowDtypeWithoutIdentityCast(pd.ArrowDtype):
+    """``pd.ArrowDtype`` that skips the cast of a column to its own type, as
+    pandas 3.1 does. It compares equal to the plain ``pd.ArrowDtype`` of the
+    same Arrow type, and the column it builds carries that plain dtype."""
+
+    def __from_arrow__(
+        self, array: Union["pyarrow.Array", "pyarrow.ChunkedArray"]
+    ) -> "pd.arrays.ArrowExtensionArray":
+        if array.type != self.pyarrow_dtype:
+            array = array.cast(self.pyarrow_dtype, safe=True)
+        return pd.arrays.ArrowExtensionArray(array)
+
+    # pandas' ExtensionDtype.__eq__ returns False for an instance of another
+    # class, so without this a plain pd.ArrowDtype never equals this one.
+    def __eq__(self, other: object) -> bool:
+        return pd.ArrowDtype(self.pyarrow_dtype) == other
+
+    __hash__ = pd.ArrowDtype.__hash__
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
