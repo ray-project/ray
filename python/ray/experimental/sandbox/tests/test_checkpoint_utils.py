@@ -97,6 +97,7 @@ class TestCheckpointUtils(unittest.TestCase):
             readonly=False,
             disk="2Gi",
             cidr_allowlist=["203.0.113.0/24"],
+            mounts={"/data": "/srv/inbox"},
         )
         manifest = create_manifest(
             sandbox_id="test-sb",
@@ -109,10 +110,11 @@ class TestCheckpointUtils(unittest.TestCase):
         assert manifest["compression"] == "flate-best-speed"
         assert manifest["config"]["disk"] == "2Gi"
         assert manifest["config"]["cidr_allowlist"] == ["203.0.113.0/24"]
-        # The recorded disk and allowlist come back on restore.
+        # The recorded disk, allowlist and mounts come back on restore.
         restored = build_restored_config(json.loads(json.dumps(manifest)))
         assert restored.disk == "2Gi"
         assert restored.cidr_allowlist == ["203.0.113.0/24"]
+        assert restored.mounts == {"/data": "/srv/inbox"}
 
     def test_build_restored_config_rejects_changes_to_saved_state(self):
         manifest = {
@@ -124,11 +126,13 @@ class TestCheckpointUtils(unittest.TestCase):
                 "rootless": False,
                 "capabilities": None,
                 "disk": "1Gi",
+                "mounts": {"/data": "/srv/inbox"},
             }
         }
         for field, value in (
             ("capabilities", ["CAP_NET_ADMIN"]),
             ("disk", "2Gi"),
+            ("mounts", {"/data": "/srv/other"}),
             ("image", "alpine:latest"),
             ("network", "public"),
             ("readonly", False),
