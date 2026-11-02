@@ -402,12 +402,21 @@ res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
 :::{note}
 * **Rootless mode:** gVisor's checkpoint and restore mechanism requires `rootless=False` and `SYS_PTRACE` capabilities inside worker containers to dump process memory maps and namespaces.
 * **Node-local storage:** A checkpoint only resides on the worker node that took it, such as under `/tmp/ray` or on a local NVMe SSD. `sandbox.restore()` pins the restored actor to that node with Ray's `NodeAffinitySchedulingStrategy`, and reserves the checkpointed sandbox's CPU and memory unless you override them.
-* **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, and `cidr_allowlist` overrides. The saved state depends on `image`, `network`, `readonly`, `capabilities`, `disk`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them. A sandbox created with an `_oci_spec_transform_fn` must be restored with the same function, because the checkpoint can't save it.
+* **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, and `cidr_allowlist` overrides. The saved state depends on `image`, `network`, `readonly`, `capabilities`, `disk`, `mounts`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them. A sandbox created with an `_oci_spec_transform_fn` must be restored with the same function, because the checkpoint can't save it.
 * **Egress allowlist:** a checkpoint saves the allowlist in force when it's taken, including changes from `set_egress_allowlist()`.
 * **Checkpoint path:** `checkpoint()` replaces an earlier checkpoint at the same path, but refuses a non-empty directory that doesn't hold one.
 * **Image builds:** gVisor restores only onto the same build of the sandbox's image. If the image was evicted from the cache and rebuilt, or its tag moved, since the checkpoint, restore fails with an error that says so.
 * **Compression:** `checkpoint(compression="flate-best-speed")` writes a smaller checkpoint. gVisor loads guest memory in the background only from uncompressed checkpoints, so a sandbox restored from a compressed one starts after all of its memory is loaded.
 :::
+
+### Share host files read-only
+
+`mounts` maps sandbox paths to host paths, for example
+`mounts={"/data": "/srv/inbox/sandbox-1"}`. gVisor mounts each one read-only, so code in
+the sandbox can read the files but can't change them. Files that appear under a mounted
+host directory after the sandbox starts show up inside it too. You can hand a running
+sandbox its inputs by hardlinking them in from a cache. Give each sandbox its own
+directory to avoid exposing another sandbox's inputs.
 
 ### Pass custom OCI configurations to gVisor
 
