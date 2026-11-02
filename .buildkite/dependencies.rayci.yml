@@ -11,15 +11,20 @@ steps:
       # uncomment the following line to update the pinned versions of pip dependencies
       # to the latest versions; otherwise, the pinned versions will be re-used as much
       # as possible
-      # - rm ./python/requirements_compiled.txt
-      - cp ./python/requirements_compiled.txt requirements_compiled_backup.txt
+      # - rm ./python/requirements_compiled.txt ./python/requirements_compiled_py3.1[0234].txt
+      - mkdir -p compiled_backup && cp ./python/requirements_compiled.txt ./python/requirements_compiled_py3.1[0234].txt compiled_backup/
       - ./ci/ci.sh compile_pip_dependencies
-      - cp -f ./python/requirements_compiled.txt /artifact-mount/
-      - diff ./python/requirements_compiled.txt requirements_compiled_backup.txt || (echo "requirements_compiled.txt is not up to date. Please download it from Artifacts tab and git push the changes." && exit 1)
-      - cp ./python/requirements_compiled_py3.14.txt requirements_compiled_py3.14_backup.txt
-      - ./ci/ci.sh compile_pip_dependencies_py314
-      - cp -f ./python/requirements_compiled_py3.14.txt /artifact-mount/
-      - diff ./python/requirements_compiled_py3.14.txt requirements_compiled_py3.14_backup.txt || (echo "requirements_compiled_py3.14.txt is not up to date. Please download it from Artifacts tab and git push the changes." && exit 1)
+      - cp -f ./python/requirements_compiled.txt ./python/requirements_compiled_py3.1[0234].txt /artifact-mount/
+      - |
+        stale=0
+        for f in compiled_backup/*.txt; do
+          name="$$(basename "$${f}")"
+          if ! diff "./python/$${name}" "$${f}"; then
+            echo "$${name} is not up to date. Please download it from Artifacts tab and git push the changes."
+            stale=1
+          fi
+        done
+        [[ "$${stale}" == 0 ]]
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy(python=3.11)
 

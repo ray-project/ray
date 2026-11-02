@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-CONSTRAINTS_FILE="/tmp/ray-deps/requirements_compiled_py3.13.txt"
-OUTPUT_FILE="/tmp/ray-deps/requirements_compiled_py3.13_no_ptl.txt"
+PYTHON_VERSION="${1:?usage: strip-pytorch-lightning-constraint.sh PYTHON_VERSION}"
+CONSTRAINTS_FILE="/tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt"
+OUTPUT_FILE="/tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}_no_ptl.txt"
 
 if [[ -f "$CONSTRAINTS_FILE" ]]; then
     sed -e '/^pytorch-lightning/d' -e '/^numpy/d' "$CONSTRAINTS_FILE" > "$OUTPUT_FILE"

@@ -37,7 +37,7 @@ These take precedence over generic packaging advice:
 
 1. **Source-file pins only.** Resolve conflicts by editing `python/requirements.txt`, `python/requirements/**/*.txt`, or `python/requirements/**/*.in`. Do **not** hand-edit `python/requirements_compiled*.txt` — it is a build artifact and gets overwritten on the next compile.
 2. **No `ci/ci.sh` post-process hooks** for individual package fixes. Only touch `ci/ci.sh` for genuinely structural changes (new functions, new input files passed to the compiler). Never as an after-the-fact lock mutator.
-3. **Use the dual-exact-pin-with-markers pattern** when a package needs different versions on different Python versions and the lock is consumed as a constraint across multiple Python targets. See *Marker preservation* below.
+3. **Use `python_version` markers in the source files** when a package needs different versions on different Python versions. Each Python version is compiled separately, so a marker decides exactly which versions a pin applies to. See *Per-version pins* below.
 4. **`python/requirements.txt` ↔ `python/setup.py` must stay in sync.** The packages under the `## setup.py install_requires` block in `python/requirements.txt` are mirrored into `setup_spec.install_requires` in `python/setup.py` (around line 405). When you add, remove, or change a version bound for any package in that block, edit **both** files in the same change. The list in `setup.py` is what end users actually install via `pip install ray`; `requirements.txt` is the dev-side source of truth. Drift between them ships broken installs.
 5. **`python/requirements/llm/llm-requirements.txt` ↔ `setup_spec.extras["llm"]` must stay in sync.** The `ray[llm]` extra in `python/setup.py` (around line 377) and `python/requirements/llm/llm-requirements.txt` are paired source-of-truth files for the LLM install set — both have explicit "keep in sync" comments. When you add, remove, or change a permanent version bound for any package in the LLM extra, edit **both** files. **Exception:** temporary upper-bound workaround pins (`<=X.Y.Z` to dodge a bug) may live only in `llm-requirements.txt`. They must NOT be added to `setup.py`, since `setup.py` is the public install constraint and should not advertise short-lived workarounds as future API. Strip the `<=` pin from both files once the upstream fix lands.
 6. **When presenting options, list source-file fixes first.** Mention lock or `ci.sh` edits only as fallbacks with downsides called out.
@@ -48,7 +48,7 @@ These take precedence over generic packaging advice:
 
 Ray uses a two-tier dependency management system:
 
-1. **`requirements_compiled*.txt`** — monorepo-wide pinned dependency files, compiled via `ci/ci.sh compile_pip_dependencies`. There is a **single unified lock**: `requirements_compiled.txt` is the source of truth, and `requirements_compiled_py3.10.txt`, `requirements_compiled_py3.11.txt`, `requirements_compiled_py3.12.txt`, and `requirements_compiled_py3.13.txt` are all symlinks to it. (`requirements_compiled_py3.14.txt` is a separate file, compiled separately by `ci/ci.sh compile_pip_dependencies_py314` (uv, wheels only) from the same sources; shared pins with no cp314 wheel are gated with `python_version` markers.)
+1. **`requirements_compiled*.txt`** — monorepo-wide pinned dependency files, compiled via `ci/ci.sh compile_pip_dependencies`. There is **one compiled file per supported Python version**, all from the same sources: `requirements_compiled_py3.10.txt`, `requirements_compiled.txt` (3.11; `requirements_compiled_py3.11.txt` is a symlink to it), `requirements_compiled_py3.12.txt`, `requirements_compiled_py3.13.txt`, and `requirements_compiled_py3.14.txt` (wheels only). Each depset reads the file for its own Python version.
 2. **raydepsets** — a DAG-based lock file manager (`ci/raydepsets/`) that generates per-image, per-environment lock files from `.depsets.yaml` configs. Lock files live in `python/deplocks/` and `release/ray_release/byod/`.
 
 ### Key file locations
@@ -72,47 +72,35 @@ Ray uses a two-tier dependency management system:
 
 ## Generating the constraints (`requirements_compiled*.txt`)
 
-The unified compiled lock is produced by a single `bash` function in `ci/ci.sh`:
+One `bash` function in `ci/ci.sh` compiles every file:
 
 | Function | Output | Source set |
 |---|---|---|
-| `compile_pip_dependencies` (`ci/ci.sh:16`) | `python/requirements_compiled.txt` | `python/requirements.txt` and shared `python/requirements/**` files (test, cloud, docker, `ml/*` including `ml-requirements.txt` and `third_party.txt`, security) |
+| `compile_pip_dependencies` | `python/requirements_compiled.txt` (3.11) and `python/requirements_compiled_py3.{10,12,13,14}.txt` | `COMPILE_PIP_SOURCES`: `python/requirements.txt` and shared `python/requirements/**` files (test, cloud, docker, `ml/*` including `ml-requirements.txt` and `third_party.txt`, security) |
 
-There is one source requirement set and one compiled lock shared across all Python versions; per-version differences are expressed with `python_version` markers in the source files (see *Marker preservation* below), not with separate override directories or a separate compile function.
+There is one source requirement set; it is resolved once per Python version in `COMPILED_PYTHON_VERSIONS`. Per-version differences are expressed with `python_version` markers in the source files (see *Per-version pins* below), not with separate override directories.
 
 ### How to invoke
 
 ```bash
-# Unified lock (shared across py3.10–3.13 via symlinks)
 ci/ci.sh compile_pip_dependencies
-
-# Custom output filename (rare)
-ci/ci.sh compile_pip_dependencies my_custom_lock.txt
 ```
 
-Run inside an environment matching the target Python version (the function `pip install`s `pip-tools==7.4.1` and `wheel==0.45.1` itself). aarch64/arm64 is a no-op — the function returns early because not all pinned packages have aarch64 wheels.
+It installs uv itself (the version raydepsets pins in `WORKSPACE`) and targets `x86_64-manylinux_2_35`, so it gives the same result on any host, including ARM.
 
 ### What it does
 
-Both functions wrap `pip-compile` (pip-tools 7.4.1) with the same flags:
+For each Python version, `uv pip compile --python-version X --python-platform x86_64-manylinux_2_35` over the source set, with `--unsafe-package ray/pip/setuptools`. uv reads the existing output file as preferences, so a recompile only moves what the sources force. Version-specific flags:
+- **3.14:** `--only-binary :all:` (with a short `--no-binary` list of sdist-only packages), so every 3.14 pin has a cp314 wheel.
+- **3.12:** `--override python/requirements/ml/lerobot_overrides.txt`, the same override the 3.12 data depsets use (lerobot caps wandb and packaging below Ray's pins).
 
-```
-pip-compile --verbose --resolver=backtracking \
-  --pip-args --no-deps --strip-extras --no-header \
-  --unsafe-package ray --unsafe-package pip --unsafe-package setuptools \
-  -o "python/$TARGET" \
-  <list of source requirement files>
-```
-
-Then two post-process `sed` passes on the output:
-1. `sed -i "/@ file/d"` — strips local file:// install lines.
-2. `sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g'` — strips `+cpu` / `+pt20cpu` device-tag suffixes that the resolver inserts (otherwise `pip install` later complains about irresolvable constraints).
-
-The function `pip install`s `numpy` and `torch` before compilation. **Why:** `pip-compile` runs with `--pip-args --no-deps`, but it still has to extract each candidate's own `install_requires` to feed the resolver. For legacy sdists (no wheel, no PEP 517 `pyproject.toml`), the only way to get metadata is to execute `setup.py egg_info` — which runs the package's `setup.py` as Python. If that `setup.py` does `import numpy` / `import torch` at module level (common for packages using `numpy.distutils` or `torch.utils.cpp_extension` for C-extension config), the import has to succeed or pip-compile aborts. pip-compile doesn't sandbox these in an isolated PEP 517 build env, so the calling Python must already have those modules installed. `dragonfly-opt` was the canonical offender (no longer in the tree); the preinstall stays because the same shape of failure recurs whenever a new sdist-only dep with imperative `setup.py` imports gets added.
+Then two post-process `sed` passes on each output:
+1. Drops `--index-url` and local `@ file` lines.
+2. Strips `+cpu` / `+pt210cpu` / `+cpu.torch.2.10` local-version suffixes, so the GPU depsets' `+cu...` pins still satisfy the constraint.
 
 ### Source file lists
 
-If you add a brand-new source requirement file under `python/requirements/**`, it will NOT be picked up automatically — you must extend the `pip-compile` source list inside `compile_pip_dependencies` in `ci/ci.sh`. This is one of the few legitimate reasons to edit `ci/ci.sh` (see workflow rule 2). A single source set feeds every Python version, so if a package needs a different version on a specific Python version, express it with markers in the source file (see *Marker preservation* below) rather than adding a separate file or override directory.
+If you add a brand-new source requirement file under `python/requirements/**`, it will NOT be picked up automatically — you must extend `COMPILE_PIP_SOURCES` in `ci/ci.sh`. This is one of the few legitimate reasons to edit `ci/ci.sh` (see workflow rule 2). A single source set feeds every Python version, so if a package needs a different version on a specific Python version, express it with markers in the source file (see *Per-version pins* below) rather than adding a separate file or override directory.
 
 ### Recompile + relock everything
 
@@ -309,30 +297,16 @@ Cross-config dependencies are supported — e.g., `ci_data.depsets.yaml` referen
 
 ---
 
-## Marker preservation (pip-compile, multi-Python locks)
+## Per-version pins
 
-`pip-compile` (pip-tools 7.4.1, the version `ci/ci.sh` uses) **strips `python_version` markers** from output pins UNLESS the source declaration is **an exact-version pin with the marker attached**. This matters because the unified `requirements_compiled.txt` is consumed as a constraint at multiple `--python-version` targets via uv.
+Each Python version is compiled on its own, so a `python_version` marker in a source file decides exactly which compiled files a pin lands in:
 
-**What works (markers survive):**
-```
-onnxruntime==1.18.0 ; ... and python_version <= '3.10'
-onnxruntime==1.24.4 ; ... and python_version > '3.10'
-```
-Both exact pins, each with a marker. pip-compile at py3.11 evaluates the first as false → dropped; second as true → kept. Output retains the marker. When uv consumes the lock as constraint at `--python-version=3.10`, the marker is false → constraint skipped → resolver picks an older version from the source `.in` / `.txt`.
-
-**What does NOT work (markers get stripped):**
-```
-scipy<1.16 ; python_version < '3.11'
-scipy ; python_version >= '3.11'
-```
-A range cap + an unconstrained entry. Because scipy is also pulled transitively by many other packages with no marker, the consolidated pin loses the marker. Output: bare `scipy==1.17.1`, which then forces py3.10 depset compiles to fail (no cp310 wheel).
-
-**Fix pattern — two exact pins:**
 ```
 scipy==1.15.3 ; python_version < '3.11'
 scipy==1.17.1 ; python_version >= '3.11'
 ```
-Even though only one branch wins at compile time, the winning exact pin survives the transitive merge because its `==A.B.C` is more specific than any transitive range.
+
+A pin with no installable release for some Python version fails that version's compile (`... has no wheels with a matching Python ABI tag`); gate it with a marker. On 3.14 only wheels count.
 
 **Where to put the pins:**
 - Broad cross-cutting compat → `python/requirements.txt`
@@ -341,8 +315,8 @@ Even though only one branch wins at compile time, the winning exact pin survives
 - Don't pin in `python/requirements/ml/dl-cpu-requirements.txt` for things unrelated to CPU torch.
 
 **Classes of cliff to watch for when bumping the compiled lock:**
-1. Dropped cp310 wheels (most common; detectable via PyPI `Requires-Python` ≥ 3.11).
-2. Transitive upper bounds from py<3.11-only deps (e.g. `tensorflow-metadata==1.17.3` caps `protobuf<=6.32` on py<3.11; not auto-detectable from `Requires-Python`).
+1. Dropped wheels for an older or newer Python (detectable via PyPI `Requires-Python` and the wheel tags).
+2. Transitive upper bounds from version-specific deps (e.g. `tensorflow-metadata==1.17.3` caps `protobuf<=6.32` on py<3.11; not auto-detectable from `Requires-Python`).
 3. Transitive extras that pull new deps in newer versions (e.g. `jsonschema==4.25+` adds `rfc3987-syntax` to its `format-nongpl` extra, which pulls `lark==1.3.1` and clashes with vllm's `lark==1.2.2`).
 4. CPU-compile transitive pulls that conflict with GPU depsets (e.g. xgboost's unpinned `nvidia-nccl-cu12` can resolve to a version that conflicts with cu128 torch's pinned nccl — fix by pinning `nvidia-nccl-cu12==<cu128-matching-version>` in `dl-cpu-requirements.txt`).
 

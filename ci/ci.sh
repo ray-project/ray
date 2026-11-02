@@ -36,106 +36,77 @@ COMPILE_PIP_SOURCES=(
   python/requirements/security-requirements.txt
 )
 
+# Python versions that get their own compiled constraints file. 3.11's is
+# requirements_compiled.txt (requirements_compiled_py3.11.txt links to it); the
+# others are requirements_compiled_py3.X.txt.
+COMPILED_PYTHON_VERSIONS=(3.10 3.11 3.12 3.13 3.14)
+
+# Compiles one constraints file per Python version from COMPILE_PIP_SOURCES,
+# each resolved for that version alone. uv prefers the pins already in each
+# output file, so a recompile only moves what the sources force.
 compile_pip_dependencies() {
-  # Compile boundaries
-  TARGET="${1-requirements_compiled.txt}"
-
-  if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
-    # Resolution currently does not work on aarch64 as some pinned packages
-    # are not available. Once they are reasonably upgraded we should be able
-    # to enable this here.p
-    echo "Skipping for aarch64"
-    return 0
-  fi
-
-  (
-    # shellcheck disable=SC2262
-    alias pip="python -m pip"
-
-    cd "${WORKSPACE_DIR}"
-
-    echo "Target file: $TARGET"
-    pip install "pip-tools==7.4.1" "wheel==0.45.1"
-
-    # Required packages to lookup e.g. dragonfly-opt
-    HAS_TORCH=0
-    python -c "import torch" 2>/dev/null && HAS_TORCH=1
-    pip install --no-cache-dir numpy torch
-
-    # pip-compile writes whatever index it used into the lockfile. Keep CI's temporary
-    # mirror URL out, or the regenerated file stops matching the committed one.
-    env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
-      -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
-      pip-compile --verbose --resolver=backtracking \
-      --pip-args --no-deps --strip-extras --no-header \
-      --unsafe-package ray \
-      --unsafe-package pip \
-      --unsafe-package setuptools \
-      -o "python/$TARGET" \
-      "${COMPILE_PIP_SOURCES[@]}"
-
-    # Delete local installation
-    sed -i "/@ file/d" "python/$TARGET"
-
-    # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
-    # This is needed because we specify the requirements as torch==version, but
-    # the resolver adds the device-specific version tag. If this is not removed,
-    # pip install will complain about irresolvable constraints.
-    # Strip the whole local segment whenever it names cpu: +cpu, +pt29cpu, and
-    # Astral's +cpu.torch.2.9. The result has to be the bare public version --
-    # this file is also the constraint for the GPU depsets, and only a bare
-    # torch-scatter==2.1.2 lets their +cu.12.8.torch.2.9 pin satisfy it. The old
-    # pattern stopped at the first "cpu" and left 2.1.2.torch.2.9 behind. The
-    # public version may carry a pre/post/dev suffix (2.10.0rc1, 2.10.0.post0),
-    # hence letters in the first class.
-    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "python/$TARGET"
-
-    cat "python/$TARGET"
-
-    if [[ "$HAS_TORCH" == "0" ]]; then
-      pip uninstall -y torch
-    fi
-  )
-}
-
-# Compiles python/requirements_compiled_py3.14.txt from the same sources as
-# compile_pip_dependencies. Where a shared pin has no cp314 wheel, the source
-# files gate it with a `python_version` marker.
-compile_pip_dependencies_py314() {
-  local target="python/requirements_compiled_py3.14.txt"
-
-  # These ship only an sdist, for every Python version, so building them is not
-  # a 3.14 regression. hyperopt is pinned to a git commit, so it is always built
-  # from source. Everything else must install from a wheel.
+  # 3.14 installs from wheels only, so every 3.14 pin has a cp314 wheel. These
+  # ship only an sdist, for every Python version, so building them is not a 3.14
+  # regression. hyperopt is pinned to a git commit, so it is always built from
+  # source. (3.10-3.13 still build a few pinned sdists, e.g. hpbandster.)
   local sdist_only=(
     crcmod deepspeed fairscale feather-format gcs-oauth2-boto-plugin gsutil halo
     hyperopt promise pyspark pyu2f retry-decorator s3torchconnector
   )
-  local no_binary_args=()
+  local wheels_only_args=(--only-binary :all:)
   for pkg in "${sdist_only[@]}"; do
-    no_binary_args+=(--no-binary "${pkg}")
+    wheels_only_args+=(--no-binary "${pkg}")
   done
 
   (
     cd "${WORKSPACE_DIR}"
-    pip install "uv==0.9.26"
+    # Match the uv that raydepsets pins (uv_x86_64-linux in WORKSPACE).
+    pip install "uv==0.13.4"
 
-    # Ray images are glibc 2.35 (Ubuntu 22.04), hence manylinux_2_35.
-    env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
-      -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
-      uv pip compile --python-version 3.14 --python-platform x86_64-manylinux_2_35 \
-      --no-header --strip-extras --emit-index-url --emit-find-links \
-      --index-strategy unsafe-best-match \
-      --only-binary :all: "${no_binary_args[@]}" \
-      --unsafe-package ray \
-      --unsafe-package pip \
-      --unsafe-package setuptools \
-      -o "${target}" \
-      "${COMPILE_PIP_SOURCES[@]}"
+    local version target binary_args override_args
+    for version in "${COMPILED_PYTHON_VERSIONS[@]}"; do
+      if [[ "${version}" == "3.11" ]]; then
+        target="python/requirements_compiled.txt"
+      else
+        target="python/requirements_compiled_py${version}.txt"
+      fi
+      binary_args=()
+      if [[ "${version}" == "3.14" ]]; then
+        binary_args=("${wheels_only_args[@]}")
+      fi
+      # lerobot (3.12 only) caps wandb and packaging below Ray's pins. Lift the
+      # caps the same way the 3.12 data depsets do.
+      override_args=()
+      if [[ "${version}" == "3.12" ]]; then
+        override_args=(--override python/requirements/ml/lerobot_overrides.txt)
+      fi
+      echo "--- Compiling ${target} (Python ${version})"
 
-    sed -i -e "/^--index-url /d" "${target}"
-    # Same local-version strip as compile_pip_dependencies.
-    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "${target}"
+      # uv writes whatever index it used into the lockfile. Keep CI's temporary
+      # mirror URL out, or the regenerated file stops matching the committed
+      # one. Ray images are glibc 2.35 (Ubuntu 22.04), hence manylinux_2_35.
+      env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
+        -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
+        uv pip compile --python-version "${version}" \
+        --python-platform x86_64-manylinux_2_35 \
+        --no-header --strip-extras --emit-index-url --emit-find-links \
+        --index-strategy unsafe-best-match \
+        "${binary_args[@]}" "${override_args[@]}" \
+        --unsafe-package ray \
+        --unsafe-package pip \
+        --unsafe-package setuptools \
+        -o "${target}" \
+        "${COMPILE_PIP_SOURCES[@]}"
+
+      sed -i -e "/^--index-url /d" -e "/@ file/d" "${target}"
+
+      # Strip the local version segment from CPU builds (+cpu, +pt210cpu,
+      # +cpu.torch.2.10). The GPU depsets also read these files, and only a
+      # bare torch-scatter==2.1.2 lets their +cu.12.8.torch.2.10 pin satisfy
+      # it. The public version may carry a pre/post/dev suffix (2.10.0rc1,
+      # 2.10.0.post0), hence letters in the first class.
+      sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "${target}"
+    done
   )
 }
 

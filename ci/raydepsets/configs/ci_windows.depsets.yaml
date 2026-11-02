@@ -27,7 +27,7 @@ depsets:
       - python/requirements/test-requirements.txt
       - python/requirements/ml/dl-cpu-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     output: python/deplocks/ci/windows-tests-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
@@ -37,7 +37,7 @@ depsets:
     build_arg_sets:
       - py310
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   # torch is relaxed so the windows torch depset below can override it. torch
   # 2.8-2.10 Windows wheels lack libuv and cannot init the gloo backend

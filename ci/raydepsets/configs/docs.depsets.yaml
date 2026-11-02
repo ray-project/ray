@@ -50,7 +50,7 @@ depsets:
       - python/requirements/ml/rllib-test-requirements.txt
       - python/requirements/ml/dl-cpu-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     output: python/deplocks/docs/doctest_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
@@ -60,7 +60,7 @@ depsets:
     build_arg_sets:
       - py310
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   # The "docstring-only" label's examples environment: ray[all] plus what the
   # modules holding >>> examples import, without torch or TensorFlow, so the
@@ -77,7 +77,7 @@ depsets:
     requirements:
       - python/requirements/doc/docstring-examples-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     output: python/deplocks/docs/docstring_examples_base_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
@@ -86,7 +86,7 @@ depsets:
     build_arg_sets:
       - py310
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   # Drop cupy-cuda12x, the CUDA build ray[cgraph] pins, and fastrlock, which
   # only cupy requires: about 225 MB the CPU-only examples don't use.
