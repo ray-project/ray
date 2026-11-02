@@ -115,11 +115,18 @@ class DeltaScanner(ParquetScanner):
     """Scanner for a Delta Lake table.
 
     A Delta table's data files are Parquet files, so filter, column and limit
-    pushdown are inherited from :class:`ParquetScanner`. Partition values come
-    from the log: the listing prunes files by them and carries them to
-    :class:`DeltaFileReader`. ``partitioning`` only names the partition
-    columns.
+    pushdown and the generated ID column are inherited from
+    :class:`ParquetScanner`. Partition values come from the log: the listing
+    prunes files by them and carries them to :class:`DeltaFileReader`.
+    ``partitioning`` only names the partition columns.
     """
+
+    #: The table URI, for messages.
+    table_uri: str = ""
+    #: Whether the caller passed the version to read. Otherwise the read is
+    #: of the version that was latest when the dataset was created, which a
+    #: resumed job reads anew.
+    version_pinned_by_caller: bool = False
 
     reader_class: ClassVar[Type[ParquetFileReader]] = DeltaFileReader
 
