@@ -1550,8 +1550,8 @@ def test_assign_worker_ranks(
 def test_create_placement_group_tpu_forwards_label_selector_and_reraises_value_error(
     monkeypatch,
 ):
-    """Verify WorkerGroup._create_placement_group forwards custom label_selector
-    to SlicePlacementGroup and re-raises non-retryable ValueErrors directly.
+    """Verify WorkerGroup._create_placement_group forwards custom and callback
+    label_selector to SlicePlacementGroup and re-raises non-retryable ValueErrors.
     """
     from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
 
@@ -1565,7 +1565,9 @@ def test_create_placement_group_tpu_forwards_label_selector_and_reraises_value_e
     wg_ctx = _default_worker_group_context(
         num_workers=1,
         resources_per_worker={"CPU": 1, "TPU": 8},
-        label_selector=scaling_config._label_selector_per_worker(1),
+        label_selector=scaling_config._label_selector_per_worker(
+            1, include_tpu_labels=False
+        ),
         num_slices=1,
     )
     wg = _default_inactive_worker_group(
@@ -1581,14 +1583,31 @@ def test_create_placement_group_tpu_forwards_label_selector_and_reraises_value_e
         accelerator_version="v6e",
         num_slices=1,
         resources_per_bundle={"CPU": 1, "TPU": 8},
-        strategy="PACK",
-        bundle_label_selector=[
-            {
-                "ray.io/accelerator-type": "TPU-V6E",
-                "ray.io/tpu-topology": "2x4",
-                "market-type": "spot",
-            }
-        ],
+        bundle_label_selector=[{"market-type": "spot"}],
+    )
+
+    # Also verify callback-provided label_selector is forwarded when
+    # scaling_config.label_selector is None.
+    mock_spg_cls.reset_mock()
+    no_user_selector_config = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        topology="2x4",
+        accelerator_type="TPU-V6E",
+    )
+    cb_wg_ctx = _default_worker_group_context(
+        num_workers=1,
+        resources_per_worker={"CPU": 1, "TPU": 8},
+        label_selector=[{"subcluster": "mine"}],
+        num_slices=1,
+    )
+    wg._create_placement_group(no_user_selector_config, cb_wg_ctx)
+    mock_spg_cls.assert_called_once_with(
+        topology="2x4",
+        accelerator_version="v6e",
+        num_slices=1,
+        resources_per_bundle={"CPU": 1, "TPU": 8},
+        bundle_label_selector=[{"subcluster": "mine"}],
     )
 
     # ValueErrors from SlicePlacementGroup must propagate directly (not wrapped in

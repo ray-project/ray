@@ -459,18 +459,31 @@ class TrainController:
         scaling_config = self._train_run_context.scaling_config
 
         # Check for `label_selector` to influence WorkerGroup scheduling.
-        label_selector = scaling_config._label_selector_per_worker(num_workers)
+        # When `SlicePlacementGroup` is used, it synthesizes the single-host or
+        # multi-host TPU labels directly, so only user-specified `label_selector`
+        # entries are needed here.
+        uses_slice_pg = bool(
+            scaling_config.use_tpu
+            and scaling_config.topology
+            and scaling_config.accelerator_type
+        )
+        label_selector = scaling_config._label_selector_per_worker(
+            num_workers, include_tpu_labels=not uses_slice_pg
+        )
         for callback in self._controller_callbacks:
             selector = callback.on_controller_start_worker_group(
                 scaling_config=scaling_config, num_workers=num_workers
             )
             if selector:
-                if label_selector:
+                if scaling_config.label_selector:
                     logger.warning(
                         f"Overriding `ScalingConfig.label_selector` {label_selector} "
                         f"with label_selector returned by user-specified callback {selector}"
                     )
-                label_selector = [selector.copy() for _ in range(num_workers)]
+                if scaling_config.use_tpu and not uses_slice_pg and label_selector:
+                    label_selector = [{**base, **selector} for base in label_selector]
+                else:
+                    label_selector = [selector.copy() for _ in range(num_workers)]
 
         # Pin workers to AutoscalingCoordinator reservations, so that two
         # concurrent runs aren't both scheduled onto the same capacity. The

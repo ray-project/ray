@@ -83,6 +83,9 @@ def test_scaling_config_tpu_labels_and_resources():
         scaling_config._label_selector_per_worker(4)
         == [{"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "4x4"}] * 4
     )
+    assert (
+        scaling_config._label_selector_per_worker(4, include_tpu_labels=False) is None
+    )
 
     shorthand_config = ScalingConfig(
         num_workers=2,
@@ -106,6 +109,9 @@ def test_scaling_config_tpu_labels_and_resources():
     assert single_worker_custom._label_selector_per_worker(1) == [
         {"ray.io/accelerator-type": "TPU-V6E", "market-type": "spot"}
     ]
+    assert single_worker_custom._label_selector_per_worker(
+        1, include_tpu_labels=False
+    ) == [{"market-type": "spot"}]
 
     topology_custom_cpu = ScalingConfig(
         num_workers=2,

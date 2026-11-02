@@ -535,10 +535,6 @@ class SlicePlacementGroup:
         topology: The TPU topology string (e.g. "2x2x2").
         accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
         resources_per_bundle: Optionally specify the resources to include in every worker bundle.
-        strategy: Deprecated and ignored. Single-host TPU slices always use ``"STRICT_PACK"``
-            and multi-host TPU slices always use
-            ``topology_strategy={"ray.io/tpu-slice-name": "STRICT_PACK"}`` with per-bundle
-            ``ray.io/tpu-worker-id`` labels.
         name: PlacementGroup parameter. The name of the placement group.
         lifetime: PlacementGroup parameter. Either `None`, which defaults to the placement group
             will fate share with its creator and will be deleted once its
@@ -552,10 +548,6 @@ class SlicePlacementGroup:
             selectors are merged with the TPU topology/pod-type labels.
         tpu_resource_per_chip: The number of logical TPU resources per physical chip. Defaults to 1.
             This scales the total logical resources reserved by each slice.
-        pg_per_slice: Deprecated and ignored; one placement group is always created
-            per slice.
-        head_reservation_timeout_s: Deprecated and ignored; slices are no longer
-            reserved through head placement groups.
 
     Examples:
         >>> import ray  # doctest: +SKIP_EXAMPLE
@@ -583,7 +575,6 @@ class SlicePlacementGroup:
         accelerator_version: str,
         resources_per_bundle: Optional[Dict[str, float]] = None,
         # below are args related to PG
-        strategy: str = "SPREAD",
         name: str = "",
         lifetime: Optional[str] = None,
         # default
@@ -591,15 +582,7 @@ class SlicePlacementGroup:
         chips_per_vm: Optional[int] = None,
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         tpu_resource_per_chip: Optional[int] = None,
-        pg_per_slice: Optional[bool] = None,
-        head_reservation_timeout_s: Optional[float] = None,
     ):
-        if pg_per_slice is not None or head_reservation_timeout_s is not None:
-            logger.warning(
-                "`pg_per_slice` and `head_reservation_timeout_s` are deprecated and "
-                "ignored: SlicePlacementGroup always creates one placement group per "
-                "slice and no longer reserves slices through head placement groups."
-            )
         self._bundle_label_selector: List[Dict[str, str]] = []
         self._managed_pgs: List[PlacementGroup] = []
         self._user_bundle_label_selector = bundle_label_selector or []
@@ -615,9 +598,6 @@ class SlicePlacementGroup:
         self._tpu_resource_per_chip = tpu_resource_per_chip
 
         self._validate_tpu_config()
-
-        if chips_per_vm is not None and chips_per_vm <= 0:
-            raise ValueError("chips_per_vm must be positive.")
 
         self._chips_per_host = (
             chips_per_vm
@@ -635,7 +615,7 @@ class SlicePlacementGroup:
             accelerator_type=self._accelerator_version,
             resources_per_worker=resources_per_bundle,
             num_slices=self._num_slices,
-            chips_per_vm=chips_per_vm,
+            chips_per_vm=self._chips_per_host,
             tpu_resource_per_chip=self._tpu_resource_per_chip,
         )
 
@@ -701,12 +681,10 @@ class SlicePlacementGroup:
                     ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: self._topology,
                     ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: accelerator_type,
                 }
-            elif pod_type:
+            else:
                 tpu_labels = {
                     ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: pod_type,
                 }
-            else:
-                tpu_labels = {}
 
             for slice_idx in range(self.num_slices):
                 slice_user_selectors = (
@@ -864,24 +842,6 @@ class SlicePlacementGroup:
         """The resources that are assigned to each bundle."""
         return self._bundle_resources
 
-    @DeveloperAPI(stability="alpha")
-    @property
-    @Deprecated(
-        message="`head_placement_groups` is deprecated and always empty; "
-        "SlicePlacementGroup no longer creates head placement groups.",
-        warning=True,
-    )
-    def head_placement_groups(self) -> List[PlacementGroup]:
-        """Deprecated: always returns an empty list."""
-        return []
-
-    @DeveloperAPI(stability="alpha")
-    def release_head_pgs(self, slice_index: Optional[int] = None) -> None:
-        """No-op retained for backwards compatibility now that slice placement
-        uses native `topology_strategy` instead of two-phase head PGs.
-        """
-        pass
-
     def shutdown(self):
         """Remove all managed placement groups.
 
@@ -958,7 +918,6 @@ def run_on_slice(
     num_slices: int = 1,
     chips_per_vm: Optional[int] = None,
     pg_ready_timeout_s: Optional[float] = None,
-    head_reservation_timeout_s: Optional[float] = None,
     **kwargs: Any,
 ) -> "List[ray.ObjectRef]":
     """Run a remote function on every host in a TPU slice.
@@ -997,8 +956,6 @@ def run_on_slice(
         pg_ready_timeout_s: Seconds to wait for the worker placement
             group to become ready after reservation. Pass ``None`` to
             wait indefinitely (default).
-        head_reservation_timeout_s: Deprecated and ignored; slices are no
-            longer reserved through head placement groups.
         **kwargs: Keyword arguments broadcast to every task invocation.
 
     Returns:
@@ -1034,12 +991,6 @@ def run_on_slice(
         >>> results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
         >>> slice_handle.shutdown()
     """
-
-    if head_reservation_timeout_s is not None:
-        logger.warning(
-            "`head_reservation_timeout_s` is deprecated and ignored: slices are "
-            "no longer reserved through head placement groups."
-        )
 
     if not hasattr(fn, "options"):
         raise TypeError(
@@ -1496,7 +1447,8 @@ def _wait_for_slice_resources_freed(
         slice_nodes = [
             node
             for node in ray.nodes()
-            if node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+            if node.get("Alive", True)
+            and node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
             == slice_name
         ]
         if all(_tpus_idle(node, avail, pg_used_nodes) for node in slice_nodes):
@@ -1603,7 +1555,7 @@ def _find_available_subslice(
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
     subslice_index: Optional[int] = None,
-    pg_used_nodes: Optional[Collection[str]] = None,
+    pg_used_nodes: Collection[str] = (),
 ) -> Tuple[Optional[List[str]], Optional[int]]:
     """Find an idle subslice of *subslice_topology* within *slice_name*.
 
@@ -1627,9 +1579,6 @@ def _find_available_subslice(
         return None, None
 
     expected_host_count = math.prod(_get_worker_dims_for_topology(subslice_topology))
-
-    if pg_used_nodes is None:
-        pg_used_nodes = _get_nodes_with_placed_tpu_bundles()
 
     for idx in sorted(subslice_indices.keys(), key=int):
         worker_ids = subslice_indices[idx]
@@ -1694,8 +1643,6 @@ class SubslicePlacementGroup:
         bundle_resources: Resources per PG bundle.
         bundle_label_selectors: Label selectors used per bundle when
             creating the PG.
-        head_placement_groups: Deprecated and ignored; retained for backwards
-            compatibility.
     """
 
     def __init__(
@@ -1709,7 +1656,6 @@ class SubslicePlacementGroup:
         chips_per_host: int,
         bundle_resources: Dict[str, float],
         bundle_label_selectors: Optional[List[Dict[str, str]]] = None,
-        head_placement_groups: Optional[List[PlacementGroup]] = None,
     ):
         self._placement_group = placement_group
         self._parent_topology = parent_topology
@@ -1768,22 +1714,6 @@ class SubslicePlacementGroup:
         """Label selectors used for each bundle when creating the PG."""
         return self._bundle_label_selectors
 
-    @DeveloperAPI(stability="alpha")
-    @property
-    @Deprecated(
-        message="`head_placement_groups` is deprecated and always empty; "
-        "SubslicePlacementGroup no longer creates head placement groups.",
-        warning=True,
-    )
-    def head_placement_groups(self) -> List[PlacementGroup]:
-        """Deprecated: always returns an empty list."""
-        return []
-
-    @DeveloperAPI(stability="alpha")
-    def release_head_pgs(self) -> None:
-        """No-op retained for compatibility with SlicePlacementGroup."""
-        pass
-
     def shutdown(self):
         """Remove the worker placement group. Idempotent."""
         if self._placement_group is not None:
@@ -1807,6 +1737,7 @@ def _build_slice_worker_to_node(
             node_labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY),
         ): node
         for node in nodes
+        if node.get("Alive", True)
         for node_labels in [node.get("Labels", {})]
         if node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
         and node_labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
@@ -1817,7 +1748,7 @@ def _find_undiscovered_idle_slice(
     parent_topologies: List[str],
     nodes: List[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
-    pg_used_nodes: Optional[Collection[str]] = None,
+    pg_used_nodes: Collection[str] = (),
 ) -> Optional[Tuple[str, str]]:
     """Return ``(parent_topology, slice_name)`` for the first undiscovered
     (absent from cache), fully idle slice, scanning *parent_topologies*
@@ -1845,9 +1776,6 @@ def _find_undiscovered_idle_slice(
         if topo in parent_set and sname:
             topo_slice_nodes.setdefault((topo, sname), []).append(node)
 
-    if pg_used_nodes is None:
-        pg_used_nodes = _get_nodes_with_placed_tpu_bundles()
-
     for parent_topology in parent_topologies:
         for (topo, sname), sns in topo_slice_nodes.items():
             if topo != parent_topology or sname in discovered:
@@ -1865,7 +1793,7 @@ def _find_available_cached_subslice(
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
     subslice_index: Optional[int] = None,
-    pg_used_nodes: Optional[Collection[str]] = None,
+    pg_used_nodes: Collection[str] = (),
 ) -> Optional[Tuple[List[str], int, str, str, Dict[str, Dict[str, str]]]]:
     """Return the first idle subslice across all cached slices of any valid
     parent topology, or ``None``.
@@ -1874,8 +1802,6 @@ def _find_available_cached_subslice(
     first). On success returns ``(worker_ids, subslice_index, slice_name,
     parent_topology, worker_labels)``.
     """
-    if pg_used_nodes is None:
-        pg_used_nodes = _get_nodes_with_placed_tpu_bundles()
     for parent_topology in parent_topologies:
         for slice_name, worker_labels in _collect_known_slice_labels(
             parent_topology, nodes
@@ -2042,7 +1968,6 @@ def subslice_placement_group(
     lifetime: Optional[str] = None,
     timeout_s: Optional[float] = DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S,
     subslice_index: Optional[int] = None,
-    head_reservation_timeout_s: Optional[float] = None,
 ) -> SubslicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU subslice.
 
@@ -2073,7 +1998,6 @@ def subslice_placement_group(
             only the subslice at this index within the physical slice will be
             considered. If that subslice is busy, the request will fail even if
             other subslices are idle.
-        head_reservation_timeout_s: Deprecated alias for ``timeout_s``.
 
     Returns:
         A :class:`SubslicePlacementGroup` handle.
@@ -2103,12 +2027,6 @@ def subslice_placement_group(
         ...     for i in range(sg.num_hosts)
         ... ]
     """
-    if head_reservation_timeout_s is not None:
-        logger.warning(
-            "`head_reservation_timeout_s` is deprecated; use `timeout_s` instead."
-        )
-        timeout_s = head_reservation_timeout_s
-
     (
         version,
         subslice_topology,

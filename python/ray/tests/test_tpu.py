@@ -609,7 +609,6 @@ def _make_mock_tpu_node(
     """Helper to mock a Ray Node dictionary returned by ray.nodes()."""
     if node_id is None:
         node_id = f"node_{slice_name}_{worker_id}"
-    resources = {"TPU": tpu_chips}
     return {
         "NodeID": node_id,
         "Alive": alive,
@@ -618,7 +617,7 @@ def _make_mock_tpu_node(
             "ray.io/tpu-slice-name": slice_name,
             "ray.io/tpu-worker-id": str(worker_id),
         },
-        "Resources": resources,
+        "Resources": {"TPU": tpu_chips},
     }
 
 
@@ -2704,10 +2703,7 @@ def test_slice_placement_group_v6e_2x4_with_chips_per_vm_uses_topology_strategy(
     {'CPU': 1, 'TPU': 4} and uses topology_strategy on ray.io/tpu-slice-name.
     """
     fake_pg = MagicMock(name="slice_pg")
-    with (
-        patch("ray.is_initialized", return_value=False),
-        patch("ray.util.tpu.placement_group", return_value=fake_pg) as mock_pg,
-    ):
+    with patch("ray.util.tpu.placement_group", return_value=fake_pg) as mock_pg:
         spg = SlicePlacementGroup(
             topology="2x4",
             accelerator_version="v6e",
@@ -2732,25 +2728,17 @@ def test_slice_placement_group_v6e_2x4_with_chips_per_vm_uses_topology_strategy(
 
 def test_slice_placement_group_multi_bundle_per_host():
     """Verify multi-host SlicePlacementGroup pins ray.io/tpu-worker-id as
-    bundle_idx // bundles_per_host when bundles_per_host > 1, and single-host
-    multi-bundle uses STRICT_PACK.
+    bundle_idx // bundles_per_host when bundles_per_host > 1.
     """
     fake_pg = MagicMock(name="slice_pg")
-    with (
-        patch("ray.is_initialized", return_value=False),
-        patch("ray.util.tpu.placement_group", return_value=fake_pg) as mock_pg,
-        patch.object(ray.util.tpu.logger, "warning") as mock_warn,
-    ):
+    with patch("ray.util.tpu.placement_group", return_value=fake_pg) as mock_pg:
         spg = SlicePlacementGroup(
             topology="2x2x2",
             accelerator_version="v4",
             resources_per_bundle={"TPU": 2, "CPU": 1},
-            pg_per_slice=True,
         )
     assert spg.hosts_per_slice == 2
     assert spg.bundles_per_slice == 4
-    mock_warn.assert_called_once()
-    assert "pg_per_slice" in mock_warn.call_args[0][0]
     mock_pg.assert_called_once_with(
         bundles=[{"CPU": 1, "TPU": 2}] * 4,
         name="",
@@ -2766,16 +2754,17 @@ def test_slice_placement_group_multi_bundle_per_host():
         },
     )
 
-    # Single-host slice with bundles_per_slice > 1 must upgrade strategy="PACK"
-    # to "STRICT_PACK" so all bundles stay on the same single-host TPU node.
-    with (
-        patch("ray.is_initialized", return_value=False),
-        patch("ray.util.tpu.placement_group", return_value=fake_pg) as mock_pg_single,
-    ):
+
+def test_slice_placement_group_single_host_uses_strict_pack():
+    """Single-host slice with bundles_per_slice > 1 must use strategy='STRICT_PACK'
+    so all bundles stay on the same single-host TPU node, and per-host TPU
+    divisibility is enforced.
+    """
+    fake_pg = MagicMock(name="slice_pg")
+    with patch("ray.util.tpu.placement_group", return_value=fake_pg) as mock_pg_single:
         spg_single = SlicePlacementGroup(
             topology="2x2",
             accelerator_version="v6e",
-            strategy="PACK",
             resources_per_bundle={"TPU": 2, "CPU": 1},
         )
     assert spg_single.hosts_per_slice == 1
@@ -2791,11 +2780,8 @@ def test_slice_placement_group_multi_bundle_per_host():
         ],
     )
 
-    with (
-        patch("ray.is_initialized", return_value=False),
-        pytest.raises(
-            ValueError, match="evenly divide the logical TPU devices per host"
-        ),
+    with pytest.raises(
+        ValueError, match="evenly divide the logical TPU devices per host"
     ):
         SlicePlacementGroup(
             topology="2x2x2",
@@ -2803,12 +2789,15 @@ def test_slice_placement_group_multi_bundle_per_host():
             resources_per_bundle={"TPU": 8, "CPU": 1},
         )
 
-    # Explicit user bundle_label_selector entries take precedence over default labels,
-    # and specifying ray.io/tpu-slice-name (e.g. !in(...) exclusion) retains ray.io/tpu-pod-type.
-    with (
-        patch("ray.is_initialized", return_value=False),
-        patch("ray.util.tpu.placement_group", return_value=fake_pg) as mock_pg_override,
-    ):
+
+def test_slice_placement_group_user_label_selector_override():
+    """Explicit user bundle_label_selector entries take precedence over default labels,
+    and specifying ray.io/tpu-slice-name (e.g. !in(...) exclusion) retains ray.io/tpu-pod-type.
+    """
+    fake_pg = MagicMock(name="slice_pg")
+    with patch(
+        "ray.util.tpu.placement_group", return_value=fake_pg
+    ) as mock_pg_override:
         SlicePlacementGroup(
             topology="2x2x2",
             accelerator_version="v4",
@@ -2876,6 +2865,48 @@ def test_subslice_idle_check_handles_omitted_zero_tpu_key():
 
     with patch.dict(ray.util.tpu._tpu_subslice_cache, {}, clear=True):
         assert ray.util.tpu._find_undiscovered_idle_slice(["4x4"], nodes, avail) is None
+
+
+def test_dead_nodes_ignored_in_slice_lookup_and_resource_wait():
+    """Verify dead nodes ('Alive': False) in ray.nodes() do not overwrite live
+    replacement nodes in _build_slice_worker_to_node or block _wait_for_slice_resources_freed.
+    """
+    live_node = _make_mock_tpu_node(
+        alive=True,
+        pod_type="v6e-16",
+        slice_name="slice-a",
+        worker_id=0,
+        node_id="live-w0",
+    )
+    dead_node = _make_mock_tpu_node(
+        alive=False,
+        pod_type="v6e-16",
+        slice_name="slice-a",
+        worker_id=0,
+        node_id="dead-w0",
+    )
+    # Dead node appearing after live node must not overwrite the live node.
+    lookup = ray.util.tpu._build_slice_worker_to_node([live_node, dead_node])
+    assert lookup[("slice-a", "0")]["NodeID"] == "live-w0"
+
+    # Dead node with 0 available TPU resources or lingering bundle state must
+    # not block _wait_for_slice_resources_freed.
+    with (
+        patch("ray.nodes", return_value=[live_node, dead_node]),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value={"live-w0": {"TPU": 4.0}, "dead-w0": {"TPU": 0.0}},
+        ),
+        patch(
+            "ray.util.tpu._get_nodes_with_placed_tpu_bundles",
+            return_value={"dead-w0"},
+        ),
+        patch.object(ray.util.tpu.logger, "warning") as mock_warn,
+    ):
+        ray.util.tpu._wait_for_slice_resources_freed(
+            "slice-a", timeout_s=0.01, poll_interval_s=0.005
+        )
+    mock_warn.assert_not_called()
 
 
 @pytest.fixture(scope="module", autouse=True)

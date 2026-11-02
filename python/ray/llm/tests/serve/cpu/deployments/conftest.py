@@ -44,7 +44,7 @@ def ray_tpu_cluster():
                 "ray.io/tpu-topology": topology,
                 "ray.io/accelerator-type": "TPU-V6E",
             }
-            resources = {"TPU": 4, "accelerator_type:TPU-V6E": 4}
+            resources = {"TPU": 4}
 
             cluster.add_node(
                 num_cpus=8,

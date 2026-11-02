@@ -672,12 +672,7 @@ class WorkerGroup(ExecutionGroup):
                     accelerator_version=accelerator_version,
                     num_slices=worker_group_context.num_slices,
                     resources_per_bundle=worker_group_context.resources_per_worker,
-                    strategy=worker_group_context.placement_strategy,
-                    bundle_label_selector=(
-                        worker_group_context.label_selector
-                        if scaling_config.label_selector
-                        else None
-                    ),
+                    bundle_label_selector=worker_group_context.label_selector,
                 )
 
                 return SlicePlacementGroupHandle(spg)

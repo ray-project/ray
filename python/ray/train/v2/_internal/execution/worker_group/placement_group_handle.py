@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Union
@@ -85,13 +86,7 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
 
     @property
     def placement_group(self) -> PlacementGroup:
-        pgs = self.placement_groups
-        if len(pgs) > 1:
-            raise ValueError(
-                f"Cannot access singular `placement_group` when managing {len(pgs)} slices. "
-                "Please use `placement_groups` instead."
-            )
-        return pgs[0]
+        return self._spg.placement_group
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         try:
@@ -100,7 +95,7 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
                 return False
             deadline = time.monotonic() + timeout_seconds
             for pg in pgs:
-                if not pg.wait(max(0.0, deadline - time.monotonic())):
+                if not pg.wait(math.ceil(max(0.0, deadline - time.monotonic()))):
                     return False
             return True
         except Exception:

@@ -172,19 +172,25 @@ class ScalingConfig(ScalingConfigV1):
         )
 
     def _label_selector_per_worker(
-        self, num_workers: int
+        self, num_workers: int, include_tpu_labels: bool = True
     ) -> Optional[List[Dict[str, str]]]:
         """Normalize ``label_selector`` into a per-worker list of length ``num_workers``.
 
-        - ``None`` -> ``None`` (no constraint; downstream consumers — the
-          placement-group path and the autoscaling coordinator — both
-          accept ``None`` and treat it as "no label requirement").
-        - ``Dict`` -> the same dict replicated for each worker
-        - ``List`` -> the first ``num_workers`` entries (validated to be
-          ``max_workers`` long in ``__post_init__``)
+        When ``use_tpu=True`` and ``include_tpu_labels=True``, TPU
+        ``accelerator_type`` and ``topology`` labels are synthesized and merged
+        into each worker's label selector.
+
+        - ``None`` -> ``None`` when no TPU labels are synthesized (no constraint;
+          downstream consumers — the placement-group path and the autoscaling
+          coordinator — both accept ``None`` and treat it as "no label
+          requirement"), or the synthesized TPU labels replicated for each worker.
+        - ``Dict`` -> the same dict (merged with any TPU labels) replicated for
+          each worker
+        - ``List`` -> the first ``num_workers`` entries (merged with any TPU
+          labels; validated to be ``max_workers`` long in ``__post_init__``)
         """
         tpu_selector = {}
-        if self.use_tpu:
+        if self.use_tpu and include_tpu_labels:
             if self.accelerator_type:
                 tpu_version = get_tpu_version_from_type(self.accelerator_type)
                 tpu_selector[

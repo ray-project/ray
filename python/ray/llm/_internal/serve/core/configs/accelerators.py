@@ -304,7 +304,6 @@ class TPUAccelerator(AcceleratorBackend):
             topology=self._config.topology,
             accelerator_version=version,
             resources_per_bundle=worker_bundle,
-            strategy=strategy,
             name=name,
         )
         return self._slice_pg_wrapper.placement_group

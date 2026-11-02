@@ -22,7 +22,7 @@ def ray_tpu_single_host():
         # Simulate one node with 8 TPU chips.
         cluster.add_node(
             num_cpus=4,
-            resources={"TPU": 8, "accelerator_type:TPU-V6E": 1},
+            resources={"TPU": 8},
             env_vars={"TPU_ACCELERATOR_TYPE": "v6e-8"},
             labels={
                 "ray.io/accelerator-type": "TPU-V6E",
@@ -76,16 +76,13 @@ def ray_tpu_multi_host():
         }
         cluster.add_node(
             num_cpus=8,
-            resources={
-                "TPU": 4,
-                "accelerator_type:TPU-V4": 1,
-            },
+            resources={"TPU": 4},
             env_vars=slice_a_head_env,
             labels=slice_a_head_labels,
         )
         cluster.add_node(
             num_cpus=8,
-            resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
+            resources={"TPU": 4},
             env_vars=slice_a_worker_env,
             labels=slice_a_worker_labels,
         )
@@ -118,16 +115,13 @@ def ray_tpu_multi_host():
         }
         cluster.add_node(
             num_cpus=8,
-            resources={
-                "TPU": 4,
-                "accelerator_type:TPU-V4": 1,
-            },
+            resources={"TPU": 4},
             env_vars=slice_b_head_env,
             labels=slice_b_head_labels,
         )
         cluster.add_node(
             num_cpus=8,
-            resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
+            resources={"TPU": 4},
             env_vars=slice_b_worker_env,
             labels=slice_b_worker_labels,
         )

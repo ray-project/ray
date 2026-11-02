@@ -80,7 +80,7 @@ def test_slice_handle_placement_group_property():
     """placement_group property should return the underlying PlacementGroup."""
     mock_spg = MagicMock()
     mock_pg = MagicMock()
-    mock_spg.placement_groups = [mock_pg]
+    mock_spg.placement_group = mock_pg
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert handle.placement_group is mock_pg
@@ -97,6 +97,12 @@ def test_slice_handle_wait():
     assert handle.wait(timeout_seconds=10)
     mock_pg.wait.assert_called_once()
 
+    # Sub-second positive timeout is rounded up to 1s via math.ceil so Cython
+    # int64_t conversion in CoreWorker.wait_placement_group_ready does not truncate to 0.
+    mock_pg.reset_mock()
+    assert handle.wait(timeout_seconds=0.1)
+    mock_pg.wait.assert_called_once_with(1)
+
 
 def test_slice_handle_multi_slice_wait():
     """wait() should wait on all underlying PlacementGroups for multi-slice TPUs."""
@@ -109,8 +115,6 @@ def test_slice_handle_multi_slice_wait():
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert handle.placement_groups == [mock_pg1, mock_pg2]
-    with pytest.raises(ValueError, match="Cannot access singular `placement_group`"):
-        _ = handle.placement_group
     assert handle.wait(timeout_seconds=10)
     mock_pg1.wait.assert_called_once()
     mock_pg2.wait.assert_called_once()
