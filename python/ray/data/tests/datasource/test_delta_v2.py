@@ -551,6 +551,12 @@ def test_literal_null_partition_string_is_rejected(tmp_path):
         _read(path).take_all()
 
 
+def test_reads_with_v2_by_default(partitioned_table):
+    DataContext._set_current(DataContext())
+
+    assert _uses_v2(ray.data.read_delta(partitioned_table))
+
+
 def test_falls_back_to_v1_when_the_flag_is_off(partitioned_table):
     assert not _uses_v2(_read(partitioned_table, v2=False))
 
