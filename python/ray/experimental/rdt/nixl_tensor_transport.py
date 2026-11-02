@@ -176,6 +176,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agent_locks: Dict[str, Any] = {}
         # Transfers that may still be in flight on each remote agent.
         self._inflight_xfers: Dict[str, set] = {}
+        # Handles to release once the polling of an agent's transfers ends. An agent
+        # has an entry only while it is being polled.
+        self._deferred_releases: Dict[str, List[Any]] = {}
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         self._memory_pool: Optional[MemoryPoolManager] = None
@@ -642,7 +645,11 @@ class NixlTensorTransport(TensorTransportManager):
                 inflight = self._inflight_xfers.get(remote_name, set())
                 if xfer_handle:
                     inflight.discard(xfer_handle)
-                    nixl_agent.release_xfer_handle(xfer_handle)
+                    deferred = self._deferred_releases.get(remote_name)
+                    if deferred is None:
+                        nixl_agent.release_xfer_handle(xfer_handle)
+                    else:
+                        deferred.append(xfer_handle)
                 # Without the cache, the last transfer on the agent removes it.
                 if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and not inflight:
                     nixl_agent.remove_remote_agent(remote_name)
@@ -661,19 +668,25 @@ class NixlTensorTransport(TensorTransportManager):
         # On timeout the removal fails the stuck transfer instead of hanging here.
         deadline = time.monotonic() + RDT_FETCH_FAIL_TIMEOUT_SECONDS
         inflight = self._inflight_xfers.get(remote_name, set())
-        for xfer_handle in list(inflight):
-            try:
-                # A finalizer on this thread may release the handle meanwhile.
-                while (
-                    xfer_handle in inflight
-                    and nixl_agent.check_xfer_state(xfer_handle) == "PROC"
-                    and time.monotonic() < deadline
-                ):
-                    time.sleep(0.001)
-            except Exception:
-                # The error surfaces from wait_fetch_complete.
-                pass
-        inflight.clear()
+        # Garbage collection can run _cleanup_transfer on this thread while it polls.
+        # That defers releasing handles to the end, so a polled handle is never freed.
+        deferred = self._deferred_releases[remote_name] = []
+        try:
+            for xfer_handle in list(inflight):
+                try:
+                    while (
+                        nixl_agent.check_xfer_state(xfer_handle) == "PROC"
+                        and time.monotonic() < deadline
+                    ):
+                        time.sleep(0.001)
+                except Exception:
+                    # The error surfaces from wait_fetch_complete.
+                    pass
+            inflight.clear()
+        finally:
+            del self._deferred_releases[remote_name]
+            for xfer_handle in deferred:
+                nixl_agent.release_xfer_handle(xfer_handle)
 
     def _prepare_remote_agent(
         self, remote_name: str, version: int, remote_nixl_agent_meta: bytes
