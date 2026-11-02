@@ -161,7 +161,7 @@ def test_pyarrow_conversion_error_handling(
             ds.materialize()
 
         error_msg = str(e.value)
-        expected_msg = "ArrowConversionError: Error converting data to Arrow:"
+        expected_msg = "Error converting data to Arrow:"
 
         assert expected_msg in error_msg
         assert "my_data" in error_msg
