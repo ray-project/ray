@@ -17,6 +17,7 @@ from ray._common.utils import (
     _BACKGROUND_TASKS,
     env_bool,
     get_cgroup_aware_swap_memory,
+    get_cgroup_dirs,
     get_or_create_event_loop,
     get_system_memory,
     load_class,
@@ -286,6 +287,251 @@ class TestGetSystemMemory:
             memory_limit_filename_v2="__also_does_not_exist__",
         )
         assert memory == psutil_memory, "Should use psutil when no cgroup files exist"
+
+
+def _make_tree(root, files):
+    """Create ``files`` ({relative path: content}) under ``root``."""
+    for rel, content in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content + "\n")
+    return root
+
+
+@pytest.mark.parametrize(
+    "proc_cgroup, existing, expected",
+    [
+        # Nested cgroup: leaf first, root last.
+        ("0::/a/b", ["a/b"], ["a/b", "a", ""]),
+        # Process in the root cgroup.
+        ("0::/", [], [""]),
+        # Host cgroup namespace: the path is not visible, keep the root.
+        ("0::/docker/0123abcd", [], [""]),
+        # Cgroup outside the namespace cannot be resolved.
+        ("0::/../x", ["x"], [""]),
+        # A cgroup v1 line is ignored when resolving v2.
+        ("11:memory:/job", ["job"], [""]),
+    ],
+)
+def test_get_cgroup_dirs_v2(tmp_path, proc_cgroup, existing, expected):
+    root = tmp_path / "cgroup"
+    root.mkdir()
+    for d in existing:
+        (root / d).mkdir(parents=True)
+    _make_tree(tmp_path, {"proc_self_cgroup": proc_cgroup})
+    assert get_cgroup_dirs(str(root), None, str(tmp_path / "proc_self_cgroup")) == [
+        str(root / d) if d else str(root) for d in expected
+    ]
+
+
+def test_get_cgroup_dirs_v1_uses_the_controller_hierarchy(tmp_path):
+    _make_tree(tmp_path, {"proc_self_cgroup": "12:cpu,cpuacct:/other\n11:memory:/job"})
+    mem, cpu = tmp_path / "memory", tmp_path / "cpu"
+    (mem / "job").mkdir(parents=True)
+    (cpu / "other").mkdir(parents=True)
+    proc = str(tmp_path / "proc_self_cgroup")
+    assert get_cgroup_dirs(str(mem), "memory", proc) == [str(mem / "job"), str(mem)]
+    assert get_cgroup_dirs(str(cpu), "cpu", proc) == [str(cpu / "other"), str(cpu)]
+    assert get_cgroup_dirs(str(mem), "memory", "missing") == [str(mem)]
+
+
+def test_get_cgroup_dirs_v1_strips_the_mount_root(tmp_path):
+    """Docker with the host cgroup namespace (the default on cgroup v1 hosts)
+    mounts the container's own cgroup, so /proc/self/cgroup says
+    /docker/<id>/pod/app while the mount shows pod/app."""
+    mem = tmp_path / "memory"
+    (mem / "pod" / "app").mkdir(parents=True)
+    _make_tree(
+        tmp_path,
+        {
+            "proc_self_cgroup": "11:memory:/docker/abc/pod/app",
+            "mountinfo": f"35 25 0:31 /docker/abc {mem} rw - cgroup cgroup rw,memory",
+        },
+    )
+    proc, mountinfo = str(tmp_path / "proc_self_cgroup"), str(tmp_path / "mountinfo")
+    assert get_cgroup_dirs(str(mem), "memory", proc, mountinfo) == [
+        str(mem / "pod" / "app"),
+        str(mem / "pod"),
+        str(mem),
+    ]
+    # Without mountinfo the path is not visible under the mount: root only.
+    assert get_cgroup_dirs(str(mem), "memory", proc, "missing") == [str(mem)]
+
+
+def test_get_cgroup_dirs_v1_co_mounted_controllers_behind_a_symlink(tmp_path):
+    """cgroup v1 co-mounts cpu and cpuacct at cpu,cpuacct and links cpu to it;
+    the mount is still found and the mount root still stripped."""
+    mount = tmp_path / "cpu,cpuacct"
+    (mount / "job").mkdir(parents=True)
+    os.symlink(mount, tmp_path / "cpu")
+    _make_tree(
+        tmp_path,
+        {
+            "proc_self_cgroup": "12:cpu,cpuacct:/docker/abc/job",
+            "mountinfo": f"36 25 0:32 /docker/abc {mount} rw - cgroup cgroup rw,cpu,cpuacct",
+        },
+    )
+    root = str(tmp_path / "cpu")
+    assert get_cgroup_dirs(
+        root, "cpu", str(tmp_path / "proc_self_cgroup"), str(tmp_path / "mountinfo")
+    ) == [str(mount / "job"), root]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("root_is_alias", [False, True])
+def test_get_cgroup_dirs_subtree_alias_keeps_the_full_hierarchy(
+    tmp_path, reverse, root_is_alias
+):
+    """Two mounts contain the process: the full hierarchy and a bind mount of
+    its own subtree. The full view wins whichever is listed first and
+    whichever the caller reads from, because a parent limit still applies."""
+    main, ctr = tmp_path / "main", tmp_path / "ctr"
+    (main / "pod" / "ctr").mkdir(parents=True)
+    ctr.mkdir()
+    mounts = [
+        f"40 25 0:30 / {main} rw - cgroup2 cgroup2 rw",
+        f"41 25 0:30 /pod/ctr {ctr} rw - cgroup2 cgroup2 rw",
+    ]
+    _make_tree(
+        tmp_path,
+        {
+            "proc_self_cgroup": "0::/pod/ctr",
+            "mountinfo": "\n".join(mounts[::-1] if reverse else mounts),
+        },
+    )
+    root = ctr if root_is_alias else main
+    expected = [str(main / "pod" / "ctr"), str(main / "pod"), str(main)]
+    if root_is_alias:
+        expected.append(str(ctr))
+    assert (
+        get_cgroup_dirs(
+            str(root),
+            None,
+            str(tmp_path / "proc_self_cgroup"),
+            str(tmp_path / "mountinfo"),
+        )
+        == expected
+    )
+
+
+def test_get_cgroup_dirs_mount_point_with_escaped_space(tmp_path):
+    """mountinfo escapes a space in a path as \\040."""
+    root = tmp_path / "my cg"
+    (root / "job").mkdir(parents=True)
+    escaped = str(root).replace(" ", "\\040")
+    _make_tree(
+        tmp_path,
+        {
+            "proc_self_cgroup": "0::/job",
+            "mountinfo": f"40 25 0:30 / {escaped} rw - cgroup2 cgroup2 rw",
+        },
+    )
+    assert get_cgroup_dirs(
+        str(root), None, str(tmp_path / "proc_self_cgroup"), str(tmp_path / "mountinfo")
+    ) == [str(root / "job"), str(root)]
+
+
+def test_get_cgroup_dirs_ignores_mounts_elsewhere(tmp_path):
+    """mountinfo is only used when the caller's root is one of its mount
+    points; a hierarchy mounted somewhere else is not read."""
+    root, elsewhere = tmp_path / "cgroup", tmp_path / "elsewhere"
+    (root / "job").mkdir(parents=True)
+    (elsewhere / "job").mkdir(parents=True)
+    _make_tree(
+        tmp_path,
+        {
+            "proc_self_cgroup": "0::/job",
+            "mountinfo": f"40 25 0:30 / {elsewhere} rw - cgroup2 cgroup2 rw",
+        },
+    )
+    assert get_cgroup_dirs(
+        str(root), None, str(tmp_path / "proc_self_cgroup"), str(tmp_path / "mountinfo")
+    ) == [str(root / "job"), str(root)]
+
+
+@pytest.mark.skipif(not PSUTIL_AVAILABLE, reason="psutil not available")
+def test_get_system_memory_v1_host_cgroup_namespace(tmp_path):
+    """The limit on a parent below the mount root is found once the mount
+    root is stripped from the /proc/self/cgroup path."""
+    root = _make_tree(
+        tmp_path / "memory",
+        {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "pod/memory.limit_in_bytes": "536870912",
+            "pod/app/memory.limit_in_bytes": "9223372036854771712",
+        },
+    )
+    _make_tree(
+        tmp_path,
+        {
+            "proc_self_cgroup": "11:memory:/docker/abc/pod/app",
+            "mountinfo": f"35 25 0:31 /docker/abc {root} rw - cgroup cgroup rw,memory",
+        },
+    )
+    memory = get_system_memory(
+        memory_limit_filename=str(root / "memory.limit_in_bytes"),
+        memory_limit_filename_v2="__does_not_exist__",
+        proc_self_cgroup_filename=str(tmp_path / "proc_self_cgroup"),
+        proc_self_mountinfo_filename=str(tmp_path / "mountinfo"),
+    )
+    assert memory == 536870912
+
+
+@pytest.mark.skipif(not PSUTIL_AVAILABLE, reason="psutil not available")
+@pytest.mark.parametrize(
+    "files, proc_cgroup, expected",
+    [
+        # Limit on the leaf, root unlimited.
+        ({"memory.max": "max", "job/memory.max": "268435456"}, "0::/job", 268435456),
+        # Smallest limit in the hierarchy wins.
+        (
+            {
+                "memory.max": "1073741824",
+                "job/memory.max": "268435456",
+                "job/step/memory.max": "max",
+            },
+            "0::/job/step",
+            268435456,
+        ),
+        # Bare host: the root has no memory.max, the systemd scope has one.
+        (
+            {"user.slice/run-1.scope/memory.max": "1073741824"},
+            "0::/user.slice/run-1.scope",
+            1073741824,
+        ),
+        # No limit on any level: host memory.
+        ({"memory.max": "max", "job/memory.max": "max"}, "0::/job", None),
+    ],
+)
+def test_get_system_memory_nested_cgroup_v2(tmp_path, files, proc_cgroup, expected):
+    root = _make_tree(
+        tmp_path / "cgroup", {"cgroup.controllers": "cpu memory", **files}
+    )
+    _make_tree(tmp_path, {"proc_self_cgroup": proc_cgroup})
+    memory = get_system_memory(
+        memory_limit_filename="__does_not_exist__",
+        memory_limit_filename_v2=str(root / "memory.max"),
+        proc_self_cgroup_filename=str(tmp_path / "proc_self_cgroup"),
+    )
+    assert memory == (psutil.virtual_memory().total if expected is None else expected)
+
+
+@pytest.mark.skipif(not PSUTIL_AVAILABLE, reason="psutil not available")
+def test_get_system_memory_nested_cgroup_v1(tmp_path):
+    root = _make_tree(
+        tmp_path / "memory",
+        {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "job/memory.limit_in_bytes": "268435456",
+        },
+    )
+    _make_tree(tmp_path, {"proc_self_cgroup": "11:memory:/job"})
+    memory = get_system_memory(
+        memory_limit_filename=str(root / "memory.limit_in_bytes"),
+        memory_limit_filename_v2="__does_not_exist__",
+        proc_self_cgroup_filename=str(tmp_path / "proc_self_cgroup"),
+    )
+    assert memory == 268435456
 
 
 @pytest.mark.skipif(not PSUTIL_AVAILABLE, reason="psutil not available")
