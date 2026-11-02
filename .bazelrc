@@ -302,3 +302,6 @@ build:macos --host_copt=-mmacosx-version-min=12.0
 build:macos --host_linkopt=-mmacosx-version-min=12.0
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
+# Emit Java 8 bytecode. rules_java 7.x defaulted to 8; 8.x defaults to 11, which
+# breaks consumers on a Java 8 runtime (e.g. RayDP).
+build --java_language_version=8
