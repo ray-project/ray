@@ -26,6 +26,8 @@ from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
 )
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators import InputData, ReadFiles
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 
@@ -280,17 +282,13 @@ def test_delta_datasource_v2_unsupported_reason(table, kwargs, expected):
         assert reason is not None and expected in reason
 
 
-def test_generated_id_column_is_rejected(partitioned_table, tmp_path):
-    from ray.data._internal.logical.interfaces import LogicalPlan
-    from ray.data._internal.logical.operators import InputData, ReadFiles
+def _bind_generated_id_column(datasource: DeltaDatasourceV2, tmp_path) -> LogicalPlan:
     from ray.data._internal.logical.rules.bind_generated_id_column import (
         BindGeneratedIdColumn,
     )
     from ray.data.checkpoint import CheckpointConfig
-    from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
     from ray.data.context import DataContext
 
-    datasource = _datasource(partitioned_table)
     schema = datasource.infer_schema(None)
     read_files = ReadFiles(
         datasource_name=datasource.name,
@@ -303,9 +301,36 @@ def test_generated_id_column_is_rejected(partitioned_table, tmp_path):
     context.checkpoint_config = CheckpointConfig(
         checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
     )
+    return BindGeneratedIdColumn().apply(LogicalPlan(dag=read_files, context=context))
 
-    with pytest.raises(InvalidCheckpointingConfig, match="read_delta"):
-        BindGeneratedIdColumn().apply(LogicalPlan(dag=read_files, context=context))
+
+@pytest.mark.parametrize("pinned", [False, True])
+def test_generated_id_column_is_bound(partitioned_table, tmp_path, monkeypatch, pinned):
+    """The ID column is added to the read; without ``version=``, a warning says
+    a resumed job could read a newer version."""
+    from ray.data._internal.logical.rules import bind_generated_id_column
+
+    warnings = []
+    monkeypatch.setattr(
+        bind_generated_id_column.logger,
+        "warning",
+        lambda message, *args: warnings.append(message),
+    )
+    datasource = DeltaDatasourceV2(
+        _open(partitioned_table, version=0 if pinned else None),
+        version_pinned_by_caller=pinned,
+    )
+
+    plan = _bind_generated_id_column(datasource, tmp_path)
+
+    assert isinstance(plan.dag, ReadFiles), plan.dag
+    scanner = plan.dag.scanner
+    assert scanner.read_schema().names == ["id", "grp", "value", "generated_id"]
+    if pinned:
+        assert warnings == []
+    else:
+        (warning,) = warnings
+        assert "version=" in warning and partitioned_table in warning
 
 
 if __name__ == "__main__":

@@ -153,6 +153,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         columns: Optional[List[str]] = None,
         include_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
+        version_pinned_by_caller: bool = False,
     ):
         """Create the datasource.
 
@@ -169,6 +170,8 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
                 data file path, relative to the table directory.
             shuffle: ``"files"`` or a ``FileShuffleConfig`` to shuffle the
                 table's data files before reading them.
+            version_pinned_by_caller: Whether the caller chose the version
+                ``table`` is opened at, rather than the latest one.
         """
         super().__init__(name="DeltaV2", category=DatasourceCategory.DATA_LAKE)
         # Pinned here so every listing task, retry and re-execution reads the
@@ -181,6 +184,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         self._table_schema = pa.schema(table.schema().to_arrow())
         self._partition_columns: List[str] = list(table.metadata().partition_columns)
         self._partitioning = make_partitioning(self._partition_columns)
+        self._version_pinned_by_caller = version_pinned_by_caller
         if filesystem is None:
             filesystem = _make_table_filesystem(table.table_uri, storage_options)
         self._filesystem = RetryingPyFileSystem.wrap(
@@ -275,4 +279,6 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             synthesized_columns=self._synthesized_columns,
             shuffle=self._shuffle_config,
             target_block_size=DataContext.get_current().target_max_block_size,
+            table_uri=self._snapshot.table_uri,
+            version_pinned_by_caller=self._version_pinned_by_caller,
         )

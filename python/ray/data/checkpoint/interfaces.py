@@ -90,8 +90,10 @@ class CheckpointConfig:
         generated_id_column: Name of a row ID column that Ray Data generates for
             each row from where the row lives in its Parquet file (file, row
             group, position). Use it instead of ``id_column`` when the input
-            has no unique ID column. Only Parquet reads on the V2 datasource
-            path are supported. Exactly one of ``id_column`` and
+            has no unique ID column. Only Parquet and Delta Lake reads on the
+            V2 datasource path are supported; for a Delta table, pass
+            ``version=`` to ``read_delta`` so a resumed job reads the same
+            table version. Exactly one of ``id_column`` and
             ``generated_id_column`` must be set.
         delete_checkpoint_on_success: If true, automatically delete checkpoint
             data when the dataset execution succeeds. Only supported for
