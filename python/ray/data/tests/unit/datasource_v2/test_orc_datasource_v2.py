@@ -82,11 +82,20 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
     partitioner = datasource.get_file_partitioner(
         hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=1)
     )
+    from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
+        RoundRobinPartitioner,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+        supports_stripe_reads,
+    )
     from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
         OrcStripePartitioner,
     )
 
-    assert isinstance(partitioner, OrcStripePartitioner)
+    expected_type = (
+        OrcStripePartitioner if supports_stripe_reads() else RoundRobinPartitioner
+    )
+    assert isinstance(partitioner, expected_type)
     partitioner.add_input(sample)
     partitioner.finalize()
     assert partitioner.has_partition()

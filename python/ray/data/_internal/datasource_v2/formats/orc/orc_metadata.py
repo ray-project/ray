@@ -1,15 +1,20 @@
-"""Optional, metadata-only PyORC access and bounded bootstrap byte reuse."""
+"""ORC layouts from the footer already parsed by an Arrow file reader."""
 
-import importlib
-import io
 import logging
-import operator
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, cast
 
 import pyarrow as pa
+from google.protobuf.message import DecodeError, Message
+from pyarrow import _orc, orc
 from pyarrow.fs import FileSystem, LocalFileSystem
 
+from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator import (
+    _file_tail_message_type,
+    _FileTailFields,
+    _FooterFields,
+    _optional_int,
+)
 from ray.data._internal.util import call_with_retry
 from ray.data.context import DataContext
 
@@ -27,220 +32,127 @@ class OrcStripeMetadata:
 
 @dataclass(frozen=True)
 class OrcFileMetadata:
-    num_rows: int
-    stripes: Tuple[OrcStripeMetadata, ...]
-
-
-@dataclass(frozen=True)
-class OrcLayoutSeed:
     path: str
     size: int
-    layout: OrcFileMetadata
+    num_rows: int
+    # None means the file has no supported layout interface, not an empty file.
+    stripes: Optional[Tuple[OrcStripeMetadata, ...]]
 
 
-def pyorc_available() -> bool:
-    """Only an absent optional package permits whole-file fallback."""
-    try:
-        importlib.import_module("pyorc")
-    except ModuleNotFoundError as error:
-        if error.name == "pyorc":
-            return False
-        raise
-    return True
+def supports_stripe_reads() -> bool:
+    """Require native batch iteration and the existing serialized-footer API."""
+    return callable(getattr(orc.ORCFile, "iter_batches", None)) and callable(
+        getattr(getattr(_orc, "ORCReader", None), "serialized_file_tail", None)
+    )
+
+
+def require_stripe_reads(path: str) -> None:
+    """An existing assignment must not fall back to a whole-file read."""
+    if not supports_stripe_reads():
+        raise RuntimeError(
+            f"ORC stripe assignment for {path} requires Arrow native batch/footer APIs"
+        )
 
 
 def orc_read_unit_id(path: str, stripe_index: int) -> str:
     return f"{path}#stripe{stripe_index}"
 
 
-class _RangeCache:
-    """Read-through immutable ranges, scoped to one owned input file.
-
-    Borrowed views have independent cursors and never close the owned source.
-    Partial hits read only uncovered gaps. Failed/short reads are not cached.
-    The cap bounds retained bytes, not native allocations or large read-throughs.
-    """
-
-    def __init__(self, source, capacity: int = 8 * 1024 * 1024):
-        self.source = source
-        self.size = source.size()
-        self.capacity = capacity
-        self.retained_bytes = 0
-        self.uncached_bytes = 0
-        self.ranges = []
-
-    def view(self):
-        return _CachedInput(self)
-
-    def read(self, start: int, length: int) -> bytes:
-        end = min(self.size, start + length)
-        if start >= end:
-            return b""
-        parts = []
-        cursor = start
-        for offset, data in list(self.ranges):
-            if offset + len(data) <= cursor:
-                continue
-            if offset >= end:
-                break
-            if cursor < offset:
-                parts.append(self._read_gap(cursor, offset))
-                cursor = offset
-            stop = min(end, offset + len(data))
-            parts.append(data[cursor - offset : stop - offset])
-            cursor = stop
-            if cursor == end:
-                break
-        if cursor < end:
-            parts.append(self._read_gap(cursor, end))
-        return b"".join(parts)
-
-    def _read_gap(self, start: int, end: int) -> bytes:
-        self.source.seek(start)
-        data = self.source.read(end - start)
-        if len(data) != end - start:
-            raise OSError(
-                f"Unexpected short ORC read at {start}: {len(data)}/{end-start}"
-            )
-        if self.retained_bytes + len(data) <= self.capacity:
-            self.ranges.append((start, data))
-            self.ranges.sort(key=lambda item: item[0])
-            self.retained_bytes += len(data)
-        else:
-            self.uncached_bytes += len(data)
-        return data
+def _required_int(message: Message, name: str) -> int:
+    value = _optional_int(message, name)
+    if value is None:
+        raise ValueError(f"Missing ORC footer field {name}")
+    return value
 
 
-class _CachedInput(io.RawIOBase):
-    def __init__(self, cache: _RangeCache):
-        super().__init__()
-        self.cache = cache
-        self.position = 0
-
-    def readable(self):
-        return True
-
-    def seekable(self):
-        return True
-
-    def tell(self):
-        self._checkClosed()
-        return self.position
-
-    def seek(self, offset, whence=0):
-        self._checkClosed()
-        offset = operator.index(offset)
-        whence = operator.index(whence)
-        if whence not in (0, 1, 2):
-            raise ValueError(f"Invalid whence: {whence}")
-        position = offset + (
-            0 if whence == 0 else self.position if whence == 1 else self.cache.size
-        )
-        if position < 0:
-            raise ValueError("Negative ORC seek")
-        self.position = position
-        return position
-
-    def read(self, size=-1):
-        self._checkClosed()
-        if size is None or size < 0:
-            size = max(0, self.cache.size - self.position)
-        size = operator.index(size)
-        data = self.cache.read(self.position, size)
-        self.position += len(data)
-        return data
-
-    def readinto(self, buffer):
-        data = self.read(len(buffer))
-        buffer[: len(data)] = data
-        return len(data)
-
-
-def _layout_from_source(source, path: str, size: int) -> OrcFileMetadata:
-    backend = importlib.import_module("pyorc")
+def read_orc_layout(
+    reader: orc.ORCFile,
+    path: str,
+    size: int,
+    *,
+    allow_unsupported: bool = False,
+) -> OrcFileMetadata:
+    """Inspect the open decoder's footer without opening or reading its input."""
+    get_tail = getattr(getattr(reader, "reader", None), "serialized_file_tail", None)
+    if not callable(get_tail):
+        raise RuntimeError(f"ORC serialized footer is unavailable on worker for {path}")
     try:
-        # Stripe construction allocates a native row batch even without next().
-        # Keep it small; it does not eliminate libORC's O(S²) initialization.
-        reader = backend.Reader(source, batch_size=1)
-        stripes = tuple(
-            OrcStripeMetadata(
-                i,
-                len(stripe),
-                stripe.row_offset,
-                stripe.bytes_length,
-                stripe.bytes_offset,
-            )
-            for i, stripe in enumerate(reader.iter_stripes())
-        )
+        try:
+            data = get_tail()
+        except NotImplementedError as error:
+            if not allow_unsupported:
+                raise RuntimeError(
+                    f"ORC stripe layout is unavailable for {path}"
+                ) from error
+            logger.debug("ORC layout is unsupported for %s; using a whole file", path)
+            return OrcFileMetadata(path, size, reader.nrows, None)
+        if not isinstance(data, bytes):
+            raise ValueError("Serialized ORC footer must be bytes")
+        tail = _file_tail_message_type().FromString(data)
+        if not tail.HasField("footer"):
+            raise ValueError("Missing ORC footer")
+        footer = cast(_FileTailFields, tail).footer
+        stripes = []
         row = 0
-        byte_end = 0
-        for stripe in stripes:
-            if (
-                stripe.num_rows < 0
-                or stripe.row_offset != row
-                or stripe.size_bytes < 0
-                or stripe.bytes_offset < byte_end
-                or stripe.bytes_offset + stripe.size_bytes > size
-            ):
-                raise ValueError(f"Invalid stripe {stripe.index} layout")
-            row += stripe.num_rows
-            byte_end = stripe.bytes_offset + stripe.size_bytes
-        if row != len(reader):
-            raise ValueError(f"Stripe rows {row} != file rows {len(reader)}")
-        return OrcFileMetadata(len(reader), stripes)
-    except (RuntimeError, ValueError, backend.ORCError) as error:
-        raise pa.ArrowInvalid(
-            f"Failed to read ORC metadata for {path}: {error}"
-        ) from error
+        byte_end = 3  # ORC magic
+        for index, stripe in enumerate(cast(_FooterFields, footer).stripes):
+            offset = _required_int(stripe, "offset")
+            length = sum(
+                _required_int(stripe, name)
+                for name in ("index_length", "data_length", "footer_length")
+            )
+            rows = _required_int(stripe, "number_of_rows")
+            if offset < byte_end or length < 0 or offset + length > size:
+                raise ValueError(f"Invalid stripe {index} byte range")
+            stripes.append(OrcStripeMetadata(index, rows, row, length, offset))
+            row += rows
+            byte_end = offset + length
+        if (
+            row != _required_int(footer, "number_of_rows")
+            or row != reader.nrows
+            or len(stripes) != reader.nstripes
+        ):
+            raise ValueError("Stripe rows/count disagree with the ORC file")
+        return OrcFileMetadata(path, size, row, tuple(stripes))
+    except (DecodeError, ValueError, pa.ArrowInvalid) as error:
+        raise pa.ArrowInvalid(f"Invalid ORC layout for {path}: {error}") from error
 
 
-def read_orc_metadata(path: str, filesystem: Optional[FileSystem]) -> OrcFileMetadata:
-    """Read a checked physical layout without column statistics or row iteration."""
-    filesystem = filesystem or LocalFileSystem()
+def read_orc_file(path, filesystem, inspect):
+    """Open one owned Arrow reader, with the usual path context and IO retry."""
 
     def read():
         try:
-            with filesystem.open_input_file(path) as source:
-                return _layout_from_source(source, path, source.size())
-        except OSError as error:
-            raise type(error)(
-                f"Failed to read ORC metadata for {path}: {error}"
-            ) from error
+            with (filesystem or LocalFileSystem()).open_input_file(path) as source:
+                return inspect(orc.ORCFile(source), source.size())
+        except (pa.ArrowInvalid, OSError) as error:
+            raise type(error)(f"Failed to read ORC file {path}: {error}") from error
 
     return call_with_retry(
         read,
-        description=f"read ORC metadata for {path}",
+        description=f"read ORC file {path}",
         match=DataContext.get_current().retried_io_errors,
     )
 
 
+def read_orc_metadata(path: str, filesystem: Optional[FileSystem]) -> OrcFileMetadata:
+    """Read layout only; decoding and schema inference remain separate."""
+    return read_orc_file(
+        path,
+        filesystem,
+        lambda reader, size: read_orc_layout(
+            reader, path, size, allow_unsupported=True
+        ),
+    )
+
+
 def read_orc_schema_and_layout(path: str, filesystem: Optional[FileSystem]):
-    """Share bounded raw footer ranges between Arrow schema and PyORC layout."""
-    import pyarrow.orc as orc
-
-    filesystem = filesystem or LocalFileSystem()
-
-    def read():
-        try:
-            with filesystem.open_input_file(path) as source:
-                cache = _RangeCache(source)
-                with cache.view() as arrow_input:
-                    schema = orc.ORCFile(arrow_input).schema
-                with cache.view() as layout_input:
-                    layout = _layout_from_source(layout_input, path, cache.size)
-                if cache.uncached_bytes:
-                    logger.debug(
-                        "ORC bootstrap range cache capacity exceeded for %s: "
-                        "%s bytes read through without retention",
-                        path,
-                        cache.uncached_bytes,
-                    )
-                return schema, OrcLayoutSeed(path, cache.size, layout)
-        except (pa.ArrowInvalid, OSError) as error:
-            raise type(error)(f"Failed to prepare ORC file {path}: {error}") from error
-
-    return call_with_retry(
-        read,
-        description=f"prepare ORC file {path}",
-        match=DataContext.get_current().retried_io_errors,
+    """Reuse the schema reader's footer for a bounded bootstrap seed."""
+    return read_orc_file(
+        path,
+        filesystem,
+        lambda reader, size: (
+            reader.schema,
+            read_orc_layout(reader, path, size, allow_unsupported=True),
+        ),
     )

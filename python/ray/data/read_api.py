@@ -592,12 +592,14 @@ def _read_datasource_v2(
         filesystem = datasource.filesystem
         file_extensions = datasource.file_extensions
         shuffle = datasource.shuffle
+        source_paths = datasource.source_paths
     elif isinstance(datasource, DataSourceWithMetadata):
         # The source's own indexer finds the data: nothing to walk, nothing to
         # filter by extension, no file shuffle.
         filesystem = None
         file_extensions = None
         shuffle = None
+        source_paths = datasource.paths
     else:
         raise TypeError(
             f"{type(datasource).__name__} extends DataSourceV2 directly. Extend "
@@ -644,28 +646,14 @@ def _read_datasource_v2(
     listing_elapsed = (
         time.perf_counter() - listing_started if listing_started is not None else None
     )
-    # Sizing hints for the datasource's partitioner. ``num_buckets`` is a
-    # hint; ``RoundRobinPartitioner`` honors the ``[min, max]`` block-size
-    # limits first, so the actual bucket count scales with total data size.
-    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
-    # back to sentinel bounds so the partitioner just rolls every file
-    # into a single bucket.
     import sys
 
-    min_bucket_size = ctx.target_min_block_size or 0
-    max_bucket_size = (
-        ctx.target_max_block_size
-        if ctx.target_max_block_size is not None
-        else sys.maxsize
-    )
-    # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
-    # (``-1`` when unset). Honoring it here per-read avoids mutating the
-    # process-global ``DataContext.read_op_min_num_blocks``.
-    num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
     hints = PartitionHints(
-        min_bucket_size=min_bucket_size,
-        max_bucket_size=max_bucket_size,
-        num_buckets=num_buckets,
+        min_bucket_size=ctx.target_min_block_size or 0,
+        max_bucket_size=ctx.target_max_block_size
+        if ctx.target_max_block_size is not None
+        else sys.maxsize,
+        num_buckets=parallelism if parallelism != -1 else ctx.read_op_min_num_blocks,
     )
 
     schema_started = time.perf_counter() if sample_all_files_for_schema else None
@@ -742,7 +730,7 @@ def _read_datasource_v2(
         paths=list(datasource.paths),
         file_indexer=indexer,
         filesystem=filesystem,
-        source_paths=list(datasource.paths),
+        source_paths=list(source_paths),
         prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
@@ -2998,12 +2986,12 @@ def read_orc(
         or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
         Ray. This shared setting also affects ``read_parquet()``.
 
-        With optional ``pyorc`` installed on the driver and metadata workers,
-        DataSourceV2 can schedule a multi-stripe file across read tasks.
-        Single-stripe files retain the streamed whole-file scanner. Selected
-        stripes are decoded by PyArrow and materialized one at a time per task;
-        the output batch size is not a decoded-memory limit. Without ``pyorc``,
-        the reader uses whole-file tasks.
+        When PyArrow provides native ``ORCFile.iter_batches()`` and serialized
+        footer access, DataSourceV2 can schedule a multi-stripe file across read
+        tasks and decode selected stripes incrementally. Older PyArrow versions
+        retain whole-file reading. Driver and worker installations must provide
+        the capabilities used by their assignments. Batch row counts do not
+        bound ORC dictionary buffers or total process memory.
 
     Examples:
         Read an ORC file in remote storage or local storage.
@@ -4777,8 +4765,7 @@ def read_hudi(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from an
+    """Create a :class:`~ray.data.Dataset` from an
     `Apache Hudi table <https://hudi.apache.org>`_.
 
     Examples:
@@ -5423,8 +5410,7 @@ def read_delta_sharing_tables(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Read data from a Delta Sharing table.
+    """Read data from a Delta Sharing table.
     Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
 
     This function reads data from a Delta Sharing table specified by the URL.
@@ -5975,8 +5961,7 @@ def read_lance(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from one or more
+    """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
@@ -6102,8 +6087,7 @@ def read_clickhouse(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+    """Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
 
     Examples:
         >>> import ray

@@ -149,6 +149,9 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """Return the metadata dict stored with the checkpoint.
 
         If no metadata is stored, an empty dict is returned.
+
+        Returns:
+            The metadata dict, or an empty dict if none is stored.
         """
         metadata_path = Path(self.path, _METADATA_FILE_NAME).as_posix()
         if not _exists_at_fs_path(self.filesystem, metadata_path):
@@ -161,6 +164,9 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """Set the metadata stored with this checkpoint.
 
         This will overwrite any existing metadata stored with this checkpoint.
+
+        Args:
+            metadata: The metadata to store. Must be JSON-serializable.
         """
         metadata_path = Path(self.path, _METADATA_FILE_NAME).as_posix()
         with self.filesystem.open_output_stream(metadata_path) as f:
@@ -170,6 +176,10 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """Update the metadata stored with this checkpoint.
 
         This will update any existing metadata stored with this checkpoint.
+
+        Args:
+            metadata: The keys and values to merge into the existing metadata.
+                Must be JSON-serializable.
         """
         existing_metadata = self.get_metadata()
         existing_metadata.update(metadata)

@@ -34,15 +34,18 @@ Dataset(num_rows=100, schema=...)
 
 If your tensors have a fixed shape, Ray Data represents batches as regular ndarrays.
 
-```{doctest}
->>> import ray
->>> ds = ray.data.read_images("s3://anonymous@air-example-data/digits")
->>> batch = ds.take_batch(batch_size=32)
->>> batch["image"].shape
-(32, 28, 28)
->>> batch["image"].dtype
-dtype('uint8')
+```{testcode}
+import ray
 
+ds = ray.data.read_images("s3://anonymous@air-example-data/digits")
+batch = ds.take_batch(batch_size=32)
+print(batch["image"].shape)
+print(batch["image"].dtype)
+```
+
+```{testoutput}
+(32, 28, 28)
+uint8
 ```
 
 (batches-of-variable-shape-tensors)=
@@ -51,27 +54,42 @@ dtype('uint8')
 
 If your tensors vary in shape, Ray Data represents batches as arrays of object dtype.
 
-```{doctest}
->>> import ray
->>> ds = ray.data.read_images("s3://anonymous@air-example-data/AnimalDetection")
->>> batch = ds.take_batch(batch_size=32)
->>> batch["image"].shape
-(32,)
->>> batch["image"].dtype
-dtype('O')
+```{testcode}
+import ray
 
+ds = ray.data.read_images("s3://anonymous@air-example-data/AnimalDetection")
+batch = ds.take_batch(batch_size=32)
+print(batch["image"].shape)
+print(batch["image"].dtype)
+```
+
+```{testoutput}
+(32,)
+object
 ```
 
 Each element of these object arrays is a regular ndarray.
 
-```{doctest}
->>> batch["image"][0].dtype
-dtype('uint8')
->>> batch["image"][0].shape  # doctest: +SKIP
-(375, 500, 3)
->>> batch["image"][3].shape  # doctest: +SKIP
-(333, 465, 3)
+```{testcode}
+print(batch["image"][0].dtype)
+```
 
+```{testoutput}
+uint8
+```
+
+The elements' shapes vary from image to image:
+
+```{testcode}
+print(batch["image"][0].shape)
+print(batch["image"][3].shape)
+```
+
+```{testoutput}
+:options: +MOCK
+
+(375, 500, 3)
+(333, 465, 3)
 ```
 
 (transforming_tensors)=

@@ -158,6 +158,7 @@ steps:
         --install-mask all-ray-libraries
         --privileged
         --test-env=TEST_SANDBOX=1
+        --test-env=TEST_SANDBOX_OVERLAYFS=1
         --python-version 3.10 --build-name corebuild-py3.10
 
   - label: ":ray: core: memory pressure tests"

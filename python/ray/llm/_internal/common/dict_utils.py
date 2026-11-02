@@ -26,8 +26,7 @@ def maybe_apply_llm_deployment_config_defaults(
 
 
 def deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Merge two dictionaries hierarchically, creating a new dictionary without modifying inputs.
+    """Merge two dictionaries hierarchically, creating a new dictionary without modifying inputs.
 
     For each key:
     - If the key exists in both dicts and both values are dicts, recursively merge them

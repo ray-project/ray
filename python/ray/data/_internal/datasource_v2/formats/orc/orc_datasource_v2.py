@@ -27,9 +27,10 @@ from ray.data._internal.datasource_v2.common.size_estimators import (
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
-    OrcLayoutSeed,
-    pyorc_available,
+    OrcFileMetadata,
+    read_orc_file,
     read_orc_schema_and_layout,
+    supports_stripe_reads,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
@@ -46,7 +47,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
 )
-from ray.data._internal.util import _is_local_scheme
+from ray.data._internal.util import _is_local_scheme, _normalize_paths_to_strings
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import (
@@ -86,6 +87,9 @@ class OrcDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths = resolved_paths
+        # The resolved paths above lose their URI scheme; lineage tracking
+        # reads the caller's paths through ``source_paths``.
+        self._source_paths = _normalize_paths_to_strings(paths)
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
         self._file_extensions = file_extensions
@@ -97,6 +101,12 @@ class OrcDatasourceV2(FileDataSourceV2):
     @override
     def paths(self) -> List[str]:
         return self._paths
+
+    @property
+    @override
+    def source_paths(self) -> List[str]:
+        """Override when :attr:`paths` is resolved and loses URI schemes."""
+        return self._source_paths
 
     @property
     @override
@@ -115,7 +125,7 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def _get_file_indexer(self) -> FileIndexer:
-        cls = OrcStripeIndexer if pyorc_available() else NonSamplingFileIndexer
+        cls = OrcStripeIndexer if supports_stripe_reads() else NonSamplingFileIndexer
         return cls(ignore_missing_paths=self._ignore_missing_paths)
 
     @override
@@ -124,8 +134,11 @@ class OrcDatasourceV2(FileDataSourceV2):
     ) -> Optional[FilePartitioner]:
         if hints is None:
             return None
-        if pyorc_available():
+        if supports_stripe_reads():
             return OrcStripePartitioner(hints)
+        return self._whole_file_partitioner(hints)
+
+    def _whole_file_partitioner(self, hints: PartitionHints) -> FilePartitioner:
         reader = OrcFileReader(format=FileFormat.ORC, filesystem=self._filesystem)
         return RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)
 
@@ -135,10 +148,6 @@ class OrcDatasourceV2(FileDataSourceV2):
         return True
 
     @override
-    def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        return self._infer_schema(sample)
-
-    @override
     def prepare_read(
         self,
         sample: Optional[FileManifest],
@@ -146,13 +155,18 @@ class OrcDatasourceV2(FileDataSourceV2):
         hints: PartitionHints,
     ) -> Tuple[pa.Schema, FileIndexer, Optional[FilePartitioner]]:
         if not isinstance(indexer, OrcStripeIndexer):
-            return super().prepare_read(sample, indexer, hints)
+            # Freeze the whole-file choice along with this read's indexer.
+            return (
+                self.infer_schema(sample),
+                indexer,
+                self._whole_file_partitioner(hints),
+            )
         assert sample is not None
         # Full-schema mode may pass every file. Only the bounded bootstrap
         # subset prepares layouts on the driver; the rest remain worker IO.
         layout_paths = tuple(dict.fromkeys(sample.paths[:16].tolist()))
         layout_path_set = frozenset(layout_paths)
-        layouts: Dict[str, OrcLayoutSeed] = {}
+        layouts: Dict[str, OrcFileMetadata] = {}
         seed_lock = Lock()
         retained = 0
 
@@ -174,14 +188,14 @@ class OrcDatasourceV2(FileDataSourceV2):
                         )
             return schema
 
-        schema = self._infer_schema(sample, read_schema)
+        schema = self.infer_schema(sample, read_schema)
         seeds = [layouts[path] for path in layout_paths if path in layouts]
         bootstrap_bytes = None
         if len(sample) < 16 and len(seeds) == len(layout_paths):
             bootstrap_bytes = sum(
                 seed.size
-                if len(seed.layout.stripes) <= 1
-                else sum(s.size_bytes for s in seed.layout.stripes)
+                if len(seed.stripes or ()) <= 1
+                else sum(s.size_bytes for s in (seed.stripes or ()))
                 for seed in seeds
             )
         prepared_indexer = OrcStripeIndexer(
@@ -195,7 +209,8 @@ class OrcDatasourceV2(FileDataSourceV2):
             OrcStripePartitioner(hints, bootstrap_bytes=bootstrap_bytes),
         )
 
-    def _infer_schema(
+    @override
+    def infer_schema(
         self,
         sample: Optional[FileManifest],
         read_schema: Optional[Callable[[str], pa.Schema]] = None,
@@ -237,12 +252,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         return schema
 
     def _read_schema(self, path: str) -> pa.Schema:
-        import pyarrow.orc as orc
-
-        if self._filesystem is None:
-            return orc.ORCFile(path).schema
-        with self._filesystem.open_input_file(path) as source:
-            return orc.ORCFile(source).schema
+        return read_orc_file(path, self._filesystem, lambda reader, size: reader.schema)
 
     @override
     def resolve_partitioning(

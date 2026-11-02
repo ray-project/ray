@@ -3,18 +3,26 @@
 import math
 import secrets
 from collections import deque
+from contextlib import closing
 from dataclasses import replace
-from itertools import islice
+from itertools import accumulate, islice
+from typing import List, cast
 
 import ray
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
 )
-from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
+from ray.data._internal.datasource_v2.common.online_bin_packer import (
+    BinItem,
+    OnlineBinPacker,
+    _bin_items,
+    _slice_bin_item,
+)
 from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
     orc_read_unit_id,
     read_orc_metadata,
+    require_stripe_reads,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
@@ -24,6 +32,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
 )
+from ray.data._internal.weighted_round_robin import WeightedRoundRobinPartitioner
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -34,6 +43,7 @@ class _OrcMetadataReader:
         DataContext._set_current(context)
 
     def read(self, path):
+        require_stripe_reads(path)
         return read_orc_metadata(path, self._filesystem)
 
 
@@ -47,24 +57,14 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
     and dedup state live in the generator, so task retry starts from scratch.
     """
 
-    def __init__(
-        self,
-        *,
-        seeds=(),
-        local_only=False,
-        local_node_id=None,
-        shuffle_seed=None,
-        **kwargs
-    ):
+    def __init__(self, *, seeds=(), local_only=False, **kwargs):
         super().__init__(**kwargs)
         self._seeds = tuple(seeds)
         self._local_only = local_only
-        self._local_node_id = local_node_id
-        if local_only and local_node_id is None and ray.is_initialized():
+        self._local_node_id = None
+        if local_only and ray.is_initialized():
             self._local_node_id = ray.get_runtime_context().get_node_id()
-        self._shuffle_seed = (
-            secrets.randbits(64) if shuffle_seed is None else shuffle_seed
-        )
+        self._shuffle_seed = secrets.randbits(64)
 
     def _replayable_shuffle(self, config):
         if config is not None and config.seed is None:
@@ -123,7 +123,7 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
         )
 
     def _iter_layouts(self, files, filesystem):
-        seeds = {(seed.path, seed.size): seed.layout for seed in self._seeds}
+        seeds = {(seed.path, seed.size): seed for seed in self._seeds}
         files = iter(files)
         pending = deque()
         actors = []
@@ -148,7 +148,8 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
                     )
                     actors.append(
                         OrcMetadataActor.options(scheduling_strategy=strategy).remote(
-                            filesystem, DataContext.get_current()
+                            filesystem,
+                            DataContext.get_current(),
                         )
                     )
                 for file in batch:
@@ -180,10 +181,9 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
                 close()
 
     def _process_files(self, files, filesystem, predicate, limit, excluded):
-        excluded = excluded or frozenset()
-        seen = set()
+        excluded, seen = excluded or frozenset(), set()
 
-        def unique_files():
+        def unique():
             for file in files:
                 if (
                     file.size is not None
@@ -193,64 +193,54 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
                     seen.add(file.path)
                     yield file
 
-        matched_rows = 0
-        layouts = self._iter_layouts(unique_files(), filesystem)
-        try:
+        matched = 0
+        with closing(self._iter_layouts(unique(), filesystem)) as layouts:
             if limit is not None and limit <= 0:
                 return
             for file, layout in layouts:
-                if len(layout.stripes) <= 1:
+                runs = [None]
+                if len(layout.stripes or ()) > 1:
+                    selected = [
+                        s
+                        for s in layout.stripes
+                        if s.num_rows
+                        and orc_read_unit_id(file.path, s.index) not in excluded
+                    ]
+                    if predicate is None and limit is not None:
+                        selected = [
+                            s
+                            for s, total in zip(
+                                selected, accumulate(s.num_rows for s in selected)
+                            )
+                            if total - s.num_rows < limit - matched
+                        ]
+                    runs = (
+                        FileChunk(
+                            tuple(s.index for s in group),
+                            sum(s.num_rows for s in group),
+                            sum(s.size_bytes for s in group),
+                            fully_matched=predicate is None,
+                            unit_rows=tuple(s.num_rows for s in group),
+                            unit_sizes=tuple(s.size_bytes for s in group),
+                        )
+                        for group in (
+                            selected[i : i + 128] for i in range(0, len(selected), 128)
+                        )
+                    )
+                for run in runs:
                     yield FileManifest.construct_manifest(
-                        paths=[file.path], sizes=[file.size], chunk_metadatas=[None]
+                        paths=[file.path],
+                        sizes=[file.size],
+                        chunk_metadatas=[run.to_metadata() if run else None],
                     )
                     if predicate is None:
-                        matched_rows += layout.num_rows
-                else:
-                    selected = [
-                        stripe
-                        for stripe in layout.stripes
-                        if stripe.num_rows
-                        and orc_read_unit_id(file.path, stripe.index) not in excluded
-                    ]
-                    for start in range(0, len(selected), 128):
-                        stripes = selected[start : start + 128]
-                        if predicate is None and limit is not None:
-                            keep = []
-                            for stripe in stripes:
-                                keep.append(stripe)
-                                matched_rows += stripe.num_rows
-                                if matched_rows >= limit:
-                                    break
-                            stripes = keep
-                        chunk = FileChunk(
-                            unit_ids=tuple(s.index for s in stripes),
-                            num_rows=sum(s.num_rows for s in stripes),
-                            size_bytes=sum(s.size_bytes for s in stripes),
-                            fully_matched=predicate is None,
-                            unit_sizes=tuple(s.size_bytes for s in stripes),
-                            unit_rows=tuple(s.num_rows for s in stripes),
-                            unit_start_rows=tuple(s.row_offset for s in stripes),
-                            file_num_units=len(layout.stripes),
-                        )
-                        yield FileManifest.construct_manifest(
-                            paths=[file.path],
-                            sizes=[file.size],
-                            chunk_metadatas=[chunk.to_metadata()],
-                        )
-                        if (
-                            predicate is None
-                            and limit is not None
-                            and matched_rows >= limit
-                        ):
+                        matched += run.num_rows if run else layout.num_rows
+                        if limit is not None and matched >= limit:
                             return
-                if predicate is None and limit is not None and matched_rows >= limit:
-                    return
-        finally:
-            layouts.close()
 
 
 class OrcStripePartitioner(FilePartitioner):
-    """Freeze an encoded-byte budget before execution; deliver sealed groups online."""
+    """Freeze one encoded-byte budget and drain sealed groups online."""
 
     def __init__(self, hints: PartitionHints, *, bootstrap_bytes=None):
         import os
@@ -265,77 +255,53 @@ class OrcStripePartitioner(FilePartitioner):
         self._budget = max(
             1, min(hints.max_bucket_size, max(hints.min_bucket_size, target))
         )
-        self._preserve_order = (
-            DataContext.get_current().execution_options.preserve_order
+        self._ordered = DataContext.get_current().execution_options.preserve_order
+        self._packer = (
+            WeightedRoundRobinPartitioner(
+                min_bucket_size=self._budget,
+                max_bucket_size=self._budget,
+                num_buckets=1,
+                emit_before_overflow=True,
+            )
+            if self._ordered
+            else OnlineBinPacker(self._budget, split_coalesced=True)
         )
-        self._packer = OnlineBinPacker(self._budget, split_coalesced=True)
-        self._output = deque()
-        self._bucket = []
-        self._bucket_bytes = 0
 
     @property
     def requires_global_input(self):
         return True
 
-    def add_input(self, input_manifest: FileManifest) -> None:
-        manifest = input_manifest
-        if not self._preserve_order:
-            self._packer.add_input(manifest)
+    def add_input(self, input_manifest):
+        if not self._ordered:
+            cast(OnlineBinPacker, self._packer).add_input(input_manifest)
             return
-        for path, size, metadata in zip(
-            manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas
-        ):
-            run = FileChunk.from_metadata(metadata) if metadata is not None else None
-            n = len(run.unit_ids) if run else 1
-            for i in range(n):
-                chunk = (
-                    None
-                    if run is None
-                    else FileChunk(
-                        unit_ids=(run.unit_ids[i],),
-                        num_rows=run.unit_rows[i],
-                        size_bytes=run.unit_sizes[i],
-                        fully_matched=run.fully_matched,
-                        unit_rows=(run.unit_rows[i],),
-                        unit_sizes=(run.unit_sizes[i],),
-                        unit_start_rows=(run.unit_start_rows[i],),
-                        file_num_units=run.file_num_units,
-                    )
+        for item in _bin_items(input_manifest):
+            run = item.run
+            for i in range(len(run.unit_ids) if run else 1):
+                unit = (
+                    _slice_bin_item(item, i, i + 1)
+                    if run and len(run.unit_ids) > 1
+                    else item
                 )
-                weight = chunk.size_bytes if chunk else int(size)
-                if self._bucket and self._bucket_bytes + weight > self._budget:
-                    self._seal()
-                self._bucket.append(
-                    FileManifest.construct_manifest(
-                        paths=[path],
-                        sizes=[int(size)],
-                        chunk_metadatas=[chunk.to_metadata() if chunk else None],
-                    )
+                cast(WeightedRoundRobinPartitioner, self._packer).add_item(
+                    unit, unit.size_bytes
                 )
-                self._bucket_bytes += weight
-                if self._bucket_bytes >= self._budget:
-                    self._seal()
-
-    def _seal(self):
-        if self._bucket:
-            self._output.append(FileManifest.concat(self._bucket))
-            self._bucket = []
-            self._bucket_bytes = 0
 
     def has_partition(self):
-        return (
-            bool(self._output) if self._preserve_order else self._packer.has_partition()
-        )
+        return self._packer.has_partition()
 
-    def next_partition(self):
-        return (
-            self._output.popleft()
-            if self._preserve_order
-            else self._packer.next_partition()
+    def next_partition(self) -> FileManifest:
+        value = self._packer.next_partition()
+        if not self._ordered:
+            return cast(FileManifest, value)
+        value = cast(List[BinItem], value)
+        return FileManifest.construct_manifest(
+            paths=[item.file.path for item in value],
+            sizes=[cast(int, item.file.size) for item in value],
+            chunk_metadatas=[
+                item.run.to_metadata() if item.run else None for item in value
+            ],
         )
 
     def finalize(self):
-        if self._preserve_order:
-            self._seal()
-        else:
-            self._packer.finalize()
+        self._packer.finalize()

@@ -26,6 +26,7 @@ class _TypeFields(Protocol):
 
 
 class _FooterFields(Protocol):
+    stripes: Sequence[Message]
     types: Sequence[Message]
     statistics: Sequence[Message]
 
@@ -36,7 +37,7 @@ class _FileTailFields(Protocol):
 
 @lru_cache(maxsize=1)
 def _file_tail_message_type() -> Type[Message]:
-    """Build the apache/orc-format 1.0.0 schema subset needed for batch sizing.
+    """Build the apache/orc-format 1.0.0 subset for batch sizing and stripe layouts.
 
     These fields are wire-compatible with the apache/orc-format 1.1.1 schema.
     Using protobuf's dynamic messages preserves field presence without generated
@@ -60,7 +61,15 @@ def _file_tail_message_type() -> Type[Message]:
             ("subtypes", 2, field.TYPE_UINT32, True, ""),
             ("field_names", 3, field.TYPE_STRING, True, ""),
         ],
+        "StripeInformation": [
+            ("offset", 1, field.TYPE_UINT64, False, ""),
+            ("index_length", 2, field.TYPE_UINT64, False, ""),
+            ("data_length", 3, field.TYPE_UINT64, False, ""),
+            ("footer_length", 4, field.TYPE_UINT64, False, ""),
+            ("number_of_rows", 5, field.TYPE_UINT64, False, ""),
+        ],
         "Footer": [
+            ("stripes", 3, field.TYPE_MESSAGE, True, "StripeInformation"),
             ("types", 4, field.TYPE_MESSAGE, True, "Type"),
             ("number_of_rows", 6, field.TYPE_UINT64, False, ""),
             ("statistics", 7, field.TYPE_MESSAGE, True, "ColumnStatistics"),

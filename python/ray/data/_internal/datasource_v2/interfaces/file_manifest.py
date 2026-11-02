@@ -40,12 +40,9 @@ class FileChunk:
     # one unit, so a partitioner can split the run at exact boundaries.
     unit_sizes: Tuple[int, ...] = ()
     unit_rows: Tuple[int, ...] = ()
-    # Optional physical positions, retained even for a singleton ORC stripe.
-    unit_start_rows: Tuple[int, ...] = ()
-    file_num_units: Optional[int] = None
 
     def __post_init__(self):
-        for name in ("unit_sizes", "unit_rows", "unit_start_rows"):
+        for name in ("unit_sizes", "unit_rows"):
             breakdown = getattr(self, name)
             assert not breakdown or len(breakdown) == len(self.unit_ids), (
                 f"{name} has {len(breakdown)} entries for {len(self.unit_ids)} "
@@ -65,16 +62,6 @@ class FileChunk:
             fully_matched=bool(metadata["fully_matched"]),
             unit_sizes=tuple(metadata["unit_sizes"]),
             unit_rows=tuple(metadata["unit_rows"]),
-            unit_start_rows=(
-                tuple(metadata["unit_start_rows"])
-                if metadata.get("unit_start_rows") is not None
-                else ()
-            ),
-            file_num_units=(
-                int(metadata["file_num_units"])
-                if metadata.get("file_num_units") is not None
-                else None
-            ),
         )
 
 
@@ -93,8 +80,6 @@ _CHUNK_TYPE = pa.struct(
         pa.field("fully_matched", pa.bool_()),
         pa.field("unit_sizes", pa.list_(pa.int64())),
         pa.field("unit_rows", pa.list_(pa.int64())),
-        pa.field("unit_start_rows", pa.list_(pa.int64())),
-        pa.field("file_num_units", pa.int64()),
     ]
 )
 

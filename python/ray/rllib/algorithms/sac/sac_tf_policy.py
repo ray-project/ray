@@ -1,6 +1,4 @@
-"""
-TensorFlow policy class used for SAC.
-"""
+"""TensorFlow policy class used for SAC."""
 
 import copy
 import logging
