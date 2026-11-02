@@ -23,10 +23,10 @@ from __future__ import annotations
 import logging
 from typing import Iterable, List
 
-from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
+from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
 )
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import (
@@ -37,7 +37,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.logical.operators import ReadFiles
+from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data.block import Block
 from ray.data.context import DataContext
@@ -64,7 +64,7 @@ def plan_read_files_op(
 
     def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         reader = scanner.create_reader()
-        # ``prune_input_split`` is an identity by default; ``ArrowFileScanner``
+        # ``prune_input_split`` is an identity by default; ``FileScanner``
         # overrides it to drop files failing a pushed-down partition predicate.
         for block in blocks:
             manifest = scanner.prune_input_split(FileManifest(block))
@@ -90,7 +90,9 @@ def plan_read_files_op(
             outputs = read_transform([block], ctx)
             yield from _split_blocks(outputs, factor) if factor > 1 else outputs
 
-    partitioner = op.input_dependencies[0].file_partitioner
+    list_files_op = op.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    partitioner = list_files_op.file_partitioner
     explicit_block_target = (
         isinstance(partitioner, RoundRobinPartitioner)
         and partitioner.requires_global_input

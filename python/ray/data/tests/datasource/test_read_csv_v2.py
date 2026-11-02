@@ -1,6 +1,7 @@
 import gzip
 import io
 import re
+from typing import Any, Dict
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -62,7 +63,9 @@ def test_read_csv_v2_default_listing_does_not_require_global_input(
     list_files_op = dataset._logical_plan.dag.input_dependencies[0]
 
     assert isinstance(list_files_op, ListFiles)
-    assert not list_files_op.file_partitioner.requires_global_input
+    partitioner = list_files_op.file_partitioner
+    assert partitioner is not None
+    assert not partitioner.requires_global_input
 
 
 def test_read_csv_v2_options_and_derived_columns(
@@ -108,10 +111,9 @@ def test_read_csv_v1_v2_explicit_none_parity(
 
     for use_datasource_v2 in (False, True):
         restore_ctx.use_datasource_v2 = use_datasource_v2
+        options: Dict[str, Any] = {option_name: None}
         rows_by_version.append(
-            ray.data.read_csv(
-                str(path), partitioning=None, **{option_name: None}
-            ).take_all()
+            ray.data.read_csv(str(path), partitioning=None, **options).take_all()
         )
 
     assert rows_by_version[0] == rows_by_version[1]
@@ -120,7 +122,9 @@ def test_read_csv_v1_v2_explicit_none_parity(
 def test_read_csv_v2_executor_chunking_and_stats(
     ray_start_regular_shared, tmp_path, restore_ctx
 ):
-    from ray.data._internal.datasource_v2.csv_datasource_v2 import CSVDatasourceV2
+    from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
+        CSVDatasourceV2,
+    )
     from ray.data.read_api import _read_datasource_v2
 
     path = tmp_path / "data.csv"
@@ -364,7 +368,7 @@ def test_read_csv_v1_v2_snappy_parity(
     path = tmp_path / "data.csv.snappy"
     with path.open("wb") as file:
         snappy.stream_compress(io.BytesIO(b"id\n1\n"), file)
-    kwargs = (
+    kwargs: Dict[str, Any] = (
         {}
         if infer_compression
         else {"arrow_open_stream_args": {"compression": "snappy"}}
@@ -562,7 +566,9 @@ def test_read_csv_v2_propagates_named_remote_args(
         runtime_env={"env_vars": {"CSV_TEST": "1"}},
     )
     read_op = dataset._logical_plan.dag
+    assert isinstance(read_op, ReadFiles)
     list_files_op = read_op.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
 
     assert read_op.ray_remote_args["label_selector"] == {"ray.io/test-label": "value"}
     assert read_op.ray_remote_args["fallback_strategy"] == [
@@ -664,7 +670,9 @@ def test_csv_chunks_resume_after_downstream_blocked(
 
     from ray._private.test_utils import wait_for_condition
     from ray.data import ActorPoolStrategy, TaskPoolStrategy
-    from ray.data._internal.datasource_v2.csv_datasource_v2 import CSVDatasourceV2
+    from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
+        CSVDatasourceV2,
+    )
     from ray.data.read_api import _read_datasource_v2
 
     @ray.remote(num_cpus=0)
@@ -686,7 +694,7 @@ def test_csv_chunks_resume_after_downstream_blocked(
     path = tmp_path / "data.csv"
     path.write_text("id\n" + "".join(f"{index}\n" for index in range(128)))
     restore_ctx.target_max_block_size = 64
-    gate = Gate.remote()
+    gate = Gate.remote()  # pyrefly: ignore[missing-attribute]
 
     def consume(batch):
         ray.get(gate.wait.remote())

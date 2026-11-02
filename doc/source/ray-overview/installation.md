@@ -207,9 +207,9 @@ Submit any issues you encounter to [GitHub](https://github.com/ray-project/ray/i
 
 Note: Installing Ray on Arch Linux is not tested by the Project Ray developers.
 
-Ray is available on Arch Linux via the Arch User Repository ([AUR](https://wiki.archlinux.org/index.php/Arch_User_Repository)) as `python-ray`.
+Ray is available on Arch Linux via the Arch User Repository ([AUR](https://wiki.archlinux.org/title/Arch_User_Repository)) as `python-ray`.
 
-You can manually install the package by following the instructions on the [Arch Wiki](https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages) or use an [AUR helper](https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages) like [yay](https://aur.archlinux.org/packages/yay) (recommended for ease of install) as follows:
+You can manually install the package by following the instructions on the [Arch Wiki](https://wiki.archlinux.org/title/Arch_User_Repository#Installing_and_upgrading_packages) or use an [AUR helper](https://wiki.archlinux.org/title/Arch_User_Repository#Installing_and_upgrading_packages) like [yay](https://aur.archlinux.org/packages/yay) (recommended for ease of install) as follows:
 
 ```bash
 yay -S python-ray

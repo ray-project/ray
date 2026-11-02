@@ -125,6 +125,9 @@ class LLMRouter(_LLMRouter):
         self._event_log = []
         self._errors = []
         self._token_pushes = []
+        renderer = self._tokenizer._renderer.renderer
+        self._chat_render = mock.AsyncMock(wraps=renderer.render_chat_async)
+        renderer.render_chat_async = self._chat_render
 
     def _push_prompt_tokens(self, *, token_endpoint, replica_id, request_token_ids):
         key = super()._push_prompt_tokens(
@@ -167,11 +170,13 @@ class LLMRouter(_LLMRouter):
 
     def reset_token_pushes(self):
         self._token_pushes.clear()
+        self._chat_render.reset_mock()
 
     def get_token_push_report(self):
         return dict(
             node_ip=ray.util.get_node_ip_address(),
             pushes=list(self._token_pushes),
+            tokenizations=self._chat_render.await_count,
         )
 
     def get_kv_event_worker_replicas(self):
@@ -192,15 +197,20 @@ class LLMRouter(_LLMRouter):
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
         )
 
-    async def get_kv_overlap_blocks(self, token_ids):
+    async def get_kv_overlap_blocks(self, token_ids, lora_name=None):
         """(Test only) Per-worker device-tier KV overlap blocks for a sequence."""
-        scores = await self.get_kv_overlap_scores(token_ids)
+        scores = await self.get_kv_overlap_scores(token_ids, lora_name)
         return {
             worker_id: score["device_blocks"] for worker_id, score in scores.items()
         }
 
-    async def get_kv_overlap_scores(self, token_ids):
-        """(Test only) Per-worker overlap across every KV storage tier."""
+    async def get_kv_overlap_scores(self, token_ids, lora_name=None):
+        """(Test only) Per-worker overlap across every KV storage tier.
+
+        ``lora_name`` selects the LoRA namespace to score in; the selection
+        service salts its KV hashes with it, so the base model and each adapter
+        see disjoint blocks for the same tokens.
+        """
         svc = self._kv_token_tracker._svc
         if svc is None:
             return {}
@@ -209,6 +219,7 @@ class LLMRouter(_LLMRouter):
                 "model_name": _MODEL_NAME,
                 "tenant_id": _TENANT_ID,
                 "token_ids": list(token_ids),
+                "lora_name": lora_name,
             }
         )
         return {worker["worker_id"]: worker for worker in scores["workers"]}
@@ -270,11 +281,20 @@ class LLMRouter(_LLMRouter):
         return self._kv_token_tracker.get_block_size()
 
     async def select_worker(
-        self, request_id, token_ids, allowed_worker_ids, expected_output_tokens=None
+        self,
+        request_id,
+        token_ids,
+        allowed_worker_ids,
+        expected_output_tokens=None,
+        lora_name=None,
     ):
         """(Test only) Score ``allowed_worker_ids`` for a prompt via the tracker."""
         return await self._kv_token_tracker.select_worker(
-            request_id, token_ids, allowed_worker_ids, expected_output_tokens
+            request_id,
+            token_ids,
+            allowed_worker_ids,
+            expected_output_tokens,
+            lora_name=lora_name,
         )
 
 

@@ -12,6 +12,8 @@ _DEPRECATED = "DEPRECATED"
 VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 # The name of the file that is used to store the checkpoint manager snapshot.
 CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
+# The name of the directory that nccl ras hang detector uploads its diagnostics to.
+HANG_DETECTOR_DIRNAME = "hang_detector"
 
 AWS_RETRYABLE_TOKENS = (
     "AWS Error SLOW_DOWN",
@@ -118,6 +120,9 @@ TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
 # NCCL RAS listen address (``host:port``)
 NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
 
+# PyTorch Flight Recorder ring size
+TORCH_FR_BUFFER_SIZE_ENV_VAR = "TORCH_FR_BUFFER_SIZE"
+
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
 ENV_VARS_TO_PROPAGATE = {
@@ -138,6 +143,7 @@ ENV_VARS_TO_PROPAGATE = {
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     PREEMPTION_POLL_INTERVAL_S_ENV_VAR,
     NCCL_RAS_ADDR_ENV_VAR,
+    TORCH_FR_BUFFER_SIZE_ENV_VAR,
 }
 
 

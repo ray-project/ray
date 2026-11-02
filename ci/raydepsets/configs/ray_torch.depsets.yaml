@@ -7,43 +7,66 @@ build_arg_sets:
     PYTHON_VERSION: "3.14"
     PYTHON_SHORT: "314"
     CUDA_CODE: cu128
-
-# TODO(elliot-barn): Unify these two depset definitions once the py3.11 and
-# py3.14 images can share one constraints source. They are split only because
-# requirements_compiled_py3.14.txt pins torch 2.7.0, which has no cp314 wheels,
-# so the py3.14 image cannot be constrained by Ray's compiled requirements the
-# way the py3.11 one is.
-.ray_torch_base: &ray_torch_base
-  operation: expand
-  depsets:
-    - ray_img_depset_${PYTHON_SHORT}
-  requirements:
-    - docker/ray-torch/torch-requirements.txt
-    - docker/base-deps/requirements.in
-    - docker/base-extra/requirements.in
-  output: python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
-  append_flags:
-    - --index https://download.pytorch.org/whl/${CUDA_CODE}
-    - --unsafe-package ray
-    - --python-version=${PYTHON_VERSION}
-    - --python-platform=linux
+  py311_cuda133:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+    CUDA_CODE: cu133
+  py314_cuda133:
+    PYTHON_VERSION: "3.14"
+    PYTHON_SHORT: "314"
+    CUDA_CODE: cu133
 
 depsets:
-  # py3.11 follows Ray's own compiled requirements, the same constraints source
-  # the CI depsets use.
+  # Both images follow Ray's own compiled requirements, the same constraints
+  # source the CI depsets use. (Until torch 2.10 -- the first line with cp314
+  # wheels -- the py3.14 image had to pin torch itself, because
+  # requirements_compiled_py3.14.txt pinned an uninstallable torch 2.7.0.)
   - name: ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
-    <<: *ray_torch_base
+    operation: expand
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - docker/ray-torch/torch-requirements.txt
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
     constraints:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+    output: python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
     build_arg_sets:
       - py311_cuda128
-
-  # py3.14 pins torch directly; see docker/ray-torch/torch-constraints-py3.14.txt.
-  - name: ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
-    <<: *ray_torch_base
-    constraints:
-      - docker/ray-torch/torch-constraints-py${PYTHON_VERSION}.txt
-    build_arg_sets:
       - py314_cuda128
+
+  # cu133 variant: built on the cupy-cuda12x-relaxed core image depset, so the
+  # lock carries no cupy at all. ray[all] then installs cupy-cuda12x at image
+  # build time and ci/docker/ray-image.Dockerfile swaps it for cupy-cuda13x,
+  # the same as the rayproject/ray cu13x images. PyTorch publishes no cu133
+  # wheel index, so torch comes from cu130; its wheels bundle their own CUDA
+  # 13.0 runtime, which runs on the 13.3 image under minor-version compatibility.
+  - name: ray_torch_cu133_base_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_img_cu130_${PYTHON_SHORT}
+    requirements:
+      - docker/ray-torch/torch-requirements.txt
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+    output: python/deplocks/ray-torch/ray-torch-cu133_base_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cu130
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
+    build_arg_sets:
+      - py311_cuda133
+      - py314_cuda133

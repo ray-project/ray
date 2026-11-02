@@ -14,8 +14,9 @@ def cleanup_ray_resources():
 @pytest.mark.parametrize(
     "tp_size,pp_size",
     [
-        (2, 4),
-        (4, 2),
+        # Cluster: 2 nodes x 2 GPUs. TPxPP=4 forces cross-node placement.
+        (1, 4),
+        (2, 2),
     ],
 )
 def test_vllm_multi_node(tp_size, pp_size):

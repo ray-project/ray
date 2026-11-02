@@ -88,7 +88,7 @@ run_core_dashboard_test() {
   (bazel test --config=ci --dynamic_mode=off \
     --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
     --test_tag_filters=-post_wheel_build -- \
-    //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...) || exit 42
+    //:all python/ray/dashboard/... -python/ray/serve/... -python/ray/rllib/...) || exit 42
 }
 
 run_ray_cpp() {

@@ -20,6 +20,7 @@ End-to-end tutorials for deploying LLMs with Ray Serve. Each one walks through c
 - {doc}`Deploy a reasoning LLM </_collections/serve/tutorials/deployment-serve-llm/reasoning-llm/README>`: serve a reasoning model and handle its reasoning output.
 - {doc}`Deploy a hybrid reasoning LLM </_collections/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`: serve a model that can switch reasoning on and off per request.
 - {doc}`Deploy gpt-oss </_collections/serve/tutorials/deployment-serve-llm/gpt-oss/README>`: deploy OpenAI's open-weight gpt-oss model.
+- {doc}`Deploy NVIDIA Nemotron-3 Super 120B </_collections/serve/tutorials/deployment-serve-llm/nemotron-3-super-120b/README>`: deploy NVIDIA's 120B-total, 12B-active hybrid model for agentic and long-context reasoning workloads.
 
 ```{toctree}
 :hidden:
@@ -31,4 +32,5 @@ End-to-end tutorials for deploying LLMs with Ray Serve. Each one walks through c
 /_collections/serve/tutorials/deployment-serve-llm/reasoning-llm/README
 /_collections/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README
 /_collections/serve/tutorials/deployment-serve-llm/gpt-oss/README
+/_collections/serve/tutorials/deployment-serve-llm/nemotron-3-super-120b/README
 ```

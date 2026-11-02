@@ -6,11 +6,13 @@ import pyarrow as pa
 import pytest
 from pyarrow import csv
 
-from ray.data._internal.datasource_v2.csv_datasource_v2 import CSVDatasourceV2
-from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.readers.csv_file_reader import CSVFileReader
+from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
+    CSVDatasourceV2,
+)
+from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import CSVFileReader
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data.context import DataContext
-from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 
 def _chunk(start: int, end: int):
@@ -65,7 +67,9 @@ def test_infer_schema_with_hive_partition(tmp_path):
     path = directory / "data.csv"
     path.write_text("id\n1\n")
 
-    datasource = CSVDatasourceV2([str(path)], partitioning=Partitioning("hive"))
+    datasource = CSVDatasourceV2(
+        [str(path)], partitioning=Partitioning(PartitionStyle.HIVE)
+    )
     sample = FileManifest.construct_manifest(
         paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
     )
@@ -83,7 +87,7 @@ def test_infer_schema_unions_hive_partition_fields(tmp_path):
     second_path = month_directory / "second.csv"
     second_path.write_text("id\n2\n")
     paths = [str(first_path), str(second_path)]
-    datasource = CSVDatasourceV2(paths, partitioning=Partitioning("hive"))
+    datasource = CSVDatasourceV2(paths, partitioning=Partitioning(PartitionStyle.HIVE))
     sample = FileManifest.construct_manifest(
         paths=paths,
         sizes=[first_path.stat().st_size, second_path.stat().st_size],
@@ -93,7 +97,9 @@ def test_infer_schema_unions_hive_partition_fields(tmp_path):
     schema = datasource.infer_schema(sample)
 
     assert schema.names == ["id", "year", "month"]
-    assert datasource.resolve_partitioning(sample).field_names is None
+    resolved_partitioning = datasource.resolve_partitioning(sample)
+    assert resolved_partitioning is not None
+    assert resolved_partitioning.field_names is None
 
 
 def test_default_and_fallback_split_modes(tmp_path):
@@ -251,14 +257,16 @@ def test_reader_ignores_manifest_file_size(tmp_path):
     path.write_text("id\n1\n")
     reader = CSVFileReader()
     manifest = FileManifest.construct_manifest(
-        paths=[str(path)], sizes=[None], chunk_metadatas=[None]
+        paths=[str(path)],
+        sizes=[None],  # pyrefly: ignore[bad-argument-type]
+        chunk_metadatas=[None],
     )
 
     assert pa.concat_tables(list(reader.read(manifest))).to_pylist() == [{"id": 1}]
 
 
 def test_reader_assigns_one_large_record_to_one_chunk(monkeypatch, tmp_path):
-    from ray.data._internal.datasource_v2 import csv_datasource_v2
+    from ray.data._internal.datasource_v2.formats.csv import csv_file_indexer
 
     path = tmp_path / "data.csv"
     large_value = "x" * 4096
@@ -266,16 +274,14 @@ def test_reader_assigns_one_large_record_to_one_chunk(monkeypatch, tmp_path):
     boundary_scans = 0
     boundary_bytes_read = 0
     boundary_read_calls = 0
-    find_record_boundary = csv_datasource_v2._find_record_boundary
+    find_record_boundary = csv_file_indexer._find_record_boundary
 
     def count_boundary_scans(*args):
         nonlocal boundary_scans
         boundary_scans += 1
         return find_record_boundary(*args)
 
-    monkeypatch.setattr(
-        csv_datasource_v2, "_find_record_boundary", count_boundary_scans
-    )
+    monkeypatch.setattr(csv_file_indexer, "_find_record_boundary", count_boundary_scans)
     datasource = CSVDatasourceV2(
         [str(path)],
         partitioning=None,
@@ -441,7 +447,7 @@ def test_snappy_stream_uses_shared_decompressor(monkeypatch):
     filesystem.open_input_stream.return_value = compressed_stream
     decompress = MagicMock(return_value=decompressed_stream)
     monkeypatch.setattr(
-        "ray.data._internal.datasource_v2.readers.csv_file_reader."
+        "ray.data._internal.datasource_v2.formats.csv.csv_file_reader."
         "_file_to_snappy_stream",
         decompress,
     )

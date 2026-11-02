@@ -1,14 +1,29 @@
 import pytest
 
 import ray
-from ray.data.context import ShuffleStrategy, _deduce_default_shuffle_compression
+from ray.data.context import (
+    ShuffleStrategy,
+    _deduce_default_enable_disk_shuffle,
+    _deduce_default_shuffle_compression,
+)
+from ray.job_config import JobConfig
 from ray.util.annotations import RayDeprecationWarning
+
+_RECONSTRUCTION_OVERRIDE_ERROR = (
+    "enable_ray_data_reconstruction value does not match the "
+    "disable_job_level_lineage_reconstruction value in the cluster"
+)
 
 
 def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
     ctx = ray.data.DataContext.get_current()
     with pytest.warns(DeprecationWarning):
         ctx.write_file_retry_on_errors = []
+
+
+def _init_job_with_disable_job_level_lineage_reconstruction(enabled: bool) -> None:
+    """Start a job whose `_disable_job_level_lineage_reconstruction` is `enabled`."""
+    ray.init(job_config=JobConfig(_disable_job_level_lineage_reconstruction=enabled))
 
 
 @pytest.mark.parametrize(
@@ -90,6 +105,93 @@ def test_hash_shuffle_compression_alias(monkeypatch):
     assert _deduce_default_shuffle_compression() == "lz4"
     monkeypatch.setenv("RAY_DATA_SHUFFLE_COMPRESSION", "none")
     assert _deduce_default_shuffle_compression() == "none"
+
+
+def test_use_external_hash_shuffle_alias(monkeypatch):
+    """`use_external_hash_shuffle` remains a deprecated alias of
+    `use_disk_based_hash_shuffle`."""
+
+    ctx = ray.data.DataContext()
+
+    with pytest.warns(DeprecationWarning, match="use_external_hash_shuffle") as record:
+        ctx.use_external_hash_shuffle = True
+    assert ctx.use_disk_based_hash_shuffle is True
+    # Warning has to be blamed on the caller, otherwise Python's default
+    # filters drop it (`pytest.warns` alone passes at any `stacklevel`)
+    assert record[0].filename == __file__
+
+    ctx.use_disk_based_hash_shuffle = False
+    with pytest.warns(DeprecationWarning, match="use_external_hash_shuffle") as record:
+        assert ctx.use_external_hash_shuffle is False
+    assert record[0].filename == __file__
+
+    # Deprecated env var is still honored, but the current one wins
+    monkeypatch.setenv("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", "1")
+    assert _deduce_default_enable_disk_shuffle() is True
+    monkeypatch.setenv("RAY_DATA_ENABLE_DISK_SHUFFLE", "0")
+    assert _deduce_default_enable_disk_shuffle() is False
+
+
+@pytest.mark.parametrize("job_setting", [False, True])
+def test_enable_ray_data_reconstruction_resolved_from_core_worker(
+    shutdown_only, job_setting: bool
+):
+    """
+    The ray data reconstruction setting is read and based off the core worker's
+    `disable_job_level_lineage_reconstruction` setting.
+    """
+    from ray.data.context import DataContext
+
+    original = DataContext.get_current()
+    try:
+        _init_job_with_disable_job_level_lineage_reconstruction(job_setting)
+
+        # The sealed per-Dataset copy carries it too.
+        ds = ray.data.range(1)
+        assert ds.context.enable_ray_data_reconstruction is job_setting
+    finally:
+        DataContext._set_current(original)
+
+
+def test_enable_ray_data_reconstruction_defaults_false(shutdown_only):
+    """Resolution falls back to `False` when the process isn't connected."""
+    from ray.data.context import DataContext
+
+    ray.shutdown()
+    assert DataContext().enable_ray_data_reconstruction is False
+
+    ray.init()
+    assert DataContext().enable_ray_data_reconstruction is False
+
+
+@pytest.mark.parametrize("job_setting", [False, True])
+def test_enable_ray_data_reconstruction_rejects_conflicting_override(
+    shutdown_only, job_setting: bool
+):
+    """An override that disagrees with the job config is rejected on read.
+
+    Reading is the last point at which the two can be compared, and letting a
+    stale override through would silently diverge from Ray Core's lineage
+    pinning decision for this job.
+    """
+    from ray.data.context import DataContext
+
+    original = DataContext.get_current()
+    try:
+        _init_job_with_disable_job_level_lineage_reconstruction(job_setting)
+
+        context = DataContext(_enable_ray_data_reconstruction=not job_setting)
+
+        with pytest.raises(ValueError, match=_RECONSTRUCTION_OVERRIDE_ERROR):
+            _ = context.enable_ray_data_reconstruction
+
+        # The override travels with the sealed per-Dataset copy, so a Dataset
+        # can't pick it up unnoticed either.
+        DataContext._set_current(context)
+        with pytest.raises(ValueError, match=_RECONSTRUCTION_OVERRIDE_ERROR):
+            _ = ray.data.range(1).context.enable_ray_data_reconstruction
+    finally:
+        DataContext._set_current(original)
 
 
 if __name__ == "__main__":

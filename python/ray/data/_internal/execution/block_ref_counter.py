@@ -49,6 +49,9 @@ class BlockRefCounter:
         producer's usage.
 
         Idempotent: calling twice with the same block_ref is a no-op.
+
+        The caller must own block_ref. Ray Core rejects a callback registered
+        by any other worker.
         """
         id_binary = block_ref.binary()
         with self._lock:
@@ -65,10 +68,6 @@ class BlockRefCounter:
                 self._registered_ids.discard(id_bytes)
                 self._bytes_by_producer[producer_id] -= size_bytes
 
-        # TODO(srayhome): This raises ValueError for blocks not owned by this
-        # worker (e.g., materialized dataset passed to streaming_split). We may
-        # need to guard this with RefBundle.owns_blocks or skip registration at
-        # the InputDataBuffer level.
         registered = self._add_callback_fn(block_ref, _on_object_freed)
         if not registered:
             _on_object_freed(id_binary)

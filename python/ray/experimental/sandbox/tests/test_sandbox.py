@@ -1,10 +1,14 @@
+import os
 import sys
 
 import pytest
 
 import ray
 from ray.experimental.sandbox import Sandbox
+from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.runtime import SandboxRuntime
+
+_CGROUP_PROVISIONED = bool(os.environ.get("RAY_SANDBOX_CGROUP_PATH"))
 
 
 def test_sandbox_runtime_interface(tmp_path):
@@ -50,8 +54,40 @@ def test_sandbox_actor_wrapper():
     data = ray.get(actor.read_file.remote("/workspace/test.txt"))
     assert data == b"actor content"
 
+    # Test status, pause, and resume
+    assert ray.get(actor.get_status.remote()) == SandboxStatus.RUNNING
+    ray.get(actor.pause.remote())
+    assert ray.get(actor.get_status.remote()) == SandboxStatus.PAUSED
+    ray.get(actor.resume.remote())
+    assert ray.get(actor.get_status.remote()) == SandboxStatus.RUNNING
+
     ray.get(actor.delete.remote())
     ray.kill(actor)
+
+
+def test_netns_sandbox_actor_changes_its_egress_allowlist(ensure_slirp4netns):
+    """A sandbox actor, as create() returns, replaces its egress allowlist
+    while it runs."""
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    # ensure_slirp4netns can put slirp4netns on this process's PATH after an
+    # earlier test started Ray's workers, so pass the PATH to the actor.
+    actor = Sandbox.options(
+        runtime_env={"env_vars": {"PATH": os.environ["PATH"]}}
+    ).remote(image="python:3.10-slim", network="public", cidr_allowlist=[])
+    connect = (
+        'python3 -c "import socket; '
+        "socket.create_connection(('1.1.1.1', 443), timeout=5).close()\""
+    )
+    try:
+        assert ray.get(actor.exec.remote(connect, timeout=60)).exit_code != 0
+        ray.get(actor.set_egress_allowlist.remote(["1.1.1.1:443"]))
+        result = ray.get(actor.exec.remote(connect, timeout=60))
+        assert result.exit_code == 0, result.stderr
+    finally:
+        ray.get(actor.delete.remote())
+        ray.kill(actor)
 
 
 def test_custom_sandbox_actor_with_sandbox_runtime():
@@ -105,6 +141,9 @@ def test_ray_remote_sandbox_runtime():
     ray.kill(rt_actor)
 
 
+@pytest.mark.skipif(
+    not _CGROUP_PROVISIONED, reason="Positive limits need RAY_SANDBOX_CGROUP_PATH"
+)
 def test_sandbox_actor_resource_translation():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
@@ -118,6 +157,20 @@ def test_sandbox_actor_resource_translation():
 
     ray.get(actor.delete.remote())
     ray.kill(actor)
+
+
+@pytest.mark.skipif(_CGROUP_PROVISIONED, reason="Checks a node without a cgroup")
+def test_sandbox_actor_fails_closed_without_cgroup():
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    # Without an explicit cpu, the actor's CPUs become an enforced limit.
+    actor = Sandbox.options(num_cpus=2.0).remote(
+        image="busybox:latest", shell="/bin/sh", workdir="/workspace"
+    )
+
+    with pytest.raises(ray.exceptions.ActorDiedError, match="RAY_SANDBOX_CGROUP_PATH"):
+        ray.get(actor.get_config.remote())
 
 
 def test_sandbox_runtime_create_variants():

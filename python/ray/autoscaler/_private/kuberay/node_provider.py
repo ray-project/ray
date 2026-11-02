@@ -183,6 +183,36 @@ def replace_patch(path: str, value: Any) -> Dict[str, Any]:
     return {"op": "replace", "path": path, "value": value}
 
 
+def idle_suspend_patch(should_idle_suspend: bool) -> Dict[str, Any]:
+    return {"spec": {"idleSuspend": should_idle_suspend}}
+
+
+def finalizer_patch(
+    finalizer: str, finalizers: Optional[List[str]], resource_version: str
+) -> List[Dict[str, Any]]:
+    if finalizers:
+        path = "/metadata/finalizers/-"
+        value = finalizer
+    else:
+        path = "/metadata/finalizers"
+        value = [finalizer]
+
+    # Guard the add operation with a resourceVersion test operation.
+    # If the CR changed since it was read, the apiserver rejects the whole patch
+    # instead of letting "add /metadata/finalizers" replace finalizers added concurrently.
+    return [resource_version_test_patch(resource_version), add_patch(path, value)]
+
+
+def resource_version_test_patch(resource_version: str) -> Dict[str, Any]:
+    path = "/metadata/resourceVersion"
+    value = resource_version
+    return {"op": "test", "path": path, "value": value}
+
+
+def add_patch(path: str, value: Any) -> Dict[str, Any]:
+    return {"op": "add", "path": path, "value": value}
+
+
 def load_k8s_secrets() -> Tuple[Dict[str, str], str, Optional[Tuple[str, str]]]:
     """
     Loads secrets needed to access K8s resources.
@@ -313,6 +343,11 @@ class IKubernetesHttpApiClient(ABC):
         """Wrapper for REST PATCH of resource with proper headers."""
         pass
 
+    @abstractmethod
+    def delete(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST DELETE of resource with proper headers."""
+        pass
+
 
 class KubernetesHttpApiClient(IKubernetesHttpApiClient):
     def __init__(self, namespace: str, kuberay_crd_version: str = KUBERAY_CRD_VER):
@@ -395,6 +430,35 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             cert=cert,
         )
         if not result.status_code == 200:
+            result.raise_for_status()
+        return result.json()
+
+    def delete(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST DELETE of resource with proper headers.
+
+        Args:
+            path: The part of the resource path that starts with the resource type.
+
+        Returns:
+            The JSON response of the DELETE request.
+
+        Raises:
+            HTTPError: If the DELETE request fails.
+        """
+        url = url_from_resource(
+            namespace=self._namespace,
+            path=path,
+            kuberay_crd_version=self._kuberay_crd_version,
+        )
+        headers, verify, cert = self._get_refreshed_credentials()
+        result = requests.delete(
+            url,
+            headers=headers,
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
+            verify=verify,
+            cert=cert,
+        )
+        if result.status_code not in (200, 202):
             result.raise_for_status()
         return result.json()
 

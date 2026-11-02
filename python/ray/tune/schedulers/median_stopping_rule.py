@@ -125,9 +125,26 @@ class MedianStoppingRule(FIFOScheduler):
     ) -> str:
         """Callback for early stopping.
 
-        This stopping rule stops a running trial if the trial's best objective
-        value by step `t` is strictly worse than the median of the running
-        averages of all completed trials' objectives reported up to step `t`.
+        Let ``t`` be this result's value of ``time_attr``. Once ``t`` reaches
+        ``grace_period``, the rule compares the trial against every other trial
+        that has already reported a result at ``t`` or later, whether it's still
+        running or finished. For each of those trials, it averages the metric
+        over the results reported between ``grace_period`` and ``t``. If the
+        trial's best metric value so far is strictly worse than the median of
+        those averages, the rule stops the trial.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that reported the result.
+            result: The result the trial reported.
+
+        Returns:
+            ``TrialScheduler.STOP`` to stop the trial early, or
+            ``TrialScheduler.PAUSE`` instead when ``hard_stop`` is False.
+            When too few other trials have reached ``t`` to compare against,
+            ``TrialScheduler.PAUSE`` if more than ``min_time_slice`` has passed
+            since the trial last paused and other trials are waiting to run.
+            Otherwise ``TrialScheduler.CONTINUE``.
         """
         if self._time_attr not in result or self._metric not in result:
             return TrialScheduler.CONTINUE
@@ -146,7 +163,14 @@ class MedianStoppingRule(FIFOScheduler):
         trials = self._trials_beyond_time(time)
         trials.remove(trial)
 
-        if len(trials) < self._min_samples_required:
+        # Exclude `np.nan` and `np.inf` values.
+        running_means = [
+            running_mean
+            for running_mean in (self._running_mean(other, time) for other in trials)
+            if np.isfinite(running_mean)
+        ]
+
+        if len(running_means) < self._min_samples_required:
             action = self._on_insufficient_samples(tune_controller, trial, time)
             if action == TrialScheduler.PAUSE:
                 self._last_pause[trial] = time
@@ -156,12 +180,12 @@ class MedianStoppingRule(FIFOScheduler):
             logger.debug(
                 "MedianStoppingRule: insufficient samples={} to evaluate "
                 "trial {} at t={}. {}".format(
-                    len(trials), trial.trial_id, time, action_str
+                    len(running_means), trial.trial_id, time, action_str
                 )
             )
             return action
 
-        median_result = self._median_result(trials, time)
+        median_result = np.median(running_means)
         best_result = self._best_result(trial)
         logger.debug(
             "Trial {} best res={} vs median res={} at t={}".format(
@@ -208,9 +232,6 @@ class MedianStoppingRule(FIFOScheduler):
         ]
         return trials
 
-    def _median_result(self, trials: List[Trial], time: float):
-        return np.median([self._running_mean(trial, time) for trial in trials])
-
     def _running_mean(self, trial: Trial, time: float) -> np.ndarray:
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
@@ -218,6 +239,9 @@ class MedianStoppingRule(FIFOScheduler):
         scoped_results = [
             r for r in results if self._grace_period <= r[self._time_attr] <= time
         ]
+        if not scoped_results:
+            # Sparse reporting can skip the window entirely; `np.mean([])` is nan plus a warning.
+            return np.nan
         return np.mean([r[self._metric] for r in scoped_results])
 
     def _best_result(self, trial):

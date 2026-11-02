@@ -4,16 +4,19 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.common.listing_utils import partition_files
+from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
+    RoundRobinPartitioner,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
 )
-from ray.data._internal.datasource_v2.listing.listing_utils import partition_files
-from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-    RoundRobinPartitioner,
+from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
+    PartitionHints,
 )
-from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+from ray.data._internal.datasource_v2.interfaces.in_memory_size_estimator import (
     InMemorySizeEstimator,
 )
 from ray.data._internal.weighted_round_robin import WeightedRoundRobinPartitioner
@@ -72,9 +75,7 @@ def test_round_robin_partitioner_produces_correct_partitions(
         MagicMock(),
         partitioner=RoundRobinPartitioner(
             in_memory_size_estimator=StubInMemorySizeEstimator(),
-            num_buckets=2,
-            min_bucket_size=1,
-            max_bucket_size=3,
+            hints=PartitionHints(min_bucket_size=1, max_bucket_size=3, num_buckets=2),
         ),
     )
 
@@ -105,9 +106,7 @@ def test_round_robin_partitioner_with_no_size_estimates():
         MagicMock(),
         partitioner=RoundRobinPartitioner(
             in_memory_size_estimator=StubInMemorySizeEstimator(),
-            num_buckets=2,
-            min_bucket_size=1,
-            max_bucket_size=1,
+            hints=PartitionHints(min_bucket_size=1, max_bucket_size=1, num_buckets=2),
         ),
     )
     partitions = [output[PATH_COLUMN_NAME].to_pylist() for output in outputs]
@@ -121,7 +120,7 @@ def test_round_robin_partitioner_with_no_size_estimates():
 
 @pytest.mark.parametrize("size", [0, 1])
 def test_round_robin_emits_bounded_partitions_before_input_ends(size):
-    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+    from ray.data._internal.datasource_v2.common.size_estimators import (
         IdentityInMemorySizeEstimator,
     )
 
@@ -145,9 +144,11 @@ def test_round_robin_emits_bounded_partitions_before_input_ends(size):
             MagicMock(),
             partitioner=RoundRobinPartitioner(
                 in_memory_size_estimator=IdentityInMemorySizeEstimator(),
-                num_buckets=2,
-                min_bucket_size=1000,
-                max_bucket_size=10000,
+                hints=PartitionHints(
+                    min_bucket_size=1000,
+                    max_bucket_size=10000,
+                    num_buckets=2,
+                ),
                 max_items_per_bucket=3,
             ),
         )
@@ -181,9 +182,11 @@ def test_round_robin_partitioner_preserves_contiguous_input_order():
         MagicMock(),
         partitioner=RoundRobinPartitioner(
             in_memory_size_estimator=FileSizeEstimator(),
-            num_buckets=2,
-            min_bucket_size=10,
-            max_bucket_size=15,
+            hints=PartitionHints(
+                min_bucket_size=10,
+                max_bucket_size=15,
+                num_buckets=2,
+            ),
             preserve_order=True,
         ),
     )
@@ -210,9 +213,11 @@ def test_round_robin_partitioner_enforces_contiguous_bucket_count():
 
     partitioner = RoundRobinPartitioner(
         in_memory_size_estimator=FileSizeEstimator(),
-        num_buckets=2,
-        min_bucket_size=10,
-        max_bucket_size=100,
+        hints=PartitionHints(
+            min_bucket_size=10,
+            max_bucket_size=100,
+            num_buckets=2,
+        ),
         preserve_order=True,
         enforce_num_buckets=True,
     )
@@ -227,10 +232,10 @@ def test_round_robin_partitioner_enforces_contiguous_bucket_count():
 
 @pytest.mark.parametrize("file_size", [1, 100, 200])
 def test_explicit_block_target_survives_single_file_and_safety_flush(file_size):
-    from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+    from ray.data._internal.datasource_v2.common.size_estimators import (
         IdentityInMemorySizeEstimator,
     )
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
     manifest = FileManifest.construct_manifest(
         paths=["data.csv"], sizes=[file_size], chunk_metadatas=[None]
@@ -241,9 +246,11 @@ def test_explicit_block_target_survives_single_file_and_safety_flush(file_size):
             MagicMock(),
             partitioner=RoundRobinPartitioner(
                 in_memory_size_estimator=IdentityInMemorySizeEstimator(),
-                num_buckets=4,
-                min_bucket_size=1,
-                max_bucket_size=100,
+                hints=PartitionHints(
+                    min_bucket_size=1,
+                    max_bucket_size=100,
+                    num_buckets=4,
+                ),
                 enforce_num_buckets=True,
             ),
         )
@@ -275,9 +282,11 @@ def test_round_robin_partitioner_caps_items_per_ordered_bucket(
         MagicMock(),
         partitioner=RoundRobinPartitioner(
             in_memory_size_estimator=FileSizeEstimator(),
-            num_buckets=1,
-            min_bucket_size=0,
-            max_bucket_size=100,
+            hints=PartitionHints(
+                min_bucket_size=0,
+                max_bucket_size=100,
+                num_buckets=1,
+            ),
             preserve_order=True,
             enforce_num_buckets=enforce_num_buckets,
             max_items_per_bucket=2,

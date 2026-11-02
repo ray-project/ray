@@ -21,6 +21,7 @@ from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
     PathPartitionFilter,
+    _broadcast_partition_value,
 )
 from ray.data.datatype import DataType
 from ray.data.expressions import col, udf
@@ -911,6 +912,17 @@ def test_field_types(partition_value, expected_type):
     assert isinstance(partitions["key"], expected_type)
 
 
+def test_path_partition_parser_missing_field_type_raises():
+    # A field declared in `field_types` but absent from the path used to raise a
+    # bare KeyError; it now names the field and the path.
+    parser = PathPartitionParser(
+        Partitioning(style="hive", field_types={"year": int, "month": int})
+    )
+
+    with pytest.raises(ValueError, match="partition field"):
+        parser("year=2020/data.parquet")
+
+
 @pytest.mark.parametrize(
     "path,predicate,expected_result,description",
     [
@@ -1056,6 +1068,186 @@ def test_evaluate_predicate_on_partition_unaffected_cases(predicate, expected):
     path = "year=2020/month=01/data.parquet"
 
     assert parser.evaluate_predicate_on_partition(path, predicate) is expected
+
+
+@pytest.mark.parametrize(
+    "value,arrow_type,expected",
+    [
+        ("2024", pa.int32(), 2024),
+        ("2024", pa.int64(), 2024),
+        (str(2**64 - 1), pa.uint64(), 2**64 - 1),
+        ("16777217", pa.float32(), 16777216.0),
+        (16777217.0, pa.float32(), 16777216.0),
+        (2024, pa.string(), "2024"),
+        ("true", pa.bool_(), True),
+        ("false", pa.bool_(), False),
+        (None, pa.int64(), None),
+        (None, pa.bool_(), None),
+    ],
+)
+def test_broadcast_partition_value_logical_type(value, arrow_type, expected):
+    schema = pa.schema([("value", arrow_type)])
+    result = _broadcast_partition_value("value", value, 3, schema)
+
+    assert result.type == arrow_type
+    assert result.to_pylist() == [expected] * 3
+
+
+@pytest.mark.parametrize("schema", [None, pa.schema([("other", pa.int64())])])
+def test_broadcast_partition_value_string_fallback(schema):
+    result = _broadcast_partition_value("year", 2024, 2, schema)
+
+    assert result.type == pa.string()
+    assert result.to_pylist() == ["2024", "2024"]
+
+
+@pytest.mark.parametrize(
+    "value,arrow_type",
+    [
+        ("not-an-int", pa.int64()),
+        (str(2**31), pa.int32()),
+        (str(2**63), pa.int64()),
+        (str(2**64), pa.uint64()),
+    ],
+)
+def test_broadcast_partition_value_invalid_cast(value, arrow_type):
+    with pytest.raises(pa.ArrowInvalid):
+        _broadcast_partition_value("year", value, 1, pa.schema([("year", arrow_type)]))
+
+
+@pytest.mark.parametrize("arrow_type", [pa.int32(), pa.int64()])
+@pytest.mark.parametrize("expr", [col("year") == 2024, col("year") > 2023])
+def test_partition_predicate_uses_logical_integer_type(arrow_type, expr):
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+    schema = pa.schema([("year", arrow_type)])
+
+    assert parser.evaluate_predicate_on_partition(
+        "year=2024/data.parquet", expr, schema=schema
+    )
+    assert not parser.evaluate_predicate_on_partition(
+        "year=2023/data.parquet", expr, schema=schema
+    )
+    assert parser.scheme.field_types == {}
+
+
+@pytest.mark.parametrize("field_types", [{}, {"value": float}])
+def test_partition_predicate_uses_float32_output_value(field_types):
+    parser = PathPartitionParser(
+        Partitioning(PartitionStyle.HIVE, field_types=field_types)
+    )
+    schema = pa.schema([("value", pa.float32())])
+    expr = col("value") == 16777216.0
+
+    assert parser.evaluate_predicate_on_partition(
+        "value=16777217/data.parquet", expr, schema=schema
+    )
+    assert not parser.evaluate_predicate_on_partition(
+        "value=16777218/data.parquet", expr, schema=schema
+    )
+
+
+def test_partition_predicate_casts_parsed_integer_to_logical_string():
+    parser = PathPartitionParser(
+        Partitioning(PartitionStyle.HIVE, field_types={"year": int})
+    )
+    schema = pa.schema([("year", pa.string())])
+
+    assert parser.evaluate_predicate_on_partition(
+        "year=02024/data.parquet", col("year") == "2024", schema=schema
+    )
+    assert not parser.evaluate_predicate_on_partition(
+        "year=02024/data.parquet", col("year") == "02024", schema=schema
+    )
+    # The schema-free parser still uses its explicit Python integer type.
+    assert parser.evaluate_predicate_on_partition(
+        "year=02024/data.parquet", col("year") == 2024
+    )
+
+
+@pytest.mark.parametrize("value,expected", [("true", True), ("false", False)])
+def test_partition_predicate_uses_logical_boolean_type(value, expected):
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+
+    assert parser.evaluate_predicate_on_partition(
+        f"enabled={value}/data.parquet",
+        col("enabled") == expected,
+        schema=pa.schema([("enabled", pa.bool_())]),
+    )
+
+
+def test_partition_predicate_schema_missing_field_uses_string_fallback():
+    parser = PathPartitionParser(
+        Partitioning(PartitionStyle.HIVE, field_types={"year": int})
+    )
+    schema = pa.schema([("x", pa.int64())])
+    path = "year=2024/data.parquet"
+
+    assert parser.evaluate_predicate_on_partition(
+        path, col("year") == "2024", schema=schema
+    )
+    assert not parser.evaluate_predicate_on_partition(
+        path, col("year") == "2023", schema=schema
+    )
+    with pytest.raises(pa.ArrowNotImplementedError):
+        parser.evaluate_predicate_on_partition(path, col("year") == 2024, schema=schema)
+
+
+def test_partition_predicate_does_not_cast_unreferenced_fields():
+    schema = pa.schema([("country", pa.string()), ("year", pa.int64())])
+    path = "country=US/year=not-an-int/data.parquet"
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+
+    assert parser.evaluate_predicate_on_partition(
+        path, col("country") == "US", schema=schema
+    )
+    assert not parser.evaluate_predicate_on_partition(
+        path, col("country") == "CA", schema=schema
+    )
+    # Explicit parser conversions still run even for fields outside the predicate.
+    typed_parser = PathPartitionParser(
+        Partitioning(PartitionStyle.HIVE, field_types={"year": int})
+    )
+    with pytest.raises(ValueError):
+        typed_parser.evaluate_predicate_on_partition(
+            path, col("country") == "US", schema=schema
+        )
+
+
+@pytest.mark.parametrize("year", ["not-an-int", str(2**63)])
+def test_partition_predicate_does_not_hide_logical_cast_errors(year):
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+
+    with pytest.raises(pa.ArrowInvalid):
+        parser.evaluate_predicate_on_partition(
+            f"year={year}/data.parquet",
+            col("year") == 2024,
+            schema=pa.schema([("year", pa.int64())]),
+        )
+
+
+def test_partition_predicate_cast_error_includes_path():
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+    path = "year=not-an-int/data.parquet"
+
+    with pytest.raises(pa.ArrowInvalid) as exc:
+        parser.evaluate_predicate_on_partition(
+            path,
+            col("year") == 2024,
+            schema=pa.schema([("year", pa.int64())]),
+        )
+    assert path in str(exc.value)
+
+
+def test_partition_predicate_schema_does_not_fill_missing_path_keys():
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+    schema = pa.schema([("year", pa.int64()), ("country", pa.string())])
+
+    assert not parser.evaluate_predicate_on_partition(
+        "data.parquet", col("year") == 2024, schema=schema
+    )
+    assert parser.evaluate_predicate_on_partition(
+        "country=US/data.parquet", col("year") == 2024, schema=schema
+    )
 
 
 if __name__ == "__main__":

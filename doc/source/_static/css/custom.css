@@ -6,6 +6,7 @@
 html {
   --anyscale-blue: #0066FF;
   --ray-blue: #02A0CF; /* Ray blue color - use this for all ray branding */
+  --ray-blue-dark: #017091; /* Darker Ray blue, for banding against --ray-blue */
   --pst-color-primary: var(--ray-blue) !important;
   --pst-color-inline-code-links: var(--ray-blue) !important;
 
@@ -425,6 +426,19 @@ dt.sig .sig-name {
 .bd-header-announcement {
   color: var(--pst-color-light);
   background-color: var(--ray-blue);
+  /* The region stacks one or more `.ray-banner` children, each supplying its own
+     padding and height, so every banner paints a full-width band. Leaving the
+     theme's padding and min-height here would show this background as a gutter
+     around the inner bands whenever they are shorter than the region. */
+  padding: 0;
+  min-height: 0;
+}
+
+/* The theme wraps the announcement HTML in this element and centers it as a flex
+   item, so it shrink-wraps to its widest child. A banner with its own background
+   would then paint a narrow centered strip instead of a full-width band. */
+.bd-header-announcement__content {
+  width: 100%;
 }
 
 .bd-header-announcement a {

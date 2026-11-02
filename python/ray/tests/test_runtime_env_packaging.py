@@ -845,6 +845,18 @@ class TestParseUri:
         assert package_name == gcs_uri.split("/")[-1]
 
 
+def test_download_percent_encoded_file_uri(tmp_path):
+    """as_uri() escapes the space, so the scheme cannot just be sliced off."""
+    package = tmp_path / "a dir" / "pkg.zip"
+    package.parent.mkdir()
+    package.write_bytes(b"package-bytes")
+    dest_file = tmp_path / "downloaded.zip"
+
+    ProtocolsProvider.download_remote_uri("file", package.as_uri(), str(dest_file))
+
+    assert dest_file.read_bytes() == b"package-bytes"
+
+
 class TestAbfssProtocol:
     """Test ABFSS protocol implementation."""
 

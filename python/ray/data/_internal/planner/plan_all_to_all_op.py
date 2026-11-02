@@ -13,13 +13,14 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _SHUFFLE_MAP_RUNTIME_ENV,
     _concat_reduce,
     _make_hash_partition_fn,
+    _make_slice_partition_fn,
     _sort_reduce,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
-    ExternalHashShuffleMapOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_reduce_operator import (  # noqa: E501
-    ExternalHashShuffleReduceOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
@@ -30,6 +31,13 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
+from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_operator import (  # noqa: E501
+    SortSamplingOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
+    SortShuffleMapOp,
+)
+from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
@@ -59,14 +67,14 @@ _SORT_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 def _select_shuffle_v2_op_classes(
     data_context: DataContext,
 ) -> Tuple[Type[PhysicalOperator], Type[PhysicalOperator], str]:
-    """Pick the SHUFFLE_V2 map/reduce op family: external (file-transport) or
-    object-store, per ``data_context.use_external_hash_shuffle``.
+    """Pick the SHUFFLE_V2 map/reduce op family: disk-based (file-transport) or
+    object-store, per ``data_context.use_disk_based_hash_shuffle``.
 
     Returns ``(map_cls, reduce_cls, name_prefix)`` where ``name_prefix`` is
-    ``"External"`` or ``""``, to be prepended to the op display names.
+    ``"Disk"`` or ``""``, to be prepended to the op display names.
     """
-    if data_context.use_external_hash_shuffle:
-        return ExternalHashShuffleMapOp, ExternalHashShuffleReduceOp, "External"
+    if data_context.use_disk_based_hash_shuffle:
+        return DiskHashShuffleMapOp, DiskHashShuffleReduceOp, "Disk"
     return ShuffleMapOp, ShuffleReduceOp, ""
 
 
@@ -100,8 +108,8 @@ def _plan_hash_shuffle_repartition_v2(
 ) -> PhysicalOperator:
     """Build the two-op Map → Reduce DAG for SHUFFLE_V2 hash-shuffle repartition.
 
-    Picks the external (file-transport) or object-store op pair based on
-    ``data_context.use_external_hash_shuffle``. Returns the reduce op; the
+    Picks the disk-based (file-transport) or object-store op pair based on
+    ``data_context.use_disk_based_hash_shuffle``. Returns the reduce op; the
     executor crawls upstream via its input_dependencies to find the map op.
     """
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -149,6 +157,36 @@ def _plan_hash_shuffle_repartition_v2(
     return reduce_op
 
 
+def _plan_shuffle_repartition_v2(
+    data_context: DataContext,
+    logical_op: Repartition,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    """Build the Map → Reduce DAG for SHUFFLE_V2 slice-based repartition."""
+    num_partitions = (
+        logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
+    )
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+
+    map_op = map_cls(
+        input_physical_op,
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=_make_slice_partition_fn(num_partitions),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"{prefix}SliceShuffleMap(partitions={num_partitions})",
+    )
+    return reduce_cls(
+        map_op,
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=_concat_reduce,
+        disallow_block_splitting=True,
+        peak_memory_multiplier=SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+        name=f"{prefix}SliceShuffleReduce(partitions={num_partitions})",
+    )
+
+
 def _plan_hash_shuffle_repartition(
     data_context: DataContext,
     logical_op: Repartition,
@@ -167,6 +205,56 @@ def _plan_hash_shuffle_repartition(
         key_columns=tuple(normalized_key_columns),
         num_partitions=logical_op.num_outputs,
         should_sort=logical_op.sort,
+    )
+
+
+def _plan_sort_v2(
+    data_context: DataContext,
+    logical_op: Sort,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    sort_key = logical_op.sort_key
+    user_boundaries = sort_key.boundaries
+    estimated_num_input_blocks = logical_op.input_dependencies[
+        0
+    ].estimated_num_outputs()
+    if user_boundaries:
+        num_partitions = len(user_boundaries) + 1
+    else:
+        num_partitions = (
+            estimated_num_input_blocks or data_context.default_hash_shuffle_parallelism
+        )
+
+    map_input_op = input_physical_op
+    if not user_boundaries and num_partitions > 1:
+        map_input_op = SortSamplingOp(
+            input_physical_op,
+            data_context,
+            num_partitions=num_partitions,
+            sort_key=sort_key,
+            estimated_num_input_blocks=estimated_num_input_blocks,
+            name=f"SortSample(partitions={num_partitions})",
+        )
+
+    map_op = SortShuffleMapOp(
+        map_input_op,
+        data_context,
+        num_partitions=num_partitions,
+        sort_key=sort_key,
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"SortShuffleMap(partitions={num_partitions})",
+    )
+    return ShuffleReduceOp(
+        map_op,
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=make_sort_reduce_fn(sort_key, data_context),
+        # Reduce output is split to ``target_max_block_size``; the splits of a
+        # partition are emitted in order under the same partition key.
+        preserve_partition_order=True,
+        peak_memory_multiplier=_SORT_REDUCE_PEAK_MEMORY_MULTIPLIER,
+        reduce_ray_remote_args=logical_op.ray_remote_args,
+        name=f"SortShuffleReduce(partitions={num_partitions})",
     )
 
 
@@ -217,6 +305,8 @@ def _plan_hash_shuffle_aggregate_v2(
         # block; a placeholder would carry the map's pre-finalize schema and
         # conflict with finalized non-empty partitions.
         should_emit_empty_partitions=False,
+        # Aggregation collapses each key group to one row.
+        preserves_row_count=False,
         name=(
             f"{prefix}HashAggregateReduce(key_columns={key_columns}, "
             f"num_partitions={num_partitions})"
@@ -350,6 +440,8 @@ def plan_all_to_all_op(
                     f"(got {data_context.shuffle_strategy})"
                 )
 
+        elif op.shuffle and data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+            return _plan_shuffle_repartition_v2(data_context, op, input_physical_dag)
         elif op.shuffle:
             debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
                 "debug_limit_shuffle_execution_to_num_blocks", None
@@ -365,6 +457,8 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Sort):
+        if data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+            return _plan_sort_v2(data_context, op, input_physical_dag)
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )

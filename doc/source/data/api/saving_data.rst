@@ -22,7 +22,6 @@ CSV
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_csv
 
@@ -40,7 +39,6 @@ Daft
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_daft
 
@@ -49,7 +47,6 @@ Dask
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_dask
 
@@ -58,7 +55,6 @@ Iceberg
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_iceberg
 
@@ -67,7 +63,6 @@ Images
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_images
 
@@ -76,7 +71,6 @@ JSON
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_json
 
@@ -94,7 +88,6 @@ Mars
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_mars
 
@@ -103,7 +96,6 @@ Modin
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_modin
 
@@ -112,7 +104,6 @@ MongoDB
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_mongo
 
@@ -121,7 +112,6 @@ NumPy
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_numpy
 
@@ -130,7 +120,6 @@ ORC
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_orc
 
@@ -139,7 +128,6 @@ Pandas
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_pandas
 
@@ -148,7 +136,6 @@ Parquet
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_parquet
 
@@ -175,7 +162,6 @@ Spark
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_spark
 
@@ -184,7 +170,6 @@ TFRecords
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.write_tfrecords
 
@@ -196,7 +181,6 @@ Arrow refs
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_arrow_refs
 
@@ -228,7 +212,6 @@ NumPy refs
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_numpy_refs
 
@@ -237,7 +220,5 @@ Pandas refs
 
 .. autosummary::
    :nosignatures:
-   :toctree: doc/
 
    Dataset.to_pandas_refs
-

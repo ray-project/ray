@@ -87,6 +87,12 @@ class ReplicaID:
         object.__setattr__(self, "deployment_id", state["deployment_id"])
 
     def to_full_id_str(self) -> str:
+        """Format this replica ID as a full ID string.
+
+        Returns:
+            ``SERVE_REPLICA::`` followed by the app name, deployment name, and
+            unique ID, joined by ``#``. The app name is omitted when it's empty.
+        """
         s = f"{self.deployment_id.name}#{self.unique_id}"
         if self.deployment_id.app_name:
             s = f"{self.deployment_id.app_name}#{s}"
@@ -95,10 +101,31 @@ class ReplicaID:
 
     @staticmethod
     def is_full_id_str(s: str) -> bool:
+        """Check whether a string is a full replica ID string.
+
+        Args:
+            s: The string to check.
+
+        Returns:
+            True if ``s`` starts with the ``SERVE_REPLICA::`` prefix.
+        """
         return s.startswith(REPLICA_ID_FULL_ID_STR_PREFIX)
 
     @classmethod
     def from_full_id_str(cls, s: str):
+        """Parse a full ID string into a replica ID.
+
+        The inverse of ``to_full_id_str``.
+
+        Args:
+            s: A full replica ID string.
+
+        Returns:
+            The parsed replica ID.
+
+        Raises:
+            ValueError: If ``s`` doesn't have two or three ``#``-delimited fields.
+        """
         assert cls.is_full_id_str(s)
 
         parsed = s[len(REPLICA_ID_FULL_ID_STR_PREFIX) :].split("#")
@@ -247,6 +274,7 @@ class DeploymentStatusInternalTrigger(str, Enum):
     MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
     MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    ROLLING_UPDATE_FAILED = "ROLLING_UPDATE_FAILED"
     DEPLOYMENT_ACTOR_FAILED = "DEPLOYMENT_ACTOR_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -359,6 +387,15 @@ class DeploymentStatusInfo:
                 message=message,
             )
 
+        # A stopped rolling update is a deployment failure even if autoscaling
+        # or an earlier health failure changed the current status.
+        elif trigger == DeploymentStatusInternalTrigger.ROLLING_UPDATE_FAILED:
+            return self._updated_copy(
+                status=DeploymentStatus.DEPLOY_FAILED,
+                status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                message=message,
+            )
+
         # Otherwise, go through normal state machine transitions
         elif self.status == DeploymentStatus.UPDATING:
             # Finished updating configuration and transition to healthy
@@ -432,6 +469,12 @@ class DeploymentStatusInfo:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
                     message=message,
                 )
             # Deployment transitions to healthy
@@ -558,6 +601,14 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
+            # Deployment actors can't be recreated and won't be retried
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+                    message=message,
+                )
+
         elif self.status == DeploymentStatus.UNHEALTHY:
             # The deployment recovered
             if trigger == DeploymentStatusInternalTrigger.HEALTHY:
@@ -586,6 +637,12 @@ class DeploymentStatusInfo:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
                     message=message,
                 )
 
@@ -1047,18 +1104,3 @@ class ReplicaMetricReport:
     replica_id: ReplicaID
     metrics: Dict[str, TimeSeries]
     timestamp: float
-
-
-@dataclass
-class AsyncInferenceTaskQueueMetricReport:
-    """Metric report from QueueMonitor to controller for async inference.
-
-    Args:
-        deployment_id: The deployment ID this queue belongs to.
-        queue_length: The number of pending tasks in the broker queue.
-        timestamp_s: The time at which this report was created.
-    """
-
-    deployment_id: DeploymentID
-    queue_length: int
-    timestamp_s: float

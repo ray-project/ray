@@ -26,10 +26,10 @@ from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     HandleMetricReport,
     NodeId,
+    ReplicaID,
     ReplicaMetricReport,
     RequestProtocol,
     RequestRoutingInfo,
@@ -82,6 +82,10 @@ from ray.serve._private.long_poll import KeyType, LongPollHost, LongPollNamespac
 from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -130,6 +134,8 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
+# Retained across Serve shutdowns so generations are not reused within a cluster.
+ROUTING_CONFIG_GENERATION_KEY = "serve-routing-config-generation"
 
 
 class ServeController:
@@ -180,6 +186,12 @@ class ServeController:
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"ray-serve-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self._routing_config_generation = self._get_next_routing_config_generation()
+        self._routing_config_sequence = 0
+        self._routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
@@ -318,6 +330,7 @@ class ServeController:
         # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._applied_config_id: Optional[str] = None
         self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
@@ -407,6 +420,18 @@ class ServeController:
         if record_delay is not None:
             record_delay(delay_ms)
 
+    def record_replica_health(
+        self,
+        replica_id: ReplicaID,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ):
+        """Self-health heartbeat from a replica, standing in for a pull probe."""
+        self.deployment_state_manager.record_replica_health(
+            replica_id, checked_at, healthy, consecutive_failures
+        )
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
@@ -438,11 +463,21 @@ class ServeController:
         ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
             if autoscaling_metrics_codec.is_columnar(handle_metric_report):
-                # Wire-detected on the frame magic, so a mixed fleet mid-rollout is
-                # read correctly whatever each sender chose to emit. Timed apart from
-                # decompress: separating the two codecs is the point of the metric.
+                # Wire-detected on the frame magic rather than assumed, so this
+                # path works whether or not routers emit columnar yet. Timed apart
+                # from decompress: separating the two codecs is the point of the
+                # metric.
                 decode_start = time.monotonic()
-                d = autoscaling_metrics_codec.decode_handle_flat(handle_metric_report)
+                try:
+                    d = autoscaling_metrics_codec.decode_handle_flat(
+                        handle_metric_report
+                    )
+                except Exception:
+                    # The sender never reads this call's ObjectRef, so an unparseable
+                    # report would otherwise vanish with no trace on either side. The
+                    # handle keeps its last good data until the drop path times it out.
+                    logger.exception("Dropping an undecodable columnar metric report.")
+                    return
                 self._health_metrics_tracker.record_columnar_decode(
                     (time.monotonic() - decode_start) * 1000
                 )
@@ -458,7 +493,11 @@ class ServeController:
                 )
                 return
             decompress_start = time.monotonic()
-            handle_metric_report = decompress_metric_report(handle_metric_report)
+            try:
+                handle_metric_report = decompress_metric_report(handle_metric_report)
+            except Exception:
+                logger.exception("Dropping an undecompressible handle metric report.")
+                return
             self._health_metrics_tracker.record_decompress(
                 (time.monotonic() - decompress_start) * 1000
             )
@@ -477,17 +516,6 @@ class ServeController:
             (time.monotonic() - ingest_start) * 1000
         )
 
-    def record_autoscaling_metrics_from_async_inference_task_queue(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ):
-        """Record async inference task queue metrics pushed from QueueMonitor."""
-        self._record_metrics_delay(
-            report.timestamp_s,
-            report.deployment_id,
-            self.async_inference_task_queue_metrics_delay_gauge.set,
-        )
-        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
-
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
     ):
@@ -497,6 +525,11 @@ class ServeController:
 
     def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
+
+    def _should_autoscale_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> bool:
+        return self.autoscaling_state_manager.should_autoscale_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._dump_replica_states_for_testing(
@@ -780,7 +813,17 @@ class ServeController:
             # control loop retries the reconcile next tick instead of skipping it.
             self._last_ingress_membership_version = version
 
-    def broadcast_target_groups_if_changed(self) -> None:
+    def _get_next_routing_config_generation(self) -> int:
+        """Persist and return the generation for this controller process."""
+        checkpoint = self.kv_store.get(ROUTING_CONFIG_GENERATION_KEY)
+        generation = int(checkpoint) + 1 if checkpoint is not None else 1
+        self.kv_store.put(
+            ROUTING_CONFIG_GENERATION_KEY,
+            str(generation).encode(),
+        )
+        return generation
+
+    def broadcast_target_groups_if_changed(self) -> RoutingConfigVersion:
         """Broadcast target groups over long poll if they have changed.
 
         Keeps an in-memory record of the last target groups that were broadcast
@@ -792,12 +835,34 @@ class ServeController:
 
         # Check if target groups have changed by comparing the objects directly
         if self._last_broadcasted_target_groups == target_groups:
-            return
+            return self._routing_config_version
+
+        self._routing_config_sequence += 1
+        routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host.notify_changed(
-            {LongPollNamespace.TARGET_GROUPS: target_groups}
+            {
+                LongPollNamespace.TARGET_GROUPS: RoutingConfigSnapshot(
+                    target_groups=target_groups,
+                    version=routing_config_version,
+                )
+            }
         )
         self._last_broadcasted_target_groups = target_groups
+        self._routing_config_version = routing_config_version
+        return routing_config_version
+
+    async def get_routing_config_version(self) -> RoutingConfigVersion:
+        """Return the version containing the controller's current routing state.
+
+        Broadcast before returning so the version is guaranteed to cover target
+        groups generated from the latest reconciled application state.
+        """
+        await self.done_recovering_event.wait()
+        return self.broadcast_target_groups_if_changed()
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""
@@ -869,14 +934,6 @@ class ServeController:
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("deployment", "application"),
         )
-        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
-            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
-            description=(
-                "Time taken for the async inference task queue metrics to be reported "
-                "to the controller. High values may indicate a busy controller."
-            ),
-            tag_keys=("deployment", "application"),
-        )
 
     def _recover_state_from_checkpoint(self):
         if self._shutting_down:
@@ -925,6 +982,8 @@ class ServeController:
                 target_capacity,
                 target_capacity_direction,
                 config_checkpoints_dict,
+                # Checkpoints written before `config_id` existed have four fields.
+                *extra,
             ) = pickle.loads(checkpoint)
 
             return (
@@ -932,6 +991,7 @@ class ServeController:
                 ServeDeploySchema(
                     applications=list(config_checkpoints_dict.values()),
                     target_capacity=target_capacity,
+                    config_id=extra[0] if extra else None,
                 ),
                 target_capacity_direction,
             )
@@ -1162,8 +1222,7 @@ class ServeController:
         name_to_deployment_args_list: Dict[str, List[bytes]],
         name_to_application_args: Dict[str, bytes],
     ) -> None:
-        """
-        Takes in a list of dictionaries that contain deployment arguments.
+        """Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwritten.
 
         Args:
@@ -1197,6 +1256,7 @@ class ServeController:
                         "ingress": args.ingress,
                         "ingress_request_router": args.ingress_request_router,
                         "uses_multiplexing": args.uses_multiplexing,
+                        "router_application": args.router_application,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1222,8 +1282,7 @@ class ServeController:
         deployment_args_list: List[bytes],
         application_args: bytes,
     ) -> None:
-        """
-        Deploy a single application
+        """Deploy a single application
         (as deploy_applications(), but it only takes a single name and deployment args).
         This primarily exists as a shim to avoid
         changing Java code in https://github.com/ray-project/ray/pull/49168,
@@ -1272,6 +1331,7 @@ class ServeController:
             self._target_capacity_direction,
         )
         self._target_capacity = config.target_capacity
+        self._applied_config_id = config.config_id
 
         # If a global tracing config is provided in the declarative config,
         # store it so replicas and proxies started for this config pick it up
@@ -1296,6 +1356,7 @@ class ServeController:
                     self._target_capacity,
                     self._target_capacity_direction,
                     new_config_checkpoint,
+                    config.config_id,
                 )
             ),
         )
@@ -1487,6 +1548,9 @@ class ServeController:
             applications=applications,
             target_groups=self.get_target_groups(),
             controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
+            # Set this explicitly so exclude_unset includes it in the response.
+            restores_unset_config_options=True,
+            applied_config_id=self._applied_config_id,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1504,6 +1568,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    ingress_router_fallback=False,
                     ingress_deployment_name="",
                 )
             )
@@ -1640,8 +1705,7 @@ class ServeController:
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
-        """
-        Create HTTP and gRPC target groups for a specific application.
+        """Create HTTP and gRPC target groups for a specific application.
 
         This function can return empty list if there are no running replicas.
         Or replicas have not fully initialized yet, where their ports are not
@@ -1662,6 +1726,9 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
+        is_router_application = self.application_state_manager.is_router_application(
+            app_name
+        )
 
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
@@ -1681,6 +1748,8 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        ingress_router_fallback = ingress_request_router_deployment_name is not None
+
         target_groups = []
 
         # Create targets for each protocol
@@ -1695,7 +1764,9 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
+                    is_router_application=is_router_application,
                 )
             )
 
@@ -1721,8 +1792,7 @@ class ServeController:
     def _get_target_groups_for_app_with_no_running_replicas(
         self, route_prefix: str, app_name: str
     ) -> List[TargetGroup]:
-        """
-        For applications that have no running replicas, we return target groups
+        """For applications that have no running replicas, we return target groups
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """
@@ -1730,6 +1800,10 @@ class ServeController:
         # tag per-request ingress metrics with it (matching the Python proxy).
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
+        )
+        # Needed at zero replicas too, else clients receive the router's decisions.
+        is_router_application = self.application_state_manager.is_router_application(
+            app_name
         )
 
         if self._ha_proxy_enabled:
@@ -1753,6 +1827,7 @@ class ServeController:
                     app_name=app_name,
                     ingress_request_router_targets=[],
                     ingress_deployment_name=ingress_deployment_name,
+                    is_router_application=is_router_application,
                 )
             )
         if include_grpc:
@@ -1866,7 +1941,7 @@ class ServeController:
         if checkpoint is None:
             return {}
 
-        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        _, _, _, config_checkpoints_dict, *_ = pickle.loads(checkpoint)
         return {
             app: ServeApplicationSchema.model_validate(config)
             for app, config in config_checkpoints_dict.items()

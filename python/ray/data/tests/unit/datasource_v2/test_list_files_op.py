@@ -9,10 +9,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
 )
@@ -95,7 +95,7 @@ def test_indexer_requires_file_io_defaults_to_false():
 def test_partition_filter_cache_is_bounded_and_frozen():
     from unittest.mock import MagicMock
 
-    from ray.data._internal.datasource_v2.listing.listing_utils import (
+    from ray.data._internal.datasource_v2.common.listing_utils import (
         _CachedPathPartitionFilter,
     )
 

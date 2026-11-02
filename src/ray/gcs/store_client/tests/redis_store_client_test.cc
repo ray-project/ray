@@ -854,6 +854,11 @@ TEST_F(RedisStoreClientBlockingMetricsTest, RequestMetricsDoNotBlockReply) {
 }
 
 TEST_F(RedisStoreClientMetricsTest, RetryDoesNotRecountAcceptedCommand) {
+#ifdef _WIN32
+  // The redis build available on Windows lacks the rejected_calls field.
+  GTEST_SKIP() << "Redis on Windows does not report rejected_calls.";
+#endif
+
   const auto original_retry_base_ms = RayConfig::instance().redis_retry_base_ms();
   const auto original_retry_multiplier = RayConfig::instance().redis_retry_multiplier();
   const auto original_retry_max_ms = RayConfig::instance().redis_retry_max_ms();

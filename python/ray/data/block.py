@@ -236,10 +236,20 @@ class BlockExecStats:
         default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
     )
 
-    # Absolute wall-clock timestamp when block generation started.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation started. Monotonic with an undefined, per-machine reference
+    # point: only differences between readings taken on the same node are
+    # meaningful. Never compare across nodes; use `start_unix_time_s` for that.
     start_time_s: Optional[float] = None
-    # Absolute wall-clock timestamp when block generation finished.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation finished. Same caveats as `start_time_s`.
     end_time_s: Optional[float] = None
+    # `time.time()` on the producing worker when block generation started.
+    # Shares an epoch across nodes, so it is safe to compare across blocks
+    # produced on different machines. Not monotonic (NTP can step it); derive
+    # the block's end as `start_unix_time_s + wall_time_s` rather than reading
+    # the clock twice.
+    start_unix_time_s: Optional[float] = None
     # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
     # Time spent in the map transform chain while generating this block: the
@@ -280,6 +290,7 @@ class _BlockExecStatsBuilder:
 
     def __init__(self):
         self._start_time = time.perf_counter()
+        self._start_unix_time = time.time()
         self._start_cpu = time.process_time()
         self._end_time = None
         self._end_cpu = None
@@ -296,6 +307,7 @@ class _BlockExecStatsBuilder:
         return BlockExecStats(
             start_time_s=self._start_time,
             end_time_s=self._end_time,
+            start_unix_time_s=self._start_unix_time,
             wall_time_s=self._end_time - self._start_time,
             cpu_time_s=self._end_cpu - self._start_cpu,
             **kwargs,
@@ -488,8 +500,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def upsert_column(self, column_name: str, column_data: BlockColumn) -> Block:
-        """
-        Upserts a column into the block. If the column already exists, it will be replaced.
+        """Upserts a column into the block. If the column already exists, it will be replaced.
 
         Args:
             column_name: The name of the column to upsert.
@@ -777,8 +788,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
-        """
-        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+        """NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
 
         Compute boundaries of the groups within a block based on provided
         key (a column or a list of columns)
@@ -810,8 +820,7 @@ class BlockAccessor:
     def _iter_groups_sorted(
         self, sort_key: "SortKey"
     ) -> Iterator[Tuple[Sequence[KeyType], Block]]:
-        """
-        NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
+        """NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
 
         Creates an iterator over (zero-copy) blocks of rows grouped by
         provided key(s).
@@ -875,8 +884,7 @@ class BlockColumnAccessor:
         raise NotImplementedError()
 
     def hash(self) -> BlockColumn:
-        """
-        Computes a 64-bit hash value for each row in the column.
+        """Computes a 64-bit hash value for each row in the column.
 
         Provides a unified hashing method across supported backends.
         Handles complex types like lists or nested structures by producing a single hash per row.
@@ -900,8 +908,7 @@ class BlockColumnAccessor:
         raise NotImplementedError()
 
     def is_composed_of_lists(self) -> bool:
-        """
-        Checks whether the column is composed of list-like elements.
+        """Checks whether the column is composed of list-like elements.
 
         Returns:
             True if the column is made up of list-like values; False otherwise.
