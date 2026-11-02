@@ -327,7 +327,10 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
         return True
 
     def update_operator_progress(
-        self, op_state: "OpState", resource_manager: "ResourceManager"
+        self,
+        op_state: "OpState",
+        resource_manager: "ResourceManager",
+        extra_summary: str = "",
     ):
         if not self._can_update_operator(op_state):
             return
@@ -341,7 +344,11 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
         metrics = _get_progress_metrics(self._start_time, current_rows, total_rows)
         _update_with_conditional_rate(progress, tid, metrics)
         # stats
-        stats_str = format_op_state_summary(op_state, resource_manager)
+        stats_str = format_op_state_summary(
+            op_state,
+            resource_manager,
+            extra_summary=extra_summary,
+        )
         stats.plain = f"{_TREE_VERTICAL_INDENT}{stats_str}"
 
 

@@ -9,7 +9,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, DefaultDict, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
@@ -28,6 +28,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    TaskPullRequest,
     Waitable,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -373,7 +374,7 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue], index: int):
         # Each input queue is connected to another operator's output queue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
         self.input_queues: List[OpBufferQueue] = inqueues
@@ -403,6 +404,7 @@ class OpState:
         # are not atomic.
         self._num_waiting_consumers: int = 0
         self._output_lock = threading.Lock()
+        self._index = index
 
     @property
     def num_waiting_consumers(self) -> int:
@@ -412,8 +414,11 @@ class OpState:
     def __repr__(self):
         return f"OpState({self.op.name})"
 
-    def has_pending_bundles(self) -> bool:
+    def has_pending_input_bundles(self) -> bool:
         return any(len(q) > 0 for q in self.input_queues)
+
+    def has_pending_output_bundles(self) -> bool:
+        return len(self.output_queue) > 0
 
     def total_enqueued_input_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
@@ -515,7 +520,7 @@ class OpState:
         self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
         self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
 
-    def dispatch_next_task(self) -> None:
+    def move_input_into_op(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
         for i, inqueue in enumerate(self.input_queues):
             ref = inqueue.pop()
@@ -531,6 +536,10 @@ class OpState:
                 return
 
         assert False, "Nothing to dispatch"
+
+    def dispatch_next_task(self) -> None:
+        """Move a bundle from the operator inqueue to the operator itself."""
+        self.move_input_into_op()
 
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
@@ -604,6 +613,9 @@ class OpState:
         else:
             self._exception = exception
 
+    def op_tag(self) -> str:
+        return f"{self.op.name}_{self._index}"
+
 
 def build_streaming_topology(
     dag: PhysicalOperator,
@@ -647,7 +659,7 @@ def build_streaming_topology(
             inqueues.append(parent_state.output_queue)
 
         # Create state.
-        op_state = OpState(op, inqueues)
+        op_state = OpState(op, inqueues, index=len(topology))
         topology[op] = op_state
         op.start(
             options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
@@ -825,6 +837,52 @@ def _reconstruct_lost_object(
     )
 
 
+def _handle_data_op_task_exception(
+    exc: BaseException,
+    operator_name: str,
+    max_errored_blocks: int,
+    num_errored_blocks: int,
+) -> int:
+    """Apply ``max_errored_blocks`` accounting to a block-level error.
+
+    Increments the errored-block count, then either logs+ignores or re-raises
+    once the budget is exhausted. Returns the updated count so callers can
+    keep a running total without relying on ``nonlocal``.
+    """
+    num_errored_blocks += 1
+    should_ignore = max_errored_blocks < 0 or max_errored_blocks >= num_errored_blocks
+    error_message = (
+        f'An exception was raised from a task of operator "{operator_name}".'
+    )
+    if should_ignore:
+        remaining = (
+            max_errored_blocks - num_errored_blocks
+            if max_errored_blocks >= 0
+            else "unlimited"
+        )
+        error_message += (
+            " Ignoring this exception with remaining"
+            f" max_errored_blocks={remaining}."
+        )
+        logger.error(error_message, exc_info=exc)
+    else:
+        error_message += (
+            " Dataset execution will now abort."
+            " To ignore this exception and continue, set"
+            " DataContext.max_errored_blocks."
+        )
+        # For a user-code error the traceback is re-logged (cleaned) when the
+        # exception propagates to the top-level handler, so don't dump it here
+        # too. Genuine internal / system errors keep the full traceback in
+        # place for diagnostics.
+        if isinstance(exc, UserCodeException):
+            logger.error(error_message)
+        else:
+            logger.error(error_message, exc_info=exc)
+        raise exc from None
+    return num_errored_blocks
+
+
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
@@ -905,43 +963,6 @@ def process_completed_tasks(
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
 
-    def _record_errored_block(e: BaseException, op_name: str) -> None:
-        """Apply ``max_errored_blocks`` accounting to a block-level error from
-        either ``on_data_ready`` or a deferred metadata fetch. Raises to abort
-        once the budget is exhausted."""
-        nonlocal num_errored_blocks
-        num_errored_blocks += 1
-        should_ignore = (
-            max_errored_blocks < 0 or max_errored_blocks >= num_errored_blocks
-        )
-        error_message = f'An exception was raised from a task of operator "{op_name}".'
-        if should_ignore:
-            remaining = (
-                max_errored_blocks - num_errored_blocks
-                if max_errored_blocks >= 0
-                else "unlimited"
-            )
-            error_message += (
-                f" Ignoring this exception with remaining"
-                f" max_errored_blocks={remaining}."
-            )
-            logger.error(error_message, exc_info=e)
-        else:
-            error_message += (
-                " Dataset execution will now abort."
-                " To ignore this exception and continue, set"
-                " DataContext.max_errored_blocks."
-            )
-            # For a user-code error the traceback is re-logged (cleaned) when the
-            # exception propagates to the top-level handler, so don't dump it here
-            # too. Genuine internal / system errors keep the full traceback in
-            # place for diagnostics.
-            if isinstance(e, UserCodeException):
-                logger.error(error_message)
-            else:
-                logger.error(error_message, exc_info=e)
-            raise e from None
-
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -955,7 +976,7 @@ def process_completed_tasks(
         # This is because backpressure policies may limit the number of blocks to read
         # per operator. In this case, we want to have fewer tasks finish quickly and
         # yield resources, instead of having all tasks output blocks together.
-        ready_tasks_by_op = defaultdict(list)
+        ready_tasks_by_op: DefaultDict[OpState, List[OpTask]] = defaultdict(list)
         for ref in ready:
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
@@ -978,12 +999,20 @@ def process_completed_tasks(
                 for task in ready_tasks:
                     if isinstance(task, DataOpTask):
                         try:
-                            bytes_read = task.on_data_ready(
-                                remaining_output_budget.get(state, None),
-                                metadata_fetcher,
+                            soft_upper_bound = TaskPullRequest(
+                                bytes_to_read=remaining_output_budget.get(
+                                    state, float("inf")
+                                ),
+                                blocks_to_read=float("inf"),
                             )
-                            op_data_tasks.append(task)
-                            if bytes_read > 0 and state.op in guard_released_ops:
+                            response = task.on_data_ready(
+                                max_to_read=soft_upper_bound,
+                                metadata_fetcher=metadata_fetcher,
+                            )
+                            if (
+                                response.bytes_read > 0
+                                and state.op in guard_released_ops
+                            ):
                                 # The guard's release produced real output, so
                                 # start this op's interval from here.
                                 guard_released_ops.discard(state.op)
@@ -993,15 +1022,23 @@ def process_completed_tasks(
                             if state in remaining_output_budget:
                                 # Clamp remaining output budget at 0
                                 remaining_output_budget[state] = max(
-                                    remaining_output_budget[state] - bytes_read, 0
+                                    remaining_output_budget[state]
+                                    - int(response.bytes_read),
+                                    0,
                                 )
+                            op_data_tasks.append(task)
                         except ObjectLostError as e:
                             # Experimental lineage reconstruction: if we can trace
                             # the lost output back to a tracked seed input,
                             # resubmit that seed input's chain instead of
                             # counting an error.
                             if lineage_tracker is None:
-                                _record_errored_block(e, state.op.name)
+                                num_errored_blocks = _handle_data_op_task_exception(
+                                    e,
+                                    state.op.name,
+                                    max_errored_blocks,
+                                    num_errored_blocks,
+                                )
                                 continue
                             logger.info(
                                 "[lineage-reconstruction] Detected lost object while "
@@ -1017,9 +1054,19 @@ def process_completed_tasks(
                             except LineageReconstructionError as recon_error:
                                 # In case lineage reconstruction fails, abort the task
                                 task.mark_aborted(recon_error)
-                                _record_errored_block(recon_error, state.op.name)
+                                num_errored_blocks = _handle_data_op_task_exception(
+                                    recon_error,
+                                    state.op.name,
+                                    max_errored_blocks,
+                                    num_errored_blocks,
+                                )
                         except Exception as e:
-                            _record_errored_block(e, state.op.name)
+                            num_errored_blocks = _handle_data_op_task_exception(
+                                e,
+                                state.op.name,
+                                max_errored_blocks,
+                                num_errored_blocks,
+                            )
                     else:
                         assert isinstance(task, MetadataOpTask)
                         task.on_task_finished()
@@ -1042,7 +1089,12 @@ def process_completed_tasks(
         failed_op_name,
         fetch_exc,
     ) in metadata_fetcher.emit_ready_and_fire_done_callbacks():
-        _record_errored_block(fetch_exc, failed_op_name)
+        num_errored_blocks = _handle_data_op_task_exception(
+            fetch_exc,
+            failed_op_name,
+            max_errored_blocks,
+            num_errored_blocks,
+        )
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
@@ -1140,7 +1192,7 @@ def get_eligible_operators(
         if (
             not op.has_completed()
             and op.can_add_input()
-            and state.has_pending_bundles()
+            and state.has_pending_input_bundles()
         ):
             if not in_backpressure:
                 op_runnable = True
@@ -1208,7 +1260,7 @@ def select_operator_to_run(
 
 
 def _actor_info_summary_str(info: ActorPoolInfo) -> str:
-    total = info.running + info.pending + info.restarting
+    total = info.running + info.pending + info.restarting + info.draining
     base = f"Actors: {total}"
 
     if total == info.running:
@@ -1364,26 +1416,18 @@ def dedupe_schemas_with_validation(
 
 
 def format_op_state_summary(
-    op_state: OpState, resource_manager: ResourceManager, verbose: bool = False
+    op_state: OpState,
+    resource_manager: ResourceManager,
+    verbose: bool = False,
+    extra_summary: str = "",
 ) -> str:
     """Get a formatted summary of the OpState for progress reporting."""
     # Active tasks
     active = op_state.op.num_active_tasks()
     desc = f"Tasks: {active}"
-    if (
-        op_state.op._in_task_submission_backpressure
-        or op_state.op._in_task_output_backpressure
-    ):
-        backpressure_types = []
-        if op_state.op._in_task_submission_backpressure:
-            # The op is backpressured from submitting new tasks.
-            policy = op_state.op._task_submission_backpressure_policy or ""
-            backpressure_types.append(f"tasks({policy})")
-        if op_state.op._in_task_output_backpressure:
-            # The op is backpressured from producing new outputs.
-            policy = op_state.op._task_output_backpressure_policy or ""
-            backpressure_types.append(f"outputs({policy})")
-        desc += f" [backpressured:{','.join(backpressure_types)}]"
+    backpressure = op_state.op.backpressure_progress_str()
+    if backpressure:
+        desc += f" {backpressure}"
 
     # Actors info
     desc += f"; {_actor_info_summary_str(op_state.op.get_actor_info())}"
@@ -1396,5 +1440,7 @@ def format_op_state_summary(
     suffix = op_state.op.progress_str()
     if suffix:
         desc += f"; {suffix}"
+    if extra_summary:
+        desc += f"; Obj store: {extra_summary}"
 
     return desc

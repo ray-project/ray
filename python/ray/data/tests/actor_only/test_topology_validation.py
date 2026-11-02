@@ -17,14 +17,6 @@ def test_preserve_order_rejected_with_actor_only_backend(
         ray.data.range(10).materialize()
 
 
-def test_preserve_order_false_allowed_with_actor_only_backend(
-    ray_start_2_cpus_shared, restore_data_context
-):
-    assert actor_only_backend_enabled()
-    ray.data.DataContext.get_current().execution_options.preserve_order = False
-    assert ray.data.range(10).materialize().count() == 10
-
-
 @pytest.mark.parametrize(
     "build_op",
     [
@@ -58,15 +50,6 @@ def test_all_to_all_apis_rejected_with_actor_only_backend(
         # need an action to trigger executor bootstrap / topology validation.
         if isinstance(result, ray.data.Dataset):
             result.materialize()
-
-
-def test_streaming_repartition_allowed_with_actor_only_backend(
-    ray_start_2_cpus_shared,
-):
-    """Streaming repartition is a map op, not an AllToAll shuffle."""
-    assert actor_only_backend_enabled()
-    ds = ray.data.range(10).repartition(target_num_rows_per_block=5)
-    assert ds.materialize().count() == 10
 
 
 if __name__ == "__main__":

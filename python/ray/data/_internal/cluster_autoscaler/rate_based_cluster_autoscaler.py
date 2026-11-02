@@ -249,12 +249,18 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         resource_manager: "ResourceManager",
         *,
         execution_id: str,
+        autoscaling_coordinator: Optional["AutoscalingCoordinator"] = None,
+        utility_calculator: Optional[ResourceUtilizationGauge] = None,
     ) -> "RateBasedClusterAutoscaler":
         """Create a cluster autoscaler.
 
         This logic is defined here to minimize the risk of merge conflicts in the
         streaming executor, and keep the `ray.data._internal.cluster_autoscaler`
         `__init__` file small.
+
+        ``autoscaling_coordinator`` and ``utility_calculator`` passed when actor only backend
+        is enabled to integrate with experimental streaming executor (falls back to default
+        implementation otherwise).
         """
         # `SupportsClusterAutoscaling` defines the subset of `PhysicalOperator` methods
         # required for this implementation. We depend on a protocol rather than
@@ -269,8 +275,10 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
             list(topology),
             execution_id=execution_id,
             max_cluster_limits=execution_options.resource_limits,
-            utility_calculator=RollingLogicalUtilizationGauge(resource_manager),
+            utility_calculator=utility_calculator
+            or RollingLogicalUtilizationGauge(resource_manager),
             label_selector=execution_options.label_selector,
+            autoscaling_coordinator=autoscaling_coordinator,
         )
 
     # TODO: `try_trigger_scaling` returns the last resource request so that we can
