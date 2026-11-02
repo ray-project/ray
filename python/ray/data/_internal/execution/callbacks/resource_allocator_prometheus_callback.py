@@ -136,7 +136,7 @@ def _actor_only_budget(op: PhysicalOperator) -> Optional[ExecutionResources]:
     pool = op.actor_pool
     return (
         pool.per_actor_resource_usage()
-        .scale(pool.current_size())
+        .scale(pool.total_size())
         .copy(object_store_memory=pool.total_output_bytes_limit())
     )
 

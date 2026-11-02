@@ -281,7 +281,7 @@ def test_actor_multi_output_task_drains_after_completion(num_outputs: int):
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(
         actor_id=ACTOR,
         task_id=TASK,
@@ -321,7 +321,7 @@ def test_cross_node_input_counts_secondary_copy_until_task_completion():
     source_ref = _new_output(
         bank, source_op, "source-remote", node=NODE, size_bytes=100
     )
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE_B)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE_B)
     bank.on_task_submitted(
         actor_id=ACTOR,
         task_id=TASK,
@@ -351,7 +351,7 @@ def test_local_input_transfers_primary_copy_without_double_count_after_drain():
     actor_op = _make_op()
 
     source_ref = _new_output(bank, source_op, "source-local", node=NODE)
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
 
     # This mirrors _ExperimentalActorPool.on_task_submitted: local input refs
     # are withdrawn from the producer when ownership moves to the actor.
@@ -384,7 +384,7 @@ def test_prebuffered_pulled_and_actorless_usage_are_correct_by_scope():
     actor_op = _make_op(prebuffered_outputs=2, num_active_actors=1)
     source_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
     _new_output(bank, actor_op, "actor-0", task_id=TASK, node=NODE)
     _new_output(bank, actor_op, "actor-1", task_id=TASK, node=NODE)
@@ -426,7 +426,7 @@ def test_downscaling_an_actor_stops_counting_its_outputs():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
     refs = [
         _new_output(bank, actor_op, f"downscaled-{i}", task_id=TASK) for i in range(2)
@@ -453,7 +453,7 @@ def test_actor_can_downscale_after_outputs_are_consumed():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
     ref = _new_output(bank, actor_op, "completed-before-downscale", task_id=TASK)
     bank.on_task_completed(op=actor_op, task_id=TASK)
@@ -471,7 +471,7 @@ def test_finalize_dataset_clears_all_outputs_inputs_and_refs():
     op1 = _make_op()
     op2 = _make_op()
 
-    bank.maybe_register_actor(op=op1, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=op1, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(
         actor_id=ACTOR,
         task_id=TASK,
@@ -532,7 +532,7 @@ def test_late_task_completion_and_actor_lookup_after_finalize_are_noops():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
     bank.finalize_dataset(ops={actor_op})
 
@@ -544,148 +544,16 @@ def test_late_task_completion_and_actor_lookup_after_finalize_are_noops():
     _assert_empty(bank.live_object_store())
 
 
-def test_actor_relocation_migrates_node_bookkeeping():
-    """When an actor restarts on another node (only possible on node death),
-    its accounting follows it: the in-flight tasks are retried there, so their
-    inputs move with the actor. Blocks it produced on the dead node may linger
-    in that node's object store, but nothing can reach them any more, so they
-    are dropped rather than left charged to a node that is gone."""
+def test_actor_is_registered_on_one_node_for_life():
+    """Actors are never restarted, so they never change nodes: re-sighting on
+    the same node is a no-op, and a different node is a bookkeeping bug."""
     bank = ResourceBank()
     actor_op = _make_op()
 
-    # 1) First sighting on NODE, with an in-flight task and a live output.
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
-    bank.on_task_submitted(
-        actor_id=ACTOR,
-        task_id=TASK,
-        input_bms=[_bm(task_idx=0, node=NODE, size_bytes=50)],
-    )
-    pre_reloc = _new_output(bank, actor_op, "pre-reloc-output", task_id=TASK, node=NODE)
-    assert bank.live_object_store(actor_id=ACTOR).num_input_blocks == 1
-
-    # 2) Node died -> the actor is re-sighted on NODE_B. The in-flight task is
-    # retried there, so the actor keeps its input; the output left on the dead
-    # node is released from every scope.
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE_B)
-    actor_usage = bank.live_object_store(actor_id=ACTOR)
-    assert actor_usage.num_input_blocks == 1
-    assert actor_usage.num_input_bytes == 50
-    _assert_no_outputs(actor_usage)
-    _assert_empty(bank.live_object_store(op=actor_op, node_id=NODE))
-    _assert_empty(bank.live_object_store(node_id=NODE))
-    # The retried task's input now occupies NODE_B, not the dead node.
-    assert bank.live_object_store(node_id=NODE_B).num_input_bytes == 50
-
-    # 3) Regression: a task submitted on the relocated actor must not raise, and
-    # its usage must land on NODE_B (the new node's registry now knows it).
-    bank.on_task_submitted(
-        actor_id=ACTOR,
-        task_id=TASK + 1,
-        input_bms=[_bm(task_idx=0, node=NODE_B, size_bytes=100)],
-    )
-    post_reloc = _new_output(
-        bank, actor_op, "post-reloc-output", task_id=TASK + 1, node=NODE_B
-    )
-
-    # Preserved pre-reloc input (50) plus the new task's input (100), all on
-    # NODE_B now, plus the block the actor just produced there.
-    assert bank.live_object_store(actor_id=ACTOR).num_input_blocks == 2
-    assert _total_blocks_bytes(bank.live_object_store(node_id=NODE_B)) == (3, 250)
-    _assert_empty(bank.live_object_store(node_id=NODE))
-
-    # 4) Once every task is done and every block is consumed, nothing remains.
-    bank.on_task_completed(op=actor_op, task_id=TASK)
-    bank.on_task_completed(op=actor_op, task_id=TASK + 1)
-    # `pre_reloc` was already released at relocation, so reporting it now is a
-    # no-op rather than an underflow.
-    _consume(bank, pre_reloc, post_reloc)
-    _assert_empty(bank.live_object_store(actor_id=ACTOR))
-    _assert_empty(bank.live_object_store(op=actor_op))
-    _assert_empty(bank.live_object_store(node_id=NODE))
-    _assert_empty(bank.live_object_store(node_id=NODE_B))
-    _assert_empty(bank.live_object_store())
-    _assert_registries_drained(bank)
-
-
-def test_straggler_task_completion_after_relocation_is_a_noop():
-    """A task submitted before relocation can complete after the actor was
-    re-sighted on a new node. Its completion must resolve to the node the task
-    was re-homed onto (the old node's registry no longer knows it), must not
-    drive the in-flight count negative, and must leave the task bound to its
-    actor throughout (task_pull_request budgets retried outputs through it)."""
-    bank = ResourceBank()
-    actor_op = _make_op()
-
-    # 1) First sighting on NODE, with an in-flight task.
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
-    bank.on_task_submitted(
-        actor_id=ACTOR,
-        task_id=TASK,
-        input_bms=[_bm(task_idx=0, node=NODE, size_bytes=50)],
-    )
-
-    # 2) NODE died -> actor re-sighted on NODE_B. The task stays bound to the
-    # actor: core retries it on the restarted actor and its outputs must keep
-    # resolving to a live per-actor budget.
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE_B)
-    assert bank.get_actor_id_from_task_id(op=actor_op, task_id=TASK) == ACTOR
-    actor_usage = bank.live_object_store(actor_id=ACTOR)
-    assert actor_usage.num_input_blocks == 1
-    _assert_no_outputs(actor_usage)
-
-    # 3) The pre-relocation task's done-callback fires. Must not raise, and
-    # must not drive the relocated actor's in-flight count negative.
-    bank.on_task_completed(op=actor_op, task_id=TASK)
-
-    op_stats = bank.stats.per_operator[actor_op]
-    actor_info = op_stats.actors.get_actor_info(actor_id=ACTOR)
-    assert actor_info is not None
-    assert actor_info.num_tasks_in_flight == 0
-    _assert_empty(bank.live_object_store(actor_id=ACTOR))
-    _assert_empty(bank.live_object_store(op=actor_op))
-    _assert_empty(bank.live_object_store(node_id=NODE))
-    _assert_empty(bank.live_object_store(node_id=NODE_B))
-
-    # 4) The relocated actor keeps working normally.
-    bank.on_task_submitted(
-        actor_id=ACTOR,
-        task_id=TASK + 1,
-        input_bms=[_bm(task_idx=0, node=NODE_B, size_bytes=100)],
-    )
-    bank.on_task_completed(op=actor_op, task_id=TASK + 1)
-    assert actor_info.num_tasks_in_flight == 0
-    _assert_empty(bank.live_object_store(actor_id=ACTOR))
-    _assert_empty(bank.live_object_store(op=actor_op))
-    _assert_empty(bank.live_object_store(node_id=NODE))
-    _assert_empty(bank.live_object_store(node_id=NODE_B))
-    _assert_empty(bank.live_object_store())
-
-
-def test_retried_task_output_before_actor_reregisters_on_new_node():
-    """A restarted actor re-runs its in-flight task on a NEW node and can
-    produce outputs there before any fresh submission re-registers it with the
-    bank (relocation fires on submit). The output lands on the new node's
-    registry, which doesn't know the actor yet -- that must not assert."""
-    bank = ResourceBank()
-    actor_op = _make_op()
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
-    bank.on_task_submitted(
-        actor_id=ACTOR,
-        task_id=TASK,
-        input_bms=[_bm(task_idx=0, node=NODE, size_bytes=50)],
-    )
-
-    # NODE died; the retried task produces on NODE_B while the bank still has
-    # the actor registered on NODE.
-    ref = _new_output(bank, actor_op, "retried-output", task_id=TASK, node=NODE_B)
-
-    # Node-level accounting still charges NODE_B for the block.
-    assert bank.live_object_store(node_id=NODE_B).num_pulled_output_blocks == 1
-
-    bank.on_task_completed(op=actor_op, task_id=TASK)
-    _consume(bank, ref)
-    _assert_empty(bank.live_object_store(node_id=NODE_B))
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
+    with pytest.raises(AssertionError, match="was seen on"):
+        bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE_B)
 
 
 def test_op_node_scope_is_joined_on_both_operator_and_node():
@@ -694,9 +562,9 @@ def test_op_node_scope_is_joined_on_both_operator_and_node():
 
     # op_a runs on both nodes; op_b only on NODE. Inputs are all produced on
     # NODE, so only the actors that live on NODE score a locality hit.
-    bank.maybe_register_actor(op=op_a, actor_id="a-on-A", new_node_id=NODE)
-    bank.maybe_register_actor(op=op_a, actor_id="a-on-B", new_node_id=NODE_B)
-    bank.maybe_register_actor(op=op_b, actor_id="b-on-A", new_node_id=NODE)
+    bank.maybe_register_actor(op=op_a, actor_id="a-on-A", node_id=NODE)
+    bank.maybe_register_actor(op=op_a, actor_id="a-on-B", node_id=NODE_B)
+    bank.maybe_register_actor(op=op_b, actor_id="b-on-A", node_id=NODE)
     bank.on_task_submitted(
         actor_id="a-on-A",
         task_id=_tid(1),
@@ -752,8 +620,8 @@ def test_op_node_scope_sums_to_the_operator_and_node_scopes(input_node):
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id="a-on-A", new_node_id=NODE)
-    bank.maybe_register_actor(op=actor_op, actor_id="a-on-B", new_node_id=NODE_B)
+    bank.maybe_register_actor(op=actor_op, actor_id="a-on-A", node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id="a-on-B", node_id=NODE_B)
     bank.on_task_submitted(
         actor_id="a-on-A",
         task_id=_tid(1),
@@ -817,7 +685,7 @@ def test_op_node_scope_outlives_the_actors_that_created_it():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(
         actor_id=ACTOR, task_id=TASK, input_bms=[_bm(node=NODE, size_bytes=100)]
     )
@@ -828,43 +696,6 @@ def test_op_node_scope_outlives_the_actors_that_created_it():
     cumulative = bank.cumulative_object_store(op=actor_op, node_id=NODE)
     assert cumulative.input_bytes_local.sum == 100
     # The actor row is gone, so no live usage lingers on the joined scope.
-    _assert_empty(bank.live_object_store(op=actor_op, node_id=NODE))
-
-
-def test_op_node_scope_migrates_the_actor_row_but_not_its_history():
-    """Relocation moves the actor to the new (op, node) scope.
-
-    Cumulative history is a record of what happened and stays where it was
-    recorded. Live accounting is a claim about what is occupying memory right
-    now, so the blocks stranded on the dead node are released from it.
-    """
-    bank = ResourceBank()
-    actor_op = _make_op()
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
-    bank.on_task_submitted(
-        actor_id=ACTOR, task_id=TASK, input_bms=[_bm(node=NODE, size_bytes=50)]
-    )
-    ref = _new_output(bank, actor_op, "pre-reloc", task_id=TASK, node=NODE)
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE_B)
-    bank.on_task_submitted(
-        actor_id=ACTOR, task_id=TASK + 1, input_bms=[_bm(node=NODE_B, size_bytes=80)]
-    )
-
-    old_scope = bank.cumulative_object_store(op=actor_op, node_id=NODE)
-    new_scope = bank.cumulative_object_store(op=actor_op, node_id=NODE_B)
-    # History stays where it was recorded...
-    assert old_scope.input_bytes.sum == 50
-    assert old_scope.output_bytes.sum == 100
-    # ...and the relocated actor's new work lands on the new scope.
-    assert new_scope.input_bytes.sum == 80
-    assert new_scope.output_bytes.num_samples == 0
-
-    # The output stranded on the dead node is no longer charged anywhere, and a
-    # consumption report that arrives for it afterwards is a no-op.
-    _assert_empty(bank.live_object_store(op=actor_op, node_id=NODE))
-    _consume(bank, ref)
     _assert_empty(bank.live_object_store(op=actor_op, node_id=NODE))
 
 
@@ -905,39 +736,6 @@ def test_real_actor_pool_operator_satisfies_the_actor_pool_protocol(
     assert not isinstance(task_op, ActorPoolOperator)
 
 
-def test_repeated_relocation_never_drives_a_node_negative():
-    """The actor row aggregates every node it has run on, so a scope must
-    subtract its OWN share when the actor leaves. Subtracting the aggregate
-    made the second relocation take away more than the node ever held."""
-    bank = ResourceBank()
-    actor_op = _make_op()
-    node_c = "node-C"
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
-    bank.on_task_submitted(
-        actor_id=ACTOR, task_id=TASK, input_bms=[_bm(node=NODE, size_bytes=50)]
-    )
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE_B)
-    bank.on_task_submitted(
-        actor_id=ACTOR, task_id=TASK + 1, input_bms=[_bm(node=NODE_B, size_bytes=80)]
-    )
-    assert bank.live_object_store(actor_id=ACTOR).num_input_bytes == 130
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=node_c)
-
-    _assert_empty(bank.live_object_store(node_id=NODE))
-    _assert_empty(bank.live_object_store(node_id=NODE_B))
-    _assert_empty(bank.live_object_store(op=actor_op, node_id=NODE_B))
-    # Both retried tasks now run on node C, with both inputs.
-    assert bank.live_object_store(node_id=node_c).num_input_bytes == 130
-    assert bank.live_object_store(actor_id=ACTOR).num_input_bytes == 130
-
-    bank.on_task_completed(op=actor_op, task_id=TASK)
-    bank.on_task_completed(op=actor_op, task_id=TASK + 1)
-    _assert_empty(bank.live_object_store())
-    _assert_registries_drained(bank)
-
-
 def test_retried_task_reyielding_the_same_object_ref_is_a_rematerialization():
     """Streaming-generator return ids are derived from (task_id, put_index),
     so a retried task yields the very same ObjectRefs. That is one logical
@@ -945,7 +743,7 @@ def test_retried_task_reyielding_the_same_object_ref_is_a_rematerialization():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
     _new_output(bank, actor_op, "gen-ref-0", task_id=TASK, node=NODE)
 
@@ -957,88 +755,6 @@ def test_retried_task_reyielding_the_same_object_ref_is_a_rematerialization():
     bank.on_task_completed(op=actor_op, task_id=TASK)
     _consume(bank, ref)
     _assert_empty(bank.live_object_store())
-
-
-def test_retried_output_rematerialized_on_another_node_moves_the_charge():
-    """A retry after the owning node died re-materializes the same ObjectRef
-    elsewhere. The old node must stop being charged for it."""
-    bank = ResourceBank()
-    actor_op = _make_op()
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
-    bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
-    _new_output(bank, actor_op, "gen-ref-0", task_id=TASK, node=NODE)
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE_B)
-    ref = _new_output(bank, actor_op, "gen-ref-0", task_id=TASK, node=NODE_B)
-
-    _assert_empty(bank.live_object_store(node_id=NODE))
-    assert _total_blocks_bytes(bank.live_object_store(node_id=NODE_B)) == (1, 100)
-    assert bank.live_object_store(actor_id=ACTOR).num_pulled_output_blocks == 1
-
-    bank.on_task_completed(op=actor_op, task_id=TASK)
-    _consume(bank, ref)
-    _assert_empty(bank.live_object_store())
-
-
-def test_output_yielded_on_the_new_node_before_the_actor_is_resighted():
-    """A retried task can yield on the actor's new node before the executor
-    re-sights the actor there.
-
-    The actor holds that block throughout, so its row is charged immediately and
-    keeps it across the migration -- the per-actor pull budget comes off that
-    row, and under-reporting it hands out budget already spent.
-    """
-    bank = ResourceBank()
-    actor_op = _make_op()
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
-    bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
-    early = _new_output(bank, actor_op, "early-on-new", task_id=TASK, node=NODE_B)
-
-    assert bank.live_object_store(node_id=NODE_B).num_pulled_output_blocks == 1
-    assert bank.live_object_store(actor_id=ACTOR).num_pulled_output_blocks == 1
-    _assert_empty(bank.live_object_store(node_id=NODE))
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE_B)
-    # Carried across the move, and counted exactly once on the new node.
-    assert bank.live_object_store(actor_id=ACTOR).num_pulled_output_blocks == 1
-    assert _total_blocks_bytes(bank.live_object_store(node_id=NODE_B)) == (1, 100)
-
-    bank.on_task_completed(op=actor_op, task_id=TASK)
-    _consume(bank, early)
-    _assert_empty(bank.live_object_store(actor_id=ACTOR))
-    _assert_empty(bank.live_object_store(node_id=NODE_B))
-    _assert_empty(bank.live_object_store())
-    # Totals alone would not catch a task whose own output count went negative
-    # (it just never reaches zero, so the entry is never released).
-    _assert_registries_drained(bank)
-
-
-def test_retry_output_survives_the_migration_of_its_task():
-    """A retry's blocks on the new node are still live, so the task's per-node
-    entry must carry them across the migration.
-
-    Dropping them looks harmless in the totals, but leaves the task's output
-    count one short: it goes negative on consumption and never gets released.
-    """
-    bank = ResourceBank()
-    actor_op = _make_op()
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
-    bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
-    early = _new_output(bank, actor_op, "early-on-new", task_id=TASK, node=NODE_B)
-
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE_B)
-    later = _new_output(bank, actor_op, "later-on-new", task_id=TASK, node=NODE_B)
-
-    assert _total_blocks_bytes(bank.live_object_store(node_id=NODE_B)) == (2, 200)
-
-    _consume(bank, early, later)
-    bank.on_task_completed(op=actor_op, task_id=TASK)
-
-    _assert_empty(bank.live_object_store())
-    _assert_registries_drained(bank)
 
 
 def _assert_registries_drained(bank: ResourceBank) -> None:
@@ -1062,7 +778,7 @@ def test_task_submitted_to_a_draining_actor_is_tracked():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(
         actor_id=ACTOR, task_id=TASK, input_bms=[_bm(node=NODE, size_bytes=50)]
     )
@@ -1092,7 +808,7 @@ def test_consuming_a_downscaled_actors_outputs_does_not_go_negative():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
     before = _new_output(bank, actor_op, "before", task_id=TASK)
     assert bank.live_object_store(actor_id=ACTOR).num_pulled_output_blocks == 1
@@ -1130,7 +846,7 @@ def test_a_draining_task_can_still_produce_outputs_after_downscale():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(actor_id=ACTOR, task_id=TASK, input_bms=[])
     before = _new_output(bank, actor_op, "before-downscale", task_id=TASK)
 
@@ -1159,7 +875,7 @@ def test_operator_estimate_equals_the_sum_of_its_per_node_estimates():
     placements = {"actor-a": NODE, "actor-b": NODE_B}
 
     for actor_id, node in placements.items():
-        bank.maybe_register_actor(op=actor_op, actor_id=actor_id, new_node_id=node)
+        bank.maybe_register_actor(op=actor_op, actor_id=actor_id, node_id=node)
     for idx, (actor_id, node) in enumerate(placements.items()):
         bank.on_task_submitted(
             actor_id=actor_id,
@@ -1186,7 +902,7 @@ def test_finalize_dataset_releases_everything_it_tracked():
     bank = ResourceBank()
     actor_op = _make_op()
 
-    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, new_node_id=NODE)
+    bank.maybe_register_actor(op=actor_op, actor_id=ACTOR, node_id=NODE)
     bank.on_task_submitted(
         actor_id=ACTOR, task_id=TASK, input_bms=[_bm(node=NODE, size_bytes=50)]
     )

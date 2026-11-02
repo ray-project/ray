@@ -107,7 +107,7 @@ class _Pool:
         self.lost_ids = set(lost_ids)
         self.running_ids = list(running_ids)
 
-    def current_size(self):
+    def total_size(self):
         return self._current
 
     def serving_size(self):
