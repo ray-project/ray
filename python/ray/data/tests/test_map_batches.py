@@ -15,6 +15,13 @@ import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
@@ -892,15 +899,23 @@ def test_map_batches_sync_udf_not_fused_with_async_actor(shutdown_only, is_gener
 
     # Plan-time assertion: the operators stay separate. Fused, the sync UDF runs
     # on the async worker's event-loop thread and `asyncio.run()` above raises.
+    # Walk the linear DAG from the sink back to the source, then reverse it so
+    # the list reads source -> sink.
+    ops = []
     op = get_execution_plan(ds._logical_plan)[0].dag
-    names = []
     while op is not None:
-        names.append(type(op).__name__)
+        ops.append(op)
+        assert len(op.input_dependencies) <= 1, op.input_dependencies
         op = op.input_dependencies[0] if op.input_dependencies else None
-    assert names.count("ActorPoolMapOperator") == 1, names
-    assert (
-        names.count("TaskPoolMapOperator") == 1
-    ), f"sync UDF should stay its own task-pool operator, got {names}"
+    ops.reverse()
+
+    # Expected: Input -> ReadRange->MapBatches(sync) -> MapBatches(AsyncActor).
+    assert len(ops) == 3, ops
+    input_op, sync_op, async_op = ops
+    assert isinstance(input_op, InputDataBuffer), ops
+    assert isinstance(sync_op, TaskPoolMapOperator), ops
+    assert isinstance(async_op, ActorPoolMapOperator), ops
+    assert async_op.input_dependencies == [sync_op]
 
     result = ds.take_all()
     assert len(result) == n
