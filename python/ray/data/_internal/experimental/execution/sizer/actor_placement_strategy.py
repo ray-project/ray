@@ -114,6 +114,9 @@ class OpPlacementView:
     victim_drain_cost_by_node: Dict[NodeIdStr, List[Tuple[int, int]]] = field(
         default_factory=dict
     )
+    # Pendings with no target node (placement-group or initial-size actors):
+    # cancelled by id, since no node-shaped downscale can reach them.
+    untargeted_pending_ids: List[LogicalActorId] = field(default_factory=list)
     # This op's input/output share of its total observed byte flow (each in
     # [0, 1], summing to 1). 0.5/0.5 = no data yet; the rank multiplies each
     # side's actor counts by 2 x weight so the neutral value preserves the
@@ -159,25 +162,25 @@ class ActorPlacementStrategy(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def pick_downscale_victims(
+    def pick_downscale_nodes(
         self,
         view: OpPlacementView,
         *,
         count: int,
         favored_nodes: AbstractSet[NodeIdStr],
-    ) -> List[LogicalActorId]:
-        """Pick ``count`` exact victim actors for a downscale.
+    ) -> List[NodeIdStr]:
+        """Pick where a downscale sheds ``count`` actors.
 
         Args:
             view: The operator's placement snapshot.
-            count: Number of victims wanted.
+            count: Number of actors to shed.
             favored_nodes: Nodes that capacity-short upscaling operators
-                want freed -- victims there are preferred so the freed
+                want freed -- shedding there is preferred so the freed
                 capacity benefits the upscaler.
 
         Returns:
-            Victim logical actor ids (pending or running). May be shorter
-            than ``count``.
+            One node id per actor to shed (a node repeats when several leave
+            it), cheapest-to-free first. May be shorter than ``count``.
         """
         ...
 
@@ -192,8 +195,8 @@ class ActorPlacementStrategy(abc.ABC):
         """Nodes that capacity-short upscaling operators (those whose delta
         does not fit in free capacity) want freed.
 
-        Fed into ``pick_downscale_victims`` as ``favored_nodes`` so downscale
-        victims are taken where the freed capacity benefits the upscalers.
+        Fed into ``pick_downscale_nodes`` as ``favored_nodes`` so downscales
+        shed where the freed capacity benefits the upscalers.
 
         Args:
             capacity_short_views: (view, unmet delta) per capacity-short

@@ -1,19 +1,19 @@
 """Data model for the actor-only backend's actor pool.
 
-Dataclasses and enums shared by ``_ExperimentalActorPool`` and
-``ExperimentalActorPoolMapOperator``: placement-resolved scaling requests,
-per-actor scheduling state and rank, and drain bookkeeping.
+Scaling requests, per-actor scheduling state and rank, and drain bookkeeping
+shared by ``_ExperimentalActorPool`` and ``ExperimentalActorPoolMapOperator``.
+
+Scaling is node-shaped: the sizer says how many actors each node gains or
+loses (``ScaleUpRequest`` / ``ScaleDownRequest``), the pool picks the actors
+from live state with one fixed ranking.
 """
 
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import (
-    Optional,
-    Tuple,
-)
+from typing import Iterable, Optional, Tuple, Union
 
 from ray.core.generated import gcs_pb2
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
@@ -33,49 +33,120 @@ _ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
 _ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
 
 
+class DrainReason(str, Enum):
+    # A downscale, or a completed operator's release.
+    RESIZE = "resize"
+    # The actor's node is being taken away (Ray reports it DRAINING, e.g.
+    # spot preemption).
+    PREEMPTION = "preemption"
+    # The dataset's allocation shrank; the actor is evicted from a reclaimed
+    # node.
+    ALLOC_SHRINK = "alloc_shrink"
+
+    @property
+    def reclaimable(self) -> bool:
+        """Only a resize leaves the actor's node ours to keep using."""
+        return self is DrainReason.RESIZE
+
+
 @dataclass(frozen=True)
-class ExperimentalActorPoolScalingRequest(ActorPoolScalingRequest):
-    """Placement-resolved scaling request for ``_ExperimentalActorPool``.
+class ScaleUpRequest(ActorPoolScalingRequest):
+    """Add ``delta`` actors.
 
-    Supports scaling actors on specific nodes and killing specific actors on
-    scale down."""
+    ``num_to_reclaim`` of them are draining actors reclaimed in place (busiest
+    draining actors are reclaimed first). The rest are created, one
+    per entry of ``nodes`` (soft node affinity; a repeated node stacks actors
+    on it), or Ray-core-scheduled when ``nodes`` is empty. in case of shortfalls
+    (unable to reclaim, node is full, etc) the next tick re-requests.
+    """
 
-    # Upscale: one node id PER NEW ACTOR, repeat node id if scaling up multiple
-    # actors on the same node; len == delta - num_to_reclaim.
-    target_nodes_to_scale_actors_on: Tuple[NodeIdStr, ...] = ()
-    # Downscale: exact victim actors; len == -delta. For actor-shaped
-    # decisions: an ordinary downscale whose caller already picked victims,
-    # or cancelling specific still-pending actors.
-    actor_ids_to_downscale: Tuple[LogicalActorId, ...] = ()
-    # Downscale: pick ``-delta`` victims ON THIS NODE at apply time from live
-    # actor state, cheapest drain first (fewest in-flight tasks, then fewest
-    # unconsumed outputs). For node-shaped decisions -- the caller needs capacity freed
-    # on one specific node (e.g. a donor evicted from where another pool's
-    # actor is about to land) -- where deferring the pick to apply time keeps
-    # a snapshot-time choice from racing task dispatch.
-    victim_node: Optional[NodeIdStr] = None
-    # Upscale: revive this many still-DRAINING actors (from a prior downscale
-    # that hasn't finished) back into the running pool instead of creating
-    # fresh ones. They already hold their node's resources, so this is free
-    # capacity-wise and skips actor startup. ``delta`` is the TOTAL upscale;
-    # ``len(target_nodes_to_scale_actors_on) == delta - num_to_reclaim``
-    # (only the genuinely-new actors carry target nodes).
+    nodes: Tuple[NodeIdStr, ...] = ()
     num_to_reclaim: int = 0
-    # Downscale only: when False, the victims are being EVICTED because our
-    # allocation shrank -- they drain gracefully but must never be revived by a
-    # later upscale (their resource is no longer ours). Default True (ordinary
-    # downscale victims stay revivable).
-    reclaimable: bool = True
+
+    def __post_init__(self):
+        assert self.delta > 0, f"ScaleUpRequest needs delta > 0, got {self.delta}"
+        assert 0 <= self.num_to_reclaim <= self.delta, (
+            f"num_to_reclaim must be within [0, delta]: "
+            f"num_to_reclaim={self.num_to_reclaim}, delta={self.delta}"
+        )
+        assert not self.nodes or len(self.nodes) == self.delta - self.num_to_reclaim, (
+            f"One node per created actor: delta={self.delta}, "
+            f"num_to_reclaim={self.num_to_reclaim}, nodes={self.nodes}"
+        )
 
     @classmethod
-    def from_base(
-        cls, req: ActorPoolScalingRequest, **overrides
-    ) -> "ExperimentalActorPoolScalingRequest":
-        if isinstance(req, cls):
-            return replace(req, **overrides) if overrides else req
-        kwargs = dict(delta=req.delta, force=req.force, reason=req.reason)
-        kwargs.update(overrides)
-        return cls(**kwargs)
+    def on_nodes(
+        cls,
+        nodes: Iterable[NodeIdStr],
+        *,
+        num_to_reclaim: int = 0,
+        reason: Optional[str] = None,
+    ) -> "ScaleUpRequest":
+        nodes = tuple(nodes)
+        return cls(
+            delta=len(nodes) + num_to_reclaim,
+            reason=reason,
+            nodes=nodes,
+            num_to_reclaim=num_to_reclaim,
+        )
+
+    @classmethod
+    def untargeted(
+        cls, delta: int, *, num_to_reclaim: int = 0, reason: Optional[str] = None
+    ) -> "ScaleUpRequest":
+        return cls(delta=delta, reason=reason, num_to_reclaim=num_to_reclaim)
+
+
+@dataclass(frozen=True)
+class ScaleDownRequest(ActorPoolScalingRequest):
+    """Remove ``-delta`` actors.
+
+    ``pending_ids`` names pendings to cancel outright; it is how untargeted
+    pendings (placement-group or initial-size actors, which belong to no node)
+    are shed. One entry of ``nodes`` per further actor to shed: on each node
+    the pool picks from live state, pendings targeted there first, then
+    running actors cheapest drain first (fewest tasks in flight, then fewest
+    outstanding outputs). A node with fewer eligible actors than asked sheds
+    what it has; the applied delta reports the shortfall and the next tick
+    re-requests. ``drain_reason`` tags the drain and decides whether a later
+    upscale may reclaim the victims (``DrainReason.reclaimable``).
+    """
+
+    nodes: Tuple[NodeIdStr, ...] = ()
+    pending_ids: Tuple[LogicalActorId, ...] = ()
+    drain_reason: DrainReason = DrainReason.RESIZE
+
+    def __post_init__(self):
+        assert self.delta < 0, f"ScaleDownRequest needs delta < 0, got {self.delta}"
+        assert len(self.nodes) + len(self.pending_ids) == -self.delta, (
+            f"One node or pending id per shed actor: delta={self.delta}, "
+            f"nodes={self.nodes}, pending_ids={self.pending_ids}"
+        )
+
+    @classmethod
+    def on_nodes(
+        cls,
+        nodes: Iterable[NodeIdStr],
+        *,
+        pending_ids: Iterable[LogicalActorId] = (),
+        drain_reason: DrainReason = DrainReason.RESIZE,
+        force: bool = False,
+        reason: Optional[str] = None,
+    ) -> "ScaleDownRequest":
+        nodes = tuple(nodes)
+        pending_ids = tuple(pending_ids)
+        return cls(
+            delta=-(len(nodes) + len(pending_ids)),
+            force=force,
+            reason=reason,
+            nodes=nodes,
+            pending_ids=pending_ids,
+            drain_reason=drain_reason,
+        )
+
+
+# What ``scale_where`` hands the pools.
+PlacedScalingRequest = Union[ScaleUpRequest, ScaleDownRequest]
 
 
 @dataclass
@@ -90,34 +161,20 @@ class _PendingActorInfo:
     created_at: float = field(default_factory=time.time)
 
 
-class DrainReason(str, Enum):
-    """Why a drain started. Values are the ``reason`` tag on the actor-only
-    drain metrics."""
-
-    # A resize: downscale, or a completed operator's release.
-    RESIZE = "resize"
-    # The actor's node is being taken away (Ray reports it DRAINING, e.g.
-    # spot preemption).
-    PREEMPTION = "preemption"
-    # The dataset's allocation shrank; the actor is evicted from a reclaimed
-    # node.
-    ALLOC_SHRINK = "alloc_shrink"
-    # The caller did not say.
-    UNKNOWN = "unknown"
-
-
 @dataclass
 class _DrainingActorInfo:
     """Bookkeeping for one draining actor."""
 
     # When the actor began draining.
     since: float
-    # Whether this actor may be revived by reclaim_draining_actors. False for
-    # actors evicted because our allocation shrank -- their node is no longer
-    # ours, so a later upscale must never revive them (they drain and die).
-    reclaimable: bool = True
     # Why the drain started (see DrainReason).
-    reason: DrainReason = DrainReason.UNKNOWN
+    reason: DrainReason
+    # Whether a later upscale may reclaim the actor. Starts from the reason;
+    # the node-draining hook clears it once the actor's node is going away.
+    reclaimable: bool = field(init=False)
+
+    def __post_init__(self):
+        self.reclaimable = self.reason.reclaimable
 
 
 @dataclass

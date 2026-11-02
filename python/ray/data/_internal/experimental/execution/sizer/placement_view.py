@@ -101,6 +101,7 @@ def build_op_placement_view(
         victim_drain_cost_by_node=victim_drain_cost_by_node,
         idle_actors_by_node=idle_actors_by_node,
         pending_ids_by_node=pending_ids_by_node,
+        untargeted_pending_ids=pool.untargeted_pending_ids(),
         upstream_edge_weight=up_w,
         downstream_edge_weight=down_w,
     )
