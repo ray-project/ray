@@ -91,8 +91,8 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 def runsc_env() -> Dict[str, str]:
     """The environment for runsc CLI subprocesses: GOMAXPROCS=2 unless set.
 
-    Each runsc CLI call (run, exec, state, kill, delete, spec, trace) is a Go
-    process, and Go sizes its runtime to every CPU it can see: on a many-core
+    Each runsc CLI call (run, restore, exec, state, kill, delete, spec, trace,
+    pause, resume, checkpoint) is a Go process, and Go sizes its runtime to every CPU it can see: on a many-core
     node, dozens of concurrent calls then cost much more CPU than their work
     (measured on a 64-core node, 64 `runsc exec` calls at a time: 0.023 CPU-s
     per exec, 0.013 with GOMAXPROCS=2). gVisor's containerd shim runs runsc
@@ -1504,7 +1504,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Execute a runsc lifecycle control command (e.g. pause, resume, state)."""
         args = self._runsc_base_args(config) + [subcommand, *extra_args, sandbox_id]
         res = subprocess.run(
-            args, capture_output=True, text=True, timeout=timeout_seconds
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=runsc_env(),
         )
         if res.returncode != 0:
             raise SandboxError(
@@ -1648,6 +1652,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         capture_output=True,
                         text=True,
                         timeout=timeout_seconds,
+                        env=runsc_env(),
                     )
                 except subprocess.TimeoutExpired:
                     # The timeout kills only the runsc client: the save goes
