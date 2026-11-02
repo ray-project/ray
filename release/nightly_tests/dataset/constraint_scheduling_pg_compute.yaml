@@ -1,0 +1,34 @@
+# Fake-GPU cluster for the constraint-aware placement-group release test
+# (constraint_pg_scheduling.py).
+#
+# The 2 "GPU" nodes expose 8 logical GPUs total (no real GPUs). The test
+# creates a 6-bundle {"GPU": 1, "CPU": 1} placement group, so the sizer's
+# bundle-capacity cap (6) is strictly below both the available GPUs (8) and
+# the operator's max concurrency (8), making the cap observable rather than
+# coincidental.
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    # CPU workers. m5.2xlarge: 8 vCPUs, 32 GiB memory (~12 GiB object store).
+    - name: cpu
+      instance_type: m5.2xlarge
+      min_nodes: 4
+      max_nodes: 4
+      market_type: ON_DEMAND
+
+    # "GPU" workers: plain m5.2xlarge with 4 logical GPUs added on top of
+    # their natural 8 CPUs. CPUs stay exposed because the inference actor
+    # reserves 1 GPU + 1 CPU (the common real-world shape).
+    - name: gpu
+      instance_type: m5.2xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+      resources:
+        GPU: 4
