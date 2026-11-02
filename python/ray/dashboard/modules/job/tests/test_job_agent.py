@@ -765,6 +765,32 @@ async def test_job_agent_run_creates_job_manager_only_for_unfinished_jobs(
 
 
 @pytest.mark.asyncio
+async def test_init_ray_and_catch_exceptions_connects_off_event_loop():
+    """Request handlers connect to Ray from an executor thread, so waiting on a
+    connect the startup thread holds doesn't block the event loop."""
+    init_threads = []
+
+    class Module:
+        gcs_address = "127.0.0.1:6379"
+
+        @optional_utils.init_ray_and_catch_exceptions()
+        async def handler(self):
+            return "ok"
+
+    with patch.object(
+        optional_utils.ray, "is_initialized", return_value=False
+    ), patch.object(
+        optional_utils,
+        "init_ray_connection",
+        side_effect=lambda gcs_address: init_threads.append(threading.current_thread()),
+    ):
+        assert await Module().handler() == "ok"
+
+    assert len(init_threads) == 1
+    assert init_threads[0] is not threading.current_thread()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("failing_step", ["list_jobs", "connect"])
 async def test_job_agent_run_falls_back_to_lazy_init_on_failure(failing_step):
     """A failure to list jobs or to connect at startup must not fail the agent;

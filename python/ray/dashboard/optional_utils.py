@@ -253,7 +253,11 @@ def init_ray_and_catch_exceptions() -> Callable:
         ):
             try:
                 if not ray.is_initialized():
-                    init_ray_connection(self.gcs_address)
+                    # `ray.init` blocks, and the job agent's startup thread may
+                    # hold the lock, so connect off the event loop.
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, init_ray_connection, self.gcs_address
+                    )
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")
