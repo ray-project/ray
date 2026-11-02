@@ -760,7 +760,6 @@ class JobDeleteResponse:
     deleted: bool
 
 
-# TODO(jiaodong): Support log streaming #19415
 @dataclass
 class JobLogsResponse:
     logs: str
