@@ -31,10 +31,7 @@ def _calculate_blocks_rows(
     fetched_map = {}
     if missing_indices:
         fetched_num_rows = ray.get(
-            [
-                get_num_rows.remote(blocks_with_metadata[i][0])
-                for i in missing_indices
-            ]
+            [get_num_rows.remote(blocks_with_metadata[i][0]) for i in missing_indices]
         )
         fetched_map = dict(zip(missing_indices, fetched_num_rows))
         try:
