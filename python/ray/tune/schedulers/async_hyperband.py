@@ -231,7 +231,10 @@ class _Bracket:
                 to still be stopped by the bracket.
         """
         self.rf = reduction_factor
-        MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
+        # The epsilon keeps log(max_t / min_t) / log(rf) from truncating one rung
+        # short when it is an integer in exact arithmetic (e.g. log(243) / log(3)
+        # is 4.999999999999999), which would drop the rung at max_t.
+        MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1 + 1e-9)
         self._rungs = [
             (min_t * self.rf ** (k + s), {}) for k in reversed(range(MAX_RUNGS))
         ]
