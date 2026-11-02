@@ -11,6 +11,7 @@ applications:
             load_format: runai_streamer
           runtime_env:
             env_vars:
+              AWS_DEFAULT_REGION: us-west-2
               RUNAI_STREAMER_S3_UNSIGNED: "1"
     import_path: ray.serve.llm:build_openai_app
     name: llm-endpoint
