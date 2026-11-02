@@ -63,7 +63,7 @@ _FOOTER_BYTES = 80 << 10
 _SMALL_FILE_BYTES = 48 << 10
 # Arrow's string and binary view builders allocate value bytes in 32 KiB blocks.
 _VIEW_BLOCK_BYTES = 32 << 10
-# Twice the 1 MiB dictionary page limit parquet-cpp and parquet-mr default to,
+# Twice the 1 MiB dictionary page limit parquet-cpp and arrow-rs default to,
 # for a page the footer can't size.
 _DICTIONARY_BYTES = 2 << 20
 # Casts to text measured above the cast estimate; 1.5 covers all but a few, and
