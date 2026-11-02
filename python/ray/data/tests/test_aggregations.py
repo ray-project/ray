@@ -13,6 +13,7 @@ from ray.data.aggregate import (
     MissingValuePercentage,
     TopKUnique,
     Unique,
+    ValueCounter,
     ZeroPercentage,
     _to_hashable,
 )
@@ -937,6 +938,128 @@ class TestTopKUnique:
         assert len(result) == num_groups
         for row in result:
             assert row["topk_unique(v)"] == [f"top{row['g']}", "common"]
+
+
+class TestValueCounter:
+    """Test cases for ValueCounter aggregation and _combine_column."""
+
+    @staticmethod
+    def _accumulator_column(accumulators):
+        return pa.chunked_array([pa.array(accumulators)])
+
+    @staticmethod
+    def _as_counts(accumulator):
+        return dict(zip(accumulator["values"], accumulator["counts"]))
+
+    def test_value_counter_combine_column_matches_pairwise_combine(self):
+        agg = ValueCounter(on="v")
+        blocks = [
+            pa.table({"v": ["a", "b", "a"]}),
+            pa.table({"v": ["b", "c"]}),
+            pa.table({"v": ["c", "c", "d", "a"]}),
+        ]
+        partials = [agg.aggregate_block(block) for block in blocks]
+        accumulators = [partials[0], None, *partials[1:]]
+
+        combined = agg._combine_column(self._accumulator_column(accumulators))
+
+        pairwise = {"values": [], "counts": []}
+        for acc in accumulators:
+            if acc is not None:
+                pairwise = agg.combine(pairwise, acc)
+
+        assert combined == pairwise
+        assert self._as_counts(combined) == {"a": 3, "b": 2, "c": 3, "d": 1}
+
+    def test_value_counter_combine_column_is_recombinable(self):
+        agg = ValueCounter(on="v")
+        partials = [
+            agg.aggregate_block(pa.table({"v": values}))
+            for values in (
+                ["a"] * 4 + ["c"] * 3,
+                ["b"] * 4 + ["c"] * 3,
+                ["b"] * 2 + ["c"] * 3,
+                ["a", "d"],
+            )
+        ]
+
+        one_shot = agg._combine_column(self._accumulator_column(partials))
+        first = agg._combine_column(self._accumulator_column(partials[:2]))
+        second = agg._combine_column(self._accumulator_column(partials[2:]))
+        compacted = agg._combine_column(self._accumulator_column([first, second]))
+
+        assert compacted == one_shot
+        assert self._as_counts(one_shot) == {"a": 5, "b": 6, "c": 9, "d": 1}
+
+    def test_value_counter_combine_column_empty_and_all_null(self):
+        agg = ValueCounter(on="v")
+        empty_col = pa.chunked_array(
+            [],
+            type=pa.struct(
+                [("values", pa.list_(pa.string())), ("counts", pa.list_(pa.int64()))]
+            ),
+        )
+        assert agg._combine_column(empty_col) is None
+
+        all_null_col = pa.chunked_array(
+            [
+                pa.array(
+                    [None, None],
+                    type=pa.struct(
+                        [
+                            ("values", pa.list_(pa.string())),
+                            ("counts", pa.list_(pa.int64())),
+                        ]
+                    ),
+                )
+            ]
+        )
+        assert agg._combine_column(all_null_col) is None
+
+    def test_value_counter_combine_column_nan(self):
+        agg = ValueCounter(on="v")
+        blocks = [
+            pa.table({"v": [np.nan, 1.0, 1.0]}),
+            pa.table({"v": [float("nan"), 2.0]}),
+        ]
+        partials = [agg.aggregate_block(block) for block in blocks]
+        combined = agg._combine_column(self._accumulator_column(partials))
+        assert self._as_counts(combined) == {np.nan: 2, 1.0: 2, 2.0: 1}
+
+        list_col = self._accumulator_column(
+            [
+                {"values": [["a", "b"], ["c"]], "counts": [2, 1]},
+                {"values": [["a", "b"]], "counts": [3]},
+            ]
+        )
+        assert self._as_counts(agg._combine_column(list_col)) == {
+            ("a", "b"): 5,
+            ("c",): 1,
+        }
+
+    def test_value_counter_end_to_end_and_groupby(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        data = [
+            {"g": "X", "v": "a"},
+            {"g": "X", "v": "b"},
+            {"g": "X", "v": "a"},
+            {"g": "Y", "v": "c"},
+            {"g": "Y", "v": "a"},
+            {"g": "Y", "v": "c"},
+        ]
+        ds = ray.data.from_items(data, override_num_blocks=3)
+
+        global_res = ds.aggregate(ValueCounter(on="v"))["value_counter(v)"]
+        assert self._as_counts(global_res) == {"a": 3, "b": 1, "c": 2}
+
+        grouped_res = (
+            ds.groupby("g").aggregate(ValueCounter(on="v")).take_all()
+        )
+        by_group = {
+            row["g"]: self._as_counts(row["value_counter(v)"]) for row in grouped_res
+        }
+        assert by_group == {"X": {"a": 2, "b": 1}, "Y": {"c": 2, "a": 1}}
 
 
 if __name__ == "__main__":
