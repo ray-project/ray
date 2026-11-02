@@ -819,12 +819,35 @@ def estimate_dictionary_indexed(leaf: LeafChunk) -> int:
     It goes under when the common values are longer: "COMPLETED_SUCCESSFULLY" in
     97% of rows beside "OK" comes out at half. Without the header, a crude bound.
     """
-    mean = leaf.dictionary_mean_length()
-    if mean is None:
+    mean, page = leaf.dictionary_mean_length(), leaf.dictionary_page
+    if mean is None or page is None:
+        # Without the header there's no mean: every value as long as the chunk.
         return (leaf.slots() + 1) * leaf.chunk.total_uncompressed_size
-    at_mean = math.ceil(_DICTIONARY_MEAN_FACTOR * mean * leaf.values())
+    # The footer's null count can be wrong, so the values are no fewer than the
+    # data pages hold indices for.
+    values = max(leaf.values(), _indexed_values(leaf=leaf, page=page))
+    at_mean = math.ceil(_DICTIONARY_MEAN_FACTOR * mean * values)
+    # A writer that gave up on the dictionary wrote the rest as PLAIN values.
     plain = estimate_plain_bytes(chunk=leaf.chunk, fewest_values=leaf.fewest_values())
     return max(at_mean, plain)
+
+
+def _indexed_values(leaf: LeafChunk, page: DictionaryPage) -> int:
+    """The values the data pages hold at one index each, which a wrong null
+    count can't lower (Polars gives each page the chunk's)."""
+    chunk, profile = leaf.chunk, leaf.profile
+    # The data pages' bytes, less the dictionary page and the levels bit-packed.
+    level_bits = (
+        profile.max_definition_level.bit_length()
+        + profile.max_repetition_level.bit_length()
+    )
+    data = chunk.total_uncompressed_size - page.uncompressed_page_size
+    data -= math.ceil(chunk.num_values * level_bits / 8)
+    # Each value takes at least one index this many bits wide (RLE runs only
+    # shrink them); the page headers left in add a little. A PLAIN fallback's
+    # values would count many times over, so it stops at the chunk's values.
+    index_bits = max(page.num_values - 1, 1).bit_length()
+    return min(chunk.num_values, max(data, 0) * 8 // index_bits)
 
 
 # Every value in PLAIN or DELTA_LENGTH_BYTE_ARRAY pages.
