@@ -1277,8 +1277,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             exec_shell = shell or config.shell
             runsc_args.extend([sandbox_id, exec_shell, "-c", command])
 
+        # No cgroup join here: the command runs in the sandbox's Sentry, which
+        # is already in the sandbox's cgroup, and `runsc exec` only relays it.
+        # Joining per call meant a cgroup migration, which takes a global
+        # lock and waits for an RCU grace period: on a 352-thread host, exec
+        # went from 3 ms to 49 ms and every sandbox's execs queued on it.
         start_time = time.time()
-        runsc_args = self._wrap_workload(meta, runsc_args)
 
         try:
             proc = subprocess.Popen(
@@ -1409,7 +1413,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
 
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
-        runsc_args = self._wrap_workload(meta, runsc_args)
 
         proc = subprocess.Popen(
             runsc_args,
@@ -1431,7 +1434,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         runsc_args = self._runsc_base_args(config)
         exec_cwd = meta["cwd"]
         runsc_args.extend(["exec", "-cwd", exec_cwd, sandbox_id, "cat", "--", path])
-        runsc_args = self._wrap_workload(meta, runsc_args)
 
         proc = subprocess.Popen(
             runsc_args,
@@ -2013,11 +2015,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
             ),
         )
-
-    @staticmethod
-    def _wrap_workload(meta, args):
-        cgroup = meta.get("cgroup")
-        return cgroup.wrap(args) if cgroup is not None else args
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.
