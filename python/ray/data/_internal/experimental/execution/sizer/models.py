@@ -20,7 +20,7 @@ if TYPE_CHECKING:
         ExperimentalActorPoolMapOperator,
     )
     from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-        ExperimentalActorPoolScalingRequest,
+        PlacedScalingRequest,
     )
 
 
@@ -34,12 +34,10 @@ class PerOpSizingRequest:
 
 @dataclass(frozen=True)
 class PlacedSizingRequest:
-    """What scale_where resolved: the same deltas, now naming the target nodes
-    to grow on and the exact actors to shed."""
+    """What scale_where resolved: the same deltas, now saying which nodes gain
+    actors and which shed them."""
 
-    request: Dict[
-        "ExperimentalActorPoolMapOperator", "ExperimentalActorPoolScalingRequest"
-    ]
+    request: Dict["ExperimentalActorPoolMapOperator", "PlacedScalingRequest"]
 
 
 @dataclass
