@@ -19,7 +19,6 @@ from ray.data._internal.execution.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
 )
-from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -570,8 +569,7 @@ class OpState:
                     with self._output_lock:
                         self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                         self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
-                        if actor_only_backend_enabled():
-                            assert self.op._resource_bank is not None
+                        if self.op._resource_bank is not None:
                             for br in ref.block_refs:
                                 self.op._resource_bank.on_block_consumed(input_ref=br)
                     return ref
