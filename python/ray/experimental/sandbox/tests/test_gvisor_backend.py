@@ -2520,6 +2520,83 @@ def private_bundles(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.mark.parametrize(
+    "mounts",
+    [
+        None,
+        {},
+        {"/data": "/srv/inbox", "/weights": "/srv/model.bin"},
+        {"/existing": "/srv/replacement"},
+    ],
+)
+@pytest.mark.parametrize(
+    "existing_destinations",
+    [None, [], ["/existing"], ["/existing", "/data", "/existing"]],
+)
+@pytest.mark.parametrize("replace_spec", [False, True])
+def test_prepare_bundle_readonly_host_mounts(
+    tmp_path, monkeypatch, mounts, existing_destinations, replace_spec
+) -> None:
+    existing_mounts = [
+        {
+            "destination": destination,
+            "type": "bind",
+            "source": f"/srv/original-{i}",
+            "options": ["rbind", "rw"],
+        }
+        for i, destination in enumerate(existing_destinations or [])
+    ]
+
+    def transform(spec: dict) -> dict | None:
+        if replace_spec:
+            spec = spec.copy()
+        if existing_destinations is not None:
+            spec["mounts"] = list(existing_mounts)
+        if replace_spec:
+            return spec
+
+    inspected_specs = []
+
+    def needs_overlay(spec: dict) -> bool:
+        inspected_specs.append(spec)
+        return False
+
+    monkeypatch.setattr(overlayfs, "needs_rootfs_overlay", needs_overlay)
+    manager = _BundleRecordingImageManager(image=str(tmp_path / "rootfs.erofs"))
+    prepared_specs = []
+    prepare_oci_bundle = manager.prepare_oci_bundle
+
+    def prepare_bundle(**kwargs) -> str:
+        path = prepare_oci_bundle(**kwargs)
+        prepared_specs.append(json.loads(Path(path).read_text()))
+        return path
+
+    monkeypatch.setattr(manager, "prepare_oci_bundle", prepare_bundle)
+    backend = GVisorSandboxBackend(image_manager=manager)
+    config = GVisorSandboxConfig(
+        image="busybox:latest", mounts=mounts, _oci_spec_transform_fn=transform
+    )
+    assert backend._prepare_bundle(config, str(tmp_path), None, "/") is None
+
+    spec = json.loads((tmp_path / "config.json").read_text())
+    expected_mounts = [
+        mount for mount in existing_mounts if mount["destination"] not in (mounts or {})
+    ] + [
+        {
+            "destination": target,
+            "type": "bind",
+            "source": source,
+            "options": ["rbind", "ro"],
+        }
+        for target, source in (mounts or {}).items()
+    ]
+    assert spec.get("mounts", []) == expected_mounts
+    if existing_destinations is None and not mounts:
+        assert "mounts" not in spec
+    assert prepared_specs == [spec]
+    assert inspected_specs == [spec]
+
+
 def test_reclaim_takes_only_bundles_whose_owner_is_gone(private_bundles, monkeypatch):
     """A bundle whose owner file nobody holds loses its runsc state, its files
     and its image pin. A live owner's bundle, one still being created, one an
