@@ -42,11 +42,7 @@ services:
     environment: &client-environment
       HIVE_AUTH_ROLE: driver
       HIVE_AUTH_PROFILE: ${HIVE_AUTH_PROFILE}
-      RAY_HIVE_TEST_HOST: hive.auth.test
-      RAY_HIVE_TEST_PORT: "10000"
-      RAY_HIVE_TEST_CA_CERT: /ca/ca.pem
       HIVE_AUTH_EVENTS: /events
-      HIVE_AUTH_RUN_ID: ${HIVE_AUTH_RUN_ID:?Set a unique run id}
       HIVE_TEST_PASSWORD: ${HIVE_AUTH_PLACEHOLDER:?Set a generated NONE placeholder}
     depends_on:
       kdc:

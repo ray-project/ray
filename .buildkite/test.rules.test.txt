@@ -313,6 +313,7 @@ ci/ray_ci/data/run_hive_auth_integration.sh: tools hive_auth_integration
 ci/ray_ci/data/test_run_hive_auth_integration.py: tools
 ci/ray_ci/tests.env.Dockerfile: tools hive_auth_integration
 ci/docker/data.build.Dockerfile: data hive_auth_integration
+ci/docker/datahiveauth.build.wanda.yaml: data hive_auth_integration
 ci/docker/datamongo.build.wanda.yaml: ml tune train data serve core_cpp cpp java core_python doc linux_wheels macos_wheels dashboard tools release_tests hive_auth_integration
 ci/raydepsets/configs/ci_data.depsets.yaml: ml tune train serve workflow data core_python dashboard linux_wheels java python_dependencies min_build hive_auth_integration
 python/requirements/data/hive-auth.txt: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build hive_auth_integration

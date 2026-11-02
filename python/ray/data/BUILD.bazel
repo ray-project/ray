@@ -235,10 +235,7 @@ py_test(
 py_test(
     name = "test_hive_integration",
     size = "medium",
-    srcs = [
-        "tests/datasource/_hive_test_utils.py",
-        "tests/datasource/test_hive_integration.py",
-    ],
+    srcs = ["tests/datasource/test_hive_integration.py"],
     tags = [
         "exclusive",
         "manual",

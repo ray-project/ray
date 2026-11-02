@@ -1,0 +1,10 @@
+name: "datahiveauthbuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/datamongobuild-py$PYTHON"]
+dockerfile: ci/ray_ci/data/hive_auth/Dockerfile
+srcs:
+  - python/deplocks/ci/data-hive-auth-ci_depset_py$PYTHON.lock
+build_args:
+  - RAY_IMAGE=cr.ray.io/rayproject/datamongobuild-py$PYTHON
+  - HIVE_AUTH_REQUIREMENTS=python/deplocks/ci/data-hive-auth-ci_depset_py$PYTHON.lock
+tags:
+  - cr.ray.io/rayproject/datahiveauthbuild-py$PYTHON

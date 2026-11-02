@@ -19,7 +19,7 @@ from ray.data.tests.datasource._hive_test_utils import (
     _expiry,
     _make_auth_factory,
     _native,
-    _read_events,
+    _read_summaries,
     _temporary_table,
     _tls_condition,
 )
@@ -39,13 +39,7 @@ def environment():
     previous = DataContext.get_current().copy()
     DataContext.get_current().max_errored_blocks = 0
     os.environ["HIVE_TEST_PASSWORD"] = secrets.token_urlsafe(16)
-    os.environ["RAY_HIVE_TEST_USE_SSL"] = str(PROFILE in {"T", "GT"}).lower()
-    auth = (
-        "GSSAPI"
-        if PROFILE in {"G", "GT"}
-        else ("NOSASL" if PROFILE == "N" else "PLAIN")
-    )
-    options = _connection_options(os.environ["RAY_HIVE_TEST_HOST"], auth)
+    options = _connection_options(PROFILE)
     try:
         yield options
     finally:
@@ -55,37 +49,7 @@ def environment():
 
 @pytest.fixture(scope="module")
 def table(environment):
-    # repeat supplies enough elements whether split preserves trailing empties.
-    insert = (
-        "SELECT CAST(id AS BIGINT), CASE WHEN id % 7 = 0 THEN CAST(NULL AS STRING) "
-        "ELSE concat('row-', CAST(id AS STRING)) END "
-        "FROM (SELECT split(repeat('x,', 2049), ',') AS tokens) src "
-        "LATERAL VIEW posexplode(src.tokens) items AS id, item "
-        "WHERE id < 2049"
-    )
-    secure = PROFILE in {"G", "GT"}
-    storage = (
-        "ROW FORMAT DELIMITED FIELDS TERMINATED BY '\\t' STORED AS TEXTFILE"
-        if secure
-        else ""
-    )
-    with _temporary_table(
-        environment,
-        "id BIGINT, name STRING",
-        insert,
-        storage_clause=storage,
-        local_data_path="/security/test-data.tsv" if secure else None,
-        timeout=30,
-    ) as (
-        name,
-        cursor,
-    ):
-        if secure:
-            cursor.execute(f"SELECT id, name FROM `{name}`")
-            assert len(cursor.fetchall()) == ROWS
-        else:
-            cursor.execute(f"SELECT COUNT(*) FROM `{name}`")
-            assert cursor.fetchone()[0] == ROWS
+    with _temporary_table(environment) as name:
         yield name
 
 
@@ -175,30 +139,15 @@ def test_hive_auth(scenario, environment, table, monkeypatch):
     case_id = uuid.uuid4().hex
     directory = _case_directory(case_id)
     directory.mkdir(parents=True)
-    manifest = {
-        "roles": roles,
-        "terminal": None,
-        "run_id": os.environ["HIVE_AUTH_RUN_ID"],
-        "case_id": case_id,
-    }
-    (directory / "manifest.json").write_text(json.dumps(manifest))
 
     def action():
-        try:
-            _read(
-                table,
-                environment,
-                case_id,
-                query=query,
-                worker_env={} if driver_failure else overrides,
-            )
-        except Exception:
-            manifest["terminal"] = "error"
-            raise
-        else:
-            manifest["terminal"] = "success"
-        finally:
-            (directory / "manifest.json").write_text(json.dumps(manifest))
+        _read(
+            table,
+            environment,
+            case_id,
+            query=query,
+            worker_env={} if driver_failure else overrides,
+        )
 
     with monkeypatch.context() as scoped:
         if driver_failure:
@@ -210,26 +159,19 @@ def test_hive_auth(scenario, environment, table, monkeypatch):
             with pytest.raises(Exception, match="HiveServer2"):
                 action()
 
-    records = _read_events(directory, roles=roles)
-    for record in records:
-        assert record["source"].startswith("/ray/python/ray/data/")
-        assert record["node"] == (
-            driver_node if record["role"] == "driver" else worker_node
-        )
-    rpc = [r for r in records if r["event"] == "rpc_attempt" and r["kind"] == "data"]
-    assert len(rpc) == (1 if positive else 0)
+    records = _read_summaries(
+        directory,
+        {role: driver_node if role == "driver" else worker_node for role in roles},
+    )
+    assert sum(r["data_rpc"] for r in records) == (1 if positive else 0)
     if positive:
-        fetched = [
-            r["rows"] for r in records if r["event"] == "fetch" and r["rows"] > 0
-        ]
-        assert len(fetched) >= 3 and sum(fetched) == ROWS
-        for role in roles:
-            events = {r["event"] for r in records if r["role"] == role}
-            assert {"cursor_close", "connection_close"} <= events
+        assert sum(r["batches"] for r in records) >= 3
+        assert sum(r["rows"] for r in records) == ROWS
+        assert all(r["cursor_closed"] and r["connection_closed"] for r in records)
     else:
         failed_role = "driver" if driver_failure else "worker"
         assert any(
-            r["event"] == "error" and r["stage"] in {"connect", "session"}
+            r["error"] in {"connect", "session"}
             for r in records
             if r["role"] == failed_role
         )

@@ -144,6 +144,7 @@ python/ray/data/read_api.py
 python/ray/data/tests/datasource/_hive_test_utils.py
 python/ray/data/tests/datasource/test_hive_auth_integration.py
 ci/docker/data.build.Dockerfile
+ci/docker/datahiveauth.build.wanda.yaml
 @ data hive_auth_integration
 ;
 

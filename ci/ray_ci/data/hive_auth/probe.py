@@ -2,40 +2,25 @@
 
 import json
 import os
-import secrets
 import socket
 import sys
+from contextlib import closing
 from pathlib import Path
 
 
 def options():
     from ray.data.tests.datasource._hive_test_utils import _connection_options
 
-    profile = os.environ["HIVE_AUTH_PROFILE"]
-    auth = (
-        "GSSAPI"
-        if profile in {"G", "GT"}
-        else ("NOSASL" if profile == "N" else "PLAIN")
-    )
-    os.environ["RAY_HIVE_TEST_USE_SSL"] = str(profile in {"T", "GT"}).lower()
-    # NONE requires a PLAIN protocol field, but does not validate this value.
-    os.environ.setdefault("HIVE_TEST_PASSWORD", secrets.token_urlsafe(16))
-    return _connection_options(os.environ["RAY_HIVE_TEST_HOST"], auth)
+    return _connection_options(os.environ["HIVE_AUTH_PROFILE"])
 
 
 def sql():
     from ray.data.tests.datasource._hive_test_utils import _make_connection_factory
 
-    connection = _make_connection_factory(options(), timeout=30)()
-    try:
-        cursor = connection.cursor()
-        try:
+    with closing(_make_connection_factory(options())()) as connection:
+        with closing(connection.cursor()) as cursor:
             cursor.execute("SELECT 1")
             assert cursor.fetchall() == [(1,)]
-        finally:
-            cursor.close()
-    finally:
-        connection.close()
 
 
 def workers():
