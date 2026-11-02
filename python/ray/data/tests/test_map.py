@@ -1236,8 +1236,10 @@ def test_async_flat_map(
 class TestGenerateTransformFnForAsyncMap:
     @pytest.fixture
     def mock_actor_async_ctx(self):
-        # Use new signature: only is_async and udf_instances
-        _map_actor_ctx = _MapActorContext(is_async=True, udf_instances={})
+        # The context starts empty; set up the async event loop directly since
+        # these tests don't register any UDF instances.
+        _map_actor_ctx = _MapActorContext()
+        _map_actor_ctx._init_async()
 
         import ray
 

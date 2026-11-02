@@ -114,6 +114,9 @@ class ActorPoolStrategy(ComputeStrategy):
         max_size: Optional[int] = None,
         initial_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
+        max_num_output_bytes_per_actor: Optional[int] = None,
+        max_num_outputs_per_actor: Optional[int] = None,
+        max_input_bytes_per_actor: Optional[int] = None,
         max_concurrent_calls_per_actor: Optional[int] = None,
         enable_true_multi_threading: Optional[bool] = None,
     ):
@@ -131,6 +134,12 @@ class ActorPoolStrategy(ComputeStrategy):
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
+            max_num_output_bytes_per_actor: Per-actor cap on outstanding output
+                bytes, used by the actor-only backend's output backpressure.
+            max_num_outputs_per_actor: Per-actor cap on outstanding output
+                blocks, used by the actor-only backend's output backpressure.
+            max_input_bytes_per_actor: Per-actor soft cap on in-flight input
+                bytes, used by the actor-only backend as a scheduling preference.
             max_concurrent_calls_per_actor: The maximum number of calls that can run
                 concurrently on each actor worker.
             enable_true_multi_threading: If enable_true_multi_threading=False, no more
@@ -192,6 +201,9 @@ class ActorPoolStrategy(ComputeStrategy):
         self.num_workers = 0
         self.ready_to_total_workers_ratio = 0.8
         self._enable_true_multi_threading = enable_true_multi_threading
+        self.max_num_output_bytes_per_actor = max_num_output_bytes_per_actor
+        self.max_num_outputs_per_actor = max_num_outputs_per_actor
+        self.max_input_bytes_per_actor = max_input_bytes_per_actor
 
     @property
     def enable_true_multi_threading(self) -> bool:
@@ -220,6 +232,10 @@ class ActorPoolStrategy(ComputeStrategy):
             and self.enable_true_multi_threading == other.enable_true_multi_threading
             and self.max_tasks_in_flight_per_actor
             == other.max_tasks_in_flight_per_actor
+            and self.max_num_output_bytes_per_actor
+            == other.max_num_output_bytes_per_actor
+            and self.max_num_outputs_per_actor == other.max_num_outputs_per_actor
+            and self.max_input_bytes_per_actor == other.max_input_bytes_per_actor
             and self.max_concurrent_calls_per_actor
             == other.max_concurrent_calls_per_actor
         )
@@ -230,6 +246,9 @@ class ActorPoolStrategy(ComputeStrategy):
             f"max_size={self.max_size}, "
             f"initial_size={self.initial_size}, "
             f"max_tasks_in_flight_per_actor={self.max_tasks_in_flight_per_actor}, "
+            f"max_num_output_bytes_per_actor={self.max_num_output_bytes_per_actor}, "
+            f"max_num_outputs_per_actor={self.max_num_outputs_per_actor}, "
+            f"max_input_bytes_per_actor={self.max_input_bytes_per_actor}, "
             f"max_concurrent_calls_per_actor={self.max_concurrent_calls_per_actor}, "
             f"num_workers={self.num_workers}, "
             f"enable_true_multi_threading={self.enable_true_multi_threading}, "
