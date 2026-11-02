@@ -563,11 +563,13 @@ def test_arrow_row_unwraps_scalars_but_not_tensors():
     np.testing.assert_array_equal(row["emb"], np.array([1]))
 
 
-def test_batches_keep_tensor_column_with_missing_rows(ray_start_regular_shared):
+def test_batches_keep_tensor_column_with_missing_rows(
+    ray_start_regular_shared, tensor_format_context
+):
     """A UDF that returns None for some rows of a tensor column keeps the column
-    a tensor column. A batch without a missing row is one stacked array, a batch
-    with one is an ndarray per row with None for the missing row, and pandas
-    sees the missing rows as NA."""
+    a tensor column, in every fixed-shape tensor format. A batch without a
+    missing row is one stacked array, a batch with one is an ndarray per row
+    with None for the missing row, and pandas sees the missing rows as NA."""
     from ray.data.extensions import get_arrow_extension_tensor_types
 
     def decode(batch):

@@ -464,9 +464,9 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 # np.stack requires at least one array and reshape is a no-op
                 # here, so build the correctly typed empty buffer directly.
                 values = np.empty((0,) + self.element_shape, dtype=self._dtype)
-            elif values.dtype != object or all(v is not None for v in values):
+            elif values.dtype != object or array.null_count == 0:
                 # A column with a null row keeps one ndarray per row and None
-                # for the null row, since a dense array has no slot for it.
+                # for the null row, since a dense array cannot mark a row missing.
                 if values.dtype == object:
                     values = np.stack(values)
                 values = values.reshape((num_rows,) + self.element_shape)

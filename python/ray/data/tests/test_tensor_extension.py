@@ -10,6 +10,7 @@ from packaging.version import parse as parse_version
 
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
@@ -24,6 +25,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     concat_tensor_arrays,
     create_arrow_fixed_shape_tensor_type,
     fixed_shape_extension_scalar_to_ndarray,
+    native_tensor_array_to_numpy,
     unify_tensor_arrays,
 )
 from ray.data._internal.tensor_extensions.pandas import (
@@ -1732,6 +1734,45 @@ def test_tensor_array_to_numpy_with_null_rows(make_tensors):
     assert _rows(as_numpy) == expected + [None] + expected
     assert _rows(sliced) == [expected[1], None, expected[0]]
     assert _rows(with_null.to_pylist()) == expected + [None] + expected
+
+
+@pytest.mark.parametrize(
+    "make_tensors", [_fixed_tensors, _boolean_tensors, _string_tensors]
+)
+def test_tensor_array_to_numpy_slice_after_null_row(make_tensors):
+    """A null-free slice taken after a null row reads its own rows, not its
+    neighbours'. The null row holds no values, so the slice's first offset is
+    not a multiple of the tensor size, and the dense path has to start from
+    it rather than from the slice position."""
+    tensors = make_tensors()
+    expected = _rows(tensors.to_numpy(zero_copy_only=False))
+    with_null = pa.concat_arrays([tensors, pa.nulls(1, type=tensors.type), tensors])
+
+    after_null = with_null[3:5]
+
+    assert after_null.null_count == 0
+    assert _rows(after_null.to_numpy(zero_copy_only=False)) == expected
+    assert _rows(with_null[4:5].to_numpy(zero_copy_only=False)) == expected[1:]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="pyarrow native fixed-shape tensors need pyarrow >= 16",
+)
+def test_native_tensor_array_to_numpy_with_null_rows():
+    """A pyarrow native fixed-shape tensor array with a null row converts to
+    one ndarray per row with None for the null row, instead of the zeros that
+    pyarrow reads from the null row's storage. Without a null row it stays one
+    dense array."""
+    tensor_type = pa.fixed_shape_tensor(pa.int64(), (2,))
+    tensors = pa.array([[1, 1], [2, 2], [3, 3]], type=tensor_type)
+    with_null = tensors.take(pa.array([0, None, 2]))
+
+    dense = native_tensor_array_to_numpy(tensors)
+    with_none = native_tensor_array_to_numpy(with_null)
+
+    assert dense.shape == (3, 2) and dense.dtype == np.int64
+    assert _rows(with_none) == [[1, 1], None, [3, 3]]
 
 
 def test_variable_shaped_tensor_array_to_numpy_with_null_children():

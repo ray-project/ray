@@ -1040,10 +1040,10 @@ class ArrowTensorArray(pa.ExtensionArray):
             # offsets.
             buffer_item_width = value_type.bit_width // 8
 
-        # Number of items per inner ndarray.
-        num_items_per_element = np.prod(shape) if shape else 1
-        # Base offset into data buffer, e.g. due to zero-copy slice.
-        buffer_offset = self.offset * num_items_per_element
+        # Base offset into data buffer. The first list offset is absolute into
+        # the child array, so it also covers a slice taken after a null row,
+        # which has no values and so breaks the uniform spacing of the offsets.
+        buffer_offset = int(self.storage.offsets[0].as_py())
         # Offset of array data in buffer.
         offset = buffer_item_width * buffer_offset
         # Update the shape for ndarray
@@ -1084,9 +1084,12 @@ class ArrowTensorArray(pa.ExtensionArray):
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
     def _to_numpy_with_null_rows(self) -> np.ndarray:
-        """One ndarray view per row and ``None`` for each null row. A dense
-        array has no slot for a missing row, so this is the only shape the
-        column can take once it holds one."""
+        """One ndarray view per row and ``None`` for each null row.
+
+        A dense ``(num_rows, *shape)`` ndarray gives every row a tensor, so it
+        cannot say that a row is missing. A column with a null row therefore
+        comes back as an object ndarray of per-row views and ``None``.
+        """
         storage = self.storage
         # `offsets` is absolute into the child array, which slicing leaves whole.
         offsets = np.asarray(storage.offsets)
@@ -1721,7 +1724,9 @@ def unify_tensor_arrays(
             arr = pa.nulls(len(arr), type=unified_tensor_type)
         elif _is_native_tensor_type(arr.type):
             # Might be not be performant
-            arr = ArrowVariableShapedTensorArray.from_numpy(arr.to_numpy_ndarray())
+            arr = ArrowVariableShapedTensorArray.from_numpy(
+                native_tensor_array_to_numpy(arr)
+            )
         else:
             arr = arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)
         unified_arrs.append(arr)
@@ -1844,6 +1849,22 @@ def _get_root_base(a: np.ndarray) -> np.ndarray:
 def _get_buffer_address(arr: np.ndarray) -> int:
     """Get the address of the buffer underlying the provided NumPy ndarray."""
     return arr.__array_interface__["data"][0]
+
+
+def native_tensor_array_to_numpy(array: "FixedShapeTensorArray") -> np.ndarray:
+    """``array.to_numpy_ndarray()``, with ``None`` for each null row.
+
+    pyarrow's conversion ignores the validity bitmap: a null row keeps a slot
+    in the fixed-size storage and reads back as whatever that slot holds,
+    usually zeros.
+    """
+    dense = array.to_numpy_ndarray()
+    if array.null_count == 0:
+        return dense
+    is_valid = np.asarray(array.is_valid())
+    return create_ragged_ndarray(
+        [dense[i] if is_valid[i] else None for i in range(len(array))]
+    )
 
 
 def tensor_array_to_numpy(array: "pa.Array") -> np.ndarray:
