@@ -180,7 +180,7 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
     def _process_draining_and_pending_actors(topology: Topology) -> None:
         """Release drained actors and expire stuck pendings, on every step.
 
-        Runs after sizing, so a same-step upscale can revive a draining actor
+        Runs after sizing, so a same-step upscale can reclaim a draining actor
         before it would otherwise be released. A pending that can never become
         ready (failed restart, stuck env install) would hold its op's sizing
         forever through the pending gate, so it is expired and re-placed

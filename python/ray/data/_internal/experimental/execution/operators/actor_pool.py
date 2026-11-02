@@ -25,8 +25,8 @@
   tasks but keeps its node resources until it has no in-flight tasks AND the
   ResourceBank no longer counts any output blocks against it
   (``_is_fully_drained``), at which point ``process_draining_actors`` tears it
-  down. A drain can end early (the actor died), or be cancelled (revived by a
-  reclaiming upscale, or by a Ray-core restart of an actor that still owes
+  down. A drain can end early (the actor died), or be cancelled (by an
+  upscale reclaim, or by a Ray-core restart of an actor that still owes
   work). ``draining_generation`` lets the operator cheaply detect changes to
   the draining set.
 """
@@ -88,7 +88,8 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
     _ACTOR_STATE_DEAD,
     _ACTOR_STATE_RESTARTING,
     DrainReason,
-    ExperimentalActorPoolScalingRequest,
+    ScaleDownRequest,
+    ScaleUpRequest,
     _DrainingActorInfo,
     _ExperimentalActorRank,
     _ExperimentalActorState,
@@ -432,28 +433,18 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         return self._total_num_tasks_in_flight
 
     @override
-    def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
-        """Apply a scaling request; returns the *applied* delta.
-
-        The return value reports what actually happened (created + reclaimed on
-        upscale, released on downscale, negative), which can be smaller in
-        magnitude than ``req.delta`` -- e.g. a reclaim shortfall, or victims
-        that disappeared between planning and apply. Callers keeping a ledger
-        must record the returned value, not the request.
-        """
-        # Normalize legacy requests (DefaultActorAutoscaler / start() without
-        # placement-resolved requests). Empty targets mean untargeted behavior.
-        req = ExperimentalActorPoolScalingRequest.from_base(req)
-
-        # Verify request could be applied
+    def scale(self, req: ActorPoolScalingRequest) -> int:
+        """Apply a ``ScaleUpRequest`` / ``ScaleDownRequest``; returns the
+        *applied* delta, which can fall short of ``req.delta``."""
         if not self._can_apply_request(req):
             return 0
-
-        if req.delta > 0:
+        if isinstance(req, ScaleUpRequest):
             return self._scale_up(req)
-        elif req.delta < 0:
-            return self._scale_down(req)
-        return None
+        assert isinstance(req, ScaleDownRequest), (
+            f"Unexpected scaling request {req!r}: the actor-only backend only "
+            "sends ScaleUpRequest / ScaleDownRequest"
+        )
+        return self._scale_down(req)
 
     @override
     def refresh_actor_state(self):
@@ -675,29 +666,14 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
     # === End of overriding methods of AutoscalingActorPool ===
 
-    def _scale_up(self, req: ExperimentalActorPoolScalingRequest) -> int:
-        """Revive reclaimable draining actors first, then create new ones.
+    def _scale_up(self, req: ScaleUpRequest) -> int:
+        """Reclaim draining actors first, then create the rest.
 
-        Reviving is free capacity-wise (a draining actor already holds its
-        node's resources) and skips actor startup. Only the genuinely-new
-        actors carry target nodes.
+        Reclaiming is free capacity-wise (a draining actor already holds its
+        node's resources) and skips startup.
         """
-        reclaimed = self.reclaim_draining_actors(req.num_to_reclaim)
-        target_nodes = req.target_nodes_to_scale_actors_on
-        # One node id per NEW actor; ids may repeat to place several actors
-        # on the same node (e.g. ("n1", "n1", "n1") -> 3 actors on n1).
-        # Empty means untargeted (Ray-core-scheduled) creation. A reclaim
-        # shortfall is NOT topped up on the targeted path: the shortfall
-        # actors were planned onto specific nodes we cannot invent
-        # placements for -- the returned count reports what happened.
-        num_new = len(target_nodes) if target_nodes else req.delta - reclaimed
-        assert (
-            not target_nodes or len(target_nodes) == req.delta - req.num_to_reclaim
-        ), (
-            f"Expected len(target_nodes) == delta - num_to_reclaim (one node "
-            f"id per genuinely-new actor; repeats allowed): delta={req.delta}, "
-            f"num_to_reclaim={req.num_to_reclaim}, target_nodes={target_nodes}"
-        )
+        reclaimed = self.reclaim_draining_actors(limit=req.num_to_reclaim)
+        num_new = len(req.nodes) if req.nodes else req.delta - reclaimed
 
         logger.debug(
             f"Scaling up {self._map_worker_cls_name} actor pool by {req.delta} "
@@ -706,10 +682,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         )
 
         for i in range(num_new):
-            target_node_id = target_nodes[i] if target_nodes else None
-            # Untargeted creation (no target node): default to Ray-core
-            # scheduling. NodeAffinity is only used when the caller resolved
-            # a specific target node.
+            target_node_id = req.nodes[i] if req.nodes else None
             scheduling_strategy = (
                 NodeAffinitySchedulingStrategy(target_node_id, soft=True)
                 if target_node_id is not None
@@ -735,26 +708,23 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             )
         return applied
 
-    def _scale_down(self, req: ExperimentalActorPoolScalingRequest) -> int:
-        """Downscale victims; returns the (negative) applied delta.
+    def _scale_down(self, req: ScaleDownRequest) -> int:
+        """Shed victims; returns the (negative) applied delta.
 
         A pending victim is cancelled (and released) immediately; a running
         victim only BEGINS draining here -- it is released later by
         ``process_draining_actors`` once fully drained. The returned delta
         counts victims acted on, not actors released.
         """
-        target_num_actors = abs(req.delta)
-
-        if req.actor_ids_to_downscale:
-            assert len(req.actor_ids_to_downscale) == target_num_actors, (
-                f"Expected one victim per downscaled actor "
-                f"(delta={req.delta}, victims={req.actor_ids_to_downscale})"
-            )
-            num_downscaled = self._downscale_exact_victims(req)
-        elif req.victim_node is not None:
-            num_downscaled = self._downscale_on_node(req)
-        else:
-            num_downscaled = self._downscale_inactive(target_num_actors)
+        num_downscaled = sum(
+            1
+            for logical_id in req.pending_ids
+            if self._downscale_actor_by_id(logical_id, req.drain_reason)
+        )
+        num_downscaled += sum(
+            self._shed_on_node(node_id, count, req.drain_reason)
+            for node_id, count in Counter(req.nodes).items()
+        )
 
         if num_downscaled > 0:
             logger.debug(
@@ -764,48 +734,34 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
         return -num_downscaled
 
-    def _downscale_exact_victims(self, req: ExperimentalActorPoolScalingRequest) -> int:
-        """Downscale the exact victims the caller chose."""
-        num_downscaled = 0
-        for logical_id in req.actor_ids_to_downscale:
-            if self._downscale_actor_by_id(logical_id, reclaimable=req.reclaimable):
-                num_downscaled += 1
-        return num_downscaled
+    def _shed_on_node(self, node_id: NodeIdStr, count: int, reason: DrainReason) -> int:
+        """Shed up to ``count`` actors on ``node_id``, picked from live state.
 
-    def _downscale_on_node(self, req: ExperimentalActorPoolScalingRequest) -> int:
-        """Pick victims on ``req.victim_node`` from live state, cheapest drain
-        first. May act on fewer than asked if the node's pool shrank since the
-        request was planned."""
-        assert req.victim_node is not None
-        states = self._node_to_actor_states.get(req.victim_node, {})
-        # Cheapest drain first: in-flight tasks dominate drain time (each must
-        # run to completion and typically adds more outstanding outputs when it
-        # finishes), so rank by fewest tasks, then fewest output blocks the
-        # ResourceBank still counts against the actor (already-queued blocks
-        # drain fast -- the output queue serves draining actors first). Idle
-        # actors sort first automatically (0 tasks).
+        Pendings targeted at the node go first (cancelled outright), then
+        running actors cheapest drain first: fewest tasks in flight (each must
+        run to completion and tends to add outputs), then fewest output blocks
+        the ResourceBank still counts against the actor. Sheds fewer if the
+        node holds fewer eligible actors than asked.
+        """
+        victims: List[LogicalActorId] = [
+            info.logical_id
+            for info in self._pending_actor_info.values()
+            if info.target_node_id == node_id
+        ]
         ranked = sorted(
             (
-                (
-                    state.num_tasks_in_flight,
-                    self._num_outstanding_outputs(state),
-                    logical_id,
-                )
-                for logical_id, state in states.items()
-                if state.status != ActorStatus.DRAINING
-            ),
+                state.num_tasks_in_flight,
+                self._num_outstanding_outputs(state),
+                logical_id,
+            )
+            for logical_id, state in self._node_to_actor_states.get(node_id, {}).items()
+            if state.status != ActorStatus.DRAINING
         )
-        num_downscaled = 0
-        for _, _, logical_id in ranked[: abs(req.delta)]:
-            if self._downscale_actor_by_id(logical_id, reclaimable=req.reclaimable):
-                num_downscaled += 1
-        return num_downscaled
+        victims.extend(logical_id for _, _, logical_id in ranked)
 
-    def _downscale_inactive(self, count: int) -> int:
-        """Untargeted downscale: drop pendings first, then drain idle actors."""
         num_downscaled = 0
-        for _ in range(count):
-            if self._remove_inactive_actor():
+        for logical_id in victims[:count]:
+            if self._downscale_actor_by_id(logical_id, reason):
                 num_downscaled += 1
         return num_downscaled
 
@@ -990,7 +946,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             # haven't consumed. Killing it would abandon that. Stop draining
             # it instead and let it rejoin the pool; a later downscale picks a
             # new victim if the pool should still shrink. (The drain's
-            # stickiness exists to stop an evicted actor being revived on a
+            # stickiness exists to stop an evicted actor being reclaimed on a
             # node the pool no longer owns, which cannot apply here: the actor
             # only restarts once that node is gone, so core brings it back
             # somewhere else.)
@@ -1070,28 +1026,6 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         if target_node_id is not None:
             self._add_committed_usage(target_node_id, resource_usage)
 
-    def _remove_inactive_actor(self) -> bool:
-        """Removes a single pending or idle actor, if any actors are pending/idle.
-
-        Returns whether an inactive actor was actually released.
-        """
-        # We prioritize dropping pending actors over idle actors to reduce actor
-        # starting churn.
-        released = self._try_remove_pending_actor()
-        if not released:
-            released = self._try_remove_idle_actor()
-        return released
-
-    def _try_remove_pending_actor(self) -> bool:
-        if self._pending_actors:
-            # At least one pending actor, so drop the first one.
-            ready_ref = next(iter(self._pending_actors.keys()))
-            self._remove_pending_actor_by_ref(ready_ref)
-            return True
-        # No pending actors, so indicate to the caller that no actors were
-        # released.
-        return False
-
     def _remove_pending_actor_by_ref(self, ready_ref: ObjectRef) -> None:
         """Drop a specific pending actor and its bookkeeping.
 
@@ -1108,19 +1042,6 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         if info is not None and info.target_node_id is not None:
             self._remove_committed_usage(info.target_node_id, usage)
         del self._actor_to_logical_id[actor]
-
-    def _try_remove_idle_actor(self) -> bool:
-        for actor, state in self._running_actors.items():
-            if state.num_tasks_in_flight == 0 and state.status != ActorStatus.DRAINING:
-                # At least one idle actor: mark it draining (stop new
-                # submissions now; ``process_draining_actors`` releases it once
-                # it is fully drained -- no in-flight tasks, no outstanding
-                # outputs).
-                self.begin_draining(actor, reason=DrainReason.RESIZE)
-                return True
-        # No idle actors, so indicate to the caller that no actors were
-        # released.
-        return False
 
     def release_expired_pending_actors(
         self, expiry_s: float = PENDING_ACTOR_EXPIRY_S, now: Optional[float] = None
@@ -1275,27 +1196,21 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             )
         self._release_running_actor(actor)
 
-    def begin_draining(
-        self,
-        actor: ActorHandle,
-        reclaimable: bool = True,
-        reason: DrainReason = DrainReason.UNKNOWN,
-    ) -> None:
+    def begin_draining(self, actor: ActorHandle, *, reason: DrainReason) -> None:
         """Mark an actor for draining. While draining, no new tasks can be
         submitted to it.
 
         The actor is removed from both scheduling heaps immediately (no new
         task submissions; ``_is_available_for_scheduling`` keeps it out) but
-        stays in
-        ``_running_actors`` and the capacity maps as it occupies its node's
-        resources until it is actually dead. ``process_draining_actors``
+        stays in ``_running_actors`` and the capacity maps as it occupies its
+        node's resources until it is actually dead. ``process_draining_actors``
         releases it once it is fully drained (no in-flight tasks AND no
         outstanding outputs).
 
-        ``reclaimable=False`` marks an eviction (our allocation shrank): the
-        actor drains and dies like any other, but ``reclaim_draining_actors``
-        will never revive it, so a later upscale can't resurrect an actor on a
-        node we no longer own."""
+        ``reason`` tags the drain metrics and decides whether a later upscale
+        may reclaim the actor (``DrainReason.reclaimable``): an actor losing
+        its node (preemption, allocation shrink) drains and dies like any
+        other but is never resurrected."""
         state = self._running_actors[actor]
         assert (
             state.status != ActorStatus.DRAINING
@@ -1312,7 +1227,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._set_status(state, ActorStatus.DRAINING)
         self._remove_from_heaps(actor, state.actor_location)
         self._draining_actors[actor] = _DrainingActorInfo(
-            since=time.time(), reclaimable=reclaimable, reason=reason
+            since=time.time(), reason=reason
         )
         self.draining_generation += 1
         if self._metrics is not None:
@@ -1385,7 +1300,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         restart site) and re-syncs the scheduling heaps.
 
         ``cause`` says why the drain was cancelled ("reclaimed" for an upscale
-        revival, "core_restart" for a Ray-core restart of an actor that still
+        reclaim, "core_restart" for a Ray-core restart of an actor that still
         owes work); the drain reason only records why it started.
         """
         state = self._running_actors[actor]
@@ -1405,23 +1320,35 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             ActorStatus.IDLE if state.num_tasks_in_flight == 0 else ActorStatus.ACTIVE,
         )
 
+    def _reclaimable_draining_actors(self) -> List[ActorHandle]:
+        """Draining actors a reclaim may take, in reclaim order: busiest first
+        (most tasks in flight, then most outstanding outputs), since reclaiming
+        that actor rescues the most work from a slow drain. Ties keep
+        drain-start order. Actors losing their node are excluded."""
+        candidates = [
+            actor for actor, info in self._draining_actors.items() if info.reclaimable
+        ]
+        candidates.sort(
+            key=lambda actor: (
+                -self._running_actors[actor].num_tasks_in_flight,
+                -self._num_outstanding_outputs(self._running_actors[actor]),
+            )
+        )
+        return candidates
+
     def num_reclaimable_draining_actors(self) -> int:
-        """Draining actors that can still be revived -- excludes evicted
-        (``reclaimable=False``) actors, which must not be resurrected."""
+        """Draining actors a later upscale may still reclaim."""
         return sum(1 for info in self._draining_actors.values() if info.reclaimable)
 
     def reclaimable_node_ids(self, *, limit: int) -> List[NodeIdStr]:
-        """Node id of each of the first ``limit`` reclaimable draining actors,
-        in ``reclaim_draining_actors`` order (one entry per actor, so a node
-        repeats once per actor on it). Placement counts these back onto their
-        nodes before deciding where new actors go."""
-        nodes: List[NodeIdStr] = []
-        for actor, info in self._draining_actors.items():
-            if len(nodes) >= limit:
-                break
-            if info.reclaimable:
-                nodes.append(self._running_actors[actor].actor_location)
-        return nodes
+        """Node id of each of the first ``limit`` draining actors a reclaim
+        would take, in reclaim order (one entry per actor, so a node repeats
+        once per actor on it). Placement counts these back onto their nodes
+        before deciding where new actors go."""
+        return [
+            self._running_actors[actor].actor_location
+            for actor in self._reclaimable_draining_actors()[:limit]
+        ]
 
     def alive_actor_states_by_node(
         self,
@@ -1437,18 +1364,15 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             self._running_actors[actor].logical_id for actor in self._draining_actors
         }
 
-    def reclaim_draining_actors(self, count: int) -> int:
-        """Revive up to ``count`` draining actors back into the running pool
-        (inverse of ``begin_draining``). Returns the number revived.
-        Saves actor startup + capacity churn vs killing and recreating."""
-        if count <= 0:
+    def reclaim_draining_actors(self, *, limit: int) -> int:
+        """Reclaim up to ``limit`` draining actors back into the running pool
+        (inverse of ``begin_draining``), busiest first. Returns the number
+        reclaimed. Saves actor startup + capacity churn vs killing and
+        recreating."""
+        if limit <= 0:
             return 0
         reclaimed = 0
-        for actor, info in list(self._draining_actors.items()):
-            if reclaimed >= count:
-                break
-            if not info.reclaimable:
-                continue
+        for actor in self._reclaimable_draining_actors()[:limit]:
             state = self._running_actors[actor]
             self._cancel_draining(actor, cause="reclaimed")
             # Re-admit to the scheduling heaps (it now passes the draining
@@ -1506,13 +1430,10 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         return num_finalized
 
     def _downscale_actor_by_id(
-        self, logical_id: LogicalActorId, reclaimable: bool = True
+        self, logical_id: LogicalActorId, reason: DrainReason
     ) -> bool:
-        """Downscale one exact victim chosen by the caller.
-
-        ``reclaimable=False`` evicts (allocation shrank): the actor drains but is
-        never revived. A pending victim is simply cancelled either way.
-        """
+        """Shed one actor: a pending one is cancelled, a running one begins
+        draining with ``reason``. False if it is gone or already draining."""
         for ready_ref, info in self._pending_actor_info.items():
             if info.logical_id == logical_id:
                 self._remove_pending_actor_by_ref(ready_ref)
@@ -1521,17 +1442,11 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         actor = self._logical_id_to_actor.get(logical_id)
         if actor is None or self._running_actors[actor].status == ActorStatus.DRAINING:
             logger.debug(
-                f"Skipping downscale of actor {logical_id}: not found or "
-                "already draining."
+                f"Skipping {reason.value} downscale of actor {logical_id}: "
+                f"{'not found' if actor is None else 'already draining'}."
             )
             return False
-        # reclaimable=False here means exactly one thing (see the docstring):
-        # the allocation shrank and the caller is evicting.
-        self.begin_draining(
-            actor,
-            reclaimable=reclaimable,
-            reason=DrainReason.RESIZE if reclaimable else DrainReason.ALLOC_SHRINK,
-        )
+        self.begin_draining(actor, reason=reason)
         return True
 
     def has_actor(self, actor_id: LogicalActorId) -> bool:
@@ -1554,6 +1469,15 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             if info.target_node_id is not None:
                 result[info.target_node_id].append(info.logical_id)
         return dict(result)
+
+    def untargeted_pending_ids(self) -> List[LogicalActorId]:
+        """Logical ids of pending actors with no target node (placement-group
+        or initial-size actors); ``pending_ids_by_target_node`` omits them."""
+        return [
+            info.logical_id
+            for info in self._pending_actor_info.values()
+            if info.target_node_id is None
+        ]
 
     def running_actor_status_counts_by_node(
         self,
@@ -1861,7 +1785,7 @@ class _NodeAwareExperimentalActorPool(_ExperimentalActorPool):
         # came up on a draining node takes tasks until the next refresh.
         state = self._running_actors[actor]
         if state.actor_location in self._get_draining_nodes():
-            self.begin_draining(actor, reclaimable=False, reason=DrainReason.PREEMPTION)
+            self.begin_draining(actor, reason=DrainReason.PREEMPTION)
 
         return actor
 
@@ -1869,7 +1793,7 @@ class _NodeAwareExperimentalActorPool(_ExperimentalActorPool):
         """Begin draining every actor on a draining node.
 
         Victims are marked non-reclaimable: their node is going away, so a later
-        upscale must never revive them. Draining is one-way for the same reason
+        upscale must never reclaim them. Draining is one-way for the same reason
         -- if a drain were ever cancelled, the actor still dies and gets
         replaced elsewhere.
 
@@ -1888,9 +1812,9 @@ class _NodeAwareExperimentalActorPool(_ExperimentalActorPool):
             if state.actor_location not in self._draining_nodes_snapshot:
                 continue
             if state.status == ActorStatus.DRAINING:
-                # Already draining (e.g. an ordinary downscale): its node is
-                # going away, so mark it non-reclaimable so a later upscale
-                # never revives it here.
+                # Already draining (e.g. an ordinary downscale): the node is
+                # going away, so a later upscale must never reclaim it here,
+                # whatever started the drain.
                 self._draining_actors[actor].reclaimable = False
                 continue
             if state.status == ActorStatus.RESTARTING:
@@ -1898,7 +1822,7 @@ class _NodeAwareExperimentalActorPool(_ExperimentalActorPool):
                 # bring it back on another node), so wait until it is ALIVE
                 # again before judging where it lives.
                 continue
-            self.begin_draining(actor, reclaimable=False, reason=DrainReason.PREEMPTION)
+            self.begin_draining(actor, reason=DrainReason.PREEMPTION)
             drained[state.actor_location] += 1
 
         if drained:

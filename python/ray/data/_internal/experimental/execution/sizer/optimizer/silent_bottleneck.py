@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING, List, Optional
 
 from typing_extensions import override
 
+from ray.data._internal.experimental.execution.operators.actor_pool_models import (
+    ScaleUpRequest,
+)
 from ray.data._internal.experimental.execution.sizer import placement_view
 from ray.data._internal.experimental.execution.sizer.metrics import (
     OptimizerMetrics,
@@ -190,17 +193,16 @@ class SilentBottleneckGrant(OptimizationRule[None]):
             return None
         return upscale_request(
             op,
-            delta=num_granted,
-            reason=_REASON,
-            target_nodes=tuple(targets),
-            num_to_reclaim=num_to_reclaim,
+            ScaleUpRequest.on_nodes(
+                targets, num_to_reclaim=num_to_reclaim, reason=_REASON
+            ),
         )
 
     @staticmethod
     def _grow_pg_op(
         op: "ExperimentalActorPoolMapOperator", delta: int, ctx: OptimizationContext
     ) -> Optional[PlacedSizingRequest]:
-        # The PG places the actors. Draining actors revive into bundles they
+        # The PG places the actors. Reclaimed actors stay in the bundles they
         # still hold; only new ones need room in the PG.
         num_to_reclaim = min(delta, op.actor_pool.num_reclaimable_draining_actors())
         num_new = fill_pg_bundles(ctx, op, delta - num_to_reclaim)
@@ -208,7 +210,7 @@ class SilentBottleneckGrant(OptimizationRule[None]):
             return None
         return upscale_request(
             op,
-            delta=num_to_reclaim + num_new,
-            reason=_REASON,
-            num_to_reclaim=num_to_reclaim,
+            ScaleUpRequest.untargeted(
+                num_to_reclaim + num_new, num_to_reclaim=num_to_reclaim, reason=_REASON
+            ),
         )

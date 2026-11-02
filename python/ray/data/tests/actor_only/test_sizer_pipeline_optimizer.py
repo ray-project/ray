@@ -7,6 +7,9 @@ from typing import Any, Dict, cast
 import pytest
 
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.experimental.execution.operators.actor_pool_models import (
+    ScaleUpRequest,
+)
 from ray.data._internal.experimental.execution.operators.placement_constraints import (
     PlacementConstraint,
 )
@@ -768,7 +771,7 @@ def test_silent_bottleneck_places_by_locality_rank_not_free_map_order():
 
     (placed,) = rule.apply(ctx, rule.new_state())
 
-    assert placed.request[bottleneck].target_nodes_to_scale_actors_on == ("a", "a")
+    assert placed.request[bottleneck].nodes == ("a", "a")
 
 
 def test_silent_bottleneck_revives_draining_actors_before_free_nodes():
@@ -788,16 +791,17 @@ def test_silent_bottleneck_revives_draining_actors_before_free_nodes():
     requests = rule.apply(ctx, rule.new_state())
 
     req = requests[0].request[bottleneck]
+    assert isinstance(req, ScaleUpRequest)
     assert req.delta == 1
     assert req.num_to_reclaim == 1
-    assert req.target_nodes_to_scale_actors_on == ()
+    assert req.nodes == ()
     assert ctx.silent_shortfalls[bottleneck].num_actors == 1
 
 
 @pytest.mark.parametrize("kind", ["bundles", "pg-per-actor"])
 def test_silent_bottleneck_pg_op_grows_into_its_pg(kind):
     # A PG-managed op is placed by its placement group: the grant is untargeted,
-    # revives draining actors first, and is capped by room in the PG (its
+    # reclaims draining actors first, and is capped by room in the PG (its
     # bundles, or its headroom for a PG-per-actor op) -- never by the free
     # map, and never recorded as a shortfall for transfers.
     consumer = _op("consumer", pool=_Pool(current=2))
@@ -821,11 +825,12 @@ def test_silent_bottleneck_pg_op_grows_into_its_pg(kind):
     requests = rule.apply(ctx, rule.new_state())
 
     req = requests[0].request[bottleneck]
-    assert req.delta == 3  # 1 revived + 2 new
+    assert isinstance(req, ScaleUpRequest)
+    assert req.delta == 3  # 1 reclaimed + 2 new
     assert req.num_to_reclaim == 1
-    assert req.target_nodes_to_scale_actors_on == ()
+    assert req.nodes == ()
     assert not ctx.silent_shortfalls
-    # Only the new actors spend room; revived ones hold their bundles.
+    # Only the new actors spend room; reclaimed ones hold their bundles.
     if kind == "bundles":
         assert ctx.pg_free[bundle].cpu == 0
     else:
