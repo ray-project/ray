@@ -27,6 +27,10 @@ if TYPE_CHECKING:
 PartitionDataType = Type[Union[int, float, str, bool]]
 logger = logging.getLogger(__name__)
 
+#: Directory value that Hive, Spark and Delta Lake write for a null partition
+#: value, e.g. ``year=__HIVE_DEFAULT_PARTITION__``.
+HIVE_DEFAULT_PARTITION = "__HIVE_DEFAULT_PARTITION__"
+
 
 @DeveloperAPI
 class PartitionStyle(str, Enum):
@@ -106,6 +110,10 @@ class Partitioning:
     field_types: Optional[Dict[str, PartitionDataType]] = None
     #: Filesystem that will be used for partition path file I/O.
     filesystem: Optional["pyarrow.fs.FileSystem"] = None
+    #: HIVE partition value that stands for a null value, such as
+    #: ``HIVE_DEFAULT_PARTITION``. Path values equal to it parse as ``None``.
+    #: Specify `None` to keep every path value as written.
+    null_fallback: Optional[str] = None
 
     def __post_init__(self):
         if self.base_dir is None:
@@ -148,6 +156,8 @@ class Partitioning:
         )
 
         if self.style == PartitionStyle.HIVE:
+            if self.null_fallback is not None:
+                return pds.HivePartitioning(schema, null_fallback=self.null_fallback)
             return pds.HivePartitioning(schema)
         elif self.style == PartitionStyle.DIRECTORY:
             return pds.DirectoryPartitioning(schema)
@@ -264,7 +274,7 @@ class PathPartitionParser:
             PartitionStyle.HIVE: self._parse_hive_path,
             PartitionStyle.DIRECTORY: self._parse_dir_path,
         }
-        self._parser_fn: Callable[[str], Dict[str, str]] = parsers.get(style)
+        self._parser_fn: Callable[[str], Dict[str, Optional[str]]] = parsers.get(style)
         if self._parser_fn is None:
             raise ValueError(
                 f"Unsupported partition style: {style}. "
@@ -293,7 +303,8 @@ class PathPartitionParser:
                     f"Expected partition field {field!r} (declared in "
                     f"`field_types`) in path {path!r}, but found {sorted(partitions)}."
                 )
-            partitions[field] = _cast_value(partitions[field], data_type)
+            if partitions[field] is not None:
+                partitions[field] = _cast_value(partitions[field], data_type)
 
         return partitions
 
@@ -423,12 +434,13 @@ class PathPartitionParser:
         path = path[len(self._scheme.normalized_base_dir) :]
         return posixpath.dirname(path)
 
-    def _parse_hive_path(self, dir_path: str) -> Dict[str, str]:
+    def _parse_hive_path(self, dir_path: str) -> Dict[str, Optional[str]]:
         """Hive partition path parser.
 
         Returns a dictionary mapping partition keys to values given a hive-style
         partition path of the form "{key1}={value1}/{key2}={value2}/..." or an empty
-        dictionary for unpartitioned files.
+        dictionary for unpartitioned files. A value equal to the scheme's
+        ``null_fallback`` is returned as ``None``.
         """
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
@@ -436,6 +448,12 @@ class PathPartitionParser:
         #       ensure the values are consistent when you read them back, we need to
         #       URL-decode them. See https://github.com/apache/arrow/issues/34905.
         kv_pairs = [[key, urllib.parse.unquote(value)] for key, value in kv_pairs]
+        null_fallback = self._scheme.null_fallback
+        if null_fallback is not None:
+            kv_pairs = [
+                [key, None if value == null_fallback else value]
+                for key, value in kv_pairs
+            ]
 
         field_names = self._scheme.field_names
         if field_names and kv_pairs:

@@ -18,6 +18,7 @@ from ray.data.dataset import Dataset
 from ray.data.datasource import FileBasedDatasource, PathPartitionParser
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.partitioning import (
+    HIVE_DEFAULT_PARTITION,
     Partitioning,
     PartitionStyle,
     PathPartitionFilter,
@@ -680,6 +681,51 @@ def test_path_partition_parser_decodes_special_characters(
 ):
     partition_parser = PathPartitionParser.of(base_dir="bucket")
     assert partition_parser(path) == expected_partitions
+
+
+@pytest.mark.parametrize(
+    "field_types, expected",
+    [
+        (None, {"year": None, "region": "us"}),
+        ({"year": int}, {"year": None, "region": "us"}),
+    ],
+)
+def test_path_partition_parser_hive_null_fallback(field_types, expected):
+    """A value equal to ``null_fallback`` parses as ``None``, and isn't cast."""
+    partitioning = Partitioning(
+        PartitionStyle.HIVE,
+        field_types=field_types,
+        null_fallback=HIVE_DEFAULT_PARTITION,
+    )
+    parser = PathPartitionParser(partitioning)
+
+    path = f"year={HIVE_DEFAULT_PARTITION}/region=us/part-0.parquet"
+    assert parser(path) == expected
+    # Other values are cast as usual.
+    assert parser("year=2024/region=us/part-0.parquet")["year"] == (
+        2024 if field_types else "2024"
+    )
+
+
+def test_path_partition_parser_hive_keeps_the_sentinel_by_default():
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+
+    path = f"year={HIVE_DEFAULT_PARTITION}/part-0.parquet"
+    assert parser(path) == {"year": HIVE_DEFAULT_PARTITION}
+
+
+def test_hive_partitioning_null_fallback_to_pyarrow():
+    partitioning = Partitioning(
+        PartitionStyle.HIVE,
+        field_names=["year"],
+        null_fallback=HIVE_DEFAULT_PARTITION,
+    )
+
+    pa_partitioning = partitioning.to_pyarrow()
+
+    # The trailing slash marks ``year=...`` as a directory, not a file name.
+    expression = pa_partitioning.parse(f"/year={HIVE_DEFAULT_PARTITION}/")
+    assert "is_null" in str(expression)
 
 
 @pytest.mark.parametrize(

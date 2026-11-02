@@ -7,7 +7,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray.data import Schema
+from ray.data import DataContext, Schema
 from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.conftest import *  # noqa
@@ -22,6 +22,15 @@ pytestmark = pytest.mark.skipif(
     _pa_version < parse_version("15.0.0"),
     reason="deltalake write_deltalake requires pyarrow >= 15.0",
 )
+
+
+@pytest.fixture(params=["v1", "v2"], autouse=True)
+def delta_reader(request, restore_data_context):
+    """Run every test with both the V1 and the DataSourceV2 reader."""
+    ctx = DataContext.get_current()
+    ctx.use_datasource_v2 = True
+    ctx.use_delta_datasource_v2 = request.param == "v2"
+    return request.param
 
 
 @pytest.mark.parametrize(
@@ -175,11 +184,13 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
     has to point at the table property, not at a library upgrade.
 
     deltalake cannot *write* a table declaring the feature either, so the
-    protocol error is injected rather than provoked; what is under test is
-    Ray's translation of it.
+    feature and the protocol error are injected rather than provoked; what is
+    under test is Ray's translation of it. The DataSourceV2 reader leaves such
+    a table to the V1 reader, so both readers fail the same way.
     """
     from deltalake import write_deltalake
     from deltalake.exceptions import DeltaProtocolError
+    from deltalake.table import ProtocolVersions
 
     path = os.path.join(tmp_path, "tmp_test_delta_dv_message")
     write_deltalake(path, pa.table({"id": [1, 2, 3]}))
@@ -188,8 +199,11 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
         "The table has set these reader features: {'deletionVectors'} but these "
         "are not yet supported by the deltalake reader."
     )
+    dv_protocol = ProtocolVersions(3, 7, ["deletionVectors"], ["deletionVectors"])
 
     with mock.patch(
+        "deltalake.DeltaTable.protocol", return_value=dv_protocol
+    ), mock.patch(
         "deltalake.DeltaTable.to_pyarrow_dataset", side_effect=protocol_error
     ):
         with pytest.raises(RuntimeError) as excinfo:

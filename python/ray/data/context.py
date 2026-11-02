@@ -116,6 +116,8 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
+DEFAULT_USE_DELTA_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DELTA_DATASOURCE_V2", False)
+
 DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE = 64 * 1024 * 1024
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -718,6 +720,12 @@ class DataContext:
             ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
+        use_delta_datasource_v2: When True, and ``use_datasource_v2`` is also
+            True, ``ray.data.read_delta()`` routes through the DataSourceV2
+            pipeline. Tables that pipeline can't read yet (for example ones
+            with deletion vectors or column mapping) still use the V1 reader.
+            Defaults to False; override with
+            ``RAY_DATA_USE_DELTA_DATASOURCE_V2``.
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
             runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
             Contiguous row groups are coalesced up to this size; a single row group
@@ -1113,6 +1121,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    use_delta_datasource_v2: bool = DEFAULT_USE_DELTA_DATASOURCE_V2
     small_shuffle_chunk_size: int = DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
