@@ -6650,15 +6650,16 @@ def read_delta(
 
     .. note::
 
-        Set ``ray.data.DataContext.get_current().use_delta_datasource_v2 = True``
-        (or ``RAY_DATA_USE_DELTA_DATASOURCE_V2=1``) to read through the
-        DataSourceV2 pipeline, which also needs ``use_datasource_v2``. It opens
-        the table once, in a Ray task, when ``read_delta`` is called, which
-        pins the version and keeps the file list off the driver, and splits
-        files into row-group read units. It raises ``NotImplementedError`` for
-        tables that need a reader feature other than ``timestampNtz``, or
-        that have binary partition columns, and ``ValueError`` if
-        ``include_paths`` would replace the table's own ``path`` column.
+        ``read_delta`` reads through the DataSourceV2 pipeline. It opens the
+        table once, in a Ray task, when ``read_delta`` is called, which pins
+        the version and keeps the file list off the driver, skips files using
+        the statistics in the Delta log, and splits files into row-group read
+        units. It raises ``NotImplementedError`` for tables that need a reader
+        feature other than ``timestampNtz``, or that have binary partition
+        columns, and ``ValueError`` if ``include_paths`` would replace the
+        table's own ``path`` column. To read with the V1 reader, set
+        ``ray.data.DataContext.get_current().use_delta_datasource_v2 = False``
+        (or ``RAY_DATA_USE_DELTA_DATASOURCE_V2=0``).
 
     Examples:
 
