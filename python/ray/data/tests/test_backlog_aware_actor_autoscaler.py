@@ -57,7 +57,7 @@ class MockAutoscalingActorPool(AutoscalingActorPool):
     def max_size(self):
         return self._max_size
 
-    def current_size(self):
+    def total_size(self):
         return self._current_size
 
     def num_running_actors(self):
@@ -255,7 +255,7 @@ class TestActorPoolAutoscaling:
         #   - min required size = ceil(17 / (1 * 1.0)) = 17
         #   - Uncapped delta = 17 - 2 = 15, capped by max_size to 6
         autoscaler.try_trigger_scaling()
-        assert actor_pool.current_size() == max_size  # 2 + 6 = 8
+        assert actor_pool.total_size() == max_size  # 2 + 6 = 8
 
         # Mark all actors as running.
         for _ in range(actor_pool.num_pending_actors()):
@@ -268,7 +268,7 @@ class TestActorPoolAutoscaling:
         )
         # Scale-up should not be triggered since already at max_size.
         autoscaler.try_trigger_scaling()
-        assert actor_pool.current_size() == max_size  # still 8
+        assert actor_pool.total_size() == max_size  # still 8
 
         # Updated the number of used task slots and check the util.
         actor_pool._current_in_flight_tasks = 3
@@ -278,7 +278,7 @@ class TestActorPoolAutoscaling:
         )  # 3 / (1 * 8) = 0.375 < 0.5
         # Scale-down should be triggered.
         autoscaler.try_trigger_scaling()
-        assert actor_pool.current_size() == max_size - 1  # current_size = 8 - 1 = 7
+        assert actor_pool.total_size() == max_size - 1  # total_size = 8 - 1 = 7
 
         # Check the util again.
         actor_pool._current_in_flight_tasks = 4
@@ -288,7 +288,7 @@ class TestActorPoolAutoscaling:
         )  # 4 / (1 * 7) = 0.5714 > 0.5
         # Neither scale-up nor scale-down should be triggered.
         autoscaler.try_trigger_scaling()
-        assert actor_pool.current_size() == max_size - 1
+        assert actor_pool.total_size() == max_size - 1
 
     def test_downscale_not_blocked_by_pending_actors(self):
         """Pending actors don't pin a pool the visible work no longer justifies.
@@ -514,7 +514,7 @@ class TestActorPoolAutoscaling:
         actor_pool._current_in_flight_tasks = in_flight_tasks
 
         autoscaler.try_trigger_scaling()
-        assert actor_pool.current_size() == expected_size
+        assert actor_pool.total_size() == expected_size
 
     # Default per-actor in-flight capacity used by the helper below. Tests that
     # need full task-slot saturation can set ``in_flight_tasks`` to
@@ -615,7 +615,7 @@ class TestActorPoolAutoscaling:
             in_flight_tasks=min_size * self._MAX_TASKS_IN_FLIGHT_PER_ACTOR,
             budget=budget,
         )
-        assert actor_pool.current_size() - min_size == expected_scale_up
+        assert actor_pool.total_size() - min_size == expected_scale_up
 
     @pytest.mark.parametrize(
         "min_size, initial_size, per_actor_resource_usage, allocation, op_usage, expected_scale_down",
@@ -674,7 +674,7 @@ class TestActorPoolAutoscaling:
             allocation=allocation,
             op_usage=op_usage,
         )
-        assert initial_size - actor_pool.current_size() == expected_scale_down
+        assert initial_size - actor_pool.total_size() == expected_scale_down
 
 
 @pytest.mark.parametrize(

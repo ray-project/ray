@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, DefaultDict, Dict, List, Mapping, Tuple
 
 from ray.data._internal.execution.interfaces import NodeIdStr
-from ray.data._internal.execution.interfaces.common import ActorStatus, LogicalActorId
+from ray.data._internal.execution.interfaces.common import ActorId, ActorStatus
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
     next_actor_pool_ops,
@@ -41,7 +41,7 @@ def build_op_placement_view(
         The operator's placement snapshot for this tick.
     """
     pool = op.actor_pool
-    victim_ids_by_node: Dict[NodeIdStr, List[LogicalActorId]] = {}
+    victim_ids_by_node: Dict[NodeIdStr, List[ActorId]] = {}
     victim_drain_cost_by_node: Dict[NodeIdStr, List[Tuple[int, int]]] = {}
     actors_by_node: Dict[NodeIdStr, int] = {}
     idle_actors_by_node: Dict[NodeIdStr, int] = {}
@@ -109,8 +109,8 @@ def build_op_placement_view(
 
 def _rank_victims(
     op: ExperimentalActorPoolMapOperator,
-    states: Mapping[LogicalActorId, "_ExperimentalActorState"],
-) -> Tuple[List[LogicalActorId], List[Tuple[int, int]]]:
+    states: Mapping[ActorId, "_ExperimentalActorState"],
+) -> Tuple[List[ActorId], List[Tuple[int, int]]]:
     """One node's actors, cheapest to drain first, with their drain cost.
 
     Order: fewest tasks in flight, then fewest output blocks the ResourceBank
@@ -136,8 +136,7 @@ def _rank_victims(
 def _non_draining_count_by_node(
     ops: Tuple[ExperimentalActorPoolMapOperator, ...],
 ) -> DefaultDict[NodeIdStr, int]:
-    """Actors of ``ops`` per node, draining ones excluded. RESTARTING actors
-    come back to the same node, so they still count for collocation."""
+    """Actors of ``ops`` per node, draining ones excluded."""
     counts: DefaultDict[NodeIdStr, int] = defaultdict(int)
     for neighbour in ops:
         for node_id, status_counts in neighbour.actor_counts_by_node().items():
