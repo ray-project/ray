@@ -22,8 +22,8 @@
         # is very broken.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "100"
 
-      # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      # 'torch-cu128' is the ray-torch image (CUDA 12.8, Python 3.11).
+      type: torch-cu128
     cluster_compute: fixed_size_cpu_compute.yaml
 
 ###############
@@ -32,7 +32,7 @@
 
 - name: "read_parquet_fixed_size"
   group: data-reads
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: read_benchmark_compute.yaml
@@ -46,7 +46,7 @@
 
 - name: "read_large_parquet_fixed_size"
   group: data-reads
-  python: "3.10"
+  python: "3.11"
   cluster:
     byod:
       runtime_env:
@@ -69,7 +69,7 @@
 
 - name: "read_images_fixed_size"
   group: data-reads
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: read_benchmark_compute.yaml
@@ -82,9 +82,11 @@
 
 - name: read_tfrecords
   group: data-reads
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      python_depset: torch_cu128_data_tensorflow_py3.11.lock
     cluster_compute: read_benchmark_compute.yaml
   run:
     timeout: 3600
@@ -95,7 +97,7 @@
 
 - name: "read_from_uris_fixed_size"
   group: data-reads
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: read_benchmark_compute.yaml
@@ -109,7 +111,7 @@
 ###############
 
 - name: write_parquet
-  python: "3.10"
+  python: "3.11"
   cluster:
     byod:
       runtime_env:
@@ -123,7 +125,7 @@
       s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
 
 - name: write_delta
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -135,7 +137,7 @@
       s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write-delta
 
 - name: write_delta_smoke
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -148,7 +150,7 @@
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet --write-delta
 
 - name: write_delta_overwrite
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -161,7 +163,7 @@
       --write-delta-mode overwrite
 
 - name: write_delta_partitioned
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -178,7 +180,7 @@
 ###############
 
 - name: "iceberg_benchmark_{{mode}}"
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -197,7 +199,7 @@
 # budget, and a matrix cannot vary ``byod.runtime_env`` per value. Rendered test
 # names are unchanged.
 - name: "iceberg_benchmark_overwrite"
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -235,7 +237,7 @@
 # The SF (scale factor) 1000 lineitem table contains ~6B rows.
 
 - name: aggregate_groups_low_cardinality
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -265,7 +267,7 @@
             RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
 
 - name: aggregate_groups_high_cardinality
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -297,7 +299,7 @@
 
 # map_groups (keyed repartition under the hood).
 - name: map_groups_high_cardinality
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -332,7 +334,7 @@
 
 # map_groups v2 on the 84-group key stays at SF100 because there's data skew in partition that makes the task unschedulable.
 - name: map_groups_low_cardinality
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -389,11 +391,12 @@
 #
 
 - name: "joins_{{dataset}}_{{join_type}}"
-  python: "3.10"
+  python: "3.11"
   group: data-joins
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
@@ -419,11 +422,12 @@
 
 # The SF1000 joins above, through the disk-based (file-transport) hash shuffle.
 - name: "joins_{{dataset}}_{{join_type}}_disk"
-  python: "3.10"
+  python: "3.11"
   group: data-joins
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
         RAY_max_direct_call_object_size: "8192"
@@ -456,7 +460,7 @@
 # wants a different bin budget and footer-actor count, and a matrix cannot vary
 # ``byod.runtime_env`` per value. Rendered test names are unchanged.
 - name: wide_schema_pipeline_primitives
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -479,7 +483,7 @@
       --data-type primitives
 
 - name: wide_schema_pipeline_tensors
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -502,7 +506,7 @@
       --data-type tensors
 
 - name: wide_schema_pipeline_objects
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -525,7 +529,7 @@
       --data-type objects
 
 - name: wide_schema_pipeline_nested_structs
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -552,7 +556,7 @@
 #######################
 
 - name: streaming_split
-  python: "3.10"
+  python: "3.11"
   cluster:
     byod:
       runtime_env:
@@ -589,7 +593,7 @@
 ############
 
 - name: mix
-  python: "3.10"
+  python: "3.11"
   cluster:
     byod:
       runtime_env:
@@ -643,6 +647,10 @@
       runtime_env:
         # Footer read tuning.
         RAY_DATA_PARQUET_FOOTER_NUM_ACTORS: "20"
+      # TODO: still on ray-ml. The benchmark imports mosaicml-streaming at module
+      # load, and every streaming release needs torchtext (0.5.x) or transformers<5,
+      # which both conflict with ray-torch.
+      type: gpu
       post_build_script: byod_install_mosaicml.sh
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
@@ -656,7 +664,7 @@
     - __suffix__: regular
 
 - name: training_ingest_benchmark
-  python: "3.10"
+  python: "3.11"
   working_dir: nightly_tests
 
   cluster:
@@ -727,13 +735,13 @@
 # See release/nightly_tests/dataset/training_ingest_regression_test/main.py
 # for the variation matrix and what each one measures.
 - name: training_ingest_regression_test
-  python: "3.10"
+  python: "3.11"
   group: data-iter-batches
 
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
       runtime_env:
         RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION: "0.5"
     cluster_compute: training_ingest_regression_test/compute.yaml
@@ -780,7 +788,7 @@
 #################
 
 - name: chunked_tensor_take
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_1_cpu_compute.yaml
@@ -800,7 +808,7 @@
             RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "0"
 
 - name: "iter_batches_{{format}}"
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
   matrix:
@@ -817,7 +825,7 @@
 # Split out of the ``format`` matrix above: only ``pyarrow`` needs its own bin
 # budget. Rendered test names are unchanged.
 - name: "iter_batches_pyarrow"
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -833,9 +841,11 @@
       --iter-batches pyarrow
 
 - name: to_tf
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      python_depset: torch_cu128_data_tensorflow_py3.11.lock
   run:
     timeout: 2400
     script: >
@@ -844,7 +854,7 @@
       --to-tf image image
 
 - name: iter_torch_batches
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
@@ -861,7 +871,7 @@
 ###########
 
 - name: map
-  python: "3.10"
+  python: "3.11"
   cluster:
     byod:
       runtime_env:
@@ -873,7 +883,7 @@
     script: python map_benchmark.py --api map --sf 100
 
 - name: flat_map
-  python: "3.10"
+  python: "3.11"
   cluster:
     byod:
       runtime_env:
@@ -885,7 +895,7 @@
     script: python map_benchmark.py --api flat_map --sf 100
 
 - name: "map_batches_fixed_size_{{compute}}_{{format}}_{{repeat_map_batches}}"
-  python: "3.10"
+  python: "3.11"
   matrix:
     setup:
       # Fixed-size task tests with different formats.
@@ -919,7 +929,7 @@
 # per-block BlockMetadataWithSchema propagation on the driver, which
 # dominates large-schema production workloads.
 - name: worker_scaling_{{num_workers}}_{{worker_type}}_{{num_operators}}ops
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   cluster:
     anyscale_sdk_2026: true
@@ -958,7 +968,7 @@
 ######################
 
 - name: backpressure_fast_producer_slow_consumer
-  python: "3.10"
+  python: "3.11"
   group: data-backpressure
   cluster:
     anyscale_sdk_2026: true
@@ -970,7 +980,7 @@
       python backpressure_benchmark.py --case fast-producer-slow-consumer
 
 - name: backpressure_many_tiny_objects
-  python: "3.10"
+  python: "3.11"
   group: data-backpressure
   cluster:
     anyscale_sdk_2026: true
@@ -982,7 +992,7 @@
       python backpressure_benchmark.py --case many-tiny-objects
 
 - name: backpressure_training_prefetch
-  python: "3.10"
+  python: "3.11"
   group: data-backpressure
   cluster:
     anyscale_sdk_2026: true
@@ -1007,7 +1017,7 @@
 # can consume it. The global object store threshold is the sum of all nodes,
 # so CPU stages may not trigger backpressure even when CPU nodes are full.
 - name: backpressure_heterogeneous_memory_nodes
-  python: "3.10"
+  python: "3.11"
   frequency: nightly
   group: data-backpressure
 
@@ -1027,7 +1037,7 @@
 ######################
 
 - name: "random_shuffle"
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -1052,7 +1062,7 @@
 # label_selector. Asserts isolation (no runtime regression vs. solo) and
 # placement (no task crossed subcluster boundaries).
 - name: heterogeneous_memory_batch_inference_multitenancy
-  python: "3.10"
+  python: "3.11"
   frequency: nightly
   group: data-batch-inference
 
@@ -1080,6 +1090,9 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      # TODO: still on ray-ml. The pinned pyarrow 19 conflicts with ray-torch's
+      # pyarrow 23; move once the dataset no longer needs pyarrow.PyExtensionType.
+      type: gpu
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
@@ -1104,6 +1117,9 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      # TODO: still on ray-ml. The pinned pyarrow 19 conflicts with ray-torch's
+      # pyarrow 23; move once the dataset no longer needs pyarrow.PyExtensionType.
+      type: gpu
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
@@ -1117,7 +1133,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: image_embedding_from_uris_{{case}}
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   group: data-batch-inference
 
@@ -1140,6 +1156,7 @@
     anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
     byod:
+      python_depset: torch_cu128_data_image_embedding_py3.11.lock
       runtime_env:
         RAYTEST_FAIL_ON_DEAD_NODES: "{{fail_on_dead_nodes}}"
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "{{max_obj_store_util_percent}}"
@@ -1149,7 +1166,7 @@
 
 
 - name: image_embedding_from_jsonl_{{case}}
-  python: "3.10"
+  python: "3.11"
   frequency: "{{frequency}}"
   group: data-batch-inference
 
@@ -1181,6 +1198,7 @@
     anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
+      python_depset: torch_cu128_data_image_embedding_py3.11.lock
       runtime_env:
         RAYTEST_FAIL_ON_DEAD_NODES: "{{fail_on_dead_nodes}}"
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "{{max_obj_store_util_percent}}"
@@ -1227,7 +1245,7 @@
 # - Metadata column passthrough
 # - Extra output columns
 - name: multi_stage_batch_inference
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   group: data-batch-inference
   env: gce
@@ -1252,7 +1270,7 @@
 
 
 - name: "tpch_{{query}}"
-  python: "3.10"
+  python: "3.11"
   group: data-tpch
   frequency: manual
   matrix:
@@ -1262,6 +1280,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
@@ -1274,7 +1293,7 @@
     script: python tpch/tpch_{{query}}.py --sf 1000
 
 - name: "tpch_{{query}}"
-  python: "3.10"
+  python: "3.11"
   group: data-tpch
   frequency: nightly
   matrix:
@@ -1284,6 +1303,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
@@ -1296,7 +1316,7 @@
     script: python tpch/tpch_{{query}}.py --sf 1000
 
 - name: "tpch_{{query}}_disk_shuffle"
-  python: "3.10"
+  python: "3.11"
   group: data-tpch
   frequency: nightly
   matrix:
@@ -1306,6 +1326,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      python_depset: torch_cu128_data_joins_py3.11.lock
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
         RAY_DATA_ENABLE_DISK_SHUFFLE: "1"

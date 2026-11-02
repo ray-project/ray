@@ -107,6 +107,13 @@ def prepare_trainer(trainer: "Trainer") -> "Trainer":
     Internally, it overrides the `get_train_dataloader` and `get_eval_dataloader`
     methods and inject the data integration logics if the `train_dataset` and
     `eval_dataset` are Ray Data Iterables.
+
+    Args:
+        trainer: The Transformers ``Trainer`` to prepare. This function changes
+            its class in place.
+
+    Returns:
+        The same ``trainer`` object.
     """
     from ray.data.iterator import _IterableFromIterator
 

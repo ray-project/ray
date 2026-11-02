@@ -24,20 +24,21 @@ steps:
   # changed, in every library, as plain Python with the PR's Ray
   # (ci/ray_ci/doc/run_docstring_examples.sh). It runs only modules a CPU
   # doctest() target covers, in the docstringbuild image, which leaves out
-  # torch and TensorFlow; examples that need them are reported as skipped and
-  # run in their library's doctest() target instead: in premerge for libraries
-  # whose suites the label doesn't skip, and postmerge for Ray Data. The
-  # label's scope guard (lint: validate docstring-only scope) fails the build
-  # unless the PR changes nothing but docstrings and comments.
+  # torch and TensorFlow; examples that need them are reported as skipped.
+  # Their library's doctest() target covers them on builds without the label;
+  # the label skips it with the rest of the library's suites. The label's
+  # scope guard (lint: validate docstring-only scope) fails the build unless
+  # the PR changes nothing but docstrings and comments.
   #
   # Tagged with every library tag a python/ray/ change can emit, so a labeled
-  # PR selects it whatever it touches. Until rayci can gate step selection on
-  # PR labels, an unlabeled PR that selects it still builds docstringbuild,
-  # though Buildkite drops the step itself.
+  # PR selects it whatever it touches. The docstring-only rule in
+  # docs.labels.yaml keeps it, by the docstring_examples tag, and skips it
+  # without the label, so an unlabeled PR doesn't build docstringbuild.
   - label: ":book: doc: docstring examples"
     if: build.pull_request.labels includes "docstring-only"
     tags:
       - oss
+      - docstring_examples
       - data
       - core_python
       - serve
@@ -94,11 +95,14 @@ steps:
   # doctestbuild environment, rather than in each library's own images. The
   # per-library docs example steps, with their own images, stay the coverage
   # for library code changes and postmerge. See
-  # ci/ray_ci/doc/doc_example_targets.py.
+  # ci/ray_ci/doc/doc_example_targets.py. The docs-example-test rule in
+  # docs.labels.yaml skips it without the label, by the doc_example_optin tag,
+  # so an unlabeled PR doesn't build its images.
   - label: "doc: docs example tests (opt-in)"
     if: build.pull_request.labels includes "docs-example-test"
     tags:
       - oss
+      - doc_example_optin
       - doc_example
     instance_type: large
     commands:

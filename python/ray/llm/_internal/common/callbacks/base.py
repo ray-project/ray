@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CallbackCtx:
-    """
-    Context object passed to all callback hooks.
+    """Context object passed to all callback hooks.
     Callbacks can read and modify fields as needed.
     """
 

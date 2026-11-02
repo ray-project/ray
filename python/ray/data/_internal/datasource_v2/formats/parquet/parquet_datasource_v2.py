@@ -39,7 +39,11 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.util import RetryingPyFileSystem, _is_local_scheme
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    _normalize_paths_to_strings,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -97,6 +101,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths: List[str] = resolved_paths
+        # The resolved paths above lose their URI scheme; lineage tracking
+        # reads the caller's paths through ``source_paths``.
+        self._source_paths: List[str] = _normalize_paths_to_strings(paths)
         # Retry ``DataContext.retried_io_errors`` on every filesystem call --
         # listing, schema inference and reads -- as V1's ``ParquetDatasource``
         # does. Without this, the driver-side listing and footer reads fail on
@@ -157,6 +164,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
     @property
     def paths(self) -> List[str]:
         return self._paths
+
+    @property
+    def source_paths(self) -> List[str]:
+        return self._source_paths
 
     @property
     def filesystem(self) -> "FileSystem":
