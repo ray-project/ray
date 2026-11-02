@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-from ray._common.observability.annotation import parse_severity
+from ray._common.observability.annotation import Severity
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.v2._internal.constants import TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
@@ -382,7 +382,7 @@ def get_dataset_shard(
 @requires_train_worker(raise_in_tune_session=True)
 def annotate(
     message: str,
-    severity: Union[str, int] = "info",
+    severity: Severity = "info",
     rank_zero_only: bool = True,
     **fields: Any,
 ) -> None:
@@ -390,8 +390,9 @@ def annotate(
 
     Use this to mark a moment of interest on the same timeline as your training
     metrics, such as an evaluation completing, a learning-rate change, or a
-    phase transition. To render it on the Train Grafana dashboard, the cluster
-    operator also has to ship these log lines to Loki. See
+    phase transition. Annotations are off by default, so this does nothing
+    unless the cluster operator sets ``RAY_ANNOTATIONS_ENABLED=1`` and ships
+    the annotation log lines to Loki. See
     :ref:`Overlay event annotations on the dashboards
     <grafana-dashboard-annotations>`.
 
@@ -420,12 +421,9 @@ def annotate(
         message: Human-readable description of the event. Grafana shows it as
             the annotation text and tooltip. Ray emits it as the ``message``
             field.
-        severity: Severity of the event, as a Python logging level: a
-            case-insensitive name, one of ``"debug"``, ``"info"``,
-            ``"warning"``, ``"error"`` or ``"critical"``, or its number, such
-            as ``logging.WARNING``. Defaults to ``"info"``. This drives the
-            annotation color, because Grafana colors annotations per query
-            layer.
+        severity: One of ``"info"``, ``"warning"`` or ``"error"``. Defaults to
+            ``"info"``. It selects which of the Train dashboard's custom
+            annotation layers the event shows under, and so its color.
         rank_zero_only: If ``True``, the default, only the rank 0 worker emits
             the annotation, producing a single point on the dashboard. If
             ``False``, every worker emits its own annotation and carries
@@ -438,10 +436,6 @@ def annotate(
             can't filter on individual keys within it. Filter on ``severity``,
             or on the run and rank tags, instead.
     """
-    # Raised here rather than swallowed by the annotation, which would otherwise
-    # match none of the dashboard layers and silently never appear.
-    parse_severity(severity)
-
     try:
         train_context = get_train_context()
     except Exception:
@@ -451,7 +445,7 @@ def annotate(
     if rank_zero_only and train_context.get_world_rank() != 0:
         return
 
-    train_context.annotation.annotate(
+    train_context.annotation_emitter.emit(
         event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
         message=message,
         severity=severity,

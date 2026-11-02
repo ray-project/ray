@@ -3,11 +3,11 @@ import sys
 
 import pytest
 
+from ray._common.observability.annotation import ANNOTATIONS_ENABLED_ENV_VAR
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     ANNOTATION_DATASOURCE_VARIABLE,
     ANNOTATION_SESSION_VARIABLE,
     ANNOTATION_STREAM_SELECTOR,
-    GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR,
     GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE,
     generate_train_grafana_dashboard,
 )
@@ -20,7 +20,7 @@ GLOBAL_FILTERS_ENV_VAR = (
 @pytest.fixture(autouse=True)
 def enable_annotations(monkeypatch):
     # Off by default; see `test_annotations_are_off_by_default`.
-    monkeypatch.setenv(GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR, "1")
+    monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, "1")
     monkeypatch.delenv(GLOBAL_FILTERS_ENV_VAR, raising=False)
 
 
@@ -112,6 +112,20 @@ def test_annotation_session_variable_applies_global_filters(monkeypatch):
     )
 
 
+def test_annotation_stream_selector_is_pinned():
+    """Every query starts with the collector's `ray_annotations="true"` label.
+
+    Spelled out rather than built from the constant: it's a contract with code
+    outside Ray, the collector config that attaches the label and Anyscale's
+    dashboard watcher, which matches on it to add its console toggle.
+    """
+    annotations = dashboard_annotations(generate_train_dashboard())
+
+    assert annotations
+    for annotation in annotations:
+        assert annotation["expr"].startswith('{ray_annotations="true"} ')
+
+
 def test_annotations_preserve_go_template_braces():
     """`label_format`/`line_format` stages carry Go template braces, which must
     survive generation untouched."""
@@ -129,9 +143,9 @@ def test_annotations_are_off_by_default(monkeypatch, enabled):
     """Without the Loki pipeline Ray doesn't provision, every annotation query
     would fail on each dashboard load, so they're omitted unless enabled."""
     if enabled is None:
-        monkeypatch.delenv(GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR)
+        monkeypatch.delenv(ANNOTATIONS_ENABLED_ENV_VAR)
     else:
-        monkeypatch.setenv(GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR, enabled)
+        monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, enabled)
 
     dashboard = generate_train_dashboard()
     assert dashboard_annotations(dashboard) == []

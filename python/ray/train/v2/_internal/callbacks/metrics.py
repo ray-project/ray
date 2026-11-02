@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from typing import Dict, Optional
 
 import ray
-from ray._common.observability.annotation import Annotation
+from ray._common.observability.annotation import AnnotationEmitter
 from ray.train.v2._internal.constants import (
     TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
     TRAIN_ANNOTATION_SOURCE,
@@ -34,7 +34,7 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         self._metrics: Dict[str, Metric] = ControllerMetrics.get_controller_metrics(
             self._run_name, self._run_id
         )
-        self._annotation = Annotation(
+        self._annotation_emitter = AnnotationEmitter(
             source=TRAIN_ANNOTATION_SOURCE,
             base_tags={
                 RUN_NAME_TAG_KEY: self._run_name,
@@ -45,7 +45,7 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
             TrainControllerStateType.INITIALIZING
         )
-        self._annotation.annotate(
+        self._annotation_emitter.emit(
             event=TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
             message=f"Controller started: {TrainControllerStateType.INITIALIZING.name}",
         )
@@ -65,7 +65,7 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
             current_state._state_type
         )
         if previous_state._state_type is not current_state._state_type:
-            self._annotation.annotate(
+            self._annotation_emitter.emit(
                 event=TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
                 message=f"Controller: {previous_state._state_type.name} → {current_state._state_type.name}",
             )

@@ -7,7 +7,7 @@ from dataclasses import asdict
 from typing import List, Tuple
 
 import ray
-from ray._common.utils import env_bool
+from ray._common.observability.annotation import annotations_enabled
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     GrafanaAnnotation,
@@ -43,13 +43,11 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
 )
 GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_LOG_LINK_URL"
 
-# Annotation layers query a Loki datasource and log collector that Ray doesn't
-# provision, so they're off by default: without that pipeline every load of the
-# dashboard shows a failed annotation query. A platform that provides it, such as
-# Anyscale, sets this on the head node to turn them on.
-GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR = "RAY_GRAFANA_ANNOTATIONS_ENABLED"
-# The label a log collector attaches to the annotation log stream. This is the
-# contract between Ray and the collector config, so changing it breaks it.
+# The stream selector every annotation query starts with: the label a log
+# collector attaches to the annotation log stream. This is the contract between
+# Ray and the collector config, so changing it breaks it. Platforms that rewrite
+# the generated dashboards may also match on it, such as Anyscale, which swaps it
+# for a variable that lets its console turn the annotations off.
 ANNOTATION_STREAM_SELECTOR = '{ray_annotations="true"}'
 
 # Each annotation line is an `AnnotationEvent` serialized to JSON. Every query
@@ -342,9 +340,10 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> Tuple[str,
 
     # Append config-defined annotations to the base JSON's built-in annotation list,
     # along with the template variables the annotation queries resolve through.
-    if dashboard_config.annotations and env_bool(
-        GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR, False
-    ):
+    # They query a Loki datasource and log collector that Ray doesn't provision,
+    # so like the annotation log lines themselves, they're only added when a
+    # platform that provides that pipeline turns annotations on.
+    if dashboard_config.annotations and annotations_enabled():
         annotations = base_json.setdefault("annotations", {})
         annotations.setdefault("list", []).extend(
             generate_annotation(annotation)

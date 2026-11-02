@@ -129,26 +129,14 @@ def test_annotate_emits_annotation(in_train_worker, captured_annotations):
     assert json.loads(record["fields"]["custom_fields"]) == {"epoch": 3}
 
 
-@pytest.mark.parametrize(
-    "severity, expected",
-    [
-        ("debug", "DEBUG"),
-        ("WARNING", "WARNING"),
-        ("warn", "WARNING"),
-        (logging.ERROR, "ERROR"),
-        ("critical", "CRITICAL"),
-    ],
-)
-def test_annotate_accepts_logging_levels(
-    in_train_worker, captured_annotations, severity, expected
-):
-    """The severity is a Python logging level, by name in any case or by number."""
+@pytest.mark.parametrize("severity", ["info", "warning", "error"])
+def test_annotate_severity(in_train_worker, captured_annotations, severity):
     ray.train.annotate(message="finished epoch", severity=severity)
 
-    assert [record["severity"] for record in captured_annotations] == [expected]
+    assert [record["severity"] for record in captured_annotations] == [severity.upper()]
 
 
-@pytest.mark.parametrize("severity", ["bogus", "notset", 35])
+@pytest.mark.parametrize("severity", ["bogus", "WARNING", "debug", logging.ERROR])
 def test_annotate_rejects_invalid_severity(
     in_train_worker, captured_annotations, severity
 ):

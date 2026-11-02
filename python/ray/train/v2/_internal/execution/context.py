@@ -11,7 +11,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
-from ray._common.observability.annotation import Annotation
+from ray._common.observability.annotation import AnnotationEmitter
 from ray._common.retry import retry
 from ray._common.utils import env_float
 from ray.actor import ActorHandle
@@ -155,9 +155,9 @@ class TrainContext:
         self.report_call_index = self.current_report_index
 
     @cached_property
-    def annotation(self) -> Annotation:
+    def annotation_emitter(self) -> AnnotationEmitter:
         """The annotation emitter for this worker, cached as its tags are fixed."""
-        return Annotation(
+        return AnnotationEmitter(
             source=TRAIN_ANNOTATION_SOURCE,
             base_tags={
                 RUN_NAME_TAG_KEY: self.get_experiment_name(),
@@ -506,7 +506,7 @@ class TrainContext:
 
             # Log annotation once every rank has reached the barrier
             if self.get_world_rank() == 0:
-                self.annotation.annotate(
+                self.annotation_emitter.emit(
                     event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
                     metrics=metrics,
                     has_checkpoint=checkpoint is not None,

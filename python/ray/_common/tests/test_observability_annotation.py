@@ -9,7 +9,10 @@ import numpy as np
 import pytest
 
 from ray._common.observability import annotation as annotation_mod
-from ray._common.observability.annotation import Annotation
+from ray._common.observability.annotation import (
+    ANNOTATIONS_ENABLED_ENV_VAR,
+    AnnotationEmitter,
+)
 from ray.util.debug import reset_log_once
 
 ANNOTATION_SOURCE = "test_annotation_source"
@@ -37,6 +40,12 @@ def read_annotations(logs_dir) -> list:
     assert len(paths) == 1, paths
     with open(paths[0], encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+@pytest.fixture(autouse=True)
+def enable_annotations(monkeypatch):
+    # Off by default; see `test_annotation_off_by_default`.
+    monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, "1")
 
 
 @pytest.fixture(autouse=True)
@@ -87,11 +96,11 @@ def captured_warnings():
 def test_annotation_emits_json_line(logs_dir):
     """An annotation is one line: the ``AnnotationEvent`` serialized to a flat
     JSON object, whose field names the dashboard queries match on."""
-    annotation = Annotation(
+    annotation = AnnotationEmitter(
         source=ANNOTATION_SOURCE,
         base_tags={RUN_NAME_TAG_KEY: "my_run", RUN_ID_TAG_KEY: "abc123"},
     )
-    annotation.annotate(
+    annotation.emit(
         event="custom_event",
         # Non-ASCII, which JSON escapes, so the file is ASCII in any locale.
         message="INITIALIZING → RUNNING",
@@ -99,7 +108,7 @@ def test_annotation_emits_json_line(logs_dir):
         epoch=3,
         has_checkpoint=False,
     )
-    annotation.annotate(event="custom_event")
+    annotation.emit(event="custom_event")
 
     first, second = read_annotations(logs_dir)
     assert first["annotation_source"] == ANNOTATION_SOURCE
@@ -129,12 +138,37 @@ def test_annotation_emits_json_line(logs_dir):
     ],
 )
 def test_annotation_field_encoding(logs_dir, value, expected):
-    Annotation(source=ANNOTATION_SOURCE, base_tags={}).annotate(
+    AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={}).emit(
         event="custom_event", metrics=value
     )
 
     (record,) = read_annotations(logs_dir)
     assert json.loads(record["fields"]["metrics"]) == expected
+
+
+@pytest.mark.parametrize("enabled", [None, "0"])
+def test_annotation_off_by_default(monkeypatch, logs_dir, enabled):
+    """Without the log pipeline Ray doesn't provision, nothing reads the
+    annotation lines, so none are written unless enabled."""
+    if enabled is None:
+        monkeypatch.delenv(ANNOTATIONS_ENABLED_ENV_VAR)
+    else:
+        monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, enabled)
+
+    AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={}).emit(event="custom_event")
+
+    assert not logs_dir.exists()
+
+
+def test_annotation_invalid_severity_raises_when_disabled(monkeypatch, logs_dir):
+    """An invalid severity raises whether or not annotations are enabled, so a
+    bad call doesn't start failing only once a platform turns them on."""
+    monkeypatch.delenv(ANNOTATIONS_ENABLED_ENV_VAR)
+
+    with pytest.raises(ValueError, match="Invalid annotation severity"):
+        AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={}).emit(
+            event="custom_event", severity="bogus"
+        )
 
 
 def test_annotation_drops_before_ray_init(monkeypatch, tmp_path):
@@ -144,7 +178,7 @@ def test_annotation_drops_before_ray_init(monkeypatch, tmp_path):
 
     monkeypatch.setattr(worker_mod, "_global_node", None)
 
-    Annotation(source=ANNOTATION_SOURCE, base_tags={}).annotate(event="dropped")
+    AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={}).emit(event="dropped")
 
     assert list(tmp_path.iterdir()) == []
 
@@ -152,14 +186,14 @@ def test_annotation_drops_before_ray_init(monkeypatch, tmp_path):
 def test_annotation_write_failure_reported_once(logs_dir, captured_warnings, capsys):
     """A failed write, such as on a full disk, is warned about once, rather than
     printing the logging module's traceback to stderr on every emit."""
-    annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
+    annotation = AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={})
 
     # `RotatingFileHandler.emit` passes this error on to `handleError`.
     with mock.patch.object(
         logging.FileHandler, "emit", side_effect=OSError("No space left on device")
     ):
         for _ in range(3):
-            annotation.annotate(event="custom_event")
+            annotation.emit(event="custom_event")
 
     assert len(captured_warnings) == 1
     assert "Logging error" not in capsys.readouterr().err
@@ -170,14 +204,14 @@ def test_annotation_forked_process_writes_its_own_file(logs_dir):
     """Each process writes ``annotations_<pid>.log``, including a process forked
     after its parent emitted, such as a fork-based DataLoader worker, which must
     not write into, and rotate, its parent's file."""
-    annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
-    annotation.annotate(event="custom_event", message="from-parent")
+    annotation = AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={})
+    annotation.emit(event="custom_event", message="from-parent")
 
     pid = os.fork()
     if pid == 0:
         # Exit without running pytest's teardown in the child.
         try:
-            annotation.annotate(event="custom_event", message="from-child")
+            annotation.emit(event="custom_event", message="from-child")
         finally:
             os._exit(0)
     os.waitpid(pid, 0)
@@ -197,9 +231,9 @@ def test_annotation_rotates_with_the_node_limits(logs_dir):
     with mock.patch.object(FakeNode, "max_bytes", 1000), mock.patch.object(
         FakeNode, "backup_count", 2
     ):
-        annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
+        annotation = AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={})
         for i in range(50):
-            annotation.annotate(event="custom_event", message=f"event-{i}")
+            annotation.emit(event="custom_event", message=f"event-{i}")
 
     file_name = f"annotations_{os.getpid()}.log"
     assert sorted(os.listdir(str(logs_dir))) == [
@@ -215,13 +249,13 @@ def test_annotation_follows_a_new_session(monkeypatch, tmp_path):
     and closes the previous session's file."""
     import ray._private.worker as worker_mod
 
-    annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
+    annotation = AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={})
     monkeypatch.setattr(worker_mod, "_global_node", FakeNode(str(tmp_path / "a")))
-    annotation.annotate(event="custom_event", message="from-a")
+    annotation.emit(event="custom_event", message="from-a")
     handler_a = annotation_mod._handler
 
     monkeypatch.setattr(worker_mod, "_global_node", FakeNode(str(tmp_path / "b")))
-    annotation.annotate(event="custom_event", message="from-b")
+    annotation.emit(event="custom_event", message="from-b")
 
     assert annotation_mod._handler is not handler_a
     assert handler_a.stream is None

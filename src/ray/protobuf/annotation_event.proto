@@ -32,11 +32,9 @@ package ray.rpc;
 message AnnotationEvent {
   enum Severity {
     SEVERITY_UNSPECIFIED = 0;
-    DEBUG = 1;
-    INFO = 2;
-    WARNING = 3;
-    ERROR = 4;
-    CRITICAL = 5;
+    INFO = 1;
+    WARNING = 2;
+    ERROR = 3;
   }
 
   // The Ray component that emitted the annotation, such as

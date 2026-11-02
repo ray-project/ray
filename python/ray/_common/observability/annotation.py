@@ -4,23 +4,27 @@ import logging.handlers
 import os
 import threading
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Literal, Optional, get_args
 
+from ray._common.utils import env_bool
 from ray._private.protobuf_compat import message_to_dict
 from ray.core.generated.annotation_event_pb2 import AnnotationEvent
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
-# Severities mirror the Python logging levels, so a caller passes the level it
-# would log the same event at.
-_SEVERITY_BY_LEVEL = {
-    logging.DEBUG: AnnotationEvent.Severity.DEBUG,
-    logging.INFO: AnnotationEvent.Severity.INFO,
-    logging.WARNING: AnnotationEvent.Severity.WARNING,
-    logging.ERROR: AnnotationEvent.Severity.ERROR,
-    logging.CRITICAL: AnnotationEvent.Severity.CRITICAL,
-}
+# Annotations are only useful with a log collector and log backend that Ray
+# doesn't provision, so they're off by default
+ANNOTATIONS_ENABLED_ENV_VAR = "RAY_ANNOTATIONS_ENABLED"
+
+
+def annotations_enabled() -> bool:
+    """Whether ``ANNOTATIONS_ENABLED_ENV_VAR`` turns annotations on."""
+    return env_bool(ANNOTATIONS_ENABLED_ENV_VAR, False)
+
+
+Severity = Literal["info", "warning", "error"]
+_SEVERITIES = get_args(Severity)
 
 
 # Log backends drop lines past a size limit (Loki defaults to 256KB), so a
@@ -57,32 +61,6 @@ def _format_field_value(value: Any) -> str:
     return value
 
 
-def parse_severity(severity: Union[str, int]) -> "AnnotationEvent.Severity":
-    """Map a Python logging level to its annotation severity.
-
-    Args:
-        severity: A logging level, as a case-insensitive name such as
-            ``"warning"`` or a number such as ``logging.WARNING``.
-
-    Returns:
-        The annotation severity.
-
-    Raises:
-        ValueError: If ``severity`` is not one of the ``DEBUG``, ``INFO``,
-            ``WARNING``, ``ERROR`` or ``CRITICAL`` levels.
-    """
-    level = severity
-    if isinstance(level, str):
-        level = logging.getLevelName(level.upper())
-    if level not in _SEVERITY_BY_LEVEL:
-        raise ValueError(
-            f"Invalid annotation severity {severity!r}. Expected a logging "
-            "level, one of 'debug', 'info', 'warning', 'error' or 'critical', "
-            "or its number such as `logging.WARNING`."
-        )
-    return _SEVERITY_BY_LEVEL[level]
-
-
 class _RaisingRotatingFileHandler(logging.handlers.RotatingFileHandler):
     """A ``RotatingFileHandler`` that raises write errors to its caller, rather
     than printing a traceback to stderr on every failed emit."""
@@ -101,7 +79,9 @@ if hasattr(os, "register_at_fork"):
     os.register_at_fork(after_in_child=_handler_lock._at_fork_reinit)
 
 
-def _write_line(line: str, logs_dir: str, max_bytes: int, backup_count: int) -> None:
+def _write_annotation_line(
+    line: str, logs_dir: str, max_bytes: int, backup_count: int
+) -> None:
     """Write ``line`` to this process's annotation file in ``logs_dir``.
 
     The handler is replaced, and its file closed, when the logs dir changes (the
@@ -131,14 +111,14 @@ def _write_line(line: str, logs_dir: str, max_bytes: int, backup_count: int) -> 
         _handler.handle(logging.makeLogRecord({"msg": line}))
 
 
-class Annotation:
-    """Emits structured annotation events for Grafana and Loki.
+class AnnotationEmitter:
+    """Emits structured annotation events for dashboards to overlay.
 
     Each event is an
     :class:`~ray.core.generated.annotation_event_pb2.AnnotationEvent` written as
     one JSON line to ``annotations_<pid>.log`` in the Ray session logs dir. A log
-    collector ships those lines to a log backend, and Grafana renders each one as
-    a point annotation. See :ref:`Overlay event annotations on the dashboards
+    collector ships those lines to a log backend, such as Loki, and Grafana renders
+    each one as a point annotation. See :ref:`Overlay event annotations on the dashboards
     <grafana-dashboard-annotations>`.
 
     Args:
@@ -154,28 +134,43 @@ class Annotation:
             key: _format_field_value(value) for key, value in base_tags.items()
         }
 
-    def annotate(
+    def emit(
         self,
         event: str,
         *,
         message: str = "",
-        severity: Union[None, str, int] = None,
+        severity: Optional[Severity] = None,
         **fields: Any,
     ) -> None:
         """Emit a single annotation event to the annotation log file.
 
-        Annotations are best-effort observability, so any failure is swallowed
-        and warned about once rather than raised to the caller. Before Ray is
+        Annotations are best-effort observability, so any failure to write the
+        event is swallowed and warned about once rather than raised to the
+        caller. An invalid ``severity`` is a caller bug, so it raises, whether
+        or not annotations are enabled.
+
+        Unless ``RAY_ANNOTATIONS_ENABLED`` is set, the event is dropped. Before Ray is
         initialized there is no session logs dir, so the event is dropped.
 
         Args:
             event: The event name, such as ``"controller_state_change"``.
             message: Human-readable description, shown as the annotation text.
-            severity: A Python logging level by name or number, or ``None`` for
-                an event with no notion of severity.
+            severity: One of ``"info"``, ``"warning"`` or ``"error"``, or
+                ``None`` for an event with no notion of severity.
             **fields: Event-specific key-value pairs. Values are stringified,
                 because a log backend stores them as string labels.
         """
+        # Raised rather than swallowed below: an event with an invalid severity
+        # matches none of the dashboard layers, so it would silently never show.
+        if severity is not None and severity not in _SEVERITIES:
+            raise ValueError(
+                f"Invalid annotation severity {severity!r}. Expected one of "
+                f"{', '.join(repr(s) for s in _SEVERITIES)}."
+            )
+
+        if not annotations_enabled():
+            return
+
         from ray._private.worker import _global_node
 
         if _global_node is None:
@@ -192,7 +187,7 @@ class Annotation:
                 severity=(
                     AnnotationEvent.Severity.SEVERITY_UNSPECIFIED
                     if severity is None
-                    else parse_severity(severity)
+                    else AnnotationEvent.Severity.Value(severity.upper())
                 ),
                 tags=self._base_tags,
                 fields={
@@ -208,7 +203,7 @@ class Annotation:
                 )
             )
             # Rotate with the same limits as the other files in the logs dir.
-            _write_line(
+            _write_annotation_line(
                 line,
                 _global_node.get_logs_dir_path(),
                 _global_node.max_bytes,

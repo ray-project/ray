@@ -98,6 +98,7 @@ def captured_annotations(monkeypatch):
 
     records = []
 
+    monkeypatch.setenv(annotation_mod.ANNOTATIONS_ENABLED_ENV_VAR, "1")
     monkeypatch.setattr(
         worker_mod,
         "_global_node",
@@ -105,7 +106,7 @@ def captured_annotations(monkeypatch):
     )
     monkeypatch.setattr(
         annotation_mod,
-        "_write_line",
+        "_write_annotation_line",
         lambda line, *args: records.append(json.loads(line)),
     )
     yield records
