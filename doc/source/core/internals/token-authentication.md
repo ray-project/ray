@@ -16,8 +16,8 @@ This page describes the design and architecture of token authentication in Ray, 
 
 The `RAY_AUTH_MODE` environment variable controls Ray's authentication behavior. Ray supports two modes:
 
-- `token`: Static bearer token authentication. The default for local clusters starting in Ray 2.59, and for all clusters starting in Ray 2.61.
-- `disabled`: No authentication. The default for remote and multi-node clusters until Ray 2.61, and the explicit opt-out after that.
+- `token`: Static bearer token authentication. Requires an explicit opt in with `RAY_AUTH_MODE=token`.
+- `disabled`: No authentication. This is the default when `RAY_AUTH_MODE` is unset.
 
 Set `RAY_AUTH_MODE` through the environment, and set it consistently on every node in the Ray cluster. When you set `RAY_AUTH_MODE=token`, Ray turns on token authentication, and all supported RPC and HTTP entry points enforce token-based authentication.
 

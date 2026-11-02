@@ -10,7 +10,6 @@ import requests
 
 from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
-    maybe_enable_token_auth_if_token_available,
 )
 from ray._private.authentication.authentication_utils import (
     is_metrics_auth_skipped,
@@ -271,18 +270,13 @@ def main():
     )
     logging.warning("This script is not intended for production use.")
 
-    # Same auth decision as `ray start`, so local clusters with token auth on by
-    # default are scraped with the token.
-    auth_mode_unset = "RAY_AUTH_MODE" not in os.environ
-    if (
-        not maybe_enable_token_auth_if_token_available(warn_if_disabled=False)
-        and auth_mode_unset
-    ):
+    if "RAY_AUTH_MODE" not in os.environ:
         logging.warning(
-            "No auth token found in RAY_AUTH_TOKEN, RAY_AUTH_TOKEN_PATH or "
-            "~/.ray/auth_token, so the Prometheus config has no authorization "
-            "block. If the cluster runs token auth, every Ray target returns 401 "
-            "unless its nodes set RAY_AUTH_SKIP_METRICS=1."
+            "Token authentication is disabled because RAY_AUTH_MODE is unset, "
+            "so the Prometheus config has no authorization block. If the cluster "
+            "runs token auth, every Ray target returns 401 unless its nodes set "
+            "RAY_AUTH_SKIP_METRICS=1. Set RAY_AUTH_MODE=token to use the "
+            "configured token."
         )
     try:
         authorization_config = get_prometheus_authorization_config()

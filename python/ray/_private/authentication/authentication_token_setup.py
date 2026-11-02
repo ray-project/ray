@@ -1,5 +1,5 @@
-"""Token authentication setup for Ray: enable token mode and make sure a token
-exists. Token loading, caching and creation live in the C++
+"""Token authentication setup for Ray: make sure a token exists when explicitly
+enabled. Token loading, caching and creation live in the C++
 AuthenticationTokenLoader.
 """
 
@@ -14,7 +14,6 @@ from ray._private.authentication.authentication_constants import (
 from ray._raylet import (
     AuthenticationMode,
     AuthenticationTokenLoader,
-    Config,
     get_authentication_mode,
 )
 from ray.exceptions import AuthenticationError
@@ -33,61 +32,19 @@ def _get_default_token_path() -> Path:
     return Path.home() / ".ray" / "auth_token"
 
 
-def _enable_token_auth() -> None:
-    """Enable token authentication for this process and its child processes."""
-    os.environ[AUTH_MODE_ENV_VAR] = "token"
-    # Refresh the cached RayConfig so this process observes token mode too
-    Config.initialize("")
+def warn_if_token_auth_disabled() -> None:
+    """Warn when a head cluster starts without an explicit authentication mode."""
+    if os.environ.get(AUTH_MODE_ENV_VAR) is not None:
+        return
 
-
-def _warn_token_auth_disabled() -> None:
-    """Warn that the local cluster is starting without token authentication."""
     logger.warning(
         "Token authentication is disabled for this Ray cluster. Anyone with "
         "network access to the cluster can run arbitrary code and access its "
         "data. To enable token authentication, generate a token with "
-        f"`ray get-auth-token --generate` or set {AUTH_MODE_ENV_VAR}=token. For "
+        f"`ray get-auth-token --generate` and set {AUTH_MODE_ENV_VAR}=token. For "
         "more information, see "
         "https://docs.ray.io/en/latest/ray-security/token-auth.html"
     )
-
-
-def _warn_token_auth_enabled() -> None:
-    """Warn that the local cluster enabled token auth by default (mode unset)."""
-    logger.warning(
-        "Token authentication is enabled for this Ray cluster. Set "
-        f"{AUTH_MODE_ENV_VAR}=disabled to opt out. For more information, see "
-        "https://docs.ray.io/en/latest/ray-security/token-auth.html"
-    )
-
-
-def maybe_enable_token_auth_if_token_available(warn_if_disabled: bool = True) -> bool:
-    """Enable token auth if RAY_AUTH_MODE is unset and a token already exists."""
-    auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
-    if auth_mode_env is not None:
-        # Mode set explicitly; respect it without warning.
-        return auth_mode_env.lower() == "token"
-
-    if not AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True):
-        if warn_if_disabled:
-            _warn_token_auth_disabled()
-        return False
-
-    _enable_token_auth()
-    _warn_token_auth_enabled()
-    return True
-
-
-def enable_token_auth_by_default() -> bool:
-    """Enable token auth by default for a new local ``ray.init()`` cluster."""
-    auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
-    if auth_mode_env is not None:
-        # Mode set explicitly; respect it without warning.
-        return auth_mode_env.lower() == "token"
-
-    _enable_token_auth()
-    _warn_token_auth_enabled()
-    return True
 
 
 def ensure_token_if_auth_enabled(
