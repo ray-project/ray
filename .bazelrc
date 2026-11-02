@@ -276,6 +276,9 @@ build:ubsan --linkopt -fno-sanitize-recover=all
 # function-pointer comparison in a constexpr no longer a constant expression.
 # They have to follow -fsanitize=undefined, so they live in the same flag list.
 build:ubsan --per_file_copt="-external/com_github_grpc_grpc/.*@-fsanitize=undefined,-fno-sanitize=null,-fno-sanitize=nonnull-attribute,-fno-sanitize=returns-nonnull-attribute"
+# GCC 11 reports a false -Wmaybe-uninitialized in protobuf's generated
+# move-assignment (CanMoveWithInternalSwap) when inlined under ubsan.
+build:ubsan --copt -Wno-error=maybe-uninitialized
 
 build:cgroup --sandbox_writable_path=/sys/fs/cgroup --config=llvm
 
