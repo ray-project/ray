@@ -1,5 +1,4 @@
-"""
-TQC Catalog for building TQC-specific models.
+"""TQC Catalog for building TQC-specific models.
 
 TQC uses multiple quantile critics, each outputting n_quantiles values.
 """

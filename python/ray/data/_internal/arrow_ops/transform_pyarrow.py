@@ -159,8 +159,7 @@ def _hash_partition_vectorized(
     projected_table: "pyarrow.Table",
     num_partitions: int,
 ) -> np.ndarray:
-    """
-    For each row, calculates hash(row_values) % num_partitions in a vectorized
+    """For each row, calculates hash(row_values) % num_partitions in a vectorized
     manner using Polars, falling back to :func:`_hash_partition` when Polars is
     unavailable or cannot handle the input.
 
@@ -486,8 +485,7 @@ def _reconcile_diverging_fields(
     unique_schemas: List["pyarrow.Schema"],
     promote_types: bool,
 ) -> Dict[str, Any]:
-    """
-    Identify and reconcile fields whose presence or types differ across the provided schemas.
+    """Identify and reconcile fields whose presence or types differ across the provided schemas.
 
     Args:
         unique_schemas: List of PyArrow schemas to find diverging fields in.
@@ -546,8 +544,7 @@ def _reconcile_field(
     field_types: List[pyarrow.DataType],
     promote_types: bool = False,
 ) -> Optional[pyarrow.DataType]:
-    """
-    Reconcile a single divergent field across schemas.
+    """Reconcile a single divergent field across schemas.
 
     Returns reconciled type or None if default PyArrow handling is sufficient.
     ``pa.null()`` entries are stripped first — null unifies with any type.
@@ -648,8 +645,7 @@ def reorder_columns_by_schema(
 def unify_schemas(
     schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
-    """
-    Unify schemas handling Ray-specific types (tensors, objects, etc.).
+    """Unify schemas handling Ray-specific types (tensors, objects, etc.).
 
     Falls back to PyArrow's unify_schemas when possible, with custom
     handling for tensor arrays, object types, and recursive struct unification.
@@ -710,9 +706,7 @@ def unify_schemas(
 
 
 def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
-    """
-    Concatenate provided chunked arrays into a single chunked array.
-    """
+    """Concatenate provided chunked arrays into a single chunked array."""
     from ray.data.extensions import get_arrow_extension_tensor_types
 
     tensor_types = get_arrow_extension_tensor_types()
@@ -751,8 +745,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
 def _extract_unified_struct_types(
     schema: "pyarrow.Schema",
 ) -> Dict[str, "pyarrow.StructType"]:
-    """
-    Extract all struct fields from a schema and map their names to types.
+    """Extract all struct fields from a schema and map their names to types.
 
     Args:
         schema: Arrow schema to extract struct types from.
@@ -772,8 +765,7 @@ def _backfill_missing_fields(
     unified_struct_type: "pyarrow.StructType",
     block_length: int,
 ) -> "pyarrow.StructArray":
-    """
-    Align a struct column's fields to match the unified schema's struct type.
+    """Align a struct column's fields to match the unified schema's struct type.
 
     Args:
         column: The column data to align.
@@ -891,8 +883,7 @@ def _backfill_missing_fields(
 def _align_struct_fields(
     blocks: List["pyarrow.Table"], schema: "pyarrow.Schema"
 ) -> List["pyarrow.Table"]:
-    """
-    Align struct columns across blocks to match the provided schema.
+    """Align struct columns across blocks to match the provided schema.
 
     Struct columns in each block are backfilled with nulls for fields present
     in the unified schema but missing in that block. Struct fields absent from

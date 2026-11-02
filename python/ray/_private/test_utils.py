@@ -31,6 +31,7 @@ import ray._private.services
 import ray._private.services as services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import (
     DEFAULT_DRIVER_TIMEOUT_SECONDS,
@@ -94,7 +95,7 @@ def call_with_auth_token(rpc, request, **kwargs):
     import grpc
 
     from ray._private.authentication.authentication_constants import (
-        AUTH_MODE_MISMATCH_ERROR_MESSAGE,
+        TOKEN_AUTH_ERROR_MESSAGE,
     )
 
     try:
@@ -102,7 +103,7 @@ def call_with_auth_token(rpc, request, **kwargs):
     except grpc.RpcError as e:
         # The token comes from this process's token file whatever the cluster's
         # mode, and a cluster with auth disabled rejects it.
-        if AUTH_MODE_MISMATCH_ERROR_MESSAGE not in (e.details() or ""):
+        if TOKEN_AUTH_ERROR_MESSAGE not in (e.details() or ""):
             raise
         return rpc(request, **kwargs)
 
@@ -1345,6 +1346,10 @@ def placement_group_assert_no_leak(pgs_created):
 
     def wait_for_resource_recovered():
         for resource, val in ray.available_resources().items():
+            # The detached AutoscalingCoordinator holds part of the head
+            # node resource until the cluster shuts down.
+            if resource == HEAD_NODE_RESOURCE_NAME:
+                continue
             if resource in cluster_resources and cluster_resources[resource] != val:
                 return False
             if "_group_" in resource:
