@@ -16,6 +16,7 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
+    MAX_CONCURRENT_LAUNCHES_KEY,
     RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -402,7 +403,9 @@ class AutoscalingConfig:
         return self.get_config("upscaling_speed", DEFAULT_UPSCALING_SPEED)
 
     def get_max_concurrent_launches(self) -> int:
-        return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
+        return self.get_provider_config().get(
+            MAX_CONCURRENT_LAUNCHES_KEY, AUTOSCALER_MAX_CONCURRENT_LAUNCHES
+        )
 
     def disable_node_updaters(self) -> bool:
         provider_config = self._configs.get("provider", {})
