@@ -1528,6 +1528,13 @@ class DeploymentDetails(BaseModel):
             "number for other deployments."
         )
     )
+    num_running_replicas_at_target_version: Optional[NonNegativeInt] = Field(
+        default=None,
+        description=(
+            "The number of RUNNING replicas at the current target version. "
+            "This field is unset when the value is unavailable."
+        ),
+    )
     required_resources: Dict = Field(
         description="The resources required per replica of this deployment."
     )

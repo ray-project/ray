@@ -1317,6 +1317,9 @@ def test_redeploy_new_version(mock_deployment_state_manager):
         total=2,
         by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v2)],
     )
+    deployment_details = dsm.get_deployment_details(TEST_DEPLOYMENT_ID)
+    assert deployment_details.target_num_replicas == 1
+    assert deployment_details.num_running_replicas_at_target_version == 0
 
     # Mark old replica as stopped.
     ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
@@ -1327,6 +1330,8 @@ def test_redeploy_new_version(mock_deployment_state_manager):
     ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     dsm.update()
     check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+    deployment_details = dsm.get_deployment_details(TEST_DEPLOYMENT_ID)
+    assert deployment_details.num_running_replicas_at_target_version == 1
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     assert (
         ds.curr_status_info.status_trigger
@@ -1341,6 +1346,10 @@ def test_redeploy_new_version(mock_deployment_state_manager):
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
+    # The old-version replica remains RUNNING until the next update.
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+    deployment_details = dsm.get_deployment_details(TEST_DEPLOYMENT_ID)
+    assert deployment_details.num_running_replicas_at_target_version == 0
 
     dsm.update()
     # New replica should start without waiting for old one to stop

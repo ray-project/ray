@@ -69,6 +69,9 @@ export const ServeDeploymentDetailPage = () => {
     constrainedPage,
     maxPage,
   } = sliceToPage(filteredReplicas, page.pageNo, page.pageSize);
+  const readyReplicaCount =
+    deployment.num_running_replicas_at_target_version ?? "-";
+  const targetReplicaCount = deployment.target_num_replicas ?? "-";
 
   return (
     <Box sx={{ padding: 3 }}>
@@ -96,9 +99,9 @@ export const ServeDeploymentDetailPage = () => {
             },
           },
           {
-            label: "Replicas",
+            label: "Ready / target replicas",
             content: {
-              value: `${Object.keys(deployment.replicas).length}`,
+              value: `${readyReplicaCount} / ${targetReplicaCount}`,
             },
           },
           {
