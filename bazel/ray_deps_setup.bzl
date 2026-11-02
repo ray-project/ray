@@ -361,7 +361,11 @@ def ray_deps_setup():
             # gRPC 1.69 turns on its EventEngine client and listener on Windows
             # (1.58 marked them broken there). They abort at teardown
             # (win_socket.cc: Check failed: is_shutdown_), so keep Windows on the
-            # iomgr path 1.58 used. Posix is unaffected.
+            # iomgr path 1.58 used. Posix is unaffected. The EventEngine
+            # callback CQ goes too: with it on, Windows iomgr reports that it
+            # runs in the background, so callback-API code gets no thread
+            # polling the iomgr sockets and connections never complete in a
+            # process with no CompletionQueue-based gRPC.
             "@io_ray//thirdparty/patches:grpc-windows-disable-event-engine.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
