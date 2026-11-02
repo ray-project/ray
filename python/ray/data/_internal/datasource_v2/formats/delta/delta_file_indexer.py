@@ -31,6 +31,9 @@ from typing_extensions import override
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
+from ray.data._internal.datasource_v2.formats.delta.delta_file_pruning import (
+    statistics_keep_mask,
+)
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     FooterFileIndexer,
 )
@@ -52,6 +55,7 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
+    from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
 
@@ -246,13 +250,35 @@ class _DeltaLogListing:
         """Yield the table's data files at the pinned version.
 
         ``paths`` holds the table label from ``DeltaDatasourceV2.paths`` and is
-        not read. Paths are relative to the table root and sorted, so a seeded
-        shuffle and ``preserve_order`` don't depend on the log's order.
-        Zero-size files are skipped and ``pruners`` applied, as the directory
-        listing does.
+        not read.
+        """
+        yield from self._log_file_infos(pruners or [], predicate=None)
+
+    def _log_file_infos(
+        self, pruners: List["FilePruner"], predicate: Optional["Expr"]
+    ) -> Iterator[FileInfo]:
+        """The data files of the pinned version that may hold matching rows.
+
+        Files whose log statistics rule out ``predicate`` are left out. Paths
+        are relative to the table root and sorted, so a seeded shuffle and
+        ``preserve_order`` don't depend on the log's order. Zero-size files are
+        skipped and ``pruners`` applied, as the directory listing does.
         """
         add_actions = self._snapshot.add_actions()
         _check_no_literal_null_partition_values(add_actions, self._partition_columns)
+        num_files = add_actions.num_rows
+        if predicate is not None:
+            keep = statistics_keep_mask(add_actions, predicate)
+            if keep is not None:
+                add_actions = add_actions.filter(keep)
+        logger.debug(
+            "Delta table %s version %d: %d of %d data files may match %s",
+            self._snapshot.table_uri,
+            self._snapshot.version,
+            add_actions.num_rows,
+            num_files,
+            predicate,
+        )
         file_infos = sorted(
             (
                 FileInfo(path=resolve_data_file_path(path), size=size)
@@ -263,13 +289,7 @@ class _DeltaLogListing:
             ),
             key=lambda info: info.path,
         )
-        logger.debug(
-            "Delta table %s version %d has %d data files",
-            self._snapshot.table_uri,
-            self._snapshot.version,
-            len(file_infos),
-        )
-        yield from self._filter_file_infos(file_infos, pruners or [])
+        yield from self._filter_file_infos(file_infos, pruners)
 
     def _filter_file_infos(
         self, file_infos: Iterable[FileInfo], pruners: List["FilePruner"]
@@ -292,11 +312,17 @@ class _DeltaLogListing:
         paths: "BlockColumn",
         *,
         filesystem: Optional["FileSystem"] = None,
+        pruners: Optional[List["FilePruner"]] = None,
+        predicate: Optional["Expr"] = None,
         **kwargs: Any,
     ) -> Iterable["FileManifest"]:
-        self._default_shuffle(kwargs)
-        # pyrefly: ignore[missing-attribute]
-        return super().list_files(paths, filesystem=self._filesystem, **kwargs)
+        # The base class's ``list_files`` would list through
+        # ``list_file_infos``, which doesn't see the predicate.
+        return self.list_files_from_file_infos(
+            self._log_file_infos(pruners or [], predicate),
+            predicate=predicate,
+            **kwargs,
+        )
 
     def list_files_from_file_infos(
         self,

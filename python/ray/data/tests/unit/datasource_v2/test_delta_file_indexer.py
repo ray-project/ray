@@ -19,6 +19,7 @@ from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
 )
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION, PartitionStyle
+from ray.data.expressions import col
 
 deltalake = pytest.importorskip("deltalake")
 
@@ -206,6 +207,40 @@ def test_whole_file_listing_honors_excluded_read_units(tmp_path, excluded_index)
 
     listed = [p for m in manifests for p in m.paths.tolist()]
     assert listed == [p for i, p in enumerate(paths) if i != excluded_index]
+
+
+@pytest.mark.parametrize(
+    "predicate, expected_files",
+    [
+        (None, [0, 1, 2]),
+        (col("x") >= 20, [2]),
+        (col("x") < 5, [0]),
+        ((col("x") > 12) & (col("x") < 18), [1]),
+        (col("x") > 100, []),
+        (col("x") != 5, [0, 1, 2]),
+    ],
+    ids=str,
+)
+def test_listing_skips_files_the_log_statistics_rule_out(
+    tmp_path, predicate, expected_files
+):
+    """Three commits, one file each, with x in [0, 9], [10, 19] and [20, 29]."""
+    path = str(tmp_path / "table")
+    for start in (0, 10, 20):
+        mode = "append" if start else "error"
+        _write(path, pa.table({"x": list(range(start, start + 10))}), mode=mode)
+    files_by_commit = []
+    for version in range(3):
+        (new_file,) = set(_log_paths(path, version=version)) - set(files_by_commit)
+        files_by_commit.append(new_file)
+    indexer = _indexer(path).as_whole_file_indexer()
+
+    manifests = indexer.list_files(
+        pa.array(["label"]), filesystem=None, predicate=predicate
+    )
+
+    listed = sorted(p for m in manifests for p in m.paths.tolist())
+    assert listed == sorted(files_by_commit[i] for i in expected_files)
 
 
 def test_whole_file_indexer_lists_from_the_log(partitioned_table):
