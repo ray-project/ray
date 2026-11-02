@@ -2,12 +2,12 @@ import os
 
 import ray
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
-    BaseConnectorBackend,
     DefaultPDProtocolMixin,
+    VLLMConnectorBackend,
 )
 
 
-class NixlConnectorBackend(DefaultPDProtocolMixin, BaseConnectorBackend):
+class NixlConnectorBackend(DefaultPDProtocolMixin, VLLMConnectorBackend):
     def _set_side_channel_port(self):
         from vllm import envs as vllm_envs
 
