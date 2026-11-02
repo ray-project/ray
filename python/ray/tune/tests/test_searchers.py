@@ -370,6 +370,205 @@ def test_optuna_add_evaluated_trials_mixed_statuses(container, status, tmp_path)
     assert not caught
 
 
+def _make_optuna_failed_trial_with_fixed_parameters(nested):
+    from optuna.distributions import FloatDistribution
+
+    from ray.tune.search.optuna import OptunaSearch
+    from ray.tune.search.search_generator import SearchGenerator
+    from ray.tune.utils.mock_trainable import (
+        MOCK_TRAINABLE_NAME,
+        register_mock_trainable,
+    )
+
+    register_mock_trainable()
+    config = {"x": tune.uniform(0.0, 5.0), "fixed": 7}
+    param_name = "x"
+    if nested:
+        config = {"group": config, "outer_fixed": 11}
+        param_name = "group/x"
+    space = {param_name: FloatDistribution(0.0, 5.0)}
+    source = OptunaSearch(
+        space=space,
+        metric="metric",
+        mode="max",
+        points_to_evaluate=[{param_name: 2.0}],
+    )
+    generator = SearchGenerator(source)
+    generator.add_configurations(
+        {"test": {"run": MOCK_TRAINABLE_NAME, "config": config}}
+    )
+    trial = generator.next_trial()
+    expected = {"x": 2.0, "fixed": 7}
+    if nested:
+        expected = {"group": expected, "outer_fixed": 11}
+    assert trial.config == expected
+    trial.set_status(Trial.ERROR)
+    generator.on_trial_complete(trial.trial_id, error=True)
+    return trial, space
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["flat", "nested"])
+@pytest.mark.parametrize(
+    "container",
+    [None, list, tuple, ExperimentAnalysis],
+    ids=["trial", "list", "tuple", "analysis"],
+)
+def test_optuna_add_evaluated_trials_with_fixed_parameters(nested, container, tmp_path):
+    from optuna.trial import TrialState
+
+    from ray.tune.search.optuna import OptunaSearch
+
+    trial, space = _make_optuna_failed_trial_with_fixed_parameters(nested)
+    original = deepcopy(trial.config)
+    if container is ExperimentAnalysis:
+        trials = ExperimentAnalysis(
+            str(tmp_path / "experiment_state.json"), trials=[trial]
+        )
+    else:
+        trials = trial if container is None else container([trial])
+    target = OptunaSearch(space=space, metric="metric", mode="max")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        target.add_evaluated_trials(trials, "metric")
+
+    stored = target._ot_study.trials
+    assert len(stored) == 1
+    assert stored[0].params == {"group/x" if nested else "x": 2.0}
+    assert stored[0].distributions == space
+    assert stored[0].state == TrialState.FAIL
+    assert stored[0].value is None
+    assert trial.config == original
+    assert len(caught) == 1
+    assert "No completed trial returned the specified metric" in str(caught[0].message)
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["flat", "nested"])
+@pytest.mark.parametrize(
+    "container", [list, tuple, ExperimentAnalysis], ids=["list", "tuple", "analysis"]
+)
+def test_optuna_fixed_parameters_continues_batch(nested, container, tmp_path):
+    from optuna.trial import TrialState
+
+    from ray.tune.result import DONE
+    from ray.tune.search.optuna import OptunaSearch
+
+    errored, space = _make_optuna_failed_trial_with_fixed_parameters(nested)
+    original = deepcopy(errored.config)
+    completed_config = {"x": 3.0}
+    if nested:
+        completed_config = {"group": completed_config}
+    completed = Trial("stub", config=completed_config, stub=True)
+    completed.set_status(Trial.TERMINATED)
+    completed.update_last_result({"metric": 0.0, DONE: True})
+    trials = [errored, completed]
+    if container is ExperimentAnalysis:
+        trials = ExperimentAnalysis(
+            str(tmp_path / "experiment_state.json"), trials=trials
+        )
+    else:
+        trials = container(trials)
+    target = OptunaSearch(space=space, metric="metric", mode="max")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        target.add_evaluated_trials(trials, "metric")
+
+    param_name = "group/x" if nested else "x"
+    assert [(t.params, t.state, t.value) for t in target._ot_study.trials] == [
+        ({param_name: 2.0}, TrialState.FAIL, None),
+        ({param_name: 3.0}, TrialState.COMPLETE, 0.0),
+    ]
+    assert all(t.distributions == space for t in target._ot_study.trials)
+    assert errored.config == original
+    assert completed.config == completed_config
+    assert not caught
+
+
+@pytest.mark.parametrize("form", ["flat", "nested", "flattened"])
+@pytest.mark.parametrize("state", ["COMPLETE", "FAIL", "PRUNED"])
+def test_optuna_add_evaluated_point_filters_fixed_parameters(form, state):
+    from optuna.distributions import FloatDistribution
+    from optuna.trial import TrialState
+
+    from ray.tune.search.optuna import OptunaSearch
+
+    param_name = "x" if form == "flat" else "group/x"
+    parameters = {"x": 2.0, "fixed": 7}
+    if form == "nested":
+        parameters = {"group": parameters, "outer_fixed": 11}
+    elif form == "flattened":
+        parameters = {"group/x": 2.0, "group/fixed": 7, "outer_fixed": 11}
+    original = deepcopy(parameters)
+    space = {param_name: FloatDistribution(0.0, 5.0)}
+    target = OptunaSearch(space=space, metric="metric", mode="max")
+    value = 0.0 if state == "COMPLETE" else 1.0
+
+    target.add_evaluated_point(
+        parameters,
+        value,
+        error=state == "FAIL",
+        pruned=state == "PRUNED",
+        intermediate_values=[0.2, 0.5],
+    )
+
+    stored = target._ot_study.trials
+    assert len(stored) == 1
+    assert stored[0].params == {param_name: 2.0}
+    assert stored[0].distributions == space
+    assert stored[0].state == getattr(TrialState, state)
+    assert stored[0].value == (None if state == "FAIL" else value)
+    assert stored[0].intermediate_values == {0: 0.2, 1: 0.5}
+    assert parameters == original
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["flat", "nested"])
+def test_optuna_add_evaluated_point_rejects_missing_search_parameters(nested):
+    from optuna.distributions import FloatDistribution
+
+    from ray.tune.search.optuna import OptunaSearch
+
+    space = {"x": FloatDistribution(0.0, 5.0), "y": FloatDistribution(0.0, 5.0)}
+    parameters = {"x": 2.0, "fixed": 7}
+    if nested:
+        space = {"group/" + name: distribution for name, distribution in space.items()}
+        parameters = {"group": parameters}
+    original = deepcopy(parameters)
+    target = OptunaSearch(space=space, metric="metric", mode="max")
+
+    with pytest.raises(ValueError, match="Inconsistent parameters"):
+        target.add_evaluated_point(parameters, None, error=True)
+
+    assert not target._ot_study.trials
+    assert parameters == original
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["flat", "nested"])
+def test_optuna_add_evaluated_point_preserves_none_category(nested):
+    from optuna.distributions import CategoricalDistribution
+    from optuna.trial import TrialState
+
+    from ray.tune.search.optuna import OptunaSearch
+
+    param_name = "group/choice" if nested else "choice"
+    space = {param_name: CategoricalDistribution([None, "a"])}
+    parameters = {"choice": None, "fixed": 7}
+    if nested:
+        parameters = {"group": parameters}
+    original = deepcopy(parameters)
+    target = OptunaSearch(space=space, metric="metric", mode="max")
+
+    target.add_evaluated_point(parameters, 0.0)
+
+    stored = target._ot_study.trials
+    assert len(stored) == 1
+    assert stored[0].params == {param_name: None}
+    assert stored[0].distributions == space
+    assert stored[0].state == TrialState.COMPLETE
+    assert stored[0].value == 0.0
+    assert parameters == original
+
+
 class AddEvaluatedPointTest(unittest.TestCase):
     """
     Test add_evaluated_point method in searchers that support it.

@@ -26,7 +26,12 @@ from ray.tune.search.sample import (
     Uniform,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict, validate_warmstart
+from ray.tune.utils.util import (
+    flatten_dict,
+    unflatten_dict,
+    unflattened_lookup,
+    validate_warmstart,
+)
 
 try:
     import optuna as ot
@@ -600,6 +605,14 @@ class OptunaSearch(Searcher):
                 "search space to `tune.Tuner()`."
             )
 
+        # A trial config can include constants and nested parameters.
+        missing = object()
+        evaluated_parameters = {}
+        for name in self._space:
+            param_value = unflattened_lookup(name, parameters, default=missing)
+            if param_value is not missing:
+                evaluated_parameters[name] = param_value
+
         ot_trial_state = OptunaTrialState.COMPLETE
         if error:
             ot_trial_state = OptunaTrialState.FAIL
@@ -623,7 +636,7 @@ class OptunaSearch(Searcher):
         trial = ot.trial.create_trial(
             state=ot_trial_state,
             value=value,
-            params=parameters,
+            params=evaluated_parameters,
             distributions=self._space,
             intermediate_values=intermediate_values_dict,
         )
