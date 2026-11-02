@@ -1474,7 +1474,12 @@ class ResourceDemandScheduler(IResourceScheduler):
         ], "Other termination causes don't have to select nodes for termination."
 
         for node in terminated_nodes:
+            was_to_launch = node.status == SchedulingNodeStatus.TO_LAUNCH
             node.status = SchedulingNodeStatus.TO_TERMINATE
+            if was_to_launch:
+                # The launch is only cancelled: there is no instance to terminate, and a
+                # request without an instance id would fail the instance manager update.
+                continue
             node.termination_request = TerminationRequest(
                 id=str(uuid.uuid4()),
                 instance_id=node.im_instance_id,
@@ -1557,15 +1562,15 @@ class ResourceDemandScheduler(IResourceScheduler):
                     f"Adding {min_count - cur_count} nodes to satisfy min count for "
                     f"node type: {node_type}."
                 )
+                # One node per launch: a list repeating a single node would make every
+                # launch the same object, so cancelling one would cancel them all.
                 new_nodes.extend(
-                    [
-                        SchedulingNode.from_node_config(
-                            copy.deepcopy(node_type_config),
-                            status=SchedulingNodeStatus.TO_LAUNCH,
-                            node_kind=NodeKind.WORKER,
-                        )
-                    ]
-                    * (min_count - cur_count)
+                    SchedulingNode.from_node_config(
+                        copy.deepcopy(node_type_config),
+                        status=SchedulingNodeStatus.TO_LAUNCH,
+                        node_kind=NodeKind.WORKER,
+                    )
+                    for _ in range(min_count - cur_count)
                 )
         # NOTE: we assume the aggregated number of min workers across all node types
         # should not exceed any globally enforced max_num_nodes
