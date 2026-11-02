@@ -2550,9 +2550,14 @@ class ActorHandle(Generic[T]):
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
             labels: Optional key-value labels to attach to this actor method task.
-            consume_once: Private. If True, each return value can be passed to exactly one
-                actor method call and can't be borrowed. The object will be moved(deleted) from producer
-                upon consumption.
+            consume_once: Private, experimental and not part of the public API. If
+                True, each return value can be passed as an argument to exactly one
+                actor method call and can't be borrowed (for example, nested inside
+                another object or returned from a task). If the consuming actor runs
+                on another node, the value is moved there: once the consumer's node
+                has its copy, the copy in the object store on the producing actor's
+                node is freed. If the consumer runs on the same node, it uses that
+                copy, and nothing is copied.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
