@@ -208,12 +208,34 @@ def _plan_join_shuffle_v2(
     )
 
 
+def _unsupported_join_condition_error(logical_op: Join) -> Exception:
+    """``ExtractEquiJoinKeys`` turns the equality conjuncts of a join
+    ``condition`` into hash keys; a condition still on the operator at
+    planning time is either unresolvable (unknown input schemas) or a residual
+    nothing can execute yet."""
+    if logical_op.resolve_condition() is None:
+        return ValueError(
+            "Cannot resolve the columns of the join `condition` "
+            f"{logical_op.condition} because the schema of at least one join "
+            "input could not be inferred. Pass the equality keys through "
+            "`on`/`right_on` instead."
+        )
+    return NotImplementedError(
+        "Only equalities between a column of the left input and a column of "
+        "the right input are supported in a join `condition`; the remainder "
+        f"{logical_op.condition} is not. Apply it with `filter()` after the "
+        "join instead."
+    )
+
+
 def plan_join_op(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
+    if logical_op.condition is not None:
+        raise _unsupported_join_condition_error(logical_op)
     if data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
         return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
     return JoinOperator(

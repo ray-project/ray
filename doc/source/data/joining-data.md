@@ -41,6 +41,44 @@ Ray Data supports the following join types:
 
 See {meth}`Dataset.join <ray.data.Dataset.join>` for the current list.
 
+(join-conditions)=
+
+## Join on more than one column pair
+
+`on` and `right_on` name the key columns that Ray Data hash-partitions both datasets on, and they accept several columns. When the two datasets must agree on more than one column pair, list every pair as a key instead of filtering after the join: a filter runs only after the join has materialized every row pair that matches the first key, while a composite key lets the hash partitioning enforce all of them.
+
+You can also pass the extra equalities as a `condition` expression over the input column names. Ray Data moves each `col("a") == col("b")` conjunct that compares a column of one dataset with a column of the other into the join keys, so the two joins below are the same:
+
+```{testcode}
+from ray.data.expressions import col
+
+orders_ds = ray.data.from_items(
+    [{"order_id": i, "customer": i % 3, "region": i % 2} for i in range(6)]
+)
+customers_ds = ray.data.from_items(
+    [{"id": i, "home_region": i % 2} for i in range(3)]
+)
+
+composite_key_ds = orders_ds.join(
+    customers_ds,
+    join_type="inner",
+    num_partitions=2,
+    on=("customer", "region"),
+    right_on=("id", "home_region"),
+)
+
+condition_ds = orders_ds.join(
+    customers_ds,
+    join_type="inner",
+    num_partitions=2,
+    on=("customer",),
+    right_on=("id",),
+    condition=col("region") == col("home_region"),
+)
+```
+
+A column that becomes a key this way behaves like any other key column: the result keeps the left column, `region`, and coalesces the right one, `home_region`, into it, so the right column doesn't appear in the output. A `condition` complements `on`; it can't replace it. A column name that exists in both datasets is ambiguous in a `condition`, so rename it on one side first. Conjuncts that aren't an equality between a column of each dataset, such as `col("quantity") < col("limit")`, aren't supported yet; apply those with {meth}`Dataset.filter <ray.data.Dataset.filter>` after the join.
+
 Internally, joins hash-partition both datasets on the join keys and join each partition with Polars. By default, joins use {ref}`shuffle v2 <shuffle-v2>`, which is the `ShuffleStrategy.SHUFFLE_V2` strategy. See {ref}`Tune shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE` before you create a `Dataset`.
 
 (configuring-joins)=
