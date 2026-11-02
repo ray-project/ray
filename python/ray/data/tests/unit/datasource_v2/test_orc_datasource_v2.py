@@ -26,6 +26,27 @@ from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
 
+def test_read_pruning_does_not_depend_on_listing_hook(tmp_path):
+    class NoListingPruner(OrcScanner):
+        def pushed_partition_pruner(self):
+            return None
+
+    scanner = NoListingPruner(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.int64())]),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    ).prune_partitions(col("year") == 2024)
+    paths = [
+        str(tmp_path / "root.orc"),
+        str(tmp_path / "year=2024" / "data.orc"),
+        str(tmp_path / "year=2023" / "data.orc"),
+    ]
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=[1] * 3, chunk_metadatas=[None] * 3
+    )
+    assert scanner.pushed_partition_pruner() is None
+    assert scanner.prune_input_split(manifest).paths.tolist() == paths[:2]
+
+
 def _write_orc(path, table):
     with pa.OSFile(str(path), "wb") as sink:
         orc.write_table(table, sink)
@@ -65,12 +86,16 @@ def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
     assert schema.field("path").type == pa.string()
 
 
-def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
+@pytest.mark.parametrize("root_first", [False, True])
+def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, root_first):
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     file_path = partition_dir / "data.orc"
     _write_orc(file_path, pa.table({"id": [1]}))
-    sample = _manifest_of([file_path])
+    root = tmp_path / "root.orc"
+    _write_orc(root, pa.table({"id": [0]}))
+    paths = [root, file_path] if root_first else [file_path, root]
+    sample = _manifest_of(paths)
     datasource = OrcDatasourceV2(
         [str(tmp_path)],
         partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
@@ -79,6 +104,9 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
 
     resolved = datasource.resolve_partitioning(sample)
 
+    assert datasource._partitioning is not None
+    assert datasource._partitioning.field_names is None
+    assert resolved is not datasource._partitioning
     assert resolved is not None
     assert resolved.field_names == ["year"]
     assert isinstance(datasource._get_file_indexer(), NonSamplingFileIndexer)

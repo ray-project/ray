@@ -24,6 +24,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
+)
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
@@ -119,6 +122,55 @@ def test_derives_state_the_scanner_accepted(tmp_path):
     assert list_files.predicate is predicate
     assert list_files.projected_columns == ["a"]
     assert list_files.limit == 5
+
+
+@pytest.mark.parametrize(
+    "shuffle_config,expected_limit",
+    [
+        (None, 10),
+        (FileShuffleConfig(seed=1), 10),
+        (FileShuffleConfig(seed=1, small_chunks_shuffle=True), None),
+    ],
+    ids=["no_shuffle", "file_shuffle", "small_chunks_shuffle"],
+)
+def test_partition_condition_reaches_reader_with_shuffle_aware_listing_limit(
+    tmp_path, shuffle_config, expected_limit
+):
+    read_files = _mk_read_files(tmp_path)
+    schema = read_files.schema.append(pa.field("year", pa.string()))
+    scanner = ParquetScanner(
+        schema=schema,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+    ).prune_partitions(col("year") == "2024")
+    scanner, _ = scanner.push_filters(col("a") > 2)
+    assert isinstance(scanner, ParquetScanner)
+    scanner = scanner.push_limit(10)
+    assert isinstance(scanner, ParquetScanner)
+    read_files = replace(
+        read_files,
+        scanner=scanner,
+        input_dependencies=[
+            replace(
+                _source_list_files(read_files),
+                shuffle_config_factory=lambda: shuffle_config,
+            )
+        ],
+    )
+    list_files = _list_files_of(_apply(read_files))
+    assert list_files.limit == expected_limit
+    assert scanner.pushed_limit() == 10
+    assert list_files.predicate is not None
+    assert list_files.partition_pruner is not None
+    assert list_files.predicate.structurally_equals(col("a") > 2)
+    assert list_files.partition_pruner.should_include(str(tmp_path / "root.parquet"))
+    assert not list_files.partition_pruner.should_include(
+        str(tmp_path / "year=2023" / "data.parquet")
+    )
+    reader = scanner.create_reader()
+    assert reader._predicate is not None
+    assert reader._predicate.structurally_equals(
+        (col("a") > 2) & (col("year") == "2024")
+    )
 
 
 @pytest.mark.parametrize(

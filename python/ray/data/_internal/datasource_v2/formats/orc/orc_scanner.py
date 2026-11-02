@@ -22,33 +22,8 @@ from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.planner.plan_expression.expression_visitors import (
-    get_column_references,
-)
-from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
-
-
-class _OrcPartitionPredicatePruner(PartitionPredicatePruner):
-    """Keep paths whose missing keys require evaluation by the ORC reader."""
-
-    def __init__(
-        self,
-        partitioning: Partitioning,
-        predicate: Expr,
-        *,
-        schema: Optional[pa.Schema] = None,
-    ):
-        super().__init__(partitioning, predicate, schema=schema)
-        self._predicate_columns = set(get_column_references(predicate))
-
-    @override
-    def should_include(self, path: str) -> bool:
-        partitions = self._parser(path)
-        if not self._predicate_columns.issubset(partitions):
-            return True
-        return super().should_include(path)
 
 
 @DeveloperAPI
@@ -79,8 +54,11 @@ class OrcScanner(ArrowFileScanner):
     def _create_partition_pruner(self) -> Optional[FilePruner]:
         if self.partitioning is None or self.partition_predicate is None:
             return None
-        return _OrcPartitionPredicatePruner(
-            self.partitioning, self.partition_predicate, schema=self.schema
+        return PartitionPredicatePruner(
+            self.partitioning,
+            self.partition_predicate,
+            schema=self.schema,
+            keep_unknown=True,
         )
 
     def read_schema(self) -> pa.Schema:
