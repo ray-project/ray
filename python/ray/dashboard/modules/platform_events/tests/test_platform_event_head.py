@@ -31,6 +31,7 @@ def _make_config() -> DashboardHeadModuleConfig:
         ip="127.0.0.1",
         http_host="127.0.0.1",
         http_port=8265,
+        gcs_client=MagicMock(),
     )
 
 

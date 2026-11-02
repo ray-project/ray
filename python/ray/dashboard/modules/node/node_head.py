@@ -16,6 +16,10 @@ import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.collections_utils import split
+from ray._private.gcs_passive_utils import (
+    PassiveLatch,
+    wait_until_gcs_leader,
+)
 from ray._private.gcs_pubsub import (
     GcsAioActorSubscriber,
     GcsAioNodeInfoSubscriber,
@@ -36,6 +40,7 @@ from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_REGISTER_RETRY_INTERVAL_S,
     GCS_RPC_TIMEOUT_SECONDS,
 )
 from ray.dashboard.modules.node import actor_consts, node_consts
@@ -178,6 +183,8 @@ class NodeHead(SubprocessModule):
         )
 
         self._background_tasks: Set[asyncio.Task] = set()
+        self._node_updates_latch = PassiveLatch("node updates", logger)
+        self._actor_updates_latch = PassiveLatch("actor updates", logger)
 
     def get_internal_states(self):
         return {
@@ -193,6 +200,15 @@ class NodeHead(SubprocessModule):
         It makes GetAllNodeInfo call only once after the subscription is done, to get
         the initial state of the nodes.
         """
+        await wait_until_gcs_leader(
+            self.gcs_client,
+            poll_interval_s=GCS_REGISTER_RETRY_INTERVAL_S,
+            latch=self._node_updates_latch,
+        )
+        if ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
+            # reset the start time after promotion to leader
+            self._module_start_time = time.time()
+
         subscriber = GcsAioNodeInfoSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
 
@@ -236,6 +252,42 @@ class NodeHead(SubprocessModule):
             except Exception:
                 logger.exception("Failed handling updated nodes.")
 
+    def _record_head_node(self, node_id: str):
+        self._registered_head_node_id = node_id
+        self._head_node_registration_time_s = time.time() - self._module_start_time
+
+    async def _put_head_node_id(self, node_id: str):
+        """Publish the head node id for JobAgent to read.
+
+        TODO(architkulkarni): Remove once State API exposes which node is the
+        head node.
+        """
+        await self.gcs_client.async_internal_kv_put(  # passive-ok: node updates wait for leader election
+            ray_constants.KV_HEAD_NODE_ID_KEY,
+            node_id.encode(),
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
+        )
+        self._record_head_node(node_id)
+
+    async def _delete_agent_addresses(self, node: dict):
+        """Drop a dead node's agent addresses."""
+        keys = [
+            f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node['nodeId']}",
+            f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
+        ]
+        tasks = [
+            self.gcs_client.async_internal_kv_del(  # passive-ok: node updates wait for leader election
+                key,
+                del_by_prefix=False,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+            for key in keys
+        ]
+        await asyncio.gather(*tasks)
+
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]
         if (
@@ -250,36 +302,11 @@ class NodeHead(SubprocessModule):
                     self._registered_head_node_id,
                     self.get_internal_states(),
                 )
-            self._registered_head_node_id = node_id
-            self._head_node_registration_time_s = time.time() - self._module_start_time
-            # Put head node ID in the internal KV to be read by JobAgent.
-            # TODO(architkulkarni): Remove once State API exposes which
-            # node is the head node.
-            await self.gcs_client.async_internal_kv_put(
-                ray_constants.KV_HEAD_NODE_ID_KEY,
-                node_id.encode(),
-                overwrite=True,
-                namespace=ray_constants.KV_NAMESPACE_JOB,
-                timeout=GCS_RPC_TIMEOUT_SECONDS,
-            )
+            await self._put_head_node_id(node_id)
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
         if not is_alive:
-            # Remove the agent address from the internal KV.
-            keys = [
-                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}",
-                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
-            ]
-            tasks = [
-                self.gcs_client.async_internal_kv_del(
-                    key,
-                    del_by_prefix=False,
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
-                for key in keys
-            ]
-            await asyncio.gather(*tasks)
+            await self._delete_agent_addresses(node)
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
@@ -304,7 +331,12 @@ class NodeHead(SubprocessModule):
         """
         warning_shown = False
         async for node in self._subscribe_for_node_updates():
-            await self._update_node(node)
+            try:
+                await self._update_node(node)
+            except Exception:
+                # This loop is the only writer of DataSource.nodes, so one bad
+                # update must not end the subscription.
+                logger.exception("Failed updating node.")
             if not self._head_node_registration_time_s:
                 # head node is not registered yet
                 if (
@@ -561,6 +593,12 @@ class NodeHead(SubprocessModule):
         # and the subscription is not missed.
         #
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
+        await wait_until_gcs_leader(
+            self.gcs_client,
+            poll_interval_s=actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS,
+            latch=self._actor_updates_latch,
+        )
+
         gcs_addr = self.gcs_address
         actor_channel_subscriber = GcsAioActorSubscriber(address=gcs_addr)
         await actor_channel_subscriber.subscribe()

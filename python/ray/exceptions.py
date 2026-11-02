@@ -764,6 +764,19 @@ class RpcError(RayError):
 
 
 @DeveloperAPI
+class GcsPassiveError(RpcError):
+    """Indicates the GCS rejected the request because it is not the active leader.
+
+    Subclasses RpcError so that callers written against the pre-active/passive
+    behavior keep catching it. Catch this instead when the response to a passive
+    GCS differs from the response to an unreachable one: both otherwise arrive as
+    RpcError with a gRPC UNAVAILABLE code.
+    """
+
+    pass
+
+
+@DeveloperAPI
 class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.
