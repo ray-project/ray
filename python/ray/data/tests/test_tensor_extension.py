@@ -33,13 +33,13 @@ from ray.data._internal.tensor_extensions.pandas import (
     TensorArrayElement,
     TensorDtype,
 )
-from ray.data.context import DataContext
 from ray.data._internal.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     _should_convert_to_tensor,
     create_ragged_ndarray,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.context import DataContext
 
 
 @pytest.mark.parametrize(
