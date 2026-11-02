@@ -41,6 +41,7 @@ python/ray/data/_internal/datasource/turbopuffer_datasink.py
 python/ray/data/_internal/datasource/video_datasource.py
 python/ray/data/_internal/datasource/webdataset_datasink.py
 python/ray/data/_internal/datasource/webdataset_datasource.py
+python/ray/data/_internal/datasource_v2/formats/delta/delta_file_pruning.py
 python/ray/data/_internal/datasource_v2/listing/file_indexer.py
 python/ray/data/_internal/datasource_v2/listing/file_manifest.py
 python/ray/data/_internal/datasource_v2/listing/indexing_utils.py
