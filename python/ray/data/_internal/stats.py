@@ -1162,11 +1162,12 @@ class _StatsManager:
         tags = list(operator_tags)
         per_node_sources = []
         for metric, tag in zip(op_metrics, operator_tags):
-            phases = (phase_metrics or {}).get(tag)
-            # Only the output phase forwards into the operator, so the phases
-            # together hold the operator's complete per-node data.
-            per_node_sources.extend(phases.values() if phases else [metric])
-            for name, phase in (phases or {}).items():
+            phases = (phase_metrics or {}).get(tag) or {}
+            # The operator carries its output phase's per-node data; the other
+            # phases hold theirs alone.
+            per_node_sources.append(metric)
+            per_node_sources.extend(phases.values())
+            for name, phase in phases.items():
                 op_metrics_dicts.append(phase.as_dict(include_resource_usage=False))
                 tags.append(f"{tag}/{name}")
         per_node_metrics = _StatsManager._aggregate_per_node_metrics(per_node_sources)

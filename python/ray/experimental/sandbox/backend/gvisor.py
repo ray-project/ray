@@ -750,6 +750,34 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             The kernel overlay to boot the sandbox from, if its final spec
             needs one, or None to boot it straight from its EROFS image.
         """
+        transform = config._oci_spec_transform_fn
+        host_mounts = config.mounts
+        if host_mounts:
+
+            def transform_with_mounts(spec: Dict) -> Dict:
+                if config._oci_spec_transform_fn is not None:
+                    result = config._oci_spec_transform_fn(spec)
+                    if result is not None:
+                        spec = result
+                mounts = spec.setdefault("mounts", [])
+                mounts[:] = [
+                    mount
+                    for mount in mounts
+                    if mount.get("destination") not in host_mounts
+                ]
+                for target, source in host_mounts.items():
+                    mounts.append(
+                        {
+                            "destination": target,
+                            "type": "bind",
+                            "source": source,
+                            "options": ["rbind", "ro"],
+                        }
+                    )
+                return spec
+
+            transform = transform_with_mounts
+
         config_json_path = self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
             workdir_path=workdir_path,
@@ -762,13 +790,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             capabilities=config.capabilities,
             network=config.network,
             dns=config.dns,
-            _oci_spec_transform_fn=config._oci_spec_transform_fn,
+            _oci_spec_transform_fn=transform,
             disk=config.disk,
         )
         # Read back the final spec, as written to config.json.
         with open(config_json_path, encoding="utf-8") as f:
             spec = json.load(f)
-
         # Boot the sandbox from a kernel overlay over its cached EROFS image
         # if its final spec needs one.
         if _caps_workdir(config):

@@ -909,8 +909,9 @@ class PhysicalOperator(Operator):
         """Returns runtime metrics for each internal phase of this operator.
 
         Operators that run several phases behind one operator (e.g. a GPU
-        shuffle's shuffle and finalize stages) override this so each phase is
-        exported alongside ``metrics`` under its own tag. Keys are phase names.
+        shuffle's shuffle and finalize stages) override this so each phase
+        whose metrics are not already ``metrics`` is exported alongside it
+        under its own tag. Keys are phase names.
         """
         return {}
 

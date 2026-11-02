@@ -1,0 +1,4 @@
+# Layered on the ray-torch image for the data read_tfrecords and to_tf
+# benchmarks. ray-torch doesn't ship tensorflow.
+tensorflow
+tensorflow-metadata
