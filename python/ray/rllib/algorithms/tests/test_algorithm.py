@@ -1,8 +1,9 @@
+import asyncio
 import os
-import time
 import unittest
 from pathlib import Path
 from random import choice
+from unittest.mock import patch
 
 import gymnasium as gym
 import numpy as np
@@ -616,15 +617,38 @@ class TestAlgorithm(unittest.TestCase):
         self.assertTrue(not any(f"p{i}" in mapped_pols for i in not_mapped))
 
     def test_evaluation_in_parallel_to_training(self):
-        SECONDS_TO_SLEEP = 2
+        @ray.remote(num_cpus=0)
+        class StepBarrier:
+            def __init__(self, parallel):
+                self.parallel = parallel
+                self.ready = asyncio.Event()
+                self.started = set()
+                self.events = []
 
-        class SluggishEnv(gym.Env):
+            async def step(self, evaluation):
+                self.events.append(("start", evaluation))
+                self.started.add(evaluation)
+                if len(self.started) == 2:
+                    self.ready.set()
+                if self.parallel:
+                    try:
+                        await asyncio.wait_for(self.ready.wait(), timeout=30)
+                    except asyncio.TimeoutError:
+                        self.events.append(("timeout", evaluation))
+                self.events.append(("finish", evaluation))
+
+            def get_events(self):
+                return self.events
+
+        class CoordinatedEnv(gym.Env):
             def __init__(self, config):
                 self.action_space = gym.spaces.Discrete(2)
                 self.observation_space = gym.spaces.Box(-1, 1, dtype=np.float32)
+                self.barrier = config["barrier"]
+                self.evaluation = config.get("evaluation", False)
 
             def step(self, action):
-                time.sleep(SECONDS_TO_SLEEP)
+                ray.get(self.barrier.step.remote(self.evaluation))
                 return self.observation_space.sample(), 1, True, False, {}
 
             def reset(self, *, seed=None, options=None):
@@ -633,29 +657,52 @@ class TestAlgorithm(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
-            .environment(env=SluggishEnv)
+            .environment(env=CoordinatedEnv, disable_env_checking=True)
+            .env_runners(num_env_runners=1, rollout_fragment_length=1)
             .evaluation(
-                evaluation_parallel_to_training=True,
                 evaluation_interval=1,
                 evaluation_num_env_runners=1,
                 evaluation_duration=1,
                 evaluation_duration_unit="timesteps",
+                evaluation_config={"env_config": {"evaluation": True}},
             )
             .training(train_batch_size=1, minibatch_size=1)  # Speed things up
         )
-        algo = config.build()
-        metrics = algo.train()
-        # This can only be true if we do not execute training and evaluation in sequence
-        assert metrics["time_this_iter_s"] < SECONDS_TO_SLEEP * 2
-        assert metrics["time_this_iter_s"] > SECONDS_TO_SLEEP
-        algo.stop()
-
-        config.evaluation(evaluation_parallel_to_training=False)
-        algo_2 = config.build()
-        metrics_2 = algo_2.train()
-        # This must be true if we execute training and evaluation in sequence
-        assert metrics_2["time_this_iter_s"] > SECONDS_TO_SLEEP * 2
-        algo_2.stop()
+        for parallel in (True, False):
+            barrier = StepBarrier.remote(parallel)
+            config.environment(env_config={"barrier": barrier})
+            config.evaluation(evaluation_parallel_to_training=parallel)
+            algo = config.build()
+            try:
+                with patch.object(
+                    algo, "_run_one_evaluation", wraps=algo._run_one_evaluation
+                ) as evaluate:
+                    algo.train()
+                evaluate.assert_called_once()
+                events = ray.get(barrier.get_events.remote())
+                if parallel:
+                    self.assertEqual(
+                        [event for event, _ in events],
+                        ["start", "start", "finish", "finish"],
+                    )
+                    self.assertEqual({role for _, role in events[:2]}, {False, True})
+                else:
+                    self.assertEqual(
+                        events,
+                        [
+                            ("start", False),
+                            ("finish", False),
+                            ("start", True),
+                            ("finish", True),
+                        ],
+                    )
+                self.assertEqual(
+                    evaluate.call_args.kwargs["parallel_train_future"] is not None,
+                    parallel,
+                )
+            finally:
+                algo.stop()
+                ray.kill(barrier)
 
     def test_custom_eval_function_falsy_results(self):
         """Test that custom eval function can return ({}, 0, 0)."""
