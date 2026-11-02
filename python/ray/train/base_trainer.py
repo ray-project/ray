@@ -879,8 +879,7 @@ class BaseTrainer(abc.ABC):
             def _reconcile_scaling_config_with_trial_resources(
                 self, scaling_config: ScalingConfig
             ) -> ScalingConfig:
-                """
-                ResourceChangingScheduler workaround.
+                """ResourceChangingScheduler workaround.
 
                 Ensures that the scaling config matches trial resources.
 
