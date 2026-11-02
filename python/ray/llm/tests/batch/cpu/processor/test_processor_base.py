@@ -214,6 +214,27 @@ def test_builder():
     )
 
 
+@pytest.mark.parametrize(
+    "config_name", ["vLLMEngineProcessorConfig", "SGLangEngineProcessorConfig"]
+)
+@pytest.mark.parametrize("chat_template_enabled", [True, False])
+def test_tokenize_stage_special_tokens(config_name, chat_template_enabled):
+    """The tokenize stage skips special tokens when the chat template stage
+    runs, because the rendered prompt already contains them."""
+    from ray.llm._internal.batch import processor as processor_module
+
+    config = getattr(processor_module, config_name)(
+        model_source="test-model",
+        chat_template_stage={"enabled": chat_template_enabled},
+        tokenize_stage={"enabled": True},
+    )
+    processor = ProcessorBuilder.build(config)
+    stage = processor.get_stage_by_name("TokenizeStage")
+    assert stage.fn_constructor_kwargs["add_special_tokens"] is (
+        not chat_template_enabled
+    )
+
+
 class TestBuilderKwargsValidation:
     @pytest.fixture
     def build_processor_with_kwargs(self):
