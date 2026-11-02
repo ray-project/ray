@@ -6436,13 +6436,14 @@ def read_delta(
 
     .. note::
 
-        Set ``ray.data.DataContext.get_current().use_delta_datasource_v2 = True``
-        (or ``RAY_DATA_USE_DELTA_DATASOURCE_V2=1``) to read through the
-        DataSourceV2 pipeline, which also needs ``use_datasource_v2``. It pins
-        the table version when ``read_delta`` is called, lists the data files
-        in Ray tasks rather than on the driver, and splits files into row-group
-        read units. Tables it can't read yet, such as ones with deletion
-        vectors, are read with the V1 reader.
+        ``read_delta`` reads through the DataSourceV2 pipeline. It pins the
+        table version when ``read_delta`` is called, lists the data files in
+        Ray tasks rather than on the driver, skips files using the statistics
+        in the Delta log, and splits files into row-group read units. Tables
+        it can't read yet, such as ones with deletion vectors, are read with
+        the V1 reader. To read every table with the V1 reader, set
+        ``ray.data.DataContext.get_current().use_delta_datasource_v2 = False``
+        (or ``RAY_DATA_USE_DELTA_DATASOURCE_V2=0``).
 
     Examples:
 
