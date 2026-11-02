@@ -1640,8 +1640,7 @@ class TuneController:
             return decision
 
     def _validate_result_metrics(self, result):
-        """
-        Check if any of the required metrics was not reported
+        """Check if any of the required metrics was not reported
         in the last result. If the only items are ``done`` or any of
         DEBUG_METRICS, this means that no result was ever received and
         the trial just returned. This is also okay and will not raise

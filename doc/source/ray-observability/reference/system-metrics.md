@@ -27,6 +27,120 @@ Ray uses an optional NVML API to collect per-process GPU SM utilization. Ray aut
 These variables must be set in the Ray node and Dashboard Reporter process environment before `ray start` (for example, in the Pod environment when using KubeRay). They are not applied through `runtime_env`. Ray continues to report GPU process IDs, allocated GPU memory, and device-level utilization, memory, power, and temperature metrics. Only per-process GPU utilization is unavailable.
 :::
 
+(ascend-npu-monitoring)=
+## Monitor Huawei Ascend NPUs
+
+The Dashboard Reporter on each Ray node can collect Huawei Ascend NPU metrics directly from the Device Configuration Management Interface (DCMI). Ray loads `libdcmi.so` with `ctypes`; it doesn't invoke `npu-smi`, and the collector only calls read-only monitoring APIs.
+
+### Ascend and DCMI prerequisites
+
+Install a compatible Ascend driver on every Ray node that reports NPU metrics. The driver installation must provide `libdcmi.so` and the user that runs Ray must have permission to access the Ascend management and device interfaces. In a container, mount the DCMI library, its transitive shared-library dependencies, and the required Ascend device files into the Ray container.
+
+The CANN toolkit and its `set_env.sh` script configure the Ascend runtime environment, but the toolkit alone doesn't replace the driver-provided DCMI library. Source the script before starting each Ray node so that the Dashboard Reporter inherits the environment. Adjust the path for your CANN installation:
+
+```bash
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+export RAY_NPU_DCMI_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver/libdcmi.so
+
+# Start the head node or a worker only after setting the environment.
+ray start --head
+# ray start --address=<head-node-address>
+```
+
+Set these variables in the Ray node process environment, such as the container environment or KubeRay Pod template. Setting them through a Job or Task `runtime_env` is too late because the Dashboard Reporter starts with the Ray node. The reporter attempts DCMI initialization once per process, so restart the Ray node after correcting the environment or library path.
+
+The following environment variables have different roles:
+
+```{list-table}
+:header-rows: 1
+
+* - Environment variable
+  - Meaning for NPU monitoring
+* - `RAY_NPU_DCMI_LIBRARY_PATH`
+  - Overrides the DCMI shared-library path used by the Dashboard Reporter. Set it to the library file, not its containing directory. An absolute path is recommended.
+* - `LD_LIBRARY_PATH`
+  - Helps the dynamic loader resolve `libdcmi.so` and its transitive dependencies. The CANN `set_env.sh` script normally adds the relevant Ascend library directories.
+* - `ASCEND_RT_VISIBLE_DEVICES`
+  - Controls the NPU devices assigned or exposed to Ray Tasks and Actors. The node-level monitoring provider enumerates devices through DCMI and doesn't filter its results using this variable. See {ref}`Accelerator support <accelerator-support>` for scheduling behavior.
+* - `ASCEND_HOME_PATH`, `ASCEND_OPP_PATH`, `PATH`, and `PYTHONPATH`
+  - Support CANN applications and command-line tools. The exact variables set by `set_env.sh` depend on the CANN version. The DCMI collector itself primarily requires the shared library and its loader dependencies.
+```
+
+When `RAY_NPU_DCMI_LIBRARY_PATH` is nonempty, Ray tries only that value. If the variable is unset or empty, Ray tries these candidates in order:
+
+1. `/usr/local/Ascend/driver/lib64/driver/libdcmi.so`
+2. `/usr/local/Ascend/driver/lib64/common/libdcmi.so`
+3. `libdcmi.so`, resolved by the system dynamic loader
+
+An invalid explicit override doesn't fall back to the default candidates. If Ray can't load or initialize DCMI, the Dashboard Reporter continues running but emits no Ascend NPU metrics.
+
+Ray requires `dcmi_init` to initialize DCMI, `dcmi_get_card_list` to enumerate cards, and `dcmi_get_device_num_in_card` to enumerate devices. The remaining queries are optional per device: failures omit only the affected field or metric.
+
+```{list-table}
+:header-rows: 1
+
+* - Data
+  - DCMI API
+  - Fallback behavior
+* - Logical and physical IDs
+  - `dcmi_get_device_logic_id`, `dcmi_get_device_phyid_from_logicid`
+  - Ray assigns a unique negative synthetic index if the logical ID is unavailable and omits the physical ID if it can't be queried.
+* - Device name
+  - `dcmi_get_device_chip_info_v2`, then `dcmi_get_device_chip_info`
+  - Ray reports `Ascend NPU` if neither chip-info query succeeds.
+* - AI Core utilization
+  - `dcmi_get_device_utilization_rate`
+  - Ray omits the utilization value.
+* - HBM capacity and usage
+  - `dcmi_get_device_hbm_info`
+  - Ray omits the HBM metrics.
+* - Power, temperature, and health
+  - `dcmi_get_device_power_info`, `dcmi_get_device_temperature`, `dcmi_get_device_health`
+  - Ray independently omits each unavailable metric.
+* - Per-process NPU memory
+  - `dcmi_get_device_resource_info`
+  - Ray omits per-process and per-component NPU memory information.
+```
+
+### Units and availability
+
+DCMI reports HBM capacity and usage in MiB, which Ray converts to bytes for node-level metrics. Ray converts DCMI power values from tenths of a watt to milliwatts. The `ray_component_npu_memory_mb` metric uses MiB (`1 MiB = 1,048,576 bytes`) despite the `_mb` suffix. Device power is emitted only for device `0` on each card because DCMI reports board-level power and otherwise the value could be counted more than once.
+
+The Dashboard API uses the same base units: `utilizationAicore` is a percentage, `memoryUsed` and `memoryTotal` are bytes, `powerMw` is milliwatts, and `temperatureC` is degrees Celsius. `healthStatus` and the Prometheus health metric use normalized health levels: `0` is OK, `1` is minor, `2` is major, `3` is critical, and `4` means that health information is missing. Ray maps the DCMI missing value `0xFFFFFFFF` to `4`.
+
+### NPU metric labels
+
+All node-level NPU metrics have the following Ray labels. Prometheus normally adds an `instance` label for the scrape target; its exact value depends on the Prometheus scrape and relabel configuration.
+
+```{list-table}
+:header-rows: 1
+
+* - Label
+  - Meaning
+* - `ip`
+  - IP address reported by the Ray node.
+* - `Version`
+  - Ray version used by the reporting process.
+* - `SessionName`
+  - Ray session identifier created when the head starts a cluster session and shared by the cluster's reporters. A new cluster session has a new value.
+* - `IsHeadNode`
+  - Legacy string label, `true` for the head node and `false` for a worker node.
+* - `RayNodeType`
+  - Ray node role, either `head` or `worker`.
+* - `NpuDeviceName`
+  - Chip name returned by DCMI, or `Ascend NPU` when unavailable.
+* - `NpuIndex`
+  - DCMI logical device ID used by `ASCEND_RT_VISIBLE_DEVICES`. Ray assigns a unique negative synthetic index when the logical ID query fails.
+* - `NpuPhysicalId`
+  - Optional DCMI physical device ID corresponding to `NpuIndex`.
+* - `NpuCardId`
+  - Card ID returned by DCMI card enumeration.
+* - `NpuDeviceId`
+  - Device ID within the DCMI card.
+```
+
+`ray_component_npu_memory_mb` aggregates NPU memory by Ray component and uses `ip`, `pid`, `Version`, `Component`, and `SessionName`, in addition to the Prometheus `instance` label. For workers, `Component` is the worker process name, such as `ray::<task-name>` or `ray::<actor-class>`, so multiple processes with the same name are grouped. The `pid` label can be empty for such grouped worker metrics. This metric doesn't contain device labels because a process can allocate memory on multiple NPUs and Ray sums those allocations before reporting the component value.
+
 ```{list-table} Ray System Metrics
 :header-rows: 1
 
@@ -99,6 +213,27 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
 * - `ray_tpu_memory_total`
   - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
   - The total amount of HBM available per TPU device, in bytes.
+* - `ray_node_npus_available`
+  - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
+  - The number of Ascend NPUs available. Ray emits a value of `1` for each device that DCMI enumerates.
+* - `ray_node_npus_utilization`
+  - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
+  - The Ascend NPU AI Core utilization per device as a percentage from 0 to 100.
+* - `ray_node_npu_hbm_used`
+  - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
+  - The amount of Ascend NPU HBM used per device, in bytes.
+* - `ray_node_npu_hbm_available`
+  - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
+  - The amount of Ascend NPU HBM available per device, in bytes. Ray calculates this as total HBM minus used HBM and clamps the value to zero.
+* - `ray_node_npu_power_milliwatts`
+  - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
+  - The current Ascend NPU board power, in milliwatts. Ray emits this metric only for device `0` on each card to avoid double counting board-level power.
+* - `ray_node_npu_temperature_celsius`
+  - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
+  - The current Ascend NPU temperature per device, in degrees Celsius.
+* - `ray_node_npu_health`
+  - `instance`, `NpuDeviceName`, `NpuIndex`, `NpuPhysicalId`, `NpuCardId`, `NpuDeviceId`
+  - The normalized Ascend NPU health level per device: `0` is OK, `1` is minor, `2` is major, `3` is critical, and `4` means that health information is missing.
 * - `ray_node_disk_usage`
   - `instance`
   - The amount of disk space used per node, in bytes.
@@ -160,6 +295,9 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
 * - `ray_component_cpu_percentage`
   - `Component`, `instance`
   - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+* - `ray_component_npu_memory_mb`
+  - `Component`, `instance`
+  - The Ascend NPU memory allocated by worker and driver processes, grouped by Ray component, in MiB (`1 MiB = 1,048,576 bytes`).
 * - `ray_node_gram_available`
   - `instance`, `node_type`, `GpuIndex`, `GpuDeviceName`, `GpuUuid`
   - The amount of GPU memory available per GPU, in megabytes.

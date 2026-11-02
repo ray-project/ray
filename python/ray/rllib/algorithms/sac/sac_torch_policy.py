@@ -1,6 +1,4 @@
-"""
-PyTorch policy class used for SAC.
-"""
+"""PyTorch policy class used for SAC."""
 
 import logging
 from typing import Dict, List, Optional, Tuple, Type, Union

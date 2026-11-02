@@ -22,8 +22,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         chat_template_kwargs: Optional[Dict[str, Any]] = None,
         trust_remote_code: bool = False,
     ):
-        """
-        Initialize the ChatTemplateUDF.
+        """Initialize the ChatTemplateUDF.
 
         Args:
             data_column: The data column name.
@@ -69,8 +68,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         self.chat_template_kwargs = chat_template_kwargs
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Apply chat template to the given batch.
+        """Apply chat template to the given batch.
 
         Args:
             batch: A list of rows to send.
@@ -126,9 +124,7 @@ class ChatTemplateUDF(StatefulStageUDF):
 
 
 class ChatTemplateStage(StatefulStage):
-    """
-    A stage that applies chat template.
-    """
+    """A stage that applies chat template."""
 
     fn: Type[StatefulStageUDF] = ChatTemplateUDF
 

@@ -183,7 +183,7 @@ class DockerCluster:
         if config:
             self._partial_config = config
 
-        if not config.get("provider", {}).get("image"):
+        if not (self._partial_config or {}).get("provider", {}).get("image"):
             # No image specified, trying to parse from buildkite
             docker_image = os.environ.get("RAY_DOCKER_IMAGE", None)
 
