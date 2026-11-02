@@ -36,6 +36,14 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
 GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
 
+# Prefix of the implicit extended resource name that Kubernetes Dynamic
+# Resource Allocation (DRA) derives from a DeviceClass, e.g.
+# "deviceclass.resource.kubernetes.io/gpu.nvidia.com". Device classes for
+# GPUs conventionally use a "gpu." prefixed name, so a container that
+# requests such a resource should be treated as requesting GPUs. This mirrors
+# the KubeRay operator's GPU resource key detection.
+DRA_IMPLICIT_EXTENDED_RESOURCE_PREFIX = "deviceclass.resource.kubernetes.io/"
+
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
 _HEAD_GROUP_NAME = "headgroup"
@@ -447,8 +455,8 @@ def _get_num_gpus(
             k8s_resources.get("limits", {}).items(),
             k8s_resources.get("requests", {}).items(),
         ):
-            # e.g. nvidia.com/gpu
-            if key.endswith("gpu"):
+            # e.g. nvidia.com/gpu or deviceclass.resource.kubernetes.io/gpu.nvidia.com
+            if _is_gpu_resource_key(key):
                 # Typically, this is a string representing an interger, e.g. "1".
                 # Convert to int, making no assumptions on the resource_quantity,
                 # besides that it's valid as a K8s resource quantity.
@@ -458,6 +466,22 @@ def _get_num_gpus(
                     # "/gpu" match.
                     return num_gpus
     return None
+
+
+def _is_gpu_resource_key(key: str) -> bool:
+    """Returns whether a K8s container resource key denotes a GPU.
+
+    Recognizes both vendor-specific extended resources such as
+    "nvidia.com/gpu" or "amd.com/gpu", and the implicit extended resource
+    names that DRA derives from a DeviceClass, such as
+    "deviceclass.resource.kubernetes.io/gpu.nvidia.com".
+    """
+    if key.endswith("gpu"):
+        return True
+    if key.startswith(DRA_IMPLICIT_EXTENDED_RESOURCE_PREFIX):
+        device_class_name = key[len(DRA_IMPLICIT_EXTENDED_RESOURCE_PREFIX) :]
+        return device_class_name.startswith("gpu.")
+    return False
 
 
 def _get_num_tpus(
