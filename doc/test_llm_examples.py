@@ -31,7 +31,10 @@ def cleanup_ray_resources():
         "source/data/doc_code/working-with-llms/vlm_image_example.py",
         "source/data/doc_code/working-with-llms/vlm_video_example.py",
         "source/llm/doc_code/serve/qwen/qwen_example.py",
-        "source/llm/doc_code/serve/qwen/llm_yaml_config_example.py",
+        pytest.param(
+            "source/llm/doc_code/serve/qwen/llm_yaml_config_example.py",
+            marks=pytest.mark.requires_2GPU,
+        ),
         "source/llm/doc_code/serve/transcription/transcription_example.py",
         "source/llm/doc_code/serve/direct_streaming/direct_streaming_example.py",
         "source/llm/doc_code/serve/direct_streaming/direct_streaming_custom_router_example.py",

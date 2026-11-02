@@ -5310,6 +5310,18 @@
     timeout: 3600
     script: pytest -vs . --ignore=test_token_channel_cross_node.py --ignore=test_frontend_config.py
 
+  variations:
+    - __suffix__: 1gpu
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -vs . --ignore=test_token_channel_cross_node.py --ignore=test_frontend_config.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -vs . --ignore=test_token_channel_cross_node.py --ignore=test_frontend_config.py -m "requires_2GPU"
+
 - name: llm_serve_kv_router_frontend_config
   frequency: manual
   python: "3.12"
@@ -5327,23 +5339,13 @@
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_4xl4.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
     script: pytest -vs test_frontend_config.py
-
-  variations:
-    - __suffix__: 1gpu
-      cluster:
-        cluster_compute: ../cluster_compute/1xh100.yaml
-      run:
-        script: pytest -vs . --ignore=test_token_channel_cross_node.py -m "not requires_2GPU and not requires_4GPU"
-    - __suffix__: 2gpu
-      cluster:
-        cluster_compute: ../cluster_compute/2xh100.yaml
-      run:
-        script: pytest -vs . --ignore=test_token_channel_cross_node.py -m "requires_2GPU"
 
 - name: llm_serve_kv_router_cross_node
   frequency: manual
