@@ -236,9 +236,14 @@ class ShuffleOperatorMetrics:
         return {pm.name: pm.as_dict() for pm in self.phase_metrics.values()}
 
     def runtime_metrics_by_phase(self) -> Dict[str, OpRuntimeMetrics]:
-        if self._aliased:
-            return {}
-        return {pm.name: pm.metrics for pm in self.phase_metrics.values()}
+        # The output phase forwards into the operator's own metrics, so the
+        # operator's series already is its view; exporting it again would
+        # count its values twice in any sum across series.
+        return {
+            pm.name: pm.metrics
+            for pm in self.phase_metrics.values()
+            if not pm.is_output_phase
+        }
 
     def progress_bar_names(self) -> List[str]:
         return [pm.spec.progress_bar_name for pm in self.phase_metrics.values()]

@@ -249,7 +249,7 @@ def test_stats_manager_exports_phases_and_sums_nodes_from_phases(
     assert per_node["node-a"]["num_tasks_finished"] == 3
     # Resource usage is read from the owning operator, so phase dicts omit it.
     _, dicts, tags, _, _ = args
-    assert tags == ["Op_0", "Op_0/shuffle", "Op_0/finalize"]
+    assert tags == ["Op_0", "Op_0/shuffle"]
     assert all(k in dicts[0] for k in ("cpu_usage", "gpu_usage", "memory_usage"))
     for phase_dict in dicts[1:]:
         assert not any(
@@ -385,16 +385,18 @@ def test_two_phase_operator_surfaces():
     assert d["bytes_task_outputs_generated"] == 4 * 100  # finalize only
     assert op.metrics._running_tasks == {}
 
-    # Prometheus, phase tags.
+    # Prometheus, phase tags: only the phase the operator series does not
+    # already carry, so the output phase is left out.
     phases = op.get_phase_metrics()
-    assert list(phases) == ["shuffle", "finalize"]
+    assert list(phases) == ["shuffle"]
     assert phases["shuffle"].num_tasks_finished == 8
-    assert phases["finalize"].num_tasks_finished == 4
     assert phases["shuffle"]._running_tasks == {}
-    assert phases["finalize"]._running_tasks == {}
-    # Takes are mirrored on the output phase only (ray_data_output_rows).
-    assert phases["finalize"].row_outputs_taken == 80
     assert phases["shuffle"].row_outputs_taken == 0
+    finalize = op.phase_metrics["finalize"].metrics
+    assert finalize.num_tasks_finished == 4
+    assert finalize._running_tasks == {}
+    # Takes are mirrored on the output phase only (ray_data_output_rows).
+    assert finalize.row_outputs_taken == 80
 
     # Extra metrics line: one nested dict per phase, same counts as the tags,
     # plus the phase's custom counters.
@@ -426,7 +428,8 @@ def test_two_phase_operator_surfaces():
     assert op.num_outputs_total() == 4
     assert op.num_output_rows_total() == 80
 
-    # Export path: three dicts, three tags, phase dicts carry phase counts.
+    # Export path: the operator plus its non-output phase, each with its own
+    # task counts.
     with patch("ray.data._internal.stats.get_or_create_stats_actor") as get_actor:
         _StatsManager.update_execution_metrics(
             "ds",
@@ -437,8 +440,8 @@ def test_two_phase_operator_surfaces():
         )
         (args, _) = get_actor.return_value.update_execution_metrics.remote.call_args
     _, dicts, tags, _, _ = args
-    assert tags == ["Shuffle(k)_1", "Shuffle(k)_1/shuffle", "Shuffle(k)_1/finalize"]
-    assert [x["num_tasks_finished"] for x in dicts] == [4, 8, 4]
+    assert tags == ["Shuffle(k)_1", "Shuffle(k)_1/shuffle"]
+    assert [x["num_tasks_finished"] for x in dicts] == [4, 8]
 
 
 def test_single_phase_operator_surfaces_unchanged():
