@@ -2986,12 +2986,11 @@ def read_orc(
         or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
         Ray. This shared setting also affects ``read_parquet()``.
 
-        When PyArrow provides native ``ORCFile.iter_batches()`` and serialized
-        footer access, DataSourceV2 can schedule a multi-stripe file across read
-        tasks and decode selected stripes incrementally. Older PyArrow versions
-        retain whole-file reading. Driver and worker installations must provide
-        the capabilities used by their assignments. Batch row counts do not
-        bound ORC dictionary buffers or total process memory.
+        With serialized footer access, DataSourceV2 can schedule a multi-stripe
+        file across read tasks. Selected stripes use ``ORCFile.read_stripe()``
+        and may be fully materialized before batched output. Encoded-byte
+        grouping targets and batch sizes are not memory bounds. Installations
+        without the required metadata API retain whole-file scheduling.
 
     Examples:
         Read an ORC file in remote storage or local storage.

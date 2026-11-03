@@ -40,8 +40,8 @@ class OrcFileMetadata:
 
 
 def supports_stripe_reads() -> bool:
-    """Require native batch iteration and the existing serialized-footer API."""
-    return callable(getattr(orc.ORCFile, "iter_batches", None)) and callable(
+    """Require the existing stripe decoder and serialized-footer APIs."""
+    return callable(getattr(orc.ORCFile, "read_stripe", None)) and callable(
         getattr(getattr(_orc, "ORCReader", None), "serialized_file_tail", None)
     )
 
@@ -50,7 +50,7 @@ def require_stripe_reads(path: str) -> None:
     """An existing assignment must not fall back to a whole-file read."""
     if not supports_stripe_reads():
         raise RuntimeError(
-            f"ORC stripe assignment for {path} requires Arrow native batch/footer APIs"
+            f"ORC stripe assignment for {path} requires Arrow stripe/footer APIs"
         )
 
 

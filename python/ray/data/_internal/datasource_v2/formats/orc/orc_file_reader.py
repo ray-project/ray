@@ -8,6 +8,7 @@ import pyarrow.dataset as pds
 from pyarrow.fs import FileSystem, LocalFileSystem
 from typing_extensions import override
 
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -21,6 +22,7 @@ from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator impor
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
     OrcFileMetadata,
+    OrcStripeMetadata,
     orc_read_unit_id,
     read_orc_file,
     read_orc_layout,
@@ -55,7 +57,7 @@ class OrcFileReader(FileReader):
     """Read ORC files in batches using PyArrow Dataset fragments.
 
     Manifest chunks select physical stripes. Whole files retain Arrow batch
-    streaming; selected stripes use Arrow's native batch iterator.
+    streaming; selected stripes use Arrow's existing stripe decoder.
     Path-derived partition values take precedence over same-named file columns
     and are synthesized before filtering and projection.
     """
@@ -231,11 +233,11 @@ class OrcFileReader(FileReader):
                         raise
                 return reader
 
-            def read(index):
+            def read(stripe):
                 nonlocal reader
                 try:
-                    yield from self._iter_native_tables(
-                        open_reader(), path, index, scanner_kwargs
+                    yield from self._iter_stripe_tables(
+                        open_reader(), path, stripe, scanner_kwargs
                     )
                 except BaseException:
                     inputs.close()
@@ -258,22 +260,19 @@ class OrcFileReader(FileReader):
                 indices.extend(run.unit_ids)
             if len(set(indices)) != len(indices):
                 raise ValueError(f"Duplicate ORC stripe assignments for {path}")
-            whole = indices == list(range(len(stripes))) and not any(
-                c.requires_read_unit_boundaries for c in self._synthesized_columns
-            )
-            for index in [None] if whole else indices:
-                stripe = stripes[index] if index is not None else None
+            for index in indices:
+                stripe = stripes[index]
                 unit = ReadUnit(
-                    id=orc_read_unit_id(path, cast(int, index)) if stripe else path,
+                    id=orc_read_unit_id(path, index),
                     source=path,
-                    index=index or 0,
-                    count=len(stripes) if stripe else 1,
-                    num_rows=stripe.num_rows if stripe else layout.num_rows,
+                    index=index,
+                    count=len(stripes),
+                    num_rows=stripe.num_rows,
                 )
                 cursor = 0
                 with closing(
                     iterate_with_retry(
-                        partial(read, index),
+                        partial(read, stripe),
                         f"read ORC unit {unit.id}",
                         match=retry_errors,
                     )
@@ -281,11 +280,13 @@ class OrcFileReader(FileReader):
                     for table in batches:
                         if table.num_rows:
                             yield table, ReadUnitPosition(
-                                unit, cursor, stripe.row_offset if stripe else 0
+                                unit, cursor, stripe.row_offset
                             )
                             cursor += table.num_rows
 
-    def _iter_native_tables(self, reader, path, stripe_index, scanner_kwargs):
+    def _iter_stripe_tables(
+        self, reader, path, stripe: OrcStripeMetadata, scanner_kwargs
+    ):
         def scan(schema, kwargs):
             names = schema.names if kwargs.get("columns") is None else kwargs["columns"]
             physical_names = reader.schema.names
@@ -301,18 +302,20 @@ class OrcFileReader(FileReader):
                     for requested in names
                 )
             ]
-            with closing(
-                reader.iter_batches(
-                    batch_size=kwargs["batch_size"],
-                    stripes=None if stripe_index is None else [stripe_index],
-                    columns=columns,
+            # Empty read_stripe projections lose row counts on released Arrow.
+            # Use the validated footer count without decoding any file column.
+            table = (
+                pa.Table.from_batches(
+                    [reader.read_stripe(stripe.index, columns=columns)]
                 )
-            ) as batches:
-                for batch in batches:
-                    table = pa.Table.from_batches([batch])
-                    raise_on_pickle_object_columns(table)
-                    fragment = next(pds.dataset(table).get_fragments())
-                    yield from fragment.scanner(schema=schema, **kwargs).scan_batches()
+                if columns
+                else pa.table(
+                    {_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(stripe.num_rows)}
+                )
+            )
+            raise_on_pickle_object_columns(table)
+            fragment = next(pds.dataset(table).get_fragments())
+            yield from fragment.scanner(schema=schema, **kwargs).scan_batches()
 
         yield from self._scan_tables(path, reader.schema, scanner_kwargs, scan)
 
@@ -343,10 +346,10 @@ class OrcFileReader(FileReader):
         scan,
     ) -> Iterator[pa.Table]:
         partitions = self._partition_parser(path) if self._partition_parser else {}
-        schema = self._schema
-        if schema is None:
-            schema = physical_schema
         synthesized = {column.name for column in self._synthesized_columns}
+        schema = self._schema
+        if schema is None or not set(schema.names).difference(synthesized, partitions):
+            schema = physical_schema
         schema = pa.schema([field for field in schema if field.name not in synthesized])
 
         for name, value in partitions.items():

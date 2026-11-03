@@ -4,30 +4,21 @@ import asyncio
 import copy
 import os
 from collections import Counter, defaultdict
-from contextlib import nullcontext
 from dataclasses import fields
-from itertools import islice
 from types import SimpleNamespace
-from typing import Protocol, cast
+from typing import cast
 from unittest.mock import patch
 
-import pytest
+import pyarrow as pa
+from pyarrow import orc
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
-    supports_stripe_reads,
-)
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
     _OrcMetadataReader,
 )
 from ray.data._internal.execution.interfaces import TaskContext
-
-
-class _IntermediateFooterWriter(Protocol):
-    def write_intermediate_footer(self) -> object:
-        ...
 
 
 @ray.remote(num_cpus=0)
@@ -123,40 +114,31 @@ def traced_scanner(scanner, trace, parallel_barrier=False):
     class TracedScanner(OrcScanner):
         def create_reader(self):
             reader = super().create_reader()
-            original = reader._iter_native_tables
+            original = reader._iter_stripe_tables
 
-            def scan(reader, path, stripe_index, scanner_kwargs):
+            def scan(reader, path, stripe, scanner_kwargs):
                 task, pid = str(ray.get_runtime_context().get_task_id()), os.getpid()
                 if parallel_barrier:
                     ray.get(trace.arrive.remote(task, pid))
                 for n, table in enumerate(
-                    original(reader, path, stripe_index, scanner_kwargs)
+                    original(reader, path, stripe, scanner_kwargs)
                 ):
                     if n == 0:
                         ray.get(
                             trace.record.remote(
-                                "decoded"
-                                if stripe_index is not None
-                                else "decoded_whole",
+                                "decoded",
                                 path,
-                                (stripe_index, pid, task),
+                                (stripe.index, pid, task),
                             )
                         )
                     yield table
 
-            reader._iter_native_tables = scan
+            reader._iter_stripe_tables = scan
             return reader
 
     return TracedScanner(
         **{f.name: getattr(scanner, f.name) for f in fields(scanner) if f.init}
     )
-
-
-def native_stripe_read():
-    """Use the real API, or assert that an unsupported assignment fails closed."""
-    if supports_stripe_reads():
-        return nullcontext()
-    return pytest.raises(RuntimeError, match="requires Arrow native")
 
 
 def partitioned(manifests, partitioner):
@@ -186,25 +168,21 @@ def prepare_orc(paths):
     return source, schema, indexer, packer
 
 
-def write_orc_stripes(path, schema, rows, counts=(5, 7, 4), **options):
-    """Write tiny, independently checked stripes without buffered boundary guesses."""
-    import pyorc
-
-    settings = dict(
-        batch_size=1, stripe_size=1 << 30, compression=pyorc.CompressionKind.NONE
-    )
-    settings.update(options)
-    rows = iter(rows)
-    with path.open("wb") as stream:
-        writer = pyorc.Writer(stream, schema, **settings)
+def write_orc_stripes(path, table: pa.Table, counts=(5, 7, 4)):
+    """Use Arrow's writer and decoder to check exact, small stripe boundaries."""
+    assert sum(counts) == table.num_rows
+    with orc.ORCWriter(
+        str(path), stripe_size=1, batch_size=max(counts), compression="uncompressed"
+    ) as writer:
+        start = 0
         for count in counts:
-            writer.writerows(islice(rows, count))
-            cast(_IntermediateFooterWriter, writer).write_intermediate_footer()
-        writer.close()
-    with path.open("rb") as stream:
-        assert [len(stripe) for stripe in pyorc.Reader(stream).iter_stripes()] == list(
-            counts
-        )
+            writer.write(table.slice(start, count))
+            start += count
+    reader = orc.ORCFile(str(path))
+    assert [reader.read_stripe(i).num_rows for i in range(reader.nstripes)] == list(
+        counts
+    )
+    assert reader.read().equals(table)
     return path
 
 
@@ -217,8 +195,12 @@ def write_stripe_pipeline_files(directory, file_count=40):
         path = directory / f"f{file_index+1:04d}.orc"
         write_orc_stripes(
             path,
-            "struct<id:bigint,payload:binary>",
-            ((file_index * 8 + i, generator.randbytes(1024)) for i in range(8)),
+            pa.table(
+                {
+                    "id": range(file_index * 8, (file_index + 1) * 8),
+                    "payload": [generator.randbytes(1024) for _ in range(8)],
+                }
+            ),
             counts=(2,) * 4,
         )
         paths.append(path)

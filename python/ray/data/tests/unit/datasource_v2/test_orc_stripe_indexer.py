@@ -3,7 +3,7 @@
 import io
 import pickle
 from types import SimpleNamespace
-from typing import Any, Callable, Iterator, cast
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pyarrow as pa
@@ -41,7 +41,6 @@ from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 from ray.data.tests.datasource.orc_decode_trace import (
-    native_stripe_read,
     write_orc_stripes,
 )
 
@@ -51,7 +50,7 @@ def case(tmp_path):
     path = tmp_path / "year=2024" / "data.orc"
     path.parent.mkdir()
     write_orc_stripes(
-        path, "struct<id:bigint,label:string>", ((i, str(i)) for i in range(16))
+        path, pa.table({"id": range(16), "label": [str(i) for i in range(16)]})
     )
     layout = metadata.read_orc_metadata(str(path), None)
     return SimpleNamespace(
@@ -94,14 +93,10 @@ class Input(io.BytesIO):
 
 
 def test_layout_is_exact_metadata_only_and_reuses_owner(case, monkeypatch):
-    import pyorc
-
-    with case.path.open("rb") as source:
-        oracle = [
-            (len(s), s.row_offset, s.bytes_offset, s.bytes_length)
-            for s in pyorc.Reader(source).iter_stripes()
-        ]
-    for method in ("read", "read_stripe", "iter_batches"):
+    reader = orc.ORCFile(str(case.path))
+    oracle = [reader.read_stripe(i).num_rows for i in range(reader.nstripes)]
+    data_end = 3 + reader.content_length
+    for method in ("read", "read_stripe"):
         monkeypatch.setattr(
             orc.ORCFile,
             method,
@@ -122,10 +117,34 @@ def test_layout_is_exact_metadata_only_and_reuses_owner(case, monkeypatch):
         str(case.path), SimpleNamespace(open_input_file=lambda _: source)
     )
     assert schema.names == ["id", "label"] and source.closed and source.reads
-    assert [
-        (s.num_rows, s.row_offset, s.bytes_offset, s.size_bytes) for s in seed.stripes
-    ] == oracle
+    assert [s.num_rows for s in seed.stripes] == oracle == [5, 7, 4]
+    assert [s.row_offset for s in seed.stripes] == [0, 5, 12]
+    offset = 3
+    for stripe in seed.stripes:
+        assert stripe.bytes_offset == offset
+        offset += stripe.size_bytes
+    assert offset == data_end
     assert seed.num_rows == 16
+
+
+def test_layout_allows_gaps_between_stripes(case):
+    reader = orc.ORCFile(str(case.path))
+    tail = _file_tail_message_type().FromString(reader.reader.serialized_file_tail())
+    for i, stripe in enumerate(cast(Any, tail).footer.stripes):
+        stripe.offset += i * 17
+    owner = SimpleNamespace(
+        nrows=16,
+        nstripes=3,
+        reader=SimpleNamespace(serialized_file_tail=tail.SerializeToString),
+    )
+    layout = metadata.read_orc_layout(
+        cast(orc.ORCFile, owner), str(case.path), case.layout.size + 34
+    )
+    assert layout.stripes is not None
+    assert [s.bytes_offset for s in layout.stripes] == [
+        s.bytes_offset + i * 17 for i, s in enumerate(case.layout.stripes)
+    ]
+    assert [s.row_offset for s in layout.stripes] == [0, 5, 12]
 
 
 @pytest.mark.parametrize("fault", ["missing", "overlap", "rows", "footer", "bytes"])
@@ -170,9 +189,16 @@ def test_bad_footer_closes_source_and_keeps_path(case, read):
     assert source.closed
 
 
-def test_missing_api_freezes_whole_file_and_rejects_assignments(case, monkeypatch):
+@pytest.mark.parametrize("missing", ["metadata", "decoder"])
+def test_missing_api_freezes_whole_file_and_rejects_assignments(
+    case, monkeypatch, missing
+):
     assignment = selected(case)
-    monkeypatch.setattr(orc.ORCFile, "iter_batches", None, raising=False)
+    if missing == "metadata":
+        reader_type = metadata._orc.ORCReader
+        monkeypatch.setattr(metadata._orc, "ORCReader", lambda: reader_type())
+    else:
+        monkeypatch.setattr(orc.ORCFile, "read_stripe", None)
     source = OrcDatasourceV2([str(case.path)])
     indexer = source._get_file_indexer()
     _, prepared, partitioner = source.prepare_read(
@@ -180,7 +206,7 @@ def test_missing_api_freezes_whole_file_and_rejects_assignments(case, monkeypatc
     )
     assert prepared is indexer and type(partitioner).__name__ == "RoundRobinPartitioner"
     reader = OrcScanner(schema=orc.ORCFile(str(case.path)).schema).create_reader()
-    with pytest.raises(RuntimeError, match="requires Arrow native"):
+    with pytest.raises(RuntimeError, match="requires Arrow stripe/footer"):
         list(reader.read(assignment))
     manifest = next(
         iter(
@@ -189,6 +215,49 @@ def test_missing_api_freezes_whole_file_and_rejects_assignments(case, monkeypatc
     )
     result = list(reader.read(manifest))
     assert pa.concat_tables(result)["id"].to_pylist() == list(range(16))
+
+
+@pytest.mark.parametrize("stripe", [False, True], ids=["whole", "stripe"])
+@pytest.mark.parametrize("schema_kind", ["none", "empty", "synthesized", "partition"])
+@pytest.mark.parametrize("empty_projection", [False, True])
+def test_schema_fallback_keeps_physical_columns(
+    case, monkeypatch, stripe, schema_kind, empty_projection
+):
+    if not stripe:
+        monkeypatch.setattr(orc.ORCFile, "read_stripe", None)
+    schema = {
+        "none": None,
+        "empty": pa.schema([]),
+        "synthesized": pa.schema([("path", pa.string())]),
+        "partition": pa.schema([("year", pa.string())]),
+    }[schema_kind]
+    batches = list(
+        OrcScanner(
+            schema=schema,
+            columns=() if empty_projection else None,
+            batch_size=2,
+            partitioning=Partitioning(PartitionStyle.HIVE),
+            synthesized_columns=(PathColumn(),),
+        )
+        .create_reader()
+        .read(selected(case) if stripe else sample(case))
+    )
+    ids = [0, 1, 2, 3, 4, 12, 13, 14, 15] if stripe else list(range(16))
+    assert sum(b.num_rows for b in batches) == len(ids)
+    if empty_projection:
+        assert all(
+            not {"id", "label", "year", "path"}.intersection(b.column_names)
+            for b in batches
+        )
+    else:
+        names = {
+            "synthesized": ["path", "id", "label", "year"],
+            "partition": ["year", "id", "label", "path"],
+        }.get(schema_kind, ["id", "label", "year", "path"])
+        assert all(b.column_names == names for b in batches)
+        assert [r for b in batches for r in b.to_pylist()] == [
+            dict(id=i, label=str(i), year="2024", path=str(case.path)) for i in ids
+        ]
 
 
 @pytest.mark.parametrize("prelisted", [False, True])
@@ -277,7 +346,7 @@ class Position(SynthesizedColumn):
 @pytest.mark.parametrize("ordered", [False, True])
 @pytest.mark.parametrize("split", [False, True])
 @pytest.mark.parametrize("retry", [False, True])
-def test_native_positions_filter_retry_and_group_conservation(
+def test_stripe_positions_filter_retry_and_group_conservation(
     case, monkeypatch, ordered, split, retry
 ):
     monkeypatch.setattr(
@@ -286,9 +355,6 @@ def test_native_positions_filter_retry_and_group_conservation(
     import sys
 
     monkeypatch.setitem(sys.modules, "pyorc", None)
-    monkeypatch.setattr(
-        orc.ORCFile, "read_stripe", Mock(side_effect=AssertionError("whole stripe"))
-    )
     observer = Position()
     scanner = OrcScanner(
         schema=orc.ORCFile(str(case.path)).schema,
@@ -298,7 +364,7 @@ def test_native_positions_filter_retry_and_group_conservation(
         synthesized_columns=(observer,),
     )
     reader = scanner.create_reader()
-    original, failed = reader._iter_native_tables, False
+    original, failed = reader._iter_stripe_tables, False
 
     def flaky(*args):
         nonlocal failed
@@ -308,7 +374,7 @@ def test_native_positions_filter_retry_and_group_conservation(
                 raise OSError("transient ORC")
             yield table
 
-    monkeypatch.setattr(reader, "_iter_native_tables", flaky)
+    monkeypatch.setattr(reader, "_iter_stripe_tables", flaky)
     monkeypatch.setattr(
         DataContext.get_current(), "retried_io_errors", ["transient ORC"]
     )
@@ -321,34 +387,33 @@ def test_native_positions_filter_retry_and_group_conservation(
         groups = []
         while packer.has_partition():
             groups.append(packer.next_partition())
-    with native_stripe_read():
-        batches = [b for group in groups for b in reader.read(group)]
-        assert all(b.num_rows <= 2 for b in batches)
-        assert reader._sampled_batch_size == 1
-        assert [r["id"] for b in batches for r in b.to_pylist()] == [
-            1,
-            3,
-            12,
-            13,
-            14,
-            15,
-        ]
-        cursors = {0: 0, 2: 0}
-        assert len(batches) == len(observer.seen) and failed == retry
-        for batch, pos in zip(batches, observer.seen):
-            i = pos.unit.index
-            assert pos.unit == ReadUnit(
-                id=metadata.orc_read_unit_id(str(case.path), i),
-                source=str(case.path),
-                index=i,
-                count=3,
-                num_rows={0: 5, 2: 4}[i],
-            )
-            assert (pos.unit_start_row, pos.rows_before) == (
-                {0: 0, 2: 12}[i],
-                cursors[i],
-            )
-            cursors[i] += batch.num_rows
+    batches = [b for group in groups for b in reader.read(group)]
+    assert all(b.num_rows <= 2 for b in batches)
+    assert reader._sampled_batch_size == 1
+    assert [r["id"] for b in batches for r in b.to_pylist()] == [
+        1,
+        3,
+        12,
+        13,
+        14,
+        15,
+    ]
+    cursors = {0: 0, 2: 0}
+    assert len(batches) == len(observer.seen) and failed == retry
+    for batch, pos in zip(batches, observer.seen):
+        i = pos.unit.index
+        assert pos.unit == ReadUnit(
+            id=metadata.orc_read_unit_id(str(case.path), i),
+            source=str(case.path),
+            index=i,
+            count=3,
+            num_rows={0: 5, 2: 4}[i],
+        )
+        assert (pos.unit_start_row, pos.rows_before) == (
+            {0: 0, 2: 12}[i],
+            cursors[i],
+        )
+        cursors[i] += batch.num_rows
 
 
 @pytest.mark.parametrize(
@@ -364,7 +429,7 @@ def test_native_positions_filter_retry_and_group_conservation(
         (["path"], None, list(range(9))),
     ],
 )
-def test_native_schema_projection_zero_columns_and_partitions(
+def test_stripe_schema_projection_zero_columns_and_partitions(
     case, monkeypatch, columns, predicate, expected
 ):
     schema = pa.schema(
@@ -375,42 +440,41 @@ def test_native_schema_projection_zero_columns_and_partitions(
             ("year", pa.string()),
         ]
     )
-    native = getattr(orc.ORCFile, "iter_batches", None)
+    read_stripe = orc.ORCFile.read_stripe
     decoded = []
 
-    def batches(owner, **kwargs):
-        decoded.append(kwargs["columns"])
-        return cast(Callable[..., Iterator[pa.RecordBatch]], native)(owner, **kwargs)
+    def decode(owner, index, columns=None):
+        decoded.append((index, columns))
+        return read_stripe(owner, index, columns=columns)
 
-    if callable(native):
-        monkeypatch.setattr(orc.ORCFile, "iter_batches", batches)
-    with native_stripe_read():
-        result = list(
-            OrcScanner(
-                schema=schema,
-                columns=tuple(columns) if columns is not None else None,
-                predicate=predicate,
-                batch_size=2,
-                partitioning=Partitioning(PartitionStyle.HIVE),
-                synthesized_columns=(PathColumn(),),
-            )
-            .create_reader()
-            .read(selected(case))
+    monkeypatch.setattr(orc.ORCFile, "read_stripe", decode)
+    result = list(
+        OrcScanner(
+            schema=schema,
+            columns=tuple(columns) if columns is not None else None,
+            predicate=predicate,
+            batch_size=2,
+            partitioning=Partitioning(PartitionStyle.HIVE),
+            synthesized_columns=(PathColumn(),),
         )
-        assert sum(b.num_rows for b in result) == len(expected)
-        rows = [r for b in result for r in b.to_pylist()]
-        if columns in ([], ["path"]):
-            assert decoded == [[], []]
-            if columns:
-                assert all(r["path"] == str(case.path) for r in rows)
-        else:
-            assert [r["id"] for r in rows] == expected
-            assert all(b.schema.field("id").type == pa.int32() for b in result)
-            assert all(r["missing"] is None and r["year"] == "2024" for r in rows)
+        .create_reader()
+        .read(selected(case))
+    )
+    assert sum(b.num_rows for b in result) == len(expected)
+    rows = [r for b in result for r in b.to_pylist()]
+    if columns in ([], ["path"]):
+        assert decoded == []
+        if columns:
+            assert all(r["path"] == str(case.path) for r in rows)
+    else:
+        assert [index for index, _ in decoded] == [0, 2]
+        assert [r["id"] for r in rows] == expected
+        assert all(b.schema.field("id").type == pa.int32() for b in result)
+        assert all(r["missing"] is None and r["year"] == "2024" for r in rows)
 
 
 @pytest.mark.parametrize("mode", ["normal", "open", "close", "limit", "error"])
-def test_native_input_lifetime(case, monkeypatch, mode):
+def test_stripe_input_lifetime(case, monkeypatch, mode):
     sources, attempts = [], []
 
     def opened(path):
@@ -433,28 +497,27 @@ def test_native_input_lifetime(case, monkeypatch, mode):
     monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
     if mode == "error":
         monkeypatch.setattr(
-            reader, "_iter_native_tables", Mock(side_effect=ValueError("decode"))
+            reader, "_iter_stripe_tables", Mock(side_effect=ValueError("decode"))
         )
-    with native_stripe_read():
-        iterator = reader._read_fragment_batches(
-            ds.dataset(str(case.path), format="orc"),
-            dict(columns=None, filter=None, batch_size=2),
-            selected(case),
-        )
-        if mode == "error":
-            with pytest.raises(ValueError, match="decode"):
-                list(iterator)
-        elif mode == "close":
-            next(iterator)
-            iterator.close()
-        else:
-            assert sum(b.num_rows for b, _ in iterator) == (2 if mode == "limit" else 9)
-        assert len(sources) == 1 and sources[0].closed
-        assert len(attempts) == (2 if mode == "open" else 1)
+    iterator = reader._read_fragment_batches(
+        ds.dataset(str(case.path), format="orc"),
+        dict(columns=None, filter=None, batch_size=2),
+        selected(case),
+    )
+    if mode == "error":
+        with pytest.raises(ValueError, match="decode"):
+            list(iterator)
+    elif mode == "close":
+        next(iterator)
+        iterator.close()
+    else:
+        assert sum(b.num_rows for b, _ in iterator) == (2 if mode == "limit" else 9)
+    assert len(sources) == 1 and sources[0].closed
+    assert len(attempts) == (2 if mode == "open" else 1)
 
 
 @pytest.mark.parametrize("decoded", [False, True])
-def test_native_pickle_guard_precedes_filter(case, monkeypatch, decoded):
+def test_stripe_pickle_guard_precedes_filter(case, monkeypatch, decoded):
     from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     schema = pa.schema([("id", pa.int64()), ("label", ArrowPythonObjectType())])
@@ -469,12 +532,9 @@ def test_native_pickle_guard_precedes_filter(case, monkeypatch, decoded):
         schema=schema,
     )
 
-    def batches(**kwargs):
-        yield unsafe
-
     owner = SimpleNamespace(
         schema=orc.ORCFile(str(case.path)).schema if decoded else schema,
-        iter_batches=Mock(side_effect=batches),
+        read_stripe=Mock(return_value=unsafe),
     )
     access = Mock(side_effect=AssertionError("unsafe table accessed"))
     monkeypatch.setattr(ds, "dataset", access)
@@ -484,11 +544,14 @@ def test_native_pickle_guard_precedes_filter(case, monkeypatch, decoded):
     reader = OrcScanner(schema=owner.schema, predicate=col("id") < 0).create_reader()
     with pytest.raises(ValueError, match="arrow_pickled_object"):
         list(
-            reader._iter_native_tables(
-                owner, str(case.path), 0, dict(columns=None, filter=None, batch_size=2)
+            reader._iter_stripe_tables(
+                owner,
+                str(case.path),
+                case.layout.stripes[0],
+                dict(columns=None, filter=None, batch_size=2),
             )
         )
-    assert owner.iter_batches.call_count == int(decoded)
+    assert owner.read_stripe.call_count == int(decoded)
     access.assert_not_called()
 
 
@@ -498,33 +561,32 @@ def test_whole_file_boundary_mixed_limit_and_manifest_compatibility(case, limit)
     schema = orc.ORCFile(str(case.path)).schema
     other = case.path.parent / "single.orc"
     write_orc_stripes(
-        other, "struct<id:bigint,label:string>", [(i, str(i)) for i in range(7)], (7,)
+        other, pa.table({"id": range(7), "label": [str(i) for i in range(7)]}), (7,)
     )
     whole = FileManifest.construct_manifest(
         paths=[str(other)], sizes=[other.stat().st_size], chunk_metadatas=[None]
     )
     mixed = FileManifest.concat([selected(case), whole])
     assert pickle.loads(pickle.dumps(mixed)).as_block().equals(mixed.as_block())
-    with native_stripe_read():
-        batches = list(
-            OrcScanner(
-                schema=schema,
-                batch_size=2,
-                limit=limit,
-                synthesized_columns=(observer,),
-            )
-            .create_reader()
-            .read(mixed)
+    batches = list(
+        OrcScanner(
+            schema=schema,
+            batch_size=2,
+            limit=limit,
+            synthesized_columns=(observer,),
         )
-        expected = [0, 1, 2, 3, 4, 12, 13, 14, 15] + list(range(7))
-        assert [r["id"] for b in batches for r in b.to_pylist()] == expected[:limit]
-        positions = [p for p in observer.seen if p.unit.source == str(other)]
-        assert [p.rows_before for p in positions] == ([0] if limit else [0, 2, 4, 6])
-        for position in positions:
-            assert position.unit == ReadUnit(
-                id=str(other), source=str(other), index=0, count=1, num_rows=7
-            )
-            assert position.unit_start_row == 0
+        .create_reader()
+        .read(mixed)
+    )
+    expected = [0, 1, 2, 3, 4, 12, 13, 14, 15] + list(range(7))
+    assert [r["id"] for b in batches for r in b.to_pylist()] == expected[:limit]
+    positions = [p for p in observer.seen if p.unit.source == str(other)]
+    assert [p.rows_before for p in positions] == ([0] if limit else [0, 2, 4, 6])
+    for position in positions:
+        assert position.unit == ReadUnit(
+            id=str(other), source=str(other), index=0, count=1, num_rows=7
+        )
+        assert position.unit_start_row == 0
 
 
 if __name__ == "__main__":
