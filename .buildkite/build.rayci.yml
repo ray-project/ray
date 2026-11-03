@@ -11,7 +11,6 @@ steps:
       - ./ci/build/copy_build_artifacts.sh wheel
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
@@ -201,7 +200,6 @@ steps:
         --architecture x86_64
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
@@ -336,7 +334,6 @@ steps:
         --architecture x86_64
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"

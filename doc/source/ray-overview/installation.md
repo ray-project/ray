@@ -115,8 +115,6 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 
 * - Linux (x86_64)
   - Linux (arm64/aarch64)
-* - [Linux Python 3.10 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl)
-  - [Linux Python 3.10 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_aarch64.whl)
 * - [Linux Python 3.11 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl)
   - [Linux Python 3.11 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_aarch64.whl)
 * - [Linux Python 3.12 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-manylinux2014_x86_64.whl)
@@ -134,7 +132,6 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 :header-rows: 1
 
 * - MacOS (arm64)
-* - [MacOS Python 3.10 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_12_0_arm64.whl)
 * - [MacOS Python 3.11 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-macosx_12_0_arm64.whl)
 * - [MacOS Python 3.12 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-macosx_12_0_arm64.whl)
 * - [MacOS Python 3.13 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-macosx_12_0_arm64.whl)
@@ -148,7 +145,6 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 :header-rows: 1
 
 * - Windows
-* - [Windows Python 3.10 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-win_amd64.whl)
 * - [Windows Python 3.11 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-win_amd64.whl)
 * - [Windows Python 3.12 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-win_amd64.whl)
 * - [Windows Python 3.13 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-win_amd64.whl)
@@ -296,7 +292,7 @@ Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform
   - The most recent Ray development build (a recent commit from Github `master`)
 ```
 
-The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py310`, `py311` and `py312`. If unspecified, the tag points to an image of the lowest Python version that the Ray version supports.
+The optional `Python version` tag specifies the Python version in the image. All Python versions that Ray publishes images for are available, e.g. `py311`, `py312` and `py313`. If unspecified, the tag points to an image using `Python 3.11`. Starting with Ray 2.61, Ray doesn't publish `py310` images.
 
 The optional `Platform` tag specifies the platform where the image is intended for:
 
@@ -316,7 +312,7 @@ The optional `Platform` tag specifies the platform where the image is intended f
   - Aliases to `-cpu` tagged images.
 ```
 
-Example: for the nightly image based on `Python 3.10` and without GPU support, the tag is `nightly-py310-cpu`.
+Example: for the nightly image based on `Python 3.11` and without GPU support, the tag is `nightly-py311-cpu`.
 
 If you want to tweak some aspects of these images and build them locally, refer to the following script:
 
