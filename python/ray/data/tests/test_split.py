@@ -1056,7 +1056,9 @@ if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
 
 
-def test_train_test_split_float_precision_and_edge_cases(ray_start_regular_shared_2_cpus):
+def test_train_test_split_float_precision_and_edge_cases(
+    ray_start_regular_shared_2_cpus,
+):
     # Verify precision fix for float test_size truncation (issue #66472)
     ds10 = ray.data.range(10)
     train, test = ds10.train_test_split(test_size=0.8)
