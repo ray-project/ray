@@ -59,9 +59,9 @@ _QUERY_XML = """<?xml version="1.1" encoding="UTF-8" standalone="no"?>
       <label value="//doc:source/core/doc_code/runtime_env_example.py"/>
     </list>
   </rule>
-  <rule class="py_test" name="//doc/source/data/examples/llm:vllm">
-    <list name="tags"><string value="gpu"/><string value="team:llm"/></list>
-    <list name="args"><string value="--path"/><string value="vllm.ipynb"/></list>
+  <rule class="py_test" name="//doc/source/data/examples:batch_inference_object_detection">
+    <list name="tags"><string value="gpu"/><string value="team:data"/></list>
+    <list name="args"><string value="--path"/><string value="batch_inference_object_detection.ipynb"/></list>
   </rule>
 </query>
 """
@@ -114,10 +114,12 @@ def test_library_wide_doctest_is_reported_not_run(targets):
 
 
 def test_gpu_target_is_reported_not_run(targets):
-    path = "doc/source/data/examples/llm/vllm.ipynb"
+    path = "doc/source/data/examples/batch_inference_object_detection.ipynb"
     selection = select([path], targets)
     assert selection.runnable == {}
-    assert selection.gpu == {path: ["//doc/source/data/examples/llm:vllm"]}
+    assert selection.gpu == {
+        path: ["//doc/source/data/examples:batch_inference_object_detection"]
+    }
 
 
 def test_harness_and_build_files_are_ignored(targets):
