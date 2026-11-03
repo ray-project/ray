@@ -3,9 +3,11 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -2984,6 +2986,83 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Also assert that agent 1's action b uffer was emptied with the last
         # observations.
         self.assertTrue(episode_2.agent_buffers["agent_1"]["actions"].empty())
+
+    def test_cut_and_stateful_learner_connector(self):
+        # With agents acting in turns, an agent's last STATE_OUT before `cut()` can
+        # lie outside the (env timestep based) lookback. The learner connector must
+        # then fall back to the initial state (https://github.com/ray-project/ray/
+        # issues/56771).
+        class _Module:
+            model_config = {"max_seq_len": 2}
+
+            def __init__(self, initial_state):
+                self._initial_state = initial_state
+
+            def is_stateful(self):
+                return True
+
+            def get_initial_state(self):
+                return self._initial_state
+
+            def __getitem__(self, module_id):  # Mimic a MultiRLModule.
+                return self
+
+        h_c = lambda x: {  # noqa: E731
+            "h": np.full((2,), x, np.float32),
+            "c": np.full((2,), x, np.float32),
+        }
+        for name, state_fn in [
+            ("ndarray", lambda x: np.full((2,), x, np.float32)),
+            ("nested", h_c),
+        ]:
+            with self.subTest(state=name):
+                initial_state = tree.map_structure(np.zeros_like, state_fn(0.0))
+                episode = MultiAgentEpisode(
+                    agent_to_module_mapping_fn=lambda a, e: "p0"
+                )
+                episode.add_env_reset(observations={"a0": 0})
+
+                def step(ep, env_t):  # a0 acts at even env timesteps, a1 at odd ones.
+                    agent, next_agent = ("a0", "a1") if env_t % 2 == 0 else ("a1", "a0")
+                    ep.add_env_step(
+                        observations={next_agent: env_t + 1},
+                        actions={agent: 0},
+                        rewards={agent: 0.0},
+                        extra_model_outputs={
+                            agent: {Columns.STATE_OUT: state_fn(env_t + 1.0)}
+                        },
+                    )
+
+                for env_t in range(2):
+                    step(episode, env_t)
+                # a0 last acted 2 env timesteps ago -> Its STATE_OUT lookback in the
+                # successor is empty, even though its `t_started` is 1.
+                successor = episode.cut(len_lookback_buffer=1)
+                for env_t in range(2, 6):
+                    step(successor, env_t)
+                a0 = successor.agent_episodes["a0"]
+                check(a0.t_started, 1)
+                check(a0.extra_model_outputs[Columns.STATE_OUT].lookback, 0)
+                successor.to_numpy()
+
+                batch = AddStatesFromEpisodesToBatch(as_learner_connector=True)(
+                    rl_module=_Module(initial_state),
+                    batch={},
+                    episodes=[successor],
+                    shared_data={},
+                )
+                for agent_id in ["a0", "a1"]:
+                    state_in = batch[Columns.STATE_IN][(successor.id_, agent_id, "p0")]
+                    first_state_in = tree.map_structure(lambda s: s[0], state_in[0])
+                    check(first_state_in, initial_state)
+                    # Not the chunk's own last STATE_OUT (the old result for ndarrays).
+                    last_state_out = tree.map_structure(
+                        lambda s: s[-1],
+                        successor.agent_episodes[agent_id].get_extra_model_outputs(
+                            Columns.STATE_OUT
+                        ),
+                    )
+                    check(first_state_in, last_state_out, false=True)
 
     def test_slice(self):
         # Generate a simple multi-agent episode.
