@@ -5,23 +5,45 @@ import math
 import os
 import threading
 import time
-from typing import Any, Collection, Dict, List, Optional, Set, Tuple
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
+from ray._common.network_utils import build_address, parse_address
+from ray._common.utils import env_float
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
     DEFAULT_MEGASCALE_PORT,
-    TPU_SUBSLICE_LABEL_PREFIX,
+    DEFAULT_TPU_PROCESS_PORT,
+    GKE_TPU_TOPOLOGY_ENV_VAR,
+    TPU_CHIPS_PER_HOST_BOUNDS_MAP,
+    TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR,
+    TPU_PROCESS_ADDRESSES_ENV_VAR,
+    TPU_PROCESS_BOUNDS_ENV_VAR,
+    TPU_PROCESS_PORT_ENV_VAR,
+    TPU_WORKER_HOSTNAMES_ENV_VAR,
+    TPU_WORKER_ID_ENV_VAR,
     VALID_TPU_TYPES,
-    _build_subslice_labels,
     _get_default_chips_per_vm,
     _get_physical_worker_id_from_coords,
+    _get_subslice_index,
     _get_worker_dims_for_topology,
     _parse_topology_dims,
+    _query_local_tpu_chip_coordinates,
     get_chips_per_host,
     get_num_chips_from_topology,
     get_tpu_resource_per_chip,
     infer_tpu_pod_type_from_topology,
+    normalize_tpu_accelerator_type,
 )
 from ray._private.client_mode_hook import client_mode_wrap
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -35,7 +57,10 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S: float = 100.0
+DEFAULT_TPU_SLICE_READY_TIMEOUT_S: float = 100.0
+DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S: float = env_float(
+    "RAY_TPU_SLICE_DISCOVERY_TIMEOUT_S", 180.0
+)
 
 
 @PublicAPI(stability="alpha")
@@ -51,14 +76,7 @@ def get_tpu_version_from_type(accelerator_type: str) -> str:
     Raises:
         ValueError: If the accelerator type is invalid.
     """
-    accel_type_lower = accelerator_type.lower()
-
-    if accel_type_lower.startswith("tpu-"):
-        version = accel_type_lower.replace("tpu-", "")
-    elif accel_type_lower.startswith("tpu"):
-        version = accel_type_lower.replace("tpu", "v")
-    else:
-        version = accel_type_lower
+    version = normalize_tpu_accelerator_type(accelerator_type)
 
     if version not in VALID_TPU_TYPES:
         raise ValueError(
@@ -238,8 +256,7 @@ def get_tpu_worker_resources(
     if resolved_chips_per_vm % tpus_per_worker != 0:
         raise ValueError(
             f"TPU resources per bundle ({tpus_per_worker}) must "
-            "evenly divide the logical TPU devices per host "
-            f"({resolved_chips_per_vm})."
+            f"evenly divide the logical TPU devices per host ({resolved_chips_per_vm})."
         )
 
     num_workers = int(total_tpus_available // tpus_per_worker)
@@ -273,6 +290,42 @@ def get_tpu_coordinator_env_vars(
     }
 
 
+def _validate_worker_id(
+    worker_id: Optional[int],
+    num_hosts: int,
+) -> Optional[int]:
+    """Returns worker_id, defaulting to 0 on a single host, validated against num_hosts."""
+    if worker_id is None:
+        return 0 if num_hosts == 1 else None
+    if not (0 <= worker_id < num_hosts):
+        raise ValueError(
+            f"worker_id {worker_id} is out of bounds for {num_hosts} host(s). "
+            f"Must be in range [0, {num_hosts - 1}]."
+        )
+    return worker_id
+
+
+def _strip_endpoint_port(endpoint: str) -> str:
+    """Strip the port from a network endpoint (e.g. '10.0.0.1:8471' or '[::1]:8471')."""
+    s = endpoint.strip()
+    parsed = parse_address(s)
+    return parsed[0] if parsed is not None else s.strip("[]")
+
+
+def _get_pg_bundle_node_ips(
+    pg: PlacementGroup,
+    bundle_indices: Sequence[int],
+) -> List[Optional[str]]:
+    """Returns the node IP of each bundle, or None for bundles not yet placed."""
+    bundles_to_node_id = placement_group_table(pg).get("bundles_to_node_id", {})
+    node_id_to_ip = {
+        node["NodeID"]: node.get("NodeManagerAddress")
+        for node in ray.nodes()
+        if node.get("Alive", False)
+    }
+    return [node_id_to_ip.get(bundles_to_node_id.get(idx)) for idx in bundle_indices]
+
+
 @PublicAPI(stability="alpha")
 def get_tpu_slice_name_from_node(node: Dict[str, Any]) -> Optional[str]:
     """Returns the TPU slice name for a given Ray node dictionary.
@@ -284,6 +337,61 @@ def get_tpu_slice_name_from_node(node: Dict[str, Any]) -> Optional[str]:
         The TPU slice name if the node belongs to a multi-host slice, otherwise None.
     """
     return node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+
+
+@PublicAPI(stability="alpha")
+def get_jax_env_vars(
+    worker_hostnames: Union[str, List[str]],
+    worker_id: Optional[int] = None,
+    process_bounds: Optional[str] = None,
+    chips_per_process_bounds: Optional[str] = None,
+) -> Dict[str, str]:
+    """Returns the JAX / libtpu environment variables for one host of a TPU slice.
+
+    Works for full slices and subslices, and assumes one JAX process per TPU
+    host (``worker_id`` in ``0..num_hosts - 1``). ``TPU_PROCESS_PORT`` is taken
+    from the calling process's environment, falling back to ``8471``.
+
+    Args:
+        worker_hostnames: Comma-separated string or list of host IP addresses or
+            DNS hostnames. Ports (e.g. "10.0.0.1:8471") are stripped, since
+            libtpu expects bare hostnames.
+        worker_id: Optional integer ID of the worker host (0-indexed). Defaults to 0
+            for a single host; when omitted on multiple hosts, ``TPU_WORKER_ID`` is
+            not set (valid for full slices whose hosts already have matching
+            ``TPU_WORKER_ID`` in their environment).
+        process_bounds: Optional process bounds string (e.g. "1,2,1") for subslice execution.
+        chips_per_process_bounds: Optional chips per process bounds string (e.g. "2,2,1").
+
+    Returns:
+        A dictionary mapping JAX / libtpu environment variables to their values.
+
+    Raises:
+        ValueError: If no hosts are provided or if worker_id is out of bounds.
+    """
+    if isinstance(worker_hostnames, str):
+        worker_hostnames = worker_hostnames.split(",")
+    hosts = [host for item in worker_hostnames if (host := _strip_endpoint_port(item))]
+    if not hosts:
+        raise ValueError("worker_hostnames must contain at least one host.")
+    worker_id = _validate_worker_id(worker_id, len(hosts))
+
+    port = os.environ.get(TPU_PROCESS_PORT_ENV_VAR) or DEFAULT_TPU_PROCESS_PORT
+    env_vars = {
+        TPU_WORKER_HOSTNAMES_ENV_VAR: ",".join(hosts),
+        TPU_PROCESS_ADDRESSES_ENV_VAR: ",".join(build_address(h, port) for h in hosts),
+        # Export the same port used in TPU_PROCESS_ADDRESSES so every host
+        # binds the port its peers dial.
+        TPU_PROCESS_PORT_ENV_VAR: port,
+    }
+    if worker_id is not None:
+        env_vars[TPU_WORKER_ID_ENV_VAR] = str(worker_id)
+    if process_bounds is not None:
+        env_vars[TPU_PROCESS_BOUNDS_ENV_VAR] = process_bounds
+    if chips_per_process_bounds is not None:
+        env_vars[TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR] = chips_per_process_bounds
+
+    return env_vars
 
 
 @PublicAPI(stability="alpha")
@@ -349,12 +457,10 @@ def _get_intact_tpu_slices(
     for node in ray.nodes():
         if node.get("Alive"):
             labels = node.get("Labels") or {}
-            node_topology = labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
-            matches_pod_or_topology = (
-                labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type
-                and node_topology in (None, norm_topology)
-            ) or (
-                node_topology == norm_topology
+            matches_pod_or_topology = labels.get(
+                ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY
+            ) == pod_type or (
+                labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY) == norm_topology
                 and labels.get(ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY)
                 == norm_accel_type
             )
@@ -399,46 +505,62 @@ def _get_intact_tpu_slices(
 
 
 def _get_nodes_with_placed_tpu_bundles() -> Set[str]:
-    """Return the set of NodeIDs where an active placement group bundle
-    consuming TPU resources is currently placed.
+    """Return the set of node IDs that currently host a placed TPU bundle in any
+    non-REMOVED placement group.
 
-    Consulted alongside `available_resources_per_node()` because GCS updates
-    `placement_group_table()` synchronously on bundle placement while the
-    per-node available-resource view in the State API updates asynchronously.
+    Why this is needed: ``available_resources_per_node()`` returns the base
+    ``"TPU"`` resource counter on each node. When a placement group reserves
+    ``{"TPU": N}``, the base ``"TPU"`` resource is converted into placement-group
+    wildcard/indexed resources (``TPU_group_...``), which in Ray's resource view
+    only occurs once a task or actor is scheduled into the bundle in some test/mock
+    environments or can race with ``remove_placement_group()``. Checking placed
+    TPU bundles in ``placement_group_table()`` ensures a node with an active
+    placement group reservation is treated as busy.
     """
     if not ray.is_initialized():
         return set()
+    used_nodes: Set[str] = set()
     try:
         pg_table = placement_group_table()
     except Exception:
-        return set()
-    used_nodes: Set[str] = set()
+        return used_nodes
+    if not isinstance(pg_table, dict):
+        return used_nodes
     for pg_info in pg_table.values():
-        if pg_info.get("state") == "REMOVED":
+        if not isinstance(pg_info, dict) or pg_info.get("state") == "REMOVED":
             continue
-        bundles = pg_info.get("bundles") or {}
-        for bundle_idx, node_id in (pg_info.get("bundles_to_node_id") or {}).items():
-            if node_id and (bundles.get(bundle_idx) or {}).get("TPU", 0) > 0:
+        bundles = pg_info.get("bundles", {})
+        bundles_to_node_id = pg_info.get("bundles_to_node_id", {})
+        for bundle_idx, node_id in bundles_to_node_id.items():
+            if not node_id:
+                continue
+            bundle_res = bundles.get(bundle_idx) or bundles.get(int(bundle_idx)) or {}
+            if bundle_res.get("TPU", 0) > 0:
                 used_nodes.add(node_id)
     return used_nodes
 
 
 def _tpus_idle(
-    node: Dict[str, Any],
+    nodes: Collection[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
-    pg_used_nodes: Collection[str] = (),
+    pg_used_nodes: Set[str],
 ) -> bool:
-    """Returns whether all of a node's TPUs are free.
-
-    Ray's sparse available-resources map omits "TPU" when none are free; a
-    node missing from the map has not reported yet and counts as idle.
+    """Return True iff every node in *nodes* has all its TPUs unreserved and no
+    placed TPU placement-group bundles.
     """
-    node_id = node["NodeID"]
-    if node_id in pg_used_nodes:
-        return False
-    node_avail = avail.get(node_id)
-    total = (node.get("Resources") or {}).get("TPU", 0)
-    return node_avail is None or node_avail.get("TPU", 0) >= total
+    for node in nodes:
+        node_id = node.get("NodeID")
+        if node_id in pg_used_nodes:
+            return False
+        total = (node.get("Resources") or {}).get("TPU", 0)
+        # Note: available_resources_per_node() omits keys whose available amount
+        # is 0.0, so if node_id is present in avail we must default missing "TPU"
+        # to 0 (fully allocated), only falling back to total when the node itself
+        # is absent from avail.
+        avail_tpus = avail[node_id].get("TPU", 0) if node_id in avail else total
+        if avail_tpus < total:
+            return False
+    return True
 
 
 @PublicAPI(stability="alpha")
@@ -467,7 +589,8 @@ def get_num_ready_tpu_slices(
     if not intact_slices:
         return 0
 
-    # Fetch live resource usage via the State API and placement group table to ensure slices are idle.
+    # Fetch live resource usage via the State API and placement group table to
+    # ensure slices are idle.
     from ray._private.state import available_resources_per_node
 
     node_avail_resources = available_resources_per_node()
@@ -476,7 +599,7 @@ def get_num_ready_tpu_slices(
     return sum(
         1
         for nodes in intact_slices.values()
-        if all(_tpus_idle(node, node_avail_resources, pg_used_nodes) for node in nodes)
+        if _tpus_idle(nodes, node_avail_resources, pg_used_nodes)
     )
 
 
@@ -512,20 +635,22 @@ def get_num_tpu_slices(
 
 @PublicAPI(stability="alpha")
 class SlicePlacementGroup:
-    """A handle to a placement group reservation for a TPU slice.
+    """A handle to placement group reservations for one or more TPU slices.
 
-    The following definitions are added for clarity:
+    Creates one placement group per requested TPU slice:
 
-    - Accelerator type: A string describing the accelerator type and version (e.g. TPU-V2, TPU-V6E).
-    - Accelerator version: The accelerator generation only (e.g. v6e, v5p, v5litepod).
-    - Pod type: The TPU accelerator version and the number of chips in a topology. (e.g. v6e-128, v5p-8).
-    - Accelerator topology: The physical topology representing the structure (e.g. 2x2x2, 16x16).
+    - Single-host slices use ``strategy="STRICT_PACK"`` with ``ray.io/tpu-topology``
+      and ``ray.io/accelerator-type`` bundle label selectors.
+    - Multi-host slices use ``topology_strategy={"ray.io/tpu-slice-name": "STRICT_PACK"}``
+      and pin each bundle to ``ray.io/tpu-pod-type`` and its deterministic host
+      index ``ray.io/tpu-worker-id`` (``bundle_idx // bundles_per_host``).
 
     Args:
         topology: The TPU topology string (e.g. "2x2x2").
         accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
         resources_per_bundle: Optionally specify the resources to include in every worker bundle.
-        name: PlacementGroup parameter. The name of the placement group.
+            The TPU count per bundle must evenly divide the TPU devices on one host.
+        name: PlacementGroup parameter. The name prefix of the placement group(s).
         lifetime: PlacementGroup parameter. Either `None`, which defaults to the placement group
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
@@ -534,8 +659,8 @@ class SlicePlacementGroup:
         chips_per_vm: An optional override for the number of chips per VM. Useful for resolving
             ambiguous topologies (e.g. v6e 2x4) where the slice could physically consist of
             a single 8-chip VM or two 4-chip VMs.
-        bundle_label_selector: Optional list of label selectors to apply per bundle. These label
-            selectors are merged with the TPU topology/pod-type labels.
+        bundle_label_selector: Optional list of label selectors to apply per bundle. User-provided
+            entries override the default TPU pod-type and worker-id labels.
         tpu_resource_per_chip: The number of logical TPU resources per physical chip. Defaults to 1.
             This scales the total logical resources reserved by each slice.
 
@@ -553,6 +678,7 @@ class SlicePlacementGroup:
         ...     spmd_task.options(
         ...         scheduling_strategy=PlacementGroupSchedulingStrategy(
         ...             placement_group=slice_pg,
+        ...             placement_group_bundle_index=i,
         ...         )
         ...     ).remote(world=4, rank=i)
         ...     for i in range(slice_handle.num_hosts)
@@ -564,10 +690,8 @@ class SlicePlacementGroup:
         topology: str,
         accelerator_version: str,
         resources_per_bundle: Optional[Dict[str, float]] = None,
-        # below are args related to PG
         name: str = "",
         lifetime: Optional[str] = None,
-        # default
         num_slices: int = 1,
         chips_per_vm: Optional[int] = None,
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
@@ -587,7 +711,18 @@ class SlicePlacementGroup:
             tpu_resource_per_chip = get_tpu_resource_per_chip()
         self._tpu_resource_per_chip = tpu_resource_per_chip
 
-        self._validate_tpu_config()
+        # Calculate number of bundles and bundle resources for specified TPU topology.
+        self._num_bundles, self._bundle_resources = get_tpu_worker_resources(
+            topology=self._topology,
+            accelerator_type=self._accelerator_version,
+            resources_per_worker=resources_per_bundle,
+            num_slices=self._num_slices,
+            chips_per_vm=chips_per_vm,
+            tpu_resource_per_chip=self._tpu_resource_per_chip,
+        )
+
+        if chips_per_vm is not None and chips_per_vm <= 0:
+            raise ValueError("chips_per_vm must be positive.")
 
         self._chips_per_host = (
             chips_per_vm
@@ -599,16 +734,6 @@ class SlicePlacementGroup:
                 f"Resolved chips per host must be positive, got {self._chips_per_host}"
             )
 
-        # Calculate number of bundles and bundle resources for specified TPU topology.
-        self._num_bundles, self._bundle_resources = get_tpu_worker_resources(
-            topology=self._topology,
-            accelerator_type=self._accelerator_version,
-            resources_per_worker=resources_per_bundle,
-            num_slices=self._num_slices,
-            chips_per_vm=self._chips_per_host,
-            tpu_resource_per_chip=self._tpu_resource_per_chip,
-        )
-
         # Within Ray, a "host" corresponds to a user-visible compute VM.
         # This may differ from the physical hardware host definitions in GCP/GKE docs.
         total_chips = get_num_chips_from_topology(self._topology)
@@ -618,11 +743,13 @@ class SlicePlacementGroup:
         )
         total_chips *= self._tpu_resource_per_chip
 
-        hosts_per_slice = max(1, total_chips // self._logical_devices_per_host)
-        self._num_hosts = hosts_per_slice * self._num_slices
+        self._hosts_per_slice = max(1, total_chips // self._logical_devices_per_host)
+        self._num_hosts = self._hosts_per_slice * self._num_slices
+        self._bundles_per_slice = self._num_bundles // self._num_slices
 
-        # Reserve TPU slice(s) of the provided accelerator version and topology.
-        self._reserve_slice(
+        self._validate_tpu_config()
+
+        self._managed_pgs = self._reserve_slice(
             name=name,
             lifetime=lifetime,
         )
@@ -643,8 +770,8 @@ class SlicePlacementGroup:
         self,
         name: str = "",
         lifetime: Optional[str] = None,
-    ) -> None:
-        """Creates one PlacementGroup per requested TPU slice."""
+    ) -> List[PlacementGroup]:
+        """Creates one label-constrained placement group per requested TPU slice."""
         if (
             self._user_bundle_label_selector
             and len(self._user_bundle_label_selector) != self._num_bundles
@@ -655,60 +782,55 @@ class SlicePlacementGroup:
             )
 
         self._bundle_label_selector = []
-        bundles_per_slice = self.bundles_per_slice
-        bundles_per_host = bundles_per_slice // self.hosts_per_slice
-
-        total_chips = get_num_chips_from_topology(self._topology)
-        is_single_host = total_chips <= self._chips_per_host
+        bundles_per_slice = self._bundles_per_slice
+        is_single_host = self._hosts_per_slice == 1
+        bundles_per_host = bundles_per_slice // self._hosts_per_slice
 
         try:
             accelerator_type = "TPU-" + self.accelerator_version.upper()
-            pod_type = infer_tpu_pod_type_from_topology(
-                self._topology, accelerator_type
-            )
-            if is_single_host:
-                tpu_labels = {
-                    ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: self._topology,
-                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: accelerator_type,
-                }
-            else:
-                tpu_labels = {
-                    ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: pod_type,
-                }
+            pod_type = None
+            if not is_single_host:
+                pod_type = infer_tpu_pod_type_from_topology(
+                    self._topology, accelerator_type
+                )
+                if not pod_type:
+                    raise ValueError(
+                        f"Could not infer TPU pod type for topology '{self._topology}' "
+                        f"and accelerator '{accelerator_type}'."
+                    )
 
             for slice_idx in range(self.num_slices):
-                slice_user_selectors = (
-                    self._user_bundle_label_selector[
-                        slice_idx
-                        * bundles_per_slice : (slice_idx + 1)
-                        * bundles_per_slice
-                    ]
-                    or [{}] * bundles_per_slice
-                )
-                slice_bundle_label_selector = [
-                    {
-                        **tpu_labels,
-                        **(
-                            {}
-                            if is_single_host
-                            else {
-                                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(
-                                    bundle_idx // bundles_per_host
-                                )
-                            }
-                        ),
-                        **(user_labels or {}),
-                    }
-                    for bundle_idx, user_labels in enumerate(slice_user_selectors)
-                ]
-                self._bundle_label_selector.extend(slice_bundle_label_selector)
+                slice_bundle_label_selector = []
+                for bundle_idx in range(bundles_per_slice):
+                    global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
+                    user_labels = (
+                        self._user_bundle_label_selector[global_bundle_idx]
+                        if global_bundle_idx < len(self._user_bundle_label_selector)
+                        else {}
+                    ) or {}
+
+                    if is_single_host:
+                        default_labels = {
+                            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: self._topology,
+                            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: accelerator_type,
+                        }
+                    else:
+                        worker_id = bundle_idx // bundles_per_host
+                        default_labels = {
+                            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: pod_type,
+                            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(worker_id),
+                        }
+
+                    merged_labels = {**default_labels, **user_labels}
+                    self._bundle_label_selector.append(merged_labels)
+                    slice_bundle_label_selector.append(merged_labels)
 
                 slice_bundles = [
                     self._bundle_resources.copy() for _ in range(bundles_per_slice)
                 ]
                 pg_name = (
                     f"{name}_slice_{slice_idx}"
-                    if (name and self.num_slices > 1)
+                    if name and self.num_slices > 1
                     else name
                 )
                 if is_single_host:
@@ -730,6 +852,8 @@ class SlicePlacementGroup:
                         },
                     )
                 self._managed_pgs.append(pg)
+
+            return self._managed_pgs
         except Exception:
             self.shutdown()
             raise
@@ -741,14 +865,14 @@ class SlicePlacementGroup:
 
     @property
     def slice_placement_group(self) -> Optional[PlacementGroup]:
-        """The underlying PlacementGroup object when `num_slices == 1`.
+        """The underlying PlacementGroup object when ``num_slices == 1``.
 
         Raises:
-            ValueError: If `num_slices > 1`.
+            ValueError: If ``num_slices > 1``.
         """
         if self._num_slices > 1:
             raise ValueError(
-                "num_slices > 1, use `placement_groups` or `slice_placement_groups` instead."
+                "num_slices > 1, use `slice_placement_groups` or `placement_groups` instead."
             )
         return self._managed_pgs[0] if self._managed_pgs else None
 
@@ -766,6 +890,45 @@ class SlicePlacementGroup:
     def placement_groups(self) -> List[PlacementGroup]:
         """Alias for slice_placement_groups."""
         return self._managed_pgs
+
+    @property
+    def hosts_per_slice(self) -> int:
+        """The number of hosts in each TPU slice."""
+        return self._hosts_per_slice
+
+    @property
+    def bundles_per_slice(self) -> int:
+        """The number of bundles in each TPU slice."""
+        return self._bundles_per_slice
+
+    def get_worker_addrs(self, slice_index: int = 0) -> List[Optional[str]]:
+        """Returns the IP addresses of all worker hosts in a given slice.
+
+        Args:
+            slice_index: The 0-based index of the TPU slice.
+
+        Returns:
+            A list of IP address strings (or None for unscheduled bundles)
+            ordered by host rank (0 to hosts_per_slice - 1).
+
+        Raises:
+            ValueError: If slice_index is out of range.
+            RuntimeError: If this SlicePlacementGroup has been shut down.
+        """
+        if not (0 <= slice_index < self.num_slices):
+            raise ValueError(
+                f"slice_index {slice_index} is out of range for {self.num_slices} slice(s)."
+            )
+
+        if not self._managed_pgs:
+            raise RuntimeError("This SlicePlacementGroup has been shut down.")
+        pg = self._managed_pgs[slice_index]
+        # _reserve_slice validates that bundles divide evenly across hosts.
+        bundles_per_host = self.bundles_per_slice // self.hosts_per_slice
+        return _get_pg_bundle_node_ips(
+            pg,
+            [h * bundles_per_host for h in range(self.hosts_per_slice)],
+        )
 
     @property
     def chips_per_host(self) -> int:
@@ -787,25 +950,57 @@ class SlicePlacementGroup:
         """
         return self._logical_devices_per_host
 
+    def get_jax_env_vars(
+        self,
+        worker_id: Optional[int] = None,
+        slice_index: int = 0,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
+    ) -> Dict[str, str]:
+        """Returns the JAX TPU environment variables for this slice.
+
+        Args:
+            worker_id: Optional integer ID of the worker within the slice
+                (0-indexed), between 0 and hosts_per_slice - 1. Defaults to 0
+                on a single-host slice; when omitted on a multi-host slice,
+                ``TPU_WORKER_ID`` is not set.
+            slice_index: The 0-based index of the TPU slice.
+            worker_hostnames: If omitted, resolved from the placement group
+                bundles in this slice.
+
+        Returns:
+            A dictionary mapping JAX TPU environment variables to their values.
+
+        Raises:
+            ValueError: If slice_index is out of range or if worker_id is out
+                of bounds.
+            RuntimeError: If worker hostnames cannot be resolved.
+        """
+        if not (0 <= slice_index < self.num_slices):
+            raise ValueError(
+                f"slice_index {slice_index} is out of range for {self.num_slices} slice(s)."
+            )
+
+        if worker_hostnames is None:
+            worker_hostnames = self.get_worker_addrs(slice_index)
+            if None in worker_hostnames:
+                raise RuntimeError(
+                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for slice "
+                    f"{slice_index} because its placement group bundles are not yet "
+                    "placed. Wait for the placement group to be ready, or pass "
+                    "`worker_hostnames` explicitly."
+                )
+
+        return get_jax_env_vars(worker_hostnames=worker_hostnames, worker_id=worker_id)
+
     @property
     def num_hosts(self) -> int:
         """The total number of hosts in the SlicePlacementGroup."""
         return self._num_hosts
 
     @property
-    def hosts_per_slice(self) -> int:
-        """The number of hosts in a single TPU slice."""
-        return self._num_hosts // self._num_slices
-
-    @property
     def num_bundles(self) -> int:
         """The total number of bundles in the SlicePlacementGroup."""
         return self._num_bundles
-
-    @property
-    def bundles_per_slice(self) -> int:
-        """The number of bundles in a single TPU slice."""
-        return self._num_bundles // self._num_slices
 
     @property
     def topology(self) -> str:
@@ -824,7 +1019,7 @@ class SlicePlacementGroup:
 
     @property
     def bundle_label_selector(self) -> List[Dict[str, str]]:
-        """The bundle label selector list for the worker PG."""
+        """The bundle label selector list across all slice placement groups."""
         return self._bundle_label_selector
 
     @property
@@ -833,7 +1028,7 @@ class SlicePlacementGroup:
         return self._bundle_resources
 
     def shutdown(self):
-        """Remove all managed placement groups.
+        """Remove the slice placement group(s).
 
         Idempotent. Safe to call on a partially-constructed instance.
         """
@@ -844,7 +1039,7 @@ class SlicePlacementGroup:
                 remove_placement_group(pg)
             except Exception:
                 logger.exception(
-                    "Failed to remove TPU worker placement group %s.",
+                    "Failed to remove TPU slice placement group %s.",
                     getattr(pg, "id", pg),
                 )
 
@@ -860,27 +1055,27 @@ def slice_placement_group(
     tpu_resource_per_chip: Optional[int] = None,
     **kwargs,
 ) -> SlicePlacementGroup:
-    """Asynchronously creates a PlacementGroup for a TPU slice.
+    """Asynchronously creates PlacementGroup(s) for one or more TPU slices.
 
-    A slice placement group reserves num_slices TPU slice(s) and creates one
+    A slice placement group reserves ``num_slices`` TPU slice(s) and creates one
     placement group per slice for scheduling tasks or actors.
 
     Args:
-        topology: The desired TPU pod topology (e.g. "4x4", "2x8").
+        topology: The desired TPU pod topology (e.g. "4x4", "2x4").
         accelerator_version: The TPU accelerator generation, (e.g. "v4", "v5p", "v6e").
         resources_per_bundle: Specify the number of resources to reserve per bundle.
             When unspecified, SlicePlacementGroup defaults to reserving 1 bundle per TPU host in
             a topology, with the bundle resources set to the number of TPU in a host.
             Ex: Specifying {"TPU": 1} for a 4x4 topology would result in 16 bundles, each with 1 TPU.
             If resources_per_bundle=None for the same topology, there would be 4 bundles with 4 TPU each.
-        num_slices: The number of tpu slices within the placement group.
+            The TPU count per bundle must evenly divide the TPU devices on one host.
+        num_slices: The number of TPU slices to reserve.
         chips_per_vm: An optional override for the number of chips per TPU VM.
             Useful for ambiguous topologies like v6e 2x4 which have 1 host, but can be provisioned
             as either 1 VM (8 chips) or 2 VMs (4 chips each).
         tpu_resource_per_chip: The number of logical TPU resources per physical chip. Defaults to 1.
             This scales the total logical resources reserved by each slice.
-        **kwargs: Additional arguments for the placement group, such as ``name``, ``lifetime``,
-            or ``bundle_label_selector``.
+        **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'bundle_label_selector'.
 
     Returns:
         The handle for the created SlicePlacementGroup.
@@ -936,16 +1131,16 @@ def run_on_slice(
             ``run_on_slice`` does **not** create, modify, or tear down
             any placement groups. When ``None`` (default), a new slice
             is reserved internally.
-        slice_index: Optional. When ``tpu_slice`` is provided, specify a
-            ``slice_index`` to dispatch tasks only to that specific TPU slice.
-            If ``None``, tasks are dispatched to all slices.
+        slice_index: Optional. Specify a ``slice_index`` to dispatch tasks only
+            to that specific TPU slice. If ``None``, tasks are dispatched to all
+            slices.
         num_slices: Number of TPU slices to reserve. Ignored when
             ``tpu_slice`` is provided. Defaults to ``1``.
         chips_per_vm: Optional override for the number of chips per VM.
             Ignored when ``tpu_slice`` is provided.
-        pg_ready_timeout_s: Seconds to wait for the worker placement
-            group to become ready after reservation. Pass ``None`` to
-            wait indefinitely (default).
+        pg_ready_timeout_s: Seconds to wait for the slice placement
+            group(s) to become ready. Pass ``None`` to wait indefinitely
+            (default).
         **kwargs: Keyword arguments broadcast to every task invocation.
 
     Returns:
@@ -1015,7 +1210,7 @@ def run_on_slice(
 
     pgs = slice_handle.slice_placement_groups
 
-    if not pgs:
+    if not pgs or any(pg is None for pg in pgs):
         raise ValueError(
             "The provided tpu_slice has already been shut down. "
             "Create a new SlicePlacementGroup or pass tpu_slice=None to reserve one automatically."
@@ -1079,6 +1274,13 @@ def dispatch(*args: Any, **kwargs: Any) -> "List[ray.ObjectRef]":
     """Run a remote function on every host in a TPU slice.
 
     Deprecated, please use ``run_on_slice`` instead.
+
+    Args:
+        *args: Positional arguments passed to ``run_on_slice``.
+        **kwargs: Keyword arguments passed to ``run_on_slice``.
+
+    Returns:
+        The object refs that ``run_on_slice`` returns, one per host in the slice.
     """
     return run_on_slice(*args, **kwargs)
 
@@ -1160,9 +1362,10 @@ def _cleanup_jax_profiler_kv(key: str) -> None:
 # Internal KV namespace for subslice topology data.
 _TPU_SUBSLICE_KV_NAMESPACE = "tpu_subslice"
 
-# Runtime cache: {slice_name: {worker_id_label: {label_key: label_value}}}
-# worker_id_label is the string value of the ray.io/tpu-worker-id node label.
-_tpu_subslice_cache: Dict[str, Dict[str, Dict[str, str]]] = {}
+# Runtime cache: {slice_name: {worker_id_label: physical_worker_id}}
+# Maps each node's ray.io/tpu-worker-id label to its 0-based physical position
+# in the slice mesh.
+_tpu_subslice_cache: Dict[str, Dict[str, int]] = {}
 
 # Guards all reads and writes of _tpu_subslice_cache. Ray drivers are commonly
 # multi-threaded (Serve, Train), so concurrent subslice_placement_group() calls
@@ -1183,8 +1386,8 @@ def _find_valid_parent_topologies(
     """Return cluster topologies able to parent *subslice_topology*, smallest-first.
 
     Consults actual node labels (not a static table) so the result reflects
-    what is physically present. A topology is a valid parent when its
-    worker-grid dimensions are >= the subslice's in every axis.
+    what is physically present. A topology is a valid parent when each of its
+    worker grid dimensions is a multiple of the subslice's.
     """
     sub_worker_dims = _get_worker_dims_for_topology(subslice_topology)
 
@@ -1206,59 +1409,85 @@ def _find_valid_parent_topologies(
             continue  # topology not in the known dims map; skip
         if len(topo_worker_dims) != len(sub_worker_dims):
             continue  # dimensionality mismatch
-        if all(pd >= sd for pd, sd in zip(topo_worker_dims, sub_worker_dims)):
+        if all(pd % sd == 0 for pd, sd in zip(topo_worker_dims, sub_worker_dims)):
             candidates.append((topo, topo_worker_dims))
 
     candidates.sort(key=lambda x: math.prod(x[1]))
     return [topo for topo, _ in candidates]
 
 
-def _discover_tpu_node_coords(
-    mock_coords: Optional[List[Tuple[str, int, List[int]]]] = None,
-) -> Dict[str, Any]:
+def _discover_tpu_node_coords(num_hosts: int) -> Dict[str, Any]:
     """Remote function: discover this TPU worker's physical chip coordinates.
 
-    Uses libtpu.sdk to get the (x, y[, z]) coordinate of every chip on this
-    worker. Returns ``{"node_id": str, "coords": [(hostname, chip_index,
-    [x, y, ...]), ...]}``. *mock_coords* overrides libtpu for testing.
+    Args:
+        num_hosts: The number of hosts in the slice.
+
+    Returns:
+        ``{"node_id": str, "coords": [[x, y, z], ...]}`` with one coordinate
+        list per local chip, as reported by ``jax.local_devices(backend="tpu")``.
     """
-    node_id = ray.get_runtime_context().get_node_id()
-
-    if mock_coords is not None:
-        return {"node_id": node_id, "coords": mock_coords}
-
-    try:
-        from libtpu import sdk  # type: ignore[import-untyped]
-    except ImportError:
-        raise RuntimeError(
-            "libtpu is required for TPU subslice discovery. "
-            "Install libtpu on all TPU worker nodes."
-        )
-
-    coords = sdk.slice.get_chip_coordinates()
     return {
-        "node_id": node_id,
-        "coords": [
-            (c.hostname(), c.chip_index(), list(c.coordinates())) for c in coords
-        ],
+        "node_id": ray.get_runtime_context().get_node_id(),
+        "coords": _query_local_tpu_chip_coordinates(num_hosts=num_hosts),
     }
+
+
+def _compute_worker_physical_ids_from_discovery(
+    discovery_results: List[Dict[str, Any]],
+    nodes: List[Dict[str, Any]],
+    parent_topology: str,
+) -> Dict[str, int]:
+    """Maps each discovered worker's tpu-worker-id label to its physical worker ID.
+
+    GKE's tpu-worker-id node label is what Ray label selectors match against,
+    whereas physical_worker_id (derived from chip coordinates) determines which
+    hosts are physically adjacent in a subslice and their rank order within it.
+
+    Args:
+        discovery_results: The results of _discover_tpu_node_coords, one per host.
+        nodes: The Ray node table, used to look up each node's tpu-worker-id label.
+        parent_topology: The topology of the discovered slice.
+
+    Returns:
+        A mapping from tpu-worker-id label to 0-based physical worker ID.
+    """
+    node_id_to_wid = {
+        n["NodeID"]: n["Labels"][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY]
+        for n in nodes
+        if ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY in n.get("Labels", {})
+    }
+    worker_physical_ids: Dict[str, int] = {}
+    for result in discovery_results:
+        if not result or not result.get("coords"):
+            continue
+        wid = node_id_to_wid.get(result["node_id"])
+        if wid is None:
+            logger.warning(
+                "Node %s missing tpu-worker-id label; "
+                "skipping physical worker ID assignment.",
+                result["node_id"],
+            )
+            continue
+        worker_physical_ids[wid] = _get_physical_worker_id_from_coords(
+            result["coords"], parent_topology
+        )
+    return worker_physical_ids
 
 
 def _discover_and_persist_subslices(
     parent_topology: str,
     accelerator_version: str,
     chips_per_vm: int,
-    timeout_s: Optional[float] = DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S,
-    *,
-    target_slice_name: str,
-) -> Tuple[str, Dict[str, Dict[str, str]]]:
-    """Reserve a full slice, run libtpu discovery, persist subslice labels to
-    internal KV, then release the slice.
+    slice_ready_timeout_s: Optional[float],
+    target_slice_name: Optional[str] = None,
+) -> Tuple[str, Dict[str, int]]:
+    """Reserve a full slice, run JAX coordinate discovery, persist worker physical IDs
+    to internal KV, then release the slice.
 
     The full-slice placement group reservation serializes concurrent discovery
     of the same slice: the loser reuses the winner's persisted result.
 
-    Returns ``(slice_name, {worker_id_label: {label_key: label_value}})``.
+    Returns ``(slice_name, {worker_id_label: physical_worker_id})``.
     """
     logger.info(
         "Running TPU subslice topology discovery for %s (%s)...",
@@ -1271,147 +1500,146 @@ def _discover_and_persist_subslices(
         accelerator_type=accelerator_version,
         chips_per_vm=chips_per_vm,
     )
-    bundle_label_selector = [
-        {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: target_slice_name}
-        for _ in range(num_bundles)
-    ]
-    full_slice = SlicePlacementGroup(
-        topology=parent_topology,
-        accelerator_version=accelerator_version,
-        chips_per_vm=chips_per_vm,
-        bundle_label_selector=bundle_label_selector,
+    bundle_label_selector = (
+        [
+            {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: target_slice_name}
+            for _ in range(num_bundles)
+        ]
+        if target_slice_name is not None
+        else None
     )
+
+    full_slice = None
     try:
+        full_slice = SlicePlacementGroup(
+            topology=parent_topology,
+            accelerator_version=accelerator_version,
+            chips_per_vm=chips_per_vm,
+            bundle_label_selector=bundle_label_selector,
+        )
         try:
             ray.get(
                 full_slice.placement_group.ready(),
-                timeout=timeout_s,
+                timeout=slice_ready_timeout_s,
             )
         except ray.exceptions.GetTimeoutError as e:
             raise TimeoutError(
-                f"Timed out after {timeout_s}s waiting for the "
+                f"Timed out after {slice_ready_timeout_s}s waiting for the "
                 f"full '{parent_topology}' slice to become ready for subslice "
                 f"discovery; it may have become busy after being observed idle."
             ) from e
 
-        # A concurrent caller may have discovered this slice while we were
-        # blocked waiting for full_slice.placement_group.ready(); persist
-        # precedes shutdown, so any KV entry is complete. Reuse it and skip
-        # the libtpu fan-out.
-        try:
-            existing = ray.experimental.internal_kv._internal_kv_get(
-                _get_subslice_kv_key(target_slice_name),
-                namespace=_TPU_SUBSLICE_KV_NAMESPACE,
-            )
-            if existing:
-                worker_labels = json.loads(existing)
-                with _tpu_subslice_cache_lock:
-                    _tpu_subslice_cache[target_slice_name] = worker_labels
-                logger.info(
-                    "Subslice labels for '%s' found in KV after slice "
-                    "reservation; skipping libtpu discovery.",
-                    target_slice_name,
+        slice_name = target_slice_name
+        if slice_name is not None:
+            # A concurrent caller may have discovered this slice while we were
+            # waiting for the slice PG; persist precedes PG release, so any KV
+            # entry is complete. Reuse it and skip coordinate discovery.
+            try:
+                existing = ray.experimental.internal_kv._internal_kv_get(
+                    _get_subslice_kv_key(slice_name),
+                    namespace=_TPU_SUBSLICE_KV_NAMESPACE,
                 )
-                return target_slice_name, worker_labels
-        except Exception:
-            logger.warning(
-                "KV pre-check for '%s' failed; proceeding with full discovery.",
-                target_slice_name,
-            )
-
-        # Fan out coordinate discovery to every worker in the slice.
-        discover_remote = ray.remote(_discover_tpu_node_coords)
-        futures = []
-        for i in range(full_slice.num_bundles):
-            futures.append(
-                discover_remote.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=full_slice.placement_group,
-                        placement_group_bundle_index=i,
+                if existing:
+                    worker_physical_ids = json.loads(existing)
+                    with _tpu_subslice_cache_lock:
+                        _tpu_subslice_cache[slice_name] = worker_physical_ids
+                    logger.info(
+                        "Subslice physical worker IDs for '%s' found in KV after "
+                        "slice reservation; skipping coordinate discovery.",
+                        slice_name,
                     )
-                ).remote()
-            )
-        results = ray.get(futures)
-
-        # Compute physical positions → subslice labels.
-        # The node's tpu-worker-id label is the key (what the scheduler sees).
-        # The physical position from libtpu determines subslice membership.
-        nodes = ray.nodes()
-        node_id_to_info = {n["NodeID"]: n for n in nodes}
-
-        subslice_labels_by_worker_id: Dict[str, Dict[str, str]] = {}
-
-        for result in results:
-            if not result or not result.get("coords"):
-                continue
-
-            node_id = result["node_id"]
-            node_info = node_id_to_info.get(node_id, {})
-            node_labels = node_info.get("Labels", {})
-            worker_id_label = node_labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
-
-            if worker_id_label is None:
+                    return slice_name, worker_physical_ids
+            except Exception:
                 logger.warning(
-                    "Node %s missing tpu-worker-id label; "
-                    "skipping subslice label assignment.",
-                    node_id,
+                    "KV pre-check for '%s' failed; proceeding with full discovery.",
+                    slice_name,
                 )
-                continue
 
-            # Compute physical position from chip coordinates.
-            # result["coords"] is [(hostname, chip_index, [x, y, ...]), ...]
-            # Extract just the coordinate lists.
-            coords_list = [c[2] for c in result["coords"]]
-            physical_worker = _get_physical_worker_id_from_coords(
-                coords_list, parent_topology
+        # Bundle i of the full slice runs on tpu-worker-id i. Every discovery
+        # task gets all worker hostnames so PJRT reports global coordinates, and
+        # exits afterwards so it releases the TPU devices JAX opened.
+        discover_remote = ray.remote(max_calls=1)(_discover_tpu_node_coords)
+        jax_env = full_slice.get_jax_env_vars()
+        try:
+            results = ray.get(
+                [
+                    discover_remote.options(
+                        resources={"TPU": full_slice.devices_per_host},
+                        scheduling_strategy=PlacementGroupSchedulingStrategy(
+                            placement_group=full_slice.placement_group,
+                            placement_group_bundle_index=i,
+                        ),
+                        runtime_env={"env_vars": jax_env},
+                    ).remote(num_hosts=full_slice.num_hosts)
+                    for i in range(full_slice.num_hosts)
+                ],
+                timeout=DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S,
             )
+        except ray.exceptions.GetTimeoutError as e:
+            raise TimeoutError(
+                f"Timed out after {DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S}s waiting "
+                f"for TPU coordinate discovery tasks on slice "
+                f"'{slice_name or parent_topology}' ('{parent_topology}'). To "
+                "increase this timeout, set `RAY_TPU_SLICE_DISCOVERY_TIMEOUT_S`."
+            ) from e
 
-            # Build subslice labels based on physical position.
-            labels = _build_subslice_labels(physical_worker, parent_topology)
-            subslice_labels_by_worker_id[worker_id_label] = labels
+        nodes = ray.nodes()
+        if slice_name is None:
+            result_node_ids = {r["node_id"] for r in results if r and "node_id" in r}
+            for n in nodes:
+                if n.get("NodeID") in result_node_ids:
+                    slice_name = n.get("Labels", {}).get(
+                        ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
+                    )
+                    if slice_name:
+                        break
+            if not slice_name:
+                raise RuntimeError(
+                    f"Failed to determine TPU slice name for discovered '{parent_topology}' slice."
+                )
 
-        # Validate that every expected worker was labeled. If any worker
-        # lacked a tpu-worker-id label or returned no chip coordinates, the
-        # mapping is incomplete. Persisting partial data would later produce
-        # placement groups with the wrong number of hosts, so we fail fast here.
-        #
-        # Use full_slice.num_bundles (= total_chips // chips_per_vm) as the
-        # expected count rather than the static _VALID_TOPOLOGY_WORKER_DIMS_2D
-        # table. The static table assumes chips_per_vm=4 for all 2D topologies,
-        # which is wrong for single-host v6e/v5litepod configurations (8
-        # chips/VM, 1 bundle). The fan-out itself runs full_slice.num_bundles
-        # tasks, so this value is always the correct expected number of results.
-        expected_workers = full_slice.num_bundles
-        if len(subslice_labels_by_worker_id) < expected_workers:
+        worker_physical_ids = _compute_worker_physical_ids_from_discovery(
+            results, nodes, parent_topology
+        )
+
+        # Require a complete 0..num_hosts-1 physical worker permutation before
+        # persisting (num_hosts handles 8-chip single-host 2x4 slices cleanly).
+        expected_workers = full_slice.num_hosts
+        physical_ids = sorted(worker_physical_ids.values())
+        if physical_ids != list(range(expected_workers)):
             raise RuntimeError(
-                f"Subslice discovery for '{target_slice_name}' is incomplete: "
-                f"labeled {len(subslice_labels_by_worker_id)} of "
-                f"{expected_workers} expected workers. Workers may be missing "
-                f"'tpu-worker-id' labels or failed to return chip coordinates."
+                f"Subslice discovery for '{slice_name}' is incomplete or returned "
+                f"invalid IDs: expected physical worker IDs 0..{expected_workers - 1}, "
+                f"got {physical_ids}. Workers may be missing 'tpu-worker-id' labels, "
+                "failed to return chip coordinates, or reported overlapping "
+                "chip coordinates."
             )
 
         # Persist to internal KV.
         ray.experimental.internal_kv._internal_kv_put(
-            _get_subslice_kv_key(target_slice_name),
-            json.dumps(subslice_labels_by_worker_id).encode(),
+            _get_subslice_kv_key(slice_name),
+            json.dumps(worker_physical_ids).encode(),
             namespace=_TPU_SUBSLICE_KV_NAMESPACE,
         )
 
         # Cache in runtime dict.
         with _tpu_subslice_cache_lock:
-            _tpu_subslice_cache[target_slice_name] = subslice_labels_by_worker_id
+            _tpu_subslice_cache[slice_name] = worker_physical_ids
 
         logger.info(
             "Subslice discovery complete for slice '%s' (%s). Found %d workers.",
-            target_slice_name,
+            slice_name,
             parent_topology,
-            len(subslice_labels_by_worker_id),
+            len(worker_physical_ids),
         )
 
-        return target_slice_name, subslice_labels_by_worker_id
+        return slice_name, worker_physical_ids
 
     finally:
-        full_slice.shutdown()
+        # Removing the full-slice placement group also kills any discovery
+        # tasks still running in its bundles, so no task keeps the TPU open.
+        if full_slice is not None:
+            full_slice.shutdown()
 
 
 def _wait_for_slice_resources_freed(
@@ -1437,11 +1665,11 @@ def _wait_for_slice_resources_freed(
         slice_nodes = [
             node
             for node in ray.nodes()
-            if node.get("Alive", True)
-            and node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+            if node.get("Alive")
+            and (node.get("Labels") or {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
             == slice_name
         ]
-        if all(_tpus_idle(node, avail, pg_used_nodes) for node in slice_nodes):
+        if _tpus_idle(slice_nodes, avail, pg_used_nodes):
             return
         if deadline is not None and time.monotonic() >= deadline:
             logger.warning(
@@ -1458,11 +1686,11 @@ def _refresh_cache_from_kv(
     parent_topologies: List[str],
     nodes: List[Dict[str, Any]],
 ) -> None:
-    """Load KV-persisted subslice labels into the runtime cache for any
+    """Load KV-persisted worker physical IDs into the runtime cache for any
     not-yet-cached slice of a candidate parent topology.
 
     Isolates the cache-population side effect so that
-    :func:`_collect_known_slice_labels` and
+    :func:`_collect_known_slices` and
     :func:`_find_undiscovered_idle_slice` stay pure reads. Call once before
     them so both observe KV-persisted slices.
     """
@@ -1472,6 +1700,8 @@ def _refresh_cache_from_kv(
     # redundant GCS round-trips for the same key.
     seen_slice_names: Set[str] = set()
     for node in nodes:
+        if not node.get("Alive"):
+            continue
         node_labels = node.get("Labels", {})
         slice_name = node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
         node_topology = node_labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
@@ -1491,31 +1721,31 @@ def _refresh_cache_from_kv(
                 _get_subslice_kv_key(slice_name),
                 namespace=_TPU_SUBSLICE_KV_NAMESPACE,
             )
-            worker_labels = json.loads(existing) if existing else None
+            worker_physical_ids = json.loads(existing) if existing else None
         except Exception:
             # KV is a best-effort cache; a lookup or decode failure (e.g. a
             # transient GCS error or corrupt persisted value) just means we
             # fall back to fresh discovery. Log at debug to avoid noise since
             # this runs per undiscovered slice per call.
             logger.debug(
-                "KV lookup for subslice labels of '%s' failed; "
+                "KV lookup for subslice data of '%s' failed; "
                 "will fall back to discovery.",
                 slice_name,
                 exc_info=True,
             )
             continue
-        if worker_labels is not None:
+        if worker_physical_ids is not None:
             with _tpu_subslice_cache_lock:
-                _tpu_subslice_cache[slice_name] = worker_labels
-            logger.info("Loaded subslice labels for '%s' from KV store.", slice_name)
+                _tpu_subslice_cache[slice_name] = worker_physical_ids
+            logger.info("Loaded subslice data for '%s' from KV store.", slice_name)
 
 
-def _collect_known_slice_labels(
+def _collect_known_slices(
     parent_topology: str,
     nodes: List[Dict[str, Any]],
-) -> List[Tuple[str, Dict[str, Dict[str, str]]]]:
-    """Return ``(slice_name, worker_labels)`` for every cached slice whose
-    nodes match *parent_topology*.
+) -> List[Tuple[str, Dict[str, int]]]:
+    """Return ``(slice_name, worker_physical_ids)`` for every cached slice
+    whose nodes match parent_topology.
 
     A pure read of the runtime cache; call :func:`_refresh_cache_from_kv`
     first so KV-persisted slices are present.
@@ -1523,16 +1753,18 @@ def _collect_known_slice_labels(
     with _tpu_subslice_cache_lock:
         cache_snapshot = dict(_tpu_subslice_cache)
 
-    results: List[Tuple[str, Dict[str, Dict[str, str]]]] = []
-    for slice_name, labels in cache_snapshot.items():
+    results: List[Tuple[str, Dict[str, int]]] = []
+    for slice_name, worker_physical_ids in cache_snapshot.items():
         for node in nodes:
+            if not node.get("Alive"):
+                continue
             node_labels = node.get("Labels", {})
             if (
                 node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY) == slice_name
                 and node_labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
                 == parent_topology
             ):
-                results.append((slice_name, labels))
+                results.append((slice_name, worker_physical_ids))
                 break
 
     return results
@@ -1540,12 +1772,13 @@ def _collect_known_slice_labels(
 
 def _find_available_subslice(
     slice_name: str,
+    parent_topology: str,
     subslice_topology: str,
-    worker_labels: Dict[str, Dict[str, str]],
+    worker_physical_ids: Dict[str, int],
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
     subslice_index: Optional[int] = None,
-    pg_used_nodes: Collection[str] = (),
+    pg_used_nodes: Optional[Set[str]] = None,
 ) -> Tuple[Optional[List[str]], Optional[int]]:
     """Find an idle subslice of *subslice_topology* within *slice_name*.
 
@@ -1554,24 +1787,21 @@ def _find_available_subslice(
     *slice_worker_to_node* (``(slice_name, worker_id) -> node``) should be
     built once by the caller and reused across calls.
     """
-    label_key = f"{TPU_SUBSLICE_LABEL_PREFIX}{subslice_topology}"
-
-    # Build mapping: subslice_index → list of worker_id labels.
-    subslice_indices: Dict[str, List[str]] = {}
-    for worker_id, labels in worker_labels.items():
-        idx = labels.get(label_key)
-        if idx is not None:
-            if subslice_index is not None and int(idx) != subslice_index:
-                continue
-            subslice_indices.setdefault(idx, []).append(worker_id)
-
-    if not subslice_indices:
-        return None, None
+    # Iterate workers in ascending physical_worker_id order so each subslice's
+    # worker list is ordered by physical position (x fastest).
+    subslice_workers: Dict[int, List[str]] = {}
+    for worker_id, physical_id in sorted(
+        worker_physical_ids.items(), key=lambda item: item[1]
+    ):
+        idx = _get_subslice_index(physical_id, parent_topology, subslice_topology)
+        if subslice_index is not None and idx != subslice_index:
+            continue
+        subslice_workers.setdefault(idx, []).append(worker_id)
 
     expected_host_count = math.prod(_get_worker_dims_for_topology(subslice_topology))
 
-    for idx in sorted(subslice_indices.keys(), key=int):
-        worker_ids = subslice_indices[idx]
+    for idx in sorted(subslice_workers):
+        worker_ids = subslice_workers[idx]
 
         # Skip subslices with the wrong number of workers — these indicate
         # corrupted or partial cache data and would produce a PG that never
@@ -1588,16 +1818,16 @@ def _find_available_subslice(
             )
             continue
 
-        nodes = [slice_worker_to_node.get((slice_name, wid)) for wid in worker_ids]
-        if all(
-            node is not None
-            and node.get("Alive")
-            and _tpus_idle(node, avail, pg_used_nodes)
-            for node in nodes
-        ):
-            # Sort by integer worker-id so bundle index 0 always maps to the
-            # numerically-lowest worker, giving deterministic rank assignment.
-            return sorted(worker_ids, key=int), int(idx)
+        subslice_nodes = []
+        for wid in worker_ids:
+            node = slice_worker_to_node.get((slice_name, wid))
+            if node is None:
+                subslice_nodes = []
+                break
+            subslice_nodes.append(node)
+
+        if subslice_nodes and _tpus_idle(subslice_nodes, avail, pg_used_nodes or set()):
+            return worker_ids, idx
 
     return None, None
 
@@ -1629,7 +1859,7 @@ class SubslicePlacementGroup:
         subslice_index: Index of this subslice within the parent.
         slice_name: Name of the physical TPU slice.
         num_hosts: Number of hosts (VM workers) in this subslice.
-        chips_per_host: TPU chips available per host.
+        chips_per_host: TPU chips this subslice uses on each host.
         bundle_resources: Resources per PG bundle.
         bundle_label_selectors: Label selectors used per bundle when
             creating the PG.
@@ -1689,9 +1919,27 @@ class SubslicePlacementGroup:
         """Number of hosts (VM workers) in this subslice."""
         return self._num_hosts
 
+    def get_worker_addrs(self) -> List[Optional[str]]:
+        """Returns the IP addresses of all worker hosts in this subslice.
+
+        Returns:
+            A list of IP address strings (or None for unscheduled bundles)
+            ordered by host rank (0 to num_hosts - 1).
+
+        Raises:
+            RuntimeError: If this SubslicePlacementGroup has been shut down.
+        """
+        pg = self._placement_group
+        if pg is None:
+            raise RuntimeError("This SubslicePlacementGroup has been shut down.")
+        bundles_per_host = pg.bundle_count // self._num_hosts
+        return _get_pg_bundle_node_ips(
+            pg, [h * bundles_per_host for h in range(self._num_hosts)]
+        )
+
     @property
     def chips_per_host(self) -> int:
-        """TPU chips available per host."""
+        """TPU chips this subslice uses on each host."""
         return self._chips_per_host
 
     @property
@@ -1704,8 +1952,60 @@ class SubslicePlacementGroup:
         """Label selectors used for each bundle when creating the PG."""
         return self._bundle_label_selectors
 
+    def get_jax_env_vars(
+        self,
+        worker_id: Optional[int] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
+    ) -> Dict[str, str]:
+        """Returns the JAX TPU environment variables for this subslice.
+
+        Process bounds are the subslice's host grid and chips-per-process bounds
+        are the chip grid of one host; see :func:`get_jax_env_vars` for the
+        remaining variables.
+
+        Args:
+            worker_id: Optional integer ID of the worker within the subslice
+                (0-indexed), between 0 and num_hosts - 1. Defaults to 0 on a
+                single-host subslice; when omitted on a multi-host subslice,
+                ``TPU_WORKER_ID`` is not set (pass ``worker_id`` per bundle on
+                multi-host subslices so ``TPU_WORKER_ID`` overrides the parent
+                slice's worker rank for ``libtpu`` and ``jax.distributed``).
+            worker_hostnames: If omitted, resolved from the placement group
+                bundles in this subslice.
+
+        Returns:
+            A dictionary mapping JAX TPU environment variables to their values.
+
+        Raises:
+            ValueError: If worker_id is out of bounds.
+            RuntimeError: If worker hostnames cannot be resolved.
+        """
+        if worker_hostnames is None:
+            # Use the placed subslice bundles, not the parent slice's env vars.
+            worker_hostnames = self.get_worker_addrs()
+            if None in worker_hostnames:
+                raise RuntimeError(
+                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for subslice "
+                    f"{self._subslice_index} of '{self._slice_name}' because its "
+                    "placement group bundles are not yet placed. Wait for the "
+                    "placement group to be ready, or pass `worker_hostnames` explicitly."
+                )
+
+        w_dims = _get_worker_dims_for_topology(self._subslice_topology)
+        bounds_3d = w_dims if len(w_dims) == 3 else (*w_dims, 1)
+        env_vars = get_jax_env_vars(
+            worker_hostnames=worker_hostnames,
+            worker_id=worker_id,
+            process_bounds=",".join(str(d) for d in bounds_3d),
+            chips_per_process_bounds=TPU_CHIPS_PER_HOST_BOUNDS_MAP[
+                self._chips_per_host
+            ],
+        )
+        env_vars[GKE_TPU_TOPOLOGY_ENV_VAR] = self._subslice_topology
+        return env_vars
+
     def shutdown(self):
-        """Remove the worker placement group. Idempotent."""
+        """Remove the subslice placement group. Idempotent."""
         if self._placement_group is not None:
             try:
                 remove_placement_group(self._placement_group)
@@ -1727,7 +2027,7 @@ def _build_slice_worker_to_node(
             node_labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY),
         ): node
         for node in nodes
-        if node.get("Alive", True)
+        if node.get("Alive")
         for node_labels in [node.get("Labels", {})]
         if node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
         and node_labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
@@ -1738,17 +2038,14 @@ def _find_undiscovered_idle_slice(
     parent_topologies: List[str],
     nodes: List[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
-    pg_used_nodes: Collection[str] = (),
+    pg_used_nodes: Optional[Set[str]] = None,
 ) -> Optional[Tuple[str, str]]:
     """Return ``(parent_topology, slice_name)`` for the first undiscovered
     (absent from cache), fully idle slice, scanning *parent_topologies*
     smallest-first; else ``None``.
 
-    A slice is idle only when all its chips are free, so the caller can pin
-    discovery to a slice it can actually reserve.
-
     Must run after :func:`_refresh_cache_from_kv` so the cache already
-    reflects KV-persisted labels; otherwise an already-discovered slice may
+    reflects KV-persisted discovery results; otherwise an already-discovered slice may
     be re-discovered.
     """
     parent_set = set(parent_topologies)
@@ -1770,7 +2067,7 @@ def _find_undiscovered_idle_slice(
         for (topo, sname), sns in topo_slice_nodes.items():
             if topo != parent_topology or sname in discovered:
                 continue
-            if all(_tpus_idle(node, avail, pg_used_nodes) for node in sns):
+            if _tpus_idle(sns, avail, pg_used_nodes or set()):
                 return parent_topology, sname
 
     return None
@@ -1783,30 +2080,31 @@ def _find_available_cached_subslice(
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
     subslice_index: Optional[int] = None,
-    pg_used_nodes: Collection[str] = (),
-) -> Optional[Tuple[List[str], int, str, str, Dict[str, Dict[str, str]]]]:
+    pg_used_nodes: Optional[Set[str]] = None,
+) -> Optional[Tuple[List[str], int, str, str]]:
     """Return the first idle subslice across all cached slices of any valid
     parent topology, or ``None``.
 
     A pure read of the runtime cache (call :func:`_refresh_cache_from_kv`
     first). On success returns ``(worker_ids, subslice_index, slice_name,
-    parent_topology, worker_labels)``.
+    parent_topology)``.
     """
     for parent_topology in parent_topologies:
-        for slice_name, worker_labels in _collect_known_slice_labels(
+        for slice_name, worker_physical_ids in _collect_known_slices(
             parent_topology, nodes
         ):
             worker_ids, idx = _find_available_subslice(
                 slice_name,
+                parent_topology,
                 subslice_topology,
-                worker_labels,
+                worker_physical_ids,
                 avail,
                 slice_worker_to_node,
                 subslice_index,
-                pg_used_nodes=pg_used_nodes,
+                pg_used_nodes,
             )
             if worker_ids is not None:
-                return worker_ids, idx, slice_name, parent_topology, worker_labels
+                return worker_ids, idx, slice_name, parent_topology
     return None
 
 
@@ -1825,10 +2123,26 @@ def _build_subslice_pg(
     """Create a Ray placement group for the selected subslice workers and
     return a :class:`SubslicePlacementGroup` handle.
 
-    *resources_per_bundle* defaults to ``{"CPU": 1, "TPU": chips_per_vm}``.
+    resources_per_bundle defaults to one bundle per host with ``CPU: 1`` and all
+    of the subslice's logical TPU devices on that host.
     """
-    if resources_per_bundle is None:
-        resources_per_bundle = {"CPU": 1, "TPU": chips_per_vm}
+    # A subslice smaller than one host (e.g. 2x2 on an 8-chip v6e host) only
+    # uses its own chips on that host.
+    chips_per_host = min(chips_per_vm, get_num_chips_from_topology(subslice_topology))
+    logical_devices_per_host = chips_per_host * get_tpu_resource_per_chip()
+    resources_per_bundle = {
+        "CPU": 1,
+        "TPU": logical_devices_per_host,
+        **(resources_per_bundle or {}),
+    }
+
+    tpus_per_bundle = resources_per_bundle["TPU"]
+    if tpus_per_bundle <= 0 or logical_devices_per_host % tpus_per_bundle != 0:
+        raise ValueError(
+            f"TPU resources per bundle ({tpus_per_bundle}) must be positive and "
+            f"evenly divide the logical TPU devices per host ({logical_devices_per_host})."
+        )
+    bundles_per_host = int(logical_devices_per_host // tpus_per_bundle)
 
     bundle_label_selectors = [
         {
@@ -1836,10 +2150,11 @@ def _build_subslice_pg(
             ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: wid,
         }
         for wid in worker_ids
+        for _ in range(bundles_per_host)
     ]
 
     pg = placement_group(
-        bundles=[resources_per_bundle.copy() for _ in worker_ids],
+        bundles=[resources_per_bundle.copy() for _ in bundle_label_selectors],
         strategy=strategy,
         name=name,
         lifetime=lifetime,
@@ -1853,7 +2168,7 @@ def _build_subslice_pg(
         subslice_index=subslice_index,
         slice_name=slice_name,
         num_hosts=len(worker_ids),
-        chips_per_host=chips_per_vm,
+        chips_per_host=chips_per_host,
         bundle_resources=resources_per_bundle,
         bundle_label_selectors=bundle_label_selectors,
     )
@@ -1953,10 +2268,10 @@ def subslice_placement_group(
     accelerator_version: str,
     chips_per_vm: Optional[int] = None,
     resources_per_bundle: Optional[Dict[str, float]] = None,
-    strategy: str = "STRICT_SPREAD",
+    strategy: str = "SPREAD",
     name: str = "",
     lifetime: Optional[str] = None,
-    timeout_s: Optional[float] = DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S,
+    slice_ready_timeout_s: Optional[float] = DEFAULT_TPU_SLICE_READY_TIMEOUT_S,
     subslice_index: Optional[int] = None,
 ) -> SubslicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU subslice.
@@ -1966,9 +2281,13 @@ def subslice_placement_group(
     while maintaining ICI topology alignment.
 
     On the first call for a given topology this function temporarily reserves
-    a full parent slice to discover the physical chip layout, computes
-    subslice labels, and releases unused workers. Subsequent calls reuse the
-    cached data.
+    a full parent slice to discover the physical chip layout, computes each
+    worker's physical position, and releases unused workers. Subsequent calls
+    reuse the cached data.
+
+    A subslice claims whole hosts: a host that already runs one subslice is
+    not considered for another, even if the first subslice uses only part of
+    that host's chips.
 
     Args:
         subslice_topology: Desired subslice topology (e.g. ``"2x4"``).
@@ -1976,14 +2295,14 @@ def subslice_placement_group(
         chips_per_vm: Optional override for chips per VM. Useful for
             ambiguous topologies like v6e 2x4 which can be 1 VM (8 chips)
             or 2 VMs (4 chips each).
-        resources_per_bundle: Per-bundle resources. Defaults to
-            ``{"CPU": 1, "TPU": chips_per_vm}``.
-        strategy: Placement group strategy (default ``"STRICT_SPREAD"``).
+        resources_per_bundle: Per-bundle resources. Defaults to one bundle per
+            host with ``CPU: 1`` and the subslice's logical TPU devices on that host.
+        strategy: Placement group strategy (default ``"SPREAD"``).
         name: Optional placement group name.
         lifetime: Placement group lifetime (``None`` or ``"detached"``).
-        timeout_s: Maximum seconds to wait for the discovery placement group
-            to become ready and release resources. Defaults to
-            ``DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S`` (100.0s).
+        slice_ready_timeout_s: Maximum seconds to wait for a full TPU slice
+            placement group to become ready during discovery. Defaults to
+            ``DEFAULT_TPU_SLICE_READY_TIMEOUT_S``.
         subslice_index: Optional index of the subslice to select. If specified,
             only the subslice at this index within the physical slice will be
             considered. If that subslice is busy, the request will fail even if
@@ -1995,7 +2314,8 @@ def subslice_placement_group(
     Raises:
         ValueError: If the subslice topology is invalid for the accelerator,
             or if no suitable parent topology is found in the cluster.
-        RuntimeError: If all slices are occupied, or if libtpu is missing.
+        RuntimeError: If all slices are occupied, or if TPU chip coordinate
+            discovery fails (for example, JAX is not installed on the TPU workers).
 
     Examples:
         >>> import ray  # doctest: +SKIP_EXAMPLE
@@ -2005,6 +2325,7 @@ def subslice_placement_group(
         ...     subslice_topology="2x4",
         ...     accelerator_version="v6e",
         ... )
+        >>> ray.get(sg.placement_group.ready())
         >>> @ray.remote(num_cpus=0, resources={"TPU": 4})
         ... def train(world, rank):
         ...     ...
@@ -2012,7 +2333,9 @@ def subslice_placement_group(
         ...     train.options(
         ...         scheduling_strategy=PlacementGroupSchedulingStrategy(
         ...             placement_group=sg.placement_group,
-        ...         )
+        ...             placement_group_bundle_index=i,
+        ...         ),
+        ...         runtime_env={"env_vars": sg.get_jax_env_vars(worker_id=i)},
         ...     ).remote(world=sg.num_hosts, rank=i)
         ...     for i in range(sg.num_hosts)
         ... ]
@@ -2042,13 +2365,10 @@ def subslice_placement_group(
             avail,
             slice_worker_to_node,
             subslice_index,
-            pg_used_nodes=pg_used_nodes,
+            pg_used_nodes,
         )
         discoverable = _find_undiscovered_idle_slice(
-            parent_topologies,
-            nodes,
-            avail,
-            pg_used_nodes=pg_used_nodes,
+            parent_topologies, nodes, avail, pg_used_nodes
         )
 
         if cached_subslice is None and discoverable is None:
@@ -2058,7 +2378,7 @@ def subslice_placement_group(
             )
 
         if cached_subslice is not None:
-            worker_ids, subslice_index, slice_name, parent_topology, _ = cached_subslice
+            worker_ids, subslice_index, slice_name, parent_topology = cached_subslice
             # chips_per_vm depends on the parent's node type, so resolve it
             # against the parent this subslice actually belongs to.
             return _build_subslice_pg(
@@ -2075,7 +2395,7 @@ def subslice_placement_group(
             )
 
         # No idle cached subslice found — discover the layout of the specific
-        # idle slice we found (pinned by name so the discovery PG lands on
+        # idle slice we found (pinned by name so the reservation lands on
         # that fully-idle slice) and loop back to claim a subslice from the
         # newly populated cache. chips_per_vm must match the parent discovered.
         assert discoverable is not None  # guaranteed by the check above
@@ -2084,10 +2404,10 @@ def subslice_placement_group(
             discoverable_parent,
             version,
             _resolve_chips_per_vm(user_chips_per_vm, discoverable_parent, version),
-            timeout_s,
+            slice_ready_timeout_s,
             target_slice_name=discoverable_slice_name,
         )
         # remove_placement_group() is async; block until the discovery
         # reservation's TPU is released so the next iteration sees the slice as
         # idle and can claim a subslice instead of wrongly raising.
-        _wait_for_slice_resources_freed(discovered_slice_name, timeout_s)
+        _wait_for_slice_resources_freed(discovered_slice_name, slice_ready_timeout_s)

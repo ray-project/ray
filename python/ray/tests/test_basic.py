@@ -296,27 +296,41 @@ def test_worker_thread_count(
 
 
 # https://github.com/ray-project/ray/issues/7287
-def test_omp_threads_set(ray_start_cluster, monkeypatch):
+@pytest.mark.parametrize(
+    "env_var,num_threads_env_vars",
+    [
+        ("OMP_NUM_THREADS", None),
+        ("RAYON_NUM_THREADS", "OMP_NUM_THREADS,RAYON_NUM_THREADS"),
+    ],
+)
+def test_num_threads_env_var_set(
+    ray_start_cluster, monkeypatch, env_var, num_threads_env_vars
+):
+    monkeypatch.delenv(env_var, raising=False)
+    if num_threads_env_vars is None:
+        monkeypatch.delenv("RAY_NUM_THREADS_ENV_VARS", raising=False)
+    else:
+        monkeypatch.setenv("RAY_NUM_THREADS_ENV_VARS", num_threads_env_vars)
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
     @ray.remote
     def f():
-        return os.environ.get("OMP_NUM_THREADS")
+        return os.environ.get(env_var)
 
     @ray.remote
     class Actor:
         def f(self):
-            return os.environ.get("OMP_NUM_THREADS")
+            return os.environ.get(env_var)
 
     ###########################
     # Test basic tasks
     ###########################
-    # Test override to num_cpus if OMP_NUM_THREADS not set
+    # Test override to num_cpus if the env var is not set
     assert ray.get(f.options(num_cpus=2).remote()) == "2"
 
-    # Test override to default cpu number if OMP_NUM_THREADS not set
+    # Test override to default cpu number if the env var is not set
     assert ray.get(f.remote()) == "1"
 
     # Test set to 1 for fractional CPU
@@ -328,17 +342,13 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     from ray.runtime_env import RuntimeEnv
 
     assert (
-        ray.get(
-            f.options(
-                runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "2"})
-            ).remote()
-        )
+        ray.get(f.options(runtime_env=RuntimeEnv(env_vars={env_var: "2"})).remote())
         == "2"
     )
     assert (
         ray.get(
             f.options(
-                num_cpus=1, runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "2"})
+                num_cpus=1, runtime_env=RuntimeEnv(env_vars={env_var: "2"})
             ).remote()
         )
         == "2"
@@ -347,7 +357,7 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     ###########################
     # Test actor tasks
     ###########################
-    # Test actor tasks set OMP_NUM_THREADS correctly in a similar way.
+    # Test actor tasks set the env var correctly in a similar way.
     assert ray.get(Actor.remote().f.remote()) == "1"
     assert ray.get(Actor.options(num_cpus=2).remote().f.remote()) == "2"
     assert ray.get(Actor.options(num_cpus=0.25).remote().f.remote()) == "1"
@@ -357,23 +367,52 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     ###########################
     @ray.remote
     def g():
-        return os.getpid(), os.environ.get("OMP_NUM_THREADS")
+        return os.getpid(), os.environ.get(env_var)
 
     # Set to 1
-    pid1, omp_num_threads = ray.get(g.remote())
-    assert omp_num_threads == "1"
+    pid1, num_threads = ray.get(g.remote())
+    assert num_threads == "1"
     # Set to 2
-    pid2, omp_num_threads = ray.get(g.options(num_cpus=2).remote())
+    pid2, num_threads = ray.get(g.options(num_cpus=2).remote())
     assert pid1 == pid2
-    assert omp_num_threads == "2"
+    assert num_threads == "2"
 
     ###########################
     # Test not setting the value with environ already set to 1 in env
     ###########################
     with monkeypatch.context() as m:
-        m.setenv("OMP_NUM_THREADS", "1")
+        m.setenv(env_var, "1")
         cluster.add_node(num_cpus=4)
     assert ray.get(f.options(num_cpus=4).remote()) == "1"
+
+
+@pytest.mark.parametrize(
+    "num_threads_env_vars,expected",
+    [
+        (None, {"OMP_NUM_THREADS": "2", "RAYON_NUM_THREADS": None}),
+        (
+            "OMP_NUM_THREADS,RAYON_NUM_THREADS",
+            {"OMP_NUM_THREADS": "2", "RAYON_NUM_THREADS": "2"},
+        ),
+        ("", {"OMP_NUM_THREADS": None, "RAYON_NUM_THREADS": None}),
+    ],
+)
+def test_num_threads_env_vars_config(
+    shutdown_only, monkeypatch, num_threads_env_vars, expected
+):
+    for name in ["RAY_NUM_THREADS_ENV_VARS", *expected]:
+        monkeypatch.delenv(name, raising=False)
+    # Set per job, through the job's runtime_env.
+    env_vars = {}
+    if num_threads_env_vars is not None:
+        env_vars["RAY_NUM_THREADS_ENV_VARS"] = num_threads_env_vars
+    ray.init(num_cpus=2, runtime_env={"env_vars": env_vars})
+
+    @ray.remote(num_cpus=2)
+    def f():
+        return {name: os.environ.get(name) for name in expected}
+
+    assert ray.get(f.remote()) == expected
 
 
 def test_submit_api(shutdown_only):
