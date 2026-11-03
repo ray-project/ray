@@ -205,9 +205,7 @@ class AutoscalerMonitor:
 
 
 def record_autoscaler_v2_usage(gcs_client: GcsClient) -> None:
-    """
-    Record usage for autoscaler v2.
-    """
+    """Record usage for autoscaler v2."""
     try:
         record_extra_usage_tag(TagKey.AUTOSCALER_VERSION, "v2", gcs_client)
     except Exception:
