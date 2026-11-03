@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -1100,6 +1101,83 @@ def evict_least_recently_used_images(
         logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
 
 
+# Flattening an image's layers and streaming the tree into mkfs.erofs read
+# and write every file through tarfile, which holds the interpreter lock, so
+# a process that pulls several images at once would build them one at a
+# time, whatever the node's CPUs. While one build runs in a process, the
+# next ones run in child interpreters.
+_builds_lock = threading.Lock()
+_building_here = False
+# Each child is an interpreter that imports Ray, so at most one per two CPUs
+# runs at once; the others wait for one to finish.
+_child_builds = threading.BoundedSemaphore(max(1, (os.cpu_count() or 2) // 2))
+# The line a child build's error comes back on, among whatever else the
+# child prints.
+_CHILD_ERROR = "ray-sandbox-image-build-error: "
+_CHILD_BUILD = f"""
+import json, sys
+from ray.experimental.sandbox._internal import image_utils
+try:
+    image_utils._build_rootfs_image(*json.loads(sys.argv[1]))
+except BaseException as err:
+    print({_CHILD_ERROR!r} + json.dumps(str(err)), flush=True)
+    sys.exit(1)
+"""
+
+
+def _build_rootfs_image(
+    image: str, rootfs_dir: str, image_dir: str, timeout_seconds: float, blob_dir: str
+) -> None:
+    """Flatten ``image`` into ``rootfs_dir`` and build its EROFS image in
+    ``image_dir``, as ``_extract_image_layers`` and ``build_erofs_image`` do."""
+    ownership = _extract_image_layers(
+        image, rootfs_dir, image_dir, timeout_seconds, blob_dir
+    )
+    _seed_tmp(rootfs_dir)
+    _seed_mountpoints(rootfs_dir)
+    build_erofs_image(rootfs_dir, ownership, os.path.join(image_dir, ROOTFS_IMAGE))
+
+
+def _build_rootfs_image_here_or_in_a_child(*args) -> None:
+    """``_build_rootfs_image`` in this process, or in a child interpreter
+    while another build runs in this process."""
+    global _building_here
+    with _builds_lock:
+        here = not _building_here
+        _building_here = _building_here or here
+    if not here:
+        _build_rootfs_image_in_a_child(*args)
+        return
+    try:
+        _build_rootfs_image(*args)
+    finally:
+        with _builds_lock:
+            _building_here = False
+
+
+def _build_rootfs_image_in_a_child(*args) -> None:
+    """``_build_rootfs_image`` in a new interpreter. Its logs go to this
+    process's stderr; its error, if any, comes back as the message of a
+    ``SandboxCreationError``."""
+    with _child_builds:
+        proc = subprocess.run(
+            [sys.executable, "-c", _CHILD_BUILD, json.dumps(args)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+    if proc.returncode != 0:
+        message = f"Building the image failed (exit status {proc.returncode})"
+        for line in reversed(proc.stdout.splitlines()):
+            if line.startswith(_CHILD_ERROR):
+                try:
+                    message = json.loads(line[len(_CHILD_ERROR) :])
+                except ValueError:
+                    pass
+                break
+        raise SandboxCreationError(message)
+
+
 def pull_and_extract_container_image(
     image: str,
     images_dir: str = DEFAULT_IMAGES_DIR,
@@ -1177,15 +1255,8 @@ def pull_and_extract_container_image(
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
             try:
-                ownership = _extract_image_layers(
+                _build_rootfs_image_here_or_in_a_child(
                     image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
-                )
-                _seed_tmp(tmp_rootfs_dir)
-                _seed_mountpoints(tmp_rootfs_dir)
-                build_erofs_image(
-                    tmp_rootfs_dir,
-                    ownership,
-                    os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
                 )
             except Exception:
                 shutil.rmtree(tmp_extract_dir, ignore_errors=True)

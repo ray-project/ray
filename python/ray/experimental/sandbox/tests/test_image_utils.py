@@ -701,6 +701,109 @@ def test_pull_nonexistent_image(tmp_path, fake_docker_hub):
         )
 
 
+def test_a_build_that_overlaps_another_runs_in_a_child(monkeypatch):
+    """A build that starts while another runs in this process goes to a child
+    interpreter, so the two don't share one interpreter lock; one that runs
+    alone stays in this process."""
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def here(*args):
+        calls.append(("here", args))
+        started.set()
+        release.wait(10)
+
+    monkeypatch.setattr(image_utils, "_build_rootfs_image", here)
+    monkeypatch.setattr(
+        image_utils,
+        "_build_rootfs_image_in_a_child",
+        lambda *args: calls.append(("child", args)),
+    )
+    first = threading.Thread(
+        target=image_utils._build_rootfs_image_here_or_in_a_child, args=("a",)
+    )
+    first.start()
+    assert started.wait(10)
+    image_utils._build_rootfs_image_here_or_in_a_child("b")
+    release.set()
+    first.join()
+    image_utils._build_rootfs_image_here_or_in_a_child("c")
+    assert calls == [("here", ("a",)), ("child", ("b",)), ("here", ("c",))]
+
+
+def test_a_child_interpreter_builds_the_same_image(tmp_path):
+    """A build in a child interpreter caches the same image, and its error
+    comes back as a SandboxCreationError with the same message."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    image_dir = tmp_path / "image"
+    rootfs = image_dir / "rootfs"
+    rootfs.mkdir(parents=True)
+    image_utils._build_rootfs_image_in_a_child(
+        str(local_tar), str(rootfs), str(image_dir), 5.0, str(tmp_path)
+    )
+    assert _image_file(str(image_dir), "hello.txt") == b"hello"
+    with pytest.raises(SandboxCreationError, match="not found"):
+        image_utils._build_rootfs_image_in_a_child(
+            "/tmp/nonexistent_image.tar",
+            str(rootfs),
+            str(image_dir),
+            5.0,
+            str(tmp_path),
+        )
+
+
+def test_a_build_runs_here_once_this_process_is_free(monkeypatch):
+    """A build that starts after this process's own build ended runs here,
+    even while a child still builds."""
+    child_started, child_release = threading.Event(), threading.Event()
+    here_started, here_release = threading.Event(), threading.Event()
+    calls = []
+
+    def here(*args):
+        calls.append(("here", args))
+        here_started.set()
+        here_release.wait(10)
+
+    def child(*args):
+        calls.append(("child", args))
+        child_started.set()
+        child_release.wait(10)
+
+    monkeypatch.setattr(image_utils, "_build_rootfs_image", here)
+    monkeypatch.setattr(image_utils, "_build_rootfs_image_in_a_child", child)
+    first = threading.Thread(
+        target=image_utils._build_rootfs_image_here_or_in_a_child, args=("a",)
+    )
+    first.start()
+    assert here_started.wait(10)
+    second = threading.Thread(
+        target=image_utils._build_rootfs_image_here_or_in_a_child, args=("b",)
+    )
+    second.start()
+    assert child_started.wait(10)
+    here_release.set()
+    first.join()
+    here_started.clear()
+    image_utils._build_rootfs_image_here_or_in_a_child("c")
+    child_release.set()
+    second.join()
+    assert calls == [("here", ("a",)), ("child", ("b",)), ("here", ("c",))]
+
+
+def test_a_child_builds_error_survives_other_output(monkeypatch):
+    """The child's error comes back even when it prints other lines after."""
+    child = (
+        "import sys\n"
+        "print('ray-sandbox-image-build-error: \"no such image\"')\n"
+        'print(\'{"error": "not this one"}\')\n'
+        "sys.exit(1)\n"
+    )
+    monkeypatch.setattr(image_utils, "_CHILD_BUILD", child)
+    with pytest.raises(SandboxCreationError, match="^no such image$"):
+        image_utils._build_rootfs_image_in_a_child("img", "/r", "/d", 5.0, "/b")
+
+
 def test_pull_nonexistent_local_tar(tmp_path):
     images_dir = tmp_path / "images"
     with pytest.raises(SandboxCreationError, match="not found"):
