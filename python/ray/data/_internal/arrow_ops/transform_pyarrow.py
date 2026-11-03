@@ -530,7 +530,10 @@ def _reconcile_diverging_fields(
     if object_tensor_fields:
         raise ValueError(
             "Found columns with both objects and tensors: "
-            f"{', '.join(object_tensor_fields)}"
+            f"{', '.join(object_tensor_fields)}. "
+            "Return each of these columns in one form in every batch. Nested "
+            "Python lists (`ndarray.tolist()`) keep it an object column, and "
+            "same-shaped ndarrays keep it a tensor column."
         )
 
     # Reconcile only after all schemas have been inspected. This prevents a
