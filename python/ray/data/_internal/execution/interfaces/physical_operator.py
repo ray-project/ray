@@ -826,8 +826,7 @@ class PhysicalOperator(Operator):
 
     @property
     def target_max_block_size_override(self) -> Optional[int]:
-        """
-        Target max block size output by this operator. If this returns None,
+        """Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
         if self._output_block_size_option_override is None:

@@ -134,7 +134,16 @@ With the label, a PR runs the following:
 
 The `docstringbuild` image leaves out heavy libraries such as torch and TensorFlow. The step reports a docstring that fails only because one of those libraries is missing as skipped, names the library, and repeats the skipped examples at the end of its log. The label also skips each library's doctest target with the rest of its suites, so those examples run only in the scheduled post-merge builds. See [What doesn't run on your PR](#what-doesnt-run-on-your-pr) for which post-merge builds those are.
 
-The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
+The guard compares each changed file before and after with its docstrings removed, and fails on any other difference. Comments aren't part of the comparison, so comment edits pass. The guard reads the following file types:
+
+* Python files, `.py` and `.pyi`, which it parses with Python's `ast` module.
+* Cython files, `.pyx`, `.pxi`, and `.pxd`, which Python can't parse, so the guard compares their tokens instead.
+
+Two things in a Cython file look like a comment or a docstring but count as code. A `# cython:` or `# distutils:` comment sets compiler options. A string in a `cdef extern from` block is C or C++ source that Cython compiles. The token comparison is also stricter than the `ast` one, so replacing a Cython body that holds only a docstring with `pass` fails the guard.
+
+The guard fails on every other file type, such as C++ under `src/`, and on any added, deleted, or renamed file. It accepts Cython docstring edits, but `doc: docstring examples` runs only Python modules, and no CI step runs the `>>>` examples in a Cython docstring.
+
+To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
 ```bash
 python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
@@ -145,11 +154,17 @@ Every other test step is skipped under the label, in every library, including `m
 
 The label doesn't build the docs. Add an `@rtd-build` line to a commit message as well, as described in [The Read the Docs render gate](#the-read-the-docs-render-gate), so Read the Docs confirms that the API reference pages your docstrings render into still build.
 
+### Skipping GPU tests
+
+Some docs and CI infrastructure files select GPU test steps even though a change to them can't affect GPU behavior. For example, `doc/BUILD.bazel` defines the docs example tests for every library, so a change to it selects every library's docs example steps, including the Ray Data, Ray Serve, and Ray LLM GPU steps. The `skip-gpu-tests` label skips every step tagged `gpu`, in every library, along with the images that only those steps need. All other selected steps still run. Like the `go` label, it requires write access.
+
+Use the label only when your change can't affect what a GPU step tests. Don't use it for a change to library code, a GPU test, or a GPU test's image or launcher. The scheduled post-merge builds still run the GPU steps, so a GPU failure the label hides surfaces there, after your PR merges. A change to the label takes effect on the next commit you push, as with the other labels.
+
 ### Why some steps show as broken
 
 A Buildkite job marked `broken` never ran, so a `broken` label-gated step isn't a failure in your change.
 
-On a PR, the rules in `.buildkite/docs.labels.yaml` remove the steps a label skips before the pipeline uploads, so those steps don't appear in the build at all. Without the `docstring-only` label, `doc: docstring examples` doesn't appear, and without the `docs-example-test` label, `doc: docs example tests (opt-in)` doesn't either. Under the `docstring-only` label, the library test steps it skips don't appear. The one label-gated step the rules leave in place is `lint: validate docstring-only scope`, which shows as `broken` on a PR without the `docstring-only` label.
+On a PR, the rules in `.buildkite/docs.labels.yaml` remove the steps a label skips before the pipeline uploads, so those steps don't appear in the build at all. Without the `docstring-only` label, `doc: docstring examples` doesn't appear, and without the `docs-example-test` label, `doc: docs example tests (opt-in)` doesn't either. Under the `docstring-only` label, the library test steps it skips don't appear, and under the `skip-gpu-tests` label, the GPU steps don't appear. The one label-gated step the rules leave in place is `lint: validate docstring-only scope`, which shows as `broken` on a PR without the `docstring-only` label.
 
 Scheduled post-merge builds carry no PR labels and don't apply the label rules, so all three label-gated steps show as `broken` there when the build selects them.
 

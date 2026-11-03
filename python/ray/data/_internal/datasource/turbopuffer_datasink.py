@@ -1,5 +1,4 @@
-"""
-TurbopufferDatasink - Ray Data datasink for Turbopuffer vector database
+"""TurbopufferDatasink - Ray Data datasink for Turbopuffer vector database
 
 Implementation following the pattern of MongoDatasink and Daft's Turbopuffer sink.
 
@@ -221,8 +220,7 @@ class TurbopufferDatasink(Datasink):
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> None:
-        """
-        Write blocks to Turbopuffer in a streaming fashion.
+        """Write blocks to Turbopuffer in a streaming fashion.
 
         For memory efficiency, blocks are processed one at a time rather than
         concatenating all blocks into a single large table. This follows the
@@ -265,8 +263,7 @@ class TurbopufferDatasink(Datasink):
         target_column: str,
         column_type: str,
     ) -> pa.Table:
-        """
-        Rename a column in the table if it differs from the target name.
+        """Rename a column in the table if it differs from the target name.
 
         Args:
             table: The Arrow table to modify.
@@ -300,8 +297,7 @@ class TurbopufferDatasink(Datasink):
         )
 
     def _prepare_arrow_table(self, table: pa.Table) -> pa.Table:
-        """
-        Prepare Arrow table for Turbopuffer write.
+        """Prepare Arrow table for Turbopuffer write.
 
         1. Rename ID column to "id" if needed
         2. Rename vector column to "vector" if needed

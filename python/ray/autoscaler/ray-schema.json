@@ -23,6 +23,11 @@
             "description": "A unique identifier for the head node and workers of this cluster.",
             "type": "string"
         },
+        "auth_mode": {
+            "description": "Ray's authentication mode on every node. `ray up` ships the auth token to the cluster unless this is `disabled`, and sets RAY_AUTH_MODE in every node's start commands when it is given.",
+            "type": "string",
+            "enum": ["token", "disabled"]
+        },
         "max_workers": {
             "description": "The maximum number of workers nodes to launch in addition to the head node. This should be no larger than the sum of min_workers for all available node types.",
             "type": "integer",

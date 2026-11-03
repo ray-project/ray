@@ -592,12 +592,14 @@ def _read_datasource_v2(
         filesystem = datasource.filesystem
         file_extensions = datasource.file_extensions
         shuffle = datasource.shuffle
+        source_paths = datasource.source_paths
     elif isinstance(datasource, DataSourceWithMetadata):
         # The source's own indexer finds the data: nothing to walk, nothing to
         # filter by extension, no file shuffle.
         filesystem = None
         file_extensions = None
         shuffle = None
+        source_paths = datasource.paths
     else:
         raise TypeError(
             f"{type(datasource).__name__} extends DataSourceV2 directly. Extend "
@@ -734,7 +736,7 @@ def _read_datasource_v2(
         paths=list(datasource.paths),
         file_indexer=indexer,
         filesystem=filesystem,
-        source_paths=list(datasource.paths),
+        source_paths=list(source_paths),
         prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
@@ -4762,8 +4764,7 @@ def read_hudi(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from an
+    """Create a :class:`~ray.data.Dataset` from an
     `Apache Hudi table <https://hudi.apache.org>`_.
 
     Examples:
@@ -5408,8 +5409,7 @@ def read_delta_sharing_tables(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Read data from a Delta Sharing table.
+    """Read data from a Delta Sharing table.
     Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
 
     This function reads data from a Delta Sharing table specified by the URL.
@@ -5960,8 +5960,7 @@ def read_lance(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from one or more
+    """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
@@ -6087,8 +6086,7 @@ def read_clickhouse(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+    """Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
 
     Examples:
         >>> import ray

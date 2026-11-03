@@ -27,6 +27,7 @@
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -170,6 +171,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   void StampContext(grpc::ClientContext &context) {
     context.AddMetadata(kClusterIdKey, gcs_client_->GetClusterId().Hex());
+    rpc::AuthenticationTokenLoader::instance().GetToken()->SetMetadata(context);
   }
 
   void RestartGcsServer() {
@@ -547,6 +549,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   request.add_node_ids(node_info2->node_id());
   {
     grpc::ClientContext context;
+    StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
@@ -558,6 +561,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   ASSERT_TRUE(RegisterNode(*node_info1));
   {
     grpc::ClientContext context;
+    StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
