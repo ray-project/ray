@@ -209,7 +209,7 @@ def prepare_data_loader(
     """Prepares :class:`~torch.utils.data.DataLoader` for distributed execution.
 
     This allows you to use the same exact code regardless of number of
-    workers or the device type being used (CPU, GPU).
+    workers or the device type being used (CPU, GPU, TPU).
 
     .. note::
 
@@ -256,12 +256,10 @@ def prepare_data_loader(
             the provided DataLoader.
         move_to_device: If set, automatically move the data
             returned by the data loader to the correct device.
-        auto_transfer: If set and device is GPU, another CUDA stream
-            is created to automatically copy data from host (CPU) memory
-            to device (GPU) memory (the default CUDA stream still runs the
-            training procedure). If device is CPU, it will be disabled
-            regardless of the setting. This configuration will be ignored
-            if ``move_to_device`` is False.
+        auto_transfer: If ``True`` and the device supports streams, such as on
+            GPU or TPU, copies batches to the device on a separate stream while
+            the current stream runs training. Ignored when ``move_to_device`` is
+            ``False`` or the device doesn't support streams.
 
     Returns:
         The prepared DataLoader.
