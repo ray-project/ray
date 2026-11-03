@@ -9,7 +9,9 @@ import pandas as pd
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.ray_constants import RAY_DEFAULT_LABEL_KEYS_PREFIX
 from ray.exceptions import AsyncioActorExit
+from ray.train.health import Evict, HealthDecision, Noop, Reattempt
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
@@ -75,6 +77,7 @@ from ray.train.v2._internal.util import (
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    HealthCheckError,
     PreemptionError,
     TrainingFailedError,
 )
@@ -89,6 +92,9 @@ if TYPE_CHECKING:
 from ray.util.tpu import get_tpu_num_slices_for_workers
 
 logger = logging.getLogger(__name__)
+
+# Every node has this label, set to its node ID.
+_NODE_ID_LABEL = f"{RAY_DEFAULT_LABEL_KEYS_PREFIX}node-id"
 
 
 @dataclass
@@ -220,6 +226,21 @@ class TrainController:
             )
 
             self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
+
+        self._health_manager = None
+        health_config = self._run_config.health_config
+        if health_config is not None:
+            from ray.train.health._internal.manager import HealthManager
+            from ray.train.v2._internal.callbacks.health_callback import (
+                HealthCallback,
+            )
+
+            if health_config.preflight_checks:
+                logger.warning("Pre-flight health checks are not run yet.")
+            self._health_manager = HealthManager(health_config.inflight_checks)
+            self._worker_group_callbacks_to_propagate.append(
+                HealthCallback(self._health_manager)
+            )
 
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
@@ -464,6 +485,14 @@ class TrainController:
                     )
                 label_selector = [selector.copy() for _ in range(num_workers)]
 
+        if self._health_manager is not None and self._health_manager.evicted_nodes:
+            evicted = ",".join(self._health_manager.evicted_nodes)
+            exclude = {_NODE_ID_LABEL: f"!in({evicted})"}
+            label_selector = [
+                {**selector, **exclude}
+                for selector in (label_selector or [{}] * num_workers)
+            ]
+
         # Calculate num_slices for the worker group if using TPU.
         num_slices = 1
         if scaling_config.use_tpu:
@@ -694,6 +723,13 @@ class TrainController:
                     failure_decision, training_failed_error=worker_group_error
                 )
 
+            if self._health_manager is not None:
+                health_decision = self._health_manager.evaluate_inflight_checks()
+                if not isinstance(health_decision, Noop):
+                    health_result = self._execute_health_decision(health_decision)
+                    if health_result:
+                        return health_result
+
             scaling_decision = (
                 self._scaling_policy.make_decision_for_running_worker_group(
                     worker_group_state=self.get_worker_group().get_worker_group_state(),
@@ -729,6 +765,42 @@ class TrainController:
             return await self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
+
+    def _execute_health_decision(
+        self, decision: HealthDecision
+    ) -> Optional[TrainControllerLoopIterationResult]:
+        """Act on a health decision about the running worker group.
+
+        A ``Reattempt`` restarts the worker group through the failure policy,
+        like a worker error. An ``Evict`` restarts it without the evicted nodes.
+        A ``Diagnose`` is not acted on yet.
+
+        Args:
+            decision: The health decision, other than a ``Noop``.
+
+        Returns:
+            The result of the iteration, or ``None`` to keep running.
+        """
+        logger.warning("Health decision: %r", decision)
+        failure_result = self._run_controller_hook("after_health_decision", decision)
+        if failure_result:
+            return failure_result
+
+        error = HealthCheckError(decision)
+        if isinstance(decision, Reattempt):
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=error
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=error
+            )
+        if isinstance(decision, Evict):
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self.get_state(),
+                next_state=RestartingState(training_failed_error=error),
+            )
+        return None
 
     @staticmethod
     def _is_training_succeeded(

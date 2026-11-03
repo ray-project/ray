@@ -408,6 +408,38 @@ py_test(
 )
 
 py_test(
+    name = "test_health_controller",
+    size = "medium",
+    srcs = ["tests/test_health_controller.py"],
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_health_e2e",
+    size = "medium",
+    srcs = ["tests/test_health_e2e.py"],
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_health_manager",
     size = "medium",
     srcs = ["tests/test_health_manager.py"],
