@@ -155,6 +155,10 @@ doc_prose_doctest_targets() {
   python doc/test_prose_doctest_targets.py
 }
 
+doc_assets() {
+  python doc/test_doc_assets.py
+}
+
 ray_repo_links() {
   python ci/lint/check_ray_repo_links.py
 }

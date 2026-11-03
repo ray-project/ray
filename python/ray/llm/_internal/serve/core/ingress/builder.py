@@ -20,7 +20,6 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
@@ -382,6 +381,13 @@ def build_openai_router_app(
     router_args: dict,
 ) -> Application:
     """Build a router for independently deployed OpenAI model applications."""
+    # Import lazily: router_application imports router, whose module-level
+    # @serve.ingress(FastAPI()) fails when fastapi is mocked, as in the docs
+    # build, which breaks `import ray.serve.llm`.
+    from ray.llm._internal.serve.core.ingress.router_application import (
+        RouterApplication,
+    )
+
     if not RAY_SERVE_ENABLE_HA_PROXY:
         raise ValueError(
             "build_openai_router_app requires HAProxy. Set "
