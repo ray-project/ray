@@ -439,7 +439,7 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
   return Status::OK();
 }
 
-void RedisAsyncContext::AppendMarkerLocked() {
+void RedisAsyncContext::AppendMarkerLocked(bool about_to_flush) {
   // One marker per flush instead of one per write: it carries the number of
   // the last write queued so far and sits behind all of them in the same
   // buffer, so Redis runs it after every write it covers. A write that got a
@@ -462,12 +462,15 @@ void RedisAsyncContext::AppendMarkerLocked() {
       "HSET", write_watermark_->key.data(), write_watermark_->field.data(), value.data()};
   const size_t argvlen[] = {
       4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
-  // The buffer is about to be flushed, so the write event hiredis asks for
+  // When the buffer is about to be flushed, the write event hiredis asks for
   // here is not needed.
-  const bool dispatch_pending = write_dispatch_pending_.exchange(true);
+  const bool dispatch_pending =
+      about_to_flush ? write_dispatch_pending_.exchange(true) : false;
   const int ret_code = redisAsyncCommandArgv(
       redis_async_context_.get(), &MarkerReplyFn, /*privdata=*/nullptr, 4, argv, argvlen);
-  write_dispatch_pending_ = dispatch_pending;
+  if (about_to_flush) {
+    write_dispatch_pending_ = dispatch_pending;
+  }
   if (ret_code != REDIS_OK) {
     // Only a context already being torn down refuses a command. The writes
     // stay unmarked: should Redis reply to them, the next reconnect check
@@ -526,9 +529,15 @@ void RedisAsyncContext::HandleIo(boost::system::error_code error_code, bool writ
       return;
     }
     if (write) {
-      AppendMarkerLocked();
+      AppendMarkerLocked(/*about_to_flush=*/true);
       redisAsyncHandleWrite(redis_async_context_.get());
     } else {
+      // Over TLS, hiredis can flush the output buffer from the read handler
+      // when a write is waiting on a read (SSL_write wanting to read), so the
+      // writes in it need their marker here too. Only TLS sets privctx.
+      if (redis_async_context_->c.privctx != nullptr) {
+        AppendMarkerLocked(/*about_to_flush=*/false);
+      }
       redisAsyncHandleRead(redis_async_context_.get());
     }
   }

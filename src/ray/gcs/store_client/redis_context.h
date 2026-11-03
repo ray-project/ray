@@ -220,6 +220,8 @@ struct RedisRequestContext {
   /// the retry path must not schedule anything once this is gone.
   std::weak_ptr<bool> context_alive_;
   size_t pending_retries_;
+  /// When this request first got a retry back; see HandleFailure().
+  std::optional<absl::Time> first_refund_;
   RedisCallback callback_;
   absl::Time start_time_;
 

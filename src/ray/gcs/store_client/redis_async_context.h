@@ -340,9 +340,11 @@ class RedisAsyncContext {
   friend void CallbackDelWrite(void *);
   friend void CallbackCleanup(void *);
 
-  /// Queue a marker for the writes submitted since the last one, right before
-  /// the output buffer is flushed. `mutex_` must be held.
-  void AppendMarkerLocked();
+  /// Queue a marker for the writes submitted since the last one, before hiredis
+  /// may flush the output buffer. `about_to_flush` is set on the write path,
+  /// which flushes right after; elsewhere the marker asks for a write event
+  /// like any other command. `mutex_` must be held.
+  void AppendMarkerLocked(bool about_to_flush);
 
   /// Queue the first marker, carrying the last write number so far. `mutex_`
   /// must be held and the connection up.

@@ -417,9 +417,10 @@ Where the primary moves during a failover, GCS follows it:
   promoted node.
 * **Redis Sentinel.** GCS asks Sentinel for the primary again on each attempt,
   so a promotion moves it to the new node.
-* **Redis Cluster reached directly.** There is no Sentinel to ask. GCS keeps
-  dialing the address it was given, so put a Service or proxy in front if the
-  primary can move.
+* **Redis Cluster.** There is no Sentinel to ask. At startup GCS follows the
+  `MOVED` reply to the primary's node address, and a reconnect dials that node
+  again, so a Service in front doesn't help once GCS has been redirected. If the
+  primary moves, GCS exits after the grace period.
 
 GCS still exits if Redis stays unreachable past the grace period below. That is
 deliberate: a head node that cannot reach its metadata store is not serving.
@@ -448,12 +449,17 @@ process loses nothing, while a failure of the node it runs on can lose the
 last second of writes.
 
 Run Redis with `maxmemory-policy noeviction`. An eviction policy can drop GCS
-data while Redis keeps running, which neither this check nor a GCS restart
-notices.
+data while Redis keeps running, which a GCS restart doesn't notice. It can also
+evict the marker below, and the next reconnect then exits. If you use the
+`allkeys-lru` setup from [Turn off Redis cleanup](kuberay-redis-cleanup-gate),
+set `RAY_redis_reconnect_verify_writes=0`.
 
-To run the check, GCS follows each write with a small marker write to the
-`RAY<namespace>@WriteWatermark` hash, which doubles the number of write
-commands it sends. Set `RAY_redis_reconnect_verify_writes=0` to turn off both
+To run the check, GCS writes a small marker to the
+`RAY<namespace>@WriteWatermark` hash behind the writes it sends, one marker per
+batch of writes sent together. Under load a marker covers many writes; with one
+write at a time, that's one marker per write. If the connection drops after a
+write's reply but before its marker reaches Redis, the check fails although
+nothing was lost, and GCS restarts as it did before in-place reconnects. Set `RAY_redis_reconnect_verify_writes=0` to turn off both
 the check and the marker writes; GCS then continues after any reconnect.
 
 ### Tuning the reconnect
@@ -466,7 +472,7 @@ retry behavior of individual Redis commands.
 |---|---|---|
 | `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. With `0`, a command gives up after its own retry budget, roughly 3.5 seconds, as before in-place reconnects; GCS still reconnects in place. |
 | `RAY_redis_reconnect_connect_timeout_ms` | `5000` | How long each reconnect attempt waits for its TCP connect before trying again. Without it, a connect to an address that no longer answers, such as a deleted Redis Pod's IP, waits out the kernel's SYN retries for about two minutes. `0` turns the timeout off. |
-| `RAY_redis_reconnect_sentinel_timeout_ms` | `2000` | Timeout for each step of the query a reconnect sends to Sentinel to find the current primary. |
+| `RAY_redis_reconnect_sentinel_timeout_ms` | `2000` | Timeout for each step of the query a reconnect sends to Sentinel to find the current primary. `0` or less uses the startup probe timeout. |
 | `RAY_redis_reconnect_verify_writes` | `1` | Whether GCS checks, before resuming, that Redis kept every write it acknowledged, and exits if not. See [When Redis comes back without data](#when-redis-comes-back-without-data). |
 | `RAY_redis_db_connect_retries` | `120` | Reconnect attempts before GCS exits. Also bounds the connect attempts at startup. |
 | `RAY_redis_retry_base_ms` | `100` | First backoff between attempts. |

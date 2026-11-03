@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -1162,13 +1163,13 @@ std::string RedisCommandText(const std::vector<std::string> &args) {
   return text;
 }
 
-// The incarnation that last wrote the tables client's watermark, or "" if none.
-std::string WatermarkIncarnation() {
+// The incarnation that last wrote a client's watermark field, or "" if none.
+std::string WatermarkIncarnation(const std::string &field = "gcs_tables") {
   const std::string value = RedisCommandText(
       {"HGET",
        absl::StrCat(
            "RAY", RayConfig::instance().external_storage_namespace(), "@WriteWatermark"),
-       "gcs_tables"});
+       field});
   return value.substr(0, value.find(':'));
 }
 }  // namespace
@@ -1177,11 +1178,17 @@ std::string WatermarkIncarnation() {
 // the watermark's fields with the leader, so writing its own incarnation there would
 // make the leader's next reconnect check report lost writes.
 TEST_F(GcsLeaderElectionTest, TestPassiveLeavesTheWriteWatermarkAlone) {
-  const std::string leader_incarnation = WatermarkIncarnation();
-  ASSERT_FALSE(leader_incarnation.empty());
+  const std::string leader_tables = WatermarkIncarnation("gcs_tables");
+  const std::string leader_kv = WatermarkIncarnation("gcs_internal_kv");
+  ASSERT_FALSE(leader_tables.empty());
+  ASSERT_FALSE(leader_kv.empty());
 
   auto passive = StartPassiveServer();
-  EXPECT_EQ(WatermarkIncarnation(), leader_incarnation);
+  // A marker the passive queued at startup would reach Redis within a round
+  // trip on its connection; give both clients time to send one.
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  EXPECT_EQ(WatermarkIncarnation("gcs_tables"), leader_tables);
+  EXPECT_EQ(WatermarkIncarnation("gcs_internal_kv"), leader_kv);
 
   passive->Stop();
 }

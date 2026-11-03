@@ -335,9 +335,17 @@ void RedisRequestContext::HandleFailure(RedisRequestContext *request_cxt,
     // deadline belongs to the outage, not to this request, so every in-flight
     // command expires at the same instant however long it had been retrying.
     const absl::Time now = request_cxt->clock_.Now();
-    const absl::Time deadline = request_cxt->redis_context_->OutageDeadline(
-        now, absl::Milliseconds(RayConfig::instance().redis_reconnect_grace_period_ms()));
-    if (now < deadline) {
+    const absl::Duration grace =
+        absl::Milliseconds(RayConfig::instance().redis_reconnect_grace_period_ms());
+    const absl::Time deadline = request_cxt->redis_context_->OutageDeadline(now, grace);
+    // A command whose own send closes the connection (one Redis or a proxy
+    // refuses, say for its size) sees every reconnect succeed and its attempt
+    // fail again, and each confirmed reconnect starts a fresh outage. Bound the
+    // refunds per request as well, so it runs out of retries as it did before.
+    if (!request_cxt->first_refund_.has_value()) {
+      request_cxt->first_refund_ = now;
+    }
+    if (now < deadline && now < *request_cxt->first_refund_ + grace) {
       ++request_cxt->pending_retries_;
       refunded = true;
     }
@@ -1478,7 +1486,10 @@ Status RedisContext::RefreshPrimaryFromSentinel(const std::string &sentinel_ip) 
   // redis_db_probe_timeout_milliseconds used at startup: a Sentinel that
   // accepts and then stalls must not park the io_context for long, once per
   // attempt, during the very failover the GCS is trying to ride out.
-  const int64_t timeout_ms = RayConfig::instance().redis_reconnect_sentinel_timeout_ms();
+  int64_t timeout_ms = RayConfig::instance().redis_reconnect_sentinel_timeout_ms();
+  if (timeout_ms <= 0) {
+    timeout_ms = redis_db_probe_timeout_milliseconds_;
+  }
   auto connect_with_timeout = [timeout_ms](const std::string &host, int port) {
     struct timeval timeout;
     timeout.tv_sec = timeout_ms / 1000;
@@ -1489,6 +1500,10 @@ Status RedisContext::RefreshPrimaryFromSentinel(const std::string &sentinel_ip) 
       sentinel_ip, origin_port_, connect_with_timeout);
   RAY_RETURN_NOT_OK(resp.first);
   auto sentinel_context = std::move(resp.second);
+  // redisConnectWithTimeout bounds only the TCP connect. Bound everything after
+  // it too, starting with the TLS handshake, which otherwise blocks on a peer
+  // that accepts and then stalls.
+  RAY_RETURN_NOT_OK(SetRedisProbeTimeout(sentinel_context.get(), timeout_ms));
   if (enable_ssl_) {
     if (ssl_context_ == nullptr) {
       return Status::RedisError("SSL context is not initialized for encrypted Redis");

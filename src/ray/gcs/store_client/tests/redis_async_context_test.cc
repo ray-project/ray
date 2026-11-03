@@ -17,6 +17,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstring>
 #include <future>
 #include <iostream>
@@ -1078,8 +1079,15 @@ TEST_F(RedisAsyncContextTest, TestZeroConnectTimeoutMeansNoTimeout) {
 }
 
 namespace {
-std::atomic<int> connect_callback_status{-1};
-void RecordConnectStatus(const redisAsyncContext * /*c*/, int status) {
+// Not REDIS_OK or REDIS_ERR (-1), so a failed connect doesn't read as unset.
+constexpr int kConnectStatusUnset = 1000;
+std::atomic<int> connect_callback_status{kConnectStatusUnset};
+void RecordConnectStatus(const redisAsyncContext *c, int status) {
+  if (status != REDIS_OK) {
+    // hiredis frees the context after a failed connect; release it so the
+    // wrapper doesn't free it again.
+    static_cast<RedisAsyncContext *>(c->data)->ResetRawRedisAsyncContext();
+  }
   connect_callback_status = status;
 }
 }  // namespace
@@ -1097,11 +1105,11 @@ TEST_F(RedisAsyncContextTest, TestResetArmsWriteForPreRegisteredConnectCallback)
 
   auto fresh = ConnectRaw(port);
   fresh->data = &ctx;
-  connect_callback_status = -1;
+  connect_callback_status = kConnectStatusUnset;
   ASSERT_EQ(redisAsyncSetConnectCallback(fresh.get(), RecordConnectStatus), REDIS_OK);
   ctx.Reset(std::move(fresh));
 
-  for (int i = 0; i < 50 && connect_callback_status.load() == -1; ++i) {
+  for (int i = 0; i < 50 && connect_callback_status.load() == kConnectStatusUnset; ++i) {
     local_io_service.run_for(std::chrono::milliseconds(100));
     local_io_service.restart();
   }
@@ -1367,6 +1375,51 @@ TEST_F(RedisAsyncContextTest, RetryWaitingOnADestroyedContextIsDropped) {
   EXPECT_TRUE(request_alive.expired());
   EXPECT_FALSE(answered.load());
 }
+
+#if !defined(_WIN32)
+// Each confirmed reconnect clears the outage, so a command whose attempts keep
+// failing without reaching Redis (one whose send closes the connection, say)
+// would get a fresh grace period every time. Its own refunds stop one grace
+// period after its first, and it then runs out of retries as before.
+TEST_F(RedisAsyncContextTest, TestRefundsStopOneGracePeriodAfterTheFirst) {
+  GTEST_FLAG_SET(death_test_style, "fast");
+  RayConfig::instance().initialize(
+      R"({"redis_reconnect_grace_period_ms": 1000, "redis_retry_base_ms": 1,)"
+      R"( "redis_retry_max_ms": 1})");
+  absl::Cleanup restore = [] {
+    RayConfig::instance().initialize(
+        R"({"redis_reconnect_grace_period_ms": 60000, "redis_retry_base_ms": 100,)"
+        R"( "redis_retry_max_ms": 1000})");
+  };
+  EXPECT_DEATH(
+      {
+        instrumented_io_context local_io_service;
+        FakeClock clock;
+        RedisAsyncContext ctx(local_io_service,
+                              ConnectRaw(TEST_REDIS_SERVER_PORTS.front()));
+        SimulateHiredisDisconnect(ctx);
+        auto *request = new RedisRequestContext(
+            local_io_service,
+            [](std::shared_ptr<CallbackReply>) {},
+            &ctx,
+            std::vector<std::string>{"SET", "k", "v"},
+            clock,
+            /*metrics=*/nullptr,
+            "NODE");
+        request->Run();
+        // A reconnect is confirmed between every attempt. 100 attempts span
+        // 10 s of the fake clock, ten grace periods.
+        for (int i = 0; i < 100; ++i) {
+          clock.AdvanceTime(absl::Milliseconds(100));
+          ctx.ClearOutage();
+          local_io_service.run_for(std::chrono::milliseconds(20));
+          local_io_service.restart();
+        }
+        std::exit(0);
+      },
+      "Failed to run redis cmds");
+}
+#endif
 
 TEST_F(RedisAsyncContextTest, SubmissionNotificationHoldsReplyLock) {
   instrumented_io_context local_io_service;

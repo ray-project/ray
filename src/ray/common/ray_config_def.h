@@ -460,9 +460,10 @@ RAY_CONFIG(size_t, num_redis_request_retries, 5)
 RAY_CONFIG(int64_t, redis_reconnect_grace_period_ms, 60000)
 
 /// Bound on each step of the synchronous Sentinel query a reconnect makes to
-/// find the current primary (connect, AUTH, SENTINEL MASTERS). It runs on the
-/// io_context that serves GCS storage, so it is kept far below
-/// redis_db_probe_timeout_milliseconds, which only applies at startup.
+/// find the current primary (connect, TLS handshake, AUTH, SENTINEL MASTERS).
+/// It runs on the io_context that serves GCS storage, so it is kept far below
+/// redis_db_probe_timeout_milliseconds, which only applies at startup. 0 or
+/// less uses redis_db_probe_timeout_milliseconds.
 RAY_CONFIG(int64_t, redis_reconnect_sentinel_timeout_ms, 2000)
 
 /// How long a reconnect attempt waits for its TCP connect before giving up and

@@ -1033,6 +1033,7 @@ def test_redis_reconnect_exits_when_redis_lost_data(
             assert "came back without writes it had acknowledged" in gcs_log
         finally:
             redis_proc.process.kill()
+            redis_proc.process.wait()
 
 
 @pytest.mark.parametrize(
