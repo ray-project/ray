@@ -62,9 +62,7 @@ from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
-    enable_token_auth_by_default,
     ensure_token_if_auth_enabled,
-    maybe_enable_token_auth_if_token_available,
 )
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -1862,8 +1860,6 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
-        enable_token_auth_by_default()
-
         # Setup and verify authentication for new cluster
         ensure_token_if_auth_enabled(_system_config, create_token_if_missing=True)
 
@@ -1962,10 +1958,6 @@ def init(
             )
 
         # Setup and verify authentication for connecting to existing cluster
-        # Only a local cluster found automatically auto-enables auth; an explicit
-        # address (argument or RAY_ADDRESS) never does.
-        if address in (None, "auto"):
-            maybe_enable_token_auth_if_token_available(warn_if_disabled=False)
         ensure_token_if_auth_enabled(_system_config, create_token_if_missing=False)
 
         # In this case, we only need to connect the node.
@@ -3109,8 +3101,9 @@ def wait(
 
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
-    is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of object refs.
+    is not set, the function uses a timeout of 10**6 seconds (about 11.6 days),
+    so it waits until that number of objects is ready, or until that timeout
+    is reached.
 
     `ray_waitables` is a list of :class:`~ray.ObjectRef` and
     :class:`~ray.ObjectRefGenerator`.
@@ -3148,7 +3141,7 @@ def wait(
             not be ready. Note that these must be unique.
         num_returns: The number of ray_waitables that should be returned.
         timeout: The maximum amount of time in seconds to wait before
-            returning.
+            returning. If None, Ray uses 10**6 seconds.
         fetch_local: If True, wait for the object to be downloaded onto
             the local node before returning it as ready. If the `ray_waitable`
             is a generator, it will wait until the next object in the generator
@@ -3531,8 +3524,9 @@ def cancel(
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
         Calling ray.get on a cancelled Task raises a TaskCancelledError
-        if the Task has been scheduled or interrupted.
-        It raises a WorkerCrashedError if `force=True`.
+        if the Task has been scheduled or interrupted. This also holds
+        if `force=True`: even though Ray kills the worker running the Task,
+        ray.get raises a TaskCancelledError, not a WorkerCrashedError.
 
         If `recursive=True`, all the child Tasks and Actor Tasks
         are cancelled. If `force=True` and `recursive=True`, `force=True`

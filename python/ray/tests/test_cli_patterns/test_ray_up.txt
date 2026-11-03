@@ -29,6 +29,7 @@ Acquiring an up-to-date head node
   New status: syncing-files
   \[2/7\] Processing file mounts
     ~/tests/ from ./
+    ~/\.ray/auth_token from .+/\.ray/auth_token
   \[3/7\] No worker file mounts to sync
   New status: setting-up
   \[4/7\] Running initialization commands

@@ -62,6 +62,20 @@ def test_capabilities_config():
     assert config.capabilities == ["CAP_CHOWN", "CAP_SETUID"]
 
 
+@pytest.mark.parametrize(
+    "mounts",
+    [
+        {"data": "/srv/inbox"},
+        {"/data": "srv/inbox"},
+        {"data": "srv/inbox"},
+        {"/data": "/srv/inbox", "/other": ""},
+    ],
+)
+def test_mounts_require_absolute_paths(mounts: dict[str, str]) -> None:
+    with pytest.raises(ValueError, match="mounts must map absolute paths"):
+        SandboxConfig(image="busybox:latest", mounts=mounts)
+
+
 def test_invalid_network_mode_rejected():
     with pytest.raises(ValueError, match="network mode"):
         SandboxConfig(image="python:3.10-slim", network="bridge")
@@ -198,6 +212,38 @@ def test_disk_requires_a_writable_rootfs():
         SandboxConfig(image="python:3.10-slim", readonly=False, disk=-1)
     with pytest.raises(ValueError):
         SandboxConfig(image="python:3.10-slim", readonly=False, disk="lots")
+
+
+def test_gpu_ids_config():
+    config = SandboxConfig(image="python:3.10-slim")
+    assert config.gpu_ids is None
+
+    config = SandboxConfig(image="python:3.10-slim", gpu_ids=["0", "1"])
+    assert config.gpu_ids == ["0", "1"]
+
+    # ray.get_gpu_ids() returns integer indices unless CUDA_VISIBLE_DEVICES was
+    # set when the worker started.
+    config = SandboxConfig(image="python:3.10-slim", gpu_ids=[0, 1])
+    assert config.gpu_ids == ["0", "1"]
+
+
+@pytest.mark.parametrize(
+    "gpu_ids",
+    [
+        [],
+        "0",
+        ["0", ""],
+        [-1],
+        [True],
+        [1.0],
+        [None],
+        ["0", "0"],
+        [0, "0"],
+    ],
+)
+def test_invalid_gpu_ids_rejected(gpu_ids):
+    with pytest.raises(ValueError, match="gpu_ids"):
+        SandboxConfig(image="python:3.10-slim", gpu_ids=gpu_ids)
 
 
 def test_parse_memory_bytes():
