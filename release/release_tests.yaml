@@ -3009,31 +3009,6 @@
         anyscale_sdk_2026: true
         cluster_compute: only_head_node_1gpu_64cpu_gce.yaml
 
-- name: dask_on_ray_100gb_sort
-  group: core-daily-test
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: core
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
-      200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template_gce.yaml
-
-
 - name: stress_test_state_api_scale
   python: "3.10"
   group: core-daily-test
@@ -3330,26 +3305,6 @@
       cluster:
         anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
-
-
-- name: dask_on_ray_1tb_sort
-  group: core-daily-test
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly-3x
-  team: core
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: dask_on_ray/1tb_sort_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions
-      1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
-
-    wait_for_nodes:
-      num_nodes: 32
 
 
 - name: many_nodes_actor_test_on_v2

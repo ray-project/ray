@@ -310,9 +310,6 @@ arrow==1.3.0 \
     --hash=sha256:c728b120ebc00eb84e01882a6f5e7927a53960aa990ce7dd2b10f39005a67f80 \
     --hash=sha256:d4540617648cb5f895730f1ad8c82a65f2dad0166f57b75f3ca54759c4d67a85
     # via isoduration
-asciitree==0.3.3 \
-    --hash=sha256:4aa4b9b649f85e3fcb343363d97564aa1fb62e249677f2e18a96765145cc0f6e
-    # via zarr
 asttokens==2.4.1 \
     --hash=sha256:051ed49c3dcae8913ea7cd08e46a606dba30b79993209636c4875bc1d637bc24 \
     --hash=sha256:b03869718ba9a6eb027e134bfdf69f38a236d681c83c160d510768af11254ba0
@@ -1095,7 +1092,6 @@ fasteners==0.20 \
     # via
     #   google-apitools
     #   gsutil
-    #   zarr
 fastjsonschema==2.19.0 \
     --hash=sha256:b9fd1a2dd6971dbc7fee280a95bd199ae0dd9ce22beb91cc75e9c1c528a5170e \
     --hash=sha256:e25df6647e1bc4a26070b700897b07b542ec898dd4f1f6ea013e7f6a88417225
@@ -2815,25 +2811,6 @@ notebook-shim==0.2.3 \
     --hash=sha256:a83496a43341c1674b093bfcebf0fe8e74cbe7eda5fd2bbc56f8e39e1486c0c7 \
     --hash=sha256:f69388ac283ae008cd506dda10d0288b09a017d822d5e8c7129a152cbd3ce7e9
     # via nbclassic
-numcodecs==0.13.1 \
-    --hash=sha256:233bc7f26abce24d57e44ea8ebeb5cd17084690b4e7409dd470fdb75528d615f \
-    --hash=sha256:237b7171609e868a20fd313748494444458ccd696062f67e198f7f8f52000c15 \
-    --hash=sha256:2a86f5367af9168e30f99727ff03b27d849c31ad4522060dde0bce2923b3a8bc \
-    --hash=sha256:2eda97dd2f90add98df6d295f2c6ae846043396e3d51a739ca5db6c03b5eb666 \
-    --hash=sha256:3501a848adaddce98a71a262fee15cd3618312692aa419da77acd18af4a6a3f6 \
-    --hash=sha256:3f593c7506b0ab248961a3b13cb148cc6e8355662ff124ac591822310bc55ecf \
-    --hash=sha256:5195bea384a6428f8afcece793860b1ab0ae28143c853f0b2b20d55a8947c917 \
-    --hash=sha256:796b3e6740107e4fa624cc636248a1580138b3f1c579160f260f76ff13a4261b \
-    --hash=sha256:7a60d75179fd6692e301ddfb3b266d51eb598606dcae7b9fc57f986e8d65cb43 \
-    --hash=sha256:80d3071465f03522e776a31045ddf2cfee7f52df468b977ed3afdd7fe5869701 \
-    --hash=sha256:90d3065ae74c9342048ae0046006f99dcb1388b7288da5a19b3bddf9c30c3176 \
-    --hash=sha256:96add4f783c5ce57cc7e650b6cac79dd101daf887c479a00a29bc1487ced180b \
-    --hash=sha256:96e42f73c31b8c24259c5fac6adba0c3ebf95536e37749dc6c62ade2989dca28 \
-    --hash=sha256:a3cf37881df0898f3a9c0d4477df88133fe85185bffe57ba31bcc2fa207709bc \
-    --hash=sha256:da2230484e6102e5fa3cc1a5dd37ca1f92dfbd183d91662074d6f7574e3e8f53 \
-    --hash=sha256:e5db4824ebd5389ea30e54bc8aeccb82d514d28b6b68da6c536b8fa4596f4bca \
-    --hash=sha256:eda7d7823c9282e65234731fd6bd3986b1f9e035755f7fed248d7d366bb291ab
-    # via zarr
 numpy==1.26.4 \
     --hash=sha256:03a8c78d01d9781b28a6989f6fa1bb2c4f2d51201cf99d3dd875df6fbd96b23b \
     --hash=sha256:08beddf13648eb95f8d867350f6a018a4be2e5ad54c8d8caed89ebca558b2818 \
@@ -2884,7 +2861,6 @@ numpy==1.26.4 \
     #   keras
     #   lightgbm
     #   ml-dtypes
-    #   numcodecs
     #   pandas
     #   petastorm
     #   ray
@@ -2896,9 +2872,7 @@ numpy==1.26.4 \
     #   tensorflow
     #   torchvision
     #   transformers
-    #   xarray
     #   xgboost
-    #   zarr
 nvidia-cublas-cu12==12.8.3.14 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:3f0e05e7293598cf61933258b73e66a160c27d59c4422670bf0b79348c04be44
     # via
@@ -3287,7 +3261,6 @@ packaging==26.3 \
     #   tensorflow
     #   transformers
     #   virtualenv
-    #   xarray
 pandas==2.3.3 \
     --hash=sha256:0242fe9a49aa8b4d78a4fa03acb397a58833ef6199e9aa40a95f027bb3a1b6e7 \
     --hash=sha256:1611aedd912e1ff81ff41c745822980c49ce4a7907537be8692c8dbc31924593 \
@@ -3347,7 +3320,6 @@ pandas==2.3.3 \
     # via
     #   petastorm
     #   ray
-    #   xarray
 pandocfilters==1.5.0 \
     --hash=sha256:0b679503337d233b4339a817bfc8c50064e2eff681314376a47cb582305a7a38 \
     --hash=sha256:33aae3f25fd1a026079f5d27bdd52496f0e0803b3469282162bafdcbdf6ef14f
@@ -5224,10 +5196,6 @@ wrapt==1.14.1 \
     #   anyscale
     #   dm-tree
     #   tensorflow
-xarray==2025.6.1 \
-    --hash=sha256:8b988b47f67a383bdc3b04c5db475cd165e580134c1f1943d52aee4a9c97651b \
-    --hash=sha256:a84f3f07544634a130d7dc615ae44175419f4c77957a7255161ed99c69c7c8b0
-    # via -r release/ray_release/byod/requirements_byod_gpu_3.10.in
 xgboost==3.1.1 \
     --hash=sha256:2e1067489688ad99a410e8f2acdfe9d21a299c2f3b4b25dc8f094eae709c7447 \
     --hash=sha256:405e48a201495fe9474f7aa27419f937794726a1bc7d2c2f3208b351c816580a \
@@ -5458,10 +5426,6 @@ ypy-websocket==0.8.4 \
     --hash=sha256:43a001473f5c8abcf182f603049cf305cbc855ad8deaa9dfa0f3b5a7cea9d0ff \
     --hash=sha256:b1ba0dfcc9762f0ca168d2378062d3ca1299d39076b0f145d961359121042be5
     # via jupyter-server-ydoc
-zarr==2.18.3 \
-    --hash=sha256:2580d8cb6dd84621771a10d31c4d777dca8a27706a1a89b29f42d2d37e2df5ce \
-    --hash=sha256:b1f7dfd2496f436745cdd4c7bcf8d3b4bc1dceef5fdd0d589c87130d842496dd
-    # via -r release/ray_release/byod/requirements_byod_gpu_3.10.in
 zipp==3.19.2 \
     --hash=sha256:f091755f667055f2d02b32c53771a7a6c8b47e1fdbc4b72a8b9072b3eef8015c
     # via importlib-metadata
