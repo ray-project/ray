@@ -160,7 +160,7 @@ def test_autoscaler_set_node_labels(autoscaler_v2, shutdown_only):
         cluster.shutdown()
 
 
-def test_ray_start_set_node_labels_from_file(shutdown_only):
+def test_ray_start_set_node_labels_from_file(shutdown_only, create_auth_token):
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as test_file:
         test_file.write('"gpu_type": "A100"\n"region": "us"\n"market-type": "spot"')
         test_file_path = test_file.name
