@@ -246,7 +246,7 @@ def test_only_byte_array_leaves_record_unencoded_bytes(written_files):
 
 
 def _list_header(size, element_type):
-    return (size << 4) | element_type
+    return (size << pss._NIBBLE_BITS) | element_type
 
 
 @pytest.mark.parametrize(
@@ -357,7 +357,7 @@ def _buggy_binary_skip(original):
 def _short_varint_skip(self):
     """A skip that stops one byte before the varint terminator."""
     buf, pos = self._buf, self._pos
-    while buf[pos] & 0x80:
+    while buf[pos] & pss._VARINT_CONTINUES:
         pos += 1
     self._pos = pos
 
