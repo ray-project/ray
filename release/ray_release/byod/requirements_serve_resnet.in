@@ -1,0 +1,4 @@
+# Layered on the ray-torch image for pytest_serve_resnet_benchmark. Its
+# DataDownloader loads NVIDIA's torch hub nvidia_convnets_processing_utils,
+# which imports validators; everything else it needs is already in the image.
+validators

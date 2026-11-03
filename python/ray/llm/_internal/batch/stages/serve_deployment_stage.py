@@ -43,8 +43,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         should_continue_on_error: bool = False,
         request_timeout_s: Optional[float] = None,
     ):
-        """
-        Initialize the ServeDeploymentStageUDF.
+        """Initialize the ServeDeploymentStageUDF.
 
         Args:
             data_column: The data column name.
@@ -76,8 +75,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
     def _prepare_request(
         self, row: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Optional[Type[Any]], str]:
-        """
-        Decorate the request with metadata related to the batch.
+        """Decorate the request with metadata related to the batch.
 
         Args:
             row: The row.
@@ -112,8 +110,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
     async def generate_async(
         self, row: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Dict[str, Any], float]:
-        """
-        Run the serve deployment.
+        """Run the serve deployment.
 
         Args:
             row: The row to run the serve deployment on.
@@ -206,8 +203,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             }
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Run the serve deployment.
+        """Run the serve deployment.
 
         Args:
             batch: A list of rows to run the serve deployment on.

@@ -1,5 +1,6 @@
 import ipaddress
 import math
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -327,10 +328,16 @@ class SandboxConfig:
             units ``memory`` takes. Writes past it fail with ENOSPC inside
             the sandbox, and the sandbox keeps running. Zero (default) means
             no cap. Requires ``readonly=False`` or a ``workdir``: a readonly
-            rootfs with an explicit workdir runs on a private writable
-            overlay too, and a cap keeps that workdir inside the overlay
-            instead of a host directory. In-memory mounts such as /dev/shm
-            count toward the sandbox's memory instead.
+            rootfs stays read-only, so the cap applies to its explicit
+            workdir, whose writes then go to a file in the sandbox's
+            directory on the node instead of the workdir's host directory.
+            In-memory mounts such as /dev/shm count toward the sandbox's
+            memory instead.
+        mounts: Host paths to show inside a gVisor sandbox, read-only, as
+            {sandbox path: host path}. Files added under a mounted host
+            directory later appear inside the sandbox too, so one sandbox can
+            be handed data after it starts; it can never write there.
+            Replaces any existing OCI mounts at the same sandbox path.
     """
 
     image: str
@@ -352,6 +359,7 @@ class SandboxConfig:
     )
     _ignore_cgroups: bool = field(default=False, repr=False, compare=False)
     disk: Union[str, int, float] = 0
+    mounts: Optional[Dict[str, str]] = None
 
     def __post_init__(self):
         self.cpu = 0.0 if self.cpu is None else float(self.cpu)
@@ -364,6 +372,16 @@ class SandboxConfig:
             raise ValueError("memory must be non-negative")
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
             raise ValueError("A valid container image name must be specified.")
+        if self.mounts is not None:
+            if not isinstance(self.mounts, dict):
+                raise TypeError("mounts must be a dictionary.")
+            for target, source in self.mounts.items():
+                if not isinstance(target, str) or not isinstance(source, str):
+                    raise TypeError("mounts keys and values must be strings.")
+                if not os.path.isabs(target) or not os.path.isabs(source):
+                    raise ValueError(
+                        "mounts must map absolute paths to absolute paths."
+                    )
         if self.network not in VALID_NETWORK_MODES:
             raise ValueError(
                 f"Invalid network mode '{self.network}'. "

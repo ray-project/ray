@@ -280,8 +280,7 @@ class ReportHead(SubprocessModule):
             )
 
     async def get_task_ids_running_in_a_worker(self, worker_id: str) -> List[str]:
-        """
-        Retrieves the task IDs of running tasks associated with a specific worker.
+        """Retrieves the task IDs of running tasks associated with a specific worker.
 
         Args:
             worker_id: The ID of the worker.
@@ -1150,9 +1149,7 @@ class ReportHead(SubprocessModule):
 
     @routes.get("/api/prometheus/sd")
     async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:
-        """
-        Expose Prometheus metrics targets through HTTP Service Discovery.
-        """
+        """Expose Prometheus metrics targets through HTTP Service Discovery."""
         content = self.service_discovery.get_latest_service_discovery_content()
         if not isinstance(content, list):
             error_message = "service discovery error: content is not a list"
@@ -1173,8 +1170,7 @@ class ReportHead(SubprocessModule):
     async def _get_stub_address_by_node_id(
         self, node_id: NodeID
     ) -> Optional[Tuple[NodeID, str, int, int]]:
-        """
-        Given a NodeID, get agent port from InternalKV.
+        """Given a NodeID, get agent port from InternalKV.
 
         returns a tuple of (ip, http_port, grpc_port).
 
