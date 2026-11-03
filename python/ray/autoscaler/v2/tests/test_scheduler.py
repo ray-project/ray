@@ -59,6 +59,7 @@ def sched_request(
     cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
     idle_timeout_s: Optional[float] = None,
+    pending_idle_timeout_s: Optional[float] = None,
     disable_launch_config_check: Optional[bool] = False,
     ippr_specs: Optional[IPPRSpecs] = None,
     ippr_statuses: Optional[Dict[str, IPPRStatus]] = None,
@@ -98,6 +99,7 @@ def sched_request(
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
         idle_timeout_s=idle_timeout_s,
+        pending_idle_timeout_s=pending_idle_timeout_s,
         disable_launch_config_check=disable_launch_config_check,
         ippr_specs=ippr_specs,
         ippr_statuses=ippr_statuses,
@@ -1680,6 +1682,322 @@ def test_idle_termination_with_node_type_idle_timeout(node_type_idle_timeout_s):
         assert to_terminate == [("i-2", "r-2", TerminationRequest.Cause.IDLE)]
     else:
         assert len(to_terminate) == 0
+
+
+def _pending_instance(
+    instance_id: str, status: Instance.InstanceStatus, instance_type: str = "type_cpu"
+) -> AutoscalerInstance:
+    return make_autoscaler_instance(
+        im_instance=Instance(
+            instance_id=instance_id,
+            instance_type=instance_type,
+            status=status,
+            launch_config_hash="hash1",
+        ),
+        cloud_instance_id=(f"c-{instance_id}" if status != Instance.QUEUED else None),
+    )
+
+
+def _running_instance(
+    instance_id: str, idle_duration_ms: int, instance_type: str = "type_cpu"
+) -> AutoscalerInstance:
+    return make_autoscaler_instance(
+        im_instance=Instance(
+            instance_id=instance_id,
+            instance_type=instance_type,
+            status=Instance.RAY_RUNNING,
+            launch_config_hash="hash1",
+            node_id=f"r-{instance_id}",
+        ),
+        ray_node=NodeState(
+            node_id=f"r-{instance_id}".encode(),
+            ray_node_type_name=instance_type,
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            idle_duration_ms=idle_duration_ms,
+            status=NodeStatus.IDLE,
+        ),
+        cloud_instance_id=f"c-{instance_id}",
+    )
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        Instance.QUEUED,
+        Instance.REQUESTED,
+        Instance.ALLOCATED,
+        Instance.RAY_INSTALLING,
+    ],
+    ids=Instance.InstanceStatus.Name,
+)
+def test_idle_termination_pending_nodes(status):
+    """
+    Test that pending nodes not needed by any resource demands are terminated
+    after being continuously unneeded for the idle timeout, except for the
+    REQUESTED ones whose launch requests can't be cancelled.
+    """
+    idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+    }
+
+    def _schedule(now_s: float, resource_requests: List[ResourceRequest]):
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            instances=[_pending_instance("i-1", status)],
+            idle_timeout_s=idle_timeout_s,
+            pending_idle_timeout_s=idle_timeout_s,
+            # KubeRay disables the launch config check.
+            disable_launch_config_check=True,
+            resource_requests=resource_requests,
+        )
+        with patch("time.monotonic", return_value=now_s):
+            return _launch_and_terminate(scheduler.schedule(request))
+
+    # Not needed, but not for long enough.
+    assert _schedule(0, []) == ({}, [])
+    assert _schedule(idle_timeout_s, []) == ({}, [])
+    # Needed again by a pending demand, which resets the idle duration.
+    assert _schedule(idle_timeout_s + 1, [ResourceRequestUtil.make({"CPU": 1})]) == (
+        {},
+        [],
+    )
+    assert _schedule(idle_timeout_s + 2, []) == ({}, [])
+    assert _schedule(2 * idle_timeout_s + 2, []) == ({}, [])
+
+    # Not needed since t=idle_timeout_s + 2, so it has now been continuously
+    # unneeded for idle_timeout_s + 1 secs, which exceeds the idle timeout.
+    _, to_terminate = _schedule(2 * idle_timeout_s + 3, [])
+    if status == Instance.REQUESTED:
+        assert to_terminate == []
+    else:
+        assert to_terminate == [("i-1", "", TerminationRequest.Cause.IDLE)]
+
+
+def test_idle_termination_pending_nodes_needed_by_constraints():
+    """
+    Test that pending nodes needed by cluster resource constraints are not
+    terminated.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+    }
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            _pending_instance("i-1", Instance.ALLOCATED),
+            _pending_instance("i-2", Instance.ALLOCATED),
+        ],
+        idle_timeout_s=1,
+        pending_idle_timeout_s=1,
+        disable_launch_config_check=True,
+        cluster_resource_constraints=[ResourceRequestUtil.make({"CPU": 1})],
+    )
+    for now_s in [0, 10]:
+        with patch("time.monotonic", return_value=now_s):
+            _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+    # Only one of the pending nodes is needed by the constraints.
+    assert len(to_terminate) == 1
+    assert to_terminate[0][2] == TerminationRequest.Cause.IDLE
+
+
+def test_idle_termination_pending_nodes_with_min_worker():
+    """
+    Test that the min_worker_nodes are honored when terminating the unneeded
+    pending nodes, and the pending nodes are terminated before the running ones.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=2,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+    }
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            _running_instance("i-1", idle_duration_ms=100 * 1000),
+            _pending_instance("i-2", Instance.ALLOCATED),
+            _pending_instance("i-3", Instance.QUEUED),
+        ],
+        idle_timeout_s=1,
+        pending_idle_timeout_s=1,
+        disable_launch_config_check=True,
+    )
+    for now_s in [0, 10]:
+        with patch("time.monotonic", return_value=now_s):
+            _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+    assert len(to_terminate) == 1
+    # All 3 nodes are idle for longer than the timeouts, but min_worker_nodes=2
+    # only allows terminating 1 of them. Idle termination visits the pending
+    # nodes (i-2, i-3) before the running one (i-1), even though i-1 has been
+    # idle for longer, so the one terminated is pending and i-1 is kept. i-2 and
+    # i-3 have been unneeded for the same duration, so either may be picked.
+    assert to_terminate[0][0] in ("i-2", "i-3")
+
+
+def _pending_idle_test_configs() -> Dict[NodeType, NodeTypeConfig]:
+    return {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+    }
+
+
+def _schedule_pending_at(
+    scheduler: ResourceDemandScheduler,
+    now_s: float,
+    instance_ids: List[str],
+    num_cpu_requests: int,
+    idle_timeout_s: float,
+) -> List[str]:
+    request = sched_request(
+        node_type_configs=_pending_idle_test_configs(),
+        instances=[_pending_instance(i, Instance.ALLOCATED) for i in instance_ids],
+        idle_timeout_s=idle_timeout_s,
+        pending_idle_timeout_s=idle_timeout_s,
+        disable_launch_config_check=True,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * num_cpu_requests,
+    )
+    with patch("time.monotonic", return_value=now_s):
+        _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+    return [instance_id for instance_id, _, _ in to_terminate]
+
+
+def test_idle_termination_pending_nodes_tracked_by_node_type():
+    """
+    Test that the idle durations of the pending nodes are tracked per node type,
+    so they don't reset when the requests land on a different pending node of
+    the same type in each round.
+    """
+    idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    # One of the two pending nodes is needed by the request. The request lands on
+    # a different pending node each round, as the instance order changes.
+    assert _schedule_pending_at(scheduler, 0, ["i-1", "i-2"], 1, idle_timeout_s) == []
+    assert _schedule_pending_at(scheduler, 6, ["i-2", "i-1"], 1, idle_timeout_s) == []
+    assert _schedule_pending_at(scheduler, 11, ["i-1", "i-2"], 1, idle_timeout_s) in (
+        ["i-1"],
+        ["i-2"],
+    )
+
+
+def test_idle_termination_pending_nodes_count_changes():
+    """
+    Test that the oldest idle durations are kept when the number of unneeded
+    pending nodes drops, and that the durations of the terminated nodes are not
+    inherited by the remaining ones.
+    """
+    idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    # 2 unneeded pending nodes since t=0.
+    assert _schedule_pending_at(scheduler, 0, ["i-1", "i-2"], 0, idle_timeout_s) == []
+    # Only 1 unneeded pending node since t=5, which keeps the duration since t=0.
+    assert _schedule_pending_at(scheduler, 5, ["i-1", "i-2"], 1, idle_timeout_s) == []
+    # 2 unneeded pending nodes again, the 2nd one since t=8.
+    assert _schedule_pending_at(scheduler, 8, ["i-1", "i-2"], 0, idle_timeout_s) == []
+    # The 1st one has been unneeded since t=0 and is terminated.
+    terminated = _schedule_pending_at(scheduler, 11, ["i-1", "i-2"], 0, idle_timeout_s)
+    assert len(terminated) == 1
+    remaining = "i-2" if terminated == ["i-1"] else "i-1"
+    # The remaining one has only been unneeded since t=8.
+    assert _schedule_pending_at(scheduler, 12, [remaining], 0, idle_timeout_s) == []
+    assert _schedule_pending_at(scheduler, 19, [remaining], 0, idle_timeout_s) == [
+        remaining
+    ]
+
+
+def test_idle_termination_pending_nodes_after_max_workers_termination():
+    """
+    Test that the pending nodes terminated for max_worker_nodes don't take away
+    the idle durations of the remaining unneeded pending nodes, since they are
+    terminated before the unneeded pending nodes are counted.
+    """
+    idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    def _schedule(now_s: float, instance_ids: List[str], max_workers: int):
+        configs = _pending_idle_test_configs()
+        configs["type_cpu"].max_worker_nodes = max_workers
+        request = sched_request(
+            node_type_configs=configs,
+            instances=[_pending_instance(i, Instance.ALLOCATED) for i in instance_ids],
+            idle_timeout_s=idle_timeout_s,
+            pending_idle_timeout_s=idle_timeout_s,
+            disable_launch_config_check=True,
+        )
+        with patch("time.monotonic", return_value=now_s):
+            _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+        return to_terminate
+
+    # All 3 pending nodes are unneeded since t=0.
+    instance_ids = ["i-1", "i-2", "i-3"]
+    assert _schedule(0, instance_ids, max_workers=3) == []
+
+    # Lowering max_worker_nodes terminates 1 of them.
+    to_terminate = _schedule(5, instance_ids, max_workers=2)
+    assert len(to_terminate) == 1
+    assert to_terminate[0][2] == TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE
+    instance_ids.remove(to_terminate[0][0])
+
+    # Both remaining pending nodes keep their durations since t=0.
+    to_terminate = _schedule(11, instance_ids, max_workers=2)
+    assert sorted(to_terminate) == sorted(
+        (i, "", TerminationRequest.Cause.IDLE) for i in instance_ids
+    )
+
+
+@pytest.mark.parametrize("pending_idle_timeout_s", [5, 100, None])
+def test_idle_termination_pending_nodes_timeout(pending_idle_timeout_s):
+    """
+    Test that the pending nodes use their own idle timeout, independent of the
+    regular idle timeout, and are never terminated when it's disabled.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    request = sched_request(
+        node_type_configs=_pending_idle_test_configs(),
+        instances=[
+            _running_instance("i-1", idle_duration_ms=50 * 1000),
+            _pending_instance("i-2", Instance.ALLOCATED),
+        ],
+        idle_timeout_s=1,
+        pending_idle_timeout_s=pending_idle_timeout_s,
+        disable_launch_config_check=True,
+    )
+    with patch("time.monotonic", return_value=0):
+        scheduler.schedule(request)
+    with patch("time.monotonic", return_value=10):
+        _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+
+    # The running node always follows the regular idle timeout.
+    expected = [("i-1", "r-i-1", TerminationRequest.Cause.IDLE)]
+    if pending_idle_timeout_s == 5:
+        expected.append(("i-2", "", TerminationRequest.Cause.IDLE))
+    assert sorted(to_terminate) == sorted(expected)
 
 
 def test_gang_scheduling():

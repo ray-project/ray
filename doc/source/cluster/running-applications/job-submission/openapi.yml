@@ -126,12 +126,15 @@ paths:
       responses:
         200:
           description: |
-            The status of the job.
+            Whether the job was deleted.
           content:
             application/json:
               schema:
-                description: Whether the job was successfully deleted.
-                type: boolean
+                type: object
+                properties:
+                  deleted:
+                    description: Whether the job was deleted.
+                    type: boolean
         500:
           description: |
             An internal error occurred when deleting the job, or the job was not in a terminal state.
@@ -172,11 +175,15 @@ paths:
       responses:
         200:
           description: |
-            The status of the job.
+            Whether the job was stopped.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JobStatus'
+                type: object
+                properties:
+                  stopped:
+                    description: Whether the job was stopped.
+                    type: boolean
         500:
           description: |
             An internal error occurred when stopping the job.
@@ -301,18 +308,21 @@ components:
           description: The entrypoint command for this job.
           type: string
         job_id:
+          nullable: true
           title: Job Id
           description: >-
             The job id. An id that is created for every job that is launched in Ray.
             This id can be used to fetch data about jobs using Ray core APIs.
           type: string
         submission_id:
+          nullable: true
           title: Submission Id
           description: >-
             A submission id is an id created for every submission job. This id can be used
             to fetch data about jobs using the job submission APIs.
           type: string
         driver_info:
+          nullable: true
           title: Driver Info
           description: >-
             The driver related to this job. For submission jobs, it is the last driver
@@ -324,36 +334,44 @@ components:
           allOf:
             - $ref: '#/components/schemas/JobStatus'
         message:
+          nullable: true
           title: Message
           description: A message describing the status in more detail.
           type: string
         error_type:
+          nullable: true
           title: Error Type
           description: Internal error, user script error
           type: string
         start_time:
+          nullable: true
           title: Start Time
           description: The time when the job was started. A Unix timestamp in ms.
           type: integer
         end_time:
+          nullable: true
           title: End Time
           description: The time when the job moved into a terminal state. A Unix timestamp in ms.
           type: integer
         metadata:
+          nullable: true
           title: Metadata
           description: Arbitrary user-provided metadata for the job.
           type: object
           additionalProperties:
             type: string
         runtime_env:
+          nullable: true
           title: Runtime Env
           description: The runtime environment for the job.
           type: object
         driver_agent_http_address:
+          nullable: true
           title: Driver Agent Http Address
           description: Driver agent http address.
           type: string
         driver_node_id:
+          nullable: true
           title: Driver Node Id
           description: Driver node id.
           type: string
@@ -420,6 +438,9 @@ components:
       type: string
     DriverInfo:
       title: DriverInfo
+      # Only referenced by JobDetails.driver_info, which is null when a job has
+      # no driver. `nullable` doesn't carry through `allOf` in OpenAPI 3.0.
+      nullable: true
       description: A class for recording information about the driver related to the job.
       type: object
       properties:

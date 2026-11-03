@@ -14,7 +14,11 @@ from ray.util.annotations import PublicAPI
 # See https://pandas.pydata.org/docs/development/extending.html for more information.
 @PublicAPI(stability="alpha")
 class PythonObjectArray(pd.api.extensions.ExtensionArray):
-    """Implements the Pandas extension array interface for the Arrow object array"""
+    """Implements the Pandas extension array interface for the Arrow object array
+
+    Args:
+        values: The Python objects to store.
+    """
 
     def __init__(self, values: collections.abc.Iterable[typing.Any]):
         vals = list(values)
@@ -60,6 +64,18 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         copy: bool = False,
         na_value: object = lib.no_default,
     ) -> np.ndarray:
+        """Return the objects as a NumPy array.
+
+        Args:
+            dtype: Unused. The result always has ``dtype=object``.
+            copy: If ``True``, return a copy of the underlying array instead of the
+                array itself.
+            na_value: The value to replace missing values with. Setting it also
+                makes a copy.
+
+        Returns:
+            A NumPy array with ``dtype=object``.
+        """
         result = self.values
         if copy or na_value is not lib.no_default:
             result = result.copy()
@@ -69,10 +85,16 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
 
     @property
     def dtype(self) -> pd.api.extensions.ExtensionDtype:
+        """The :class:`PythonObjectDtype` of this array."""
         return PythonObjectDtype()
 
     @property
     def nbytes(self) -> int:
+        """The number of bytes in the underlying NumPy object array.
+
+        The array holds references to the objects, so this doesn't include the size
+        of the objects themselves.
+        """
         return self.values.nbytes
 
     def __arrow_array__(self, type=None):
@@ -81,6 +103,12 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         )
 
     def isna(self) -> np.ndarray:
+        """Return which elements are missing.
+
+        Returns:
+            A boolean NumPy array that's ``True`` where an element is missing,
+            as defined by ``pd.isnull``.
+        """
         return pd.isnull(self.values)
 
     def take(
@@ -90,6 +118,19 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         allow_fill: bool = False,
         fill_value: typing.Any = None,
     ) -> "PythonObjectArray":
+        """Take elements from the array by position.
+
+        Args:
+            indices: The positions of the elements to take.
+            allow_fill: If ``True``, an index of ``-1`` marks a missing value that's
+                filled with ``fill_value``. If ``False``, negative indices count from
+                the end of the array.
+            fill_value: The value for missing positions when ``allow_fill`` is
+                ``True``. Defaults to the dtype's missing value.
+
+        Returns:
+            A new array that holds the selected elements.
+        """
         if allow_fill and fill_value is None:
             fill_value = self.dtype.na_value
 
@@ -99,6 +140,13 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         return self._from_sequence(result, dtype=self.dtype)
 
     def copy(self) -> "PythonObjectArray":
+        """Return a copy of the array.
+
+        The new array holds references to the same objects.
+
+        Returns:
+            A new :class:`PythonObjectArray`.
+        """
         return PythonObjectArray(self.values)
 
     @classmethod
@@ -112,16 +160,28 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
 @PublicAPI(stability="alpha")
 @pd.api.extensions.register_extension_dtype
 class PythonObjectDtype(pd.api.extensions.ExtensionDtype):
+    """The pandas extension dtype for arrays of arbitrary Python objects."""
+
     @classmethod
     def construct_from_string(cls, string: str):
+        """Construct this dtype from its string name.
+
+        Args:
+            string: The dtype name. Must be ``"python_object()"``.
+
+        Returns:
+            A new :class:`PythonObjectDtype`.
+
+        Raises:
+            TypeError: If ``string`` isn't ``"python_object()"``.
+        """
         if string != "python_object()":
             raise TypeError(f"Cannot construct a '{cls.__name__}' from '{string}'")
         return cls()
 
     @property
     def type(self):
-        """
-        The scalar type for the array, e.g. ``int``
+        """The scalar type for the array, e.g. ``int``
         It's expected ``ExtensionArray[item]`` returns an instance
         of ``ExtensionDtype.type`` for scalar ``item``, assuming
         that value is valid (not NA). NA values do not need to be
@@ -131,12 +191,15 @@ class PythonObjectDtype(pd.api.extensions.ExtensionDtype):
 
     @property
     def name(self) -> str:
+        """The string name of this dtype, ``"python_object()"``."""
         return "python_object()"
 
     @classmethod
     def construct_array_type(cls: type) -> type:
-        """
-        Return the array type associated with this dtype.
+        """Return the array type associated with this dtype.
+
+        Returns:
+            The :class:`PythonObjectArray` class.
         """
         return PythonObjectArray
 

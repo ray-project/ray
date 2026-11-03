@@ -11,8 +11,7 @@ class SubProgressBarMixin(ABC):
 
     @abstractmethod
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        """
-        Returns list of sub-progress bar names
+        """Returns list of sub-progress bar names
 
         This is used to create the sub-progress bars in the progress manager.
         Note that sub-progress bars will be created in the order returned by
@@ -22,8 +21,7 @@ class SubProgressBarMixin(ABC):
 
     @abstractmethod
     def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
-        """
-        Sets sub-progress bars
+        """Sets sub-progress bars
 
         name: name of sub-progress bar
         pg: a progress bar. Can be sub-progress bars for rich, tqdm, etc.

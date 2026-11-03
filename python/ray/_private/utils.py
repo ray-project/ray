@@ -347,8 +347,7 @@ class Unbuffered(object):
 
 
 def open_log(path, unbuffered=False, **kwargs):
-    """
-    Opens the log file at `path`, with the provided kwargs being given to
+    """Opens the log file at `path`, with the provided kwargs being given to
     `open`.
     """
     # Disable buffering, see test_advanced_3.py::test_logging_to_driver
@@ -433,8 +432,7 @@ def get_num_cpus(
     override_docker_cpu_warning: bool = ENV_DISABLE_DOCKER_CPU_WARNING,
     truncate: bool = True,
 ) -> float:
-    """
-    Get the number of CPUs available on this node.
+    """Get the number of CPUs available on this node.
     Depending on the situation, use multiprocessing.cpu_count() or cgroups.
 
     Args:
@@ -507,8 +505,7 @@ def get_cgroup_used_memory(
     inactive_file_key: str,
     active_file_key: str,
 ):
-    """
-    The calculation logic is the same with `GetCGroupMemoryUsedBytes`
+    """The calculation logic is the same with `GetCGroupMemoryUsedBytes`
     in `memory_monitor_utils.cc` file.
     """
     inactive_file_bytes = -1
@@ -536,8 +533,7 @@ def get_cgroup_used_memory(
 
 
 def get_cgroup_mem_stats() -> Optional[Tuple[int, int]]:
-    """
-    Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
+    """Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
 
     Supports both cgroups v1 and v2. Total is capped at the host physical
     memory.
@@ -651,8 +647,7 @@ def resolve_object_store_memory(
 
 
 def get_used_memory():
-    """
-    Return the currently used system memory in bytes
+    """Return the currently used system memory in bytes
     If cgroup memory utilization files (e.g. memory.stat) are available,
     we are in a container/cgroup. Use the cgroup memory usage instead.
 
@@ -949,8 +944,7 @@ def get_user():
 
 
 def get_conda_bin_executable(executable_name):
-    """
-    Return path to the specified executable, assumed to be discoverable within
+    """Return path to the specified executable, assumed to be discoverable within
     the 'bin' subdirectory of a conda installation.  Adapted from
     https://github.com/mlflow/mlflow.
     """
@@ -1230,8 +1224,7 @@ def get_all_node_info_until_retrieved(
     num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
     timeout_per_retry: Optional[int | float] = None,
 ) -> List[GcsNodeInfo]:
-    """
-    Get all node info from GCS with retry until the node info is found.
+    """Get all node info from GCS with retry until the node info is found.
 
     Raises:
         Exception: If the node info is not found after the retries,
@@ -1642,8 +1635,7 @@ class DeferSigint(contextlib.AbstractContextManager):
 
 
 def try_import_each_module(module_names_to_import: List[str]) -> None:
-    """
-    Make a best-effort attempt to import each named Python module.
+    """Make a best-effort attempt to import each named Python module.
     This is used by the Python default_worker.py to preload modules.
     """
     for module_to_preload in module_names_to_import:
@@ -1654,8 +1646,7 @@ def try_import_each_module(module_names_to_import: List[str]) -> None:
 
 
 def remove_ray_internal_flags_from_env(env: dict):
-    """
-    Remove Ray internal flags from `env`.
+    """Remove Ray internal flags from `env`.
     Defined in ray/common/ray_internal_flag_def.h
     """
     for flag in ray_constants.RAY_INTERNAL_FLAGS:
@@ -1663,8 +1654,7 @@ def remove_ray_internal_flags_from_env(env: dict):
 
 
 def update_envs(env_vars: Dict[str, str]):
-    """
-    When updating the environment variable, if there is ${X},
+    """When updating the environment variable, if there is ${X},
     it will be replaced with the current environment variable.
     """
     if not env_vars:
@@ -1748,9 +1738,7 @@ def get_current_node_cpu_model_name() -> Optional[str]:
 
 
 def validate_socket_filepath(filepath: str):
-    """
-    Validate the provided filename is a valid Unix socket filename.
-    """
+    """Validate the provided filename is a valid Unix socket filename."""
     # Don't check for Windows as it doesn't support Unix sockets.
     if sys.platform == "win32":
         return

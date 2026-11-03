@@ -48,8 +48,10 @@ def query_prometheus_counter(promql: str) -> Optional[int]:
     """Instant-query a cumulative Prometheus counter and return its cluster-wide
     integer value.
 
-    Returns None on any failure (Prometheus unreachable, non-200, empty result),
-    as usage collection is best effort
+    Returns 0 when no series matched: Ray only creates a counter's series on its
+    first event, so a missing series means no events yet. Returns None on any
+    failure (Prometheus unreachable, non-200, malformed response), as usage
+    collection is best effort.
     """
     try:
         resp = requests.get(
@@ -64,9 +66,6 @@ def query_prometheus_counter(promql: str) -> Optional[int]:
             )
             return None
         results = resp.json()["data"]["result"]
-        if not results:
-            logger.debug("Prometheus counter query %r returned empty result", promql)
-            return None
         return int(sum(float(r["value"][1]) for r in results))
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
         # RequestException: unreachable/timeout/non-HTTP error; the rest:

@@ -130,16 +130,14 @@ class CometLoggerCallback(LoggerCallback):
                 self.experiment_kwargs[option] = False
 
     def _check_key_name(self, key: str, item: str) -> bool:
-        """
-        Check if key argument is equal to item argument or starts with item and
+        """Check if key argument is equal to item argument or starts with item and
         a forward slash. Used for parsing trial result dictionary into ignored
         keys, system metrics, episode logs, etc.
         """
         return key.startswith(item + "/") or key == item
 
     def log_trial_start(self, trial: "Trial"):
-        """
-        Initialize an Experiment (or OfflineExperiment if self.online=False)
+        """Initialize an Experiment (or OfflineExperiment if self.online=False)
         and start logging to Comet.
 
         Args:
@@ -168,9 +166,7 @@ class CometLoggerCallback(LoggerCallback):
         experiment.log_parameters(config)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
-        """
-        Log the current result of a Trial upon each iteration.
-        """
+        """Log the current result of a Trial upon each iteration."""
         if trial not in self._trial_experiments:
             self.log_trial_start(trial)
         experiment = self._trial_experiments[trial]
