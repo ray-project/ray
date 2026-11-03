@@ -8,7 +8,8 @@ import) that exercises:
   first-paragraph fallback),
 * ``llms_txt_exclude`` globs,
 * the ``## Optional`` section,
-* the per-directory ``llms-full.txt`` shards + the root manifest, and
+* the per-directory ``llms-full.txt`` shards, including a split section's links
+  to its sub-shards, + the root manifest, and
 * ``literalinclude`` directives expanded into the code they include.
 
 Run directly (``python doc/source/_ext/test_llms_txt.py``) or under pytest. It
@@ -410,6 +411,24 @@ def test_llms_txt():
         _check(
             "Topic A Intro" in topic_a and "Topic A Deep Dive" in topic_a,
             "topic-a sub-shard missing its pages",
+        )
+        # The parent links each sub-shard with its page count, above its
+        # Contents TOC, so its URL still leads to the whole section.
+        _check(
+            "- [Topic A](https://example.com/docs/guides/topic-a/llms-full.txt) "
+            "(2 pages)" in guides_parent
+            and "- [Topic B](https://example.com/docs/guides/topic-b/llms-full.txt) "
+            "(1 pages)" in guides_parent,
+            "split parent shard doesn't link its sub-shards",
+        )
+        _check(
+            guides_parent.index("## Sub-shards") < guides_parent.index("## Contents"),
+            "sub-shard list rendered below the parent's Contents TOC",
+        )
+        # Shards that aren't split carry no sub-shard list.
+        _check(
+            "## Sub-shards" not in topic_a and "## Sub-shards" not in secA_full,
+            "unsplit shard got a sub-shard list",
         )
         # Manifest nests the sub-shards under their parent (indented link).
         _check(

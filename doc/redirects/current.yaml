@@ -57,6 +57,12 @@ redirects:
 - from: /cluster/kubernetes/*
   to: /kuberay/:splat
   type: page
+- from: /cluster/vms/llms-full.txt
+  to: /cluster/llms-full.txt
+  type: page
+- from: /cluster/running-applications/llms-full.txt
+  to: /cluster/llms-full.txt
+  type: page
 - from: /train/user-guides/using-gpus.html
   to: /train/user-guides/using-accelerators.html
   type: page
@@ -844,6 +850,9 @@ redirects:
   type: page
 - from: /ray-air/deployment.html
   to: /ray-overview/ml-infrastructure.html#deploying-ray-for-ml-platforms
+  type: page
+- from: /ray-air/llms-full.txt
+  to: /ray-overview/llms-full.txt
   type: page
 - from: /ray-air/*
   to: /ray-air/getting-started.html
