@@ -638,7 +638,7 @@
 ################
 
 - name: distributed_training
-  python: "3.10"
+  python: "3.11"
   working_dir: nightly_tests
 
   cluster:
@@ -647,11 +647,7 @@
       runtime_env:
         # Footer read tuning.
         RAY_DATA_PARQUET_FOOTER_NUM_ACTORS: "20"
-      # TODO: still on ray-ml. The benchmark imports mosaicml-streaming at module
-      # load, and every streaming release needs torchtext (0.5.x) or transformers<5,
-      # which both conflict with ray-torch.
-      type: gpu
-      post_build_script: byod_install_mosaicml.sh
+      type: torch-cu128
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
@@ -1084,19 +1080,21 @@
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_fixed_size"
-  python: "3.10"
+  python: "3.11"
   group: data-batch-inference
 
   cluster:
     anyscale_sdk_2026: true
     byod:
-      # TODO: still on ray-ml. The pinned pyarrow 19 conflicts with ray-torch's
-      # pyarrow 23; move once the dataset no longer needs pyarrow.PyExtensionType.
-      type: gpu
+      type: torch-cu128
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
-      python_depset: image_classification_py3.10.lock
+      python_depset: torch_cu128_image_classification_pyarrow19_py3.11.lock
+      runtime_env:
+        # The dataset uses the legacy pickled tensor type. byod.Dockerfile sets
+        # this for the old base images, but ray-torch images don't go through it.
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
     cluster_compute: fixed_size_gpu_compute.yaml
 
   run:
@@ -1111,19 +1109,21 @@
 # non-default configurations and writes to cloud storage. After some period of time,
 # we should remove the legacy `image_classification` test and only keep this one.
 - name: "image_classification_from_parquet_fixed_size"
-  python: "3.10"
+  python: "3.11"
   group: data-batch-inference
 
   cluster:
     anyscale_sdk_2026: true
     byod:
-      # TODO: still on ray-ml. The pinned pyarrow 19 conflicts with ray-torch's
-      # pyarrow 23; move once the dataset no longer needs pyarrow.PyExtensionType.
-      type: gpu
+      type: torch-cu128
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
-      python_depset: image_classification_py3.10.lock
+      python_depset: torch_cu128_image_classification_pyarrow19_py3.11.lock
+      runtime_env:
+        # The dataset uses the legacy pickled tensor type. byod.Dockerfile sets
+        # this for the old base images, but ray-torch images don't go through it.
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE: "1"
     cluster_compute: fixed_size_gpu_compute.yaml
 
   run:

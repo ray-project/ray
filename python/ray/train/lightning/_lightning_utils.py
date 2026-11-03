@@ -3,7 +3,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import torch
 from packaging.version import Version
@@ -28,6 +28,9 @@ pl = import_lightning()
 
 if is_v2_enabled():
     from ray.train.v2.api.report_config import CheckpointUploadMode
+
+if TYPE_CHECKING:
+    from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _LIGHTNING_LESS_THAN_2_1 = Version(pl.__version__) < Version("2.1.0")
@@ -322,20 +325,29 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         checkpoint_00000*/      Ray Train Checkpoint
         └─ checkpoint.ckpt      PyTorch Lightning Checkpoint
 
-    You can also provide the following arguments to the callback:
-
-    - checkpoint_upload_mode: The manner in which to upload the checkpoint.
-        See :ref:`Checkpoint upload modes <train-checkpoint-upload-modes>` for more details.
-    - validation: Whether to asynchronously validate the checkpoint.
-        See :ref:`Validating checkpoints asynchronously <train-validating-checkpoints>` for more details.
-    - checkpoint_frequency: Only report a checkpoint and metrics every
-        ``checkpoint_frequency``. Defaults to ``1``, which is checkpoints on every
-        epoch. If ``max_epochs`` is not a multiple of ``checkpoint_frequency``, it
-        will not be reported.
-
     For customized reporting and checkpointing logic, implement your own
     `lightning.pytorch.callbacks.Callback` following this user
     guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
+
+    Args:
+        checkpoint_upload_mode: The manner in which to upload the checkpoint.
+            See :ref:`Checkpoint upload modes <train-checkpoint-upload-modes>`
+            for more details. Ray Train v2 only. Defaults to
+            ``CheckpointUploadMode.SYNC``.
+        validation: Whether to asynchronously validate the checkpoint, or a
+            ``ValidationTaskConfig`` for the validation task. See
+            :ref:`Validating checkpoints asynchronously <train-validating-checkpoints>`
+            for more details. Ray Train v2 only.
+        checkpoint_frequency: Only report a checkpoint and metrics every
+            ``checkpoint_frequency`` epochs. Defaults to ``1``, which reports on
+            every epoch. If ``max_epochs`` isn't a multiple of
+            ``checkpoint_frequency``, the epochs after the last multiple aren't
+            reported.
+
+    Raises:
+        TypeError: If ``checkpoint_frequency`` isn't an integer.
+        ValueError: If ``checkpoint_frequency`` is less than 1, or if
+            ``checkpoint_upload_mode`` or ``validation`` is set on Ray Train v1.
     """
 
     CHECKPOINT_NAME = "checkpoint.ckpt"
@@ -343,8 +355,8 @@ class RayTrainReportCallback(pl.callbacks.Callback):
     def __init__(
         self,
         # v2-only arguments
-        checkpoint_upload_mode=None,
-        validation=False,
+        checkpoint_upload_mode: Optional["CheckpointUploadMode"] = None,
+        validation: Union[bool, "ValidationTaskConfig"] = False,
         checkpoint_frequency: int = 1,
     ) -> None:
         super().__init__()
@@ -391,10 +403,17 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
 
-    def on_train_epoch_end(self, trainer, pl_module) -> None:
+    def on_train_epoch_end(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule
+    ) -> None:
         """Report metrics and a checkpoint to Ray Train at the end of an epoch.
 
         Reports only every ``checkpoint_frequency`` epochs.
+
+        Args:
+            trainer: The Lightning trainer. The callback reports its
+                ``callback_metrics`` and saves its checkpoint.
+            pl_module: The Lightning module being trained. Unused.
         """
         # Only report (metrics + checkpoint) every `checkpoint_frequency` epochs.
         if (trainer.current_epoch + 1) % self.checkpoint_frequency != 0:
