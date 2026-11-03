@@ -678,9 +678,11 @@ def test_orphaned_processes_are_reaped(image):
         for _ in range(20):
             runtime.exec(instance_id, "sleep 0.01 &")
         time.sleep(1)
-        # The images have no common ps; a zombie's state in /proc is Z.
+        # The images have no common ps; a zombie's state in /proc is Z. The
+        # state follows the command name, which ends at the last ")".
         states = runtime.exec(
-            instance_id, "for f in /proc/[0-9]*/stat; do cut -d' ' -f3 $f; done"
+            instance_id,
+            "for f in /proc/[0-9]*/stat; do sed 's/.*) //' $f | cut -d' ' -f1; done",
         )
         assert states.exit_code == 0
         assert "Z" not in states.stdout.split(), states.stdout
