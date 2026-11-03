@@ -3046,7 +3046,8 @@ def test_exec_kill_and_reclaim_run_runsc_with_gomaxprocs(private_bundles, monkey
     backend._kill_exec(config, sandbox_id, str(pid_file))
     root = Path(gvisor._RAY_SANDBOX_DIR, sandbox_id)
     root.mkdir(parents=True)
-    backend._own_bundle(config, str(root)).close()
+    # An owner file that no live owner holds or names: the bundle is unowned.
+    (root / ".owner").write_text(json.dumps({"image": "busybox:latest"}))
     assert backend._reclaim_unowned_bundles() == [sandbox_id]
     assert (private_bundles / "runsc.log").read_text().splitlines() == [
         f"GOMAXPROCS=2 --root /tmp/runsc trace procfs {sandbox_id}",
