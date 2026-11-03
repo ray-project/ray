@@ -33,6 +33,11 @@ from ray.experimental.sandbox.image_manager import (
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.experimental.sandbox.sandbox import Sandbox
+from ray.experimental.sandbox.warm_pool_store import (
+    RayWarmPoolStore,
+    WarmPoolEntry,
+    WarmPoolStore,
+)
 from ray.util.annotations import PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -251,6 +256,9 @@ __all__ = [
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",
     "SandboxRuntime",
+    "WarmPoolStore",
+    "WarmPoolEntry",
+    "RayWarmPoolStore",
     "BaseImageManager",
     "ImageManager",
     "get_default_oci_spec",

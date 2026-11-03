@@ -27,6 +27,18 @@ For an introduction and usage guides, see {ref}`ray-core-sandboxes`.
     ray.experimental.sandbox.SandboxRuntime
 ```
 
+## Warm pool stores
+
+```{eval-rst}
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ray.experimental.sandbox.WarmPoolStore
+    ray.experimental.sandbox.RayWarmPoolStore
+    ray.experimental.sandbox.WarmPoolEntry
+```
+
 ## Data structures and status
 
 ```{eval-rst}

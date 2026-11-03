@@ -3,6 +3,7 @@ import collections
 import concurrent.futures
 import logging
 import os
+import socket
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -16,6 +17,12 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import ImageManager
+from ray.experimental.sandbox.warm_pool_store import (
+    CLAIMED,
+    READY,
+    WarmPoolEntry,
+    WarmPoolStore,
+)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -26,6 +33,16 @@ _WARM_BOOT_CONCURRENCY = 4
 # After a warm-pool boot fails (say, its image can't be pulled), its profile
 # boots nothing for this long, and then a timer refills it.
 _WARM_RETRY_SECONDS = 30.0
+# A pool with a store publishes at least this often, and its entries go
+# stale after three periods without a publish.
+_PUBLISH_HEARTBEAT_SECONDS = 10.0
+# After a publish, the pool waits this long before the next, so a burst of
+# creates publishes a few times rather than once per create.
+_PUBLISH_COALESCE_SECONDS = 0.05
+# Hosts that publish a warm pool from this process: each needs its own name,
+# since a publish replaces everything recorded for its host.
+_PUBLISHING_HOSTS = set()
+_PUBLISHING_HOSTS_LOCK = threading.Lock()
 
 
 def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
@@ -56,12 +73,42 @@ def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
     )
 
 
-# The states of a warm-pool slot.
+# The states of a warm-pool slot. Ready and claimed slots are the ones a
+# store records.
 _EMPTY = "empty"
 _BOOTING = "booting"
-_READY = "ready"
-_CLAIMED = "claimed"
+_READY = READY
+_CLAIMED = CLAIMED
 _DELETING = "deleting"
+
+
+def _default_host() -> str:
+    """The current actor's name, else its ID, else this host and process."""
+    try:
+        import ray
+
+        if ray.is_initialized():
+            context = ray.get_runtime_context()
+            name = context.get_actor_name()
+            if name:
+                return name
+            actor_id = context.get_actor_id()
+            if actor_id:
+                return actor_id
+    except Exception:
+        pass
+    return f"{socket.gethostname()}:{os.getpid()}"
+
+
+def _node_id() -> Optional[str]:
+    try:
+        import ray
+
+        if ray.is_initialized():
+            return ray.get_runtime_context().get_node_id()
+    except Exception:
+        pass
+    return None
 
 
 class _Slot:
@@ -73,12 +120,19 @@ class _Slot:
     is deleted.
     """
 
-    __slots__ = ("key", "state", "sandbox_id")
+    __slots__ = ("key", "index", "state", "sandbox_id", "since")
 
-    def __init__(self, key: tuple):
+    def __init__(self, key: tuple, index: int):
         self.key = key
+        self.index = index
         self.state = _EMPTY
         self.sandbox_id: Optional[str] = None
+        # When the slot entered its state, in seconds since the epoch.
+        self.since = 0.0
+
+    def enter(self, state: str) -> None:
+        self.state = state
+        self.since = time.time()
 
 
 class _WarmPool:
@@ -91,13 +145,24 @@ class _WarmPool:
     outside the pool.
     """
 
-    def __init__(self, runtime: "SandboxRuntime", profiles: List[Dict[str, Any]]):
+    def __init__(
+        self,
+        runtime: "SandboxRuntime",
+        profiles: List[Dict[str, Any]],
+        store: Optional[WarmPoolStore] = None,
+        host: Optional[str] = None,
+    ):
         self._runtime = runtime
         self._lock = threading.Lock()
         # Notified whenever a slot fills or empties, and on close, for wait_full.
         self._changed = threading.Condition(self._lock)
+        # Notified when what a store records changes, for the publisher.
+        self._publish_wanted = threading.Condition(self._lock)
+        self._dirty = False
         # Boot key -> the SandboxConfig its slots boot with.
         self._profiles: Dict[tuple, SandboxConfig] = {}
+        # Boot key -> the profile's name, which a store records.
+        self._names: Dict[tuple, str] = {}
         self._slots: Dict[tuple, List[_Slot]] = {}
         # Boot key -> its ready slots, in the order they became ready.
         self._ready: Dict[tuple, collections.deque] = {}
@@ -111,6 +176,7 @@ class _WarmPool:
         for profile in profiles:
             kwargs = dict(profile)
             size = int(kwargs.pop("size", 0))
+            name = kwargs.pop("name", None)
             kwargs.pop("ttl_seconds", None)
             cfg = SandboxConfig(**kwargs)
             key = _boot_key(cfg)
@@ -125,9 +191,35 @@ class _WarmPool:
                     "boots the same sandboxes (only env, ttl_seconds and "
                     "timeout_seconds differ)."
                 )
+            name = name or cfg.image
+            if name in self._names.values():
+                raise ValueError(
+                    f"Invalid warm_pool profile {profile!r}: an earlier profile "
+                    f"is named {name!r}. Give profiles that boot the same image "
+                    "a 'name' each."
+                )
             self._profiles[key] = cfg
-            self._slots[key] = [_Slot(key) for _ in range(size)]
+            self._names[key] = name
+            self._slots[key] = [_Slot(key, index) for index in range(size)]
             self._ready[key] = collections.deque()
+        self._store = store
+        self._host = host or _default_host()
+        self._node_id = _node_id()
+        self._publisher = None
+        if store is not None:
+            with _PUBLISHING_HOSTS_LOCK:
+                if self._host in _PUBLISHING_HOSTS:
+                    raise ValueError(
+                        f"Another warm pool in this process publishes as host "
+                        f"{self._host!r}, or a closed one is still sending its "
+                        "last publish; give each pool a warm_pool_host of its "
+                        "own."
+                    )
+                _PUBLISHING_HOSTS.add(self._host)
+            self._publisher = threading.Thread(
+                target=self._publish_loop, name="sandbox-warm-pool-publish", daemon=True
+            )
+            self._publisher.start()
         # Boots queue here and run a few at a time.
         self._boots = concurrent.futures.ThreadPoolExecutor(
             max_workers=_WARM_BOOT_CONCURRENCY,
@@ -135,11 +227,19 @@ class _WarmPool:
         )
         self.refill_all()
 
-    def take(self, cfg: SandboxConfig) -> Optional[str]:
+    def take(self, cfg: SandboxConfig, prefer: Optional[str] = None) -> Optional[str]:
         """Claim a booted sandbox for ``cfg``, or return None.
 
         The sandbox's slot stays claimed until the sandbox is deleted, so
         taking one boots nothing.
+
+        Args:
+            cfg: The create's configuration.
+            prefer: A sandbox to claim before any other, if it's still ready
+                for ``cfg``: the one a caller chose from the store's records.
+
+        Returns:
+            The claimed sandbox's ID, or None if none is ready for ``cfg``.
         """
         key = _boot_key(cfg)
         if key not in self._profiles:
@@ -148,16 +248,25 @@ class _WarmPool:
         dead = []
         with self._lock:
             ready = self._ready[key]
+            preferred = self._held.get(prefer) if prefer is not None else None
+            if (
+                preferred is not None
+                and preferred.key == key
+                and preferred.state == _READY
+            ):
+                ready.remove(preferred)
+                ready.appendleft(preferred)
             while ready and taken is None:
                 slot = ready.popleft()
                 if slot.state != _READY:  # deleted while it waited
                     continue
                 if self._runtime.get_status(slot.sandbox_id) == SandboxStatus.RUNNING:
-                    slot.state = _CLAIMED
+                    slot.enter(_CLAIMED)
                     taken = slot.sandbox_id
                 else:
-                    slot.state = _DELETING
+                    slot.enter(_DELETING)
                     dead.append(slot.sandbox_id)
+                self._mark_dirty()
         for instance_id in dead:  # died while ready: free what it holds
             threading.Thread(
                 target=self._discard, args=(instance_id,), daemon=True
@@ -184,8 +293,9 @@ class _WarmPool:
             slot = self._held.pop(instance_id, None)
             if slot is None:
                 return
-            slot.state = _EMPTY
+            slot.enter(_EMPTY)
             slot.sandbox_id = None
+            self._mark_dirty()
             self._changed.notify_all()
         self.refill(slot.key)
 
@@ -224,7 +334,7 @@ class _WarmPool:
                 return
             for slot in self._slots[key]:
                 if slot.state == _EMPTY:
-                    slot.state = _BOOTING
+                    slot.enter(_BOOTING)
                     # Submitted under the lock, so none lands after close's
                     # shutdown.
                     self._boots.submit(self._boot, slot)
@@ -251,13 +361,14 @@ class _WarmPool:
                     self._refill_later(slot.key, _WARM_RETRY_SECONDS)
         with self._lock:
             if instance_id is not None and not self._closed:
-                slot.state = _READY
+                slot.enter(_READY)
                 slot.sandbox_id = instance_id
                 self._held[instance_id] = slot
                 self._ready[slot.key].append(slot)
+                self._mark_dirty()
                 instance_id = None
             else:
-                slot.state = _EMPTY
+                slot.enter(_EMPTY)
             self._changed.notify_all()
         if instance_id is not None:  # closed while it booted
             self._delete_quietly(instance_id, "warm-pool")
@@ -287,6 +398,8 @@ class _WarmPool:
         nothing.
         """
         with self._lock:
+            if self._closed:
+                return []
             self._closed = True
             ready = []
             for queue in self._ready.values():
@@ -294,18 +407,89 @@ class _WarmPool:
                     if slot.state == _READY:
                         ready.append(slot.sandbox_id)
                         self._held.pop(slot.sandbox_id, None)
-                        slot.state = _EMPTY
+                        slot.enter(_EMPTY)
                         slot.sandbox_id = None
                 queue.clear()
             retries = list(self._retries.values())
             self._retries.clear()
             self._changed.notify_all()
+            self._publish_wanted.notify_all()
         for timer in retries:
             timer.cancel()
         # Queued boots never start. One already booting deletes its sandbox
         # when it finishes.
         self._boots.shutdown(wait=False, cancel_futures=True)
+        if self._publisher is not None:
+            # Its last publish removes this host from the store.
+            self._publisher.join(timeout=_PUBLISH_HEARTBEAT_SECONDS)
         return ready
+
+    def _mark_dirty(self) -> None:
+        """Have the publisher publish soon. The caller holds the lock."""
+        if self._store is not None:
+            self._dirty = True
+            self._publish_wanted.notify()
+
+    def entries(self, expires_at: float) -> List[WarmPoolEntry]:
+        """The pool's ready and claimed sandboxes. The caller holds the lock."""
+        return [
+            WarmPoolEntry(
+                host=self._host,
+                profile=self._names[key],
+                slot=slot.index,
+                sandbox_id=slot.sandbox_id,
+                state=slot.state,
+                node_id=self._node_id,
+                since=slot.since,
+                expires_at=expires_at,
+            )
+            for key, slots in self._slots.items()
+            for slot in slots
+            if slot.state in (_READY, _CLAIMED)
+        ]
+
+    def _publish_loop(self) -> None:
+        """Publish the pool when it changes and every heartbeat; last, empty.
+
+        Only once the last publish is done does another pool in this process
+        get to publish as this host, so that no publish of this one, late
+        with a slow store, replaces the other's records.
+        """
+        try:
+            self._publish_until_closed()
+        finally:
+            with _PUBLISHING_HOSTS_LOCK:
+                _PUBLISHING_HOSTS.discard(self._host)
+
+    def _publish_until_closed(self) -> None:
+        last_warned = None
+        while True:
+            with self._lock:
+                self._publish_wanted.wait_for(
+                    lambda: self._dirty or self._closed,
+                    timeout=_PUBLISH_HEARTBEAT_SECONDS,
+                )
+                closed = self._closed
+                self._dirty = False
+                expires_at = time.time() + 3 * _PUBLISH_HEARTBEAT_SECONDS
+                entries = [] if closed else self.entries(expires_at)
+            try:
+                self._store.publish(self._host, entries)
+                if last_warned is not None:
+                    logger.info(
+                        "Publishing the warm pool of %s works again.", self._host
+                    )
+                    last_warned = None
+            except Exception as exc:
+                # Warn about the first failure, then at most once a minute.
+                if last_warned is None or time.monotonic() - last_warned > 60:
+                    logger.warning(
+                        "Failed to publish the warm pool of %s: %s", self._host, exc
+                    )
+                    last_warned = time.monotonic()
+            if closed:
+                return
+            time.sleep(_PUBLISH_COALESCE_SECONDS)
 
 
 @PublicAPI(stability="alpha")
@@ -322,14 +506,36 @@ class SandboxRuntime:
             profile's). A profile holds at most ``size`` sandboxes, ready or
             in use: the runtime boots a new one when a sandbox it handed out
             is deleted, not when it's handed out, and creates that find none
-            ready boot cold, outside the pool. None or empty keeps no pool.
+            ready boot cold, outside the pool. A profile may also have a
+            ``"name"``, which ``warm_pool_store`` records; it defaults to
+            the profile's image. None or empty keeps no pool.
+        warm_pool_store: Where to publish the warm pool's sandboxes, ready
+            and in use, so that callers on other actors can find a runtime
+            with ready ones and send their creates there. See
+            :class:`~ray.experimental.sandbox.WarmPoolStore`; None
+            publishes nothing.
+        warm_pool_host: The name that callers use to reach this runtime,
+            recorded with each of its sandboxes in ``warm_pool_store``.
+            Defaults to the current actor's name, or its ID for an unnamed
+            actor, or the host name and process ID outside an actor.
     """
 
-    def __init__(self, warm_pool: Optional[List[Dict[str, Any]]] = None):
+    def __init__(
+        self,
+        warm_pool: Optional[List[Dict[str, Any]]] = None,
+        warm_pool_store: Optional[WarmPoolStore] = None,
+        warm_pool_host: Optional[str] = None,
+    ):
+        if warm_pool_store is not None and not warm_pool:
+            raise ValueError("warm_pool_store needs a warm_pool to publish.")
         self._image_manager = ImageManager()
         self._backend = GVisorSandboxBackend(image_manager=self._image_manager)
         self._ttl_timers: Dict[str, threading.Timer] = {}
-        self._warm = _WarmPool(self, warm_pool) if warm_pool else None
+        self._warm = (
+            _WarmPool(self, warm_pool, warm_pool_store, warm_pool_host)
+            if warm_pool
+            else None
+        )
 
     @property
     def image_manager(self) -> ImageManager:
@@ -405,6 +611,7 @@ class SandboxRuntime:
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
         disk: Union[str, int, float] = 0,
+        warm_sandbox: Optional[str] = None,
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
@@ -454,6 +661,13 @@ class SandboxRuntime:
                 it fail with ENOSPC. Zero means no cap. Requires
                 ``readonly=False`` or a ``workdir``; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+            warm_sandbox: The ``sandbox_id`` of a
+                :class:`~ray.experimental.sandbox.WarmPoolEntry` that this
+                runtime published: the create takes that sandbox if it's
+                still ready for these arguments. A caller that sends one
+                create per ready record then never sends a runtime more
+                creates than it has sandboxes ready. Otherwise the create
+                takes any ready sandbox, or boots one, as without it.
             **kwargs: Additional parameters.
 
         Returns:
@@ -479,7 +693,11 @@ class SandboxRuntime:
             disk=disk,
             **kwargs,
         )
-        instance_id = self._warm.take(cfg) if self._warm is not None else None
+        instance_id = (
+            self._warm.take(cfg, prefer=warm_sandbox)
+            if self._warm is not None
+            else None
+        )
         if instance_id is not None:
             # It booted with the profile's env and TTL; from here on it has
             # this create's.

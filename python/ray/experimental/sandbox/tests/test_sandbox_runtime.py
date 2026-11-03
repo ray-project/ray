@@ -504,6 +504,28 @@ class _PoolCountingBackend(_CountingBackend):
             self.live.discard(sandbox_id)
 
 
+def test_a_create_takes_the_warm_sandbox_it_names():
+    """A create that names a ready pooled sandbox, as a store record lists
+    it, takes that one, not the one the pool would hand out first. Once it's
+    taken, or for a name the pool doesn't hold, a create takes another."""
+    runtime = _pooled_runtime([{"image": "img", "size": 3}])
+    (queue,) = runtime._warm._ready.values()
+    order = [slot.sandbox_id for slot in queue]
+    assert (
+        runtime.create(image="img", timeout_seconds=5, warm_sandbox=order[-1])
+        == order[-1]
+    )
+    assert (
+        runtime.create(image="img", timeout_seconds=5, warm_sandbox=order[-1])
+        == order[0]
+    )
+    assert (
+        runtime.create(image="img", timeout_seconds=5, warm_sandbox="ray-sandbox-gone")
+        == order[1]
+    )
+    runtime.close()
+
+
 def test_a_warm_pool_never_holds_more_than_its_size():
     """Taking a sandbox boots nothing and deleting one boots its slot's next,
     so a profile's sandboxes, ready or in use, never outnumber its size.
