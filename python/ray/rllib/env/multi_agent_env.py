@@ -273,7 +273,7 @@ class MultiAgentEnv(gym.Env):
             ...     # define your env here
             ...     ...
             >>> env = MyMultiAgentEnv(...)
-            >>> grouped_env = env.with_agent_groups(env, {
+            >>> grouped_env = env.with_agent_groups({
             ...   "group1": ["agent1", "agent2", "agent3"],
             ...   "group2": ["agent4", "agent5"],
             ... })
@@ -383,14 +383,14 @@ def make_multi_agent(
         underlying single-agent env's constructor.
 
     Examples:
-        >>> from ray.rllib.env.multi_agent_env import make_multi_agent  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.env.multi_agent_env import make_multi_agent
         >>> # By gym string:
         >>> ma_cartpole_cls = make_multi_agent("CartPole-v1")
         >>> # Create a 2 agent multi-agent cartpole.
         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2})
-        >>> obs = ma_cartpole.reset()
+        >>> obs, infos = ma_cartpole.reset()
         >>> print(obs)
-        {0: [...], 1: [...]}
+        {0: array([...], dtype=float32), 1: array([...], dtype=float32)}
         >>> # By env-maker callable:
         >>> from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
         >>> ma_stateless_cartpole_cls = make_multi_agent(
@@ -398,8 +398,9 @@ def make_multi_agent(
         >>> # Create a 3 agent multi-agent stateless cartpole.
         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
         ...    {"num_agents": 3})
+        >>> obs, infos = ma_stateless_cartpole.reset()
         >>> print(obs)
-        {0: [...], 1: [...], 2: [...]}
+        {0: array([...], dtype=float32), 1: array([...], dtype=float32), 2: array([...], dtype=float32)}
     """
 
     class MultiEnv(MultiAgentEnv):
