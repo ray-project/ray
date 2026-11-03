@@ -1095,6 +1095,26 @@ def test_groupby_map_groups_for_numpy(
     assert expected == result
 
 
+@pytest.mark.parametrize("batch_format", ["numpy", "default"])
+def test_groupby_map_groups_zero_copy_batch_false_is_writable(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+    batch_format,
+):
+    ds = ray.data.from_items([{"group": i % 2, "value": i} for i in range(6)])
+
+    def add_one(group):
+        group["value"] += 1
+        return group
+
+    ds = ds.groupby("group").map_groups(
+        add_one, batch_format=batch_format, zero_copy_batch=False
+    )
+
+    assert sorted(row["value"] for row in ds.take_all()) == [1, 2, 3, 4, 5, 6]
+
+
 def test_groupby_map_groups_with_different_types(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
