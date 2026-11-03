@@ -58,6 +58,13 @@ def test_timeout_stopper_recover_after_timeout():
 
 
 @pytest.mark.parametrize("mode", ["min", "max"])
+def test_experiment_plateau_stopper_accepts_huge_ints(mode):
+    """Integer metrics past int64 must still be tracked, not raise."""
+    stopper = ExperimentPlateauStopper("loss", std=1.0, top=2, mode=mode)
+    assert [stopper(f"trial_{i}", {"loss": 2**64}) for i in range(2)] == [False, True]
+
+
+@pytest.mark.parametrize("mode", ["min", "max"])
 def test_experiment_plateau_stopper_ignores_nan(mode):
     """A NaN result must not keep the stopper from detecting a plateau."""
     stopper = ExperimentPlateauStopper("loss", std=0.01, top=3, mode=mode)
