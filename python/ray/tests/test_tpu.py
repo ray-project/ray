@@ -1941,10 +1941,12 @@ def _make_dummy_nodes(slice_name: str, topology: str, n_workers: int):
 def mock_4x4_pgs():
     """Mock PlacementGroup objects for subslice integration tests.
 
-    Clears the subslice runtime cache before each test to prevent
-    cross-test pollution.
+    Clears the subslice runtime cache before and after each test to prevent
+    cross-test pollution, and mocks internal KV and remote task dispatch so
+    unit tests do not implicitly auto-initialize a local Ray cluster.
     """
     ray.util.tpu._tpu_subslice_cache.clear()
+    kv_store = {}
 
     from ray.util.placement_group import PlacementGroup
 
@@ -1957,11 +1959,30 @@ def mock_4x4_pgs():
     mock_worker_pg.ready.return_value = "ready_ref"
 
     # Resolve mocked bundles to fake host IPs so discovery can build per-host env vars.
-    with patch(
-        "ray.util.tpu._get_pg_bundle_node_ips",
-        side_effect=lambda pg, indices: [f"10.0.0.{i}" for i in indices],
+    with (
+        patch(
+            "ray.util.tpu._get_pg_bundle_node_ips",
+            side_effect=lambda pg, indices: [f"10.0.0.{i}" for i in indices],
+        ),
+        patch(
+            "ray.experimental.internal_kv._internal_kv_get",
+            side_effect=lambda k, namespace=None: kv_store.get((namespace, k)),
+        ),
+        patch(
+            "ray.experimental.internal_kv._internal_kv_put",
+            side_effect=lambda k, v, overwrite=False, namespace=None: kv_store.__setitem__(
+                (namespace, k), v
+            ),
+        ),
+        patch(
+            "ray.remote_function.RemoteFunction._remote",
+            return_value=MagicMock(),
+        ),
     ):
-        yield mock_head_pg, mock_worker_pg
+        try:
+            yield mock_head_pg, mock_worker_pg
+        finally:
+            ray.util.tpu._tpu_subslice_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -2421,6 +2442,12 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
         patch("ray.util.tpu.remove_placement_group"),
         patch("ray.nodes", return_value=dummy_nodes),
         patch("ray.get") as mock_ray_get,
+        patch.object(
+            ray.remote_function.RemoteFunction,
+            "options",
+            autospec=True,
+            side_effect=ray.remote_function.RemoteFunction.options,
+        ) as spy_options,
     ):
         # ray.get called twice: once for .ready(), once for the 1-task fan-out.
         mock_ray_get.side_effect = [None, single_host_discovery]
@@ -2433,6 +2460,7 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
 
     assert result_name == slice_name
     assert result_ids == {"0": 0}
+    assert spy_options.call_args.kwargs["resources"] == {"TPU": 8}
 
 
 @pytest.mark.parametrize(
@@ -3082,7 +3110,10 @@ def test_subslice_placement_group_v7x_per_device_bundles(monkeypatch):
         assert mock_pg.call_args.kwargs["strategy"] == "SPREAD"
         assert sg_whole.bundle_resources == {"CPU": 1, "TPU": 8}
         assert sg_whole.num_hosts == 2
-        assert len(sg_whole.bundle_label_selector) == 2
+        assert [s["ray.io/tpu-worker-id"] for s in sg_whole.bundle_label_selector] == [
+            "1",
+            "0",
+        ]
 
         sg_per_device = ray.util.tpu.subslice_placement_group(
             "2x2x2", "v7x", resources_per_bundle={"TPU": 1}
@@ -3222,22 +3253,35 @@ def test_build_subslice_pg_sizes_bundles_from_subslice_chips(
     assert env["TPU_PROCESS_BOUNDS"] == "1,1,1"
 
 
-def test_build_slice_worker_to_node_ignores_dead_nodes():
-    """Verify _build_slice_worker_to_node ignores dead node entries (Alive=False)."""
-    labels_0 = {
-        ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-1",
-        ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
-        ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4",
+def test_build_slice_worker_to_node_ignores_dead_nodes(monkeypatch):
+    """Verify _build_slice_worker_to_node, _refresh_cache_from_kv, and
+    _collect_known_slices ignore dead node entries (Alive=False).
+    """
+    alive_w0, dead_w1 = _slice_nodes("slice-1", "4x4", n_workers=2)
+    dead_w1["Alive"] = False
+    dead_w0 = {**alive_w0, "NodeID": "slice-1-w0-dead", "Alive": False}
+    dead_slice_node = {
+        **_slice_nodes("slice-dead", "4x4", n_workers=1)[0],
+        "Alive": False,
     }
-    labels_1 = {**labels_0, ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "1"}
-    alive_node = {"NodeID": "alive_0", "Alive": True, "Labels": labels_0}
-    dead_node_0 = {"NodeID": "dead_0", "Alive": False, "Labels": labels_0}
-    dead_node_1 = {"NodeID": "dead_1", "Alive": False, "Labels": labels_1}
-    sw = ray.util.tpu._build_slice_worker_to_node(
-        [alive_node, dead_node_0, dead_node_1]
+    nodes = [alive_w0, dead_w0, dead_w1, dead_slice_node]
+
+    assert ray.util.tpu._build_slice_worker_to_node(nodes) == {
+        ("slice-1", "0"): alive_w0
+    }
+
+    with patch(
+        "ray.experimental.internal_kv._internal_kv_get", return_value=None
+    ) as mock_kv_get:
+        ray.util.tpu._refresh_cache_from_kv(["4x4"], [dead_slice_node])
+    mock_kv_get.assert_not_called()
+
+    monkeypatch.setattr(
+        ray.util.tpu,
+        "_tpu_subslice_cache",
+        {"slice-1": {"0": 0}, "slice-dead": {"0": 0}},
     )
-    assert len(sw) == 1
-    assert sw[("slice-1", "0")]["NodeID"] == "alive_0"
+    assert ray.util.tpu._collect_known_slices("4x4", nodes) == [("slice-1", {"0": 0})]
 
 
 def test_normalize_torchtpu_topology():
