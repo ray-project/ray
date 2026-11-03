@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference for RLModule and MultiRLModule: specs, DefaultModelConfig, forward methods, checkpointing, and mixin APIs such as ValueFunctionAPI.
+
 .. _rlmodule-reference-docs:
 
 RLModule APIs

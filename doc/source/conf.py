@@ -159,13 +159,14 @@ llms_txt_exclude = [
 # sphinx-collections). No docname enumeration needed here. Notebooks remain
 # fully rendered in the HTML build; only the agent corpus drops them.
 
-# Thin API-reference hub pages: a title plus an autosummary table, under 40 words
-# of real prose. The per-symbol pages they link to are already excluded above via
-# the `*/api/doc/*` patterns, so an agent gains nothing from the shell — and a
-# description on one would only restate its title. `data/api/_autogen` has no
-# title at all, and the two `*_regression_example` pages are literalinclude
-# stubs with zero prose. Every remaining in-scope page carries a curated
-# description; these are the pages where exclusion beats describing.
+# Thin API-reference pages: a title plus autosummary tables or inline autodoc
+# directives, under 40 words of real prose. The per-symbol pages an autosummary
+# table links to are already excluded above via the `*/api/doc/*` patterns, so an
+# agent gains nothing from the shell — and a description on one would only
+# restate its title. `data/api/_autogen` has no title at all, and the two
+# `*_regression_example` pages are literalinclude stubs with zero prose. Every
+# remaining in-scope page carries a curated description; these are the pages
+# where exclusion beats describing.
 llms_txt_exclude += [
     "data/api/_autogen",
     "data/api/aggregate",
@@ -198,6 +199,19 @@ llms_txt_exclude += [
     "tune/api/result_grid",
     "tune/api/search_space",
     "tune/api/syncing",
+    "rllib/package_ref/algorithm-config",
+    "rllib/package_ref/connector-v2",
+    "rllib/package_ref/distributions",
+    "rllib/package_ref/env/external",
+    "rllib/package_ref/env/multi_agent_env",
+    "rllib/package_ref/env/multi_agent_env_runner",
+    "rllib/package_ref/env/multi_agent_episode",
+    "rllib/package_ref/env/single_agent_env_runner",
+    "rllib/package_ref/env/single_agent_episode",
+    "rllib/package_ref/env/utils",
+    "rllib/package_ref/index",
+    "rllib/package_ref/learner",
+    "rllib/package_ref/offline",
 ]
 
 # -- sphinx-collections: pull external template files at build time -----------

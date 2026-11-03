@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference for RLlib utilities: MetricsLogger, the timestep Scheduler, framework import, PyTorch, and NumPy helpers, and the Checkpointable API.
+
 .. _utils-reference-docs:
 
 RLlib Utilities

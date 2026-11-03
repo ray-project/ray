@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference for RLlib replay buffers: ReplayBuffer, prioritized and reservoir variants, multi-agent buffers, storage units, and priority updates.
+
 .. _replay-buffer-api-reference-docs:
 
 Replay Buffer API
