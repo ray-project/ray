@@ -5,7 +5,6 @@ import copy
 import os
 from collections import Counter, defaultdict
 from dataclasses import fields
-from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
 
@@ -13,7 +12,6 @@ import pyarrow as pa
 from pyarrow import orc
 
 import ray
-from ray.actor import ActorHandle
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
     _OrcMetadataReader,
@@ -65,7 +63,13 @@ def traced_indexer(
 ):
     import ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer as module
 
+    @ray.remote(num_cpus=0)
     class MetadataReader(_OrcMetadataReader):
+        def __init__(self, filesystem, context):
+            super().__init__(filesystem, context)
+            actor_id = ray.get_runtime_context().get_actor_id()
+            ray.get(trace.record.remote("metadata_actor", "pool", actor_id))
+
         def read(self, path):
             name = os.path.basename(path)
             ray.get(trace.record.remote("started", path, os.getpid()))
@@ -85,23 +89,11 @@ def traced_indexer(
             ray.get(trace.record.remote("finished", path, os.getpid()))
             return result
 
-    actor = ray.remote(num_cpus=0)(MetadataReader)
-
-    def options(**kwargs):
-        def remote(*args):
-            handle = cast(ActorHandle, actor.options(**kwargs).remote(*args))
-            ray.get(
-                trace.record.remote("metadata_actor", "pool", handle._actor_id.hex())
-            )
-            return handle
-
-        return SimpleNamespace(remote=remote)
-
     result = copy.copy(indexer)
     original = result._iter_layouts
 
     def layouts(files, filesystem):
-        with patch.object(module, "OrcMetadataActor", SimpleNamespace(options=options)):
+        with patch.object(module, "OrcMetadataActor", MetadataReader):
             for file, layout in original(files, filesystem):
                 ray.get(trace.record.remote("delivered", file.path))
                 yield file, layout
