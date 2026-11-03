@@ -645,6 +645,10 @@ void PullManager::UnpinObject(const ObjectID &object_id) {
 
 int PullManager::NumObjectPullRequests() const { return object_pull_requests_.size(); }
 
+bool PullManager::HasObjectPullRequest(const ObjectID &object_id) const {
+  return object_pull_requests_.contains(object_id);
+}
+
 bool PullManager::IsObjectActive(const ObjectID &object_id) const {
   absl::MutexLock lock(&active_objects_mu_);
   return active_object_pull_requests_.count(object_id) == 1;

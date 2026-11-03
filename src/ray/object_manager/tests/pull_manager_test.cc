@@ -147,6 +147,22 @@ std::vector<rpc::ObjectReference> CreateObjectRefs(int num_objs) {
   return refs;
 }
 
+TEST_P(PullManagerTest, TestHasObjectPullRequest) {
+  BundlePriority prio = GetParam();
+  auto refs = CreateObjectRefs(1);
+  auto oid = ObjectRefsToIds(refs)[0];
+  ASSERT_FALSE(pull_manager_.HasObjectPullRequest(oid));
+
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
+  // Not active yet (no location known) still counts.
+  ASSERT_TRUE(pull_manager_.HasObjectPullRequest(oid));
+
+  pull_manager_.CancelPull(req_id);
+  ASSERT_FALSE(pull_manager_.HasObjectPullRequest(oid));
+  AssertNoLeaks();
+}
+
 TEST_P(PullManagerTest, TestStaleSubscription) {
   BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
