@@ -1191,61 +1191,47 @@ def test_custom_metrics_default_tags(metric_mock):
     metric_mock.record.assert_called_with(8, tags=tags)
 
 
-def test_custom_metrics_default_tags_serialization_and_isolation(metric_mock):
+@pytest.mark.parametrize(
+    "metric_cls,extra_kwargs,record_method,value",
+    [
+        (Counter, {}, "inc", 1),
+        (Histogram, {"boundaries": [1.0, 2.0]}, "observe", 1.5),
+        (Gauge, {}, "set", 3.0),
+    ],
+)
+def test_custom_metrics_default_tags_serialization_and_isolation(
+    metric_mock, metric_cls, extra_kwargs, record_method, value
+):
     import pickle
 
     import ray.cloudpickle as cloudpickle
 
     default_tags = {"a": "default_a", "b": "default_b"}
-    counter = Counter(
-        "count", description="desc", tag_keys=("a", "b")
+    metric = metric_cls(
+        "metric", description="desc", tag_keys=("a", "b"), **extra_kwargs
     ).set_default_tags(default_tags)
-    histogram = Histogram(
-        "hist", description="desc", boundaries=[1.0, 2.0], tag_keys=("a", "b")
-    ).set_default_tags(default_tags)
-    gauge = Gauge("gauge", description="desc", tag_keys=("a", "b")).set_default_tags(
-        default_tags
-    )
 
     # Mutating caller dict or .info["default_tags"] must not mutate default tags.
     default_tags["a"] = "mutated"
-    counter.info["default_tags"]["b"] = "mutated"
-    assert counter.info["default_tags"] == {"a": "default_a", "b": "default_b"}
+    metric.info["default_tags"]["b"] = "mutated"
+    assert metric.info["default_tags"] == {"a": "default_a", "b": "default_b"}
 
     for serializer in (pickle, cloudpickle):
-        restored_counter = serializer.loads(serializer.dumps(counter))
-        assert restored_counter.info["default_tags"] == {
+        restored = serializer.loads(serializer.dumps(metric))
+        assert restored.info["default_tags"] == {
             "a": "default_a",
             "b": "default_b",
         }
-        restored_counter._metric = metric_mock
-        restored_counter.inc(1)
+        restored._metric = metric_mock
+        getattr(restored, record_method)(value)
         metric_mock.record.assert_called_with(
-            1, tags={"a": "default_a", "b": "default_b"}
+            value, tags={"a": "default_a", "b": "default_b"}
         )
         metric_mock.reset_mock()
 
-        restored_histogram = serializer.loads(serializer.dumps(histogram))
-        assert restored_histogram.info["default_tags"] == {
-            "a": "default_a",
-            "b": "default_b",
-        }
-        restored_histogram._metric = metric_mock
-        restored_histogram.observe(1.5, tags={"b": "override_b"})
+        getattr(restored, record_method)(value, tags={"b": "override_b"})
         metric_mock.record.assert_called_with(
-            1.5, tags={"a": "default_a", "b": "override_b"}
-        )
-        metric_mock.reset_mock()
-
-        restored_gauge = serializer.loads(serializer.dumps(gauge))
-        assert restored_gauge.info["default_tags"] == {
-            "a": "default_a",
-            "b": "default_b",
-        }
-        restored_gauge._metric = metric_mock
-        restored_gauge.set(3.0)
-        metric_mock.record.assert_called_with(
-            3.0, tags={"a": "default_a", "b": "default_b"}
+            value, tags={"a": "default_a", "b": "override_b"}
         )
         metric_mock.reset_mock()
 
