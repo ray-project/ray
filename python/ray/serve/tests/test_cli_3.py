@@ -13,6 +13,9 @@ from pydantic import BaseModel
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.handle import DeploymentHandle
@@ -169,7 +172,8 @@ class TestRun:
         def is_proxy_location_correct(expected_proxy_location: str) -> bool:
             try:
                 response = httpx.get(
-                    "http://localhost:8265/api/serve/applications/"
+                    "http://localhost:8265/api/serve/applications/",
+                    headers=get_auth_headers_if_auth_enabled({}),
                 ).text
                 response_json = json.loads(response)
                 print("response_json")
