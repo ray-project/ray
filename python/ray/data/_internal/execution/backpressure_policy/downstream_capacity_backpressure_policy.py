@@ -179,10 +179,26 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         outputs, and the pipeline should be flowing smoothly.
         If output_pressure > THRESHOLD, the producer is outpacing the consumer
         significantly. Apply backpressure.
+
+        When downstream capacity is zero but this operator already has output
+        queued, the ratio is reported as infinite.
         """
         downstream_capacity_size_bytes = self._get_downstream_capacity_size_bytes(op)
         if downstream_capacity_size_bytes == 0:
-            # No downstream capacity to backpressure against, so no backpressure.
+            output_size_bytes = self._resource_manager.get_mem_op_outputs(
+                op, include_ineligible_downstream=True
+            )
+            if op.output_dependencies and output_size_bytes > 0:
+                # Nothing is in flight downstream, but this operator already has
+                # output queued: the queue/capacity ratio is effectively
+                # infinite. Returning a finite value here would let the queue
+                # grow until it consumes the whole shared object-store budget.
+                # The utilization gate still decides whether to backpressure,
+                # and the queued output is already available to downstream, so
+                # holding the producer back costs no throughput.
+                return float("inf")
+            # Nothing queued, or a terminal operator with no external consumer:
+            # there is nothing to pace against.
             return 0
 
         output_size_bytes = self._resource_manager.get_mem_op_outputs(

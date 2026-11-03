@@ -192,6 +192,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm.get_op_outputs_object_store_usage_with_downstream.return_value = (
             outputs_usage
         )
+        # Bytes in this operator's output queue, used by _get_output_pressure.
+        rm.get_mem_op_outputs.return_value = outputs_usage
         rm.get_external_consumer_bytes.return_value = external_bytes
         return rm
 
@@ -224,6 +226,8 @@ class TestDownstreamCapacityBackpressurePolicy:
             )
 
         if downstream_capacity == 0:
+            if op.output_dependencies and output_size > 0:
+                return float("inf")
             return 0
         return (output_size / downstream_capacity) - 1
 
@@ -442,9 +446,15 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy.can_add_input(op) is True
 
     def test_no_backpressure_zero_downstream_capacity(self):
-        """Test backpressure skipped when downstream capacity is zero."""
+        """Test backpressure skipped when downstream capacity is zero.
+
+        Even with output queued (so the pressure is effectively infinite), the
+        utilization gate suppresses backpressure below the threshold.
+        """
         op, op_state = self._mock_task_pool_map_operator()
-        downstream_op, downstream_op_state = self._mock_operator()
+        downstream_op, downstream_op_state = self._mock_operator(
+            obj_store_mem_pending_task_inputs=0
+        )
         op.output_dependencies = [downstream_op]
         topology = {op: op_state, downstream_op: downstream_op_state}
         context = self._create_context()
@@ -459,7 +469,68 @@ class TestDownstreamCapacityBackpressurePolicy:
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
+
+        assert policy._get_downstream_capacity_size_bytes(op) == 0
+        assert policy._get_output_pressure(op) == float("inf")
         assert policy.can_add_input(op) is True
+
+    def test_backpressure_zero_downstream_capacity_with_queued_output(self):
+        """Backpressure applies when downstream capacity is zero but output is queued.
+
+        Regression test for https://github.com/ray-project/ray/issues/67340:
+        a starved or still-starting downstream operator has no bytes in flight,
+        and without this the producer is admitted until it fills the whole
+        shared object-store budget.
+        """
+        op, op_state = self._mock_task_pool_map_operator()
+        downstream_op, downstream_op_state = self._mock_operator(
+            obj_store_mem_pending_task_inputs=0
+        )
+        op.output_dependencies = [downstream_op]
+        topology = {op: op_state, downstream_op: downstream_op_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager()
+        rm.get_mem_op_outputs.return_value = 500
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        assert policy._get_downstream_capacity_size_bytes(op) == 0
+        assert policy._get_output_pressure(op) == float("inf")
+        assert policy.can_add_input(op) is False
+        assert policy.max_task_output_bytes_to_read(op) == 0
+
+    def test_no_backpressure_zero_downstream_capacity_with_empty_output(self):
+        """No backpressure when downstream capacity and queued output are both zero."""
+        op, op_state = self._mock_task_pool_map_operator()
+        downstream_op, downstream_op_state = self._mock_operator(
+            obj_store_mem_pending_task_inputs=0
+        )
+        op.output_dependencies = [downstream_op]
+        topology = {op: op_state, downstream_op: downstream_op_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager()
+        rm.get_mem_op_outputs.return_value = 0
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        assert policy._get_downstream_capacity_size_bytes(op) == 0
+        assert policy._get_output_pressure(op) == 0
+        assert policy.can_add_input(op) is True
+        assert policy.max_task_output_bytes_to_read(op) is None
 
     @pytest.mark.parametrize(
         "external_bytes, expected_pressure, expected_can_add_input",
