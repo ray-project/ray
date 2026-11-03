@@ -913,6 +913,12 @@ class TensorArray(
         * ``na_values._is_boolean`` should be True
         * ``na_values`` should implement :func:`ExtensionArray._reduce`
         * ``na_values.any`` and ``na_values.all`` should be implemented
+
+        Returns:
+            A boolean NumPy array with one entry per tensor. For object tensors, an
+            entry is ``True`` if the tensor is ``None``. For string tensors, it's
+            ``True`` if every element is an empty string. For other tensors, it's
+            ``True`` if every element is NaN.
         """
         if self._tensor.dtype.type is np.object_:
             # Avoid comparing with __eq__ because the elements of the tensor
@@ -990,7 +996,11 @@ class TensorArray(
         return TensorArray(values)
 
     def copy(self) -> "TensorArray":
-        """Return a copy of the array."""
+        """Return a copy of the array.
+
+        Returns:
+            A new :class:`TensorArray` that holds a copy of the underlying tensor.
+        """
         # TODO(Clark): Copy cached properties.
         return TensorArray(self._tensor.copy())
 

@@ -48,7 +48,7 @@ class ExperimentPlateauStopper(Stopper):
                 " a positive integer greater than one."
             )
         if not isinstance(patience, int) or patience < 0:
-            raise ValueError("Patience must be a strictly positive integer.")
+            raise ValueError("Patience must be a non-negative integer.")
         if not isinstance(std, float) or std <= 0:
             raise ValueError(
                 "The standard deviation must be a strictly positive float number."

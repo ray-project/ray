@@ -161,6 +161,7 @@ ray_cc_test(
     name = "node_manager_test",
     size = "small",
     srcs = ["node_manager_test.cc"],
+    auth_token = True,
     features = select({
         "@platforms//os:windows": ["compiler_param_file"],
         "//conditions:default": [],

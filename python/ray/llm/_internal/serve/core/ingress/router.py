@@ -163,7 +163,7 @@ class LLMRouter:
             self._kv_token_tracker = build_kv_token_tracker(
                 llm_config, server.deployment_id
             )
-            self._kv_token_tracker.start_reservation_broadcast(get_llm_router_handle())
+            self._kv_token_tracker.start_replica_broadcast(get_llm_router_handle())
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
@@ -300,9 +300,9 @@ class LLMRouter:
         """
         return await self._kv_token_tracker.on_lifecycle_events(batch)
 
-    async def on_reservations_created(self, batch):
-        """Ingress-facing intake for already-selected reservation bookings."""
-        return await self._kv_token_tracker.on_reservations_created(batch)
+    async def on_replica_updates(self, source_writer_id, batch):
+        """Accept load and affinity updates from peer ingress replicas."""
+        return await self._kv_token_tracker.on_replica_updates(source_writer_id, batch)
 
     def _push_prompt_tokens(
         self,

@@ -341,7 +341,7 @@ def test_losses_before_the_seed_is_submitted_share_one_reconstruction_task(
 
     # Completing releases nothing more.
     task._task_done_callback(
-        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0), False
     )
     assert not producer.has_next()
 
@@ -410,7 +410,7 @@ def test_joined_plans_sharing_a_child_release_it_once(
 
     # Completing releases nothing more.
     task._task_done_callback(
-        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0), False
     )
     assert not producer.has_next()
 
@@ -445,7 +445,7 @@ def _run_to_completion(
     for bundle in outputs:
         task._output_ready_callback(bundle)
     task._task_done_callback(
-        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0), False
     )
     return task
 

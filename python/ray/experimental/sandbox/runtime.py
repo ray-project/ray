@@ -94,6 +94,7 @@ class SandboxRuntime:
         cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
+        gpu_ids: Optional[List[Union[int, str]]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
         disk: Union[str, int, float] = 0,
@@ -136,6 +137,8 @@ class SandboxRuntime:
                 is writable. Writes are isolated within a per-sandbox copy-on-write overlay
                 filesystem, ensuring multiple sandboxes running the same container image do
                 not interfere with each other or modify the base image.
+            gpu_ids: GPU device ids/UUIDs to expose via CDI; see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
             _oci_spec_transform_fn: PRIVATE — development/testing only. Called with the fully-built OCI
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
@@ -163,6 +166,7 @@ class SandboxRuntime:
             cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
             readonly=readonly,
+            gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,
             disk=disk,
