@@ -46,7 +46,7 @@ When managing multiple tokens, we recommend storing them in local files and usin
 
 Ray transmits the authentication token as an HTTP header, which is transmitted in plaintext when using insecure `http` connections. We recommend enabling some form of encryption whenever exposing a Ray cluster over the network. Consider the following:
 
-- **Local development**: Traffic doesn't leave your machine, so no additional security is needed.
+- **Local development**: Traffic doesn't leave your machine, so it needs no encryption. Ray assumes the machine is single-tenant or that you trust every user on it.
 - **SSH tunneling**: Use SSH tunneling/port forwarding via the `ray dashboard` command or `kubectl port-forward`.
 - **TLS termination**: Deploy a TLS proxy in front of your Ray cluster.
 - **VPN/Overlay networks**: Use network-level encryption for all traffic into and within the cluster.
@@ -58,7 +58,7 @@ Don't expose Ray clusters directly to the internet without encryption. Tokens al
 Tokens have the following properties:
 
 - Ray stores tokens by default in plaintext at `~/.ray/auth_token`.
-- Use file permissions to keep token files secure, especially in shared environments.
+- Make token files readable only by you, especially on a shared host. For the default location, run `chmod 700 ~/.ray` and `chmod 600 ~/.ray/auth_token`.
 - Don't commit tokens to version control.
 - Tokens don't expire. Your local token remains valid unless you delete and regenerate the token. Ray clusters use the same token for the lifetime of the cluster.
 
