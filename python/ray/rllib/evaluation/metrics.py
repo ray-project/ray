@@ -37,17 +37,19 @@ RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False, {})
 def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     """Return optimization stats reported from the policy.
 
-    .. testcode::
-        :skipif: True
+    Args:
+        grad_info: A dict that holds the stats under the `"learner_stats"` key,
+            or a dict whose values are such dicts.
 
-        grad_info = worker.learn_on_batch(samples)
+    Returns:
+        The value under `"learner_stats"` if `grad_info` has that key. Otherwise,
+        a dict that maps each key of `grad_info` whose value is a dict with a
+        `"learner_stats"` key to that value.
 
-        # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
-
-        print(get_stats(grad_info))
-
-    .. testoutput::
-
+    Examples:
+        >>> grad_info = worker.learn_on_batch(samples)  # doctest: +SKIP_EXAMPLE
+        >>> # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
+        >>> print(get_stats(grad_info))
         {"vf_loss": ..., "policy_loss": ...}
     """
     if LEARNER_STATS_KEY in grad_info:

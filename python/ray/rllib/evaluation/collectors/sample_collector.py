@@ -92,23 +92,21 @@ class SampleCollector(metaclass=ABCMeta):
             t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
 
-        .. testcode::
-            :skipif: True
-
-            obs, infos = env.reset()
-            collector.add_init_obs(
-                episode=my_episode,
-                agent_id=0,
-                policy_id="pol0",
-                t=-1,
-                init_obs=obs,
-                init_infos=infos,
-            )
-            obs, r, terminated, truncated, info = env.step(action)
-            collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-                "action": action, "obs": obs, "reward": r, "terminated": terminated,
-                "truncated": truncated, "info": info
-            })
+        Examples:
+            >>> obs, infos = env.reset()  # doctest: +SKIP_EXAMPLE
+            >>> collector.add_init_obs(
+            ...     episode=my_episode,
+            ...     agent_id=0,
+            ...     policy_id="pol0",
+            ...     t=-1,
+            ...     init_obs=obs,
+            ...     init_infos=infos,
+            ... )
+            >>> obs, r, terminated, truncated, info = env.step(action)
+            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
+            ...     "action": action, "obs": obs, "reward": r, "terminated": terminated,
+            ...     "truncated": truncated, "info": info
+            ... })
         """
         raise NotImplementedError
 
@@ -142,22 +140,20 @@ class SampleCollector(metaclass=ABCMeta):
                 agent. This row must contain the keys SampleBatch.ACTION,
                 REWARD, NEW_OBS, TERMINATED, and TRUNCATED.
 
-        .. testcode::
-            :skipif: True
-
-            obs, info = env.reset()
-            collector.add_init_obs(12345, 0, "pol0", obs)
-            obs, r, terminated, truncated, info = env.step(action)
-            collector.add_action_reward_next_obs(
-                12345,
-                0,
-                "pol0",
-                agent_done=False,
-                values={
-                    "action": action, "obs": obs, "reward": r,
-                    "terminated": terminated, "truncated": truncated
-                },
-            )
+        Examples:
+            >>> obs, info = env.reset()  # doctest: +SKIP_EXAMPLE
+            >>> collector.add_init_obs(12345, 0, "pol0", obs)
+            >>> obs, r, terminated, truncated, info = env.step(action)
+            >>> collector.add_action_reward_next_obs(
+            ...     12345,
+            ...     0,
+            ...     "pol0",
+            ...     agent_done=False,
+            ...     values={
+            ...         "action": action, "obs": obs, "reward": r,
+            ...         "terminated": terminated, "truncated": truncated
+            ...     },
+            ... )
         """
         raise NotImplementedError
 
@@ -225,8 +221,7 @@ class SampleCollector(metaclass=ABCMeta):
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
                 for inference/training.
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             obs, r, terminated, truncated, info = env.step(action)
             collector.add_action_reward_next_obs(12345, 0, "pol0", False, {

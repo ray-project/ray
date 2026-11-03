@@ -315,15 +315,10 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
         The sequence containing the discounted cumulative sums
         for each individual reward in `x` till the end of the trajectory.
 
-     .. testcode::
-        :skipif: True
-
-        x = np.array([0.0, 1.0, 2.0, 3.0])
-        gamma = 0.9
-        discount_cumsum(x, gamma)
-
-    .. testoutput::
-
+    Examples:
+        >>> x = np.array([0.0, 1.0, 2.0, 3.0])  # doctest: +SKIP_EXAMPLE
+        >>> gamma = 0.9
+        >>> discount_cumsum(x, gamma)
         array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
                1.0 + 0.9*2.0 + 0.9^2*3.0,
                2.0 + 0.9*3.0,
