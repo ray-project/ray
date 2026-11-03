@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 from ray._private.utils import is_in_test
 
 if TYPE_CHECKING:
+    import numpy
     import pyarrow
 
 RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION = (
@@ -479,17 +480,73 @@ def _view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
     if views_buf is not None:
         views_buf = _copy_normal_buffer_if_needed(views_buf, 16, a.offset, len(a))
 
-    # Variadic data buffers are passed through as-is: views store absolute
-    # (buffer index, offset) references into them, so they can't be truncated
-    # without rewriting every view.
+    # A slice still references all of the parent's variadic data buffers, so keep
+    # only the byte ranges its views point to.
+    data_bufs = list(buffers[2:])
+    if views_buf is not None and data_bufs:
+        valid = a.is_valid().to_numpy(zero_copy_only=False) if a.null_count else None
+        views_buf, data_bufs = _compact_view_buffers(views_buf, data_bufs, valid)
+
     return PicklableArrayPayload(
         type=a.type,
         length=len(a),
-        buffers=[bitmap_buf, views_buf, *buffers[2:]],
+        buffers=[bitmap_buf, views_buf, *data_bufs],
         null_count=a.null_count,
         offset=0,
         children=[],
     )
+
+
+def _compact_view_buffers(
+    views_buf: "pyarrow.Buffer",
+    data_bufs: List["pyarrow.Buffer"],
+    valid: Optional["numpy.ndarray"],
+) -> Tuple["pyarrow.Buffer", List["pyarrow.Buffer"]]:
+    """Drop unreferenced data buffers and trim the rest to the byte range the
+    views reference (zero-copy slices), rewriting each view's buffer index and offset.
+    """
+    import numpy as np
+    import pyarrow as pa
+
+    # 16-byte view as int32 words: [length, ...]. Views with length <= 12 are inlined;
+    # longer ones are [length, 4-byte prefix, buffer index, offset].
+    views = np.frombuffer(views_buf, dtype=np.int32).reshape(-1, 4)
+    is_ref = views[:, 0] > 12
+    if valid is not None:
+        is_ref &= valid
+    rows = np.flatnonzero(is_ref)
+    idx = views[rows, 2]
+    off = views[rows, 3].astype(np.int64)
+    end = off + views[rows, 0]
+
+    # Referenced [lo, hi) byte range of each buffer in use.
+    if len(rows):
+        order = np.argsort(idx, kind="stable")
+        sorted_idx = idx[order]
+        starts = np.flatnonzero(np.r_[True, sorted_idx[1:] != sorted_idx[:-1]])
+        used = sorted_idx[starts]
+        lo = np.minimum.reduceat(off[order], starts)
+        hi = np.maximum.reduceat(end[order], starts)
+    else:
+        used = lo = hi = np.empty(0, dtype=np.int64)
+
+    if (
+        len(used) == len(data_bufs)
+        and (lo == 0).all()
+        and (hi == [data_bufs[i].size for i in used]).all()
+    ):
+        return views_buf, data_bufs
+
+    new_idx = np.full(len(data_bufs), -1, dtype=np.int32)
+    new_idx[used] = np.arange(len(used), dtype=np.int32)
+    new_views = views.copy()
+    if valid is not None:
+        # Slots of null values may hold stale references; reset them.
+        new_views[~valid] = 0
+    new_views[rows, 2] = new_idx[idx]
+    new_views[rows, 3] = off - lo[new_idx[idx]]
+    new_bufs = [data_bufs[b].slice(l, h - l) for b, l, h in zip(used, lo, hi)]
+    return pa.py_buffer(new_views), new_bufs
 
 
 def _list_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
