@@ -90,63 +90,62 @@ class MARWILConfig(AlgorithmConfig):
         >>> algo = config.build()
         >>> _ = algo.train()
 
-    .. testcode::
-
-        import gymnasium as gym
-        import numpy as np
-
-        from pathlib import Path
-        from ray.rllib.algorithms.marwil import MARWILConfig
-        from ray import tune
-
-        # Get the base path (to ray/rllib)
-        base_path = Path(__file__).parents[2]
-        # Get the path to the data in rllib folder.
-        data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
-
-        config = MARWILConfig()
-        # Enable the new API stack.
-        config.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
-        # Print out some default values
-        print(f"beta: {config.beta}")
-        # Update the config object.
-        config.training(
-            lr=tune.grid_search([1e-3, 1e-4]),
-            beta=0.75,
-            # We must define a train batch size for each
-            # learner (here 1 local learner).
-            train_batch_size_per_learner=2000,
-        )
-        # Set the config's data path.
-        config.offline_data(
-            input_=[data_path.as_posix()],
-            # Set the number of updates to be run per learner
-            # per training step.
-            dataset_num_iters_per_learner=1,
-        )
-        # Set the config's environment for evalaution.
-        config.environment(
-            observation_space=gym.spaces.Box(
-                np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
-                np.array([4.8, np.inf, 0.41887903, np.inf]),
-                shape=(4,),
-                dtype=np.float32,
-            ),
-            action_space=gym.spaces.Discrete(2),
-        )
-        # Set up a tuner to run the experiment.
-        tuner = tune.Tuner(
-            "MARWIL",
-            param_space=config,
-            run_config=tune.RunConfig(
-                stop={"training_iteration": 1},
-            ),
-        )
-        # Run the experiment.
-        tuner.fit()
+        >>> import gymnasium as gym
+        >>> import numpy as np
+        >>> from pathlib import Path
+        >>> from ray.rllib.algorithms.marwil import MARWILConfig
+        >>> from ray import tune
+        >>> # Get the base path (to ray/rllib)
+        >>> base_path = Path(__file__).parents[2]
+        >>> # Get the path to the data in rllib folder.
+        >>> data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
+        >>> config = MARWILConfig()
+        >>> # Enable the new API stack.
+        >>> _ = config.api_stack(
+        ...     enable_rl_module_and_learner=True,
+        ...     enable_env_runner_and_connector_v2=True,
+        ... )
+        >>> # Print out some default values
+        >>> print(f"beta: {config.beta}")
+        beta: 1.0
+        >>> # Update the config object.
+        >>> _ = config.training(
+        ...     lr=tune.grid_search([1e-3, 1e-4]),
+        ...     beta=0.75,
+        ...     # We must define a train batch size for each
+        ...     # learner (here 1 local learner).
+        ...     train_batch_size_per_learner=2000,
+        ... )
+        >>> # Set the config's data path.
+        >>> _ = config.offline_data(
+        ...     input_=[data_path.as_posix()],
+        ...     # Set the number of updates to be run per learner
+        ...     # per training step.
+        ...     dataset_num_iters_per_learner=1,
+        ... )
+        >>> # Set the config's environment for evalaution.
+        >>> _ = config.environment(
+        ...     observation_space=gym.spaces.Box(
+        ...         np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+        ...         np.array([4.8, np.inf, 0.41887903, np.inf]),
+        ...         shape=(4,),
+        ...         dtype=np.float32,
+        ...     ),
+        ...     action_space=gym.spaces.Discrete(2),
+        ... )
+        >>> # Set up a tuner to run the experiment.
+        >>> tuner = tune.Tuner(
+        ...     "MARWIL",
+        ...     param_space=config,
+        ...     run_config=tune.RunConfig(
+        ...         stop={"training_iteration": 1},
+        ...     ),
+        ... )
+        >>> # Run the experiment.
+        >>> print("[ignore]"); results = tuner.fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):
