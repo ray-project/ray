@@ -26,6 +26,13 @@ IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT = 1
 # The lower bound value to estimate image encoding ratio.
 IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
+# Allowlist of PIL plugins the reader is permitted to decode with. PIL selects a
+# plugin by file signature, not by extension, so without this a payload named
+# e.g. ``a.jpg`` can still be routed to a dangerous plugin (the EPS plugin shells
+# out to Ghostscript). Restricting to these raster formats keeps untrusted bytes
+# away from such parsers. Keep in sync with ``_FILE_EXTENSIONS``.
+_ALLOWED_PIL_FORMATS = ["PNG", "JPEG", "TIFF", "BMP", "GIF"]
+
 
 class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
@@ -77,9 +84,12 @@ class ImageDatasource(FileBasedDatasource):
         data = f.readall()
 
         try:
-            image = Image.open(io.BytesIO(data))
+            image = Image.open(io.BytesIO(data), formats=_ALLOWED_PIL_FORMATS)
         except UnidentifiedImageError as e:
-            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
+            raise ValueError(
+                f"PIL couldn't load image file at path '{path}'. Ray Data only "
+                f"decodes these image formats: {_ALLOWED_PIL_FORMATS}."
+            ) from e
 
         if self.size is not None and image.size != tuple(reversed(self.size)):
             height, width = self.size

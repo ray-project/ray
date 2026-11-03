@@ -21,6 +21,13 @@ ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
 # Number of samples accumulated into each emitted DataFrame block.
 WEBDATASET_READ_CHUNK_SIZE = 512
 
+# Allowlist of PIL plugins the default decoder may decode image members with.
+# PIL selects a plugin by file signature rather than extension, so this prevents
+# untrusted bytes carried in an image-extensioned member from reaching a
+# dangerous parser (e.g. the EPS plugin, which invokes Ghostscript). Covers the
+# jpg/png/ppm/pgm/pbm/pnm extensions the decoder handles.
+_ALLOWED_PIL_IMAGE_FORMATS = ["PNG", "JPEG", "PPM"]
+
 
 if TYPE_CHECKING:
     import pyarrow
@@ -260,10 +267,17 @@ def _default_decoder(
             import numpy as np
             import PIL.Image
 
+            # Restrict PIL to raster plugins matching these extensions. PIL picks
+            # a plugin by file signature, not extension, so without an allowlist a
+            # member named ``0001.jpg`` carrying e.g. EPS bytes would be routed to
+            # the EPS plugin, which shells out to Ghostscript.
+            image = PIL.Image.open(
+                io.BytesIO(value), formats=_ALLOWED_PIL_IMAGE_FORMATS
+            )
             if format == "PIL":
-                sample[key] = PIL.Image.open(io.BytesIO(value))
+                sample[key] = image
             else:
-                sample[key] = np.asarray(PIL.Image.open(io.BytesIO(value)))
+                sample[key] = np.asarray(image)
         elif extension == "json":
             sample[key] = json.loads(value)
         elif extension == "npy":
