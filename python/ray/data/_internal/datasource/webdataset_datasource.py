@@ -10,6 +10,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
 
 from ray._common.utils import env_bool
+from ray.data._internal.datasource.image_utils import _ALLOWED_PIL_FORMATS
 from ray.data._internal.util import iterate_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -26,7 +27,7 @@ WEBDATASET_READ_CHUNK_SIZE = 512
 # untrusted bytes carried in an image-extensioned member from reaching a
 # dangerous parser (e.g. the EPS plugin, which invokes Ghostscript). Covers the
 # jpg/png/ppm/pgm/pbm/pnm extensions the decoder handles.
-_ALLOWED_PIL_IMAGE_FORMATS = ["PNG", "JPEG", "PPM"]
+_ALLOWED_WEBDATASET_PIL_FORMATS = _ALLOWED_PIL_FORMATS + ["PPM"]
 
 
 if TYPE_CHECKING:
@@ -272,7 +273,7 @@ def _default_decoder(
             # member named ``0001.jpg`` carrying e.g. EPS bytes would be routed to
             # the EPS plugin, which shells out to Ghostscript.
             image = PIL.Image.open(
-                io.BytesIO(value), formats=_ALLOWED_PIL_IMAGE_FORMATS
+                io.BytesIO(value), formats=_ALLOWED_WEBDATASET_PIL_FORMATS
             )
             if format == "PIL":
                 sample[key] = image

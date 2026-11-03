@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
+from ray.data._internal.datasource.image_utils import _ALLOWED_PIL_FORMATS
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
@@ -25,13 +26,6 @@ IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT = 1
 
 # The lower bound value to estimate image encoding ratio.
 IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
-
-# Allowlist of PIL plugins the reader is permitted to decode with. PIL selects a
-# plugin by file signature, not by extension, so without this a payload named
-# e.g. ``a.jpg`` can still be routed to a dangerous plugin (the EPS plugin shells
-# out to Ghostscript). Restricting to these raster formats keeps untrusted bytes
-# away from such parsers. Keep in sync with ``_FILE_EXTENSIONS``.
-_ALLOWED_PIL_FORMATS = ["PNG", "JPEG", "TIFF", "BMP", "GIF"]
 
 
 class ImageDatasource(FileBasedDatasource):
