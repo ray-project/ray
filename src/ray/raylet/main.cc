@@ -338,6 +338,7 @@ int main(int argc, char *argv[]) {
                                             cluster_id,
                                             /*allow_cluster_id_nil=*/false,
                                             /*fetch_cluster_id_if_nil=*/false);
+  client_options.record_network_latency_ = true;
   gcs_client = std::make_unique<ray::gcs::GcsClient>(client_options, node_ip_address);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
@@ -755,8 +756,14 @@ int main(int argc, char *argv[]) {
         worker_pool_metrics,
         std::move(add_process_to_workers_cgroup_hook));
 
-    client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
-        main_service, /*record_stats=*/true, node_ip_address);
+    client_call_manager =
+        std::make_unique<ray::rpc::ClientCallManager>(main_service,
+                                                      /*record_stats=*/true,
+                                                      node_ip_address,
+                                                      ray::ClusterID::Nil(),
+                                                      /*num_threads=*/1,
+                                                      /*call_timeout_ms=*/-1,
+                                                      /*record_network_latency=*/true);
 
     worker_rpc_pool = std::make_unique<ray::rpc::CoreWorkerClientPool>(
         [&](const ray::rpc::Address &addr) {

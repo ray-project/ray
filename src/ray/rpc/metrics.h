@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/stats/bucket_histogram_metric.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
@@ -76,6 +77,21 @@ inline ray::stats::Count GetGrpcClientReqFailedCounterMetric() {
       /*tag_keys=*/{"Method"});
 }
 
+/// Keep the name in sync with NODE_LEVEL_AGGREGATED_METRICS in
+/// python/ray/_private/telemetry/metric_cardinality.py, which aggregates it across all
+/// processes on a node.
+inline ray::stats::BucketHistogramMetric GetGrpcClientNetworkLatencyMsHistogramMetric() {
+  return ray::stats::BucketHistogramMetric(
+      /*name=*/"grpc_client_network_latency_ms",
+      /*description=*/
+      "Network latency of gRPC calls to servers on other nodes: the round trip time "
+      "minus the time the server spent processing the request.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000,
+      /*num_buckets=*/64,
+      /*tag_keys=*/{"DestinationNodeIp"});
+}
+
 struct GrpcServerMetrics {
   GrpcServerMetrics()
       : req_process_time_ms(GetGrpcServerReqProcessTimeMsHistogramMetric()),
@@ -94,9 +110,12 @@ struct GrpcServerMetrics {
 };
 
 struct GrpcClientMetrics {
-  GrpcClientMetrics() : req_failed(GetGrpcClientReqFailedCounterMetric()) {}
+  GrpcClientMetrics()
+      : req_failed(GetGrpcClientReqFailedCounterMetric()),
+        network_latency_ms(GetGrpcClientNetworkLatencyMsHistogramMetric()) {}
 
   ray::stats::Count req_failed;
+  ray::stats::BucketHistogramMetric network_latency_ms;
 };
 
 }  // namespace rpc

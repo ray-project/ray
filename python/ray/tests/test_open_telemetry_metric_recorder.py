@@ -400,6 +400,39 @@ def test_record_histogram_aggregated_batch(
 
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
+def test_record_histogram_aggregated_batch_node_level_aggregation(
+    mock_get_meter, mock_set_meter_provider
+):
+    """Node level aggregated metrics drop the per-process labels, so data points from
+    different processes on the node are added to the same series."""
+    node_tags = {"NodeAddress": "10.0.0.1", "DestinationNodeIp": "10.0.0.2"}
+    with _served_recorder() as recorder:
+        recorder.record_histogram_aggregated_batch(
+            "grpc_client_network_latency_ms",
+            "Test Histogram",
+            [
+                _histogram_dp(
+                    {**node_tags, "Component": "raylet", "WorkerId": ""},
+                    [1, 0, 0],
+                    0.5,
+                    bounds=(1.0, 10.0),
+                ),
+                _histogram_dp(
+                    {**node_tags, "Component": "core_worker", "WorkerId": "abc"},
+                    [0, 1, 0],
+                    5.0,
+                    bounds=(1.0, 10.0),
+                ),
+            ],
+        )
+
+        name = "ray_grpc_client_network_latency_ms"
+        assert REGISTRY.get_sample_value(f"{name}_count", node_tags) == 2
+        assert REGISTRY.get_sample_value(f"{name}_sum", node_tags) == 5.5
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
 def test_record_histogram_aggregated_batch_mixed_label_sets(
     mock_get_meter, mock_set_meter_provider
 ):

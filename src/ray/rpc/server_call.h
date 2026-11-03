@@ -36,6 +36,7 @@
 #include "ray/rpc/metrics.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace rpc {
@@ -224,6 +225,7 @@ class ServerCallImpl : public ServerCall {
   ServerCallState GetState() const override { return state_; }
 
   void HandleRequest() override {
+    receive_time_ns_ = current_time_ns();
     stats_handle_ = io_service_.stats()->RecordStart(call_name_);
     bool auth_success = true;
 
@@ -403,6 +405,12 @@ class ServerCallImpl : public ServerCall {
       return;
     }
     state_ = ServerCallState::SENDING_REPLY;
+    // Report the time spent in Ray's server code so the client can subtract it
+    // from the round trip time. Must be added before Finish().
+    if (::RayConfig::instance().enable_rpc_network_latency_recording()) {
+      context_.AddTrailingMetadata(kServerProcessingTimeNsKey,
+                                   std::to_string(current_time_ns() - receive_time_ns_));
+    }
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
 
@@ -464,6 +472,9 @@ class ServerCallImpl : public ServerCall {
 
   /// The ts when the request created
   int64_t start_time_;
+
+  /// Steady clock time (ns) when HandleRequest() first saw this request.
+  int64_t receive_time_ns_ = 0;
 
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;

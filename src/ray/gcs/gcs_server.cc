@@ -94,7 +94,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            /*record_stats=*/true,
                            config.node_ip_address,
                            ClusterID::Nil(),
-                           RayConfig::instance().gcs_server_rpc_client_thread_num()),
+                           RayConfig::instance().gcs_server_rpc_client_thread_num(),
+                           /*call_timeout_ms=*/-1,
+                           /*record_network_latency=*/true),
       raylet_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<ray::rpc::RayletClient>(
             addr,
@@ -149,7 +151,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           /*record_stats=*/true,
           config.node_ip_address,
           ClusterID::Nil(),
-          /*num_threads=*/1),
+          /*num_threads=*/1,
+          /*call_timeout_ms=*/-1,
+          /*record_network_latency=*/true),
       resource_load_pull_raylet_client_pool_([this](const rpc::Address &addr) {
         // GetResourceLoad is not retryable, so the unavailable-timeout callback
         // can never fire; the puller's snapshot diff evicts instead.

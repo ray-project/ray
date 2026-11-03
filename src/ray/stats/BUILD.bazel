@@ -118,7 +118,10 @@ ray_cc_library(
     name = "bucket_histogram_metric",
     srcs = ["bucket_histogram_metric.cc"],
     hdrs = ["bucket_histogram_metric.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/rpc:__pkg__",
+    ],
     deps = [
         ":quadratic_bucket_scheme",
         ":stats_metric",

@@ -56,6 +56,11 @@ constexpr char kTokenAuthErrorMessage[] =
     "RAY_AUTH_MODE=disabled here too. See "
     "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information.";
 
+/// gRPC trailing metadata key the server uses to report how long the request was
+/// inside Ray's server code, from receipt to reply. The client subtracts it from the
+/// round trip time to get the network latency. Value is decimal nanoseconds.
+constexpr char kServerProcessingTimeNsKey[] = "x-ray-server-processing-time-ns";
+
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
 
