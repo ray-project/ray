@@ -668,6 +668,9 @@ TEST_F(ReferenceCountTest, TestMoveState) {
   rc->RemoveLocalReference(movable_id, &out);
   ASSERT_FALSE(rc->HasConsumeOnceObjects());
   rc->RemoveLocalReference(default_id, &out);
+  ASSERT_FALSE(rc->HasReference(movable_id));
+  ASSERT_FALSE(rc->HasReference(default_id));
+  ASSERT_EQ(rc->GetMoveState(movable_id), std::nullopt);
 }
 
 // Tests call site tracking and ability to update object size.
