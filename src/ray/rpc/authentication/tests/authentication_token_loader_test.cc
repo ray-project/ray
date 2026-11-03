@@ -82,7 +82,8 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
 #endif
 #ifndef _WIN32
     struct stat dir_stat;
-    if (stat((test_home_dir_ + "/.ray").c_str(), &dir_stat) == 0) {
+    if (!test_home_dir_.empty() &&
+        stat((test_home_dir_ + "/.ray").c_str(), &dir_stat) == 0) {
       ray_dir_mode_ = dir_stat.st_mode & 07777;
     }
 #endif
@@ -95,7 +96,9 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
 #ifndef _WIN32
     // Tests change the mode of ~/.ray, which is the real one when HOME is set.
     // 0700 is the mode ensure_ray_dir_exists creates a missing ~/.ray with.
-    chmod((test_home_dir_ + "/.ray").c_str(), ray_dir_mode_.value_or(0700));
+    if (!test_home_dir_.empty()) {
+      chmod((test_home_dir_ + "/.ray").c_str(), ray_dir_mode_.value_or(0700));
+    }
 #endif
     // Clean up after test
     cleanup_env();

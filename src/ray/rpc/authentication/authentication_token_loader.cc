@@ -62,9 +62,13 @@ void RestrictToOwner(int fd,
     return;
   }
   char old_mode[8];
-  std::snprintf(old_mode, sizeof(old_mode), "%04o", path_stat.st_mode & 0777);
+  std::snprintf(old_mode,
+                sizeof(old_mode),
+                "%04o",
+                static_cast<unsigned int>(path_stat.st_mode & 0777));
   char new_mode[8];
-  std::snprintf(new_mode, sizeof(new_mode), "%04o", owner_mode);
+  std::snprintf(
+      new_mode, sizeof(new_mode), "%04o", static_cast<unsigned int>(owner_mode));
   if (fchmod(fd, owner_mode) == 0) {
     RAY_LOG(WARNING) << "Changed the mode of " << path << " from " << old_mode << " to "
                      << new_mode << " because other users could access it."
