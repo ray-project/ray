@@ -968,6 +968,8 @@ def detect_delta_byte_array(chunk: ColumnChunkMetaData) -> bool:
     return "DELTA_BYTE_ARRAY" in chunk.encodings
 
 
+# Above the most any measured column decoded to: values in sorted runs, at 76
+# times their chunk's uncompressed bytes, which 64 would have put under.
 _DELTA_BYTE_ARRAY_EXPANSION = 128
 
 
@@ -995,6 +997,8 @@ def detect_dictionary_indexed(chunk: ColumnChunkMetaData) -> bool:
     )
 
 
+# The rows' values can run longer than the dictionary's entries on average; 1.2
+# measured a median of 1.15 to 1.18 times the decoded size.
 _DICTIONARY_MEAN_FACTOR = 1.2
 
 
@@ -1456,6 +1460,8 @@ def _added_array_bytes(
     return row, once
 
 
+# Some column meets each bound exactly (no nulls, every value long and distinct):
+# 0.95 puts that column 5% under and every other column nearer.
 _BOUND_FACTOR = 0.95
 
 
