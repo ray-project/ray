@@ -28,6 +28,7 @@ class CustomFakePlasmaClient : public plasma::FakePlasmaClient {
  public:
   ray::Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                      const ray::rpc::Address &owner_address,
+                                     const WorkerID &producer_worker_id,
                                      bool is_experimental_mutable_object,
                                      int64_t data_size,
                                      const uint8_t *metadata,

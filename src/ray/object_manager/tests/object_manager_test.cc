@@ -138,7 +138,8 @@ class ObjectManagerTest : public ::testing::Test {
   /// the matching delete notification is what leaves the mirror stale.
   void NotifyObjectAdded(const ObjectID &object_id,
                          int64_t data_size,
-                         int64_t metadata_size) {
+                         int64_t metadata_size,
+                         const WorkerID &producer_worker_id = WorkerID::Nil()) {
     ObjectInfo object_info;
     object_info.object_id = object_id;
     object_info.data_size = data_size;
@@ -147,10 +148,16 @@ class ObjectManagerTest : public ::testing::Test {
     object_info.owner_ip_address = "127.0.0.1";
     object_info.owner_port = 9999;
     object_info.owner_worker_id = WorkerID::FromRandom();
+    object_info.producer_worker_id = producer_worker_id;
     const size_t added_before = fake_object_directory_->added_objects.size();
     object_manager_->HandleObjectAdded(object_info);
     EXPECT_EQ(fake_object_directory_->added_objects.size(), added_before + 1);
     EXPECT_EQ(fake_object_directory_->added_objects.back(), object_id);
+  }
+
+  /// Delivers the store's "object deleted" notification.
+  void NotifyObjectDeleted(const ObjectID &object_id) {
+    object_manager_->HandleObjectDeleted(object_id);
   }
 
   /// Makes GetRpcClient() able to resolve `node_id` to a FakeObjectManagerClient.
@@ -419,6 +426,32 @@ TEST_F(ObjectManagerTest, ReceivedCopyIsReleasedOnSeal) {
 
   io_context_.poll();
   EXPECT_EQ(fake_plasma_client_->released_objects.size(), 1u);
+}
+
+TEST_F(ObjectManagerTest, ReceivedCopyRecordsNoProducer) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  const NodeID remote_node_id = NodeID::FromRandom();
+  const std::string data(100, 'x');
+  StartActivePull(object_id, remote_node_id, data.size());
+
+  ASSERT_TRUE(ReceiveChunk(remote_node_id, object_id, rpc::Address(), data));
+  EXPECT_TRUE(fake_plasma_client_->producer_worker_ids.at(object_id).IsNil());
+}
+
+TEST_F(ObjectManagerTest, LocalObjectProducerWorkerIdFollowsTheLocalCopy) {
+  const WorkerID producer_worker_id = WorkerID::FromRandom();
+  const ObjectID with_producer = ObjectID::FromRandom();
+  const ObjectID without_producer = ObjectID::FromRandom();
+  EXPECT_TRUE(object_manager_->GetLocalObjectProducerWorkerId(with_producer).IsNil());
+
+  NotifyObjectAdded(with_producer, 10, 1, producer_worker_id);
+  NotifyObjectAdded(without_producer, 10, 1);
+  EXPECT_EQ(object_manager_->GetLocalObjectProducerWorkerId(with_producer),
+            producer_worker_id);
+  EXPECT_TRUE(object_manager_->GetLocalObjectProducerWorkerId(without_producer).IsNil());
+
+  NotifyObjectDeleted(with_producer);
+  EXPECT_TRUE(object_manager_->GetLocalObjectProducerWorkerId(with_producer).IsNil());
 }
 
 }  // namespace ray
