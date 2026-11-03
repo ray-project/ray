@@ -8,7 +8,8 @@ import) that exercises:
   first-paragraph fallback),
 * ``llms_txt_exclude`` globs,
 * the ``## Optional`` section,
-* the per-directory ``llms-full.txt`` shards + the root manifest, and
+* the per-directory ``llms-full.txt`` shards, including a split section's links
+  to its sub-shards, + the root manifest, and
 * ``literalinclude`` directives expanded into the code they include.
 
 Run directly (``python doc/source/_ext/test_llms_txt.py``) or under pytest. It
@@ -30,7 +31,7 @@ html_theme = "basic"
 html_baseurl = "https://example.com/docs/"
 llms_txt_title = "TestProj"
 llms_txt_summary = "A test project."
-llms_txt_exclude = ["secB/api/*"]
+llms_txt_exclude = ["secB/api/*", "guides/topic-b/index"]
 llms_txt_optional_sections = ["Reference"]
 llms_txt_full_max_shard_tokens = 50
 """
@@ -107,13 +108,24 @@ FILES = {
         "Topic A Intro\n=============\n\n"
         "Body text for the topic A intro page, long enough to add real bytes.\n"
     ),
+    # topic-a has no index page and only this page carries a description, the
+    # shape that once labeled a whole sub-shard after one of its pages.
     "guides/topic-a/deep.rst": (
+        ".. meta::\n   :description: A deep dive into topic A.\n\n"
         "Topic A Deep Dive\n=================\n\n"
         "Body text for the topic A deep dive page with additional length here.\n"
     ),
     "guides/topic-b/intro.rst": (
         "Topic B Intro\n=============\n\n"
         "Body text for the topic B intro page within the guides section here.\n"
+    ),
+    # Excluded from the corpus, like a thin API hub, but it still names the
+    # topic-b sub-shard, whose one page carries no description of its own.
+    "guides/topic-b/index.rst": (
+        ":orphan:\n\n"
+        ".. meta::\n   :description: Reference material for topic B.\n\n"
+        "Topic B Reference\n=================\n\n"
+        "An index page kept out of the corpus, like a thin API hub.\n"
     ),
     # In no toctree but under Section A's directory (mimics a gallery page Ray
     # links from a grid card, not a toctree). Must fold into Section A, not the
@@ -131,9 +143,11 @@ FILES = {
         "A build-fetched example page keyed to section B.\n"
     ),
     # In-scope, in no toctree, AND in a directory that maps to no section — the
-    # only kind of page left in the trailing "## Other pages" catch-all.
+    # only kind of page left in the trailing "## Other pages" catch-all. Its
+    # shard holds only this page, so the page's description labels the shard.
     "orphan.rst": (
         ":orphan:\n\n"
+        ".. meta::\n   :description: An orphan page with a curated description.\n\n"
         "Orphan Page\n===========\n\n"
         "An in-scope page not referenced by any toctree.\n"
     ),
@@ -332,6 +346,34 @@ def test_llms_txt():
             "pages): Everything in section A." in manifest,
             "manifest entry missing page count + description",
         )
+        # A sub-shard with no landing or index page takes its directory's name,
+        # not the title of whichever of its pages carries a description.
+        _check(
+            "[Topic A](https://example.com/docs/guides/topic-a/llms-full.txt) "
+            "(2 pages)\n" in manifest
+            and "[Topic A Deep Dive](" not in manifest,
+            "sub-shard labeled after one of its pages",
+        )
+        # A group of one page with a description is labeled after that page.
+        _check(
+            "- [Orphan Page](https://example.com/docs/orphan/llms-full.txt) "
+            "(1 pages): An orphan page with a curated description." in manifest,
+            "single-page shard not labeled after its page",
+        )
+        # An index page excluded from the corpus still names its directory's
+        # sub-shard, and its own text stays out of the shard.
+        _check(
+            "- [Topic B Reference](https://example.com/docs/guides/topic-b/"
+            "llms-full.txt) (1 pages): Reference material for topic B." in manifest,
+            "sub-shard not labeled after its excluded index page",
+        )
+        topic_b = (out / "guides" / "topic-b" / "llms-full.txt").read_text(
+            encoding="utf-8"
+        )
+        _check(
+            "kept out of the corpus" not in topic_b,
+            "excluded index page leaked into its sub-shard",
+        )
 
         secA_full = (out / "secA" / "llms-full.txt").read_text(encoding="utf-8")
         _check("Body of page one." in secA_full, "shard missing verbatim source")
@@ -410,6 +452,24 @@ def test_llms_txt():
         _check(
             "Topic A Intro" in topic_a and "Topic A Deep Dive" in topic_a,
             "topic-a sub-shard missing its pages",
+        )
+        # The parent links each sub-shard with its page count, above its
+        # Contents TOC, so its URL still leads to the whole section.
+        _check(
+            "- [Topic A](https://example.com/docs/guides/topic-a/llms-full.txt) "
+            "(2 pages)" in guides_parent
+            and "- [Topic B Reference](https://example.com/docs/guides/topic-b/"
+            "llms-full.txt) (1 pages)" in guides_parent,
+            "split parent shard doesn't link its sub-shards",
+        )
+        _check(
+            guides_parent.index("## Sub-shards") < guides_parent.index("## Contents"),
+            "sub-shard list rendered below the parent's Contents TOC",
+        )
+        # Shards that aren't split carry no sub-shard list.
+        _check(
+            "## Sub-shards" not in topic_a and "## Sub-shards" not in secA_full,
+            "unsplit shard got a sub-shard list",
         )
         # Manifest nests the sub-shards under their parent (indented link).
         _check(

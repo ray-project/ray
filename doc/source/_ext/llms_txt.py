@@ -27,7 +27,10 @@ output). It emits three kinds of file into the HTML build output:
     the whole corpus is far larger than any context window; a section that
     still exceeds ``llms_txt_full_max_shard_tokens`` is split further into
     per-subdirectory sub-shards (e.g. ``serve/llm/llms-full.txt``) so each
-    loadable unit stays within an agent's effective context budget.
+    loadable unit stays within an agent's effective context budget. The split
+    section's own shard keeps its top-level pages and lists its sub-shards
+    above its ``## Contents`` TOC, so the section's URL still leads to all of
+    its pages whether or not the section is split.
 
 ``llms-full.txt`` (root)
     A manifest that links to every shard — sub-shards nested under their parent
@@ -627,21 +630,20 @@ def _lead_page(env, prefix, docnames, dir_landing, meta_types, cache):
     """Return ``(lead_docname, confident)`` for a shard group.
 
     The lead is the page that best represents the group: the section's nav
-    landing, then a ``<prefix>/index`` page, then the first page carrying an
-    authored description. ``confident`` is ``False`` when none of those exist and
-    we fall back to an arbitrary first page — so callers can avoid labelling a
-    shard with an unrepresentative page title/description.
+    landing, then a ``<prefix>/index`` page, then, for a group of one page, that
+    page if it carries an authored description. ``confident`` is ``False`` when
+    none of those exist and we fall back to the first page — so callers can
+    avoid labelling a shard with an unrepresentative page title/description. A
+    page with a description doesn't stand for a group of several: a directory of
+    tutorials with no index page would take one tutorial's title.
     """
     landing = dir_landing.get(prefix)
     if landing in docnames:
         return landing, True
     if f"{prefix}/index" in docnames:
         return f"{prefix}/index", True
-    curated = next(
-        (d for d in docnames if _curated_description(env, d, meta_types, cache)), None
-    )
-    if curated:
-        return curated, True
+    if len(docnames) == 1 and _curated_description(env, docnames[0], meta_types, cache):
+        return docnames[0], True
     return docnames[0], False
 
 
@@ -649,28 +651,67 @@ def _shard_identity(env, prefix, docnames, dir_landing, dir_label, meta_types, c
     """Return ``(lead, label, description)`` for a shard group.
 
     A top-level nav section uses its toctree label; an identifiable sub-group
-    (landing/index/curated lead) uses the lead page's title and description; a
-    sub-group with no representative page falls back to a humanized directory
-    name and an empty description rather than an arbitrary page's text.
+    (landing, index, or lone described page) uses the lead page's title and
+    description. A sub-group with no representative page takes the title and
+    curated description of its ``index`` page when that page exists but is
+    excluded from the corpus, as a thin API hub is; otherwise it falls back to a
+    humanized directory name and an empty description rather than an arbitrary
+    page's text.
     """
     lead, confident = _lead_page(env, prefix, docnames, dir_landing, meta_types, cache)
     if dir_label.get(prefix):
         return lead, dir_label[prefix], _description(env, lead, meta_types, cache)
     if confident:
         return lead, _doc_title(env, lead), _description(env, lead, meta_types, cache)
+    index = f"{prefix}/index"
+    if index in env.all_docs:
+        description = _curated_description(env, index, meta_types, cache) or ""
+        return lead, _doc_title(env, index), description
     return lead, _humanize(prefix.rsplit("/", 1)[-1]), ""
 
 
-def _write_shard(app, env, outdir, relpath, label, description, lead, docnames, cache):
+def _shard_entry(app, record, base_depth=0) -> str:
+    """Render a shard record as a list item, indented by its depth below
+    ``base_depth``: a link with its page count, or a bold label for a split
+    parent with no shard file of its own."""
+    relpath, label, description, count, depth = record
+    indent = "  " * (depth - base_depth)
+    if relpath:
+        entry = f"{indent}- [{label}]({_asset_url(app, relpath)}) ({count} pages)"
+    else:
+        entry = f"{indent}- **{label}**"
+    if description:
+        entry += f": {description}"
+    return entry
+
+
+def _write_shard(
+    app, env, outdir, relpath, label, description, lead, docnames, cache, sub_shards=()
+):
     """Write one ``llms-full.txt`` shard (lead page first); return its page count.
 
     Body = ``# label: full text`` header, optional ``> description``, a
-    ``## Contents`` TOC, then the source of every page (see ``_page_text``).
+    ``## Sub-shards`` list when the section is split (``sub_shards`` holds the
+    records of its sub-shards), a ``## Contents`` TOC, then the source of every
+    page (see ``_page_text``).
     """
     ordered = [lead] + [d for d in docnames if d != lead]
     body = [f"# {label}: full text", ""]
     if description:
         body += [f"> {description}", ""]
+    if sub_shards:
+        # Without this list, an agent that saved this URL before the section
+        # split would get only its top-level pages, with no sign of the rest.
+        base_depth = min(depth for *_, depth in sub_shards)
+        body += [
+            "## Sub-shards",
+            "",
+            "This file holds only the pages at the top of this section. The rest "
+            "of the section is in these files:",
+            "",
+        ]
+        body += [_shard_entry(app, record, base_depth) for record in sub_shards]
+        body.append("")
     body += ["## Contents", ""]
     body += [f"- [{_doc_title(env, d)}]({_page_url(app, d)})" for d in ordered]
     body += ["", "---", ""]
@@ -711,8 +752,9 @@ def _emit_shards(
     ``budget`` bytes and has subdirectories to split along (recursively).
 
     Appends ``(relpath_or_None, label, description, page_count, depth)`` records
-    in display order. A split parent keeps the pages held directly at its level;
-    if it has none, it contributes a header-only record (no shard file).
+    in display order. A split parent keeps the pages held directly at its level
+    and lists its sub-shards; if it has no pages of its own, it contributes a
+    header-only record (no shard file).
     """
     total = sum(_src_size(env, d, cache) for d in docnames)
 
@@ -748,22 +790,11 @@ def _emit_shards(
         records.append((relpath, label, desc, count, depth))
         return
 
-    # Split: the parent keeps its directly-held pages; recurse into subdirs.
-    if direct:
-        lead, label, desc = _shard_identity(
-            env, prefix, direct, dir_landing, dir_label, meta_types, cache
-        )
-        relpath = f"{prefix}/llms-full.txt"
-        count = _write_shard(
-            app, env, outdir, relpath, label, desc, lead, direct, cache
-        )
-        records.append((relpath, label, desc, count, depth))
-    else:
-        _lead, label, desc = _shard_identity(
-            env, prefix, docnames, dir_landing, dir_label, meta_types, cache
-        )
-        records.append((None, label, desc, 0, depth))
-
+    # Split: recurse into the subdirs first, so the parent's shard can list
+    # them. The parent keeps its directly-held pages, and its record stays
+    # ahead of its sub-shards' records in display order.
+    slot = len(records)
+    records.append(None)
     for sub in sorted(subgroups):
         _emit_shards(
             app,
@@ -780,17 +811,34 @@ def _emit_shards(
             records,
         )
 
+    sub_shards = records[slot + 1 :]
+    if direct:
+        lead, label, desc = _shard_identity(
+            env, prefix, direct, dir_landing, dir_label, meta_types, cache
+        )
+        relpath = f"{prefix}/llms-full.txt"
+        count = _write_shard(
+            app, env, outdir, relpath, label, desc, lead, direct, cache, sub_shards
+        )
+        records[slot] = (relpath, label, desc, count, depth)
+    else:
+        _lead, label, desc = _shard_identity(
+            env, prefix, docnames, dir_landing, dir_label, meta_types, cache
+        )
+        records[slot] = (None, label, desc, 0, depth)
+
 
 def _write_full_files(
     app, env, exclude, title, summary, sections, meta_types, cache, max_tokens
 ):
     """Write per-section ``llms-full.txt`` shards and the root manifest.
 
-    Each shard opens with a ``## Contents`` TOC (surfacing deep pages absent from
-    the root ``llms.txt`` index) followed by verbatim page source, landing page
+    Each shard has a ``## Contents`` TOC (surfacing deep pages absent from the
+    root ``llms.txt`` index) followed by verbatim page source, landing page
     first. Sections whose source exceeds ``max_tokens`` (estimated) are split
     into per-subdirectory sub-shards so every loadable unit stays within an
-    agent's context budget. The root manifest lists every shard — nested under
+    agent's context budget, and a split section's own shard lists its
+    sub-shards above its TOC. The root manifest lists every shard — nested under
     its parent section — with a description and page count, so an agent can route
     without downloading anything.
     """
@@ -842,17 +890,8 @@ def _write_full_files(
         "page count, and what it covers — fetch only what you need:",
         "",
     ]
-    shard_files = 0
-    for relpath, label, description, count, depth in records:
-        indent = "  " * depth
-        if relpath:
-            shard_files += 1
-            entry = f"{indent}- [{label}]({_asset_url(app, relpath)}) ({count} pages)"
-        else:
-            entry = f"{indent}- **{label}**"
-        if description:
-            entry += f": {description}"
-        manifest.append(entry)
+    manifest += [_shard_entry(app, record) for record in records]
+    shard_files = sum(1 for record in records if record[0])
 
     manifest.append("")
     (outdir / "llms-full.txt").write_text(
