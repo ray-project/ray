@@ -351,6 +351,7 @@ class RLModule(Checkpointable, abc.ABC):
         ...     model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
         ...     catalog_class=PPOCatalog,
         ... )
+        >>> obs, info = env.reset()
         >>> fwd_ins = {"obs": torch.Tensor([obs])}
         >>> fwd_outputs = module.forward_train(fwd_ins)
         >>> # loss = compute_loss(fwd_outputs, fwd_ins)
@@ -378,6 +379,9 @@ class RLModule(Checkpointable, abc.ABC):
         ...     model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
         ...     catalog_class=PPOCatalog,
         ... )
+        >>> action_dist_class = module.get_inference_action_dist_cls()
+        >>> obs, info = env.reset()
+        >>> terminated = False
         >>> while not terminated:
         ...     fwd_ins = {"obs": torch.Tensor([obs])}
         ...     fwd_outputs = module.forward_inference(fwd_ins)
