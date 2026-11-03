@@ -44,21 +44,19 @@ LEARNER_RESULTS_VAR_IS_KEY = "var_IS"
 class APPOConfig(IMPALAConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
-    .. testcode::
-
-        from ray.rllib.algorithms.appo import APPOConfig
-        config = (
-            APPOConfig()
-            .training(lr=0.01, grad_clip=30.0, train_batch_size_per_learner=50)
-        )
-        config = config.learners(num_learners=1)
-        config = config.env_runners(num_env_runners=1)
-        config = config.environment("CartPole-v1")
-
-        # Build an Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
-        del algo
+    Examples:
+        >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> config = (
+        ...     APPOConfig()
+        ...     .training(lr=0.01, grad_clip=30.0, train_batch_size_per_learner=50)
+        ... )
+        >>> config = config.learners(num_learners=1)
+        >>> config = config.env_runners(num_env_runners=1)
+        >>> config = config.environment("CartPole-v1")
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
+        >>> del algo
 
     .. testcode::
 
