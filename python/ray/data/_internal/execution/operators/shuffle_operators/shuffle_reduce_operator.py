@@ -33,6 +33,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
     _shuffle_reduce_task,
 )
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
@@ -96,6 +97,7 @@ class ShuffleReduceOp(PhysicalOperator):
             its ``TaskContext``.
         fused_output_map_target_max_block_size_override: The fused map op's
             block-size override.
+        output_partitioning: See ``PhysicalOperator.output_partitioning``.
     """
 
     _DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS = 1.0
@@ -117,6 +119,7 @@ class ShuffleReduceOp(PhysicalOperator):
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
+        output_partitioning: Optional[HashPartitioning] = None,
     ):
         input_ops: List[PhysicalOperator] = (
             [input_op] if isinstance(input_op, ShuffleMapOp) else list(input_op)
@@ -133,6 +136,7 @@ class ShuffleReduceOp(PhysicalOperator):
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
         self._preserve_partition_order: bool = preserve_partition_order
+        self._output_partitioning: Optional[HashPartitioning] = output_partitioning
         self._emit_empty_partitions: bool = should_emit_empty_partitions
         # False when reduce_fn (aggregation) or a fused map can change the row
         # count, so num_output_rows_total() can't borrow the map op's total.
