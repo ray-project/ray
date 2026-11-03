@@ -113,16 +113,11 @@ def get_base_struct_from_space(space: gym.Space) -> SpaceStruct:
             Note that the returned struct still contains all original
             "primitive" Spaces (e.g. Box, Discrete).
 
-    .. testcode::
-        :skipif: True
-
-        get_base_struct_from_space(Dict({
-            "a": Box(),
-            "b": Tuple([Discrete(2), Discrete(3)])
-        }))
-
-    .. testoutput::
-
+    Examples:
+        >>> get_base_struct_from_space(Dict({  # doctest: +SKIP_EXAMPLE
+        ...     "a": Box(),
+        ...     "b": Tuple([Discrete(2), Discrete(3)])
+        ... }))
         dict(a=Box(), b=tuple(Discrete(2), Discrete(3)))
     """
 
@@ -252,16 +247,11 @@ def flatten_to_single_ndarray(
     Returns:
         np.ndarray: The result after concatenating all single arrays in input_.
 
-    .. testcode::
-        :skipif: True
-
-        flatten_to_single_ndarray([
-            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
-            np.array([7, 8, 9]),
-        ])
-
-    .. testoutput::
-
+    Examples:
+        >>> flatten_to_single_ndarray([  # doctest: +SKIP_EXAMPLE
+        ...     np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+        ...     np.array([7, 8, 9]),
+        ... ])
         np.array([
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0
         ])
