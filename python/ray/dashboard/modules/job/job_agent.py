@@ -89,46 +89,47 @@ async def _parse_json_object_body(
     return body, None
 
 
+def _cluster_error_response(exc: Exception) -> Response:
+    exc_name = type(exc).__name__
+    if isinstance(exc, NotImplementedError):
+        return _error_json(
+            str(exc),
+            exc_type=exc_name,
+            status=aiohttp.web.HTTPNotImplemented.status_code,
+        )
+    if isinstance(exc, KeyError) or exc_name.endswith("NotFoundError"):
+        msg = exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
+        return _error_json(
+            msg,
+            exc_type=exc_name,
+            status=aiohttp.web.HTTPNotFound.status_code,
+        )
+    if (
+        isinstance(exc, (TimeoutError, asyncio.TimeoutError))
+        or exc_name == "TimeoutError"
+    ):
+        return _error_json(
+            str(exc),
+            exc_type=exc_name,
+            status=aiohttp.web.HTTPRequestTimeout.status_code,
+        )
+    if isinstance(exc, MaxNodesExceededError) or exc_name == "MaxNodesExceededError":
+        return _error_json(
+            str(exc),
+            exc_type=exc_name,
+            status=aiohttp.web.HTTPConflict.status_code,
+        )
+    if isinstance(exc, ValueError) or exc_name.endswith("DiedError"):
+        return _error_json(str(exc), exc_type=exc_name)
+    raise exc
+
+
 def _cluster_response(fn: Any, *args: Any, **kwargs: Any) -> Response:
     try:
         res = fn(*args, **kwargs)
         return Response(text=json.dumps(res), content_type="application/json")
     except Exception as exc:
-        exc_name = type(exc).__name__
-        if isinstance(exc, NotImplementedError):
-            return _error_json(
-                str(exc),
-                exc_type=exc_name,
-                status=aiohttp.web.HTTPNotImplemented.status_code,
-            )
-        if isinstance(exc, KeyError) or exc_name.endswith("NotFoundError"):
-            msg = exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
-            return _error_json(
-                msg,
-                exc_type=exc_name,
-                status=aiohttp.web.HTTPNotFound.status_code,
-            )
-        if (
-            isinstance(exc, (TimeoutError, asyncio.TimeoutError))
-            or exc_name == "TimeoutError"
-        ):
-            return _error_json(
-                str(exc),
-                exc_type=exc_name,
-                status=aiohttp.web.HTTPRequestTimeout.status_code,
-            )
-        if (
-            isinstance(exc, MaxNodesExceededError)
-            or exc_name == "MaxNodesExceededError"
-        ):
-            return _error_json(
-                str(exc),
-                exc_type=exc_name,
-                status=aiohttp.web.HTTPConflict.status_code,
-            )
-        if isinstance(exc, ValueError) or exc_name.endswith("DiedError"):
-            return _error_json(str(exc), exc_type=exc_name)
-        raise
+        return _cluster_error_response(exc)
 
 
 class JobAgent(dashboard_utils.DashboardAgentModule):
@@ -529,23 +530,74 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.post("/api/job_agent/cluster/node_groups/{group}/nodes")
     @optional_utils.init_ray_and_catch_exceptions()
-    async def add_nodes(self, req: Request) -> Response:
+    async def add_nodes(self, req: Request) -> aiohttp.web.StreamResponse:
         group = req.match_info["group"]
         body, err_resp = await _parse_json_object_body(req)
         if err_resp is not None:
             return err_resp
+        actor_mgr = self.get_actor_manager()
+        count = body.get("count", 1)
         wait_ready = body.get("wait_ready", False)
-        call = functools.partial(
-            _cluster_response,
-            self.get_actor_manager().add_nodes,
-            group,
-            count=body.get("count", 1),
-            wait_ready=wait_ready,
-            timeout_s=body.get("timeout_s"),
-        )
-        if wait_ready is True:
-            return await asyncio.get_running_loop().run_in_executor(None, call)
-        return call()
+        timeout_s = body.get("timeout_s")
+        if wait_ready is not True:
+            return _cluster_response(
+                actor_mgr.add_nodes,
+                group,
+                count=count,
+                wait_ready=wait_ready,
+                timeout_s=timeout_s,
+            )
+        loop = asyncio.get_running_loop()
+        try:
+            cluster_mod, added_nodes = await loop.run_in_executor(
+                None,
+                functools.partial(
+                    actor_mgr._start_add_nodes,
+                    group,
+                    count=count,
+                    wait_ready=True,
+                    timeout_s=timeout_s,
+                ),
+            )
+        except Exception as exc:
+            return _cluster_error_response(exc)
+
+        async def _wait_work() -> Any:
+            try:
+                return await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        actor_mgr._finish_add_nodes,
+                        cluster_mod,
+                        added_nodes,
+                        wait_ready=True,
+                        timeout_s=timeout_s,
+                    ),
+                )
+            except Exception as exc:
+                exc_name = type(exc).__name__
+                is_timeout = (
+                    isinstance(exc, (TimeoutError, asyncio.TimeoutError))
+                    or exc_name == "TimeoutError"
+                )
+                status = (
+                    aiohttp.web.HTTPRequestTimeout.status_code
+                    if is_timeout
+                    else aiohttp.web.HTTPBadRequest.status_code
+                )
+                msg = str(exc)
+                return {
+                    "ok": False,
+                    "status": status,
+                    "error": {
+                        "exc_type": exc_name,
+                        "exc_message": msg,
+                        "message": msg,
+                        "timed_out": is_timeout,
+                    },
+                }
+
+        return await self._stream_json_with_keepalive(req, _wait_work())
 
     @routes.get("/api/job_agent/cluster/nodes")
     @optional_utils.init_ray_and_catch_exceptions()

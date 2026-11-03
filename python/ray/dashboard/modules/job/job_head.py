@@ -256,6 +256,7 @@ class JobAgentSubmissionClient:
         json_body: Optional[Dict] = None,
         params: Optional[Dict[str, str]] = None,
         req: Optional[Request] = None,
+        prefix: str = "/api/job_agent/actors",
     ) -> AsyncIterator[Tuple[int, str, bytes]]:
         """Yields `(status, content_type, chunk)` tuples for an agent actor request.
 
@@ -264,7 +265,7 @@ class JobAgentSubmissionClient:
         chunk until the body ends or the client of `req` disconnects. Stopping early
         closes the connection to the agent, which cancels the call there.
         """
-        url = f"{self._agent_address}/api/job_agent/actors{subpath}"
+        url = f"{self._agent_address}{prefix}{subpath}"
         async with self._session.request(
             method,
             url,
@@ -742,25 +743,64 @@ class JobHead(SubprocessModule):
         method = urllib.parse.quote(req.match_info["method"], safe="")
         return await self._proxy_actor_request(req, f"/{name}/methods/{method}")
 
-    async def _proxy_cluster_request(self, req: Request, subpath: str) -> Response:
+    async def _proxy_cluster_request(
+        self, req: Request, subpath: str
+    ) -> StreamResponse:
         body, err_resp = await self._parse_json_object_body(req)
         if err_resp is not None:
             return err_resp
         params = dict(req.query) if req.query else None
+        stream = req.method == "POST"
+        sresp: Optional[StreamResponse] = None
         try:
             agent = await self.get_target_agent()
-            status, text, content_type = await agent.forward_actor_request(
+            if not stream:
+                status, text, content_type = await agent.forward_actor_request(
+                    req.method,
+                    subpath,
+                    json_body=body,
+                    params=params,
+                    prefix="/api/job_agent/cluster",
+                )
+                return Response(text=text, status=status, content_type=content_type)
+            relay = agent.stream_actor_request(
                 req.method,
                 subpath,
                 json_body=body,
                 params=params,
+                req=req,
                 prefix="/api/job_agent/cluster",
-                timeout=(
-                    aiohttp.ClientTimeout(total=None) if req.method == "POST" else None
-                ),
             )
-            return Response(text=text, status=status, content_type=content_type)
+            try:
+                async for status, content_type, chunk in relay:
+                    if sresp is None:
+                        if status != 200:
+                            return Response(
+                                body=chunk,
+                                status=status,
+                                content_type=content_type.split(";")[0].strip(),
+                            )
+                        sresp = StreamResponse(
+                            status=status,
+                            headers={
+                                "Content-Type": content_type,
+                                "Cache-Control": "no-cache",
+                            },
+                        )
+                        await sresp.prepare(req)
+                    if chunk:
+                        await sresp.write(chunk)
+            finally:
+                await relay.aclose()
+            await sresp.write_eof()
+            return sresp
         except Exception:
+            if sresp is not None:
+                logger.debug(
+                    f"Cluster request {req.method} {subpath} ended early",
+                    exc_info=True,
+                )
+                return sresp
             logger.exception(f"Failed cluster request {req.method} {subpath}")
             return Response(
                 text=traceback.format_exc(),

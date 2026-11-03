@@ -16,7 +16,7 @@ import time
 import traceback
 import types
 import uuid
-from typing import Any, Deque, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Deque, Dict, List, Mapping, Optional, Set, Tuple, Union
 
 import ray
 import ray._private.worker
@@ -586,7 +586,8 @@ class _ClientRootActor:
             self._cleanup_resources()
             return
 
-        if self._kind != "function":
+        self._reaper_thread: Optional[threading.Thread] = None
+        if self._ttl_seconds is not None and self._ttl_seconds > 0:
             self._reaper_thread = threading.Thread(
                 target=self._self_reap_loop,
                 name=f"ray-client-ttl-{self._name}",
@@ -619,7 +620,6 @@ class _ClientRootActor:
         child_ns = f"{ns}_{self._name}"
         pg_list = self._placement_groups
         state_lock = self._state_lock
-        os.environ["RAY_NAMESPACE"] = child_ns
 
         _orig_get_actor = ray.get_actor
         _orig_actor_remote = ActorClass._remote
@@ -864,12 +864,26 @@ class _ClientRootActor:
     @ray.method(concurrency_group="_control")
     def set_ttl(self, ttl_seconds: Optional[float]) -> Dict[str, Any]:
         validated = _validate_ttl_seconds(ttl_seconds)
+        start_reaper = False
         with self._state_lock:
             if self._shutting_down:
                 raise RuntimeError(f"Actor '{self._name}' is shutting down.")
             self._ttl_seconds = validated
             self._last_active = time.time()
             self._last_active_mono = time.monotonic()
+            if (
+                validated is not None
+                and validated > 0
+                and getattr(self, "_reaper_thread", None) is None
+            ):
+                self._reaper_thread = threading.Thread(
+                    target=self._self_reap_loop,
+                    name=f"ray-client-ttl-{self._name}",
+                    daemon=True,
+                )
+                start_reaper = True
+        if start_reaper and self._reaper_thread is not None:
+            self._reaper_thread.start()
         return self.get_info()
 
     @ray.method(concurrency_group="_control")
@@ -1524,14 +1538,24 @@ class ActorManager:
             }
 
         name_lock = await self._get_name_lock(name)
+        acq_task = asyncio.ensure_future(name_lock.acquire())
         try:
             if deadline is not None:
-                await asyncio.wait_for(
-                    name_lock.acquire(), timeout=_remaining_timeout()
-                )
-            else:
-                await name_lock.acquire()
+                done, _ = await asyncio.wait({acq_task}, timeout=_remaining_timeout())
+                if not done:
+                    raise asyncio.TimeoutError()
+            await acq_task
         except BaseException as exc:
+            if not acq_task.done():
+                acq_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await acq_task
+            if (
+                acq_task.done()
+                and not acq_task.cancelled()
+                and acq_task.exception() is None
+            ):
+                name_lock.release()
             async with self._lock:
                 self._release_name_lock_ref_locked(name)
             if isinstance(exc, asyncio.TimeoutError):
@@ -1707,9 +1731,10 @@ class ActorManager:
                     # Like a Ray Jobs driver, a root that requests no resources runs
                     # on the head node, where this agent runs. It then starts even on
                     # a `num-cpus=0` head and never takes a CPU from worker nodes.
-                    head_node_id = ray.get_runtime_context().get_node_id()
                     options["label_selector"] = {
-                        ray._raylet.RAY_NODE_ID_KEY: head_node_id
+                        ray._raylet.RAY_NODE_ID_KEY: (
+                            ray.get_runtime_context().get_node_id()
+                        )
                     }
 
                 handle = _RemoteClientRootActor.options(**options).remote(spec)
@@ -2131,14 +2156,46 @@ class ActorManager:
             "termination_deadline": getattr(status_obj, "termination_deadline", None),
         }
 
-    def _all_nodes(self, *, include_dead: bool = False) -> List[Dict[str, Any]]:
+    def _all_nodes(
+        self,
+        *,
+        include_dead: bool = False,
+        node_group: Optional[str] = None,
+        states: Optional[Set[str]] = None,
+    ) -> List[Dict[str, Any]]:
         cluster_mod = getattr(ray, "cluster", None)
         if cluster_mod is not None:
+            list_fn = cluster_mod.list_nodes
+            list_params: Mapping[str, Any] = {}
+            with contextlib.suppress(TypeError, ValueError):
+                list_params = inspect.signature(list_fn).parameters
+            accepts_var_kw = any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in list_params.values()
+            )
+            call_kwargs: Dict[str, Any] = {}
+            if node_group is not None and (
+                "group_name" in list_params or accepts_var_kw
+            ):
+                call_kwargs["group_name"] = node_group
             node_state_cls = getattr(cluster_mod, "NodeState", None)
-            if include_dead and node_state_cls is not None:
-                raw_nodes = cluster_mod.list_nodes(states=list(node_state_cls))
-            else:
-                raw_nodes = cluster_mod.list_nodes()
+            if "states" in list_params or accepts_var_kw:
+                if states is not None:
+                    if node_state_cls is not None:
+                        resolved_states = []
+                        for st_name in sorted(states):
+                            st_member = getattr(node_state_cls, st_name, None)
+                            if st_member is None:
+                                with contextlib.suppress(Exception):
+                                    st_member = node_state_cls(st_name)
+                            resolved_states.append(
+                                st_member if st_member is not None else st_name
+                            )
+                        call_kwargs["states"] = resolved_states
+                    else:
+                        call_kwargs["states"] = sorted(states)
+                elif include_dead and node_state_cls is not None:
+                    call_kwargs["states"] = list(node_state_cls)
+            raw_nodes = list_fn(**call_kwargs)
             return [self._node_to_dict(n) for n in raw_nodes]
 
         nodes: List[Dict[str, Any]] = []
@@ -2227,7 +2284,11 @@ class ActorManager:
                     f"{sorted(self._VALID_NODE_STATES)}."
                 )
         need_dead = include_dead or (allowed is not None and "DEAD" in allowed)
-        nodes = self._all_nodes(include_dead=need_dead)
+        nodes = self._all_nodes(
+            include_dead=need_dead,
+            node_group=node_group,
+            states=allowed,
+        )
         if node_group is not None:
             nodes = [n for n in nodes if n["group_name"] == node_group]
         if allowed is not None:
@@ -2245,14 +2306,14 @@ class ActorManager:
                 return n
         raise KeyError(f"Node '{node_id}' does not exist.")
 
-    def add_nodes(
+    def _start_add_nodes(
         self,
         group: str,
         count: int = 1,
         *,
         wait_ready: bool = False,
         timeout_s: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[Any, List[Any]]:
         if not isinstance(group, str) or not group.strip():
             raise ValueError("group must be a non-empty string.")
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
@@ -2260,26 +2321,32 @@ class ActorManager:
         if not isinstance(wait_ready, bool):
             raise ValueError(f"wait_ready must be a bool, got {wait_ready!r}.")
         _validate_timeout(timeout_s, "timeout_s")
-        grp = self.get_node_group(group)
-        if group == "head":
-            raise MaxNodesExceededError(
-                "Cannot add nodes to the 'head' node group (max_nodes=1)."
-            )
-        max_nodes = grp.get("max_nodes")
-        if max_nodes is not None:
-            current_count = len(self.list_nodes(node_group=group))
-            if current_count + count > int(max_nodes):
-                raise MaxNodesExceededError(
-                    f"Adding {count} node(s) to group '{group}' ({current_count} active) "
-                    f"would exceed max_nodes={max_nodes}."
-                )
         cluster_mod = getattr(ray, "cluster", None)
         if cluster_mod is None:
+            self.get_node_group(group)
+            if group == "head":
+                raise MaxNodesExceededError(
+                    "Cannot add nodes to the 'head' node group (max_nodes=1)."
+                )
             raise NotImplementedError(
                 "Cluster node provisioning requires Ray 3.0 (ray.cluster)."
             )
         ng_obj = cluster_mod.get_node_group(group)
-        added_nodes = ng_obj.add_nodes(count, detached=True)
+        if group == "head":
+            raise MaxNodesExceededError(
+                "Cannot add nodes to the 'head' node group (max_nodes=1)."
+            )
+        added_nodes = list(ng_obj.add_nodes(count, detached=True))
+        return cluster_mod, added_nodes
+
+    def _finish_add_nodes(
+        self,
+        cluster_mod: Any,
+        added_nodes: List[Any],
+        *,
+        wait_ready: bool = False,
+        timeout_s: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
         if wait_ready:
             deadline = (
                 (time.monotonic() + float(timeout_s)) if timeout_s is not None else None
@@ -2297,7 +2364,39 @@ class ActorManager:
                     with contextlib.suppress(Exception):
                         n.destroy(reason="add_nodes wait_ready failed or timed out")
                 raise
+            refreshed_nodes: List[Any] = []
+            get_node_fn = getattr(cluster_mod, "get_node", None)
+            for n in added_nodes:
+                if callable(get_node_fn):
+                    try:
+                        refreshed_nodes.append(get_node_fn(n.id))
+                        continue
+                    except Exception:
+                        pass
+                refreshed_nodes.append(n)
+            added_nodes = refreshed_nodes
         return [self._node_to_dict(n) for n in added_nodes]
+
+    def add_nodes(
+        self,
+        group: str,
+        count: int = 1,
+        *,
+        wait_ready: bool = False,
+        timeout_s: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        cluster_mod, added_nodes = self._start_add_nodes(
+            group,
+            count=count,
+            wait_ready=wait_ready,
+            timeout_s=timeout_s,
+        )
+        return self._finish_add_nodes(
+            cluster_mod,
+            added_nodes,
+            wait_ready=wait_ready,
+            timeout_s=timeout_s,
+        )
 
     def destroy_node(
         self,
@@ -2319,15 +2418,17 @@ class ActorManager:
             raise ValueError(
                 f"grace_period_s must be a non-negative finite number, got {grace_period_s!r}."
             )
-        node = self.get_node(node_id)
-        if node.get("group_name") == "head":
-            raise ValueError("Cannot destroy the head node.")
         cluster_mod = getattr(ray, "cluster", None)
         if cluster_mod is None:
+            node = self.get_node(node_id)
+            if node.get("group_name") == "head":
+                raise ValueError("Cannot destroy the head node.")
             raise NotImplementedError(
                 "Cluster node destruction requires Ray 3.0 (ray.cluster)."
             )
         node_obj = cluster_mod.get_node(node_id)
+        if getattr(node_obj, "group_name", None) == "head":
+            raise ValueError("Cannot destroy the head node.")
         destroy_kwargs: Dict[str, Any] = {"reason": reason}
         if grace_period_s is not None:
             destroy_kwargs["grace_period_s"] = float(grace_period_s)

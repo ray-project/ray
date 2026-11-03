@@ -84,43 +84,240 @@ except (ImportError, OSError):
         / "job"
         / "actor_manager.py"
     )
-    _am_tree = ast.parse(_am_path.read_text(encoding="utf-8"))
-    _am_keep = {
-        "_normalize_module_source",
-        "_validate_resource_num",
-        "_normalize_spec_resources",
-        "_compute_spec_hash",
-        "_load_user_target",
-    }
-    _am_mod = ast.Module(
-        body=[
-            n
-            for n in _am_tree.body
-            if isinstance(n, ast.FunctionDef) and n.name in _am_keep
-        ],
-        type_ignores=[],
-    )
-    _am_ns: Dict[str, Any] = {
-        "Any": Any,
-        "Dict": Dict,
-        "Optional": Optional,
-        "Tuple": Tuple,
-        "Union": Union,
-        "contextlib": contextlib,
-        "hashlib": hashlib,
-        "importlib": importlib,
-        "json": json,
-        "math": math,
-        "os": os,
-        "ray": types.SimpleNamespace(),
-        "sys": sys,
-        "types": types,
-        "uuid": uuid,
-    }
-    exec(compile(_am_mod, str(_am_path), "exec"), _am_ns)
-    _normalize_module_source = _am_ns["_normalize_module_source"]
-    _compute_spec_hash = _am_ns["_compute_spec_hash"]
-    _raw_load_user_target = _am_ns["_load_user_target"]
+    if _am_path.is_file():
+        _am_tree = ast.parse(_am_path.read_text(encoding="utf-8"))
+        _am_keep = {
+            "_normalize_module_source",
+            "_validate_resource_num",
+            "_normalize_spec_resources",
+            "_compute_spec_hash",
+            "_load_user_target",
+        }
+        _am_mod = ast.Module(
+            body=[
+                n
+                for n in _am_tree.body
+                if isinstance(n, ast.FunctionDef) and n.name in _am_keep
+            ],
+            type_ignores=[],
+        )
+        _am_ns: Dict[str, Any] = {
+            "Any": Any,
+            "Dict": Dict,
+            "Optional": Optional,
+            "Tuple": Tuple,
+            "Union": Union,
+            "contextlib": contextlib,
+            "hashlib": hashlib,
+            "importlib": importlib,
+            "json": json,
+            "math": math,
+            "os": os,
+            "ray": types.SimpleNamespace(),
+            "sys": sys,
+            "types": types,
+            "uuid": uuid,
+        }
+        exec(compile(_am_mod, str(_am_path), "exec"), _am_ns)
+        _normalize_module_source = _am_ns["_normalize_module_source"]
+        _compute_spec_hash = _am_ns["_compute_spec_hash"]
+        _raw_load_user_target = _am_ns["_load_user_target"]
+    else:
+
+        def _normalize_module_source(module_source: Optional[str]) -> Optional[str]:
+            if module_source is None:
+                return None
+            src = module_source.lstrip("\n")
+            if src.startswith(
+                ("import ray  # noqa: F401\n", "from __future__ import annotations\n")
+            ):
+                lines = src.splitlines(keepends=True)
+                idx = 0
+                while idx < len(lines) and lines[idx].startswith(
+                    (
+                        "from __future__ import annotations",
+                        "import ",
+                        "from ",
+                        "_RayHint =",
+                    )
+                ):
+                    idx += 1
+                return "".join(lines[:idx]) + "".join(lines[idx:]).lstrip("\n")
+            return src
+
+        def _validate_resource_num(
+            val: Any, name: str, *, integer: bool = False
+        ) -> Union[int, float]:
+            if (
+                isinstance(val, bool)
+                or not isinstance(val, (int, float))
+                or not math.isfinite(val)
+                or val < 0
+            ):
+                raise ValueError(
+                    f"Invalid {name} value {val!r}; must be a non-negative finite number."
+                )
+            if integer:
+                if isinstance(val, float) and not val.is_integer():
+                    raise ValueError(
+                        f"Invalid {name} value {val!r}; must be an integer number of bytes."
+                    )
+                return int(val)
+            return val
+
+        def _normalize_spec_resources(
+            spec: Dict[str, Any],
+            kind: str,
+            default_cpus: Optional[Union[int, float]] = None,
+        ) -> Tuple[
+            Union[int, float],
+            Optional[Union[int, float]],
+            Optional[int],
+            Dict[str, float],
+        ]:
+            raw_cpus = spec.get("num_cpus")
+            raw_gpus = spec.get("num_gpus")
+            raw_memory = spec.get("memory")
+            num_cpus = (
+                _validate_resource_num(raw_cpus, "num_cpus")
+                if raw_cpus is not None
+                else None
+            )
+            num_gpus = (
+                _validate_resource_num(raw_gpus, "num_gpus")
+                if raw_gpus is not None
+                else None
+            )
+            memory = (
+                int(_validate_resource_num(raw_memory, "memory", integer=True))
+                if raw_memory is not None
+                else None
+            )
+            raw_resources = spec.get("resources")
+            custom_resources: Dict[str, float] = {}
+            if raw_resources is not None:
+                if not isinstance(raw_resources, dict):
+                    raise ValueError(
+                        f"resources must be a dict[str, float], got {raw_resources!r}."
+                    )
+                for k, v in raw_resources.items():
+                    if not isinstance(k, str):
+                        raise ValueError(
+                            f"Invalid resource key {k!r}; resource keys must be strings."
+                        )
+                    v_num = _validate_resource_num(
+                        v, f"resources[{k!r}]", integer=(k == "memory")
+                    )
+                    if k == "CPU":
+                        if num_cpus is not None and float(num_cpus) != float(v_num):
+                            raise ValueError(
+                                f"Conflicting CPU requirements: num_cpus={num_cpus!r} vs "
+                                f"resources['CPU']={v!r}."
+                            )
+                        num_cpus = v_num
+                    elif k == "GPU":
+                        if num_gpus is not None and float(num_gpus) != float(v_num):
+                            raise ValueError(
+                                f"Conflicting GPU requirements: num_gpus={num_gpus!r} vs "
+                                f"resources['GPU']={v!r}."
+                            )
+                        num_gpus = v_num
+                    elif k == "memory":
+                        if memory is not None and int(memory) != int(v_num):
+                            raise ValueError(
+                                f"Conflicting memory requirements: memory={memory!r} vs "
+                                f"resources['memory']={v!r}."
+                            )
+                        memory = int(v_num)
+                    elif v_num > 0:
+                        custom_resources[k] = float(v_num)
+            if num_cpus is None:
+                num_cpus = (
+                    default_cpus
+                    if default_cpus is not None
+                    else (0 if kind == "function" else 1)
+                )
+            return num_cpus, num_gpus, memory, custom_resources
+
+        def _compute_spec_hash(
+            spec: Dict[str, Any],
+            kind: str,
+            target_name: str,
+            num_cpus: Any,
+            max_concurrency: Any,
+        ) -> str:
+            (
+                norm_cpus,
+                norm_gpus,
+                norm_memory,
+                norm_resources,
+            ) = _normalize_spec_resources(
+                spec,
+                kind,
+                default_cpus=(num_cpus if isinstance(num_cpus, (int, float)) else None),
+            )
+            canonical = {
+                "kind": kind,
+                "target_name": target_name,
+                "module_source": _normalize_module_source(spec.get("module_source")),
+                "module": spec.get("module"),
+                "captured_globals": spec.get("captured_globals") or {},
+                "args": spec.get("args") or [],
+                "kwargs": spec.get("kwargs") or {},
+                "runtime_env": spec.get("runtime_env") or {},
+                "num_cpus": (
+                    float(norm_cpus)
+                    if isinstance(norm_cpus, (int, float))
+                    else norm_cpus
+                ),
+                "num_gpus": (
+                    float(norm_gpus)
+                    if isinstance(norm_gpus, (int, float))
+                    else norm_gpus
+                ),
+                "memory": norm_memory,
+                "resources": norm_resources,
+                "label_selector": spec.get("label_selector") or {},
+                "node_id": spec.get("node_id"),
+                "max_concurrency": (
+                    int(max_concurrency)
+                    if isinstance(max_concurrency, int)
+                    else max_concurrency
+                ),
+            }
+            payload = json.dumps(
+                canonical, sort_keys=True, separators=(",", ":"), default=repr
+            ).encode("utf-8")
+            return hashlib.sha256(payload).hexdigest()
+
+        def _raw_load_user_target(
+            actor_name: str,
+            target_name: str,
+            module_source: Optional[str],
+            module_path: Optional[str],
+            captured_globals: Dict[str, Any],
+        ) -> Any:
+            cwd = os.getcwd()
+            if not sys.path or sys.path[0] != cwd:
+                with contextlib.suppress(ValueError):
+                    sys.path.remove(cwd)
+                sys.path.insert(0, cwd)
+
+            if module_source is not None:
+                mod_name = f"_ray_client_actor_{actor_name}_{target_name}_{uuid.uuid4().hex[:6]}"
+                module = types.ModuleType(mod_name)
+                module.__file__ = f"<{mod_name}>"
+                sys.modules[mod_name] = module
+                module.__dict__.update(captured_globals)
+                exec(compile(module_source, module.__file__, "exec"), module.__dict__)
+                return getattr(module, target_name)
+            if module_path is not None:
+                importlib.invalidate_caches()
+                module = importlib.import_module(module_path)
+                return getattr(module, target_name)
+            raise ValueError(
+                f"Spec for '{target_name}' must provide either 'module_source' or 'module'."
+            )
 
     def _load_user_target(*args: Any, **kwargs: Any) -> Any:
         had_ray = "ray" in sys.modules
@@ -672,6 +869,39 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             group = urllib.parse.unquote(
                 path[len("/api/cluster/node_groups/") : -len("/nodes")]
             )
+            wait_ready = bool(body.get("wait_ready", False))
+            if group == "timeout_stream_group" and wait_ready:
+                self._send_json(
+                    200,
+                    {
+                        "ok": False,
+                        "status": 408,
+                        "error": {
+                            "exc_type": "TimeoutError",
+                            "exc_message": "Wait ready timed out in stream",
+                            "message": "Wait ready timed out in stream",
+                            "timed_out": True,
+                        },
+                    },
+                    keepalive_prefix=b"   ",
+                )
+                return
+            if group == "died_stream_group" and wait_ready:
+                self._send_json(
+                    200,
+                    {
+                        "ok": False,
+                        "status": 400,
+                        "error": {
+                            "exc_type": "NodeDiedError",
+                            "exc_message": "Node died during provisioning",
+                            "message": "Node died during provisioning",
+                            "timed_out": False,
+                        },
+                    },
+                    keepalive_prefix=b"   ",
+                )
+                return
             count = int(body.get("count", 1))
             with self.state.lock:
                 added = []
@@ -680,7 +910,7 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     info = {
                         "id": nid,
                         "group_name": group,
-                        "state": "ALIVE",
+                        "state": "ALIVE" if wait_ready else "PENDING",
                         "ip_address": "10.0.0.9",
                         "resources": {"CPU": 8.0},
                         "labels": {"ray.io/node-group": group},
@@ -688,7 +918,11 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
                     }
                     self.state.nodes[nid] = info
                     added.append(info)
-            self._send_json(200, added)
+            self._send_json(
+                200,
+                added,
+                keepalive_prefix=b"   " if wait_ready else b"",
+            )
             return
 
         if path == "/api/actors":
@@ -2634,9 +2868,6 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 root_act.invoke("read_events", [], {})["result"],
             )
             self.assertEqual(
-                os.environ.get("RAY_NAMESPACE"), "ray_client_test_root_exit"
-            )
-            self.assertEqual(
                 RuntimeContext.namespace.fget(None), "ray_client_test_root_exit"
             )
 
@@ -3762,6 +3993,8 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                             ready_waits.append(timeout)
                             if timeout is not None and timeout > 50.0:
                                 raise TimeoutError("wait_ready timed out")
+                            self._state = "ALIVE"
+                            self.labels["ray.io/node-id"] = self.id
                             return True
 
                         return types.SimpleNamespace(result=_result)
@@ -3788,6 +4021,7 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                 fake_node_pending = _FakeNodeObj(
                     "n_pending", "workers", state="PENDING"
                 )
+                added_node_map: Dict[str, _FakeNodeObj] = {}
 
                 class _FakeNodeGroupObj:
                     def __init__(self, name: str, max_nodes: int = 10):
@@ -3798,10 +4032,30 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
 
                     def add_nodes(self, count: int, *, detached: bool = False):
                         assert detached is True
-                        return [
-                            _FakeNodeObj(f"n_added_{i}", self.name)
+                        current_in_group = sum(
+                            1
+                            for n in [fake_node_head, fake_node_n1, fake_node_pending]
+                            if n.group_name == self.name and n._state != "DEAD"
+                        )
+                        if (
+                            self.max_nodes is not None
+                            and current_in_group + count > self.max_nodes
+                        ):
+                            raise MaxNodesExceededError(
+                                f"Adding {count} node(s) to group '{self.name}' "
+                                f"would exceed max_nodes={self.max_nodes}."
+                            )
+                        created = [
+                            _FakeNodeObj(
+                                f"n_added_{i}",
+                                self.name,
+                                state="PENDING",
+                            )
                             for i in range(count)
                         ]
+                        for n in created:
+                            added_node_map[n.id] = n
+                        return created
 
                 fake_groups = {
                     "head": _FakeNodeGroupObj("head", max_nodes=1),
@@ -3820,6 +4074,8 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                         return fake_node_n1
                     if nid == "n_pending":
                         return fake_node_pending
+                    if nid in added_node_map:
+                        return added_node_map[nid]
                     raise KeyError(nid)
 
                 fake_cluster_mod = types.SimpleNamespace(
@@ -3885,6 +4141,10 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     )
                     self.assertEqual(len(added_res), 2)
                     self.assertEqual(len(ready_waits), 2)
+                    self.assertEqual(added_res[0]["state"], "ALIVE")
+                    self.assertEqual(
+                        added_res[0]["labels"].get("ray.io/node-id"), "n_added_0"
+                    )
                     destroyed_n1 = mgr.destroy_node(
                         "n1", "drain test", grace_period_s=15.0
                     )
@@ -4267,6 +4527,78 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     kw_act.non_stream.call(1, kwargs=[("x", 1)])  # type: ignore[arg-type]
                 with self.assertRaisesRegex(TypeError, "kwargs must be a dict"):
                     kw_act.gen_items.stream(2, kwargs=[("count", 2)])  # type: ignore[arg-type]
+
+            # 6. Verify _UNSET sentinel repr, request() param order, 400 RayClientError on POST /api/actors,
+            # _http_error auth-disabled hint suppression, streamed add_nodes errors, ActorHandle.__exit__
+            # exception preservation, and _SSEStreamIterator.__del__ GC safety.
+            self.assertIn("<UNSET>", str(inspect.signature(RayCluster.actor)))
+            req_kw_names = [
+                p.name
+                for p in inspect.signature(RayCluster.request).parameters.values()
+                if p.kind == inspect.Parameter.KEYWORD_ONLY
+            ]
+            self.assertEqual(
+                req_kw_names,
+                ["data", "json_data", "idempotent", "stream", "timeout"],
+            )
+
+            # Raw 400 from POST /api/actors raises RayClientError (not RayJobExecutionError)
+            with self.assertRaises(RayClientError) as bad_spec_ctx:
+                cluster._deploy_actor_spec({"kind": "class"}, "missing_cls")
+            self.assertNotIsInstance(bad_spec_ctx.exception, RayJobExecutionError)
+            self.assertIn("class_name", str(bad_spec_ctx.exception))
+
+            # 401 with RAY_AUTH_MODE=disabled does NOT append _AUTH_HINT
+            fake_401_disabled = types.SimpleNamespace(
+                status_code=401,
+                text="Authentication disabled (RAY_AUTH_MODE=disabled)",
+                json=lambda: (_ for _ in ()).throw(ValueError("not json")),
+            )
+            err_disabled = RayCluster._http_error("GET", "/api/actors", fake_401_disabled)  # type: ignore[arg-type]
+            self.assertNotIn("RAY_AUTH_TOKEN", str(err_disabled))
+
+            fake_401_enabled = types.SimpleNamespace(
+                status_code=401,
+                text="Missing authentication token",
+                json=lambda: (_ for _ in ()).throw(ValueError("not json")),
+            )
+            err_enabled = RayCluster._http_error("GET", "/api/actors", fake_401_enabled)  # type: ignore[arg-type]
+            self.assertIn("RAY_AUTH_TOKEN", str(err_enabled))
+
+            # Streamed wait_ready=True timeout and node-died errors
+            with self.assertRaises(RayJobTimeoutError):
+                cluster.add_nodes(
+                    "timeout_stream_group", 1, wait_ready=True, timeout=2.0
+                )
+            with self.assertRaises(RayClientError) as died_ctx:
+                cluster.add_nodes("died_stream_group", 1, wait_ready=True, timeout=2.0)
+            self.assertNotIsInstance(died_ctx.exception, RayJobTimeoutError)
+            self.assertIn("NodeDiedError", str(died_ctx.exception))
+
+            # ActorHandle.__exit__ does not mask an in-flight exception when kill() fails
+            with self.assertRaisesRegex(RuntimeError, "user body boom"):
+                with cluster.actor(StreamService, name="exit_mask_test") as ex_act:
+                    with patch.object(
+                        ex_act,
+                        "kill",
+                        side_effect=RayClientError("kill network error"),
+                    ):
+                        raise RuntimeError("user body boom")
+            ex_act.kill()
+
+            # _SSEStreamIterator.__del__ closes response without firing network callback
+            del_cb_called = []
+            del_resp_closed = []
+            from ray_client.client import _SSEStreamIterator
+
+            dummy_sse = _SSEStreamIterator(
+                iter([1]),
+                types.SimpleNamespace(close=lambda: del_resp_closed.append(True)),  # type: ignore[arg-type]
+                on_close=lambda: del_cb_called.append(True),
+            )
+            dummy_sse.__del__()
+            self.assertEqual(del_resp_closed, [True])
+            self.assertEqual(del_cb_called, [])
 
 
 if __name__ == "__main__":

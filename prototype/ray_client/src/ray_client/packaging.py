@@ -935,7 +935,7 @@ def _write_file_entry(
     with path.open("rb") as src, zf.open(info, "w") as dst:
         while chunk := src.read(_READ_CHUNK_BYTES):
             dst.write(chunk)
-            if buf.tell() >= MAX_PACKAGE_BYTES:
+            if buf.tell() > MAX_PACKAGE_BYTES:
                 partial = (buf.tell() - info.header_offset, arcname)
                 raise _package_too_large(buf.tell(), [*entry_sizes, partial])
     entry_sizes.append((info.compress_size, arcname))
@@ -1000,7 +1000,7 @@ def build_working_dir_package(
             else:
                 _write_file_entry(zf, buf, arcname, path, entry_sizes)
     zip_bytes = buf.getvalue()
-    if len(zip_bytes) >= MAX_PACKAGE_BYTES:
+    if len(zip_bytes) > MAX_PACKAGE_BYTES:
         raise _package_too_large(len(zip_bytes), entry_sizes)
     gcs_uri = f"gcs://{RAY_PKG_PREFIX}{hashlib.sha1(zip_bytes).hexdigest()}.zip"
     if cache_key is not None:

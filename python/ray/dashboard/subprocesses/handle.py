@@ -392,7 +392,6 @@ class SubprocessModuleHandle:
                         next_chunk_task = None
                     if chunk:
                         await proxy_resp.write(chunk)
-                        await proxy_resp.drain()
                 if request.transport is not None and not request.transport.is_closing():
                     await proxy_resp.write_eof()
             except (

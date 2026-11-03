@@ -13,9 +13,12 @@ The Ray Dashboard HTTP server on port `8265` serves four endpoint families for e
   `wait_ready=true`) stream periodic keepalive bytes (`" "` whitespace for unary JSON responses,
   `: ping\n\n` comments for SSE) every 1 second so intermediate load balancers and ingress
   proxies never close idle connections prematurely, while immediately detecting client disconnects.
-- **Ray 2.x and Ray 3.0 compatibility:** `/api/actors`, `/api/jobs`, and `/api/packages` work on
-  both Ray 2.x and Ray 3.0 (`RAY_BACKEND=rust`). `/api/cluster/*` node mutations delegate to Ray
-  3.0's `ray.cluster` module and return `501 Not Implemented` on Ray 2.x.
+- **Ray 2.x and Ray 3.0 compatibility:** `/api/actors`, `/api/jobs`, and `/api/packages` run on the
+  Python Ray Dashboard across Ray 2.x and Ray 3.0. `/api/cluster/*` read endpoints
+  (`GET /api/cluster/node_groups`, `GET /api/cluster/nodes`) use `ray.cluster` when available and
+  fall back to `ray.nodes()` on Ray 2.x; `/api/cluster/*` node mutations (`POST .../nodes`,
+  `DELETE /api/cluster/nodes/{node_id}`) delegate to Ray 3.0's `ray.cluster` module and return
+  `501 Not Implemented` on Ray 2.x.
 
 ## Authentication
 
@@ -48,14 +51,14 @@ Create or reattach to a root actor on the cluster.
 
 Request JSON body:
 
-- `name` (`str | None`): Actor name. Auto-generated as `actor_<10-hex>` when omitted.
+- `name` (`str | None`): Actor name. Auto-generated as `<target_name>_<8-hex>` when omitted.
 - `kind` (`"class" | "function"`, default `"class"`): Target workload kind.
 - `detached` (`bool`, default `true` for `"class"`, `false` for `"function"`): Whether the root
   actor is detached or owned by the Dashboard agent process.
 - `class_name` (`str | None`), `fn_name` (`str | None`): Target class or function name when
   `module_source` is provided.
-- `module` (`str | None`): Dotted import path (`"pkg.mod:Attr"` or `"pkg.mod.Attr"`) when
-  loading from the cluster's installed environment instead of `module_source`.
+- `module` (`str | None`): Module import path when loading `class_name` or `fn_name` from the
+  cluster's installed environment instead of `module_source`.
 - `module_source` (`str | None`): Python source defining `class_name` or `fn_name`.
 - `captured_globals` (`dict[str, Any]`): Module-level JSON constants injected into the module
   namespace before executing `module_source`.
@@ -68,8 +71,10 @@ Request JSON body:
   keys (`"CPU"`, `"GPU"`, `"memory"`, and custom resources).
 - `label_selector` (`dict[str, str] | None`): Node label placement constraints.
 - `max_concurrency` (`int`, default `1`): Maximum concurrent method executions (`>= 1`).
-- `ttl_seconds` (`float | None`): Idle TTL in seconds (`1800.0` default for new `"class"` actors;
-  `<= 0` disables idle reaping; `null` on reattach preserves the existing actor's TTL).
+- `ttl_seconds` (`float | None`): Idle TTL in seconds (`1800.0` default for new `"class"` actors
+  and `300.0` for `"function"` actors when `"ttl_seconds"` is omitted; explicit `null` disables
+  idle reaping; `<= 0` is rejected with `400 Bad Request`; omitting `"ttl_seconds"` on reattach
+  preserves the existing actor's TTL).
 - `get_if_exists` (`bool | "recreate"`, default `true` for `"class"`, `false` for `"function"`):
   Reattachment policy when an actor with `name` already exists.
 - `timeout` (`float | None`): Creation and `__init__` timeout in seconds.
@@ -77,8 +82,8 @@ Request JSON body:
 Responses:
 
 - **`400 Bad Request`** (returned before streaming begins): Invalid specification fields (such as
-  missing `module_source`/`module`, `max_concurrency < 1`, non-JSON `args`/`kwargs`, or both
-  `node_id` and `label_selector` set). Body:
+  missing `class_name`/`fn_name`, `ttl_seconds <= 0`, `max_concurrency < 1`, non-JSON
+  `args`/`kwargs`, conflicting resources, or both `node_id` and `label_selector` set). Body:
   `{"ok": false, "error": {"exc_type": "ValueError" | "TypeError", "exc_message": "..."}}`.
 - **`200 OK` (`application/json`, with 1s `" "` whitespace keepalives)**:
   - On success:
@@ -86,19 +91,20 @@ Responses:
     {
       "ok": true,
       "name": "trainer",
-      "actor_id": "a1b2c3...",
-      "node_id": "d4e5f6...",
       "class_name": "Trainer",
-      "module": "inline",
+      "kind": "class",
+      "namespace": "ray_client",
       "status": "ALIVE",
       "detached": true,
-      "created": true,
-      "spec_mismatch": false,
       "spec_hash": "8f3c...",
-      "max_concurrency": 1,
+      "active_calls": 0,
       "ttl_seconds": 1800.0,
+      "remaining_ttl_seconds": 1800.0,
       "created_at": 1730000000.0,
-      "last_active_at": 1730000000.0
+      "last_active": 1730000000.0,
+      "generator_methods": ["stream_steps"],
+      "created": true,
+      "spec_mismatch": false
     }
     ```
   - On constructor exception, conflict (`get_if_exists=false`), or creation timeout:
@@ -117,10 +123,11 @@ Responses:
 
 ### `GET /api/actors` and `GET /api/actors/{name}`
 
-- `GET /api/actors` returns `{"ok": true, "actors": [<actor_info>, ...]}` for all active
-  client-managed root actors.
+- `GET /api/actors` returns a JSON array `[<actor_info>, ...]` (`200 OK`) of metadata dictionaries
+  for all active client-managed root actors.
 - `GET /api/actors/{name}` returns `{"ok": true, ...<actor_info>}` (`200 OK`), or `404 Not Found`
-  (`{"ok": false, "error": "Actor '<name>' not found"}`) if no actor with `name` exists.
+  (`{"ok": false, "error": {"exc_type": "KeyError", "exc_message": "Actor '<name>' does not exist."}}`)
+  if no actor with `name` exists.
 
 ### `POST /api/actors/{name}/methods/{method}`
 
@@ -138,7 +145,8 @@ Request JSON body:
 Responses:
 
 - **`400 Bad Request`**: Malformed JSON or invalid `args`/`kwargs`/`timeout` types.
-- **`404 Not Found`**: Actor `{name}` does not exist (`{"ok": false, "error": {"exc_type": "KeyError", "exc_message": "..."}}`).
+- **`404 Not Found`**: Actor `{name}` does not exist
+  (`{"ok": false, "error": {"exc_type": "KeyError", "exc_message": "Actor '<name>' does not exist."}}`).
 - **Unary response (`200 OK`, `application/json`, with 1s `" "` whitespace keepalives)**:
   - Success: `{"ok": true, "result": <json_value>}`
   - Error or timeout:
@@ -153,25 +161,28 @@ Responses:
 ### `GET /api/actors/{name}/logs`
 
 Returns `{"ok": true, "name": "<name>", "logs": "<stdout_and_stderr>"}` (`200 OK`), or
-`404 Not Found` if `{name}` does not exist.
+`404 Not Found`
+(`{"ok": false, "error": {"exc_type": "KeyError", "exc_message": "Actor '<name>' does not exist."}}`)
+if `{name}` does not exist.
 
 ### `DELETE /api/actors/{name}`
 
 Terminates `{name}` (running any user-defined `close()` or `__exit__()` hook first and removing
 owned placement groups and child actors). Returns `{"ok": true, "name": "<name>", "killed": true}`
-(`200 OK`), or `404 Not Found` (`{"ok": false, "name": "<name>", "killed": false}`) if `{name}`
+(`200 OK`), or `404 Not Found` (`{"ok": false, "killed": false, "name": "<name>"}`) if `{name}`
 does not exist.
 
 ## Cluster Node Management API (`/api/cluster`)
 
-All `/api/cluster` responses wrap payloads in `{"ok": true, ...}` on success and
-`{"ok": false, "error": {"exc_type": "...", "exc_message": "..."}}` on error.
+On error, `/api/cluster` endpoints return
+`{"ok": false, "error": {"exc_type": "...", "exc_message": "..."}}` with the corresponding HTTP
+status code (`400`, `404`, `408`, `409`, or `501`).
 
 ### `GET /api/cluster/node_groups` and `GET /api/cluster/node_groups/{group}`
 
-- `GET /api/cluster/node_groups` returns `{"ok": true, "node_groups": [<NodeGroup>, ...]}`
-  (always including the `"head"` group).
-- `GET /api/cluster/node_groups/{group}` returns `{"ok": true, ...<NodeGroup>}` (`200 OK`) or
+- `GET /api/cluster/node_groups` returns a JSON array `[<NodeGroup>, ...]` (`200 OK`, always
+  including the `"head"` group).
+- `GET /api/cluster/node_groups/{group}` returns a `<NodeGroup>` JSON object (`200 OK`) or
   `404 Not Found`.
 
 Each `NodeGroup` object has:
@@ -192,29 +203,38 @@ Add detached nodes to `{group}`.
 Request JSON body:
 
 - `count` (`int`, default `1`, must be `>= 1`): Number of nodes to add.
-- `wait_ready` (`bool`, default `false`): Whether to wait until all added nodes leave `PENDING`.
+- `wait_ready` (`bool`, default `false`): Whether to wait until all added nodes transition to
+  `ALIVE`.
 - `timeout_s` (`float | None`): Timeout in seconds when `wait_ready=true`.
 
 Responses:
 
-- `200 OK` (streams 1s `" "` whitespace keepalives when `wait_ready=true`):
-  `{"ok": true, "nodes": [<NodeSummary>, ...]}`.
-- `400 Bad Request`: `count < 1`, `timeout_s <= 0`, or `{group}` is `"head"`.
+- `200 OK`:
+  - When `wait_ready=false`: Returns a JSON array `[<NodeSummary>, ...]`.
+  - When `wait_ready=true`: Validates parameters and provisions the detached nodes first (so
+    `400`/`404`/`409`/`501` errors return immediately with their HTTP status code), then streams
+    1s `" "` whitespace keepalives while waiting for all added nodes to become `ALIVE` and writes
+    the refreshed `[<NodeSummary>, ...]` JSON array (or
+    `{"ok": false, "status": 408 | 400, "error": {"exc_type": "...", "exc_message": "...", "message": "...", "timed_out": <bool>}}`
+    if waiting times out or a node dies during provisioning, after destroying the newly added
+    nodes).
+- `400 Bad Request`: `count < 1`, non-boolean `wait_ready`, or `timeout_s <= 0`.
 - `404 Not Found`: Unknown node group `{group}`.
 - `408 Request Timeout`: `wait_ready=true` timed out waiting for nodes to become `ALIVE`.
-- `409 Conflict`: Request exceeds the group's `max_nodes` limit (`NodeGroupLimitExceeded`).
+- `409 Conflict`: `{group}` is `"head"` or adding `count` nodes exceeds the group's `max_nodes`
+  limit (`MaxNodesExceededError`).
 - `501 Not Implemented`: Cluster does not provide `ray.cluster` (Ray 2.x).
 
 ### `GET /api/cluster/nodes` and `GET /api/cluster/nodes/{node_id}`
 
 - `GET /api/cluster/nodes` accepts optional query parameters:
   - `node_group` (`str`): Filter by `group_name`.
-  - `state` (repeatable or comma-separated `str`): Filter by state (`PENDING`, `ALIVE`,
-    `TERMINATING_SOON`, `DEAD`).
+  - `state` (comma-separated `str`): Filter by state (`PENDING`, `ALIVE`, `TERMINATING_SOON`,
+    `DEAD`).
   - `include_dead` (`"true" | "false"`, default `"false"`): Include `DEAD` nodes when `state` is
     not specified.
-  Returns `{"ok": true, "nodes": [<NodeSummary>, ...]}`.
-- `GET /api/cluster/nodes/{node_id}` returns `{"ok": true, ...<NodeSummary>}` (`200 OK`) or
+  Returns a JSON array `[<NodeSummary>, ...]` (`200 OK`).
+- `GET /api/cluster/nodes/{node_id}` returns a `<NodeSummary>` JSON object (`200 OK`) or
   `404 Not Found`.
 
 Each `NodeSummary` object matches the Ray 3.0 `Node` / `NodeStatus` schema:
@@ -236,11 +256,11 @@ Each `NodeSummary` object matches the Ray 3.0 `Node` / `NodeStatus` schema:
 
 Destroy a node by ID.
 
-Request JSON body (or query parameters):
+Request JSON body:
 
 - `reason` (`str`, required, non-empty): Human-readable explanation for destroying the node.
-- `grace_period_s` (`float`, default `0.0`, must be `>= 0`): Grace period in seconds during which
-  the node enters `TERMINATING_SOON` before becoming `DEAD`.
+- `grace_period_s` (`float`, optional, must be `>= 0`): Grace period in seconds during which an
+  `ALIVE` node enters `TERMINATING_SOON` before becoming `DEAD`.
 
 Responses:
 

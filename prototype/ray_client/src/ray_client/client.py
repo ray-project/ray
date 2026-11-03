@@ -45,7 +45,14 @@ from ray_client.packaging import (
 _RETRYABLE_HTTP_STATUS = frozenset({502, 503, 504})
 _TERMINAL_JOB_STATUSES = frozenset({"SUCCEEDED", "FAILED", "STOPPED"})
 _MAX_RETRIES = 5
-_UNSET: Any = object()
+
+
+class _UnsetType:
+    def __repr__(self) -> str:
+        return "<UNSET>"
+
+
+_UNSET: Any = _UnsetType()
 _AUTH_HINT = (
     " The cluster requires token authentication: set RAY_AUTH_TOKEN or "
     "RAY_AUTH_TOKEN_PATH, or pass headers={'Authorization': 'Bearer <token>'}."
@@ -633,8 +640,9 @@ class _SSEStreamIterator(Iterator[Any]):
         self.close()
 
     def __del__(self) -> None:
+        self._closed = True
         try:
-            self.close()
+            self._resp.close()
         except Exception:
             pass
 
@@ -751,8 +759,8 @@ class RayCluster:
         data: Optional[bytes] = None,
         json_data: Optional[Dict[str, Any]] = None,
         idempotent: bool = True,
-        timeout: Optional[float] = None,
         stream: bool = False,
+        timeout: Optional[float] = None,
     ) -> "requests.Response":
         """Sends an HTTP request to the Ray Dashboard server.
 
@@ -763,8 +771,8 @@ class RayCluster:
             json_data: Optional JSON-serializable request body dictionary.
             idempotent: If `True`, automatically retries on transient network errors
                 and HTTP 502/503/504 responses.
-            timeout: Optional timeout in seconds (or `(connect, read)` tuple).
             stream: Whether to stream the HTTP response body.
+            timeout: Optional timeout in seconds (or `(connect, read)` tuple).
 
         Returns:
             The `requests.Response` object.
@@ -832,10 +840,31 @@ class RayCluster:
     def _http_error(
         method: str, endpoint: str, resp: "requests.Response", hint: str = ""
     ) -> RayClientError:
+        detail = resp.text
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                err = data.get("error")
+                if isinstance(err, dict):
+                    extracted = err.get("message") or err.get("exc_message")
+                    exc_type = err.get("exc_type")
+                    if extracted:
+                        detail = (
+                            f"{exc_type}: {extracted}" if exc_type else str(extracted)
+                        )
+                elif isinstance(err, str) and err:
+                    detail = err
+        except Exception:
+            pass
         if resp.status_code in (401, 403):
-            hint = _AUTH_HINT + hint
+            lower_detail = f"{detail} {resp.text}".lower()
+            if (
+                "authentication disabled" not in lower_detail
+                and "ray_auth_mode=disabled" not in lower_detail
+            ):
+                hint = _AUTH_HINT + hint
         return RayClientError(
-            f"{method} {endpoint} failed ({resp.status_code}): {resp.text}{hint}"
+            f"{method} {endpoint} failed ({resp.status_code}): {detail}{hint}"
         )
 
     @staticmethod
@@ -1260,7 +1289,7 @@ class RayCluster:
                         submission_id=sub_id,
                     ) from exc
                 raise
-            if resp.status_code not in (200, 400):
+            if resp.status_code != 200:
                 raise self._http_error("POST", "/api/actors", resp)
             data = self._read_json_stream_response(
                 resp,
@@ -1900,14 +1929,95 @@ class RayCluster:
             else ((self._timeout, None) if wait_ready else None)
         )
         q_group = urllib.parse.quote(group_name.strip(), safe="")
-        res = self._json(
-            "POST",
-            f"/api/cluster/node_groups/{q_group}/nodes",
-            json_data=body,
-            idempotent=False,
-            timeout=req_timeout,
+        endpoint = f"/api/cluster/node_groups/{q_group}/nodes"
+        if not wait_ready:
+            res = self._json(
+                "POST",
+                endpoint,
+                json_data=body,
+                idempotent=False,
+                timeout=req_timeout,
+            )
+            return list(res)
+
+        timeout_msg = (
+            f"Waiting for {count} node(s) in group '{group_name.strip()}' "
+            f"timed out after {eff_timeout}s."
         )
-        return list(res)
+        resp: Optional["requests.Response"] = None
+        try:
+            try:
+                resp = self.request(
+                    "POST",
+                    endpoint,
+                    json_data=body,
+                    idempotent=False,
+                    stream=True,
+                    timeout=req_timeout,
+                )
+            except RayClientError as exc:
+                if eff_timeout is not None and _is_timeout_exception(exc):
+                    raise RayJobTimeoutError(
+                        timeout_msg,
+                        submission_id=group_name.strip(),
+                    ) from exc
+                raise
+            if resp.status_code == 408:
+                try:
+                    data_408 = resp.json()
+                    err_408 = (
+                        data_408.get("error") if isinstance(data_408, dict) else None
+                    )
+                    msg_408 = (
+                        (err_408.get("message") or err_408.get("exc_message"))
+                        if isinstance(err_408, dict)
+                        else None
+                    ) or timeout_msg
+                except Exception:
+                    msg_408 = timeout_msg
+                raise RayJobTimeoutError(
+                    str(msg_408),
+                    submission_id=group_name.strip(),
+                )
+            if resp.status_code != 200:
+                raise self._http_error("POST", endpoint, resp)
+            res = self._read_json_stream_response(
+                resp,
+                endpoint=endpoint,
+                timeout=eff_timeout,
+                timeout_message=timeout_msg,
+                submission_id=group_name.strip(),
+            )
+            if isinstance(res, dict) and res.get("ok") is False:
+                status = res.get("status", 400)
+                err = res.get("error")
+                if isinstance(err, dict):
+                    exc_type = err.get("exc_type")
+                    msg = (
+                        err.get("message")
+                        or err.get("exc_message")
+                        or f"POST {endpoint} failed"
+                    )
+                    is_timeout = bool(
+                        status == 408
+                        or exc_type == "TimeoutError"
+                        or err.get("timed_out")
+                    )
+                else:
+                    exc_type = None
+                    msg = str(err or f"POST {endpoint} failed")
+                    is_timeout = status == 408
+                if is_timeout:
+                    raise RayJobTimeoutError(
+                        str(msg),
+                        submission_id=group_name.strip(),
+                    )
+                detail = f"{exc_type}: {msg}" if exc_type else str(msg)
+                raise RayClientError(f"POST {endpoint} failed ({status}): {detail}")
+            return list(res)
+        finally:
+            if resp is not None:
+                resp.close()
 
     def list_nodes(
         self,

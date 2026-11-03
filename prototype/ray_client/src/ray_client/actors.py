@@ -3,6 +3,7 @@
 import urllib.parse
 from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
+from ray_client.exceptions import RayClientError
 from ray_client.packaging import to_json
 
 if TYPE_CHECKING:
@@ -181,6 +182,12 @@ class ActorHandle:
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if exc_type is not None:
+            try:
+                self.kill()
+            except RayClientError:
+                pass
+            return
         self.kill()
 
     def kill(self) -> bool:
