@@ -33,7 +33,8 @@ echo "IP Head: $ip_head"
 # The entrypoint (simple-trainer.py) will only run on the head node.
 # Create the auth token once. Every node reads it from ~/.ray/auth_token,
 # so this assumes the home directory is shared across the job's nodes.
-ray get-auth-token --generate
+# Discard stdout, which prints the token, to keep it out of the job's log.
+ray get-auth-token --generate > /dev/null
 srun --nodes="$SLURM_JOB_NUM_NODES" --ntasks="$SLURM_JOB_NUM_NODES" \
     ray symmetric-run \
     --address "$ip_head" \
