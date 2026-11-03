@@ -208,9 +208,8 @@ class SerializationContext:
 
             # Serializing a ref hands it to another process as a borrower, which a
             # consume-once ref doesn't allow.
-            if not obj.is_nil() and worker.core_worker.get_move_state(obj) in (
-                "MOVABLE",
-                "MOVED",
+            if worker.core_worker.has_consume_once_objects() and (
+                worker.core_worker.get_move_state(obj) in ("MOVABLE", "MOVED")
             ):
                 # raise PicklingError for the case when ref is wrapped in ` raise Exception(ref)`,
                 # since RayTaskError catches PicklingError. Another alternative would be to use

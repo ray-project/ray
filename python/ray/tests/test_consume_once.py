@@ -37,6 +37,7 @@ class Consumer:
         return self.num_calls
 
     def consume_all(self, *values, extra=None):
+        self.num_calls += 1
         return list(values) + [extra]
 
 
@@ -384,6 +385,24 @@ def test_rejected_nested_arg_submits_nothing_and_leaks_nothing(
         consumer.consume_all.remote(b"x" * (1024 * 1024), [ref])
     assert set(core_worker.get_all_reference_counts()) == refs_before
     assert ray.get(consumer.get_num_calls.remote()) == 0
+
+
+def test_rejected_second_consumer_submits_nothing_and_leaks_nothing(
+    ray_start_regular_shared,
+):
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+    ref = producer.produce.options(_consume_once=True).remote(1)
+    ray.get(consumer.consume.remote(ref))
+    num_calls = ray.get(consumer.get_num_calls.remote())
+    core_worker = ray._private.worker.global_worker.core_worker
+    refs_before = set(core_worker.get_all_reference_counts())
+
+    # The large by-value arg is put into plasma before the move is rejected.
+    with pytest.raises(ValueError, match="already passed to an actor task"):
+        consumer.consume_all.remote(b"x" * (1024 * 1024), ref)
+    assert set(core_worker.get_all_reference_counts()) == refs_before
+    assert ray.get(consumer.get_num_calls.remote()) == num_calls
 
 
 def test_consume_once_ref_in_dataclass_arg_rejected(ray_start_regular_shared):

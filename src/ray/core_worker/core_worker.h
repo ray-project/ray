@@ -1087,6 +1087,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   std::vector<std::optional<MoveState>> GetMoveStates(
       const std::vector<ObjectID> &object_ids) const;
 
+  /**
+   * Whether this worker owns any consume-once object, see
+   * ReferenceCounterInterface::HasConsumeOnceObjects.
+   **/
+  bool HasConsumeOnceObjects() const;
+
   /// Create an actor.
   ///
   /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been
