@@ -1076,12 +1076,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const TaskID current_task_id = TaskID::Nil());
 
   /**
-   * Check that none of the given objects was created with `consume_once=True`.
-   *
-   * @param arg_ids IDs of a task's by-reference arguments.
-   * @return InvalidArgument naming the first consume-once object, OK otherwise.
+   * Get the move state of an object, see ReferenceCounterInterface::GetMoveState.
    **/
-  Status CheckNoConsumeOnceArgs(const std::vector<ObjectID> &arg_ids) const;
+  std::optional<MoveState> GetMoveState(const ObjectID &object_id) const;
+
+  /**
+   * Get the move states of objects under a single lock, see
+   * ReferenceCounterInterface::GetMoveStates.
+   **/
+  std::vector<std::optional<MoveState>> GetMoveStates(
+      const std::vector<ObjectID> &object_ids) const;
 
   /// Create an actor.
   ///
