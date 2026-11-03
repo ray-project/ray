@@ -129,7 +129,7 @@ steps:
       - ray-wheel-build($)
       - raytpubase($)
 
-  - label: ":tapioca: smoke test: ray tpu image"
+  - label: ":tapioca: smoke test: ray-py{{matrix}}-tpu"
     instance_type: small
     tags:
       - python_dependencies
@@ -138,10 +138,16 @@ steps:
     commands:
       - aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
       - docker run --rm
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-ray-py3.10-tpu
-        /bin/bash -c "python -c \"import ray; print('ray', ray.__version__); import jax; print('jax', jax.__version__)\""
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-ray-py{{matrix}}-tpu
+        /bin/bash -c "pip check && python -c \"import ray, jax, libtpu, flax, optax, orbax.checkpoint, tpu_info.version; print('ray', ray.__version__, 'jax', jax.__version__)\""
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+      - "3.14"
     depends_on:
-      - ray-image-tpu-build(python=3.10)
+      - ray-image-tpu-build(python={{matrix}})
       - forge
 
   - name: ray-image-cuda-build
