@@ -218,25 +218,45 @@ def test_missing_api_freezes_whole_file_and_rejects_assignments(
 
 
 @pytest.mark.parametrize("stripe", [False, True], ids=["whole", "stripe"])
-@pytest.mark.parametrize("schema_kind", ["none", "empty", "synthesized", "partition"])
+@pytest.mark.parametrize(
+    "schema_kind",
+    [
+        "none",
+        "empty",
+        "synthesized",
+        "partition",
+        "partition_root",
+        "partition_root_stored",
+    ],
+)
 @pytest.mark.parametrize("empty_projection", [False, True])
 def test_schema_fallback_keeps_physical_columns(
     case, monkeypatch, stripe, schema_kind, empty_projection
 ):
+    root = schema_kind.startswith("partition_root")
+    if root:
+        table = orc.read_table(str(case.path))
+        if schema_kind.endswith("stored"):
+            table = table.append_column("year", pa.array(["2025"] * 16))
+        path = write_orc_stripes(case.path.parent.parent / "root.orc", table)
+        case = SimpleNamespace(
+            path=path, layout=metadata.read_orc_metadata(str(path), None)
+        )
     if not stripe:
         monkeypatch.setattr(orc.ORCFile, "read_stripe", None)
     schema = {
         "none": None,
         "empty": pa.schema([]),
         "synthesized": pa.schema([("path", pa.string())]),
-        "partition": pa.schema([("year", pa.string())]),
-    }[schema_kind]
+    }.get(schema_kind, pa.schema([("year", pa.int32() if root else pa.string())]))
     batches = list(
         OrcScanner(
             schema=schema,
             columns=() if empty_projection else None,
             batch_size=2,
-            partitioning=Partitioning(PartitionStyle.HIVE),
+            partitioning=Partitioning(
+                PartitionStyle.HIVE, field_names=["year"] if root else None
+            ),
             synthesized_columns=(PathColumn(),),
         )
         .create_reader()
@@ -250,13 +270,20 @@ def test_schema_fallback_keeps_physical_columns(
             for b in batches
         )
     else:
-        names = {
-            "synthesized": ["path", "id", "label", "year"],
-            "partition": ["year", "id", "label", "path"],
-        }.get(schema_kind, ["id", "label", "year", "path"])
+        names = {"synthesized": ["path", "id", "label", "year"]}.get(
+            schema_kind,
+            ["year", "id", "label", "path"]
+            if schema_kind.startswith("partition")
+            else ["id", "label", "year", "path"],
+        )
         assert all(b.column_names == names for b in batches)
+        assert all(
+            b.schema.field("year").type == (pa.int32() if root else pa.string())
+            for b in batches
+        )
+        year = 2025 if schema_kind.endswith("stored") else None if root else "2024"
         assert [r for b in batches for r in b.to_pylist()] == [
-            dict(id=i, label=str(i), year="2024", path=str(case.path)) for i in ids
+            dict(id=i, label=str(i), year=year, path=str(case.path)) for i in ids
         ]
 
 

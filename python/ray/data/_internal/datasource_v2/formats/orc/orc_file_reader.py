@@ -347,9 +347,15 @@ class OrcFileReader(FileReader):
     ) -> Iterator[pa.Table]:
         partitions = self._partition_parser(path) if self._partition_parser else {}
         synthesized = {column.name for column in self._synthesized_columns}
-        schema = self._schema
-        if schema is None or not set(schema.names).difference(synthesized, partitions):
-            schema = physical_schema
+        partition_names = set(partitions)
+        if self._partition_parser is not None:
+            partition_names.update(self._partition_parser._scheme.field_names or ())
+        schema = self._schema or physical_schema
+        if not set(schema.names).difference(synthesized, partition_names):
+            # Keep logical types and nullable fields on unpartitioned paths too.
+            for field in physical_schema:
+                if schema.get_field_index(field.name) == -1:
+                    schema = schema.append(field)
         schema = pa.schema([field for field in schema if field.name not in synthesized])
 
         for name, value in partitions.items():
