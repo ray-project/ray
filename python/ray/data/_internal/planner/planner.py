@@ -293,6 +293,10 @@ class Planner:
         if checkpoint_config is not None and self._check_supports_checkpointing(
             logical_plan
         ):
+            if checkpoint_config.has_generated_id_column:
+                self._validate_generated_id_plan(
+                    logical_plan, checkpoint_config.generated_id_column
+                )
             self._supports_checkpointing = True
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
@@ -309,7 +313,6 @@ class Planner:
                     Write: plan_write_op_with_checkpoint_writer,
                 }
             elif checkpoint_config.has_generated_id_column:
-                self._validate_generated_id_plan(logical_plan)
                 # Clean up a crashed run's pending checkpoints before the
                 # checkpoint is loaded at execution start. The ``id_column``
                 # path does this while loading its checkpoint during planning.
@@ -467,17 +470,23 @@ class Planner:
         }
 
     @staticmethod
-    def _validate_generated_id_plan(logical_plan: LogicalPlan) -> None:
-        """Require every source of a generated-ID plan to be a V2 Parquet read.
+    def _validate_generated_id_plan(
+        logical_plan: LogicalPlan, generated_id_column: str
+    ) -> None:
+        """Require every source of a generated-ID plan to be a V2 Parquet read
+        that produces the generated ID column.
 
         Generated row IDs come from Parquet row groups, so only ``ReadFiles``
-        over a ``ParquetScanner`` can produce them. Only plans that already
-        support checkpointing (ending in a write) get here, so ``schema()``
-        or ``count()`` on such a dataset never trips this.
+        over a ``ParquetScanner`` can produce them. ``BindGeneratedIdColumn``
+        adds the column to those reads while the plan is optimized. Only
+        plans that already support checkpointing (ending in a write or a
+        streaming split) get here, so ``schema()`` or ``count()`` on such a
+        dataset never trips this.
         """
         from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
             ParquetScanner,
         )
+        from ray.data.checkpoint.generated_id import GeneratedIdColumn
         from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
 
         def _validate(op: LogicalOperator) -> None:
@@ -487,6 +496,17 @@ class Planner:
                         "`generated_id_column` supports only Parquet inputs, but "
                         f"this dataset reads {op.datasource_name!r} data. Use "
                         "`id_column` with a unique ID column instead."
+                    )
+                if (
+                    GeneratedIdColumn(generated_id_column)
+                    not in op.scanner.synthesized_columns
+                    or generated_id_column not in op.scanner.read_schema().names
+                ):
+                    raise InvalidCheckpointingConfig(
+                        "This dataset's Parquet read doesn't produce the generated "
+                        f"ID column {generated_id_column!r}. Ray Data adds it "
+                        "while optimizing the plan, unless the read keeps no "
+                        "columns."
                     )
                 return
             if isinstance(op, Read):

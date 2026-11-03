@@ -42,8 +42,7 @@ class HttpRequestUDF(StatefulStageUDF):
         base_retry_wait_time_in_s: float = 1.0,
         session_factory: Optional[Callable[[], aiohttp.ClientSession]] = None,
     ):
-        """
-        Initialize the HttpRequestUDF.
+        """Initialize the HttpRequestUDF.
 
         Args:
             data_column: The data column name.
@@ -122,8 +121,7 @@ class HttpRequestUDF(StatefulStageUDF):
         return json.dumps(payload, cls=NumpyEncoder), self.json_headers
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Send HTTP requests to the given URL.
+        """Send HTTP requests to the given URL.
 
         Args:
             batch: A list of rows to send.
@@ -220,9 +218,7 @@ class HttpRequestUDF(StatefulStageUDF):
 
 
 class HttpRequestStage(StatefulStage):
-    """
-    A stage that sends HTTP requests.
-    """
+    """A stage that sends HTTP requests."""
 
     fn: Type[StatefulStageUDF] = HttpRequestUDF
 

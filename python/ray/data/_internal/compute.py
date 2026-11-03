@@ -195,6 +195,11 @@ class ActorPoolStrategy(ComputeStrategy):
 
     @property
     def enable_true_multi_threading(self) -> bool:
+        """Whether the actor UDF can run concurrently within one actor.
+
+        See the class docstring for how this interacts with
+        ``max_concurrent_calls_per_actor``.
+        """
         # backwards compatibility from serialization: instances pickled
         # before this became a property carry the value under the public
         # name instead.

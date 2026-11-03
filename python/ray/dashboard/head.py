@@ -13,6 +13,9 @@ from ray._common.network_utils import build_address, get_localhost_ip, is_localh
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
+from ray._private.authentication.http_token_authentication import (
+    start_metrics_http_server,
+)
 from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
 from ray.dashboard.consts import (
@@ -68,8 +71,7 @@ class DashboardHead:
         modules_to_load: Optional[Set[str]] = None,
         proxy_server_url: Optional[str] = None,
     ):
-        """
-        Dashboard head
+        """Dashboard head
 
         Args:
             http_host: The host address for the Http server.
@@ -187,8 +189,7 @@ class DashboardHead:
     def _load_modules(
         self, modules_to_load: Optional[Set[str]] = None
     ) -> Tuple[List[DashboardHeadModule], List["SubprocessModuleHandle"]]:
-        """
-        If minimal, only load DashboardHeadModule.
+        """If minimal, only load DashboardHeadModule.
         If non-minimal, load both kinds of modules: DashboardHeadModule, SubprocessModule.
 
         If modules_to_load is not None, only load the modules in the set.
@@ -359,7 +360,7 @@ class DashboardHead:
                     )
                 )
                 kwargs = {"addr": get_localhost_ip()} if is_localhost(self.ip) else {}
-                prometheus_client.start_http_server(
+                start_metrics_http_server(
                     port=DASHBOARD_METRIC_PORT,
                     registry=metrics.registry,
                     **kwargs,
