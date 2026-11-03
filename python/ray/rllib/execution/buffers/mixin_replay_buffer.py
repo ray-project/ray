@@ -32,8 +32,7 @@ class MixInMultiAgentReplayBuffer:
         >>> # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
         >>> buffer = MixInMultiAgentReplayBuffer(capacity=100,
         ...                                      replay_ratio=0.66)
-        >>> A, B, C = (SampleBatch({"obs": [1]}), SampleBatch({"obs": [2]}),
-        ...     SampleBatch({"obs": [3]}))
+        >>> A, B = SampleBatch({"obs": [1]}), SampleBatch({"obs": [2]})
         >>> buffer.add(A)
         >>> buffer.add(B)
         >>> buffer.add(B)
