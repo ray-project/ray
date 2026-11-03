@@ -28,6 +28,7 @@ class RayError(Exception):
     """Super class of all ray exception types."""
 
     def to_bytes(self):
+        """Serialize this exception to a ``RayException`` protobuf message in bytes."""
         # Extract exc_info from exception object.
         exc_info = (type(self), self, self.__traceback__)
         formatted_exception_string = "\n".join(format_exception(*exc_info))
@@ -38,13 +39,32 @@ class RayError(Exception):
         ).SerializeToString()
 
     @staticmethod
-    def from_bytes(b):
+    def from_bytes(b: bytes) -> BaseException:
+        """Deserialize an exception from bytes produced by :meth:`to_bytes`.
+
+        Args:
+            b: A serialized ``RayException`` protobuf message.
+
+        Returns:
+            The exception that :meth:`from_ray_exception` builds from the message.
+        """
         ray_exception = RayException()
         ray_exception.ParseFromString(b)
         return RayError.from_ray_exception(ray_exception)
 
     @staticmethod
-    def from_ray_exception(ray_exception):
+    def from_ray_exception(ray_exception: RayException) -> BaseException:
+        """Build an exception from a ``RayException`` protobuf message.
+
+        Args:
+            ray_exception: The protobuf message.
+
+        Returns:
+            For an exception raised in Python, the unpickled original exception,
+            or an ``UnserializableException`` that carries the original traceback
+            if unpickling fails. For an exception raised in another language, a
+            ``CrossLanguageError``.
+        """
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
@@ -64,9 +84,14 @@ class RayError(Exception):
 
 @PublicAPI
 class CrossLanguageError(RayError):
-    """Raised from another language."""
+    """Raised from another language.
 
-    def __init__(self, ray_exception):
+    Args:
+        ray_exception: The ``RayException`` protobuf message that describes the
+            exception, including its language and formatted traceback.
+    """
+
+    def __init__(self, ray_exception: RayException):
         super().__init__(
             "An exception raised from {}:\n{}".format(
                 Language.Name(ray_exception.language),
@@ -158,16 +183,30 @@ class RayTaskError(RayError):
 
     def __init__(
         self,
-        function_name,
-        traceback_str,
-        cause,
-        proctitle=None,
-        pid=None,
-        ip=None,
-        actor_repr=None,
-        actor_id=None,
+        function_name: str,
+        traceback_str: str,
+        cause: BaseException,
+        proctitle: Optional[str] = None,
+        pid: Optional[int] = None,
+        ip: Optional[str] = None,
+        actor_repr: Optional[str] = None,
+        actor_id: Optional[str] = None,
     ):
-        """Initialize a RayTaskError."""
+        """Initialize a RayTaskError.
+
+        Args:
+            function_name: The name of the function that raised the exception.
+            traceback_str: The formatted traceback of the exception.
+            cause: The exception the task raised. If it isn't serializable, Ray
+                replaces it with a ``RayError`` that carries its message.
+            proctitle: The title of the worker process. Defaults to the current
+                process title.
+            pid: The ID of the worker process. Defaults to the current process ID.
+            ip: The IP address of the node. Defaults to the current node's IP
+                address.
+            actor_repr: The ``repr`` of the actor, if the task was an actor task.
+            actor_id: The actor ID in hex, if the task was an actor task.
+        """
         import ray
 
         if proctitle:
@@ -206,7 +245,12 @@ class RayTaskError(RayError):
 
     def make_dual_exception_instance(self) -> "RayTaskError":
         """Makes a object instance that inherits from both RayTaskError and the type of
-        `self.cause`. Raises TypeError if the cause class can't be subclassed"""
+        `self.cause`. Raises TypeError if the cause class can't be subclassed.
+
+        Returns:
+            An instance of a class that subclasses both RayTaskError and the class of
+            ``self.cause``.
+        """
         # For normal user Exceptions, we subclass from both
         # RayTaskError and the user exception. For ExceptionGroup,
         # we special handle it because it has a different __new__()
@@ -420,6 +464,13 @@ class RayActorError(RayError):
     This exception could happen because the actor process is dead, or is unavailable for
     the moment. Ray raises subclasses `ActorDiedError` and `ActorUnavailableError`
     respectively.
+
+    Args:
+        actor_id: The actor ID in hex.
+        error_msg: The error message.
+        actor_init_failed: Whether the actor failed while running its
+            ``__init__`` method.
+        preempted: Whether the actor died because its node was preempted.
     """
 
     BASE_ERROR_MSG = "The actor experienced an error before finishing this task."
@@ -433,9 +484,9 @@ class RayActorError(RayError):
     ):
         #: The actor ID in hex string.
         self.actor_id = actor_id
-        #: Whether the actor failed in the middle of __init__.
-        self.error_msg = error_msg
         #: The full error message.
+        self.error_msg = error_msg
+        #: Whether the actor failed in the middle of __init__.
         self._actor_init_failed = actor_init_failed
         #: Whether the actor died because the node was preempted.
         self._preempted = preempted
@@ -445,10 +496,12 @@ class RayActorError(RayError):
 
     @property
     def preempted(self) -> bool:
+        """Whether the actor died because its node was preempted."""
         return self._preempted
 
     @property
     def actor_init_failed(self) -> bool:
+        """Whether the actor failed while running its ``__init__`` method."""
         return self._actor_init_failed
 
 
@@ -548,9 +601,13 @@ class RaySystemError(RayError):
     """Indicates that Ray encountered a system error.
 
     This exception can be thrown when the raylet is killed.
+
+    Args:
+        client_exc: The error message.
+        traceback_str: The formatted traceback, if any.
     """
 
-    def __init__(self, client_exc, traceback_str=None):
+    def __init__(self, client_exc: str, traceback_str: Optional[str] = None):
         self.client_exc = client_exc
         self.traceback_str = traceback_str
 
@@ -569,6 +626,9 @@ class AuthenticationError(RayError, ConnectionError):
     (e.g., a Ray CLI command interacting with a remote cluster).
 
     Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+
+    Args:
+        message: The error message.
     """
 
     def __init__(self, message: str):
@@ -657,10 +717,13 @@ class OutOfMemoryError(RayError):
 
     This is raised if the node is low on memory and tasks or actors are being
     evicted to free up memory.
+
+    Args:
+        message: The error message.
     """
 
     # TODO: (clarng) expose the error message string here and format it with proto
-    def __init__(self, message):
+    def __init__(self, message: str):
         self.message = message
 
     def __str__(self):
@@ -669,10 +732,14 @@ class OutOfMemoryError(RayError):
 
 @PublicAPI
 class NodeDiedError(RayError):
-    """Indicates that the node is either dead or unreachable."""
+    """Indicates that the node is either dead or unreachable.
+
+    Args:
+        message: The error message.
+    """
 
     # TODO: (clarng) expose the error message string here and format it with proto
-    def __init__(self, message):
+    def __init__(self, message: str):
         self.message = message
 
     def __str__(self):
@@ -1002,6 +1069,9 @@ class TaskUnschedulableError(RayError):
 
     One example is that the node specified through
     NodeAffinitySchedulingStrategy is dead.
+
+    Args:
+        error_message: The reason the task can't be scheduled.
     """
 
     def __init__(self, error_message: str):
@@ -1017,6 +1087,9 @@ class ActorUnschedulableError(RayError):
 
     One example is that the node specified through
     NodeAffinitySchedulingStrategy is dead.
+
+    Args:
+        error_message: The reason the actor can't be scheduled.
     """
 
     def __init__(self, error_message: str):

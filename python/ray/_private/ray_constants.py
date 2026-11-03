@@ -184,7 +184,8 @@ RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S",
 RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
 # Redact `runtime_env` secrets (e.g. `env_vars` values) in dashboard responses to
-# browser-originated requests. Set to 0 to return the plaintext values instead.
+# browser-originated requests and in events sent to an external HTTP endpoint.
+# Set to 0 to keep the plaintext values instead.
 RAY_DASHBOARD_REDACT_RUNTIME_ENV = env_bool("RAY_DASHBOARD_REDACT_RUNTIME_ENV", True)
 
 # --- Default values for dashboard profiling parameters (py-spy / memray). ---
@@ -559,6 +560,19 @@ RAY_ENABLE_GCS_LEADER_ELECTION = env_bool(RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR
 
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
+# Env vars that Ray sets to the number of CPUs assigned to a task or actor, unless
+# the user already set them. Override with the comma-separated
+# RAY_NUM_THREADS_ENV_VARS; an empty string disables this. Adding RAYON_NUM_THREADS
+# also sizes the Rayon thread pool that Hugging Face `tokenizers` uses.
+DEFAULT_NUM_THREADS_ENV_VARS = "OMP_NUM_THREADS"
+
+
+def get_num_threads_env_vars() -> list[str]:
+    """Get the env vars that Ray sets from num_cpus."""
+    val = os.environ.get("RAY_NUM_THREADS_ENV_VARS", DEFAULT_NUM_THREADS_ENV_VARS)
+    return [x.strip() for x in val.split(",") if x.strip()]
+
+
 # Filename of "shim process" that sets up Python worker environment.
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
@@ -723,6 +737,10 @@ RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
         if t.strip()
     }
 )
+
+# Mirrors the `enable_ray_event` ray config; the C++ event recorder drops all
+# events unless this is on.
+RAY_ENABLE_RAY_EVENT = env_bool("RAY_enable_ray_event", False)
 
 
 # If this flag is set and you run the driver with `uv run`, Ray propagates the `uv run`

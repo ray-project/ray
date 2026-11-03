@@ -120,6 +120,10 @@ def get_context() -> TrainContext:
     The context is only available within a function passed to Ray Train.
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
+
+    Returns:
+        The :class:`~ray.train.TrainContext` for this process. Inside a function
+        passed to Ray Tune, returns the Ray Tune context instead.
     """
     from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 

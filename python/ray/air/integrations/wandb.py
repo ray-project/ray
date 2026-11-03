@@ -394,8 +394,7 @@ class _QueueItem(enum.Enum):
 
 
 class _WandbLoggingActor:
-    """
-    Wandb assumes that each trial's information should be logged from a
+    """Wandb assumes that each trial's information should be logged from a
     separate process. We use Ray actors as forking multiprocessing
     processes is not supported by Ray and spawn processes run into pickling
     problems.
@@ -793,9 +792,15 @@ class WandbLoggerCallback(LoggerCallback):
                 trial = self._logging_future_to_trial.pop(remaining_future)
                 self._cleanup_logging_actor(trial)
 
-    def on_experiment_end(self, trials: List["Trial"], **info):
+    def on_experiment_end(self, trials: List["Trial"], **info: Any):
         """Wait for the actors to finish their call to `wandb.finish`.
-        This includes uploading all logs + artifacts to wandb."""
+
+        This includes uploading all logs + artifacts to wandb.
+
+        Args:
+            trials: The experiment's trials. Unused.
+            **info: Kwargs dict for forward compatibility. Unused.
+        """
         self._cleanup_logging_actors(timeout=self._upload_timeout, kill_on_timeout=True)
 
     def __del__(self):

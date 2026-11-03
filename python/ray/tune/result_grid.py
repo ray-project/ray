@@ -20,37 +20,29 @@ class ResultGrid:
     The constructor is a private API. This object can only be created as a result of
     ``Tuner.fit()``.
 
-    Example:
-    .. testcode::
-
-        import random
-        from ray import tune
-        def random_error_trainable(config):
-            if random.random() < 0.5:
-                return {"loss": 0.0}
-            else:
-                raise ValueError("This is an error")
-        tuner = tune.Tuner(
-            random_error_trainable,
-            run_config=tune.RunConfig(name="example-experiment"),
-            tune_config=tune.TuneConfig(num_samples=10),
-        )
-        try:
-            result_grid = tuner.fit()
-        except ValueError:
-            pass
-        for i in range(len(result_grid)):
-            result = result_grid[i]
-            if not result.error:
-                    print(f"Trial finishes successfully with metrics"
-                       f"{result.metrics}.")
-            else:
-                    print(f"Trial failed with error {result.error}.")
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Examples:
+        >>> import random
+        >>> from ray import tune
+        >>> def random_error_trainable(config):
+        ...     if random.random() < 0.5:
+        ...         return {"loss": 0.0}
+        ...     else:
+        ...         raise ValueError("This is an error")
+        >>> tuner = tune.Tuner(
+        ...     random_error_trainable,
+        ...     run_config=tune.RunConfig(name="example-experiment"),
+        ...     tune_config=tune.TuneConfig(num_samples=10),
+        ... )
+        >>> print("[ignore]"); result_grid = tuner.fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> for i in range(len(result_grid)):
+        ...     result = result_grid[i]
+        ...     if not result.error:
+        ...         print(f"Trial finishes successfully with metrics "
+        ...               f"{result.metrics}.")
+        ...     else:
+        ...         print(f"Trial failed with error {result.error}.")
+        Trial ...
 
     You can also use ``result_grid`` for more advanced analysis.
 
@@ -62,7 +54,8 @@ class ResultGrid:
     >>> # Get a dataframe for the last reported results of all of the trials
     >>> df = result_grid.get_dataframe() # doctest: +SKIP
     >>> # Get a dataframe for the minimum loss seen for each trial
-    >>> df = result_grid.get_dataframe(metric="loss", mode="min") # doctest: +SKIP
+    >>> df = result_grid.get_dataframe( # doctest: +SKIP
+    ...     filter_metric="loss", filter_mode="min")
 
     Note that trials of all statuses are included in the final result grid.
     If a trial is not in terminated state, its latest result and checkpoint as
@@ -200,32 +193,21 @@ class ResultGrid:
         maximal is returned.
 
 
-        Example:
-
-            .. testcode::
-
-                import ray.tune
-
-                def training_loop_per_worker(config):
-                    ray.tune.report({"accuracy": 0.8})
-
-                result_grid = ray.tune.Tuner(
-                    trainable=training_loop_per_worker,
-                    run_config=ray.tune.RunConfig(name="my_tune_run")
-                ).fit()
-
-                # Get last reported results per trial
-                df = result_grid.get_dataframe()
-
-                # Get best ever reported accuracy per trial
-                df = result_grid.get_dataframe(
-                    filter_metric="accuracy", filter_mode="max"
-                )
-
-            .. testoutput::
-                :hide:
-
-                ...
+        Examples:
+            >>> import ray.tune
+            >>> def training_loop_per_worker(config):
+            ...     ray.tune.report({"accuracy": 0.8})
+            >>> print("[ignore]"); result_grid = ray.tune.Tuner(  # doctest: +ELLIPSIS
+            ...     trainable=training_loop_per_worker,
+            ...     run_config=ray.tune.RunConfig(name="my_tune_run")
+            ... ).fit()
+            [ignore]...
+            >>> # Get last reported results per trial
+            >>> df = result_grid.get_dataframe()
+            >>> # Get best ever reported accuracy per trial
+            >>> df = result_grid.get_dataframe(
+            ...     filter_metric="accuracy", filter_mode="max"
+            ... )
 
         Args:
             filter_metric: Metric to filter best result for.
