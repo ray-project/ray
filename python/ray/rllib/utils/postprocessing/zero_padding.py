@@ -204,28 +204,25 @@ def unpad_data_if_necessary(
 ) -> np._typing.NDArray:
     """Removes right-side zero-padding from data based on `episode_lens`.
 
-    ..testcode::
-
-        from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
-        import numpy as np
-
-        unpadded = unpad_data_if_necessary(
-            episode_lens=[4, 2],
-            data=np.array([
-                [2, 4, 5, 3, 0, 0, 0, 0],
-                [-1, 3, 0, 0, 0, 0, 0, 0],
-            ]),
-        )
-        assert (unpadded == [2, 4, 5, 3, -1, 3]).all()
-
-        unpadded = unpad_data_if_necessary(
-            episode_lens=[1, 5],
-            data=np.array([
-                [2, 0, 0, 0, 0],
-                [-1, -2, -3, -4, -5],
-            ]),
-        )
-        assert (unpadded == [2, -1, -2, -3, -4, -5]).all()
+    Examples:
+        >>> from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
+        >>> import numpy as np
+        >>> unpadded = unpad_data_if_necessary(
+        ...     episode_lens=[4, 2],
+        ...     data=np.array([
+        ...         [2, 4, 5, 3, 0, 0, 0, 0],
+        ...         [-1, 3, 0, 0, 0, 0, 0, 0],
+        ...     ]),
+        ... )
+        >>> assert (unpadded == [2, 4, 5, 3, -1, 3]).all()
+        >>> unpadded = unpad_data_if_necessary(
+        ...     episode_lens=[1, 5],
+        ...     data=np.array([
+        ...         [2, 0, 0, 0, 0],
+        ...         [-1, -2, -3, -4, -5],
+        ...     ]),
+        ... )
+        >>> assert (unpadded == [2, -1, -2, -3, -4, -5]).all()
 
     Args:
         episode_lens: A list of actual episode lengths.

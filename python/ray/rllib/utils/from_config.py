@@ -272,7 +272,7 @@ class _NotProvided:
     change the value of some property.
 
     Examples:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         >>> config = AlgorithmConfig()
         >>> # Print out the default learning rate.
         >>> print(config.lr)
@@ -280,15 +280,15 @@ class _NotProvided:
 
         >>> # Print out the default `preprocessor_pref`.
         >>> print(config.preprocessor_pref)
-        "deepmind"
+        deepmind
 
         >>> # Will only set the `preprocessor_pref` property (to None) and leave
         >>> # all other properties at their default values.
-        >>> config.training(preprocessor_pref=None)
+        >>> _ = config.env_runners(preprocessor_pref=None)
         >>> config.preprocessor_pref is None
         True
 
-        >>> # Still the same value (didn't touch it in the call to `.training()`.
+        >>> # Still the same value (didn't touch it in the call to `.env_runners()`.
         >>> print(config.lr)
         0.001
     """
