@@ -215,6 +215,8 @@ def _drive_past_limit(runtime: SandboxRuntime, sandbox_id: str, hog: str) -> Pat
     try:
         result = runtime.exec(sandbox_id, ["python3", "/tmp/hog.py"], timeout=120)
         stdout, exit_code = result.stdout, result.exit_code
+        # The command's own result says the sandbox's memory limit ended it.
+        assert "memory limit" in result.stderr, result.stderr
     except SandboxError:
         # The sandbox died under the command.
         stdout, exit_code = "", None

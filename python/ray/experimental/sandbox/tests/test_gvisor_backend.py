@@ -2520,6 +2520,44 @@ def private_bundles(tmp_path, monkeypatch):
     return tmp_path
 
 
+def test_a_command_its_sandboxs_oom_kill_ended_says_so(private_bundles):
+    """runsc only says that waiting for a command failed when an OOM kill
+    ends its sandbox; the command's stderr says why. A command that fails
+    for another reason gets nothing added."""
+    (private_bundles / "runsc").write_text(
+        "#!/bin/sh\necho 'waiting on pid 2: urpc method failed: EOF' >&2\nexit 128\n"
+    )
+
+    class _Cgroup:
+        reason = None
+
+        def wrap(self, args):
+            return args
+
+        def termination_reason(self):
+            return self.reason
+
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    cgroup = _Cgroup()
+    sandbox_id = "ray-sandbox-00000000000a"
+    backend._sandbox_metadata[sandbox_id] = {
+        "root_dir": str(private_bundles),
+        "cwd": "/",
+        "config": GVisorSandboxConfig(image="busybox:latest", memory="256Mi"),
+        "cgroup": cgroup,
+    }
+    result = backend.exec_command(sandbox_id, ["true"])
+    assert result.exit_code == 128
+    assert result.stderr == "waiting on pid 2: urpc method failed: EOF\n"
+    cgroup.reason = "Sandbox exceeded its enforced memory limit"
+    result = backend.exec_command(sandbox_id, ["true"])
+    assert result.stderr.splitlines() == [
+        "waiting on pid 2: urpc method failed: EOF",
+        "Sandbox exceeded its enforced memory limit (256Mi), so the kernel "
+        "killed the sandbox and this command with it.",
+    ]
+
+
 def test_reclaim_takes_only_bundles_whose_owner_is_gone(private_bundles, monkeypatch):
     """A bundle whose owner file nobody holds loses its runsc state, its files
     and its image pin. A live owner's bundle, one still being created, one an

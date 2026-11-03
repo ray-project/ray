@@ -1316,10 +1316,23 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         # Commands may print bytes that aren't UTF-8, and decoding them
         # strictly would fail the whole exec.
+        stderr_text = stderr.decode("utf-8", errors="replace")
+        if proc.returncode != 0:
+            # An out-of-memory kill takes the whole sandbox, and the command
+            # with it, while runsc only says that waiting for it failed.
+            cgroup = meta.get("cgroup")
+            reason = cgroup.termination_reason() if cgroup is not None else None
+            if reason:
+                if stderr_text and not stderr_text.endswith("\n"):
+                    stderr_text += "\n"
+                stderr_text += (
+                    f"{reason} ({config.memory}), so the kernel killed the "
+                    "sandbox and this command with it.\n"
+                )
         return ExecResult(
             exit_code=proc.returncode,
             stdout=stdout.decode("utf-8", errors="replace"),
-            stderr=stderr.decode("utf-8", errors="replace"),
+            stderr=stderr_text,
             duration_seconds=time.time() - start_time,
         )
 
