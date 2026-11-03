@@ -151,71 +151,62 @@ class AgentConnector(Connector):
 
     AgentConnectorDataTypes can be used to specify arbitrary type of env data,
 
-    Example:
-
+    Examples:
         Represent a list of agent data from one env step() call.
 
-        .. testcode::
-
-            import numpy as np
-            ac = AgentConnectorDataType(
-                env_id="env_1",
-                agent_id=None,
-                data={
-                    "agent_1": np.array([1, 2, 3]),
-                    "agent_2": np.array([4, 5, 6]),
-                }
-            )
+        >>> import numpy as np
+        >>> ac = AgentConnectorDataType(
+        ...     env_id="env_1",
+        ...     agent_id=None,
+        ...     data={
+        ...         "agent_1": np.array([1, 2, 3]),
+        ...         "agent_2": np.array([4, 5, 6]),
+        ...     }
+        ... )
 
         Or a single agent data ready to be preprocessed.
 
-        .. testcode::
-
-            ac = AgentConnectorDataType(
-                env_id="env_1",
-                agent_id="agent_1",
-                data=np.array([1, 2, 3]),
-            )
+        >>> ac = AgentConnectorDataType(
+        ...     env_id="env_1",
+        ...     agent_id="agent_1",
+        ...     data=np.array([1, 2, 3]),
+        ... )
 
         We can also adapt a simple stateless function into an agent connector by
         using register_lambda_agent_connector:
 
-        .. testcode::
-
-            import numpy as np
-            from ray.rllib.connectors.agent.lambdas import (
-                register_lambda_agent_connector
-            )
-            TimesTwoAgentConnector = register_lambda_agent_connector(
-                "TimesTwoAgentConnector", lambda data: data * 2
-            )
-
-            # More complicated agent connectors can be implemented by extending this
-            # AgentConnector class:
-
-            class FrameSkippingAgentConnector(AgentConnector):
-                def __init__(self, n):
-                    self._n = n
-                    self._frame_count = default_dict(str, default_dict(str, int))
-
-                def reset(self, env_id: str):
-                    del self._frame_count[env_id]
-
-                def __call__(
-                    self, ac_data: List[AgentConnectorDataType]
-                ) -> List[AgentConnectorDataType]:
-                    ret = []
-                    for d in ac_data:
-                        assert d.env_id and d.agent_id, "Skipping works per agent!"
-
-                        count = self._frame_count[ac_data.env_id][ac_data.agent_id]
-                        self._frame_count[ac_data.env_id][ac_data.agent_id] = (
-                            count + 1
-                        )
-
-                        if count % self._n == 0:
-                            ret.append(d)
-                    return ret
+        >>> import numpy as np
+        >>> from ray.rllib.connectors.agent.lambdas import (
+        ...     register_lambda_agent_connector
+        ... )
+        >>> TimesTwoAgentConnector = register_lambda_agent_connector(
+        ...     "TimesTwoAgentConnector", lambda data: data * 2
+        ... )
+        >>> # More complicated agent connectors can be implemented by extending this
+        >>> # AgentConnector class:
+        >>> class FrameSkippingAgentConnector(AgentConnector):
+        ...     def __init__(self, n):
+        ...         self._n = n
+        ...         self._frame_count = default_dict(str, default_dict(str, int))
+        ...
+        ...     def reset(self, env_id: str):
+        ...         del self._frame_count[env_id]
+        ...
+        ...     def __call__(
+        ...         self, ac_data: List[AgentConnectorDataType]
+        ...     ) -> List[AgentConnectorDataType]:
+        ...         ret = []
+        ...         for d in ac_data:
+        ...             assert d.env_id and d.agent_id, "Skipping works per agent!"
+        ...
+        ...             count = self._frame_count[ac_data.env_id][ac_data.agent_id]
+        ...             self._frame_count[ac_data.env_id][ac_data.agent_id] = (
+        ...                 count + 1
+        ...             )
+        ...
+        ...             if count % self._n == 0:
+        ...                 ret.append(d)
+        ...         return ret
 
     As shown, an agent connector may choose to emit an empty list to stop input
     observations from being further prosessed.
@@ -291,19 +282,16 @@ class ActionConnector(Connector):
     Any functions that operate directly on PolicyOutputType can be easily adapted
     into an ActionConnector by using register_lambda_action_connector.
 
-    Example:
-
-    .. testcode::
-
-        from ray.rllib.connectors.action.lambdas import (
-            register_lambda_action_connector
-        )
-        ZeroActionConnector = register_lambda_action_connector(
-            "ZeroActionsConnector",
-            lambda actions, states, fetches: (
-                np.zeros_like(actions), states, fetches
-            )
-        )
+    Examples:
+        >>> from ray.rllib.connectors.action.lambdas import (
+        ...     register_lambda_action_connector
+        ... )
+        >>> ZeroActionConnector = register_lambda_action_connector(
+        ...     "ZeroActionsConnector",
+        ...     lambda actions, states, fetches: (
+        ...         np.zeros_like(actions), states, fetches
+        ...     )
+        ... )
 
     More complicated action connectors can also be implemented by sub-classing
     this ActionConnector class.
