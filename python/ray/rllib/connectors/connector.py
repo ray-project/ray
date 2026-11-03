@@ -191,7 +191,7 @@ class AgentConnector(Connector):
         ...         self._frame_count = defaultdict(lambda: defaultdict(int))
         ...
         ...     def reset(self, env_id: str):
-        ...         del self._frame_count[env_id]
+        ...         self._frame_count.pop(env_id, None)
         ...
         ...     def __call__(
         ...         self, ac_data: List[AgentConnectorDataType]
