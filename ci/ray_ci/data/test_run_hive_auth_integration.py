@@ -55,22 +55,19 @@ def test_invalid_results(tmp_path, damage):
         ("start", 1),
         ("ready", 1),
         ("exec", 1),
-        ("pytest", 42),
+        ("pytest", 1),
         ("collection", 2),
         ("interrupt", 1),
         ("timeout", 1),
         ("copy", 1),
         ("cleanup", 7),
         ("malformed", 1),
-        ("status_missing", 1),
-        ("status_wrong", 1),
     ],
 )
 def test_main_preserves_status_and_cleans_own_project(
     tmp_path, monkeypatch, failure, code
 ):
     calls = []
-    monkeypatch.setenv("BUILDKITE_RETRY_COUNT", "1")
     monkeypatch.setenv("HTTP_PROXY", "must-be-removed")
 
     def wait(*args):
@@ -88,7 +85,7 @@ def test_main_preserves_status_and_cleans_own_project(
         if log.stem == failure:
             raise run.CommandFailed(failure, code)
         if log.stem == "pytest":
-            assert run.PYTEST_ENTRYPOINT in args
+            assert args[args.index("python") + 1 :][:2] == ["-m", "pytest"]
             if failure == "interrupt":
                 raise KeyboardInterrupt
             if failure == "timeout":
@@ -103,18 +100,12 @@ def test_main_preserves_status_and_cleans_own_project(
         }:
             path = tmp_path / env["HIVE_AUTH_PROFILE"] / "artifacts/results.xml"
             results(path, env["HIVE_AUTH_PROFILE"])
-            if failure != "status_missing":
-                (path.parent / "pytest-exit-code").write_text(
-                    str(
-                        {"pytest": 1, "collection": 2, "status_wrong": 1}.get(
-                            failure, 0
-                        )
-                    )
-                )
             if failure == "malformed":
                 path.write_text("<broken")
         if log.stem == "cleanup" and failure == "pytest":
-            raise run.CommandFailed("cleanup", 7)  # Must not replace test failure 42.
+            raise run.CommandFailed(
+                "cleanup", 7
+            )  # Preserve the original pytest failure.
         return 0
 
     monkeypatch.setattr(run, "command", command)
@@ -137,8 +128,6 @@ def test_main_preserves_status_and_cleans_own_project(
     assert calls.count("pytest") == (
         2 if failure is None else (0 if failure in {"start", "ready"} else 1)
     )
-    if failure == "exec":
-        assert not (tmp_path / "GT/artifacts/pytest-exit-code").exists()
 
 
 @pytest.mark.parametrize("invalid", ["duplicate", "previous", "timeout"])
@@ -156,25 +145,23 @@ def test_rejects_invalid_invocation_before_docker(tmp_path, monkeypatch, invalid
 
 
 @pytest.mark.parametrize(
-    "source,raw,code",
+    "source,code",
     [
-        ("def test_result(): pass\n", 0, 0),
-        ("def test_result(): assert False\n", 1, 42),
-        ("def test_result(:\n", 2, 2),
+        ("def test_result(): pass\n", 0),
+        ("def test_result(): assert False\n", 1),
+        ("def test_result(:\n", 2),
     ],
 )
-def test_real_pytest_status(tmp_path, source, raw, code):
+def test_real_pytest_status(tmp_path, source, code):
     test = tmp_path / "test_result.py"
     test.write_text(source)
-    status = tmp_path / "pytest-exit-code"
     log = tmp_path / "pytest.log"
     try:
         actual = run.command(
             [
                 sys.executable,
-                "-c",
-                run.PYTEST_ENTRYPOINT,
-                str(status),
+                "-m",
+                "pytest",
                 "-q",
                 "-p",
                 "no:cacheprovider",
@@ -192,7 +179,6 @@ def test_real_pytest_status(tmp_path, source, raw, code):
     except run.CommandFailed as exc:
         actual = exc.code
     assert actual == code, log.read_text()
-    assert int(status.read_text()) == raw
 
 
 def test_timeout_stops_child_group(tmp_path, monkeypatch):

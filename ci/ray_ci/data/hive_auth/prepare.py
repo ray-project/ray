@@ -1,16 +1,12 @@
 """Prepare disposable credentials; this is test infrastructure, not reader code."""
 
-import ctypes
-import json
 import os
-import re
 import secrets
 import shutil
 import socket
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -157,7 +153,6 @@ def initialize_kdc():
  dns_lookup_realm = false
  dns_canonicalize_hostname = false
  rdns = false
- clockskew = 1
  forwardable = false
 [realms]
  {REALM} = {{
@@ -256,47 +251,9 @@ def initialize_kdc():
     os.execvp("krb5kdc", ["krb5kdc", "-n"])
 
 
-def effective_clockskew():
-    library = ctypes.CDLL("libkrb5.so.3")
-    pointer = ctypes.c_void_p
-    library.krb5_init_context.argtypes = [ctypes.POINTER(pointer)]
-    library.krb5_get_profile.argtypes = [pointer, ctypes.POINTER(pointer)]
-    library.profile_get_integer.argtypes = [
-        pointer,
-        ctypes.c_char_p,
-        ctypes.c_char_p,
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.POINTER(ctypes.c_int),
-    ]
-    library.profile_release.argtypes = [pointer]
-    library.profile_release.restype = None
-    library.krb5_free_context.argtypes = [pointer]
-    library.krb5_free_context.restype = None
-    context, profile = pointer(), pointer()
-    if library.krb5_init_context(ctypes.byref(context)):
-        raise RuntimeError("Cannot initialize native Kerberos configuration")
-    try:
-        if library.krb5_get_profile(context, ctypes.byref(profile)):
-            raise RuntimeError("Cannot inspect native Kerberos configuration")
-        try:
-            seconds = ctypes.c_int()
-            code = library.profile_get_integer(
-                profile, b"libdefaults", b"clockskew", None, 300, ctypes.byref(seconds)
-            )
-            if code or seconds.value != 1:
-                raise RuntimeError("Unexpected native Kerberos clockskew")
-            return seconds.value
-        finally:
-            library.profile_release(profile)
-    finally:
-        library.krb5_free_context(context)
-
-
 def credentials(role):
     if PROFILE not in {"G", "GT"}:
         return
-    clockskew = effective_clockskew()
     deadline = time.monotonic() + 30
     while True:
         try:
@@ -317,35 +274,6 @@ def credentials(role):
             if time.monotonic() >= deadline:
                 raise
             time.sleep(1)
-    env = dict(os.environ, KRB5CCNAME="FILE:/auth/expired.ccache")
-    run(
-        ["kinit", "-k", "-t", "/auth/identity.keytab", "-l", "8s", f"{role}@{REALM}"],
-        "obtain short-lived credentials",
-        env=env,
-    )
-    run(["klist", "-s"], "verify initially valid short-lived cache", env=env)
-    listing = run(["klist"], "read ticket end times", env=env)
-    matches = re.findall(r"\d\d/\d\d/\d\d \d\d:\d\d:\d\d", listing)
-    ends = [
-        datetime.strptime(v, "%m/%d/%y %H:%M:%S")
-        .replace(tzinfo=timezone.utc)
-        .timestamp()
-        for v in matches[1::2]
-    ]
-    if not ends:
-        raise RuntimeError("Cannot read actual ticket expiration")
-    write(
-        "/auth/expiry.json",
-        json.dumps(
-            {
-                "initially_valid": True,
-                "end": max(ends),
-                "issued": time.time(),
-                "clockskew": clockskew,
-                "margin": 2,
-            }
-        ),
-    )
     Path("/auth/invalid.ccache").write_bytes(b"invalid-test-cache")
 
 

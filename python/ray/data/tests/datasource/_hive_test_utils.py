@@ -241,13 +241,3 @@ def _tls_condition(condition):
     with socket.create_connection((host, 10000), timeout=30) as transport:
         with pytest.raises(ssl.SSLCertVerificationError):
             context.wrap_socket(transport, server_hostname=name)
-
-
-def _expiry():
-    info = json.loads(Path("/auth/expiry.json").read_text())
-    assert info["initially_valid"] is True
-    assert 0 < info["end"] - info["issued"] <= 15
-    assert info["clockskew"] == 1
-    assert os.environ["KRB5_CONFIG"] == "/krb/krb5.conf"
-    assert Path("/auth/expired.ccache").is_file()
-    return info

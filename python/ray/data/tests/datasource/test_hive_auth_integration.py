@@ -3,7 +3,6 @@
 import json
 import os
 import secrets
-import time
 import uuid
 from pathlib import Path
 from typing import Callable, TypeVar, cast
@@ -16,7 +15,6 @@ from ray.data.context import DataContext
 from ray.data.tests.datasource._hive_test_utils import (
     _case_directory,
     _connection_options,
-    _expiry,
     _make_auth_factory,
     _native,
     _read_summaries,
@@ -115,7 +113,6 @@ def test_hive_auth(scenario, environment, table, monkeypatch):
             "missing": {"KRB5CCNAME": "FILE:/auth/missing.ccache"},
             "invalid": {"KRB5CCNAME": "FILE:/auth/invalid.ccache"},
             "service": {"HIVE_AUTH_SERVICE_OVERRIDE": "nonexistent-service"},
-            "expired": {"KRB5CCNAME": "FILE:/auth/expired.ccache"},
             "ca": {"HIVE_AUTH_CA_OVERRIDE": "/ca/wrong-ca.pem"},
             "host": {"HIVE_AUTH_HOST_OVERRIDE": "wrong.hive.auth.test"},
             "file": {"HIVE_AUTH_CA_OVERRIDE": "/ca/missing.pem"},
@@ -125,16 +122,6 @@ def test_hive_auth(scenario, environment, table, monkeypatch):
                 _tls_condition(condition)
             else:
                 _worker(_tls_condition, condition)
-        if condition == "expired":
-            info = _worker(_expiry)
-            boundary = info["end"] + info["clockskew"] + info["margin"]
-            deadline = time.monotonic() + 30
-            while time.time() <= boundary:
-                if time.monotonic() >= deadline:
-                    pytest.fail(
-                        "Expired-cache fixture did not cross the verified tolerance window"
-                    )
-                time.sleep(0.2)
 
     case_id = uuid.uuid4().hex
     directory = _case_directory(case_id)

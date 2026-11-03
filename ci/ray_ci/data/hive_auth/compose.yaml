@@ -28,7 +28,6 @@ services:
         condition: service_healthy
     volumes:
       - ${HIVE_AUTH_SOURCE}/ci/ray_ci/data/hive_auth/hive-entry.sh:/fixture/hive-entry.sh:ro
-      - ${HIVE_AUTH_SOURCE}/ci/ray_ci/data/hive_auth/ClockSkew.java:/fixture/ClockSkew.java:ro
       - krb:/krb:ro
       - server-security:/security:ro
     networks:

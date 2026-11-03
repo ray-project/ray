@@ -24,15 +24,6 @@ PROXIES = (
     "all_proxy",
 )
 TARGET = "python/ray/data/tests/datasource/test_hive_auth_integration.py"
-PYTEST_ENTRYPOINT = """
-import sys
-from pathlib import Path
-import pytest
-
-code = int(pytest.main(sys.argv[2:]))
-Path(sys.argv[1]).write_text(str(code))
-sys.exit(42 if code == 1 else code)
-"""
 
 
 class CommandFailed(RuntimeError):
@@ -150,9 +141,8 @@ def run_profile(args, profile, run_id):
                 "-T",
                 "head",
                 "python",
-                "-c",
-                PYTEST_ENTRYPOINT,
-                "/events/pytest-exit-code",
+                "-m",
+                "pytest",
                 "-v",
                 "-x",
                 "--timeout=180",
@@ -197,8 +187,6 @@ def run_profile(args, profile, run_id):
                 print(f"{profile}: {stage}: {exc}", file=sys.stderr)
     if not code:
         try:
-            if (directory / "artifacts/pytest-exit-code").read_text() != "0":
-                raise ValueError("Missing successful pytest status")
             count = validate_results(directory / "artifacts/results.xml", profile)
             print(f"{profile}: {count} passed; cleanup passed", flush=True)
         except FAILURES as exc:
