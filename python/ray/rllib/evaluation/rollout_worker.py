@@ -162,16 +162,23 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     Examples:
         >>> # Create a rollout worker and using it to collect experiences.
         >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.algorithms.ppo import PPOConfig
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
         >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+        >>> config = (
+        ...     PPOConfig()
+        ...     .api_stack(
+        ...         enable_rl_module_and_learner=False,
+        ...         enable_env_runner_and_connector_v2=False,
+        ...     )
+        ...     .framework("tf")
+        ... )
         >>> worker = RolloutWorker(
         ...   env_creator=lambda _: gym.make("CartPole-v1"),
-        ...   default_policy_class=PPOTF1Policy)
+        ...   default_policy_class=PPOTF1Policy,
+        ...   config=config)
         >>> print(worker.sample())
-        SampleBatch({
-            "obs": [[...]], "actions": [[...]], "rewards": [[...]],
-            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]}
-        )
+        MultiAgentBatch({'default_policy': SampleBatch(2000: [...])}, env_steps=2000)
 
         >>> # Creating a multi-agent rollout worker
         >>> from gymnasium.spaces import Discrete, Box
@@ -628,16 +635,24 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             A columnar batch of experiences (e.g., tensors) or a MultiAgentBatch.
 
         Examples:
-            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> import gymnasium as gym
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> config = (
+            ...     PPOConfig()
+            ...     .api_stack(
+            ...         enable_rl_module_and_learner=False,
+            ...         enable_env_runner_and_connector_v2=False,
+            ...     )
+            ...     .framework("tf")
+            ... )
             >>> worker = RolloutWorker(
             ...   env_creator=lambda _: gym.make("CartPole-v1"),
             ...   default_policy_class=PPOTF1Policy,
-            ...   config=AlgorithmConfig(),
-            ... )
+            ...   config=config)
             >>> print(worker.sample())
-            SampleBatch({"obs": [...], "action": [...], ...})
+            MultiAgentBatch({'default_policy': SampleBatch(2000: [...])}, env_steps=2000)
         """
         if self.config.fake_sampler and self.last_batch is not None:
             return self.last_batch
@@ -726,14 +741,24 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 size of the collected batch.
 
         Examples:
-            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> import gymnasium as gym
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> config = (
+            ...     PPOConfig()
+            ...     .api_stack(
+            ...         enable_rl_module_and_learner=False,
+            ...         enable_env_runner_and_connector_v2=False,
+            ...     )
+            ...     .framework("tf")
+            ... )
             >>> worker = RolloutWorker(
             ...   env_creator=lambda _: gym.make("CartPole-v1"),
-            ...   default_policy_class=PPOTFPolicy)
+            ...   default_policy_class=PPOTF1Policy,
+            ...   config=config)
             >>> print(worker.sample_with_count())
-            (SampleBatch({"obs": [...], "action": [...], ...}), 3)
+            (MultiAgentBatch({'default_policy': SampleBatch(2000: [...])}, env_steps=2000), 2000)
         """
         batch = self.sample()
         return batch, batch.count
@@ -751,14 +776,24 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             Dictionary of extra metadata from compute_gradients().
 
         Examples:
-            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> import gymnasium as gym
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> config = (
+            ...     PPOConfig()
+            ...     .api_stack(
+            ...         enable_rl_module_and_learner=False,
+            ...         enable_env_runner_and_connector_v2=False,
+            ...     )
+            ...     .framework("tf")
+            ... )
             >>> worker = RolloutWorker(
             ...   env_creator=lambda _: gym.make("CartPole-v1"),
-            ...   default_policy_class=PPOTF1Policy)
+            ...   default_policy_class=PPOTF1Policy,
+            ...   config=config)
             >>> batch = worker.sample()
-            >>> info = worker.learn_on_batch(samples)
+            >>> info = worker.learn_on_batch(batch)
         """
         if log_once("learn_on_batch"):
             logger.info(
@@ -876,14 +911,24 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             compatible worker using the worker's `apply_gradients()` method.
 
         Examples:
-            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> import gymnasium as gym
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> config = (
+            ...     PPOConfig()
+            ...     .api_stack(
+            ...         enable_rl_module_and_learner=False,
+            ...         enable_env_runner_and_connector_v2=False,
+            ...     )
+            ...     .framework("tf")
+            ... )
             >>> worker = RolloutWorker(
             ...   env_creator=lambda _: gym.make("CartPole-v1"),
-            ...   default_policy_class=PPOTF1Policy)
+            ...   default_policy_class=PPOTF1Policy,
+            ...   config=config)
             >>> batch = worker.sample()
-            >>> grads, info = worker.compute_gradients(samples)
+            >>> grads, info = worker.compute_gradients(batch)
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
@@ -945,12 +990,22 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 structs.
 
         Examples:
-            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> import gymnasium as gym
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> config = (
+            ...     PPOConfig()
+            ...     .api_stack(
+            ...         enable_rl_module_and_learner=False,
+            ...         enable_env_runner_and_connector_v2=False,
+            ...     )
+            ...     .framework("tf")
+            ... )
             >>> worker = RolloutWorker(
             ...   env_creator=lambda _: gym.make("CartPole-v1"),
-            ...   default_policy_class=PPOTF1Policy)
+            ...   default_policy_class=PPOTF1Policy,
+            ...   config=config)
             >>> samples = worker.sample()
             >>> grads, info = worker.compute_gradients(samples)
             >>> worker.apply_gradients(grads)
@@ -1549,11 +1604,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
 
-        .. code-block:: python
-
-            worker = ...
-            global_vars = worker.set_global_vars(
-            ...     {"timestep": 4242})
+        Examples:
+            >>> worker = ...  # doctest: +SKIP_EXAMPLE
+            >>> worker.set_global_vars({"timestep": 4242})
         """
         # Handle per-policy values.
         global_vars_copy = global_vars.copy()

@@ -47,10 +47,21 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
         `"learner_stats"` key to that value.
 
     Examples:
-        >>> grad_info = worker.learn_on_batch(samples)  # doctest: +SKIP_EXAMPLE
-        >>> # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
-        >>> print(get_stats(grad_info))
-        {"vf_loss": ..., "policy_loss": ...}
+        >>> from ray.rllib.evaluation.metrics import get_learner_stats
+        >>> grad_info = {
+        ...     "td_error": [0.1],
+        ...     "learner_stats": {"vf_loss": 0.5, "policy_loss": 0.2},
+        ... }
+        >>> print(get_learner_stats(grad_info))
+        {'vf_loss': 0.5, 'policy_loss': 0.2}
+
+        >>> # Multi-agent: one info dict per policy ID.
+        >>> grad_info = {
+        ...     "pol1": {"learner_stats": {"vf_loss": 0.5}},
+        ...     "pol2": {"learner_stats": {"vf_loss": 0.3}},
+        ... }
+        >>> print(get_learner_stats(grad_info))
+        {'pol1': {'vf_loss': 0.5}, 'pol2': {'vf_loss': 0.3}}
     """
     if LEARNER_STATS_KEY in grad_info:
         return grad_info[LEARNER_STATS_KEY]

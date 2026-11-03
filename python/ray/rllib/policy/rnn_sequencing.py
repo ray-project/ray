@@ -327,7 +327,7 @@ def chop_into_sequences(
         seq_lens: List of sequence lengths, of shape [NUM_SEQUENCES].
 
     Examples:
-        >>> from ray.rllib.policy.rnn_sequencing import chop_into_sequences  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.policy.rnn_sequencing import chop_into_sequences
         >>> f_pad, s_init, seq_lens = chop_into_sequences(
         ...     episode_ids=[1, 1, 5, 5, 5, 5],
         ...     unroll_ids=[4, 4, 4, 4, 4, 4],
@@ -337,12 +337,11 @@ def chop_into_sequences(
         ...     state_columns=[[4, 5, 4, 5, 5, 5]],
         ...     max_seq_len=3)
         >>> print(f_pad)
-        [[4, 4, 0, 8, 8, 8, 8, 0, 0],
-         [1, 1, 0, 0, 1, 1, 0, 0, 0]]
+        [array([4, 4, 0, 8, 8, 8, 8, 0, 0]), array([1, 1, 0, 0, 1, 1, 0, 0, 0])]
         >>> print(s_init)
-        [[4, 4, 5]]
+        [array([4, 4, 5])]
         >>> print(seq_lens)
-        [2, 3, 1]
+        [2 3 1]
     """
 
     if seq_lens is None or len(seq_lens) == 0:

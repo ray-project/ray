@@ -27,11 +27,22 @@ class ViewRequirement:
     options to build the view.
 
     Examples:
-        >>> from ray.rllib.models.modelv2 import ModelV2  # doctest: +SKIP_EXAMPLE
+        >>> import gymnasium as gym
+        >>> from ray.rllib.models.modelv2 import ModelV2
+        >>> model = ModelV2(
+        ...     obs_space=gym.spaces.Box(-1.0, 1.0, (4,)),
+        ...     action_space=gym.spaces.Discrete(2),
+        ...     num_outputs=2,
+        ...     model_config={},
+        ...     name="model",
+        ...     framework="torch",
+        ... )
         >>> # The default ViewRequirement for a Model is:
-        >>> req = ModelV2(...).view_requirements
-        >>> print(req)
-        {"obs": ViewRequirement(shift=0)}
+        >>> req = model.view_requirements
+        >>> print(list(req))
+        ['obs']
+        >>> print(req["obs"].shift)
+        0
 
     Args:
         data_col: The data column name from the SampleBatch
