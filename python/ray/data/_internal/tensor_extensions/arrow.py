@@ -258,6 +258,15 @@ class ArrowConversionError(Exception):
 
 
 @DeveloperAPI
+class ArrowSchemaUnificationError(ArrowConversionError):
+    """Error raised when block schemas can't be unified into one schema."""
+
+    # The message lists every conflicting column and its types, so it is
+    # never truncated.
+    MAX_DATA_STR_LEN = float("inf")
+
+
+@DeveloperAPI
 def pyarrow_table_from_pydict(
     pydict: Dict[str, Union[List[Any], pa.Array]],
 ) -> pa.Table:

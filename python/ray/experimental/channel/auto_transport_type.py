@@ -7,8 +7,7 @@ from ray.experimental.util.types import Device
 
 
 class AutoTransportType(ChannelOutputType):
-    """
-    Type hint for automatic transport selection for tensors.
+    """Type hint for automatic transport selection for tensors.
 
     With this type hint Compiled Graphs automatically decide the best transport
     to use (e.g., accellerator or shared memory) based on the node locations and
@@ -35,8 +34,7 @@ class AutoTransportType(ChannelOutputType):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         driver_actor_id: Optional[str] = None,
     ) -> "ChannelOutputType":
-        """
-        Directly calling create_channel() on AutoTransportType should not happen,
+        """Directly calling create_channel() on AutoTransportType should not happen,
         just raise an exception with informative message.
         """
         raise ValueError(
@@ -47,8 +45,7 @@ class AutoTransportType(ChannelOutputType):
 
 
 class TypeHintResolver:
-    """
-    This class is used to resolve `AutoChannelType` into an actual channel type
+    """This class is used to resolve `AutoChannelType` into an actual channel type
     (e.g., `TorchTensorType` with proper transport) based on node locations and
     GPU IDs of the readers and writers.
     """
@@ -86,8 +83,7 @@ class TypeHintResolver:
             List[Tuple["ray.actor.ActorHandle", str]],
         ],
     ) -> bool:
-        """
-        Check if the writer and readers use the same GPU.
+        """Check if the writer and readers use the same GPU.
 
         Args:
             writer_and_node: A tuple of writer actor handle and its node ID.
@@ -110,8 +106,7 @@ class TypeHintResolver:
     def _use_gpu(
         self, actors: Union["ray.actor.ActorHandle", List["ray.actor.ActorHandle"]]
     ) -> bool:
-        """
-        Check if the actors use GPUs.
+        """Check if the actors use GPUs.
 
         Args:
             actors: An actor handle or a list of actor handles.
@@ -130,8 +125,7 @@ class TypeHintResolver:
         writer_and_node: Tuple[Optional["ray.actor.ActorHandle"], str],
         reader_and_node_list: List[Tuple[Optional["ray.actor.ActorHandle"], str]],
     ) -> "ChannelOutputType":
-        """
-        Resolve auto_transport_type to the actual channel output type
+        """Resolve auto_transport_type to the actual channel output type
         based on the node locations and GPU IDs.
 
         Args:
