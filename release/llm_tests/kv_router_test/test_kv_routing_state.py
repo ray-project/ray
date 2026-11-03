@@ -412,6 +412,7 @@ async def _wait_for_binding(router, session_id, worker_id, allowed):
     await async_wait_for_condition(bound_everywhere, timeout=30, retry_interval_ms=200)
 
 
+@pytest.mark.requires_2GPU
 class TestSessionAffinity:
     """Session pinning through each ingress's real Dynamo selection service,
     with two engine replicas and two ingress replicas that replicate bindings

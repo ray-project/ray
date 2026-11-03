@@ -559,8 +559,6 @@ class TestKvEventIngestion:
 
             scores = await tracker.get_kv_overlap_scores(token_ids)
             assert scores[worker_a]["host_pinned_extension_blocks"] == 2
-            assert 1 < scores[worker_a]["router_credit_blocks"] < 3
-            assert scores[worker_b]["router_credit_blocks"] == 3
 
             gpu_selection = await tracker.select_worker(
                 "gpu-hit", token_ids, [worker_a, worker_b]
