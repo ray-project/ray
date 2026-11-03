@@ -329,11 +329,6 @@ arrow==1.4.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   isoduration
-asciitree==0.3.3 \
-    --hash=sha256:4aa4b9b649f85e3fcb343363d97564aa1fb62e249677f2e18a96765145cc0f6e
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   zarr
 asttokens==3.0.1 \
     --hash=sha256:15a3ebc0f43c2d0a50eeafea25e19046c68398e487b9f1f5b517f7c0f40f976a \
     --hash=sha256:71a4ee5de0bde6a31d64f6b13f2293ac190344478f081c3d1bccfcf5eacb0cb7
@@ -1225,7 +1220,6 @@ fasteners==0.20 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   google-apitools
     #   gsutil
-    #   zarr
 fastjsonschema==2.21.2 \
     --hash=sha256:1c797122d0a86c5cace2e54bf4e819c36223b552017172f32c5c024a6b77e463 \
     --hash=sha256:b1eb43748041c880796cd077f1a07c3d94e93ae84bba5ed36800a33554ae05de
@@ -2985,25 +2979,6 @@ notebook-shim==0.2.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   jupyterlab
-numcodecs==0.13.1 \
-    --hash=sha256:233bc7f26abce24d57e44ea8ebeb5cd17084690b4e7409dd470fdb75528d615f \
-    --hash=sha256:237b7171609e868a20fd313748494444458ccd696062f67e198f7f8f52000c15 \
-    --hash=sha256:2a86f5367af9168e30f99727ff03b27d849c31ad4522060dde0bce2923b3a8bc \
-    --hash=sha256:2eda97dd2f90add98df6d295f2c6ae846043396e3d51a739ca5db6c03b5eb666 \
-    --hash=sha256:3501a848adaddce98a71a262fee15cd3618312692aa419da77acd18af4a6a3f6 \
-    --hash=sha256:3f593c7506b0ab248961a3b13cb148cc6e8355662ff124ac591822310bc55ecf \
-    --hash=sha256:5195bea384a6428f8afcece793860b1ab0ae28143c853f0b2b20d55a8947c917 \
-    --hash=sha256:796b3e6740107e4fa624cc636248a1580138b3f1c579160f260f76ff13a4261b \
-    --hash=sha256:7a60d75179fd6692e301ddfb3b266d51eb598606dcae7b9fc57f986e8d65cb43 \
-    --hash=sha256:80d3071465f03522e776a31045ddf2cfee7f52df468b977ed3afdd7fe5869701 \
-    --hash=sha256:90d3065ae74c9342048ae0046006f99dcb1388b7288da5a19b3bddf9c30c3176 \
-    --hash=sha256:96add4f783c5ce57cc7e650b6cac79dd101daf887c479a00a29bc1487ced180b \
-    --hash=sha256:96e42f73c31b8c24259c5fac6adba0c3ebf95536e37749dc6c62ade2989dca28 \
-    --hash=sha256:a3cf37881df0898f3a9c0d4477df88133fe85185bffe57ba31bcc2fa207709bc \
-    --hash=sha256:da2230484e6102e5fa3cc1a5dd37ca1f92dfbd183d91662074d6f7574e3e8f53 \
-    --hash=sha256:e5db4824ebd5389ea30e54bc8aeccb82d514d28b6b68da6c536b8fa4596f4bca \
-    --hash=sha256:eda7d7823c9282e65234731fd6bd3986b1f9e035755f7fed248d7d366bb291ab
-    # via zarr
 numpy==2.1.3 \
     --hash=sha256:016d0f6f5e77b0f0d45d77387ffa4bb89816b57c835580c3ce8e099ef830befe \
     --hash=sha256:02135ade8b8a84011cbb67dc44e07c58f28575cf9ecf8ab304e51c05528c19f0 \
@@ -3072,7 +3047,6 @@ numpy==2.1.3 \
     #   keras
     #   lightgbm
     #   ml-dtypes
-    #   numcodecs
     #   pandas
     #   petastorm
     #   ray
@@ -3081,9 +3055,7 @@ numpy==2.1.3 \
     #   tensorboard
     #   tensorboardx
     #   tensorflow
-    #   xarray
     #   xgboost
-    #   zarr
 nvidia-nccl-cu12==2.27.5 ; platform_machine != 'aarch64' and sys_platform == 'linux' \
     --hash=sha256:31432ad4d1fb1004eb0c56203dc9bc2178a1ba69d1d9e02d64a6938ab5e40e7a \
     --hash=sha256:ad730cf15cb5d25fe849c6e6ca9eb5b76db16a80f13f425ac68d8e2e55624457
@@ -3461,7 +3433,6 @@ packaging==26.3 \
     #   tensorflow
     #   virtualenv
     #   wheel
-    #   xarray
 pandas==2.3.3 \
     --hash=sha256:0242fe9a49aa8b4d78a4fa03acb397a58833ef6199e9aa40a95f027bb3a1b6e7 \
     --hash=sha256:1611aedd912e1ff81ff41c745822980c49ce4a7907537be8692c8dbc31924593 \
@@ -3522,7 +3493,6 @@ pandas==2.3.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   petastorm
     #   ray
-    #   xarray
 pandocfilters==1.5.1 \
     --hash=sha256:002b4a555ee4ebc03f8b66307e287fa492e4a77b4ea14d3f934328297bb4939e \
     --hash=sha256:93be382804a9cdb0a7267585f157e5d1731bbe5545a85b268d6f5fe6232de2bc
@@ -5252,10 +5222,6 @@ wrapt==1.17.3 \
     #   anyscale
     #   dm-tree
     #   tensorflow
-xarray==2024.3.0 \
-    --hash=sha256:5c1db19efdde61db7faedad8fc944f4e29698fb6fbd578d352668b63598bd1d8 \
-    --hash=sha256:ca2bc4da2bf2e7879e15862a7a7c3fc76ad19f6a08931d030220cef39a29118d
-    # via -r release/ray_release/byod/requirements_byod_gpu_3.10.in
 xgboost==2.1.0 \
     --hash=sha256:19d145eb847b070c32342b1bf2d7331c102783e07a484f8b13b7d759d707c6b0 \
     --hash=sha256:43b16205689249d7509daf7a6ab00ad0e6c570b3a9c263cb32b26e39d9477bb3 \
@@ -5410,10 +5376,6 @@ yarl==1.25.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   aiohttp
-zarr==2.18.3 \
-    --hash=sha256:2580d8cb6dd84621771a10d31c4d777dca8a27706a1a89b29f42d2d37e2df5ce \
-    --hash=sha256:b1f7dfd2496f436745cdd4c7bcf8d3b4bc1dceef5fdd0d589c87130d842496dd
-    # via -r release/ray_release/byod/requirements_byod_gpu_3.10.in
 zipp==3.23.1 \
     --hash=sha256:0b3596c50a5c700c9cb40ba8d86d9f2cc4807e9bedb06bcdf7fac85633e444dc \
     --hash=sha256:32120e378d32cd9714ad503c1d024619063ec28aad2248dc6672ad13edfa5110

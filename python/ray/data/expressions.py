@@ -1549,8 +1549,7 @@ def _create_udf_callable(
 
 @PublicAPI(stability="alpha")
 def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
-    """
-    Decorator to convert a UDF into an expression-compatible function.
+    """Decorator to convert a UDF into an expression-compatible function.
 
     This decorator allows UDFs to be used seamlessly within the expression system,
     enabling schema inference and integration with other expressions.
@@ -2242,8 +2241,7 @@ def exprlist_to_fields(
 
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
-    """
-    Reference an existing column by name.
+    """Reference an existing column by name.
 
     This is the primary way to reference columns in expressions.
     The returned expression will extract values from the specified
@@ -2270,8 +2268,7 @@ def col(name: str) -> ColumnExpr:
 
 @PublicAPI(stability="beta")
 def lit(value: Any) -> LiteralExpr:
-    """
-    Create a literal expression from a constant value.
+    """Create a literal expression from a constant value.
 
     This creates an expression that represents a constant scalar value.
     The value will be broadcast to all rows when the expression is evaluated.
@@ -2305,8 +2302,7 @@ def lit(value: Any) -> LiteralExpr:
 # TODO remove
 @DeveloperAPI(stability="alpha")
 def star() -> StarExpr:
-    """
-    References all input columns from the input.
+    """References all input columns from the input.
 
     This is a special expression used in projections to preserve all
     existing columns. It's typically used with operations that want to
@@ -2320,8 +2316,7 @@ def star() -> StarExpr:
 
 @PublicAPI(stability="alpha")
 def unnest(expr: Expr) -> UnnestExpr:
-    """
-    Expand a struct-typed expression into one output column per struct field.
+    """Expand a struct-typed expression into one output column per struct field.
 
     Use this with :meth:`Dataset.with_columns
     <ray.data.Dataset.with_columns>` to let a single expression — typically
@@ -2385,8 +2380,7 @@ def download(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
 ) -> DownloadExpr:
-    """
-    Create a download expression that downloads content from URIs.
+    """Create a download expression that downloads content from URIs.
 
     This creates an expression that will download bytes from URIs stored in
     a specified column. When evaluated, it will fetch the content from each URI
@@ -2437,12 +2431,12 @@ def download(
 
 @PublicAPI(stability="alpha")
 def monotonically_increasing_id() -> MonotonicallyIncreasingIdExpr:
-    """
-    Create an expression that generates monotonically increasing IDs.
+    """Create an expression that generates monotonically increasing IDs.
 
     The generated IDs are guaranteed to be monotonically increasing and unique,
-    but not consecutive. The current implementation puts the task ID in the upper
-    31 bits, and the record number within each task in the lower 33 bits. Records
+    but not consecutive. The current implementation puts the record number within
+    each task in the lower 33 bits, and the task ID in the 30 bits above them. The
+    sign bit of the 64-bit ID is unused. Records
     within the block(s) assigned to a task receive consecutive IDs. Note that IDs
     are not globally ordered across tasks.
 
@@ -2472,8 +2466,7 @@ def random(
     seed: int | None = None,
     reseed_after_execution: bool = DEFAULT_RESEED_AFTER_EXECUTION,
 ) -> RandomExpr:
-    """
-    Create an expression that generates random numbers.
+    """Create an expression that generates random numbers.
 
     This creates an expression that generates random floating-point numbers
     between 0 (inclusive) and 1 (exclusive) for each row. The generator can
@@ -2540,8 +2533,7 @@ def random(
 
 @PublicAPI(stability="alpha")
 def uuid() -> UUIDExpr:
-    """
-    Create a UUID expression that generates unique identifiers.
+    """Create a UUID expression that generates unique identifiers.
 
     This creates an expression that generates unique identifiers (strings) for each row.
     The identifiers are generated using the UUID4 algorithm.
