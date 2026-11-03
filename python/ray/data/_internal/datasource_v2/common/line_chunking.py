@@ -35,12 +35,15 @@ Design decisions:
   quoted newlines (``newlines_in_values=True``) must be read whole.
 """
 
+import logging
 from typing import TYPE_CHECKING, List, Tuple
 
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 
 if TYPE_CHECKING:
     import pyarrow
+
+logger = logging.getLogger(__name__)
 
 # Bytes read past a chunk's end in the same request, so the line that crosses
 # the end is usually finished without a second request.
@@ -127,25 +130,35 @@ def read_line_aligned(
     fetch_end = min(end + _LINE_PROBE_BYTES, file_size)
     data = file.read_at(nbytes=fetch_end - fetch_start, offset=fetch_start)
 
-    # Index in ``data`` where the range's first whole line begins.
+    # Index in ``data`` where the range's first whole line begins. With no
+    # ``\n`` after byte ``start - 1`` in ``data``, that line runs past
+    # ``fetch_end`` and no line begins in the range.
     first_line_start = 0
     if start > 0:
         previous_newline = data.find(b"\n")
-        if previous_newline == -1:
-            # The line holding byte ``start - 1`` runs past ``fetch_end``.
-            return memoryview(b"")
-        first_line_start = previous_newline + 1
+        first_line_start = len(data) if previous_newline == -1 else previous_newline + 1
     if fetch_start + first_line_start >= end:
+        logger.debug("Line chunk [%d, %d) holds no line start", start, end)
         return memoryview(b"")
 
     last_newline = data.find(b"\n", end - 1 - fetch_start)
     if last_newline != -1:
-        return memoryview(data)[first_line_start : last_newline + 1]
-    if fetch_end == file_size:
+        lines = memoryview(data)[first_line_start : last_newline + 1]
+    elif fetch_end == file_size:
         # The file's last line has no trailing newline.
-        return memoryview(data)[first_line_start:]
-    tail = _read_through_newline(file=file, offset=fetch_end, file_size=file_size)
-    return memoryview(data[first_line_start:] + tail)
+        lines = memoryview(data)[first_line_start:]
+    else:
+        tail = _read_through_newline(file=file, offset=fetch_end, file_size=file_size)
+        lines = memoryview(data[first_line_start:] + tail)
+    aligned_start = fetch_start + first_line_start
+    logger.debug(
+        "Line chunk [%d, %d) aligned to [%d, %d)",
+        start,
+        end,
+        aligned_start,
+        aligned_start + len(lines),
+    )
+    return lines
 
 
 def _read_through_newline(
