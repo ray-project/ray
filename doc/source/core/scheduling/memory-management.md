@@ -276,16 +276,16 @@ By default, Ray doesn't take the potential memory usage of a task or actor into 
 Specifying a memory requirement doesn't limit memory usage. Ray uses the requirement only for admission control during scheduling, similar to how CPU scheduling works in Ray. Make sure the task doesn't use more memory than it requests.
 :::
 
-To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the `memory` argument. The Ray scheduler then reserves the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
+To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the `memory` argument in bytes. The Ray scheduler then reserves the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
 
 ```{testcode}
-# reserve 500MiB of available memory to place this task
+# Reserve 500 MiB of available memory to place this task.
 @ray.remote(memory=500 * 1024 * 1024)
 def some_function(x):
     pass
 
-# reserve 2.5GiB of available memory to place this actor
-@ray.remote(memory=2500 * 1024 * 1024)
+# Reserve 2.5 GiB of available memory to place this actor.
+@ray.remote(memory=2560 * 1024 * 1024)
 class SomeActor:
     def __init__(self, a, b):
         pass
@@ -294,11 +294,11 @@ class SomeActor:
 The preceding example sets the memory quota statically in the decorator. To set it dynamically at runtime, use `.options()`:
 
 ```{testcode}
-# override the memory quota to 100MiB when submitting the task
+# Override the memory quota to 100 MiB when submitting the task.
 some_function.options(memory=100 * 1024 * 1024).remote(x=1)
 
-# override the memory quota to 1GiB when creating the actor
-SomeActor.options(memory=1000 * 1024 * 1024).remote(a=1, b=2)
+# Override the memory quota to 1 GiB when creating the actor.
+SomeActor.options(memory=1024 * 1024 * 1024).remote(a=1, b=2)
 ```
 
 ### Questions or issues?

@@ -452,8 +452,7 @@ def _expand_directory(
     exclude_prefixes: Optional[List[str]] = None,
     ignore_missing_path: bool = False,
 ) -> List[Tuple[str, int]]:
-    """
-    Expand the provided directory path to a list of file paths.
+    """Expand the provided directory path to a list of file paths.
 
     Args:
         path: The directory path to expand.

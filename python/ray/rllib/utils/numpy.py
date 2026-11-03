@@ -377,7 +377,19 @@ def make_action_immutable(obj: Any) -> Any:
 
 @PublicAPI
 def huber_loss(x: np.ndarray, delta: float = 1.0) -> np.ndarray:
-    """Reference: https://en.wikipedia.org/wiki/Huber_loss."""
+    """Computes the element-wise Huber loss.
+
+    Reference: https://en.wikipedia.org/wiki/Huber_loss.
+
+    Args:
+        x: The input values, such as the differences between predictions and
+            targets.
+        delta: The threshold at which the loss switches from quadratic to linear.
+
+    Returns:
+        `0.5 * x**2` where `abs(x) < delta`, and `delta * (abs(x) - 0.5 * delta)`
+        elsewhere.
+    """
     return np.where(
         np.abs(x) < delta, np.power(x, 2.0) * 0.5, delta * (np.abs(x) - 0.5 * delta)
     )
@@ -562,8 +574,7 @@ def relu(x: np.ndarray, alpha: float = 0.0) -> np.ndarray:
 
 @PublicAPI
 def sigmoid(x: np.ndarray, derivative: bool = False) -> np.ndarray:
-    """
-    Returns the sigmoid function applied to x.
+    """Returns the sigmoid function applied to x.
     Alternatively, can return the derivative or the sigmoid function.
 
     Args:

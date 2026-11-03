@@ -2,6 +2,26 @@
 # docstring_examples depset in ci/raydepsets/configs/docs.depsets.yaml, which
 # runs the "docstring-only" label's examples without torch or TensorFlow.
 # Versions come from requirements_compiled, the same pins Ray Data's tests use.
+#
+# Before adding a library here, decide between adding it and omitting it. The
+# image exists to pull fast, so omitting is the default:
+#
+#   - Omit a library, by adding it to OMITTED_LIBRARIES in
+#     ci/ray_ci/doc/run_docstring_examples.py, when its library's full
+#     doctest() target already installs it. The step then reports the
+#     examples that need it as skipped, by name, and they run in that target.
+#     torch, TensorFlow, polars, lance, LightGBM, and XGBoost are omitted
+#     this way.
+#   - Add a library only when it's small, about 25 MB installed or less, and
+#     many examples need it. Keep the extras together within about 25% of the
+#     image's size when this list was set, about 656 MB installed on Linux
+#     x86_64.
+#   - Never add GPU or CUDA builds, or ML frameworks.
+#   - Never omit a library that no CI image installs. Its examples would then
+#     run nowhere.
+#
+# Name the APIs whose examples need each library, so the entry can go when the
+# last of them stops needing it.
 
 # Imported at the top of ray.util.dask.
 dask
@@ -14,12 +34,24 @@ pytest
 
 # Ray Data imports these lazily, inside the readers, writers, and aggregations
 # whose examples call them.
+# write_tfrecords. Its datasink checks for crc32c before the example reaches
+# TensorFlow, which the image omits, so without crc32c the example fails
+# instead of skipping for TensorFlow.
 crc32c
+# ApproximateQuantile, ApproximateTopK, and Dataset.summary.
 datasketches
+# read_videos.
 decord
+# read_avro.
 fastavro
+# read_images, write_images, and the other examples that read, write, or
+# encode images: Dataset.map, Dataset.iter_batches, FileShuffleConfig,
+# Partitioning, FilenameProvider, and RowBasedFileDatasink.
 pillow
+# The example for _IcebergExpressionVisitor, in ray.data._internal. The
+# read_iceberg and write_iceberg examples skip their Iceberg calls.
 pyiceberg
+# read_audio.
 soundfile
 
 # The Azure SDK is left out on purpose: the Azure node provider needs

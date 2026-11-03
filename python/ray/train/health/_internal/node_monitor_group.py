@@ -1,27 +1,18 @@
-import logging
 import time
 from dataclasses import dataclass
 from typing import Dict, List, NamedTuple, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.health._internal.node_monitor import (
-    NodeMonitor,
-    NodeMonitorStatus,
-    ScheduledProbe,
+from ray.train.health._internal.constants import (
+    DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
 )
-from ray.train.health.probe import NodeIdStr, NodeProbe
+from ray.train.health._internal.node_monitor import NodeMonitor, NodeMonitorStatus
+from ray.train.health._internal.probe_utils import ScheduledProbe
+from ray.train.health.probe import NodeIdStr, NodeProbe, ProbeResult
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-logger = logging.getLogger(__name__)
-
-# The time in seconds a NodeMonitor may leave a poll unanswered before it is
-# reported as failed.
-DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S = 60.0
-
-# Timeout in seconds for poll_status() to wait for the monitors.
-DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S = 1.0
 
 
 class _OngoingPoll(NamedTuple):
@@ -45,7 +36,7 @@ class NodeMonitorGroupPollStatus:
 class NodeMonitorGroup:
     """One ``NodeMonitor`` actor on each of a set of nodes. Each monitor samples
     the scheduled probes it starts with. For on-demand probes, use
-    ``poll_probes_async()``.
+    ``poll_probes_async()`` and ``poll_probe_results()``.
 
     Args:
         probes: The ``ScheduledProbe``\\ s every monitor samples.
@@ -61,9 +52,15 @@ class NodeMonitorGroup:
     ):
         self._probes = list(probes)
         self._health_check_timeout_s = health_check_timeout_s
-        self._monitor_cls = ray.remote(NodeMonitor)
+        self._monitor_cls = ray.remote(concurrency_groups={"on_demand": 1})(NodeMonitor)
         self._monitors: Dict[NodeIdStr, ActorHandle] = {}
         self._ongoing_polls: Dict[NodeIdStr, _OngoingPoll] = {}
+        # The on-demand probes that poll_probes_async() polls: their names, the
+        # time their results are due, and {node ID: ObjectRef of the node's
+        # NodeMonitorStatus}.
+        self._on_demand_probe_names: List[str] = []
+        self._on_demand_deadline = 0.0
+        self._on_demand_polls: Dict[NodeIdStr, ObjectRef] = {}
 
     @property
     def node_ids(self) -> List[NodeIdStr]:
@@ -154,14 +151,17 @@ class NodeMonitorGroup:
             try:
                 node_monitor_statuses[node_id] = ray.get(done_poll)
             except Exception as e:
-                logger.warning("Polling the NodeMonitor on node %s failed.", node_id)
                 node_monitor_statuses[node_id] = NodeMonitorStatus(monitor_error=e)
 
         return node_monitor_statuses
 
     def _get_poll_tasks(self) -> Dict[ObjectRef, NodeIdStr]:
         """Get a poll task for each monitor: the one still waiting from an
-        earlier round, or a new one."""
+        earlier round, or a new one.
+
+        Returns:
+            ``{poll task: node ID}`` for every monitor.
+        """
         poll_task_to_node: Dict[ObjectRef, NodeIdStr] = {}
         for node_id, monitor in self._monitors.items():
             ongoing_poll = self._ongoing_polls.get(node_id)
@@ -172,17 +172,19 @@ class NodeMonitorGroup:
         return poll_task_to_node
 
     def poll_probes_async(
-        self, probes: List[NodeProbe], node_ids: Optional[List[NodeIdStr]] = None
-    ) -> Dict[NodeIdStr, ObjectRef]:
-        """Poll some probes once on some monitors' nodes.
+        self,
+        probes: List[NodeProbe],
+        timeout_s: float,
+        node_ids: Optional[List[NodeIdStr]] = None,
+    ) -> None:
+        """Start polling some probes once on some monitors' nodes. Get their
+        results with ``poll_probe_results()``.
 
         Args:
             probes: The probes to poll.
+            timeout_s: Timeout in seconds for the nodes to answer.
             node_ids: The nodes to poll them on. ``None`` means every node with a
                 monitor.
-
-        Returns:
-            ``{node ID: ObjectRef}`` for each node's ``NodeMonitorStatus``.
 
         Raises:
             ValueError: If a node has no monitor.
@@ -191,7 +193,64 @@ class NodeMonitorGroup:
         missing = [node_id for node_id in node_ids if node_id not in self._monitors]
         if missing:
             raise ValueError(f"No NodeMonitor on nodes {missing}.")
-        return {
+        self._on_demand_probe_names = [probe.probe_name() for probe in probes]
+        self._on_demand_deadline = time.monotonic() + timeout_s
+        self._on_demand_polls = {
             node_id: self._monitors[node_id].poll_probes.remote(probes)
             for node_id in node_ids
+        }
+
+    def poll_probe_results(self) -> Optional[Dict[str, Dict[NodeIdStr, ProbeResult]]]:
+        """Get the results of the probes that ``poll_probes_async()`` polls, once
+        every node answered or the timeout passed. A node that did not answer,
+        or whose monitor failed, gets a result with the error for each probe.
+
+        Returns:
+            ``{probe name: {node ID: ProbeResult}}``, or ``None`` while a node
+            has yet to answer and the timeout has not passed.
+        """
+        polls = list(self._on_demand_polls.values())
+        done = (
+            set(ray.wait(polls, num_returns=len(polls), timeout=0)[0])
+            if polls
+            else set()
+        )
+        if len(done) < len(polls) and time.monotonic() < self._on_demand_deadline:
+            return None
+
+        results: Dict[str, Dict[NodeIdStr, ProbeResult]] = {}
+        for node_id, poll in self._on_demand_polls.items():
+            node_results = self._on_demand_results(node_id, poll, poll in done)
+            for name, result in node_results.items():
+                results.setdefault(name, {})[node_id] = result
+        self._on_demand_polls = {}
+        return results
+
+    def _on_demand_results(
+        self, node_id: NodeIdStr, poll: ObjectRef, answered: bool
+    ) -> Dict[str, ProbeResult]:
+        """Return a node's on-demand probe results. If the node did not answer
+        in time, or its monitor failed, each probe's result carries that
+        error.
+
+        Args:
+            node_id: The node.
+            poll: The ``ObjectRef`` of the node's ``NodeMonitorStatus``.
+            answered: Whether the node answered in time.
+
+        Returns:
+            ``{probe name: ProbeResult}`` for the node.
+        """
+        if not answered:
+            error: Exception = TimeoutError(
+                f"The NodeMonitor on node {node_id} did not answer in time."
+            )
+        else:
+            try:
+                return ray.get(poll).probe_results
+            except Exception as e:
+                error = e
+        return {
+            name: ProbeResult(timestamp_s=time.time(), error=error)
+            for name in self._on_demand_probe_names
         }

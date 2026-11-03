@@ -234,7 +234,7 @@ To read formats other than Parquet, see the {ref}`Loading Data API <loading-data
 
 ::::{tab-set}
 
-:::{tab-item} S3
+:::{tab-item} Amazon S3
 
 To read files from Amazon S3, specify URIs with the `s3://` scheme.
 
@@ -260,7 +260,7 @@ Ray Data relies on PyArrow for authentication with Amazon S3. To configure crede
 
 :::
 
-:::{tab-item} GCS
+:::{tab-item} Google Cloud Storage
 
 To read files from Google Cloud Storage, install the [Filesystem interface to Google Cloud Storage](https://gcsfs.readthedocs.io/en/latest/):
 

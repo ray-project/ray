@@ -82,24 +82,27 @@ Batch format
     {meth}`Dataset.map_batches() <ray.data.Dataset.map_batches>` to specify the
     batch type.
 
-    ```{doctest}
-    >>> import ray  # doctest: +SKIP
-    >>> dataset = ray.data.range(15)  # doctest: +SKIP
-    >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))  # doctest: +SKIP
+    ```{testcode}
+    import ray
+
+    dataset = ray.data.range(15, override_num_blocks=1)
+    print(next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5))))
+    print(next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5))))
+    print(next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5))))
+    ```
+
+    ```{testoutput}
     {'id': array([0, 1, 2, 3, 4])}
-    >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))  # doctest: +SKIP
        id
     0   0
     1   1
     2   2
     3   3
     4   4
-    >>> next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5)))  # doctest: +SKIP
     pyarrow.Table
     id: int64
     ----
-    id: [[0],[1],...,[3],[4]]
-
+    id: [[0,1,2,3,4]]
     ```
 
     To learn more about batch formats, read

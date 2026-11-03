@@ -31,8 +31,7 @@ ROCPROFSYS_DEFAULT_CONFIG = {
 def parse_rocprof_sys_config(
     rocprof_sys_config: Dict[str, str]
 ) -> Tuple[List[str], List[str]]:
-    """
-    Function to convert dictionary of rocprof-sys options into
+    """Function to convert dictionary of rocprof-sys options into
     rocprof-sys-python command line
 
     The function returns:
@@ -70,8 +69,7 @@ class RocProfSysPlugin(RuntimeEnvPlugin):
     async def _check_rocprof_sys_script(
         self, rocprof_sys_config: Dict[str, str]
     ) -> Tuple[bool, str]:
-        """
-        Function to validate if rocprof_sys_config is a valid rocprof_sys profile options
+        """Function to validate if rocprof_sys_config is a valid rocprof_sys profile options
         Args:
             rocprof_sys_config: dictionary mapping rocprof_sys option to it's value
         Returns:

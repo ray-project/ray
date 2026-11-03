@@ -712,6 +712,10 @@ class MetricsLogger:
 
         Note that the state is merely the combination of all states of the individual
         `Stats` objects stored under `self.stats`.
+
+        Returns:
+            A dict with a single `"stats"` key. Its value maps each stats key path,
+            joined with `"--"`, to the state of the `Stats` object at that path.
         """
         stats_dict = {}
 

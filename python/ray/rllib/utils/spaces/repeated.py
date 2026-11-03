@@ -29,6 +29,7 @@ class Repeated(gym.Space):
         self.max_len = max_len
 
     def sample(self):
+        """Returns a list of 1 to `max_len` random samples from the child space."""
         return [
             self.child_space.sample()
             for _ in range(self.np_random.integers(1, self.max_len + 1))

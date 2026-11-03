@@ -33,8 +33,7 @@ RayCallbacks = namedtuple("RayCallbacks", " ".join([field + "_cbs" for field in 
 
 
 class RayDaskCallback(Callback):
-    """
-    Extends Dask's `Callback` class with Ray-specific hooks. When instantiating
+    """Extends Dask's `Callback` class with Ray-specific hooks. When instantiating
     or subclassing this class, both the normal Dask hooks (e.g. pretask,
     posttask, etc.) and the Ray-specific hooks can be provided.
 
@@ -217,8 +216,7 @@ def unpack_ray_callbacks(cbs):
 
 @contextlib.contextmanager
 def local_ray_callbacks(callbacks=None):
-    """
-    Allows Dask-Ray callbacks to work with nested schedulers.
+    """Allows Dask-Ray callbacks to work with nested schedulers.
 
     Callbacks will only be used by the first started scheduler they encounter.
     This means that only the outermost scheduler will use global callbacks.

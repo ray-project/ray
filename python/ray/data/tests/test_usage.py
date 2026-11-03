@@ -8,6 +8,11 @@ import pytest
 
 import ray
 from ray._common.usage import usage_lib
+from ray.data._internal.execution.lineage_tracker import LineageTracker
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
+)
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.issue_detection.issue_detector import IssueType
 from ray.data._internal.usage import collector, poller, util
 from ray.data._internal.usage.actor import _UsageCollectionActor
@@ -36,6 +41,7 @@ def executor():
     # StreamingExecutor the callback receives at runtime.
     executor = MagicMock()
     executor.issue_detector_manager = None
+    executor.ray_data_reconstruction_enabled = False
     return executor
 
 
@@ -77,17 +83,164 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
-    # Performance carries all four metric fields. Values are None in this
-    # hermetic run (no cluster / Prometheus); the delta math is covered by
-    # test_compute_delta and the query path by the query_prometheus_counter tests.
-    assert set(entry["performance"]) == {
-        "bytes_spilled",
-        "node_deaths",
-        "oom_kills",
-        "unexpected_worker_kills",
+    # Everything else is None in this hermetic run (no cluster / Prometheus /
+    # scheduling steps) and None fields are omitted from the payload. The delta
+    # math is covered by test_compute_delta, the query path by the
+    # query_prometheus_counter tests, and the memory / object-lost fields by
+    # test_memory_and_object_lost_stats_in_payload.
+    assert entry["performance"] == {
+        "lineage_reconstruction": {"num_object_lost_task_failures": 0}
     }
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
+
+
+def test_memory_and_object_lost_stats_in_payload(reset_collector, mock_record):
+    """Object store usage is sampled per scheduling step, and task USS and
+    object-lost failures are aggregated across operators at execution end."""
+    from ray.data._internal.execution.interfaces import ExecutionResources
+    from ray.data._internal.execution.interfaces.distribution_tracker import (
+        DistributionTracker,
+    )
+
+    def make_metrics(uss_samples, num_object_lost):
+        metrics = MagicMock()
+        tracker = DistributionTracker()
+        for sample in uss_samples:
+            tracker.add_sample(sample)
+        metrics.max_uss_bytes = tracker
+        metrics.num_tasks_failed_object_lost = num_object_lost
+        return metrics
+
+    map_op = MagicMock()
+    map_op.metrics = make_metrics([100, 300], 1)
+    # Hash shuffle finalize tasks are recorded apart from ``op.metrics``.
+    shuffle_op = MagicMock(spec=HashShufflingOperatorBase)
+    shuffle_op.metrics = make_metrics([], 0)
+    shuffle_op._reduce_metrics = make_metrics([200], 2)
+
+    executor = MagicMock()
+    executor.issue_detector_manager = None
+    executor.ray_data_reconstruction_enabled = False
+    executor._topology = {map_op: None, shuffle_op: None}
+
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    for used in (10, 30, 20):
+        executor._resource_manager.get_global_usage.return_value = ExecutionResources(
+            object_store_memory=used
+        )
+        callback.on_execution_step(executor)
+    callback.after_execution_fails(executor, RuntimeError("boom"))
+
+    perf = json.loads(mock_record[-1][1])["executions"][0]["performance"]
+    assert perf["object_store_memory_bytes"] == {
+        "num_samples": 3,
+        "min": 10,
+        "max": 30,
+        "mean": 20,
+        "sum": 60,
+        "variance": 100,
+    }
+    assert perf["task_max_uss_bytes"] == {
+        "num_samples": 3,
+        "min": 100,
+        "max": 300,
+        "mean": 200,
+        "sum": 600,
+        "variance": 10000,
+    }
+    assert perf["lineage_reconstruction"]["num_object_lost_task_failures"] == 3
+
+
+@pytest.mark.parametrize("ray_data_reconstruction,expected", [(True, 3), (False, 5)])
+def test_object_reconstruction_attempts_follow_reconstruction_flag(
+    reset_collector,
+    mock_record,
+    executor,
+    monkeypatch,
+    ray_data_reconstruction,
+    expected,
+):
+    """With Ray Data reconstruction, attempts are counted by the executor's
+    lineage tracker (3); otherwise they come from Ray Core's counter in
+    Prometheus (5)."""
+    executor.ray_data_reconstruction_enabled = ray_data_reconstruction
+    executor._lineage_tracker.num_object_reconstruction_attempts = 3
+    monkeypatch.setattr(
+        UsageCallback,
+        "_compute_cluster_deltas",
+        lambda self: {collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS: 5},
+    )
+
+    callback = UsageCallback(ray.data.range(1)._logical_plan)
+    callback.before_execution_starts(executor)
+    callback.after_execution_succeeds(executor)
+
+    entry = json.loads(mock_record[-1][1])["executions"][0]
+    assert entry["env"]["context"]["enable_ray_data_reconstruction"] is (
+        ray_data_reconstruction
+    )
+    lineage = entry["performance"]["lineage_reconstruction"]
+    assert lineage["object_reconstruction_attempts"] == expected
+
+
+def test_execution_step_no_op_when_disabled(
+    reset_collector, mock_record, executor, monkeypatch
+):
+    """No samples are taken when usage collection is disabled."""
+    monkeypatch.setenv("RAY_DATA_USAGE_DISABLED", "1")
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    callback.on_execution_step(executor)
+    assert callback._object_store_memory.num_samples == 0
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_context_records_ray_data_reconstruction(
+    reset_collector, mock_record, executor, enabled
+):
+    """Reconstruction is recorded as what the executor ran with, which is off
+    when the DAG doesn't support it even if the context requested it."""
+    executor.ray_data_reconstruction_enabled = enabled
+    ds = ray.data.range(1)
+    UsageCallback(ds._logical_plan).before_execution_starts(executor)
+
+    _, payload_json = mock_record[-1]
+    context = json.loads(payload_json)["executions"][0]["env"]["context"]
+    assert context == {"enable_ray_data_reconstruction": enabled}
+
+
+def test_executor_reconstruction_enabled_follows_lineage_tracker():
+    ctx = ray.data.DataContext.get_current()
+    assert StreamingExecutor(ctx).ray_data_reconstruction_enabled is False
+    tracked = StreamingExecutor(ctx)
+    tracked._lineage_tracker = LineageTracker()
+    assert tracked.ray_data_reconstruction_enabled is True
+
+
+def test_execution_setting_missing_on_executor_recorded_as_none():
+    def missing(executor):
+        raise AttributeError("missing")
+
+    def fail(executor):
+        raise RuntimeError("boom")
+
+    assert collector.collect_context(MagicMock(), {"field": missing}) == {"field": None}
+    with pytest.raises(RuntimeError):
+        collector.collect_context(MagicMock(), {"field": fail})
+
+
+def test_execution_settings_read_real_executor(reset_collector, mock_record):
+    """Every execution setting reader works against a real ``StreamingExecutor``."""
+    ray.data.range(1).materialize()
+
+    _, payload_json = mock_record[-1]
+    context = json.loads(payload_json)["executions"][0]["env"]["context"]
+    assert context.keys() == collector._EXECUTION_SETTINGS.keys()
+    assert None not in context.values()
 
 
 def test_detected_issues_in_payload(reset_collector, mock_record, monkeypatch):
@@ -310,15 +463,21 @@ def test_query_prometheus_counter_sums_results(monkeypatch):
     assert util.query_prometheus_counter("q") == 7
 
 
+def test_query_prometheus_counter_no_series_is_zero(monkeypatch):
+    """A counter's series only exists after its first event, so a successful
+    query with no matching series counts as zero events, letting a counter
+    that first appears mid-execution still produce a delta."""
+    resp = MagicMock(status_code=200, json=lambda: {"data": {"result": []}})
+    monkeypatch.setattr(util.requests, "get", lambda *a, **k: resp)
+    assert util.query_prometheus_counter("q") == 0
+    assert util.compute_delta(util.query_prometheus_counter("q"), 1) == 1
+
+
 @pytest.mark.parametrize(
     "get_fn",
     [
         # Non-200 response.
         lambda *a, **k: MagicMock(status_code=500),
-        # 200 but no series matched.
-        lambda *a, **k: MagicMock(
-            status_code=200, json=lambda: {"data": {"result": []}}
-        ),
         # Prometheus unreachable
         MagicMock(side_effect=util.requests.ConnectionError("no prometheus")),
         # 200 but malformed response body
@@ -347,6 +506,32 @@ def test_session_scoped_metric_query():
         collector._session_scoped_metric_query("m", None, {"State": "Spilled"})
         == "sum(m{State='Spilled'})"
     )
+
+
+@pytest.mark.parametrize(
+    "reader,expected_promql",
+    [
+        (
+            collector.cluster_object_reconstruction_attempts,
+            "sum(ray_object_recovery_attempts_total"
+            "{Type='Reconstruct',SessionName='s1'})",
+        ),
+        (
+            collector.cluster_task_retries,
+            "sum(ray_task_retry_submissions_total{SessionName='s1'})",
+        ),
+    ],
+)
+def test_reconstruction_counter_queries(monkeypatch, reader, expected_promql):
+    """The lineage reconstruction readers query the core worker counters with
+    the label filters used by the Ray dashboard."""
+    queries = []
+    monkeypatch.setattr(collector, "_session_name", lambda: "s1")
+    monkeypatch.setattr(
+        collector, "query_prometheus_counter", lambda q: queries.append(q) or 7
+    )
+    assert reader() == 7
+    assert queries == [expected_promql]
 
 
 def test_poller_snapshots():
