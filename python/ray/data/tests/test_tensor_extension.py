@@ -1758,6 +1758,21 @@ def test_should_convert_to_tensor_skips_leading_nulls(values, expected):
     assert _should_convert_to_tensor(values, "x") is expected
 
 
+def test_should_convert_to_tensor_accepts_array_like_without_iteration():
+    """An ndarray-like column that supports ``__array__`` and ``__len__`` but
+    not iteration, such as some tensor wrappers, is a tensor column. The check
+    must decide on the collection itself before it looks at any element."""
+
+    class ArrayLike:
+        def __len__(self):
+            return 2
+
+        def __array__(self, dtype=None, copy=None):
+            return np.ones((2, 2))
+
+    assert _should_convert_to_tensor(ArrayLike(), "x") is True
+
+
 def test_variable_shaped_check_skips_null_rows():
     """Null rows have no shape, so they neither make a column variable-shaped
     nor hide that its tensors differ in shape."""
