@@ -339,7 +339,7 @@ A sandbox doesn't outlive the Ray worker that creates it. When the worker exits 
 
 ### Keep sandboxes booted with a warm pool
 
-Creating a sandbox boots gVisor, which takes a fraction of a second, and longer when many sandboxes start at once. If you know the configurations your workload creates, pass them to `SandboxRuntime` as warm-pool profiles. The runtime boots each profile's sandboxes ahead of time, and a `create` call whose arguments match a profile takes one of them at once, while the runtime boots a replacement in the background:
+Creating a sandbox boots gVisor, which takes a fraction of a second, and longer when many sandboxes start at once. If you know the configurations your workload creates, pass them to `SandboxRuntime` as warm-pool profiles. The runtime boots each profile's sandboxes ahead of time, and a `create` call whose arguments match a profile takes one of them at once:
 
 ```python
 import ray
@@ -372,7 +372,7 @@ print(ray.get(worker.run.remote("echo $TASK", {"TASK": "warm"})))
 ray.get(worker.close.remote())
 ```
 
-A profile is the keyword arguments of `create` plus a `size`. Everything fixed at boot must match: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, `readonly`, and `rootless`. A create's `env`, `ttl_seconds`, and `timeout_seconds` don't need to match: a sandbox taken from the pool runs every command with the create's `env` on top of the profile's, and its TTL starts at the create. Creates that match no profile boot as usual. Call `close` to delete the sandboxes the pool still holds.
+A profile is the keyword arguments of `create` plus a `size`, the number of sandboxes it keeps. A sandbox that a create takes still counts toward the size until it's deleted, by `delete`, by its TTL, or by a checkpoint that stops it, and only then does the runtime boot a new one in its place. So a pool never holds more sandboxes than its size, and a create that finds none booted boots one as usual, outside the pool. Everything fixed at boot must match: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, `readonly`, and `rootless`. A create's `env`, `ttl_seconds`, and `timeout_seconds` don't need to match: a sandbox taken from the pool runs every command with the create's `env` on top of the profile's, and its TTL starts at the create. Creates that match no profile boot as usual. Call `close` to delete the sandboxes the pool still holds.
 
 ### Checkpoint and restore sandboxes
 

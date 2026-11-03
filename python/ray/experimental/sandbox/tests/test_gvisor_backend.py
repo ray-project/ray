@@ -3010,7 +3010,7 @@ def test_runtime_warm_pool_serves_matching_creates():
     )
     try:
         assert runtime.wait_for_warm_pool(timeout_seconds=120)
-        booted = {i for pool in runtime._warm._ready.values() for i in pool}
+        booted = {s.sandbox_id for pool in runtime._warm._ready.values() for s in pool}
         instance_id = runtime.create(
             image="busybox:latest", shell="/bin/sh", env={"MODE": "warm"}
         )
@@ -3023,8 +3023,12 @@ def test_runtime_warm_pool_serves_matching_creates():
         assert (res.exit_code, res.stdout.strip()) == (0, "warm")
         config = runtime.backend._sandbox_metadata[instance_id]["config"]
         assert config.env == {"MODE": "warm"}
+        # Deleting it boots a new sandbox in its slot.
         runtime.delete(instance_id)
         assert runtime.wait_for_warm_pool(timeout_seconds=120)
+        assert {
+            s.sandbox_id for pool in runtime._warm._ready.values() for s in pool
+        } - booted
     finally:
         runtime.close()
 

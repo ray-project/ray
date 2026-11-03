@@ -54,18 +54,53 @@ def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
     )
 
 
+# The states of a warm-pool slot.
+_EMPTY = "empty"
+_BOOTING = "booting"
+_READY = "ready"
+_CLAIMED = "claimed"
+_DELETING = "deleting"
+
+
+class _Slot:
+    """A place for one sandbox in a warm pool.
+
+    A slot is empty, booting, ready (booted and not handed out), claimed
+    (handed to a create) or deleting (its sandbox died while ready). It
+    holds one sandbox at a time and boots the next only once the last one
+    is deleted.
+    """
+
+    __slots__ = ("key", "state", "sandbox_id")
+
+    def __init__(self, key: tuple):
+        self.key = key
+        self.state = _EMPTY
+        self.sandbox_id: Optional[str] = None
+
+
 class _WarmPool:
-    """Booted sandboxes per profile, handed out by ``SandboxRuntime.create``."""
+    """A fixed number of sandbox slots per profile, booted ahead of creates.
+
+    A create that matches a profile takes the sandbox of a ready slot, and
+    the slot stays that sandbox's until it's deleted; only then does the
+    pool boot a new one in it. So a profile never holds more than its size
+    of sandboxes, ready or in use, and creates that find none ready boot
+    outside the pool.
+    """
 
     def __init__(self, runtime: "SandboxRuntime", profiles: List[Dict[str, Any]]):
         self._runtime = runtime
         self._lock = threading.Lock()
-        # Notified whenever a boot ends and on close, for wait_full.
+        # Notified whenever a slot fills or empties, and on close, for wait_full.
         self._changed = threading.Condition(self._lock)
-        # Boot key -> (SandboxConfig to boot with, pool size).
-        self._profiles: Dict[tuple, Any] = {}
+        # Boot key -> the SandboxConfig its slots boot with.
+        self._profiles: Dict[tuple, SandboxConfig] = {}
+        self._slots: Dict[tuple, List[_Slot]] = {}
+        # Boot key -> its ready slots, in the order they became ready.
         self._ready: Dict[tuple, collections.deque] = {}
-        self._booting: Dict[tuple, int] = {}
+        # Sandbox ID -> the slot holding it, ready or claimed.
+        self._held: Dict[str, _Slot] = {}
         self._failed_at: Dict[tuple, float] = {}
         # Boot key -> the timer that refills a profile once the pause after
         # its failed boot is over.
@@ -88,9 +123,9 @@ class _WarmPool:
                     "boots the same sandboxes (only env, ttl_seconds and "
                     "timeout_seconds differ)."
                 )
-            self._profiles[key] = (cfg, size)
+            self._profiles[key] = cfg
+            self._slots[key] = [_Slot(key) for _ in range(size)]
             self._ready[key] = collections.deque()
-            self._booting[key] = 0
         # Boots queue here and run a few at a time.
         self._boots = concurrent.futures.ThreadPoolExecutor(
             max_workers=_WARM_BOOT_CONCURRENCY,
@@ -99,34 +134,58 @@ class _WarmPool:
         self.refill_all()
 
     def take(self, cfg: SandboxConfig) -> Optional[str]:
-        """A booted sandbox for ``cfg`` (and a replacement booting), or None."""
+        """Claim a booted sandbox for ``cfg``, or return None.
+
+        The sandbox's slot stays claimed until the sandbox is deleted, so
+        taking one boots nothing.
+        """
         key = _boot_key(cfg)
         if key not in self._profiles:
             return None
-        instance_id = None
+        taken = None
         dead = []
         with self._lock:
-            pool = self._ready[key]
-            while pool and instance_id is None:
-                candidate = pool.popleft()
-                if self._runtime.get_status(candidate) == SandboxStatus.RUNNING:
-                    instance_id = candidate
+            ready = self._ready[key]
+            while ready and taken is None:
+                slot = ready.popleft()
+                if slot.state != _READY:  # deleted while it waited
+                    continue
+                if self._runtime.get_status(slot.sandbox_id) == SandboxStatus.RUNNING:
+                    slot.state = _CLAIMED
+                    taken = slot.sandbox_id
                 else:
-                    dead.append(candidate)
-        for candidate in dead:  # died while pooled: free what it holds
+                    slot.state = _DELETING
+                    dead.append(slot.sandbox_id)
+        for instance_id in dead:  # died while ready: free what it holds
             threading.Thread(
-                target=self._discard, args=(candidate,), daemon=True
+                target=self._discard, args=(instance_id,), daemon=True
             ).start()
-        self.refill(key)
-        return instance_id
+        return taken
 
     def _discard(self, instance_id: str) -> None:
+        """Delete a sandbox that died while ready, then boot its slot again."""
+        self._delete_quietly(instance_id, "dead warm-pool")
+        self.release(instance_id)
+
+    def _delete_quietly(self, instance_id: str, what: str) -> None:
         try:
             self._runtime._backend.delete_sandbox(instance_id)
         except Exception as exc:
-            logger.warning(
-                "Failed to delete dead warm-pool sandbox %s: %s", instance_id, exc
-            )
+            logger.warning("Failed to delete %s sandbox %s: %s", what, instance_id, exc)
+
+    def release(self, instance_id: str) -> None:
+        """Empty the slot of a pooled sandbox that's been deleted, and refill it.
+
+        Sandboxes the pool didn't boot are ignored.
+        """
+        with self._lock:
+            slot = self._held.pop(instance_id, None)
+            if slot is None:
+                return
+            slot.state = _EMPTY
+            slot.sandbox_id = None
+            self._changed.notify_all()
+        self.refill(slot.key)
 
     def _paused_for(self, key: tuple) -> float:
         """Seconds until a profile whose boot failed boots again, else <= 0."""
@@ -153,6 +212,7 @@ class _WarmPool:
         self.refill(key)
 
     def refill(self, key: tuple) -> None:
+        """Boot a sandbox in each of a profile's empty slots."""
         with self._lock:
             if self._closed:
                 return
@@ -160,49 +220,55 @@ class _WarmPool:
             if paused_for > 0:
                 self._refill_later(key, paused_for)
                 return
-            size = self._profiles[key][1]
-            missing = max(0, size - len(self._ready[key]) - self._booting[key])
-            self._booting[key] += missing
-            # Submitted under the lock, so none lands after close's shutdown.
-            for _ in range(missing):
-                self._boots.submit(self._boot, key)
+            for slot in self._slots[key]:
+                if slot.state == _EMPTY:
+                    slot.state = _BOOTING
+                    # Submitted under the lock, so none lands after close's
+                    # shutdown.
+                    self._boots.submit(self._boot, slot)
 
     def refill_all(self) -> None:
         for key in self._profiles:
             self.refill(key)
 
-    def _boot(self, key: tuple) -> None:
+    def _boot(self, slot: _Slot) -> None:
         instance_id = None
         with self._lock:
             # Another boot of this profile failed while this one queued: the
             # timer that failure started refills the profile.
-            boot = not self._closed and self._paused_for(key) <= 0
+            boot = not self._closed and self._paused_for(slot.key) <= 0
         if boot:
             try:
                 instance_id = self._runtime._backend.create_sandbox(
-                    self._profiles[key][0]
+                    self._profiles[slot.key]
                 )
             except Exception as exc:
                 logger.warning("A warm-pool sandbox failed to boot: %s", exc)
                 with self._lock:
-                    self._failed_at[key] = time.monotonic()
-                    self._refill_later(key, _WARM_RETRY_SECONDS)
+                    self._failed_at[slot.key] = time.monotonic()
+                    self._refill_later(slot.key, _WARM_RETRY_SECONDS)
         with self._lock:
-            self._booting[key] -= 1
             if instance_id is not None and not self._closed:
-                self._ready[key].append(instance_id)
+                slot.state = _READY
+                slot.sandbox_id = instance_id
+                self._held[instance_id] = slot
+                self._ready[slot.key].append(slot)
                 instance_id = None
+            else:
+                slot.state = _EMPTY
             self._changed.notify_all()
         if instance_id is not None:  # closed while it booted
-            self._runtime._backend.delete_sandbox(instance_id)
+            self._delete_quietly(instance_id, "warm-pool")
 
     def _full(self) -> bool:
         return all(
-            len(self._ready[key]) >= size for key, (_, size) in self._profiles.items()
+            slot.state in (_READY, _CLAIMED)
+            for slots in self._slots.values()
+            for slot in slots
         )
 
     def wait_full(self, timeout_seconds: float) -> bool:
-        """Wait until every profile's pool is full; False on timeout or close."""
+        """Wait until every slot holds a booted sandbox; False on timeout or close."""
         deadline = time.monotonic() + timeout_seconds
         with self._changed:
             while not self._full():
@@ -213,12 +279,22 @@ class _WarmPool:
         return True
 
     def close(self) -> List[str]:
-        """Stop refilling; the booted sandboxes, for the caller to delete."""
+        """Stop refilling; the ready sandboxes, for the caller to delete.
+
+        Claimed sandboxes stay their creates'. Deleting them later boots
+        nothing.
+        """
         with self._lock:
             self._closed = True
-            ready = [i for pool in self._ready.values() for i in pool]
-            for pool in self._ready.values():
-                pool.clear()
+            ready = []
+            for queue in self._ready.values():
+                for slot in queue:
+                    if slot.state == _READY:
+                        ready.append(slot.sandbox_id)
+                        self._held.pop(slot.sandbox_id, None)
+                        slot.state = _EMPTY
+                        slot.sandbox_id = None
+                queue.clear()
             retries = list(self._retries.values())
             self._retries.clear()
             self._changed.notify_all()
@@ -239,10 +315,12 @@ class SandboxRuntime:
             profiles, each the ``create()`` keyword arguments of one boot
             configuration plus its pool ``"size"``. A create whose arguments
             match a profile's (``env``, ``ttl_seconds`` and
-            ``timeout_seconds`` aside) takes a booted sandbox at once, and
-            the runtime boots a replacement in the background. Such a
-            sandbox runs every command with the create's ``env`` (on top of
-            the profile's). None or empty keeps no pool.
+            ``timeout_seconds`` aside) takes a booted sandbox at once, which
+            runs every command with the create's ``env`` (on top of the
+            profile's). A profile holds at most ``size`` sandboxes, ready or
+            in use: the runtime boots a new one when a sandbox it handed out
+            is deleted, not when it's handed out, and creates that find none
+            ready boot cold, outside the pool. None or empty keeps no pool.
     """
 
     def __init__(self, warm_pool: Optional[List[Dict[str, Any]]] = None):
@@ -608,6 +686,9 @@ class SandboxRuntime:
             timer = self._ttl_timers.pop(instance_id, None)
             if timer is not None:
                 timer.cancel()
+            # The backend deleted the stopped sandbox.
+            if self._warm is not None:
+                self._warm.release(instance_id)
 
         if isinstance(res, dict) and "checkpoint_path" in res:
             return res["checkpoint_path"]
@@ -681,10 +762,16 @@ class SandboxRuntime:
         timer = self._ttl_timers.pop(instance_id, None)
         if timer is not None:
             timer.cancel()
-        self._backend.delete_sandbox(instance_id)
+        try:
+            self._backend.delete_sandbox(instance_id)
+        finally:
+            # The backend forgets a sandbox before it frees it, so a failed
+            # delete still empties the sandbox's warm-pool slot.
+            if self._warm is not None:
+                self._warm.release(instance_id)
 
     def wait_for_warm_pool(self, timeout_seconds: float = 300.0) -> bool:
-        """Wait until every warm-pool profile has its full pool booted.
+        """Wait until every warm-pool slot holds a booted sandbox, ready or in use.
 
         Args:
             timeout_seconds: How long to wait.
@@ -697,9 +784,10 @@ class SandboxRuntime:
         return self._warm.wait_full(timeout_seconds)
 
     def close(self) -> None:
-        """Delete the sandboxes the warm pool keeps booted, and stop refilling it.
+        """Delete the warm pool's ready sandboxes, and stop refilling it.
 
-        Sandboxes that ``create`` returned stay; delete them with ``delete``.
+        Sandboxes that ``create`` returned stay; delete them with ``delete``,
+        which then boots nothing in their place.
         """
         if self._warm is not None:
             for instance_id in self._warm.close():

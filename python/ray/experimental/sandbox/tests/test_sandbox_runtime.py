@@ -162,10 +162,14 @@ class _CountingBackend(_FakeBackend):
         super().__init__()
         self.exec_envs = []
         self.assigned = []
+        self.checkpoints = []
+        self.ids_lock = threading.Lock()
 
     def create_sandbox(self, config):
-        self.configs.append(config)
-        return f"ray-sandbox-{len(self.configs):04d}"
+        # Pool boots run on several threads at once.
+        with self.ids_lock:
+            self.configs.append(config)
+            return f"ray-sandbox-{len(self.configs):04d}"
 
     def assign_config(self, sandbox_id, config):
         self.assigned.append((sandbox_id, config))
@@ -177,15 +181,24 @@ class _CountingBackend(_FakeBackend):
         return ExecResult(exit_code=0, stdout="", stderr="", duration_seconds=0.0)
 
 
-def _pooled_runtime(profiles):
+def _pooled_runtime(profiles, backend=None):
     from ray.experimental.sandbox.runtime import _WarmPool
 
     runtime = SandboxRuntime()
     runtime._image_manager = _FakeImageManager()
-    runtime._backend = _CountingBackend()
+    runtime._backend = backend or _CountingBackend()
     runtime._warm = _WarmPool(runtime, profiles)
     assert runtime.wait_for_warm_pool(timeout_seconds=10)
     return runtime
+
+
+def _wait_until(predicate, timeout_seconds=5.0):
+    deadline = time.monotonic() + timeout_seconds
+    while not predicate():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
 
 
 def test_warm_pool_hands_out_booted_sandboxes():
@@ -217,10 +230,15 @@ def test_warm_pool_hands_out_booted_sandboxes():
     assert (config.env, config.ttl_seconds) == ({"A": "1"}, 60)
     runtime.exec(instance_id, ["true"], env={"C": "3"})
     assert runtime._backend.exec_envs == [(instance_id, {"C": "3"})]
-    # A replacement boots in the background.
+    # Taking a sandbox boots nothing: its slot stays the create's until the
+    # sandbox is deleted, and only then does a new one boot in it.
     assert runtime.wait_for_warm_pool(timeout_seconds=10)
-    assert len(runtime._backend.configs) == 3
+    time.sleep(0.1)
+    assert len(runtime._backend.configs) == 2
     runtime.delete(instance_id)
+    assert _wait_until(lambda: len(runtime._backend.configs) == 3)
+    assert runtime.wait_for_warm_pool(timeout_seconds=10)
+    runtime.close()
 
 
 def test_assigned_config_reaches_get_config_exec_and_checkpoints(tmp_path, monkeypatch):
@@ -380,10 +398,8 @@ def test_a_failing_profile_is_not_retried_on_every_create():
 
     runtime._backend.create_sandbox = broken
     runtime._warm = _WarmPool(runtime, [{"image": "img", "size": 2}])
-    deadline = time.monotonic() + 5
-    key = next(iter(runtime._warm._profiles))
-    while runtime._warm._booting[key] and time.monotonic() < deadline:
-        time.sleep(0.01)
+    (slots,) = runtime._warm._slots.values()
+    assert _wait_until(lambda: not any(slot.state == "booting" for slot in slots))
     # A boot still queued when the first one failed is skipped.
     attempts = len(boots)
     assert 1 <= attempts <= 2
@@ -446,15 +462,153 @@ def test_a_pooled_sandbox_that_died_is_deleted_not_handed_out():
     runtime = _pooled_runtime([{"image": "img", "size": 2}])
     # The boots run in parallel, so the pool's order is the order they ended.
     (pool,) = runtime._warm._ready.values()
-    dead, alive = pool
+    dead, alive = (slot.sandbox_id for slot in pool)
     runtime._backend.get_status = lambda sandbox_id: (
         SandboxStatus.TERMINATED if sandbox_id == dead else SandboxStatus.RUNNING
     )
     assert runtime.create(image="img", timeout_seconds=5) == alive
-    deadline = time.monotonic() + 5
-    while dead not in runtime._backend.deleted and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert dead in runtime._backend.deleted
+    assert _wait_until(lambda: dead in runtime._backend.deleted)
+    # Only the dead sandbox's slot boots again; the taken one's stays claimed.
+    assert _wait_until(lambda: len(runtime._backend.configs) == 3)
+    assert runtime.wait_for_warm_pool(timeout_seconds=10)
+    time.sleep(0.1)
+    assert len(runtime._backend.configs) == 3
+    runtime.close()
+
+
+class _PoolCountingBackend(_CountingBackend):
+    """Counts the pool's sandboxes alive at once: those its boot threads made."""
+
+    def __init__(self):
+        super().__init__()
+        self.pooled = set()
+        self.live = set()
+        self.most_pooled_live = 0
+
+    def create_sandbox(self, config):
+        instance_id = super().create_sandbox(config)
+        with self.ids_lock:
+            self.live.add(instance_id)
+            if threading.current_thread().name.startswith("sandbox-warm-pool"):
+                self.pooled.add(instance_id)
+            self.most_pooled_live = max(
+                self.most_pooled_live, len(self.pooled & self.live)
+            )
+        return instance_id
+
+    def delete_sandbox(self, sandbox_id):
+        super().delete_sandbox(sandbox_id)
+        with self.ids_lock:
+            self.live.discard(sandbox_id)
+
+
+def test_a_warm_pool_never_holds_more_than_its_size():
+    """Taking a sandbox boots nothing and deleting one boots its slot's next,
+    so a profile's sandboxes, ready or in use, never outnumber its size.
+    A create that finds none ready boots cold, outside the pool."""
+    backend = _PoolCountingBackend()
+    runtime = _pooled_runtime([{"image": "img", "size": 2}], backend=backend)
+    first = runtime.create(image="img", timeout_seconds=5)
+    second = runtime.create(image="img", timeout_seconds=5)
+    assert {first, second} == backend.pooled
+    cold = runtime.create(image="img", timeout_seconds=5)
+    assert cold not in backend.pooled
+    time.sleep(0.1)
+    assert len(backend.configs) == 3
+    # A cold sandbox has no slot to free.
+    runtime.delete(cold)
+    time.sleep(0.1)
+    assert len(backend.configs) == 3
+    runtime.delete(first)
+    assert _wait_until(lambda: len(backend.configs) == 4)
+    assert runtime.wait_for_warm_pool(timeout_seconds=10)
+    assert backend.most_pooled_live == 2
+    runtime.close()
+
+
+def test_concurrent_creates_and_deletes_keep_the_pool_at_its_size():
+    backend = _PoolCountingBackend()
+    runtime = _pooled_runtime([{"image": "img", "size": 4}], backend=backend)
+
+    def churn():
+        for _ in range(25):
+            runtime.delete(runtime.create(image="img", timeout_seconds=5))
+
+    threads = [threading.Thread(target=churn) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert runtime.wait_for_warm_pool(timeout_seconds=10)
+    # Everything the creates took is deleted; the pool holds its 4 again.
+    assert len(backend.live) == 4 and backend.live <= backend.pooled
+    assert backend.most_pooled_live <= 4
+    runtime.close()
+    assert not backend.live
+
+
+def test_a_pooled_sandbox_whose_ttl_expires_frees_its_slot():
+    runtime = _pooled_runtime([{"image": "img", "size": 1}])
+    instance_id = runtime.create(image="img", ttl_seconds=1, timeout_seconds=5)
+    assert _wait_until(lambda: instance_id in runtime._backend.deleted)
+    assert _wait_until(lambda: len(runtime._backend.configs) == 2)
+    assert runtime.wait_for_warm_pool(timeout_seconds=10)
+    runtime.close()
+
+
+def test_a_checkpoint_that_stops_a_pooled_sandbox_frees_its_slot():
+    runtime = _pooled_runtime([{"image": "img", "size": 1}])
+    instance_id = runtime.create(image="img", timeout_seconds=5)
+    runtime.checkpoint(instance_id, checkpoint_path="/tmp/ckpt", leave_running=False)
+    assert _wait_until(lambda: len(runtime._backend.configs) == 2)
+    runtime.close()
+
+
+def test_close_leaves_taken_sandboxes_and_boots_nothing_after():
+    runtime = _pooled_runtime([{"image": "img", "size": 2}])
+    taken = runtime.create(image="img", timeout_seconds=5)
+    runtime.close()
+    (ready,) = runtime._backend.deleted
+    assert ready != taken
+    runtime.delete(taken)
+    time.sleep(0.1)
+    assert len(runtime._backend.configs) == 2
+
+
+def test_a_boot_that_ends_after_close_is_deleted(monkeypatch):
+    """A boot still running at close deletes its sandbox when it ends, and a
+    failed delete is logged rather than lost in the boot thread."""
+    from ray.experimental.sandbox import runtime as runtime_module
+    from ray.experimental.sandbox.runtime import _WarmPool
+
+    warnings = []
+    # Ray's loggers don't propagate to the root logger that caplog watches.
+    monkeypatch.setattr(
+        runtime_module.logger, "warning", lambda msg, *args: warnings.append(msg % args)
+    )
+
+    booting = threading.Event()
+    release = threading.Event()
+
+    class _SlowBackend(_CountingBackend):
+        def create_sandbox(self, config):
+            booting.set()
+            release.wait(10)
+            return super().create_sandbox(config)
+
+        def delete_sandbox(self, sandbox_id):
+            super().delete_sandbox(sandbox_id)
+            raise RuntimeError("runsc delete failed")
+
+    runtime = SandboxRuntime()
+    runtime._image_manager = _FakeImageManager()
+    runtime._backend = _SlowBackend()
+    runtime._warm = _WarmPool(runtime, [{"image": "img", "size": 1}])
+    assert booting.wait(5)
+    runtime.close()
+    release.set()
+    assert _wait_until(lambda: runtime._backend.deleted == ["ray-sandbox-0001"])
+    assert _wait_until(lambda: any("runsc delete failed" in w for w in warnings))
 
 
 def test_checkpoint_and_restore_forward_to_backend():
