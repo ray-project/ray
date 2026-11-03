@@ -12,6 +12,8 @@ In this pattern, a remote task can dynamically call other remote tasks, includin
 
 Nested tasks come with their own costs, such as extra worker processes, scheduling overhead, and bookkeeping overhead. To get a speedup from nested parallelism, make sure each of your nested tasks does significant work. See {doc}`too-fine-grained-tasks` for more details.
 
+For how nested tasks release their resources while blocked, see {doc}`../tasks/nested-tasks`.
+
 ## Example use case
 
 You want to quick-sort a large list of numbers. With nested tasks, you can sort the list in a distributed and parallel fashion.
