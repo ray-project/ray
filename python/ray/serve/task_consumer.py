@@ -59,8 +59,7 @@ def _instantiate_adapter(
 def instantiate_adapter_from_config(
     task_processor_config: TaskProcessorConfig,
 ) -> TaskProcessorAdapter:
-    """
-    Create a TaskProcessorAdapter instance from the provided configuration and call .initialize(). This function supports two ways to specify an adapter:
+    """Create a TaskProcessorAdapter instance from the provided configuration and call .initialize(). This function supports two ways to specify an adapter:
 
     1. String path: A fully qualified module path to an adapter class
        Example: "ray.serve.task_processor.CeleryTaskProcessorAdapter"
@@ -93,8 +92,7 @@ def instantiate_adapter_from_config(
 
 @PublicAPI(stability="alpha")
 def task_consumer(*, task_processor_config: TaskProcessorConfig):
-    """
-    Decorator to mark a class as a TaskConsumer.
+    """Decorator to mark a class as a TaskConsumer.
 
     Args:
         task_processor_config: Configuration for the task processor (required)
@@ -169,8 +167,7 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 def task_handler(
     _func: Optional[Callable] = None, *, name: Optional[str] = None
 ) -> Callable:
-    """
-    Decorator to mark a method as a task handler.
+    """Decorator to mark a method as a task handler.
     Optionally specify a task name. Default is the method name.
 
     Arguments:

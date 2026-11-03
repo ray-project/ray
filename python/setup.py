@@ -723,7 +723,7 @@ if __name__ == "__main__":
         shutil.rmtree(build_dir)
 
     with open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+        os.path.join(ROOT_DIR, os.path.pardir, "README.md"), "r", encoding="utf-8"
     ) as f:
         long_readme = f.read()
 
@@ -746,6 +746,7 @@ if __name__ == "__main__":
         author_email="ray-dev@googlegroups.com",
         description=(setup_spec.description),
         long_description=long_readme,
+        long_description_content_type="text/markdown",
         url="https://github.com/ray-project/ray",
         keywords=(
             "ray distributed parallel machine-learning hyperparameter-tuning"

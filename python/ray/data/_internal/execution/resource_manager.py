@@ -506,8 +506,7 @@ class ResourceManager:
         return None
 
     def _get_completed_ops_usage(self) -> ExecutionResources:
-        """
-        Resource reservation is based on the number of eligible operators.
+        """Resource reservation is based on the number of eligible operators.
         However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
         And we also need to exclude the downstream ineligible operators.
 

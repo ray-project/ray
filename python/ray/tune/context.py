@@ -105,6 +105,9 @@ def get_context() -> TuneContext:
     The context is only available in a tune function passed to the `ray.tune.Tuner`.
 
     See the :class:`~ray.tune.TuneContext` API reference to see available methods.
+
+    Returns:
+        The Ray Tune context.
     """
     global _tune_context
 
