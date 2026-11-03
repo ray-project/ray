@@ -157,7 +157,7 @@ LoggingConfig.__doc__ = """
 
     Args:
         encoding: Encoding type for the logs. The valid values are
-            {list(_logging_configurator.get_supported_encodings())}
+            ``"TEXT"`` and ``"JSON"``.
         log_level: Log level for the logs. Defaults to 'INFO'. You can set
             it to 'DEBUG' to receive more detailed debug logs.
         additional_log_standard_attrs: List of additional standard python logger attributes to
