@@ -86,6 +86,8 @@ services:
 
 Below is a walkthrough of the bash commands used to start the `ray-head` and `ray-worker` services. Note that this configuration will launch a new Ray cluster for each application, not reuse the same cluster.
 
+Starting in Ray 2.61, {ref}`token authentication <token-auth>` is on by default, and the head and every worker container need the same token. Create one with `ray get-auth-token --generate` and ship the token file to each container. For example, use the services' `files` section. Then set `RAY_AUTH_TOKEN_PATH` to the token's path in the container before `ray start`. To run the cluster without authentication, set `RAY_AUTH_MODE=disabled` before `ray start` in every service and in every client instead.
+
 ### Head node commands
 
 Start by activating a pre-existing environment for dependency management.
