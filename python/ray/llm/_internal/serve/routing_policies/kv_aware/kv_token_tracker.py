@@ -6,6 +6,7 @@ import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypedDict
 
 import ray
@@ -86,13 +87,20 @@ class WorkerSelection(TypedDict):
     effective_prefill_tokens: int
 
 
+class PeerUpdateKind(str, Enum):
+    """Kind of routing state ``PeerUpdateForwarder`` broadcasts to peers."""
+
+    LOAD_RESERVATION = "load_reservation"
+    SESSION_AFFINITY = "session_affinity"
+
+
 class PeerUpdateForwarder:
     """Broadcast this ingress's routing state to its peer ingress replicas.
 
     Each update is one of:
-      1. ``load_reservation``: the booking for a request this ingress routed,
+      1. ``LOAD_RESERVATION``: the booking for a request this ingress routed,
          so every peer counts the same token load on the selected worker.
-      2. ``session_affinity``: a session binding this ingress committed or
+      2. ``SESSION_AFFINITY``: a session binding this ingress committed or
          refreshed, so every peer pins the session's later turns to that worker.
 
     ``report`` only enqueues. A background task batches pending updates into
@@ -110,7 +118,7 @@ class PeerUpdateForwarder:
         self._updates: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
 
-    def report(self, kind: str, event: Dict[str, Any]) -> None:
+    def report(self, kind: PeerUpdateKind, event: Dict[str, Any]) -> None:
         if self._delivery_task is None or self._delivery_task.done():
             self._delivery_task = asyncio.get_running_loop().create_task(
                 self._deliver()
@@ -247,7 +255,7 @@ class KVTokenTracker:
         # One consumer per service; the forwarder fans out to peer ingress replicas.
         async for bindings in self._svc.session_binding_updates():
             for binding in bindings:
-                self._replica_forwarder.report("session_affinity", binding)
+                self._replica_forwarder.report(PeerUpdateKind.SESSION_AFFINITY, binding)
 
     async def on_replica_updates(
         self, source_writer_id: int, updates: List[Dict[str, Any]]
@@ -271,7 +279,7 @@ class KVTokenTracker:
                 await self._evict_stale_requests()
                 bookings = []
                 for update in [update for batch in batches for update in batch]:
-                    if update["kind"] == "session_affinity":
+                    if update["kind"] == PeerUpdateKind.SESSION_AFFINITY:
                         self._apply_session_binding(update["event"])
                     else:
                         bookings.append(update["event"])
@@ -551,7 +559,7 @@ class KVTokenTracker:
         )
         if self._replica_forwarder is not None:
             self._replica_forwarder.report(
-                "load_reservation",
+                PeerUpdateKind.LOAD_RESERVATION,
                 {
                     "model_name": _MODEL_NAME,
                     "routing_group": _ROUTING_GROUP,
