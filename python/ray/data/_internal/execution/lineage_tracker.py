@@ -476,7 +476,8 @@ class LineageTracker:
         it stays marked as durable and is dropped once that last guard clears.
 
         Args:
-            lineage_task_id: The ID of the data task whose outputs are durable.
+            lineage_task_id: The ID of the data task whose outputs are now durable
+                and is ready to try to start garbage collecting from.
 
         Returns:
             Whether the task was collected by this call.
