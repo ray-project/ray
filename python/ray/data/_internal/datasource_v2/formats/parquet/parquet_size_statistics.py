@@ -10,6 +10,11 @@ Thrift's compact protocol by hand, only the fields they need.
 Reading the footer in Python takes about 6 microseconds per row group per leaf:
 0.6 s for 100 row groups of 1,000 leaves (Apple M5, Python 3.12). PyArrow's C++
 parses the same footer about 20 times faster, but doesn't expose these fields.
+py-spy at 1,000 leaves by 1,000 row groups: half the time steps over the leaf
+metadata's other fields, which Thrift can't jump past, a quarter decodes
+``SizeStatistics``, and no line takes over 6%. The result holds about 185 bytes
+per row group per leaf; the footer bytes take up to twice the footer's size in
+PyArrow's memory pool while it runs.
 """
 
 from __future__ import annotations
