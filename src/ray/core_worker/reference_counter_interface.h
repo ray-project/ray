@@ -765,6 +765,8 @@ class ReferenceCounterInterface {
   /**
    * @brief Whether this worker owns any consume-once object, i.e. one that is MOVABLE or
    * MOVED. Doesn't take the lock, so callers can skip move-state lookups when it's false.
+   *
+   * @return True if at least one object owned by this worker is MOVABLE or MOVED.
    */
   virtual bool HasConsumeOnceObjects() const = 0;
 
