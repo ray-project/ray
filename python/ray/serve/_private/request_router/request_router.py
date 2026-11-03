@@ -1165,7 +1165,7 @@ class RequestRouter(ABC):
         # before the results are used. This runs after the results in hand were
         # processed, so a cancellation here doesn't drop them. Probes should handle
         # cancellation promptly (`RunningReplica.get_queue_len` requests
-        # cancellation of its RPC and returns without awaiting the replica); the
+        # cancellation of its RPC and finishes without awaiting the replica); the
         # wait is bounded by this round's response deadline so one that doesn't
         # can't block routing.
         if pending:
