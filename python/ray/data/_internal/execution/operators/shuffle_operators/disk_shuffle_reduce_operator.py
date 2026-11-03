@@ -353,6 +353,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         exc: Optional[Exception],
         task_exec_stats: Optional[TaskExecWorkerStats],
         task_exec_driver_stats: Optional[TaskExecDriverStats],
+        aborted: bool,
     ) -> None:
         for input_bundle in input_bundles:
             if input_bundle is not None:

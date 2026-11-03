@@ -635,7 +635,7 @@ The Ray project fully tests each Ray release with a compatible vLLM version. The
 * - Ray release
   - vLLM version
 * - nightly
-  - 0.30.0
+  - 0.32.0
 * - 2.59.0
   - 0.27.0
 * - 2.58.0

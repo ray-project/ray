@@ -171,3 +171,10 @@ Visit `${YOUR_IP}:8265` in your browser for the dashboard. For example, `127.0.0
 killall kubectl
 kind delete cluster
 ```
+
+## Next steps
+
+Ray doesn't provide native storage for logs or metrics, so you need to collect them yourself to keep them after you delete the RayCluster. See the following pages:
+
+- {ref}`persist-kuberay-custom-resource-logs` to collect logs from the RayCluster's Pods.
+- {ref}`kuberay-prometheus-grafana` to scrape metrics with Prometheus and view them in Grafana.

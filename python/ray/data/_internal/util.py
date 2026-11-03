@@ -360,7 +360,9 @@ def _resolve_custom_scheme(path: str) -> str:
 
 
 def _normalize_paths_to_strings(
-    paths: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]]
+    paths: Union[
+        str, pathlib.Path, List[str], List[pathlib.Path], List[Union[str, pathlib.Path]]
+    ]
 ) -> List[str]:
     """Normalize path input to a list of strings.
 
@@ -1844,13 +1846,12 @@ class MemoryProfiler:
 
     Example:
 
-        .. testcode::
-
-            with MemoryProfiler(poll_interval_s=1.0) as profiler:
-                for i in range(10):
-                    ...  # Your code here
-                    print(f"Max USS: {profiler.estimate_max_uss()}")
-                    profiler.reset()
+        >>> with MemoryProfiler(poll_interval_s=1.0) as profiler:
+        ...     for i in range(10):
+        ...         pass  # Your code here
+        ...         print(f"Max USS: {profiler.estimate_max_uss()}")
+        ...         profiler.reset()
+        Max USS: ...
     """
 
     def __init__(self, poll_interval_s: Optional[float]):

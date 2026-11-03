@@ -546,6 +546,56 @@ class TestResourceManager:
         total_obj_store = resource_manager.get_global_usage().object_store_memory
         assert total_obj_store == 300
 
+    @pytest.mark.parametrize(
+        "output_bp, active_tasks, submission_bp, cpu_budget, expected",
+        [
+            # Its task outputs can't be read.
+            (True, 0, False, 1, True),
+            # It's running tasks.
+            (False, 1, False, 1, False),
+            # Idle and can't submit even though its budget fits another task.
+            (False, 0, True, 1, True),
+            # Idle and can't submit because it's short on CPU. More nodes help.
+            (False, 0, True, 0, False),
+            # Idle and not backpressured, e.g., waiting for inputs.
+            (False, 0, False, 1, False),
+        ],
+    )
+    def test_is_blocked_on_consumer(
+        self, output_bp, active_tasks, submission_bp, cpu_budget, expected
+    ):
+        resource_manager, _, (first, last) = _build_reservation_allocator(
+            2, ray_remote_args={"num_cpus": 1}
+        )
+        budgets = resource_manager.op_resource_allocator._op_budgets
+        # The first map can't fit its next task either, but only the last one matters.
+        budgets[first] = ExecutionResources.zero()
+        first.notify_in_task_submission_backpressure(True)
+        budgets[last] = ExecutionResources(cpu=cpu_budget)
+        last.notify_in_task_output_backpressure(output_bp)
+        last.num_active_tasks = MagicMock(return_value=active_tasks)
+        last.notify_in_task_submission_backpressure(submission_bp)
+
+        assert resource_manager.is_blocked_on_consumer() == expected
+
+    @pytest.mark.parametrize("active_tasks, expected", [(0, True), (1, False)])
+    def test_is_blocked_on_consumer_skips_finished_ops(self, active_tasks, expected):
+        # The finished last map is skipped, unless it's still running tasks.
+        resource_manager, _, (first, last) = _build_reservation_allocator(2)
+        first.notify_in_task_output_backpressure(True)
+        last.mark_execution_finished()
+        last.num_active_tasks = MagicMock(return_value=active_tasks)
+
+        assert resource_manager.is_blocked_on_consumer() == expected
+
+    def test_is_blocked_on_consumer_after_all_ops_finish(self):
+        # Only outputs are left.
+        resource_manager, _, map_ops = _build_reservation_allocator(2)
+        for op in map_ops:
+            op.mark_execution_finished()
+
+        assert resource_manager.is_blocked_on_consumer()
+
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
