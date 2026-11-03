@@ -2869,32 +2869,26 @@ def _modify_class(cls):
                 The return value of ``fn(self, *args, **kwargs)``.
 
             Examples:
-                .. testcode::
-
-                    import ray
-
-                    @ray.remote
-                    class Counter:
-                        def __init__(self):
-                            self.count = 0
-
-                        def increment(self):
-                            self.count += 1
-
-                    counter = Counter.remote()
-                    ray.get(counter.increment.remote())
-
-                    # Access state without a dedicated getter method
-                    value = ray.get(counter.__ray_call__.remote(
-                        lambda self: self.count
-                    ))
-                    assert value == 1
-
-                    # Pass extra arguments to the closure
-                    result = ray.get(counter.__ray_call__.remote(
-                        lambda self, x: self.count + x, 10
-                    ))
-                    assert result == 11
+                >>> import ray  # doctest: +SKIP_EXAMPLE
+                >>> @ray.remote
+                ... class Counter:
+                ...     def __init__(self):
+                ...         self.count = 0
+                ...
+                ...     def increment(self):
+                ...         self.count += 1
+                >>> counter = Counter.remote()
+                >>> ray.get(counter.increment.remote())
+                >>> # Access state without a dedicated getter method
+                >>> value = ray.get(counter.__ray_call__.remote(
+                ...     lambda self: self.count
+                ... ))
+                >>> assert value == 1
+                >>> # Pass extra arguments to the closure
+                >>> result = ray.get(counter.__ray_call__.remote(
+                ...     lambda self, x: self.count + x, 10
+                ... ))
+                >>> assert result == 11
 
             .. note::
 

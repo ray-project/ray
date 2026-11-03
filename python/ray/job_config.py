@@ -14,18 +14,9 @@ class JobConfig:
     """A class used to store the configurations of a job.
 
     Examples:
-        .. testcode::
-            :hide:
-
-            import ray
-            ray.shutdown()
-
-        .. testcode::
-
-            import ray
-            from ray.job_config import JobConfig
-
-            ray.init(job_config=JobConfig(default_actor_lifetime="non_detached"))
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.job_config import JobConfig
+        >>> ray.init(job_config=JobConfig(default_actor_lifetime="non_detached"))
 
     Args:
         jvm_options: The jvm options for java workers of the job.
@@ -96,13 +87,10 @@ class JobConfig:
         If the key already exists, the value is overwritten to the new value.
 
         Examples:
-            .. testcode::
-
-                import ray
-                from ray.job_config import JobConfig
-
-                job_config = JobConfig()
-                job_config.set_metadata("submitter", "foo")
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> from ray.job_config import JobConfig
+            >>> job_config = JobConfig()
+            >>> job_config.set_metadata("submitter", "foo")
 
         Args:
             key: The key of the metadata.
@@ -282,12 +270,9 @@ class JobConfig:
         """Generates a JobConfig object from json.
 
         Examples:
-            .. testcode::
-
-                from ray.job_config import JobConfig
-
-                job_config = JobConfig.from_json(
-                    {"runtime_env": {"working_dir": "uri://abc"}})
+            >>> from ray.job_config import JobConfig  # doctest: +SKIP_EXAMPLE
+            >>> job_config = JobConfig.from_json(
+            ...     {"runtime_env": {"working_dir": "uri://abc"}})
 
         Args:
             job_config_json: The job config json dictionary.

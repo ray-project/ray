@@ -1468,37 +1468,31 @@ def init(
     with a Ray cluster and attach to the newly started cluster.
     Note: This method overwrite sigterm handler of the driver process.
 
-    In most cases, it is enough to just call this method with no arguments.
-    This will autodetect an existing Ray cluster or start a new Ray instance if
-    no existing cluster is found:
-
-    .. testcode::
-
-        ray.init()
-
-    To explicitly connect to an existing local cluster, use this as follows. A
-    ConnectionError will be thrown if no existing local cluster is found.
-
-    .. testcode::
-        :skipif: True
-
-        ray.init(address="auto")
-
-    To connect to an existing remote cluster, use this as follows (substituting
-    in the appropriate address). Note the addition of "ray://" at the beginning
-    of the address. This requires `ray[client]`.
-
-    .. testcode::
-        :skipif: True
-
-        ray.init(address="ray://123.45.67.89:10001")
-
-    More details for starting and connecting to a remote cluster can be found
-    here: https://docs.ray.io/en/master/cluster/getting-started.html
-
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
     cluster with ray.init() or ray.init(address="auto").
+
+    Examples:
+        In most cases, it is enough to just call this method with no arguments.
+        This will autodetect an existing Ray cluster or start a new Ray instance if
+        no existing cluster is found:
+
+        >>> ray.init()
+        RayContext(...)
+
+        To explicitly connect to an existing local cluster, use this as follows. A
+        ConnectionError will be thrown if no existing local cluster is found.
+
+        >>> ray.init(address="auto")  # doctest: +SKIP
+
+        To connect to an existing remote cluster, use this as follows (substituting
+        in the appropriate address). Note the addition of "ray://" at the beginning
+        of the address. This requires `ray[client]`.
+
+        >>> ray.init(address="ray://123.45.67.89:10001")  # doctest: +SKIP
+
+        More details for starting and connecting to a remote cluster can be found
+        here: https://docs.ray.io/en/master/cluster/getting-started.html
 
     Args:
         address: The address of the Ray cluster to connect to. The provided
@@ -3789,103 +3783,6 @@ def remote(
 ) -> Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]:
     """Defines a remote function or an actor class.
 
-    This function can be used as a decorator with no arguments
-    to define a remote function or actor as follows:
-
-    .. testcode::
-
-        import ray
-
-        @ray.remote
-        def f(a, b, c):
-            return a + b + c
-
-        object_ref = f.remote(1, 2, 3)
-        result = ray.get(object_ref)
-        assert result == (1 + 2 + 3)
-
-        @ray.remote
-        class Foo:
-            def __init__(self, arg):
-                self.x = arg
-
-            def method(self, a):
-                return self.x + a
-
-        actor_handle = Foo.remote(123)
-        object_ref = actor_handle.method.remote(321)
-        result = ray.get(object_ref)
-        assert result == (123 + 321)
-
-    Equivalently, use a function call to create a remote function or actor.
-
-    .. testcode::
-
-        def g(a, b, c):
-            return a + b + c
-
-        remote_g = ray.remote(g)
-        object_ref = remote_g.remote(1, 2, 3)
-        assert ray.get(object_ref) == (1 + 2 + 3)
-
-        class Bar:
-            def __init__(self, arg):
-                self.x = arg
-
-            def method(self, a):
-                return self.x + a
-
-        RemoteBar = ray.remote(Bar)
-        actor_handle = RemoteBar.remote(123)
-        object_ref = actor_handle.method.remote(321)
-        result = ray.get(object_ref)
-        assert result == (123 + 321)
-
-
-    It can also be used with specific keyword arguments as follows:
-
-    .. testcode::
-
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
-
-    Remote task and actor objects returned by @ray.remote can also be
-    dynamically modified with the same arguments as above using
-    ``.options()`` as follows:
-
-    .. testcode::
-        :hide:
-
-        ray.shutdown()
-
-        ray.init(num_cpus=5, num_gpus=5)
-
-    .. testcode::
-
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-
-        f_with_2_gpus = f.options(num_gpus=2)
-        object_refs = f_with_2_gpus.remote()
-        assert ray.get(object_refs) == [1, 2]
-
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
-
-        Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
-        foo_actor = Foo_with_no_resources.remote()
-        assert ray.get(foo_actor.method.remote()) == 1
-
-
     A remote actor will be terminated when all actor handle to it
     in Python is deleted, which will cause them to complete any outstanding
     work and then shut down. If you only have 1 reference to an actor handle,
@@ -3903,6 +3800,76 @@ def remote(
         Instead, use ray.put to create a copy of the object in the object store.
 
         See :ref:`more info here <ray-pass-large-arg-by-value>`.
+
+    Examples:
+        This function can be used as a decorator with no arguments
+        to define a remote function or actor as follows:
+
+        >>> import ray
+        >>> @ray.remote
+        ... def f(a, b, c):
+        ...     return a + b + c
+        >>> object_ref = f.remote(1, 2, 3)
+        >>> result = ray.get(object_ref)
+        >>> assert result == (1 + 2 + 3)
+        >>> @ray.remote
+        ... class Foo:
+        ...     def __init__(self, arg):
+        ...         self.x = arg
+        ...
+        ...     def method(self, a):
+        ...         return self.x + a
+        >>> actor_handle = Foo.remote(123)
+        >>> object_ref = actor_handle.method.remote(321)
+        >>> result = ray.get(object_ref)
+        >>> assert result == (123 + 321)
+
+        Equivalently, use a function call to create a remote function or actor.
+
+        >>> def g(a, b, c):
+        ...     return a + b + c
+        >>> remote_g = ray.remote(g)
+        >>> object_ref = remote_g.remote(1, 2, 3)
+        >>> assert ray.get(object_ref) == (1 + 2 + 3)
+        >>> class Bar:
+        ...     def __init__(self, arg):
+        ...         self.x = arg
+        ...
+        ...     def method(self, a):
+        ...         return self.x + a
+        >>> RemoteBar = ray.remote(Bar)
+        >>> actor_handle = RemoteBar.remote(123)
+        >>> object_ref = actor_handle.method.remote(321)
+        >>> result = ray.get(object_ref)
+        >>> assert result == (123 + 321)
+
+        It can also be used with specific keyword arguments as follows:
+
+        >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        ... def f():
+        ...     return 1, 2
+        >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        ... class Foo:
+        ...     def method(self):
+        ...         return 1
+
+        Remote task and actor objects returned by @ray.remote can also be
+        dynamically modified with the same arguments as above using
+        ``.options()`` as follows:
+
+        >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        ... def f():
+        ...     return 1, 2
+        >>> f_with_2_gpus = f.options(num_gpus=2)
+        >>> object_refs = f_with_2_gpus.remote()  # doctest: +SKIP
+        >>> assert ray.get(object_refs) == [1, 2]  # doctest: +SKIP
+        >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        ... class Foo:
+        ...     def method(self):
+        ...         return 1
+        >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
+        >>> foo_actor = Foo_with_no_resources.remote()
+        >>> assert ray.get(foo_actor.method.remote()) == 1
 
     Args:
         *args: When used as a bare decorator (``@ray.remote``), the single
