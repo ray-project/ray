@@ -261,10 +261,9 @@ class ArrowConversionError(Exception):
 class ArrowSchemaUnificationError(ArrowConversionError):
     """Error raised when block schemas can't be unified into one schema."""
 
-    def __init__(self, message: str):
-        # Skip ArrowConversionError's truncation. The message lists every
-        # conflicting column and its types, so truncating it hides the cause.
-        Exception.__init__(self, f"Error converting data to Arrow: {message}")
+    # The message lists every conflicting column and its types, so it is
+    # never truncated.
+    MAX_DATA_STR_LEN = float("inf")
 
 
 @DeveloperAPI
