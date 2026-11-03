@@ -27,8 +27,7 @@ logger = logging.getLogger(__name__)
 def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     """Function that improves the all policies in `train_batch` on the local worker.
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         algo = [...]
@@ -36,7 +35,7 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
         # This trains the policy on one batch.
         print(train_one_step(algo, train_batch)))
 
-    .. testoutput::
+    .. code-block:: text
 
         {"default_policy": ...}
 
@@ -94,8 +93,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     passes through a train batch (e.g. for PPO) using `config.num_sgd_iter`, the
     actual train batch is only split once and loaded once into the GPU(s).
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         algo = [...]
@@ -103,7 +101,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
         # This trains the policy on one batch.
         print(multi_gpu_train_one_step(algo, train_batch)))
 
-    .. testoutput::
+    .. code-block:: text
 
         {"default_policy": ...}
 

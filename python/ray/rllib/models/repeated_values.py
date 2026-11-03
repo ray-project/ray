@@ -64,32 +64,29 @@ class RepeatedValues:
         This lets you view the data unbatched in its original form, but is
         not efficient for processing.
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             batch = RepeatedValues(<Tensor shape=(B, N, K)>)
             items = batch.unbatch_all()
             print(len(items) == B)
 
-        .. testoutput::
+        .. code-block:: text
 
             True
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             print(max(len(x) for x in items) <= N)
 
-        .. testoutput::
+        .. code-block:: text
 
             True
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             print(items)
 
-        .. testoutput::
+        .. code-block:: text
 
             [[<Tensor_1 shape=(K)>, ..., <Tensor_N, shape=(K)>],
              ...
@@ -130,23 +127,21 @@ class RepeatedValues:
         This removes the repeat dimension. The result will be a Python list of
         with length `self.max_len`. Note that the data is still padded.
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             batch = RepeatedValues(<Tensor shape=(B, N, K)>)
             items = batch.unbatch()
             len(items) == batch.max_len
 
-        .. testoutput::
+        .. code-block:: text
 
             True
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             print(items)
 
-        .. testoutput::
+        .. code-block:: text
 
             [<Tensor_1 shape=(B, K)>, ..., <Tensor_N shape=(B, K)>]
         """
