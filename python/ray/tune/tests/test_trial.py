@@ -72,6 +72,17 @@ def test_load_trial_from_json_state():
     assert new_trial.get_json_state()[0] == json_state
 
 
+def test_metric_min_max_ignore_nan(trial: Trial):
+    """A NaN result must not make a later finite result overwrite the best/worst
+    value reported before it."""
+    for i, value in enumerate([1.0, float("nan"), 5.0, 3.0], start=1):
+        trial.update_last_result({"training_iteration": i, "loss": value})
+
+    assert trial.metric_analysis["loss"]["min"] == 1.0
+    assert trial.metric_analysis["loss"]["max"] == 5.0
+    assert trial.metric_analysis["loss"]["last"] == 3.0
+
+
 def test_set_storage(tmp_path):
     """Test that setting the trial's storage context will update the tracked
     checkpoint paths."""
