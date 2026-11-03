@@ -43,39 +43,32 @@ class Catalog:
     You can influence the decision tree that determines the sub-components by modifying
     `Catalog._determine_components_hook`.
 
-    Usage example:
-
-    # Define a custom catalog
-
-    .. testcode::
-
-        import torch
-        import gymnasium as gym
-        from ray.rllib.core.models.configs import MLPHeadConfig
-        from ray.rllib.core.models.catalog import Catalog
-
-        class MyCatalog(Catalog):
-            def __init__(
-                self,
-                observation_space: gym.Space,
-                action_space: gym.Space,
-                model_config_dict: dict,
-            ):
-                super().__init__(observation_space, action_space, model_config_dict)
-                self.my_model_config = MLPHeadConfig(
-                    hidden_layer_dims=[64, 32],
-                    input_dims=[self.observation_space.shape[0]],
-                )
-
-            def build_my_head(self, framework: str):
-                return self.my_model_config.build(framework=framework)
-
-        # With that, RLlib can build and use models from this catalog like this:
-        catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-        my_head = catalog.build_my_head(framework="torch")
-
-        # Make a call to the built model.
-        out = my_head(torch.Tensor([[1]]))
+    Examples:
+        >>> # Define a custom catalog
+        >>> import torch
+        >>> import gymnasium as gym
+        >>> from ray.rllib.core.models.configs import MLPHeadConfig
+        >>> from ray.rllib.core.models.catalog import Catalog
+        >>> class MyCatalog(Catalog):
+        ...     def __init__(
+        ...         self,
+        ...         observation_space: gym.Space,
+        ...         action_space: gym.Space,
+        ...         model_config_dict: dict,
+        ...     ):
+        ...         super().__init__(observation_space, action_space, model_config_dict)
+        ...         self.my_model_config = MLPHeadConfig(
+        ...             hidden_layer_dims=[64, 32],
+        ...             input_dims=[self.observation_space.shape[0]],
+        ...         )
+        ...
+        ...     def build_my_head(self, framework: str):
+        ...         return self.my_model_config.build(framework=framework)
+        >>> # With that, RLlib can build and use models from this catalog like this:
+        >>> catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
+        >>> my_head = catalog.build_my_head(framework="torch")
+        >>> # Make a call to the built model.
+        >>> out = my_head(torch.Tensor([[1]]))
     """
 
     # TODO (Sven): Add `framework` arg to c'tor and remove this arg from `build`

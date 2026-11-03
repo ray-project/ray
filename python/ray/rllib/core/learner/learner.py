@@ -174,88 +174,71 @@ class Learner(Checkpointable):
         module: If learner is being used stand-alone, the RLModule can be optionally
             passed in directly instead of the through the `module_spec`.
 
-    Note: We use PPO and torch as an example here because many of the showcased
-    components need implementations to come together. However, the same
-    pattern is generally applicable.
+    Examples:
+        Note: We use PPO and torch as an example here because many of the showcased
+        components need implementations to come together. However, the same
+        pattern is generally applicable.
 
-        .. testcode::
-
-            import gymnasium as gym
-
-            from ray.rllib.algorithms.ppo.ppo import PPOConfig
-            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule
-            )
-            from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
-            from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-            from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-
-            env = gym.make("CartPole-v1")
-
-            # Create a PPO config object first.
-            config = (
-                PPOConfig()
-                .framework("torch")
-                .training(model={"fcnet_hiddens": [128, 128]})
-            )
-
-            # Create a learner instance directly from our config. All we need as
-            # extra information here is the env to be able to extract space information
-            # (needed to construct the RLModule inside the Learner).
-            learner = config.build_learner(env=env)
-
-            # Take one gradient update on the module and report the results.
-            # results = learner.update(...)
-
-            # Add a new module, perhaps for league based training.
-            learner.add_module(
-                module_id="new_player",
-                module_spec=RLModuleSpec(
-                    module_class=PPOTorchRLModule,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    model_config=DefaultModelConfig(fcnet_hiddens=[64, 64]),
-                    catalog_class=PPOCatalog,
-                )
-            )
-
-            # Take another gradient update with both previous and new modules.
-            # results = learner.update(...)
-
-            # Remove a module.
-            learner.remove_module("new_player")
-
-            # Will train previous modules only.
-            # results = learner.update(...)
-
-            # Get the state of the learner.
-            state = learner.get_state()
-
-            # Set the state of the learner.
-            learner.set_state(state)
-
-            # Get the weights of the underlying MultiRLModule.
-            weights = learner.get_state(components=COMPONENT_RL_MODULE)
-
-            # Set the weights of the underlying MultiRLModule.
-            learner.set_state({COMPONENT_RL_MODULE: weights})
+        >>> import gymnasium as gym
+        >>> from ray.rllib.algorithms.ppo.ppo import PPOConfig
+        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+        ...     PPOTorchRLModule
+        ... )
+        >>> from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+        >>> from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        >>> env = gym.make("CartPole-v1")
+        >>> # Create a PPO config object first.
+        >>> config = (
+        ...     PPOConfig()
+        ...     .framework("torch")
+        ...     .training(model={"fcnet_hiddens": [128, 128]})
+        ... )
+        >>> # Create a learner instance directly from our config. All we need as
+        >>> # extra information here is the env to be able to extract space information
+        >>> # (needed to construct the RLModule inside the Learner).
+        >>> learner = config.build_learner(env=env)
+        >>> # Take one gradient update on the module and report the results.
+        >>> # results = learner.update(...)
+        >>> # Add a new module, perhaps for league based training.
+        >>> _ = learner.add_module(
+        ...     module_id="new_player",
+        ...     module_spec=RLModuleSpec(
+        ...         module_class=PPOTorchRLModule,
+        ...         observation_space=env.observation_space,
+        ...         action_space=env.action_space,
+        ...         model_config=DefaultModelConfig(fcnet_hiddens=[64, 64]),
+        ...         catalog_class=PPOCatalog,
+        ...     )
+        ... )
+        >>> # Take another gradient update with both previous and new modules.
+        >>> # results = learner.update(...)
+        >>> # Remove a module.
+        >>> _ = learner.remove_module("new_player")
+        >>> # Will train previous modules only.
+        >>> # results = learner.update(...)
+        >>> # Get the state of the learner.
+        >>> state = learner.get_state()
+        >>> # Set the state of the learner.
+        >>> learner.set_state(state)
+        >>> # Get the weights of the underlying MultiRLModule.
+        >>> weights = learner.get_state(components=COMPONENT_RL_MODULE)
+        >>> # Set the weights of the underlying MultiRLModule.
+        >>> learner.set_state({COMPONENT_RL_MODULE: weights})
 
 
-    Extension pattern:
+        Extension pattern:
 
-        .. testcode::
-
-            from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-
-            class MyLearner(TorchLearner):
-
-               def compute_losses(self, fwd_out, batch):
-                   # Compute the losses per module based on `batch` and output of the
-                   # forward pass (`fwd_out`). To access the (algorithm) config for a
-                   # specific RLModule, do:
-                   # `self.config.get_config_for_module([moduleID])`.
-                   return {DEFAULT_MODULE_ID: module_loss}
+        >>> from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+        >>> class MyLearner(TorchLearner):
+        ...
+        ...    def compute_losses(self, fwd_out, batch):
+        ...        # Compute the losses per module based on `batch` and output of the
+        ...        # forward pass (`fwd_out`). To access the (algorithm) config for a
+        ...        # specific RLModule, do:
+        ...        # `self.config.get_config_for_module([moduleID])`.
+        ...        return {DEFAULT_MODULE_ID: module_loss}
     """
 
     framework: str = None
