@@ -76,8 +76,14 @@ std::atomic<bool> RayLog::initialized_ = false;
 namespace {
 // The signals absl::InstallFailureSignalHandler takes over on our behalf. Kept in
 // one place so the install and uninstall paths cannot drift apart.
+// https://github.com/abseil/abseil-cpp/blob/fb3621f4f897824c0dbe0615fa94543df6192f30/absl/debugging/failure_signal_handler.cc#L94-L104
+#ifdef _WIN32
 constexpr std::array<int, 5> kFailureSignals = {
     SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM};
+#else
+constexpr std::array<int, 7> kFailureSignals = {
+    SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM, SIGBUS, SIGTRAP};
+#endif
 
 #ifndef _WIN32
 // Whether two dispositions name the same handler. Only the handler itself is

@@ -385,54 +385,66 @@ TEST(PrintLogTest, TestFailureSignalHandler) {
 #ifndef _WIN32
 static volatile sig_atomic_t dummy_handler_calls = 0;
 
-static void DummySigsegvHandler(int /*signum*/) { dummy_handler_calls++; }
+static void DummySignalHandler(int /*signum*/) { dummy_handler_calls++; }
 
-static void ResetSigsegvToDefault() {
+static void ResetSignalToDefault(int signal_num) {
   struct sigaction default_action;
   memset(&default_action, 0, sizeof(default_action));
   sigemptyset(&default_action.sa_mask);
   default_action.sa_handler = SIG_DFL;
-  ASSERT_EQ(sigaction(SIGSEGV, &default_action, NULL), 0);
+  ASSERT_EQ(sigaction(signal_num, &default_action, NULL), 0);
 }
+
+class SignalActionTest : public ::testing::TestWithParam<int> {
+ protected:
+  void TearDown() override {
+    RayLog::UninstallSignalAction();
+    ResetSignalToDefault(GetParam());
+  }
+};
 
 // A JVM in the same process installs its own SIGSEGV handler and relies on it for
 // safepoint polls and implicit null checks. Uninstalling Ray's handler must give
 // that handler back rather than resetting the disposition to SIG_DFL, which would
 // turn the JVM's next perfectly ordinary SIGSEGV into a process-killing fault.
-TEST(PrintLogTest, TestUninstallSignalActionRestoresPreexistingHandler) {
+TEST_P(SignalActionTest, TestUninstallSignalActionRestoresPreexistingHandler) {
+  const int signal_num = GetParam();
   // Start from a known state; the suite above may have left Ray's handler installed.
   ray::RayLog::UninstallSignalAction();
 
   struct sigaction preexisting;
   memset(&preexisting, 0, sizeof(preexisting));
   sigemptyset(&preexisting.sa_mask);
-  preexisting.sa_handler = DummySigsegvHandler;
-  ASSERT_EQ(sigaction(SIGSEGV, &preexisting, NULL), 0);
+  preexisting.sa_handler = DummySignalHandler;
+  ASSERT_EQ(sigaction(signal_num, &preexisting, NULL), 0);
 
   ray::RayLog::InstallFailureSignalHandler(nullptr);
 
   struct sigaction while_installed;
   memset(&while_installed, 0, sizeof(while_installed));
-  ASSERT_EQ(sigaction(SIGSEGV, NULL, &while_installed), 0);
-  ASSERT_NE(while_installed.sa_handler, DummySigsegvHandler)
-      << "Ray's handler should have taken over SIGSEGV";
+  ASSERT_EQ(sigaction(signal_num, NULL, &while_installed), 0);
+  ASSERT_NE(while_installed.sa_handler, DummySignalHandler)
+      << "Ray's handler should have taken over the signal";
 
   ray::RayLog::UninstallSignalAction();
 
   struct sigaction after_uninstall;
   memset(&after_uninstall, 0, sizeof(after_uninstall));
-  ASSERT_EQ(sigaction(SIGSEGV, NULL, &after_uninstall), 0);
-  ASSERT_EQ(after_uninstall.sa_handler, DummySigsegvHandler)
+  ASSERT_EQ(sigaction(signal_num, NULL, &after_uninstall), 0);
+  ASSERT_EQ(after_uninstall.sa_handler, DummySignalHandler)
       << "the pre-existing handler must be restored, not replaced with SIG_DFL";
 
-  ResetSigsegvToDefault();
+  dummy_handler_calls = 0;
+  ASSERT_EQ(raise(signal_num), 0);
+  EXPECT_EQ(dummy_handler_calls, 1);
 }
 
 // The ordering that actually bit us: Ray initialises first, and only afterwards
 // does something start a JVM, which installs its own SIGSEGV handler on top of
 // Ray's. Ray's teardown must not remove a handler that was installed after its
 // own -- it is not Ray's to remove, and its owner is still running.
-TEST(PrintLogTest, TestUninstallSignalActionLeavesLaterHandlerAlone) {
+TEST_P(SignalActionTest, TestUninstallSignalActionLeavesLaterHandlerAlone) {
+  const int signal_num = GetParam();
   ray::RayLog::UninstallSignalAction();
 
   ray::RayLog::InstallFailureSignalHandler(nullptr);
@@ -440,19 +452,25 @@ TEST(PrintLogTest, TestUninstallSignalActionLeavesLaterHandlerAlone) {
   struct sigaction later;
   memset(&later, 0, sizeof(later));
   sigemptyset(&later.sa_mask);
-  later.sa_handler = DummySigsegvHandler;
-  ASSERT_EQ(sigaction(SIGSEGV, &later, NULL), 0);
+  later.sa_handler = DummySignalHandler;
+  ASSERT_EQ(sigaction(signal_num, &later, NULL), 0);
 
   ray::RayLog::UninstallSignalAction();
 
   struct sigaction after_uninstall;
   memset(&after_uninstall, 0, sizeof(after_uninstall));
-  ASSERT_EQ(sigaction(SIGSEGV, NULL, &after_uninstall), 0);
-  ASSERT_EQ(after_uninstall.sa_handler, DummySigsegvHandler)
+  ASSERT_EQ(sigaction(signal_num, NULL, &after_uninstall), 0);
+  ASSERT_EQ(after_uninstall.sa_handler, DummySignalHandler)
       << "a handler installed after Ray's must survive Ray's uninstall";
 
-  ResetSigsegvToDefault();
+  dummy_handler_calls = 0;
+  ASSERT_EQ(raise(signal_num), 0);
+  EXPECT_EQ(dummy_handler_calls, 1);
 }
+
+INSTANTIATE_TEST_SUITE_P(PrintLogTest,
+                         SignalActionTest,
+                         ::testing::Values(SIGSEGV, SIGBUS, SIGTRAP));
 #endif
 
 }  // namespace ray
