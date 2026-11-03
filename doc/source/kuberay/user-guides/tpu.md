@@ -350,6 +350,14 @@ When you deploy a RayCluster on GKE with [`kuberay-tpu-webhook`](https://github.
 - **MegaScale multi-slice**: Sets `MEGASCALE_SLICE_ID`, `MEGASCALE_COORDINATOR_ADDRESS`, and `MEGASCALE_PORT` when `MEGASCALE_NUM_SLICES` is present.
 - **Ray dashboard metrics**: Sets `TPU_DEVICE_PLUGIN_HOST_IP` and `TPU_DEVICE_PLUGIN_ADDR` so that the Ray dashboard agent collects TPU utilization and HBM metrics. For the exported metric names, see {ref}`System metrics <system-metrics>`.
 
+(kuberay-tpu-logs)=
+
+## View TPU logs
+
+`libtpu` writes TPU device logs to `/tmp/tpu_logs` in the container. When a Ray node starts, Ray links that directory into the node's Ray log directory as `tpu_logs`, such as `/tmp/ray/session_latest/logs/tpu_logs`. If the `TPU_LOG_DIR` environment variable names an existing directory, Ray links that directory instead. Ray creates the link only if the directory exists when the node starts.
+
+Because the TPU logs sit in the Ray log directory, they appear under the node in the {ref}`Logs view <dash-logs-view>` of the Ray dashboard, next to the node's other log files.
+
 ## Examples and guides
 
 For end-to-end tutorials and related documentation, see the following resources:

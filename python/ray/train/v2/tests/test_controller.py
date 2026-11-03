@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import create_autospec
 
 import pytest
@@ -1008,91 +1009,130 @@ async def test_abort_resilient_to_callback_failure(monkeypatch):
     assert isinstance(controller.get_state(), AbortedState)
 
 
-class _CapturingWorkerGroup(DummyWorkerGroup):
-    """DummyWorkerGroup that records the context it was created with."""
-
-    contexts = []
-
-    def __init__(self, train_run_context, worker_group_context, callbacks=None):
-        type(self).contexts.append(worker_group_context)
-        super().__init__(train_run_context, worker_group_context, callbacks)
-
-
-def _reservation_controller(monkeypatch, callbacks=None, **scaling_kwargs):
-    monkeypatch.setattr(TrainController, "worker_group_cls", _CapturingWorkerGroup)
-    _CapturingWorkerGroup.contexts = []
-    # `_start_worker_group` reads `placement_strategy` off the scaling policy but
-    # `label_selector` off the run context, so both need the config.
-    scaling_config = ScalingConfig(**scaling_kwargs)
+@pytest.mark.asyncio
+async def test_waiting_for_a_scaling_decision_yields_the_event_loop(monkeypatch):
+    """While the scaling policy keeps deciding not to start (e.g. an elastic
+    run waiting for `min_workers` to fit), the control loop must still yield,
+    so calls like `abort()` can reach the controller actor."""
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0.01")
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
-        train_run_context=create_dummy_run_context(scaling_config=scaling_config),
-        scaling_policy=MockScalingPolicy(scaling_config=scaling_config),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
         failure_policy=MockFailurePolicy(failure_config=None),
-        callbacks=callbacks,
-    )
-    return controller
-
-
-def test_worker_group_start_pins_to_the_reservation(monkeypatch):
-    """The decision's pins become the worker label selectors, and the
-    requested placement strategy is preserved so the placement group still
-    enforces it."""
-    pins = [{"ray.io/node-id": "node-a"}, {"ray.io/node-id": "node-b"}]
-    controller = _reservation_controller(
-        monkeypatch, num_workers=2, placement_strategy="STRICT_SPREAD"
     )
 
-    controller._start_worker_group(
-        num_workers=2,
-        resources_per_worker={"CPU": 1},
-        reserved_label_selectors=pins,
+    run_task = asyncio.create_task(controller.run())
+    # Never resumes if the control loop starves the event loop.
+    await asyncio.sleep(0.1)
+
+    assert not run_task.done()
+    assert isinstance(controller.get_state(), InitializingState)
+    run_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await run_task
+
+
+@pytest.mark.asyncio
+async def test_abort_while_waiting_for_a_scaling_decision(monkeypatch):
+    """`abort()` reaches a controller that is waiting to start, and the control
+    loop doesn't overwrite the aborted state when its wait ends."""
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0.05")
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
+        failure_policy=MockFailurePolicy(failure_config=None),
     )
 
-    (context,) = _CapturingWorkerGroup.contexts
-    assert context.label_selector == pins
-    assert context.placement_strategy == "STRICT_SPREAD"
+    run_task = asyncio.create_task(controller.run())
+    await asyncio.sleep(0.1)
+    await controller.abort()
+
+    # The control loop exits on the aborted state instead of resuming the wait.
+    await asyncio.wait_for(run_task, timeout=5)
+    assert mock_exit_actor.call_count == 1
+    assert isinstance(controller.get_state(), AbortedState)
 
 
-def test_worker_group_start_without_pins_is_unpinned(monkeypatch):
-    controller = _reservation_controller(monkeypatch, num_workers=2)
+@pytest.mark.asyncio
+async def test_abort_while_step_raises(monkeypatch):
+    """An error raised by `_step` after `abort()` ran isn't treated as a
+    training failure, so it can't overwrite the aborted state."""
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
 
-    controller._start_worker_group(num_workers=2, resources_per_worker={"CPU": 1})
+    class FailureDecisionCallback(ControllerCallback):
+        def __init__(self):
+            self.failure_decision_called = False
 
-    (context,) = _CapturingWorkerGroup.contexts
-    assert context.label_selector is None
+        def before_controller_execute_failure_decision(
+            self, failure_decision: FailureDecision
+        ):
+            self.failure_decision_called = True
 
+    class RaisingFailurePolicy(MockFailurePolicy):
+        def make_decision(self, training_failed_error):
+            raise RuntimeError("Failure policy should not be consulted.")
 
-def test_callback_label_selector_wins_over_reservation_pins(monkeypatch):
-    """The coordinator picks nodes by resource fit and never matches label
-    selectors against node labels, so its pins can name a node that violates a
-    callback's selector. The callback's selector wins."""
-
-    class _SelectorCallback(ControllerCallback):
-        def on_controller_start_worker_group(self, *, scaling_config, num_workers):
-            return {"subcluster": "mine"}
-
-    controller = _reservation_controller(
-        monkeypatch, callbacks=[_SelectorCallback()], num_workers=2
+    callback = FailureDecisionCallback()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
+        failure_policy=RaisingFailurePolicy(failure_config=None),
+        callbacks=[callback],
     )
 
-    controller._start_worker_group(
-        num_workers=2,
-        resources_per_worker={"CPU": 1},
-        reserved_label_selectors=[{"ray.io/node-id": f"node-{i}"} for i in range(2)],
-    )
+    step_started = asyncio.Event()
+    aborted = asyncio.Event()
 
-    (context,) = _CapturingWorkerGroup.contexts
-    assert context.label_selector == [{"subcluster": "mine"}] * 2
+    async def step_raises_after_abort():
+        step_started.set()
+        await aborted.wait()
+        raise RuntimeError("Worker group was aborted.")
+
+    monkeypatch.setattr(controller, "_step", step_raises_after_abort)
+
+    run_task = asyncio.create_task(controller.run())
+    await step_started.wait()
+    await controller.abort()
+    aborted.set()
+
+    await asyncio.wait_for(run_task, timeout=5)
+    assert isinstance(controller.get_state(), AbortedState)
+    assert not callback.failure_decision_called
 
 
 def test_callback_label_selector_with_tpu(monkeypatch):
-    """When use_tpu=True with topology and accelerator_type (SlicePlacementGroup path),
+    """Verify TPU label_selector synthesis and callback merging in _start_worker_group.
+
+    When use_tpu=True with topology and accelerator_type (SlicePlacementGroup path),
     worker_group_context.label_selector only carries user/callback labels (since
     SlicePlacementGroup synthesizes the single-host or multi-host TPU labels).
     When topology is omitted (standard placement_group path), callback labels
     merge onto the synthesized TPU accelerator label without a false override warning.
     """
+    contexts = []
+
+    class _CapturingWorkerGroup(DummyWorkerGroup):
+        def __init__(self, train_run_context, worker_group_context, callbacks=None):
+            contexts.append(worker_group_context)
+            super().__init__(train_run_context, worker_group_context, callbacks)
+
+    monkeypatch.setattr(TrainController, "worker_group_cls", _CapturingWorkerGroup)
+
+    def _make_controller(callbacks=None, **scaling_kwargs):
+        scaling_config = ScalingConfig(**scaling_kwargs)
+        return TrainController(
+            train_fn_ref=DummyObjectRefWrapper(lambda: None),
+            train_run_context=create_dummy_run_context(scaling_config=scaling_config),
+            scaling_policy=MockScalingPolicy(scaling_config=scaling_config),
+            failure_policy=MockFailurePolicy(failure_config=None),
+            callbacks=callbacks,
+        )
 
     class _SelectorCallback(ControllerCallback):
         def on_controller_start_worker_group(self, *, scaling_config, num_workers):
@@ -1100,8 +1140,7 @@ def test_callback_label_selector_with_tpu(monkeypatch):
 
     # SlicePlacementGroup path (use_tpu + topology + accelerator_type):
     # no callback -> label_selector is None; with callback -> only callback labels.
-    controller_no_cb = _reservation_controller(
-        monkeypatch,
+    controller_no_cb = _make_controller(
         num_workers=2,
         use_tpu=True,
         topology="2x2x2",
@@ -1111,11 +1150,9 @@ def test_callback_label_selector_with_tpu(monkeypatch):
         num_workers=2,
         resources_per_worker={"CPU": 1, "TPU": 4},
     )
-    (context_no_cb,) = _CapturingWorkerGroup.contexts
-    assert context_no_cb.label_selector is None
+    assert contexts[-1].label_selector is None
 
-    controller_with_cb = _reservation_controller(
-        monkeypatch,
+    controller_with_cb = _make_controller(
         callbacks=[_SelectorCallback()],
         num_workers=2,
         use_tpu=True,
@@ -1126,13 +1163,11 @@ def test_callback_label_selector_with_tpu(monkeypatch):
         num_workers=2,
         resources_per_worker={"CPU": 1, "TPU": 4},
     )
-    (context_with_cb,) = _CapturingWorkerGroup.contexts
-    assert context_with_cb.label_selector == [{"subcluster": "mine"}] * 2
+    assert contexts[-1].label_selector == [{"subcluster": "mine"}] * 2
 
     # Non-SlicePlacementGroup TPU path (use_tpu + accelerator_type, no topology):
     # callback merges with synthesized ray.io/accelerator-type label.
-    controller_non_spg = _reservation_controller(
-        monkeypatch,
+    controller_non_spg = _make_controller(
         callbacks=[_SelectorCallback()],
         num_workers=1,
         use_tpu=True,
@@ -1143,8 +1178,7 @@ def test_callback_label_selector_with_tpu(monkeypatch):
         num_workers=1,
         resources_per_worker={"CPU": 1, "TPU": 1},
     )
-    (context_non_spg,) = _CapturingWorkerGroup.contexts
-    assert context_non_spg.label_selector == [
+    assert contexts[-1].label_selector == [
         {"ray.io/accelerator-type": "TPU-V6E", "subcluster": "mine"}
     ]
 

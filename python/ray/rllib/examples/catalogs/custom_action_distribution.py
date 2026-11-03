@@ -1,7 +1,6 @@
 # @HybridAPIStack
 
-"""
-This example shows two modifications:
+"""This example shows two modifications:
 1. How to write a custom action distribution
 2. How to inject a custom action distribution into a Catalog
 """

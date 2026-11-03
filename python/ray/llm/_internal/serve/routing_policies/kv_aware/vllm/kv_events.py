@@ -21,9 +21,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
-    """
-    Enable engine KV-cache events for a KV-aware-routed deployment.
-    """
+    """Enable engine KV-cache events for a KV-aware-routed deployment."""
     engine_kwargs = llm_config.engine_kwargs
     if engine_kwargs.get("enable_prefix_caching") is False:
         logger.warning(
@@ -83,7 +81,7 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
 
     Replicas of a deployment share one ``engine_kwargs``, so colocated
     replicas would otherwise bind the same ZMQ port. Offsets the configured
-    base port by the replica's rank.
+    base port so the engine binds at base + node-local replica rank.
     """
     if not is_kv_aware(llm_config):
         return
@@ -93,12 +91,10 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     updated = dict(kv_events_config)
     endpoint = updated.pop("endpoint")
     replay_endpoint = updated.pop("replay_endpoint")
-    # With data parallelism the engine offsets ports by dp_rank under ZmqEventPublisher;
-    # otherwise offset by the replica's node-local rank so colocated replicas don't collide.
-    if llm_config.engine_kwargs.get("data_parallel_rank") is not None:
-        offset = 0
-    else:
-        offset = _get_replica_rank()
+    # vllm.distributed.kv_events.ZmqEventPublisher adds dp_rank itself. Subtract it here so the
+    # final port uses the node-local replica rank, even when multiple DP groups share a node.
+    dp_rank = llm_config.engine_kwargs.get("data_parallel_rank") or 0
+    offset = _get_replica_rank() - dp_rank
     updated["endpoint"] = _get_offset_endpoint_port(endpoint, offset)
     updated["replay_endpoint"] = _get_offset_endpoint_port(replay_endpoint, offset)
     llm_config.update_engine_kwargs(kv_events_config=updated)
