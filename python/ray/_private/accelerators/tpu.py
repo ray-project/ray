@@ -1,7 +1,9 @@
+import errno
 import glob
 import logging
 import os
 import re
+import time
 from functools import lru_cache
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -40,6 +42,7 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+TPU_VISIBLE_DEVICES_ENV_VAR = "TPU_VISIBLE_DEVICES"
 RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
@@ -593,12 +596,21 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
         closed because a false positive here would prevent the actual
         accelerators (e.g. NVIDIA GPUs) from being registered.
     """
+    return _tpu_vfio_bdf(group) is not None
+
+
+DEFAULT_TPU_VFIO_READY_TIMEOUT_S = 10.0
+_TPU_VFIO_POLL_INTERVAL_S = 0.05
+
+
+def _tpu_vfio_bdf(group: int) -> Optional[str]:
+    """Return the sysfs PCI BDF name if VFIO ``group`` is a Google TPU, else None."""
     sysfs_root = f"/sys/kernel/iommu_groups/{group}/devices"
     try:
         devices = os.listdir(sysfs_root)
     except OSError as e:
         logger.debug("Unable to inspect VFIO group %s at %s: %s", group, sysfs_root, e)
-        return False
+        return None
     for device in devices:
         vendor_path = os.path.join(sysfs_root, device, "vendor")
         try:
@@ -613,8 +625,129 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
             )
             continue
         if vendor.lower() == TPU_PCI_VENDOR_ID:
+            return device.lower()
+    return None
+
+
+def _discover_tpu_vfio_devices() -> Tuple[List[str], List[List[str]]]:
+    """Discover Google TPU ``/dev/vfio/<group>`` devices sorted by PCI BDF.
+
+    Returns ``(all_vfio_paths, chips_by_bus_device)`` where ``all_vfio_paths``
+    is ordered by PCI ``(domain:bus:device.function, group)`` and
+    ``chips_by_bus_device`` groups dual-VF chips (e.g. ``tpu7x`` ``.0`` and
+    ``.1`` functions sharing ``domain:bus:device``) by physical chip.
+    """
+    try:
+        entries = os.listdir("/dev/vfio")
+    except OSError:
+        return [], []
+
+    located = sorted(
+        (bdf, int(entry))
+        for entry in entries
+        if entry.isdigit() and (bdf := _tpu_vfio_bdf(int(entry))) is not None
+    )
+    all_paths = [f"/dev/vfio/{group}" for _, group in located]
+    chips: List[List[str]] = []
+    prev_chip_bdf: Optional[str] = None
+    for bdf, group in located:
+        chip_bdf = bdf.partition(".")[0]
+        if chip_bdf != prev_chip_bdf:
+            chips.append([f"/dev/vfio/{group}"])
+            prev_chip_bdf = chip_bdf
+        else:
+            chips[-1].append(f"/dev/vfio/{group}")
+    return all_paths, chips
+
+
+def _parse_indices(raw: str) -> List[int]:
+    return [int(t) for t in raw.split(",") if t.strip().isdigit()]
+
+
+def get_current_process_tpu_vfio_devices(
+    visible_devices: Optional[str] = None,
+) -> List[str]:
+    """Return the ``/dev/vfio/<group>`` paths owned by the current worker process.
+
+    Scopes VFIO readiness checks strictly to the devices this process will open
+    so multi-worker hosts (sub-host MPMD ``TPU_VISIBLE_CHIPS`` or per-device
+    ``TorchTrainer`` workers) never probe peer workers' active VFIO groups.
+    Returns ``[]`` on TPU ``v4`` (``/dev/accel*``) or CPU-only workers.
+    """
+    all_paths, chips = _discover_tpu_vfio_devices()
+    if not all_paths:
+        return []
+    if visible_devices is not None:
+        return [
+            all_paths[i] for i in _parse_indices(visible_devices) if i < len(all_paths)
+        ]
+    mask = os.environ.get(
+        TPU_VISIBLE_CHIPS_ENV_VAR, os.environ.get(TPU_VISIBLE_DEVICES_ENV_VAR)
+    )
+    if mask is None:
+        return all_paths
+    return [p for c in _parse_indices(mask) if c < len(chips) for p in chips[c]]
+
+
+def _vfio_group_busy(path: str) -> bool:
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError as exc:
+        if exc.errno == errno.EBUSY:
             return True
+        logger.debug("Skipping non-EBUSY error while probing %s: %s", path, exc)
+        return False
+    os.close(fd)
     return False
+
+
+def wait_for_tpu_vfio_ready(
+    timeout_s: float = DEFAULT_TPU_VFIO_READY_TIMEOUT_S,
+    visible_devices: Optional[str] = None,
+) -> None:
+    """Wait until this worker's assigned TPU ``/dev/vfio/<group>`` devices are free.
+
+    When a Ray Train worker actor is killed via ``ray.kill()`` (`SIGKILL`), the
+    Raylet releases the TPU placement-group bundle as soon as the worker IPC
+    socket closes, while the Linux kernel asynchronously unpins VFIO IOMMU DMA
+    pages (`vfio_iommu_type1_release`) in the dying task's exit path. Because
+    `libtpu` opens `/dev/vfio/<group>` without retry, a replacement worker
+    starting during that window crashes immediately with `EBUSY`.
+
+    Must be called before the current process opens its TPU devices. Only this
+    worker's assigned Google TPU VFIO groups are probed, preventing peer-worker
+    contention on multi-worker TPU hosts.
+    """
+    if timeout_s <= 0:
+        return
+    target_devs = get_current_process_tpu_vfio_devices(visible_devices=visible_devices)
+    if not target_devs:
+        return
+
+    pending = [dev for dev in target_devs if _vfio_group_busy(dev)]
+    if not pending:
+        return
+
+    start_time = time.monotonic()
+    deadline = start_time + timeout_s
+    while pending:
+        now = time.monotonic()
+        if now >= deadline:
+            logger.warning(
+                "Timed out after %.2fs waiting for TPU VFIO devices to be released: %s. "
+                "Proceeding with TPU initialization; libtpu may fail with EBUSY.",
+                timeout_s,
+                pending,
+            )
+            return
+        time.sleep(min(_TPU_VFIO_POLL_INTERVAL_S, deadline - now))
+        pending = [dev for dev in pending if _vfio_group_busy(dev)]
+
+    logger.info(
+        "TPU VFIO devices %s became ready after %.2fs.",
+        target_devs,
+        time.monotonic() - start_time,
+    )
 
 
 def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:

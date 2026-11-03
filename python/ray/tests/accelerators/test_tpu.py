@@ -1,3 +1,4 @@
+import errno
 import os
 import sys
 from unittest import mock
@@ -167,6 +168,182 @@ def test_is_vfio_group_a_tpu_unicode_decode_error_fails_closed(mock_list):
     )
     with patch("builtins.open", open_mock):
         assert tpu._is_vfio_group_a_tpu(96) is False
+
+
+@pytest.fixture
+def vfio_sysfs(monkeypatch):
+    """Mock a tpu7x host with 4 dual-VF chips (8 non-monotonic VFIO groups) + 1 non-TPU group."""
+    for var in (tpu.TPU_VISIBLE_CHIPS_ENV_VAR, tpu.TPU_VISIBLE_DEVICES_ENV_VAR):
+        monkeypatch.delenv(var, raising=False)
+
+    # Real tpu7x PCI BDF layout (non-monotonic IOMMU groups across root buses 00 and c0)
+    # plus an NVIDIA BlueField-3 RShim VFIO group (/dev/vfio/96, vendor 0x15b3).
+    groups = {
+        4: ("0000:00:03.0", "0x1ae0"),  # Chip 0, VF 0 (device 0)
+        5: ("0000:00:03.1", "0x1ae0"),  # Chip 0, VF 1 (device 1)
+        3: ("0000:00:04.0", "0x1ae0"),  # Chip 1, VF 0 (device 2)
+        0: ("0000:00:04.1", "0x1ae0"),  # Chip 1, VF 1 (device 3)
+        6: ("0000:c0:00.0", "0x1ae0"),  # Chip 2, VF 0 (device 4)
+        2: ("0000:c0:00.1", "0x1ae0"),  # Chip 2, VF 1 (device 5)
+        1: ("0000:c0:02.0", "0x1ae0"),  # Chip 3, VF 0 (device 6)
+        7: ("0000:c0:02.1", "0x1ae0"),  # Chip 3, VF 1 (device 7)
+        96: ("0016:03:00.2", "0x15b3"),  # Non-TPU vfio-pci device
+    }
+    listdir_map = {"/dev/vfio": ["vfio"] + [str(g) for g in groups]}
+    vendor_map = {}
+    for group, (bdf, vendor) in groups.items():
+        sysfs_dir = f"/sys/kernel/iommu_groups/{group}/devices"
+        listdir_map[sysfs_dir] = [bdf]
+        vendor_map[os.path.join(sysfs_dir, bdf, "vendor")] = f"{vendor}\n"
+
+    def fake_listdir(path):
+        if path in listdir_map:
+            return listdir_map[path]
+        raise FileNotFoundError(path)
+
+    def fake_open(path, *args, **kwargs):
+        if path in vendor_map:
+            return mock.mock_open(read_data=vendor_map[path])()
+        raise FileNotFoundError(path)
+
+    with (
+        patch("os.listdir", side_effect=fake_listdir),
+        patch("builtins.open", side_effect=fake_open),
+    ):
+        yield listdir_map
+
+
+@pytest.mark.parametrize(
+    "env, visible_devices, expected",
+    [
+        pytest.param(
+            {},
+            None,
+            [
+                "/dev/vfio/4",
+                "/dev/vfio/5",
+                "/dev/vfio/3",
+                "/dev/vfio/0",
+                "/dev/vfio/6",
+                "/dev/vfio/2",
+                "/dev/vfio/1",
+                "/dev/vfio/7",
+            ],
+            id="full_host_bdf_sorted_excludes_non_tpu",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_CHIPS": "1,3"},
+            None,
+            ["/dev/vfio/3", "/dev/vfio/0", "/dev/vfio/1", "/dev/vfio/7"],
+            id="subhost_visible_chips_expands_dual_vf",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_CHIPS": "2,3", "TPU_VISIBLE_DEVICES": "2,3"},
+            None,
+            ["/dev/vfio/6", "/dev/vfio/2", "/dev/vfio/1", "/dev/vfio/7"],
+            id="visible_chips_precedence_over_visible_devices",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_DEVICES": "0,2"},
+            None,
+            ["/dev/vfio/4", "/dev/vfio/5", "/dev/vfio/6", "/dev/vfio/2"],
+            id="visible_devices_fallback_when_chips_unset",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_CHIPS": "2"},
+            "5",
+            ["/dev/vfio/2"],
+            id="explicit_per_device_override_for_torchtpu",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_CHIPS": ""},
+            None,
+            [],
+            id="cpu_only_empty_visible_chips",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_DEVICES": ""},
+            None,
+            [],
+            id="cpu_only_empty_visible_devices",
+        ),
+    ],
+)
+def test_get_current_process_tpu_vfio_devices(
+    vfio_sysfs, monkeypatch, env, visible_devices, expected
+):
+    """Resolves worker-scoped TPU VFIO devices across full-host, sub-host, and per-VF modes."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    assert (
+        tpu.get_current_process_tpu_vfio_devices(visible_devices=visible_devices)
+        == expected
+    )
+
+
+def test_get_current_process_tpu_vfio_devices_missing_vfio(monkeypatch):
+    """TPU v4 (/dev/accel*) hosts without /dev/vfio return []."""
+    with patch("os.listdir", side_effect=FileNotFoundError("/dev/vfio")):
+        assert tpu.get_current_process_tpu_vfio_devices() == []
+
+
+def test_wait_for_tpu_vfio_ready_polls_busy_and_closes_fds(vfio_sysfs, monkeypatch):
+    """Polls only worker-assigned VFIO groups on EBUSY, ignores non-EBUSY, and closes fds."""
+    monkeypatch.setenv("TPU_VISIBLE_CHIPS", "2")  # Chip 2 -> /dev/vfio/6, /dev/vfio/2
+    ebusy_remaining = {"/dev/vfio/2": 2}
+    opened_paths = []
+    closed_fds = []
+
+    def fake_os_open(path, flags):
+        opened_paths.append(path)
+        if path not in ("/dev/vfio/6", "/dev/vfio/2"):
+            raise AssertionError(f"must not probe peer VFIO group {path}")
+        if path == "/dev/vfio/6":
+            raise PermissionError(errno.EACCES, "Permission denied")
+        if ebusy_remaining.get(path, 0) > 0:
+            ebusy_remaining[path] -= 1
+            raise OSError(errno.EBUSY, "Device or resource busy")
+        return 99
+
+    sleep_calls = []
+    with (
+        patch("os.open", side_effect=fake_os_open),
+        patch("os.close", side_effect=closed_fds.append),
+        patch.object(tpu.time, "sleep", side_effect=sleep_calls.append),
+    ):
+        tpu.wait_for_tpu_vfio_ready(timeout_s=5.0)
+
+    assert opened_paths == [
+        "/dev/vfio/6",
+        "/dev/vfio/2",
+        "/dev/vfio/2",
+        "/dev/vfio/2",
+    ]
+    assert closed_fds == [99]
+    assert len(sleep_calls) == 2
+
+
+def test_wait_for_tpu_vfio_ready_timeout_warns(vfio_sysfs):
+    """Logs a warning and returns cleanly when EBUSY persists past timeout_s."""
+    clock = [100.0]
+
+    with (
+        patch("os.open", side_effect=OSError(errno.EBUSY, "Device or resource busy")),
+        patch.object(tpu.time, "monotonic", side_effect=lambda: clock[0]),
+        patch.object(
+            tpu.time,
+            "sleep",
+            side_effect=lambda dt: clock.__setitem__(0, clock[0] + dt),
+        ),
+        patch.object(tpu.logger, "warning") as mock_warning,
+    ):
+        tpu.wait_for_tpu_vfio_ready(timeout_s=0.12, visible_devices="5")
+
+    mock_warning.assert_called_once()
+    msg, logged_timeout, logged_pending = mock_warning.call_args[0]
+    assert "Timed out after %.2fs waiting for TPU VFIO devices" in msg
+    assert logged_timeout == pytest.approx(0.12)
+    assert logged_pending == ["/dev/vfio/2"]
 
 
 @pytest.mark.parametrize(
