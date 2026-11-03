@@ -56,7 +56,7 @@ def _store_key(group_name: str) -> str:
     (namespace, group) pairs map to keys one-to-one even when either contains
     ``:``.
     """
-    namespace = ray.get_runtime_context().namespace
+    namespace = ray.get_runtime_context().namespace or ""
     return f"xccl_collective_store:{len(namespace)}:{namespace}:{group_name}"
 
 
@@ -71,7 +71,8 @@ def _xccl_compiled() -> bool:
 
 def _unwrap(tensor: List[torch.Tensor]) -> torch.Tensor:
     """ray.util.collective hands tensors over as a one-element list."""
-    assert isinstance(tensor, list) and len(tensor) == 1
+    if not isinstance(tensor, list) or len(tensor) != 1:
+        raise ValueError(f"Expected a list of length 1, got {tensor}")
     t = tensor[0]
     if not isinstance(t, torch.Tensor):
         raise ValueError(f"XCCL group only accepts torch.Tensor, got {type(t)}")
@@ -79,8 +80,15 @@ def _unwrap(tensor: List[torch.Tensor]) -> torch.Tensor:
 
 
 def _unwrap_list(tensor_list: List[List[torch.Tensor]]) -> List[torch.Tensor]:
-    assert isinstance(tensor_list, list) and len(tensor_list) == 1
-    return list(tensor_list[0])
+    if not isinstance(tensor_list, list) or len(tensor_list) != 1:
+        raise ValueError(f"Expected a list of length 1, got {tensor_list}")
+    inner_list = tensor_list[0]
+    if not isinstance(inner_list, list):
+        raise ValueError(f"Expected a list of tensors, got {type(inner_list)}")
+    for t in inner_list:
+        if not isinstance(t, torch.Tensor):
+            raise ValueError(f"XCCL group only accepts torch.Tensor, got {type(t)}")
+    return list(inner_list)
 
 
 class XCCLGroup(BaseGroup):
@@ -126,8 +134,8 @@ class XCCLGroup(BaseGroup):
         while time.time() < deadline:
             meta = internal_kv._internal_kv_get(key)
             if meta is not None:
-                addr, port = meta.decode().rsplit(":", 1)
                 try:
+                    addr, port = meta.decode().rsplit(":", 1)
                     store = dist.TCPStore(
                         addr,
                         int(port),
@@ -135,7 +143,7 @@ class XCCLGroup(BaseGroup):
                         is_master=False,
                         timeout=timedelta(seconds=_CONNECT_TIMEOUT_S),
                     )
-                except (RuntimeError, OSError) as e:
+                except (RuntimeError, OSError, ValueError) as e:
                     last_err = e
                 else:
                     # The short timeout only bounds the connect attempt. Ranks
