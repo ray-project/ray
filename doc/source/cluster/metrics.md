@@ -203,10 +203,14 @@ scrape_configs:
   http_sd_configs:
   - url: 'http://<RayHeadnodeAddress>:<DashboardPort>/api/prometheus/sd'
     refresh_interval: 60s
+    authorization:
+      type: Bearer
+      credentials_file: <path to the token file>
 ```
 
 - `<DashboardPort>` is `8265` by default. See [Configuring and managing Ray dashboard](configure-manage-dashboard.md) for more details.
 - The endpoint returns a JSON list of targets for Prometheus metrics. When no targets are available, it returns `[]`.
+- With {ref}`token authentication <token-auth>` on, the endpoint requires the token. Prometheus sends the discovery request with its own HTTP client, so the `authorization` block inside `http_sd_configs` doesn't cover the scrapes. Also add one to the scrape job, as described in {ref}`Scrape metrics with token authentication <metrics-token-auth>`.
 
 (metrics-token-auth)=
 
