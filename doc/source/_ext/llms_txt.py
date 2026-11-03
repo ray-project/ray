@@ -652,7 +652,9 @@ def _shard_identity(env, prefix, docnames, dir_landing, dir_label, meta_types, c
 
     A top-level nav section uses its toctree label; an identifiable sub-group
     (landing, index, or lone described page) uses the lead page's title and
-    description; a sub-group with no representative page falls back to a
+    description. A sub-group with no representative page takes the title and
+    curated description of its ``index`` page when that page exists but is
+    excluded from the corpus, as a thin API hub is; otherwise it falls back to a
     humanized directory name and an empty description rather than an arbitrary
     page's text.
     """
@@ -661,6 +663,10 @@ def _shard_identity(env, prefix, docnames, dir_landing, dir_label, meta_types, c
         return lead, dir_label[prefix], _description(env, lead, meta_types, cache)
     if confident:
         return lead, _doc_title(env, lead), _description(env, lead, meta_types, cache)
+    index = f"{prefix}/index"
+    if index in env.all_docs:
+        description = _curated_description(env, index, meta_types, cache) or ""
+        return lead, _doc_title(env, index), description
     return lead, _humanize(prefix.rsplit("/", 1)[-1]), ""
 
 

@@ -31,7 +31,7 @@ html_theme = "basic"
 html_baseurl = "https://example.com/docs/"
 llms_txt_title = "TestProj"
 llms_txt_summary = "A test project."
-llms_txt_exclude = ["secB/api/*"]
+llms_txt_exclude = ["secB/api/*", "guides/topic-b/index"]
 llms_txt_optional_sections = ["Reference"]
 llms_txt_full_max_shard_tokens = 50
 """
@@ -118,6 +118,14 @@ FILES = {
     "guides/topic-b/intro.rst": (
         "Topic B Intro\n=============\n\n"
         "Body text for the topic B intro page within the guides section here.\n"
+    ),
+    # Excluded from the corpus, like a thin API hub, but it still names the
+    # topic-b sub-shard, whose one page carries no description of its own.
+    "guides/topic-b/index.rst": (
+        ":orphan:\n\n"
+        ".. meta::\n   :description: Reference material for topic B.\n\n"
+        "Topic B Reference\n=================\n\n"
+        "An index page kept out of the corpus, like a thin API hub.\n"
     ),
     # In no toctree but under Section A's directory (mimics a gallery page Ray
     # links from a grid card, not a toctree). Must fold into Section A, not the
@@ -352,6 +360,20 @@ def test_llms_txt():
             "(1 pages): An orphan page with a curated description." in manifest,
             "single-page shard not labeled after its page",
         )
+        # An index page excluded from the corpus still names its directory's
+        # sub-shard, and its own text stays out of the shard.
+        _check(
+            "- [Topic B Reference](https://example.com/docs/guides/topic-b/"
+            "llms-full.txt) (1 pages): Reference material for topic B." in manifest,
+            "sub-shard not labeled after its excluded index page",
+        )
+        topic_b = (out / "guides" / "topic-b" / "llms-full.txt").read_text(
+            encoding="utf-8"
+        )
+        _check(
+            "kept out of the corpus" not in topic_b,
+            "excluded index page leaked into its sub-shard",
+        )
 
         secA_full = (out / "secA" / "llms-full.txt").read_text(encoding="utf-8")
         _check("Body of page one." in secA_full, "shard missing verbatim source")
@@ -436,8 +458,8 @@ def test_llms_txt():
         _check(
             "- [Topic A](https://example.com/docs/guides/topic-a/llms-full.txt) "
             "(2 pages)" in guides_parent
-            and "- [Topic B](https://example.com/docs/guides/topic-b/llms-full.txt) "
-            "(1 pages)" in guides_parent,
+            and "- [Topic B Reference](https://example.com/docs/guides/topic-b/"
+            "llms-full.txt) (1 pages)" in guides_parent,
             "split parent shard doesn't link its sub-shards",
         )
         _check(
