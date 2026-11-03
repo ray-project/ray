@@ -516,7 +516,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             for bm in bundle.metadata:
                 producer_node_id = bm.node_id
                 if producer_node_id is not None and producer_node_id != actor_node_id:
-                    remote_bytes += bm.size_bytes
+                    remote_bytes += bm.size_bytes or 0
                     remote_blocks += 1
             if remote_blocks > 0:
                 self._metrics.bytes_remote_inputs_read += remote_bytes

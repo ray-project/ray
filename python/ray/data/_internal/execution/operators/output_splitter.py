@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 from typing_extensions import override
 
+import ray
 from ray._common.utils import env_float
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
@@ -466,9 +467,10 @@ def _split(
             left_meta.append(m)
             acc += m.num_rows
         else:
-            # Trouble case: split it up.
-            lm, rm = _split_meta(m, left_size - acc)
-            lb, rb = _split_block(b, left_size - acc, label_selector)
+            # Trouble case: split it up. The pieces are new objects, so their
+            # metadata (including node_id) comes back from the worker that
+            # created them rather than being copied off the source block.
+            lb, rb, lm, rm = _split_block(b, m, left_size - acc, label_selector)
             left_meta.append(lm)
             right_meta.append(rm)
             left_blocks.append(lb)
@@ -491,43 +493,62 @@ def _split(
 
 
 def _split_meta(
-    m: BlockMetadata, left_size: int
+    m: BlockMetadata, left_size: int, node_id: str
 ) -> Tuple[BlockMetadata, BlockMetadata]:
+    """Row and byte estimates for the two pieces of a split block.
+
+    ``node_id`` is the node the pieces were created on. Both pieces are new
+    objects, so they share that node rather than the source block's node.
+    ``exec_stats`` stays unset: the pieces were not produced by the upstream
+    task.
+    """
     left_bytes = int(math.floor(m.size_bytes * (left_size / m.num_rows)))
     left = BlockMetadata(
         num_rows=left_size,
         size_bytes=left_bytes,
         input_files=m.input_files,
         exec_stats=None,
-        node_id=m.node_id,
+        node_id=node_id,
     )
     right = BlockMetadata(
         num_rows=m.num_rows - left_size,
         size_bytes=m.size_bytes - left_bytes,
         input_files=m.input_files,
         exec_stats=None,
-        node_id=m.node_id,
+        node_id=node_id,
     )
     return left, right
 
 
 def _split_block(
     b: ObjectRef[Block],
+    metadata: BlockMetadata,
     left_size: int,
     label_selector: Optional[Dict[str, str]] = None,
-) -> Tuple[ObjectRef[Block], ObjectRef[Block]]:
+) -> Tuple[ObjectRef[Block], ObjectRef[Block], BlockMetadata, BlockMetadata]:
     split_single_block = cached_remote_fn(_split_single_block)
-    options: Dict[str, Any] = {"num_cpus": 0, "num_returns": 2}
+    options: Dict[str, Any] = {"num_cpus": 0, "num_returns": 4}
     if label_selector:
         options["label_selector"] = label_selector
-    left, right = split_single_block.options(**options).remote(b, left_size)
-    return left, right
+    left, right, left_meta_ref, right_meta_ref = split_single_block.options(
+        **options
+    ).remote(b, metadata, left_size)
+    left_meta, right_meta = ray.get([left_meta_ref, right_meta_ref])
+    return left, right, left_meta, right_meta
 
 
-def _split_single_block(b: Block, left_size: int) -> Tuple[Block, Block]:
+def _split_single_block(
+    b: Block, metadata: BlockMetadata, left_size: int
+) -> Tuple[Block, Block, BlockMetadata, BlockMetadata]:
     acc = BlockAccessor.for_block(b)
     left = acc.slice(0, left_size)
     right = acc.slice(left_size, acc.num_rows())
     assert BlockAccessor.for_block(left).num_rows() == left_size
     assert BlockAccessor.for_block(right).num_rows() == (acc.num_rows() - left_size)
-    return left, right
+    # Both slices are new objects on this worker. The task is not pinned to
+    # the source block's node, so copying metadata.node_id would charge
+    # locality, per-node metrics, remote reads, and ResourceBank accounting
+    # to the wrong node. Same reason LimitOperator restamps on the worker.
+    node_id = ray.get_runtime_context().get_node_id()
+    left_meta, right_meta = _split_meta(metadata, left_size, node_id)
+    return left, right, left_meta, right_meta
