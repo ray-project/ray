@@ -69,15 +69,23 @@ void RestrictToOwner(int fd,
   char new_mode[8];
   std::snprintf(
       new_mode, sizeof(new_mode), "%04o", static_cast<unsigned int>(owner_mode));
-  if (fchmod(fd, owner_mode) == 0) {
+  std::string failure;
+  if (fchmod(fd, owner_mode) != 0) {
+    failure = std::strerror(errno);
+  } else if (fstat(fd, &path_stat) != 0 || (path_stat.st_mode & 0077) != 0) {
+    // Some filesystems (WSL /mnt/c, CIFS, FAT mounted with `quiet`) accept fchmod
+    // without changing the mode.
+    failure = "the filesystem kept the old mode";
+  }
+  if (failure.empty()) {
     RAY_LOG(WARNING) << "Changed the mode of " << path << " from " << old_mode << " to "
                      << new_mode << " because other users could access it."
                      << consequence;
   } else {
     RAY_LOG(WARNING) << path << " has mode " << old_mode
                      << ", so other users can access it, and changing it failed: "
-                     << std::strerror(errno) << ". Run `chmod " << new_mode << " " << path
-                     << "`." << consequence;
+                     << failure << ". Run `chmod " << new_mode << " " << path << "`."
+                     << consequence;
   }
 }
 #endif
