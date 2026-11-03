@@ -83,11 +83,22 @@ _RUNSC_ROOT = "/tmp/runsc"
 # after the container stops, before it kills that process.
 _TREE_EXIT_GRACE_SECONDS = 2.0
 
-# Each bundle holds a file that its owner keeps open and locked while the
-# sandbox lives. The kernel drops the lock when the owner exits or crashes, so
-# a backend in any process can find the bundles that nobody owns anymore.
+# Each bundle holds an owner file that names its owner's lock: a file in
+# _RAY_SANDBOX_DIR/.owners that the owning process keeps locked for as long as
+# it lives. The kernel drops the lock when the process exits or crashes, so a
+# backend in any process can find the bundles that nobody owns anymore. One
+# lock per process, rather than an open file per sandbox, keeps the
+# descriptor table of a process that hosts many sandboxes small: each runsc
+# command it runs forks the process, and a fork copies the table.
 _OWNER_FILE = ".owner"
 _BUNDLE_NAME = re.compile(r"ray-sandbox-[0-9a-f]{12}")
+_OWNER_LOCKS_DIRNAME = ".owners"
+# The owner's PID, then a random part.
+_OWNER_LOCK_NAME = re.compile(r"([0-9]{1,10})-[0-9a-f]{12}\.lock")
+_owner_locks_mutex = threading.Lock()
+# This process's owner lock in each owner-locks directory: its name, and the
+# file that holds the lock.
+_owner_locks: Dict[Tuple[int, str], Tuple[str, IO[str]]] = {}
 # How often a process looks for bundles nobody owns.
 _RECLAIM_INTERVAL_SECONDS = 60.0
 _reclaim_lock = threading.Lock()
@@ -547,6 +558,150 @@ def _safe_join_under(base_dir: str, rel_path: str, param_name: str = "workdir") 
     return resolved
 
 
+def _owner_locks_dir() -> str:
+    return os.path.join(_RAY_SANDBOX_DIR, _OWNER_LOCKS_DIRNAME)
+
+
+def _process_owner_lock() -> str:
+    """Make and lock this process's owner lock, once, and return its name."""
+    locks_dir = _owner_locks_dir()
+    # By PID too: a process forked from an owner makes a lock of its own.
+    key = (os.getpid(), locks_dir)
+    with _owner_locks_mutex:
+        if key not in _owner_locks:
+            os.makedirs(locks_dir, mode=0o777, exist_ok=True)
+            name = f"{os.getpid()}-{uuid.uuid4().hex[:12]}.lock"
+            path = os.path.join(locks_dir, name)
+            lock_file = open(f"{path}.tmp", "x", encoding="utf-8")
+            try:
+                # Locked before it takes its name, so that nobody takes it
+                # for a dead owner's lock.
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+                os.rename(f"{path}.tmp", path)
+            except BaseException:
+                lock_file.close()
+                raise
+            _owner_locks[key] = (name, lock_file)
+        return _owner_locks[key][0]
+
+
+def _owner_alive(owner: Any, seen: Optional[Dict[str, bool]] = None) -> bool:
+    """Whether the owner that a bundle's owner file names is alive.
+
+    It is while a process holds its owner lock. Owner files may be writable
+    by others, so the lock is only looked for in the owner-locks directory,
+    and never followed or waited on, and an owner that can't be checked
+    counts as alive: reclaiming a bundle kills its sandbox. Once a dead
+    owner's lock is deleted (see ``_remove_dead_owner_locks``), the PID in
+    its name says whether the owner is gone.
+
+    Args:
+        owner: The owner file's contents.
+        seen: What earlier calls found, by lock, for a pass over many bundles.
+
+    Returns:
+        False if the owner is gone, else True.
+    """
+    name = owner.get("owner_lock") if isinstance(owner, dict) else None
+    if name is None:
+        return False  # Let go of by its owner (see _disown_bundle).
+    match = _OWNER_LOCK_NAME.fullmatch(name) if isinstance(name, str) else None
+    if match is None:
+        return True
+    if seen is not None and name in seen:
+        return seen[name]
+    try:
+        fd = os.open(
+            os.path.join(_owner_locks_dir(), name),
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+        )
+    except FileNotFoundError:
+        alive = _pid_running(int(match.group(1)))
+    except OSError:
+        alive = True
+    else:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            alive = False
+        except OSError:
+            alive = True  # Held, or it can't be told.
+        finally:
+            os.close(fd)
+    if seen is not None:
+        seen[name] = alive
+    return alive
+
+
+def _pid_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (OSError, OverflowError):
+        pass  # Another user's, or it can't be told.
+    return True
+
+
+def _remove_dead_owner_locks() -> None:
+    """Delete the owner locks of the processes that are gone.
+
+    The owner files that still name one fall back on its PID (see
+    ``_owner_alive``), so this doesn't wait for their bundles to go.
+    """
+    locks_dir = _owner_locks_dir()
+    try:
+        names = os.listdir(locks_dir)
+    except OSError:
+        return
+    for name in names:
+        if not _OWNER_LOCK_NAME.fullmatch(name):
+            continue
+        path = os.path.join(locks_dir, name)
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        except OSError:
+            continue
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.unlink(path)
+        except OSError:
+            pass  # Its owner is alive, or it's another user's.
+        finally:
+            os.close(fd)
+
+
+def _write_owner_file(root_dir: str, owner: Dict[str, Any]) -> None:
+    """Write a bundle's owner file whole, so that no reader sees part of one."""
+    path = os.path.join(root_dir, _OWNER_FILE)
+    tmp_path = f"{path}.{uuid.uuid4().hex[:12]}.tmp"
+    try:
+        with open(tmp_path, "x", encoding="utf-8") as f:
+            json.dump(owner, f)
+        os.rename(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _disown_bundle(root_dir: str) -> None:
+    """Leave a bundle that this process couldn't delete to the reclaim pass,
+    which deletes it once it can."""
+    try:
+        with open(os.path.join(root_dir, _OWNER_FILE), encoding="utf-8") as f:
+            owner = json.load(f)
+        owner["owner_lock"] = None
+        _write_owner_file(root_dir, owner)
+    except Exception as err:
+        logger.warning(
+            "Failed to leave sandbox bundle %s to the reclaim pass: %s",
+            root_dir,
+            err,
+        )
+
+
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
@@ -606,9 +761,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         self,
         config: SandboxConfig,
         cgroups: Optional[SandboxCgroupManager],
-        start: Callable[
-            [SandboxConfig, str, str, IO[str], Optional[SandboxCgroup]], None
-        ],
+        start: Callable[[SandboxConfig, str, str, Optional[SandboxCgroup]], None],
         action: str = "create",
     ) -> str:
         """Make a new sandbox's bundle, owner file and cgroup, then start it.
@@ -640,28 +793,27 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # create makes, so the handler below does: the cgroup, the image pin,
         # and the bundle with its owner file. _start_sandbox stops the
         # processes it starts.
-        owner_file = None
         cgroup = None
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
             if cgroups is None:
-                owner_file = self._own_bundle(config, root_dir)
+                self._own_bundle(config, root_dir)
             else:
                 lock_path = os.path.join(_RAY_SANDBOX_DIR, _CPUS_LOCK_FILE)
                 with open(lock_path, "a", encoding="utf-8") as lock:
                     fcntl.flock(lock, fcntl.LOCK_EX)
                     cpus = cgroups.choose_cpus(config.cpu, self._cpus_in_use())
-                    owner_file = self._own_bundle(config, root_dir, cpus)
+                    self._own_bundle(config, root_dir, cpus)
                 # After the owner file, so that a reclaim removes the cgroup
                 # of an owner that dies before it starts the sandbox.
                 cgroup = cgroups.allocate(sandbox_id, config.cpu, memory, cpus)
-            start(config, sandbox_id, root_dir, owner_file, cgroup)
+            start(config, sandbox_id, root_dir, cgroup)
         except Exception as err:
             if _release_cgroup(sandbox_id, cgroup):
                 self._image_manager.release_image(config.image, sandbox_id)
                 shutil.rmtree(root_dir, ignore_errors=True)
-            if owner_file is not None:
-                owner_file.close()
+            else:
+                _disown_bundle(root_dir)
             if isinstance(err, SandboxError):
                 raise
             raise SandboxCreationError(f"Failed to {action} sandbox: {err}") from err
@@ -693,7 +845,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig,
         sandbox_id: str,
         root_dir: str,
-        owner_file: IO[str],
         cgroup: Optional[SandboxCgroup],
     ) -> None:
         """Start a sandbox in its new bundle and register it.
@@ -706,7 +857,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             config: The sandbox's configuration.
             sandbox_id: The sandbox's ID, which also names its bundle.
             root_dir: The sandbox's bundle directory.
-            owner_file: The bundle's owner file, which this backend holds.
             cgroup: The sandbox's cgroup, or None if it has no limits.
         """
         # Only `runsc run` needs the runsc args for the node's GPUs, such as
@@ -756,7 +906,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             root_dir,
             workdir_path,
             container_cwd,
-            owner_file,
             cgroup,
             gpu_run_args=gpu_run_args,
             rootfs_overlay=rootfs_overlay,
@@ -846,7 +995,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         root_dir: str,
         workdir_path: Optional[str],
         container_cwd: str,
-        owner_file: IO[str],
         cgroup: Optional[SandboxCgroup],
         restore: Optional["_RestoreImage"] = None,
         gpu_run_args: Sequence[str] = (),
@@ -860,7 +1008,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             root_dir: The sandbox's prepared bundle directory.
             workdir_path: The host directory mounted at the workdir, if any.
             container_cwd: The sandbox's working directory.
-            owner_file: The bundle's owner file, which this backend holds.
             cgroup: The sandbox's cgroup, or None if it has no limits.
             restore: The checkpoint image to restore from, or None to boot
                 the sandbox from its image.
@@ -884,7 +1031,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 raise SandboxCreationError(
                     f"Failed to write the egress ruleset for '{root_dir}': {err}"
                 ) from err
-        proc, stderr_file = self._run_until_running(
+        proc = self._run_until_running(
             config,
             sandbox_id,
             root_dir,
@@ -925,8 +1072,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # The launch process whose tree holds the sandbox and, for
             # network="public", the namespace holder and slirp4netns.
             "proc": proc,
-            "stderr_file": stderr_file,
-            "owner_file": owner_file,
             "status": SandboxStatus.RUNNING,
         }
 
@@ -939,7 +1084,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         restore: Optional["_RestoreImage"] = None,
         gpu_run_args: Sequence[str] = (),
         rootfs_overlay: Optional[overlayfs.RootfsOverlay] = None,
-    ) -> Tuple[subprocess.Popen, IO[str]]:
+    ) -> subprocess.Popen:
         """Start the launch process and wait for the container to run.
 
         If the container doesn't reach 'running', this deletes runsc's state
@@ -959,7 +1104,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 None to boot it straight from its EROFS image.
 
         Returns:
-            The launch process and its open stderr log.
+            The launch process.
         """
         run_args = self._build_run_command(
             config,
@@ -1048,9 +1193,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # and everything it started.
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
-            stderr_file.close()
             raise
-        return proc, stderr_file
+        finally:
+            # The launch tree writes the log through descriptors of its own.
+            # This process keeps none per sandbox (see _OWNER_FILE).
+            stderr_file.close()
+        return proc
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
@@ -1059,7 +1207,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             root_dir = meta["root_dir"]
             config: SandboxConfig = meta["config"]
             proc = meta.get("proc")
-            stderr_file = meta.get("stderr_file")
 
             kill_args = self._runsc_base_args(config)
             kill_args.extend(["kill", sandbox_id, "SIGKILL"])
@@ -1075,22 +1222,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             if proc:
                 self._terminate_tree(proc)
 
-            if stderr_file:
-                try:
-                    stderr_file.close()
-                except Exception:
-                    pass
-
             # The cgroup holds every process the sandbox ran, including any
             # that outlived the launch process, and removing it kills them.
             if _release_cgroup(sandbox_id, meta.get("cgroup")):
                 shutil.rmtree(root_dir, ignore_errors=True)
                 # Only now is the cached image unused.
                 self._image_manager.release_image(config.image, sandbox_id)
-            # Last, so no other backend reclaims the bundle while it's
-            # being deleted.
-            if meta.get("owner_file"):
-                meta["owner_file"].close()
+            else:
+                _disown_bundle(root_dir)
 
     def set_egress_allowlist(self, sandbox_id: str, cidrs: List[str]) -> None:
         """Replace the egress allowlist of a running network="public" sandbox.
@@ -1824,13 +1963,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 pass
             self._terminate_tree(proc)
         self._delete_container_state(meta["config"], sandbox_id)
-        stderr_file = meta.get("stderr_file")
-        if stderr_file is not None:
-            try:
-                stderr_file.close()
-            except Exception:
-                pass
-        meta["stderr_file"] = None
         meta["status"] = SandboxStatus.TERMINATED
 
     def _restore_in_place(
@@ -1864,7 +1996,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 pass
         if config.network == "public" and meta.get("egress_allowlist") is not None:
             _write_egress_ruleset(root_dir, meta["egress_allowlist"], config.dns)
-        proc, stderr_file = self._run_until_running(
+        meta["proc"] = self._run_until_running(
             config,
             sandbox_id,
             root_dir,
@@ -1872,8 +2004,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             restore=restore,
             rootfs_overlay=meta.get("rootfs_overlay"),
         )
-        meta["proc"] = proc
-        meta["stderr_file"] = stderr_file
         meta["status"] = SandboxStatus.RUNNING
         if config.network == "public":
             meta["netns_ids"] = _holder_namespace_ids(root_dir)
@@ -1950,7 +2080,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cgroups = self._cgroup_manager_for(config)
         restore = _RestoreImage(state_dir, background=background, direct=direct)
 
-        def start(config, sandbox_id, root_dir, owner_file, cgroup):
+        def start(config, sandbox_id, root_dir, cgroup):
             (
                 image_dir,
                 workdir_path,
@@ -1969,7 +2099,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 root_dir,
                 workdir_path,
                 container_cwd,
-                owner_file,
                 cgroup,
                 restore=restore,
                 rootfs_overlay=rootfs_overlay,
@@ -2360,58 +2489,43 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def _own_bundle(
         self, config: SandboxConfig, root_dir: str, cpus: Optional[List[int]] = None
-    ) -> IO[str]:
-        """Lock a new bundle's owner file for this backend and return it open.
+    ) -> None:
+        """Write a new bundle's owner file, which names this process's lock.
 
-        The backend keeps the file, and so its lock, until it deletes the
-        sandbox. The file is locked before it takes its name, so a backend
-        looking for unowned bundles never takes one that's being created. It
-        also records what reclaiming the bundle takes, and the CPUs that the
-        sandbox runs on, for ``_cpus_in_use``.
+        It also records what reclaiming the bundle takes, and the CPUs that
+        the sandbox runs on, for ``_cpus_in_use``.
         """
-        path = os.path.join(root_dir, _OWNER_FILE)
         runsc_args = self._runsc_base_args(config)
-        owner_file = open(f"{path}.tmp", "x", encoding="utf-8")
-        try:
-            fcntl.flock(owner_file, fcntl.LOCK_EX)
-            # Flags rather than a command line: a backend never runs one that
-            # it reads from disk.
-            json.dump(
-                {
-                    "pid": os.getpid(),
-                    "image": config.image,
-                    "rootless": "--rootless" in runsc_args,
-                    "ignore_cgroups": "--ignore-cgroups" in runsc_args,
-                    "cpus": cpus or [],
-                },
-                owner_file,
-            )
-            owner_file.flush()
-            os.rename(f"{path}.tmp", path)
-        except BaseException:
-            owner_file.close()
-            raise
-        return owner_file
+        # Flags rather than a command line: a backend never runs one that it
+        # reads from disk.
+        _write_owner_file(
+            root_dir,
+            {
+                "owner_lock": _process_owner_lock(),
+                "pid": os.getpid(),
+                "image": config.image,
+                "rootless": "--rootless" in runsc_args,
+                "ignore_cgroups": "--ignore-cgroups" in runsc_args,
+                "cpus": cpus or [],
+            },
+        )
 
     def _cpus_in_use(self) -> List[List[int]]:
         """The CPUs that each sandbox on this node with a live owner runs on.
 
-        A bundle counts while its owner holds the owner file's lock, so a
-        sandbox stops counting as soon as its owner dies.
+        A sandbox stops counting as soon as its owner dies.
         """
         used = []
+        seen: Dict[str, bool] = {}
         for root_dir in glob.glob(os.path.join(_RAY_SANDBOX_DIR, "ray-sandbox-*")):
             if not _BUNDLE_NAME.fullmatch(os.path.basename(root_dir)):
                 continue
             try:
                 with open(os.path.join(root_dir, _OWNER_FILE), encoding="utf-8") as f:
-                    try:
-                        fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                    except BlockingIOError:
-                        owner = json.load(f)  # Its owner holds the lock.
-                    else:
-                        continue  # Nobody owns it.
+                    owner = json.load(f)
             except (OSError, ValueError):
+                continue
+            if not _owner_alive(owner, seen):
                 continue
             cpus = owner.get("cpus") if isinstance(owner, dict) else None
             if isinstance(cpus, list):
@@ -2448,45 +2562,63 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         ``create_sandbox``), but its runsc state, its bundle (with the
         writable overlay's backing file) and its image pin stay on the node,
         and the pin keeps the image from being evicted. A sandbox whose owner
-        wasn't a Ray worker can still be running. Either way its owner file
-        is unlocked, and this backend holds the lock while it reclaims the
+        wasn't a Ray worker can still be running. Either way its owner's lock
+        is free, and this backend locks the owner file while it reclaims the
         bundle, so no other backend reclaims it too.
 
         Returns:
             The IDs of the sandboxes reclaimed.
         """
         reclaimed = []
+        seen: Dict[str, bool] = {}
         for root_dir in glob.glob(os.path.join(_RAY_SANDBOX_DIR, "ray-sandbox-*")):
             sandbox_id = os.path.basename(root_dir)
             if not _BUNDLE_NAME.fullmatch(sandbox_id):
                 continue
             try:
-                if self._reclaim_if_unowned(root_dir, sandbox_id):
+                if self._reclaim_if_unowned(root_dir, sandbox_id, seen):
                     reclaimed.append(sandbox_id)
             except Exception:
                 logger.exception("Failed to reclaim sandbox %s", sandbox_id)
+        _remove_dead_owner_locks()
         if reclaimed:
             logger.info("Reclaimed sandboxes whose owner is gone: %s", reclaimed)
         return reclaimed
 
-    def _reclaim_if_unowned(self, root_dir: str, sandbox_id: str) -> bool:
-        """Reclaim one bundle if nobody owns it, and return whether it did."""
+    def _reclaim_if_unowned(
+        self,
+        root_dir: str,
+        sandbox_id: str,
+        seen: Optional[Dict[str, bool]] = None,
+    ) -> bool:
+        """Reclaim one bundle if nobody owns it.
+
+        Args:
+            root_dir: The bundle directory.
+            sandbox_id: The sandbox's ID.
+            seen: Which owners are alive, by lock, for ``_owner_alive``.
+
+        Returns:
+            Whether it reclaimed the bundle.
+        """
         try:
             owner_file = open(os.path.join(root_dir, _OWNER_FILE), encoding="utf-8")
         except OSError:
-            # Being created, or made by a Ray that didn't lock it.
-            return False
+            return False  # Being created.
         with owner_file:
             try:
                 fcntl.flock(owner_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError:
-                return False  # Its owner is alive.
+                return False  # Another backend is reclaiming it.
             if os.fstat(owner_file.fileno()).st_nlink == 0:
-                return False  # Its owner deleted it since we opened the file.
+                # Deleted, or replaced by _disown_bundle, since it was opened.
+                return False
             try:
                 owner = json.load(owner_file)
             except ValueError:
                 owner = None
+            if _owner_alive(owner, seen):
+                return False
             if not isinstance(owner, dict):
                 owner = {}
             runsc_args = _runsc_args(

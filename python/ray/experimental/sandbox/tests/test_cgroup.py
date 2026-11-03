@@ -1,6 +1,5 @@
 """Resource enforcement, CPU choice, and cgroup cleanup without gVisor."""
 
-import fcntl
 import json
 import os
 import subprocess
@@ -92,12 +91,11 @@ def bundles(tmp_path, monkeypatch):
 def _register(backend):
     """Stand in for _start_sandbox: register a sandbox without starting it."""
 
-    def start(config, sandbox_id, root_dir, owner_file, cgroup):
+    def start(config, sandbox_id, root_dir, cgroup):
         backend._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
             "config": config,
             "cgroup": cgroup,
-            "owner_file": owner_file,
         }
 
     return start
@@ -185,28 +183,29 @@ def test_launcher_joins_the_cgroup_and_restricts_cpus(tmp_path):
     assert (tmp_path / "cgroup.procs").read_text() == pid.strip()
 
 
-def test_only_live_owners_cpus_count(shared, bundles):
-    """A sandbox's CPUs count while its owner holds the owner file's lock,
-    and entries that aren't CPU numbers are ignored."""
+def test_only_live_owners_cpus_count(shared, bundles, orphan):
+    """A sandbox's CPUs count while its owner is alive, and entries that
+    aren't CPU numbers are ignored."""
     backend = GVisorSandboxBackend(image_manager=Mock())
     config = SandboxConfig("busybox", cpu=1)
 
     def own(name, cpus):
         (bundles / name).mkdir(parents=True)
-        return backend._own_bundle(config, str(bundles / name), cpus)
+        backend._own_bundle(config, str(bundles / name), cpus)
+        return bundles / name
 
     live = own("ray-sandbox-00000000000a", [0, 1])
-    own("ray-sandbox-00000000000b", [2, 3]).close()  # Its owner died.
+    orphan(own("ray-sandbox-00000000000b", [2, 3]))  # Its owner died.
+    lock = json.loads((live / ".owner").read_text())["owner_lock"]
     planted = bundles / "ray-sandbox-00000000000c"
     planted.mkdir()
-    (planted / ".owner").write_text(json.dumps({"cpus": [[1], "2", True, 3]}))
-    try:
-        with open(planted / ".owner") as holder:
-            fcntl.flock(holder, fcntl.LOCK_EX)
-            assert sorted(backend._cpus_in_use()) == [[0, 1], [3]]
-        assert backend._cpus_in_use() == [[0, 1]]
-    finally:
-        live.close()
+    (planted / ".owner").write_text(
+        json.dumps({"owner_lock": lock, "cpus": [[1], "2", True, 3]})
+    )
+    assert sorted(backend._cpus_in_use()) == [[0, 1], [3]]
+    orphan(planted)
+    assert backend._cpus_in_use() == [[0, 1]]
+    orphan(live)
     assert backend._cpus_in_use() == []
 
 
@@ -249,30 +248,30 @@ def test_concurrent_creates_spread_over_the_pool(shared, bundles, monkeypatch):
         for sandbox_id in created:
             backend.delete_sandbox(sandbox_id)
     assert not any(path.name.startswith("ray-sandbox-") for path in shared.iterdir())
-    assert sorted(os.listdir(bundles)) == ["cpus.lock"]
+    assert sorted(os.listdir(bundles)) == [".owners", "cpus.lock"]
 
 
-def test_reclaim_removes_only_a_dead_owners_cgroup(shared, bundles, monkeypatch):
+def test_reclaim_removes_only_a_dead_owners_cgroup(
+    shared, bundles, monkeypatch, orphan
+):
     """The reclaim kills and removes a dead owner's cgroup with its bundle. A
     live owner's cgroup stays, and the owner file can't name another one."""
     images = Mock()
     backend = GVisorSandboxBackend(image_manager=images)
     manager = cgroup.SandboxCgroupManager()
     config = SandboxConfig("busybox", cpu=1)
-    sandboxes = {}
+    cgroups = {}
     for name in ("ray-sandbox-00000000000a", "ray-sandbox-00000000000b"):
         (bundles / name).mkdir(parents=True)
-        sandboxes[name] = (
-            backend._own_bundle(config, str(bundles / name), [0, 1]),
-            manager.allocate(name, 1, 0, [0, 1]),
-        )
-    live, live_cgroup = sandboxes["ray-sandbox-00000000000a"]
-    dead, dead_cgroup = sandboxes["ray-sandbox-00000000000b"]
+        backend._own_bundle(config, str(bundles / name), [0, 1])
+        cgroups[name] = manager.allocate(name, 1, 0, [0, 1])
+    live_cgroup = cgroups["ray-sandbox-00000000000a"]
+    dead_cgroup = cgroups["ray-sandbox-00000000000b"]
+    orphan(bundles / "ray-sandbox-00000000000b")
     owner = json.loads((bundles / "ray-sandbox-00000000000b" / ".owner").read_text())
     # A planted path for the reclaim to remove instead.
     owner["cgroup"] = str(live_cgroup.path)
     (bundles / "ray-sandbox-00000000000b" / ".owner").write_text(json.dumps(owner))
-    dead.close()
     killed = []
     write = cgroup._write
 
@@ -282,17 +281,12 @@ def test_reclaim_removes_only_a_dead_owners_cgroup(shared, bundles, monkeypatch)
         write(path, value)
 
     monkeypatch.setattr(cgroup, "_write", recording_write)
-    try:
-        assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000b"]
-        assert killed == ["ray-sandbox-00000000000b"]
-        assert not dead_cgroup.path.exists()
-        assert live_cgroup.path.exists()
-        assert os.listdir(bundles) == ["ray-sandbox-00000000000a"]
-        images.release_image.assert_called_once_with(
-            "busybox", "ray-sandbox-00000000000b"
-        )
-    finally:
-        live.close()
+    assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000b"]
+    assert killed == ["ray-sandbox-00000000000b"]
+    assert not dead_cgroup.path.exists()
+    assert live_cgroup.path.exists()
+    assert sorted(os.listdir(bundles)) == [".owners", "ray-sandbox-00000000000a"]
+    images.release_image.assert_called_once_with("busybox", "ray-sandbox-00000000000b")
 
 
 @pytest.mark.parametrize("stage", ["failed create", "delete"])
@@ -300,18 +294,18 @@ def test_a_cgroup_that_cant_be_removed_is_left_to_the_reclaim(
     shared, bundles, monkeypatch, stage
 ):
     """A sandbox whose cgroup can't be removed keeps its bundle, owner file
-    and image pin. Its owner lets go of the owner file, so a reclaim pass
-    retries the cgroup, and the pass that removes it deletes the rest."""
+    and image pin. Its owner lets go of the bundle, so a reclaim pass retries
+    the cgroup, and the pass that removes it deletes the rest."""
     images = Mock()
     backend = GVisorSandboxBackend(image_manager=images)
     started, unstick = [], []
 
-    def start(config, sandbox_id, root_dir, owner_file, cgroup):
+    def start(config, sandbox_id, root_dir, cgroup):
         started.append(cgroup)
         if stage == "failed create":
             unstick.append(_stick(cgroup.path, monkeypatch))
             raise SandboxTimeoutError("never reached running")
-        _register(backend)(config, sandbox_id, root_dir, owner_file, cgroup)
+        _register(backend)(config, sandbox_id, root_dir, cgroup)
 
     monkeypatch.setattr(backend, "_start_sandbox", start)
     config = SandboxConfig("busybox", cpu=1)
@@ -323,7 +317,9 @@ def test_a_cgroup_that_cant_be_removed_is_left_to_the_reclaim(
         unstick.append(_stick(started[0].path, monkeypatch))
         backend.delete_sandbox(sandbox_id)
         assert not backend._sandbox_metadata
-    (sandbox_id,) = [name for name in os.listdir(bundles) if name != "cpus.lock"]
+    (sandbox_id,) = [
+        name for name in os.listdir(bundles) if name not in (".owners", "cpus.lock")
+    ]
     assert started[0].path.exists()
     assert (bundles / sandbox_id / ".owner").exists()
     images.release_image.assert_not_called()
@@ -334,7 +330,7 @@ def test_a_cgroup_that_cant_be_removed_is_left_to_the_reclaim(
     unstick[0]()
     assert backend._reclaim_unowned_bundles() == [sandbox_id]
     assert not started[0].path.exists()
-    assert os.listdir(bundles) == ["cpus.lock"]
+    assert sorted(os.listdir(bundles)) == [".owners", "cpus.lock"]
     images.release_image.assert_called_once_with("busybox", sandbox_id)
 
 
@@ -343,7 +339,7 @@ def test_failed_create_removes_its_cgroup(shared, bundles, monkeypatch):
     backend = GVisorSandboxBackend(image_manager=images)
     started = []
 
-    def start(config, sandbox_id, root_dir, owner_file, cgroup):
+    def start(config, sandbox_id, root_dir, cgroup):
         started.append(cgroup)
         raise SandboxTimeoutError("never reached running")
 
@@ -351,7 +347,7 @@ def test_failed_create_removes_its_cgroup(shared, bundles, monkeypatch):
     with pytest.raises(SandboxTimeoutError, match="never reached running"):
         backend.create_sandbox(SandboxConfig("busybox", cpu=1))
     assert not started[0].path.exists()
-    assert os.listdir(bundles) == ["cpus.lock"]
+    assert sorted(os.listdir(bundles)) == [".owners", "cpus.lock"]
     images.release_image.assert_called_once()
 
 
