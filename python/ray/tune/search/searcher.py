@@ -213,24 +213,17 @@ class Searcher:
         trials_or_analysis: Union["Trial", List["Trial"], "ExperimentAnalysis"],
         metric: str,
     ):
-        """Pass results from trials that have been evaluated separately.
+        """Import externally evaluated results through ``add_evaluated_point``.
 
-        This method allows for information from outside the
-        suggest - on_trial_complete loop to be passed to the search
-        algorithm.
-        This functionality depends on the underlying search algorithm
-        and may not be always available (same as ``add_evaluated_point``.)
+        For compatibility, trials containing ``metric`` are forwarded regardless
+        of status. Without it, only ``Trial.ERROR`` is forwarded, with
+        ``value=None`` and ``error=True``. Forwarded ``Trial.TERMINATED`` trials
+        whose ``done`` flag is false or absent are marked ``pruned=True``.
+        Backend support varies; a searcher may ignore errored points.
 
-        Trials without ``metric`` are skipped unless their status is
-        ``Trial.ERROR``. Errored trials are forwarded with ``error=True``;
-        their value is ``None`` when the metric is absent. The underlying
-        searcher determines how errored points are handled and may ignore them.
-
-        Trials are processed in input order. If ``add_evaluated_point`` raises,
-        the exception propagates and the remaining trials are not processed.
-        Points already imported are retained; this operation does not roll back
-        earlier imports. The warning about missing completed metrics is emitted
-        after processing finishes if no normally completed trial had ``metric``.
+        Imports run in input order. Exceptions propagate, earlier imports are
+        retained, and later trials are not processed. After the loop, a warning
+        is emitted if no normally completed trial contained ``metric``.
 
         Args:
             trials_or_analysis: A trial, a list or tuple of trials, or an

@@ -572,6 +572,8 @@ def test_optuna_add_evaluated_point_preserves_none_category(nested):
 
 @pytest.mark.parametrize("with_prefix", [False, True], ids=["empty", "partial"])
 def test_optuna_add_evaluated_trials_out_of_range_error_stops_batch(with_prefix):
+    # Pre-fix master skipped metricless ERRORs. This characterizes their new
+    # admission to target-space validation, including deliberate rejection.
     from optuna.distributions import FloatDistribution
     from optuna.trial import TrialState
 
@@ -601,12 +603,15 @@ def test_optuna_add_evaluated_trials_out_of_range_error_stops_batch(with_prefix)
 
 
 @pytest.mark.parametrize(
-    "param_name,parameters",
-    [("group/x", {"group": "abc"}), ("group/0", {"group": []})],
+    "param_name,parameters,expected_error",
+    [
+        ("group/x", {"group": "abc"}, ValueError),
+        ("group/0", {"group": []}, IndexError),
+    ],
     ids=["string-parent", "empty-list-parent"],
 )
 def test_optuna_add_evaluated_point_rejects_malformed_parameter_parents(
-    param_name, parameters
+    param_name, parameters, expected_error
 ):
     from optuna.distributions import FloatDistribution
 
@@ -617,7 +622,7 @@ def test_optuna_add_evaluated_point_rejects_malformed_parameter_parents(
         space={param_name: FloatDistribution(0.0, 5.0)}, metric="metric", mode="max"
     )
 
-    with pytest.raises((ValueError, IndexError)):
+    with pytest.raises(expected_error):
         target.add_evaluated_point(parameters, None, error=True)
 
     assert not target._ot_study.trials
