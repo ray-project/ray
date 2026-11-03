@@ -1,3 +1,5 @@
+import ctypes
+import ctypes.util
 import logging
 import os
 from typing import List, Optional, Tuple
@@ -12,7 +14,100 @@ NOSET_ZE_AFFINITY_MASK_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK"
 
 ONEAPI_DEVICE_SELECTOR_ENV_VAR = "ONEAPI_DEVICE_SELECTOR"
 ONEAPI_DEVICE_BACKEND_TYPE = "level_zero"
-ONEAPI_DEVICE_TYPE = "gpu"
+
+# Constants from the Level Zero API (ze_api.h).
+_ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES = 0x3
+_ZE_DEVICE_TYPE_GPU = 1
+
+
+class _ZeDeviceUuid(ctypes.Structure):
+    _fields_ = [("id", ctypes.c_uint8 * 16)]
+
+
+class _ZeDeviceProperties(ctypes.Structure):
+    """ctypes mirror of ``ze_device_properties_t``."""
+
+    _fields_ = [
+        ("stype", ctypes.c_int32),
+        ("pNext", ctypes.c_void_p),
+        ("type", ctypes.c_int32),
+        ("vendorId", ctypes.c_uint32),
+        ("deviceId", ctypes.c_uint32),
+        ("flags", ctypes.c_uint32),
+        ("subdeviceId", ctypes.c_uint32),
+        ("coreClockRate", ctypes.c_uint32),
+        ("maxMemAllocSize", ctypes.c_uint64),
+        ("maxHardwareContexts", ctypes.c_uint32),
+        ("maxCommandQueuePriority", ctypes.c_uint32),
+        ("numThreadsPerEU", ctypes.c_uint32),
+        ("physicalEUSimdWidth", ctypes.c_uint32),
+        ("numEUsPerSubslice", ctypes.c_uint32),
+        ("numSubslicesPerSlice", ctypes.c_uint32),
+        ("numSlices", ctypes.c_uint32),
+        ("timerResolution", ctypes.c_uint64),
+        ("timestampValidBits", ctypes.c_uint32),
+        ("kernelTimestampValidBits", ctypes.c_uint32),
+        ("uuid", _ZeDeviceUuid),
+        ("name", ctypes.c_char * 256),
+    ]
+
+
+def _load_level_zero_loader() -> Optional[ctypes.CDLL]:
+    for name in ("libze_loader.so.1", ctypes.util.find_library("ze_loader")):
+        if not name:
+            continue
+        try:
+            return ctypes.CDLL(name)
+        except OSError:
+            continue
+    return None
+
+
+def _get_level_zero_gpu_names() -> List[str]:
+    """Return the names of the Level Zero GPU devices visible to this process.
+
+    Queries the Level Zero loader directly instead of going through dpctl, so
+    Ray needs no Python dependency to detect Intel GPUs. Only devices are
+    enumerated: no context or queue is created, so no device memory is held.
+    ``ZE_AFFINITY_MASK`` is honored by the driver. Returns an empty list when
+    the loader or a driver is unavailable.
+    """
+    lib = _load_level_zero_loader()
+    if lib is None or lib.zeInit(0) != 0:
+        return []
+
+    num_drivers = ctypes.c_uint32(0)
+    if lib.zeDriverGet(ctypes.byref(num_drivers), None) != 0 or not num_drivers.value:
+        return []
+    drivers = (ctypes.c_void_p * num_drivers.value)()
+    if lib.zeDriverGet(ctypes.byref(num_drivers), drivers) != 0:
+        return []
+
+    names = []
+    for driver in drivers[: num_drivers.value]:
+        num_devices = ctypes.c_uint32(0)
+        if (
+            lib.zeDeviceGet(ctypes.c_void_p(driver), ctypes.byref(num_devices), None)
+            != 0
+            or not num_devices.value
+        ):
+            continue
+        devices = (ctypes.c_void_p * num_devices.value)()
+        if (
+            lib.zeDeviceGet(ctypes.c_void_p(driver), ctypes.byref(num_devices), devices)
+            != 0
+        ):
+            continue
+        for device in devices[: num_devices.value]:
+            props = _ZeDeviceProperties()
+            props.stype = _ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES
+            if (
+                lib.zeDeviceGetProperties(ctypes.c_void_p(device), ctypes.byref(props))
+                == 0
+                and props.type == _ZE_DEVICE_TYPE_GPU
+            ):
+                names.append(props.name.decode(errors="replace"))
+    return names
 
 
 class IntelGPUAcceleratorManager(AcceleratorManager):
@@ -51,20 +146,9 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_node_num_accelerators() -> int:
         try:
-            import dpctl
-        except ImportError:
-            dpctl = None
-        if dpctl is None:
-            return 0
-
-        num_gpus = 0
-        try:
-            dev_info = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ONEAPI_DEVICE_TYPE
-            context = dpctl.SyclContext(dev_info)
-            num_gpus = context.device_count
+            return len(_get_level_zero_gpu_names())
         except Exception:
-            num_gpus = 0
-        return num_gpus
+            return 0
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
@@ -76,20 +160,12 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
             A string representing the name of Intel GPU type.
         """
         try:
-            import dpctl
-        except ImportError:
-            dpctl = None
-        if dpctl is None:
-            return None
-
-        accelerator_type = None
-        try:
-            dev_info = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ONEAPI_DEVICE_TYPE + ":0"
-            dev = dpctl.SyclDevice(dev_info)
-            accelerator_type = "Intel-GPU-" + "-".join(dev.name.split(" ")[-2:])
+            names = _get_level_zero_gpu_names()
         except Exception:
-            accelerator_type = None
-        return accelerator_type
+            return None
+        if not names:
+            return None
+        return "Intel-GPU-" + "-".join(names[0].split(" ")[-2:])
 
     @staticmethod
     def validate_resource_request_quantity(
