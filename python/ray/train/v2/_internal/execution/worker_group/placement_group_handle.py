@@ -94,8 +94,14 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
             if not pgs:
                 return False
             deadline = time.monotonic() + timeout_seconds
-            for pg in pgs:
-                if not pg.wait(math.ceil(max(0.0, deadline - time.monotonic()))):
+            for i, pg in enumerate(pgs):
+                remaining = deadline - time.monotonic()
+                timeout = (
+                    math.ceil(max(0.0, remaining))
+                    if i == 0
+                    else max(1, math.ceil(remaining))
+                )
+                if not pg.wait(timeout):
                     return False
             return True
         except Exception:

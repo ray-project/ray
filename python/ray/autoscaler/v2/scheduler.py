@@ -2170,6 +2170,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         nodes, infeasible = ResourceDemandScheduler._try_schedule(
             gang_ctx, new_domain_requests, ResourceRequestSource.PENDING_DEMAND
         )
+        for n in all_nodes:
+            if n.labels.get(locality_label) == _EXCLUDED_DOMAIN:
+                del n.labels[locality_label]
         for n in nodes:
             if n.labels.get(locality_label) == _EXCLUDED_DOMAIN:
                 del n.labels[locality_label]

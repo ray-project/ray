@@ -1038,6 +1038,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
             generation, topology
         ):
+            logger.warning(
+                f"Invalid or missing GKE TPU topology '{topology}' for accelerator "
+                f"'{node_selector.get(GKE_TPU_ACCELERATOR_LABEL)}'; skipping default TPU labels."
+            )
             return None
         return {
             ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: f"TPU-{generation.upper()}",
@@ -1052,7 +1056,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         labels: Dict[str, str], resources: Dict[str, float]
     ) -> Optional[int]:
         """Return the number of hosts in a TPU slice from node-group labels and
-        resources, or None if the node group is not a TPU slice."""
+        resources (disambiguating 4-chip vs 8-chip 2x4 hosts via resources["TPU"]),
+        or None if the node group is not a TPU slice."""
         topology = labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
         generation = normalize_tpu_accelerator_type(
             labels.get(ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY)
