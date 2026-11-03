@@ -12,13 +12,13 @@ Idle termination reclaims a RayCluster that has no drivers connected. The Ray au
 
 ## How does the Ray autoscaler detect an idle Ray cluster?
 
-The Ray autoscaler queries the Global Control Service (GCS) job table and checks that no driver has connected to the Ray cluster for `spec.idleTerminationOptions.timeoutSeconds`. The autoscaler ignores the following when it looks for drivers:
+The Ray autoscaler queries the Global Control Service (GCS) job table and checks whether any {term}`driver` is currently connected to the Ray cluster. If no driver is connected for `spec.idleTerminationOptions.timeoutSeconds`, the cluster is considered idle. The autoscaler ignores the following when it looks for drivers:
 
 - Detached actors. A Ray cluster that runs only detached actors is still idle. See {ref}`actor-lifetimes`.
-- Ray-internal jobs, such as the dashboard.
-- A Ray job whose entrypoint never calls `ray.init()`. The entrypoint process doesn't connect to the Ray cluster, so it isn't a driver.
+- Drivers that Ray starts internally, such as the Ray dashboard's driver.
+- A Ray job whose entrypoint has not yet connected to the Ray cluster, for example while Ray sets up the job's `runtime_env`.
 
-The autoscaler suspends or deletes the RayCluster `timeoutSeconds` after the last driver disconnects. If no driver has run, the countdown starts when the RayCluster is created or resumed. A connected driver keeps the RayCluster alive for as long as it runs.
+The autoscaler suspends or deletes the RayCluster if no driver is connected for `timeoutSeconds` after the last driver disconnects. If no driver has ever connected, the countdown starts when the RayCluster is created or resumed. A connected driver keeps the RayCluster alive for as long as it remains connected.
 
 If the autoscaler can't query the GCS job table, it treats the Ray cluster as having a connected driver and doesn't terminate it.
 
@@ -28,25 +28,22 @@ Idle termination offers two policies, `Suspend` and `Delete`. `Suspend` is the d
 
 ### `Suspend` policy
 
-`Suspend` deletes the RayCluster's Pods but keeps the RayCluster custom resource. To resume the Ray cluster, patch `spec.idleSuspend` to `false`.
+`Suspend` deletes the RayCluster's Pods but keeps the RayCluster custom resource. To resume the Ray cluster, set `spec.idleSuspend` to `false`.
 
-The autoscaler merge-patches `spec.idleSuspend: true` on the RayCluster, and the KubeRay operator handles `idleSuspend` the same way it handles `spec.suspend: true`. It deletes the RayCluster's Pods and keeps the RayCluster. The RayCluster reports the `RayClusterSuspended` status condition with the reason `RayClusterIdleSuspended`.
 
 ### `Delete` policy
 
 `Delete` deletes the RayCluster's Pods and the RayCluster custom resource. You can't resume a deleted RayCluster.
 
-The autoscaler adds the `ray.io/idle-termination-cleanup-finalizer` finalizer to the RayCluster with a JSON patch, then deletes the RayCluster. The KubeRay operator records a `DeletedIdleRayCluster` event and removes the finalizer so that the deletion can proceed.
 
 ## Prerequisites
 
 Idle termination has the following requirements:
 
 - Ray autoscaler v2 is enabled on the RayCluster. See {ref}`kuberay-autoscaler-v2`.
-- `spec.rayVersion` is 2.60.0 or later, and the image runs Ray 2.60.0 or later.
-- KubeRay is v1.8.0 or later.
+- Ray 2.60.0 or later.
+- KubeRay v1.8 or later.
 
-The KubeRay operator validates the RayCluster against these requirements and rejects a RayCluster that doesn't meet them.
 
 ## RBAC and security
 
