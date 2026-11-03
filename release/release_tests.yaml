@@ -1654,13 +1654,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
-        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
-        cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_microbenchmarks
   python: "3.10"
@@ -4216,23 +4209,6 @@
       cluster:
         cluster_compute: agent_stress_compute_gce.yaml
 
-- name: k8s_serve_ha_test
-  group: k8s-test
-  working_dir: k8s_tests
-
-  # Failing since Oct 2024.
-  # https://github.com/ray-project/ray/issues/36190
-  frequency: manual
-  team: serve
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: compute_tpl.yaml
-
-  run:
-    timeout: 28800 # 8h
-    prepare: bash prepare.sh
-    script: python run_gcs_ft_on_k8s.py
-
 - name: azure_cluster_launcher
   python: "3.10"
   group: cluster-launcher-test
@@ -5603,12 +5579,6 @@
 
   variations:
     - __suffix__: aws  # uses default specs above
-    # probably wont work on gce as tests depend on s3 access
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: transformers_reinforcement_learning  # do not use dashes (regex sensitive)
   python: "3.11"
