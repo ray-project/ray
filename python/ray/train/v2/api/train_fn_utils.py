@@ -1,6 +1,15 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Union,
+    get_args,
+)
 
-from ray._common.observability.annotation import Severity
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.v2._internal.constants import TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
@@ -20,6 +29,9 @@ if TYPE_CHECKING:
     from ray.train import Checkpoint
     from ray.train.v2.api.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+
+AnnotationSeverity = Literal["info", "warning", "error"]
+_ANNOTATION_SEVERITIES = get_args(AnnotationSeverity)
 
 
 @PublicAPI(stability="stable")
@@ -382,7 +394,7 @@ def get_dataset_shard(
 @requires_train_worker(raise_in_tune_session=True)
 def annotate(
     message: str,
-    severity: Severity = "info",
+    severity: AnnotationSeverity = "info",
     rank_zero_only: bool = True,
     **fields: Any,
 ) -> None:
@@ -403,19 +415,15 @@ def annotate(
 
     Example:
 
-        .. testcode::
-            :skipif: True
-
-            import ray.train
-
-            def train_func(config):
-                for epoch in range(config["num_epochs"]):
-                    # Do training...
-                    ray.train.annotate(
-                        message=f"Finished epoch {epoch}",
-                        epoch=epoch,
-                        loss=loss,
-                    )
+        >>> import ray.train  # doctest: +SKIP
+        >>> def train_func(config):  # doctest: +SKIP
+        ...    for epoch in range(config["num_epochs"]):
+        ...        # Do training...
+        ...        ray.train.annotate(
+        ...            message=f"Finished epoch {epoch}",
+        ...            epoch=epoch,
+        ...            loss=loss,
+        ...        )
 
     Args:
         message: Human-readable description of the event. Grafana shows it as
@@ -436,6 +444,14 @@ def annotate(
             can't filter on individual keys within it. Filter on ``severity``,
             or on the run and rank tags, instead.
     """
+    # Raised on every rank, whether or not annotations are enabled: an invalid
+    # severity matches none of the dashboard layers, so it would never show.
+    if severity not in _ANNOTATION_SEVERITIES:
+        raise ValueError(
+            f"Invalid annotation severity {severity!r}. Expected one of "
+            f"{', '.join(repr(s) for s in _ANNOTATION_SEVERITIES)}."
+        )
+
     try:
         train_context = get_train_context()
     except Exception:

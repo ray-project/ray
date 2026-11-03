@@ -125,7 +125,7 @@ def test_annotate_emits_annotation(in_train_worker, captured_annotations):
     (record,) = captured_annotations
     assert record["event"] == TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
     assert record["message"] == "finished epoch"
-    assert record["severity"] == "INFO"
+    assert record["fields"]["severity"] == "info"
     assert json.loads(record["fields"]["custom_fields"]) == {"epoch": 3}
 
 
@@ -133,7 +133,9 @@ def test_annotate_emits_annotation(in_train_worker, captured_annotations):
 def test_annotate_severity(in_train_worker, captured_annotations, severity):
     ray.train.annotate(message="finished epoch", severity=severity)
 
-    assert [record["severity"] for record in captured_annotations] == [severity.upper()]
+    assert [record["fields"]["severity"] for record in captured_annotations] == [
+        severity
+    ]
 
 
 @pytest.mark.parametrize("severity", ["bogus", "WARNING", "debug", logging.ERROR])
@@ -146,6 +148,18 @@ def test_annotate_rejects_invalid_severity(
         ray.train.annotate(message="finished epoch", severity=severity)
 
     assert captured_annotations == []
+
+
+def test_annotate_rejects_invalid_severity_on_every_rank(
+    in_train_worker, monkeypatch, captured_annotations
+):
+    """A non-zero rank, which emits nothing by default, still raises, so that a
+    bad call fails on every worker rather than only on rank 0."""
+    monkeypatch.setattr(
+        train_fn_utils, "get_train_context", lambda: create_train_context(world_rank=1)
+    )
+    with pytest.raises(ValueError, match="Invalid annotation severity"):
+        ray.train.annotate(message="finished epoch", severity="bogus")
 
 
 def test_annotate_no_op_without_train_context(monkeypatch, captured_annotations):

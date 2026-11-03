@@ -616,19 +616,19 @@ _CUSTOM_ANNOTATION_VARIANTS = [
         "Train Custom Annotations (Info)",
         "rgba(184, 119, 217, 1)",  # purple
         "TrainCustomAnnotationsInfo",
-        "INFO",
+        "info",
     ),
     (
         "Train Custom Annotations (Warnings)",
         "rgba(255, 152, 48, 1)",  # orange
         "TrainCustomAnnotationsWarning",
-        "WARNING",
+        "warning",
     ),
     (
         "Train Custom Annotations (Errors)",
         "rgba(224, 47, 68, 1)",  # red
         "TrainCustomAnnotationsError",
-        "ERROR",
+        "error",
     ),
 ]
 RAY_TRAIN_ANNOTATE_ANNOTATIONS = [
@@ -640,9 +640,11 @@ RAY_TRAIN_ANNOTATE_ANNOTATIONS = [
         tag_keys="severity,worker,fields",
         expr=(
             f'| event="{TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE}" '
-            f'| severity=~"{severity}" {_RUN_FILTERS} '
+            f"{_RUN_FILTERS} "
             '| json ray_train_worker_world_rank="tags.ray_train_worker_world_rank"'
+            ', severity="fields.severity"'
             ', fields="fields.custom_fields" '
+            f'| severity="{severity}" '
             '| ray_train_worker_world_rank=~"$TrainWorkerWorldRank" '
             "| label_format worker=`rank {{.ray_train_worker_world_rank}}` "
             '| line_format "{{.message}}"'

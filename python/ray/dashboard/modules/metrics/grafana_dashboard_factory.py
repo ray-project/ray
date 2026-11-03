@@ -62,8 +62,7 @@ ANNOTATION_COMMON_LABELS = (
     'annotation_source="annotation_source", '
     'session_name="session_name", '
     'event="event", '
-    'message="message", '
-    'severity="severity"'
+    'message="message"'
 )
 
 # Datasource template variable the annotation queries resolve through. Grafana
@@ -338,11 +337,6 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> Tuple[str,
     )
     base_json["panels"] = panels
 
-    # Append config-defined annotations to the base JSON's built-in annotation list,
-    # along with the template variables the annotation queries resolve through.
-    # They query a Loki datasource and log collector that Ray doesn't provision,
-    # so like the annotation log lines themselves, they're only added when a
-    # platform that provides that pipeline turns annotations on.
     if dashboard_config.annotations and annotations_enabled():
         annotations = base_json.setdefault("annotations", {})
         annotations.setdefault("list", []).extend(

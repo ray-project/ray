@@ -1136,8 +1136,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def handle_confirmed_hangs(
         self, confirmed_comm_hangs: List[str], report: RASReport
     ):
-        # TODO: Add a Grafana annotation with
-        #  `ray.train.annotate(..., severity="error")` once annotations are merged.
+        ray.train.annotate("Hang confirmed", severity="error")
         # Record first to prevent buffer being overwritten by other ranks
         flight_recorder_dir = self.capture_diagnostic(
             "Flight Recorder dumps", self.dump_workers_flight_recorder
@@ -1204,9 +1203,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             if count == self._suspicion_polls
         ]
         if new_suspicions:
-            # TODO: Add a Grafana annotation with
-            #  `ray.train.annotate(..., severity="warning")` once annotations
-            #  are merged.
+            ray.train.annotate("New hang suspected", severity="warning")
+
             # An earlier report predates these communicators stalling.
             self._ras_text_logged = False
             stalled_comms = new_suspicions

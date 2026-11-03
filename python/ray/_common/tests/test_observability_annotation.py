@@ -104,7 +104,6 @@ def test_annotation_emits_json_line(logs_dir):
         event="custom_event",
         # Non-ASCII, which JSON escapes, so the file is ASCII in any locale.
         message="INITIALIZING → RUNNING",
-        severity="warning",
         epoch=3,
         has_checkpoint=False,
     )
@@ -114,15 +113,13 @@ def test_annotation_emits_json_line(logs_dir):
     assert first["annotation_source"] == ANNOTATION_SOURCE
     assert first["event"] == "custom_event"
     assert first["message"] == "INITIALIZING → RUNNING"
-    assert first["severity"] == "WARNING"
     assert isinstance(first["timestamp_s"], float)
     assert first["session_name"] == FakeNode.session_name
     assert first["tags"] == {RUN_NAME_TAG_KEY: "my_run", RUN_ID_TAG_KEY: "abc123"}
     # Fields are stringified, because a log backend stores them as string labels.
     assert first["fields"] == {"epoch": "3", "has_checkpoint": "false"}
-    # An event with no severity leaves it unspecified rather than defaulting.
-    assert second["severity"] == "SEVERITY_UNSPECIFIED"
     assert second["message"] == ""
+    assert second["fields"] == {}
 
 
 @pytest.mark.parametrize(
@@ -158,17 +155,6 @@ def test_annotation_off_by_default(monkeypatch, logs_dir, enabled):
     AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={}).emit(event="custom_event")
 
     assert not logs_dir.exists()
-
-
-def test_annotation_invalid_severity_raises_when_disabled(monkeypatch, logs_dir):
-    """An invalid severity raises whether or not annotations are enabled, so a
-    bad call doesn't start failing only once a platform turns them on."""
-    monkeypatch.delenv(ANNOTATIONS_ENABLED_ENV_VAR)
-
-    with pytest.raises(ValueError, match="Invalid annotation severity"):
-        AnnotationEmitter(source=ANNOTATION_SOURCE, base_tags={}).emit(
-            event="custom_event", severity="bogus"
-        )
 
 
 def test_annotation_drops_before_ray_init(monkeypatch, tmp_path):

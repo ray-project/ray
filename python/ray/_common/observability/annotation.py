@@ -4,7 +4,7 @@ import logging.handlers
 import os
 import threading
 import time
-from typing import Any, Dict, Literal, Optional, get_args
+from typing import Any, Dict, Optional
 
 from ray._common.utils import env_bool
 from ray._private.protobuf_compat import message_to_dict
@@ -21,10 +21,6 @@ ANNOTATIONS_ENABLED_ENV_VAR = "RAY_ANNOTATIONS_ENABLED"
 def annotations_enabled() -> bool:
     """Whether ``ANNOTATIONS_ENABLED_ENV_VAR`` turns annotations on."""
     return env_bool(ANNOTATIONS_ENABLED_ENV_VAR, False)
-
-
-Severity = Literal["info", "warning", "error"]
-_SEVERITIES = get_args(Severity)
 
 
 # Log backends drop lines past a size limit (Loki defaults to 256KB), so a
@@ -139,15 +135,13 @@ class AnnotationEmitter:
         event: str,
         *,
         message: str = "",
-        severity: Optional[Severity] = None,
         **fields: Any,
     ) -> None:
         """Emit a single annotation event to the annotation log file.
 
         Annotations are best-effort observability, so any failure to write the
         event is swallowed and warned about once rather than raised to the
-        caller. An invalid ``severity`` is a caller bug, so it raises, whether
-        or not annotations are enabled.
+        caller.
 
         Unless ``RAY_ANNOTATIONS_ENABLED`` is set, the event is dropped. Before Ray is
         initialized there is no session logs dir, so the event is dropped.
@@ -155,19 +149,9 @@ class AnnotationEmitter:
         Args:
             event: The event name, such as ``"controller_state_change"``.
             message: Human-readable description, shown as the annotation text.
-            severity: One of ``"info"``, ``"warning"`` or ``"error"``, or
-                ``None`` for an event with no notion of severity.
             **fields: Event-specific key-value pairs. Values are stringified,
                 because a log backend stores them as string labels.
         """
-        # Raised rather than swallowed below: an event with an invalid severity
-        # matches none of the dashboard layers, so it would silently never show.
-        if severity is not None and severity not in _SEVERITIES:
-            raise ValueError(
-                f"Invalid annotation severity {severity!r}. Expected one of "
-                f"{', '.join(repr(s) for s in _SEVERITIES)}."
-            )
-
         if not annotations_enabled():
             return
 
@@ -184,11 +168,6 @@ class AnnotationEmitter:
                 # Identifies the cluster that emitted the event
                 session_name=_global_node.session_name,
                 message=message,
-                severity=(
-                    AnnotationEvent.Severity.SEVERITY_UNSPECIFIED
-                    if severity is None
-                    else AnnotationEvent.Severity.Value(severity.upper())
-                ),
                 tags=self._base_tags,
                 fields={
                     key: _format_field_value(value) for key, value in fields.items()
