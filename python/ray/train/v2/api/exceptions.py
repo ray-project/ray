@@ -4,6 +4,7 @@ from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    from ray.train.health import HealthDecision
     from ray.train.v2.api.preemption import PreemptionInfo
 
 
@@ -31,6 +32,25 @@ class WorkerGroupError(TrainingFailedError):
 
     def __reduce__(self):
         return (self.__class__, (self._error_message, self.worker_failures))
+
+
+@DeveloperAPI
+class HealthCheckError(WorkerGroupError):
+    """Exception raised when a health check decides to restart the worker group.
+
+    Args:
+        decision: The health decision, a ``Reattempt`` or an ``Evict``.
+    """
+
+    def __init__(self, decision: "HealthDecision"):
+        super().__init__(
+            f"A health check decided to {type(decision).__name__}: {decision.reason}",
+            worker_failures={},
+        )
+        self.decision = decision
+
+    def __reduce__(self):
+        return (self.__class__, (self.decision,))
 
 
 @DeveloperAPI
