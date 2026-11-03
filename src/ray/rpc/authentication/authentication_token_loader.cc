@@ -46,6 +46,49 @@
 namespace ray {
 namespace rpc {
 
+namespace {
+
+#ifndef _WIN32
+// fchmod on the opened fd, not chmod on the path, so a swapped path can't redirect it.
+// Leaves alone a path owned by another user, e.g. a root-owned home in a container.
+void RestrictToOwner(const std::string &path, int open_flags, mode_t owner_mode) {
+  const int fd = open(path.c_str(), O_RDONLY | open_flags);
+  if (fd < 0) {
+    return;
+  }
+  struct stat path_stat;
+  if (fstat(fd, &path_stat) == 0 && path_stat.st_uid == getuid() &&
+      (path_stat.st_mode & 0077) != 0) {
+    if (fchmod(fd, owner_mode) == 0) {
+      RAY_LOG(WARNING) << "Restricted " << path << " to its owner; it was accessible to "
+                       << "other users, so rotate the Ray authentication token if it may "
+                       << "have been read.";
+    } else {
+      RAY_LOG(WARNING) << "Failed to restrict " << path
+                       << " to its owner: " << std::strerror(errno);
+    }
+  }
+  close(fd);
+}
+#endif
+
+// Ray 2.59.0 and earlier left ~/.ray and ~/.ray/auth_token with the umask's modes
+// (often 0755/0644), and an upgrade keeps them. Only the default path: a
+// RAY_AUTH_TOKEN_PATH file may be shared on purpose, and a Kubernetes projected token
+// is read-only.
+void RestrictDefaultTokenPathToOwner(const std::string &token_path) {
+#ifndef _WIN32
+  if (token_path.empty()) {
+    return;
+  }
+  RestrictToOwner(
+      std::filesystem::path(token_path).parent_path().string(), O_DIRECTORY, 0700);
+  RestrictToOwner(token_path, 0, 0600);
+#endif
+}
+
+}  // namespace
+
 // Keep in sync with K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE in
 // python/ray/_private/authentication/authentication_constants.py.
 constexpr const char *kK8sTokenAuthRequiresTokenModeErrorMessage =
@@ -238,6 +281,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
 
   // Precedence 4: Default token path ~/.ray/auth_token
   std::string default_path = GetDefaultTokenPath();
+  RestrictDefaultTokenPathToOwner(default_path);
   std::string token_str = TrimWhitespace(ReadTokenFromFile(default_path));
   if (!token_str.empty()) {
     RAY_LOG(DEBUG) << "Loaded authentication token from default path: " << default_path;
