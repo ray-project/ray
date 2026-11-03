@@ -251,7 +251,7 @@ braceexpand==0.1.7
     # via webdataset
 bracex==2.6
     # via wcmatch
-brotli==1.2.0
+brotli==1.2.1
     # via gradio
 cachetools==5.5.2
     # via
