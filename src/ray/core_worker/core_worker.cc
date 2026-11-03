@@ -2303,6 +2303,11 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 }
 
 Status CoreWorker::CheckNoConsumeOnceArgs(const std::vector<ObjectID> &arg_ids) const {
+  // Each lookup below takes the reference counter lock, so skip them when there is
+  // nothing to find.
+  if (!reference_counter_->HasConsumeOnceObjects()) {
+    return Status::OK();
+  }
   for (const ObjectID &object_id : arg_ids) {
     if (object_id.IsNil()) {
       continue;

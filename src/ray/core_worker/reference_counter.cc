@@ -385,6 +385,9 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                                    tensor_transport))
                 .first;
   it->second.move_state_ = move_state;
+  if (move_state != MoveState::NOT_MOVABLE) {
+    num_consume_once_objects_++;
+  }
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -822,6 +825,9 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       // Decrement owned object counters for the reference being erased
       UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
     }
+  }
+  if (it->second.move_state_ != MoveState::NOT_MOVABLE) {
+    num_consume_once_objects_--;
   }
   for (const auto &callback : it->second.object_ref_deleted_callbacks) {
     callback(it->first);
@@ -1887,6 +1893,10 @@ std::optional<MoveState> ReferenceCounter::GetMoveState(const ObjectID &object_i
     return std::nullopt;
   }
   return it->second.move_state_;
+}
+
+bool ReferenceCounter::HasConsumeOnceObjects() const {
+  return num_consume_once_objects_.load() > 0;
 }
 
 }  // namespace core

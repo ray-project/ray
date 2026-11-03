@@ -639,6 +639,7 @@ TEST_F(ReferenceCountTest, TestMoveState) {
   rpc::Address address;
   address.set_ip_address("1234");
 
+  ASSERT_FALSE(rc->HasConsumeOnceObjects());
   rc->AddOwnedObject(default_id,
                      {},
                      address,
@@ -656,6 +657,7 @@ TEST_F(ReferenceCountTest, TestMoveState) {
                      /*pinned_at_node_id=*/std::nullopt,
                      /*tensor_transport=*/std::nullopt,
                      MoveState::MOVABLE);
+  ASSERT_TRUE(rc->HasConsumeOnceObjects());
 
   ASSERT_EQ(rc->GetMoveState(default_id), MoveState::NOT_MOVABLE);
   ASSERT_EQ(rc->GetMoveState(movable_id), MoveState::MOVABLE);
@@ -664,6 +666,7 @@ TEST_F(ReferenceCountTest, TestMoveState) {
 
   std::vector<ObjectID> out;
   rc->RemoveLocalReference(movable_id, &out);
+  ASSERT_FALSE(rc->HasConsumeOnceObjects());
   rc->RemoveLocalReference(default_id, &out);
 }
 

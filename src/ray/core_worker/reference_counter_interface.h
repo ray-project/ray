@@ -763,6 +763,12 @@ class ReferenceCounterInterface {
   virtual std::optional<MoveState> GetMoveState(const ObjectID &object_id) const = 0;
 
   /**
+   * @brief Whether this worker owns any consume-once object, i.e. one that is MOVABLE or
+   * MOVED. Doesn't take the lock, so callers can skip move-state lookups when it's false.
+   */
+  virtual bool HasConsumeOnceObjects() const = 0;
+
+  /**
    * @brief Set whether lineage pinning is enabled, i.e. whether objects owned by
    * this worker can be reconstructed from lineage if lost. This is used to
    * apply the job-level `disable_job_level_lineage_reconstruction` setting:

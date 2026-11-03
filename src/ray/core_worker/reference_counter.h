@@ -264,6 +264,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::optional<MoveState> GetMoveState(const ObjectID &object_id) const override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  bool HasConsumeOnceObjects() const override;
+
   void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
     lineage_pinning_enabled_.store(lineage_pinning_enabled);
   }
@@ -824,6 +826,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::atomic<size_t> owned_objects_in_memory_{0};
   std::atomic<size_t> owned_objects_spilled_{0};
   std::atomic<size_t> owned_objects_in_plasma_{0};
+
+  /// Number of references whose move state isn't NOT_MOVABLE. Atomic so that
+  /// HasConsumeOnceObjects can read it without the lock.
+  std::atomic<size_t> num_consume_once_objects_{0};
 
   /// Track sizes of owned objects by state.
   /// These are atomic to allow lock-free reads via public getters.
