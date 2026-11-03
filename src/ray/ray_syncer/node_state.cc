@@ -66,6 +66,11 @@ bool NodeState::RemoveNode(const std::string &node_id) {
   return cluster_view_.erase(node_id) != 0;
 }
 
+void NodeState::MarkNodeDead(const std::string &node_id) {
+  cluster_view_.erase(node_id);
+  dead_nodes_.insert(node_id);
+}
+
 std::vector<std::shared_ptr<const RaySyncMessage>> NodeState::ConsumeSyncMessages(
     std::vector<std::shared_ptr<const RaySyncMessage>> messages) {
   std::vector<std::shared_ptr<const RaySyncMessage>> accepted;
@@ -83,6 +88,12 @@ std::vector<std::shared_ptr<const RaySyncMessage>> NodeState::ConsumeSyncMessage
       RAY_LOG_EVERY_MS(WARNING, 1000)
           << "Dropping sync message with invalid node_id size "
           << message->node_id().size();
+      continue;
+    }
+
+    if (dead_nodes_.contains(message->node_id())) {
+      RAY_LOG(DEBUG) << "Dropping sync message from dead node "
+                     << NodeID::FromBinary(message->node_id());
       continue;
     }
 

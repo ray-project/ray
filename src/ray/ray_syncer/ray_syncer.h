@@ -122,6 +122,14 @@ class RaySyncer {
 
   void Disconnect(const std::string &node_id);
 
+  /// Forget a node that died: drop it from the cluster view and from every
+  /// connection, and ignore any later message from it. Without this, a dead node is
+  /// only dropped by the syncer at the other end of its own connection, and every
+  /// other node keeps it forever. Asynchronous; safe to call from any thread.
+  ///
+  /// \param node_id The id of the dead node.
+  void RemoveDeadNode(const std::string &node_id);
+
   /// Get the latest sync message sent from a specific node.
   ///
   /// \param node_id The node id where the message comes from.
