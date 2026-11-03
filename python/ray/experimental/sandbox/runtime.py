@@ -51,6 +51,8 @@ def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
         bool(cfg.readonly),
         parse_memory_bytes(cfg.disk) or 0,
         bool(cfg._ignore_cgroups),
+        tuple(cfg.gpu_ids or ()),
+        tuple(sorted((cfg.mounts or {}).items())),
     )
 
 

@@ -363,6 +363,8 @@ def test_boot_key_covers_every_boot_time_field():
         "readonly": True,
         "disk": "1Gi",
         "_ignore_cgroups": True,
+        "gpu_ids": ["0"],
+        "mounts": {"/data": "/srv/data"},
     }
     per_create = {"env": {"A": "1"}, "ttl_seconds": 5, "timeout_seconds": 1.0}
     fields = {f.name for f in dataclasses.fields(SandboxConfig)}
