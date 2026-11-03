@@ -109,12 +109,11 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
                 paths.append(file_info.path)
                 sizes.append(file_info.size)
                 chunk_metadatas.append(chunk_metadata)
-
-            if len(paths) >= self._max_paths_per_output:
-                yield FileManifest.construct_manifest(
-                    paths=paths, sizes=sizes, chunk_metadatas=chunk_metadatas
-                )
-                paths, sizes, chunk_metadatas = [], [], []
+                if len(paths) >= self._max_paths_per_output:
+                    yield FileManifest.construct_manifest(
+                        paths=paths, sizes=sizes, chunk_metadatas=chunk_metadatas
+                    )
+                    paths, sizes, chunk_metadatas = [], [], []
 
         if paths:
             yield FileManifest.construct_manifest(
