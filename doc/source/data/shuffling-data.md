@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Shuffle Ray Data at different granularities: file order, local buffer shuffle, parallel batch shuffle, block order, and global per-epoch shuffle."
+    description: "Shuffle Ray Data at different granularities: file order, local buffer shuffle, shuffle_batches, block order, and global per-epoch shuffle."
 ---
 
 (shuffling_data)=
@@ -64,16 +64,20 @@ If throughput drops when you use `local_shuffle_buffer_size`, check the total ti
 (map_batches_shuffle)=
 (shuffle_batches_shuffle)=
 
-### Shuffle rows in parallel batches
+### Shuffle rows with `shuffle_batches`
 
-Use {meth}`~ray.data.Dataset.shuffle_batches` to randomly permute rows within batches using parallel Ray Data tasks. This moves shuffle work out of the consumer's iterator.
+Use {meth}`~ray.data.Dataset.shuffle_batches` to randomly permute rows within batches using parallel Ray Data tasks. This approach has the following advantages over local buffer shuffle:
+
+- It moves shuffle work out of the consumer's iterator, so Ray Data can overlap it with downstream processing.
+- Ray Data schedules shuffle tasks according to the available CPU and memory resources.
+- Shuffle tasks can run in parallel across multiple machines.
 
 The `batch_size` parameter controls which rows can mix:
 
 - With `batch_size=None`, the default, shuffle each input block independently. The input block sizes determine the shuffle scope.
 - With `batch_size=W`, shuffle target-sized batches that can span input blocks. Each task's final batch can be smaller than `W`, including in the middle of the dataset.
 
-For example, four consecutive input blocks of five rows each with `batch_size=8` can produce shuffle batches of `[8, 2, 8, 2]` rows. This isn't a guarantee of consecutive eight-row windows. The batch size you choose when iterating controls consumer batches separately.
+For example, with four input blocks of five rows each and `batch_size=8`, two tasks can each receive two blocks. Each task forms an eight-row batch spanning both blocks, followed by a two-row tail, producing shuffle batches of `[8, 2, 8, 2]` rows. The batch size you choose when iterating controls consumer batches separately.
 
 ```{testcode}
 import ray
@@ -100,14 +104,6 @@ exact_shuffled = ds.repartition(
 ).shuffle_batches(batch_size=None, seed=42)
 exact_shuffled.take(10)
 ```
-
-Only the dataset's final window can be smaller in this composition. Window boundaries follow the upstream execution order. Both approaches stream results without materializing the whole dataset.
-
-A local shuffle buffer can retain rows as later rows arrive. With `shuffle_batches`, rows stay within their shuffle batch, and the operation doesn't randomly reorder batches. Use {ref}`global shuffle <global-shuffle>` for a permutation across the whole dataset.
-
-Each shuffle batch must fit in task memory, including input, output, indices, and temporary arrays. The `memory` parameter is a scheduling reservation, not a hard limit. `batch_size` doesn't cap input block sizes or peak memory.
-
-Use consistent column dtypes across input blocks. Pandas categorical columns with differing definitions can promote to `object` during batching. Normalize their categorical dtypes to retain the type. Arrow batches spanning different dictionaries can exceed a narrow dictionary index type's capacity and raise `ArrowInvalid`. Use a wider dictionary index type in that case.
 
 :::{tip}
 Combine `shuffle_batches` with {ref}`file order shuffling <shuffling_file_order>` for additional randomness. File order shuffling randomizes which files Ray Data reads first, while `shuffle_batches` randomizes rows within each batch.
@@ -152,20 +148,7 @@ Moving shuffle work from each consumer's local buffer into parallel Ray Data tas
   - 90%
 :::
 
-#### How does optimized row selection affect parallel shuffling?
-
-The following CPU ingestion benchmark keeps shuffling in parallel Ray Data tasks and compares `shuffle_batches`, which uses optimized tensor row selection, with a PyArrow row-selection baseline. Both use the same input layout, batch sizes, task resources, and consumers. The exact-window cases also use the same strict repartition stage. The benchmark enables the tensor row-selection fast path for `shuffle_batches`.
-
-| Usage | PyArrow baseline, rows per second | `shuffle_batches`, rows per second | Speedup |
-| --- | ---: | ---: | ---: |
-| Target-sized batches | 153,238 | 346,435 | 2.26× |
-| Exact-window composition | 102,559 | 326,475 | 3.18× |
-
-The benchmark uses one node with eight vCPUs, an Intel `Xeon Platinum 8362` processor, a 12 GiB object store, and four NumPy consumers. Rows contain 4 KiB tensors across 160 source blocks. The target shuffle batch size is 262,144 rows, and the consumer batch size is 4,096 rows. Each consumer skips 100 warmup batches and measures the next 200. Results are medians of three fresh executions, with no object spilling. The environment uses NumPy 1.26.4 and PyArrow 19.0.1. See the [benchmark script at the measured revision](https://github.com/ray-project/ray/blob/8232d6a11c16ae13c84974abd1d9add8a86c62f4/release/nightly_tests/dataset/benchmark_shuffle_batches.py).
-
-These measurements cover CPU ingestion with model computation excluded. Source blocks are smaller than the target shuffle batch size. Splitting larger input blocks can coalesce tensor chunks during batching and reduce opportunities for the fast path.
-
-Moving shuffle work out of the iterator and selecting tensor rows more efficiently can complement each other when CPU ingestion limits training. These measurements use different workloads and don't include a combined end-to-end training test. Don't multiply their speedups to predict the combined gain. Measure training throughput on your own pipeline to confirm the benefit.
+A separate CPU ingestion benchmark measured 2.26–3.18× the throughput of a parallel shuffle baseline using PyArrow row selection, with model computation excluded. The combined end-to-end training improvement hasn't been measured, so don't multiply the gains from offloading shuffle and optimized row selection to predict training speedup.
 
 (randomizing-block-order)=
 

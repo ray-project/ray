@@ -2483,7 +2483,7 @@ class Dataset:
         This operation streams results without materializing the whole dataset.
         Rows don't move between shuffle batches, and batches aren't randomly
         reordered. Use :meth:`random_shuffle` for global row shuffling. See
-        :ref:`shuffling_data` for usage, memory sizing, and input type constraints.
+        :ref:`shuffling_data` for usage and performance considerations.
 
         Examples:
             >>> import ray

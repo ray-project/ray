@@ -848,7 +848,7 @@ trainer = TorchTrainer(
 ```
 
 :::{tip}
-Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`parallel batch shuffling <shuffle_batches_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
+Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`shuffle_batches <shuffle_batches_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
 :::
 
 For details on tuning Ray Data, see {ref}`data_performance_tips`.

@@ -105,7 +105,7 @@ To switch to random mixing, add a streaming shuffle after {meth}`~ray.data.Datas
 Use either of the following streaming-friendly shuffle options in Ray Data:
 
 - {ref}`Local buffer shuffle <local_shuffle_buffer>`, which you enable by passing `local_shuffle_buffer_size` to {meth}`~ray.data.DataIterator.iter_batches`.
-- {ref}`Parallel batch shuffle <shuffle_batches_shuffle>`. Choose batches large enough to span blocks from multiple sources. Target-sized batching can produce smaller task-tail batches, so the mixing scope can vary.
+- {ref}`shuffle_batches <shuffle_batches_shuffle>`, which shuffles each input block independently by default. Set `batch_size` large enough to mix rows from blocks of multiple sources. Task-tail batches can be smaller than this target.
 
 ```{testcode}
 LOCAL_BATCH_SIZE = 128
