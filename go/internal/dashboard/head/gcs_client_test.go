@@ -17,6 +17,8 @@ package head
 import (
 	"context"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -284,5 +286,97 @@ func TestGCSClientInternalKVOperations(t *testing.T) {
 	}
 	if deleted != 2 {
 		t.Fatalf("InternalKVDel (by prefix) deleted = %d, want 2", deleted)
+	}
+}
+
+// TestGCSClientOptionsFromEnv drives the env-based option assembly
+// (GCSClientOptionsFromEnv) through the same mock GCS as the option-level
+// tests above, asserting the authorization metadata under each environment
+// posture: token auth active (RAY_AUTH_MODE=token, the posture ray.init
+// gives child processes by default) with each token source, and the
+// disabled/unset postures that must send no token even when RAY_AUTH_TOKEN
+// is set (aligned with the C++ client gate, which attaches the interceptor
+// only for TOKEN mode).
+func TestGCSClientOptionsFromEnv(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("path-token\n"), 0o600); err != nil {
+		t.Fatalf("write token file: %v", err)
+	}
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".ray"), 0o700); err != nil {
+		t.Fatalf("mkdir .ray: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ray", "auth_token"), []byte("default-token\n"), 0o600); err != nil {
+		t.Fatalf("write default token file: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{
+			name: "token mode with RAY_AUTH_TOKEN",
+			env:  map[string]string{"RAY_AUTH_MODE": "token", "RAY_AUTH_TOKEN": "env-token"},
+			want: "Bearer env-token",
+		},
+		{
+			name: "token mode with RAY_AUTH_TOKEN_PATH",
+			env:  map[string]string{"RAY_AUTH_MODE": "token", "RAY_AUTH_TOKEN_PATH": tokenFile},
+			want: "Bearer path-token",
+		},
+		{
+			name: "token mode with the default token file",
+			env:  map[string]string{"RAY_AUTH_MODE": "token"},
+			want: "Bearer default-token",
+		},
+		{
+			name: "mode unset sends no token",
+			env:  map[string]string{"RAY_AUTH_TOKEN": "env-token"},
+			want: "",
+		},
+		{
+			name: "mode disabled sends no token",
+			env:  map[string]string{"RAY_AUTH_MODE": "disabled", "RAY_AUTH_TOKEN": "env-token"},
+			want: "",
+		},
+		{
+			name: "mode value is case insensitive",
+			env:  map[string]string{"RAY_AUTH_MODE": "TOKEN", "RAY_AUTH_TOKEN": "env-token"},
+			want: "Bearer env-token",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset the env axis first so each case only sees the vars it
+			// sets; empty values behave like unset for every source.
+			t.Setenv("HOME", home)
+			for _, k := range []string{"RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"} {
+				t.Setenv(k, "")
+			}
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+
+			srv := newMockInternalKVServer()
+			addr, stop := startMockGCS(t, srv)
+			defer stop()
+
+			client, err := NewGCSClient(context.Background(), addr, GCSClientOptionsFromEnv("0123456789abcdef")...)
+			if err != nil {
+				t.Fatalf("NewGCSClient: %v", err)
+			}
+			defer client.Close()
+
+			if _, err := client.InternalKVGet(context.Background(), "ns", "k1"); err != nil {
+				t.Fatalf("InternalKVGet: %v", err)
+			}
+			if got := srv.gotToken(); got != tc.want {
+				t.Fatalf("authorization metadata = %q, want %q", got, tc.want)
+			}
+			if got := srv.gotClusterID(); got != "0123456789abcdef" {
+				t.Fatalf("cluster id metadata = %q, want %q", got, "0123456789abcdef")
+			}
+		})
 	}
 }

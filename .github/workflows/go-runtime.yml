@@ -19,8 +19,19 @@ on:
       - "python/ray/_private/services.py"
       - "python/ray/_private/ray_constants.py"
       - ".github/workflows/go-runtime.yml"
+      - "python/ray/tests/test_logging.py"
+      - "python/ray/tests/test_go_component_e2e.py"
   push:
     branches: [master]
+    # Mirror the pull_request filter so doc-only or unrelated pushes to master
+    # skip this workflow.
+    paths:
+      - "go/**"
+      - "python/ray/_private/services.py"
+      - "python/ray/_private/ray_constants.py"
+      - ".github/workflows/go-runtime.yml"
+      - "python/ray/tests/test_logging.py"
+      - "python/ray/tests/test_go_component_e2e.py"
 
 jobs:
   fast-hooks:
@@ -31,21 +42,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: .pre-commit-config.yaml
       - name: Install pre-commit
         run: pip install pre-commit==3.5.0
-      # The fast subset of .pre-commit-config.yaml, run by id. Two hooks from
-      # the config are left out because they fail on files already in the tree
-      # (not touched by this workflow): end-of-file-fixer rewrites
-      # go/proto/BUILD.bazel and go/pkg/version/{version.go,BUILD.bazel}, and
-      # black reformats tools/sync/cpp_classify.py and
-      # go/examples/test_go_call_python.py. Re-enable them once those files
-      # are cleaned up. The config's heavier hooks (mypy, cpplint, shellcheck,
-      # clang-format and friends) are also not part of this gate; the local
-      # pre-commit run stays the full check.
+      - name: Cache the pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: precommit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            precommit-
+      # The fast subset of .pre-commit-config.yaml, run by id. The config's
+      # heavier hooks (mypy, cpplint, shellcheck, clang-format and friends) are
+      # also not part of this gate; the local pre-commit run stays the full
+      # check.
       - name: Run the fast hooks
         run: |
           for hook in trailing-whitespace check-added-large-files \
-                      check-ast check-json check-toml ruff prettier buildifier; do
+                      check-ast black check-json check-toml end-of-file-fixer \
+                      ruff prettier buildifier; do
             pre-commit run "$hook" --all-files
           done
 
@@ -97,6 +113,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
       - name: Install upstream ray, overlay this tree's switch layer, run the launch tests
         run: |
           pip install --pre ray pytest

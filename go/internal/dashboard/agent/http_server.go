@@ -16,9 +16,13 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"syscall"
+
+	"github.com/ray-project/ray/go/pkg/log"
 )
 
 // maxHTTPRequestBodySize caps any request body handled by the dashboard agent
@@ -49,7 +53,23 @@ func newHTTPServer(cfg Config, mods []Module) (*httpServer, error) {
 	// Python agent's healthz likewise answers on localhost and the pod IP.
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.ListenPort))
 	if err != nil {
-		return nil, fmt.Errorf("listen on HTTP addr: %w", err)
+		if !errors.Is(err, syscall.EADDRINUSE) {
+			return nil, fmt.Errorf("listen on HTTP addr: %w", err)
+		}
+		// A co-hosted agent (the Python and Go agents share the fixed default
+		// listen port) holds the port. Fall back to a dynamic port instead of
+		// disabling the HTTP server: Run registers the actually bound port in
+		// GCS InternalKV, so head-side consumers resolving the agent address
+		// get the real port, while a degraded agent serves nothing and
+		// registers nothing. The registration is also the only channel that
+		// carries the dynamic port: the raylet waits for the port files only
+		// when the configured port is 0, and with the fixed default configured
+		// it keeps publishing that (taken) port instead.
+		log.Log.Error(err, "fixed listen port taken; falling back to a dynamic port")
+		lis, err = net.Listen("tcp", ":0")
+		if err != nil {
+			return nil, fmt.Errorf("listen on HTTP addr fallback: %w", err)
+		}
 	}
 	return &httpServer{
 		server: &http.Server{

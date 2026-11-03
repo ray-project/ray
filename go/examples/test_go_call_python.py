@@ -2,6 +2,7 @@
 # Functions are plain module-level (no @ray.remote required on the Python side;
 # the Go driver submits the descriptor directly and the Python worker loads it).
 
+
 def add(a, b):
     return a + b
 

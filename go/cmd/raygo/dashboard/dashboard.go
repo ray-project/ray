@@ -168,7 +168,11 @@ func runDashboard(ctx context.Context) error {
 		return err
 	}
 
-	client, err := head.NewGCSClient(ctx, gcsAddress, head.WithClusterID(clusterIDHex))
+	// GCSClientOptionsFromEnv attaches the auth token when the cluster runs
+	// token authentication (the ray.init default posture): without it every
+	// GCS RPC from the head is rejected Unauthenticated, so the head could
+	// neither pass the aliveness probe nor publish its address.
+	client, err := head.NewGCSClient(ctx, gcsAddress, head.GCSClientOptionsFromEnv(clusterIDHex)...)
 	if err != nil {
 		return fmt.Errorf("connect GCS: %w", err)
 	}

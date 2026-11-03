@@ -245,8 +245,14 @@ def read_text(path: str) -> str:
         return fh.read()
 
 
-def classify(internal_path: str, oss_path: str, internal_root: str, oss_root: str,
-             work_dir: str, rel: str) -> dict:
+def classify(
+    internal_path: str,
+    oss_path: str,
+    internal_root: str,
+    oss_root: str,
+    work_dir: str,
+    rel: str,
+) -> dict:
     raw_int = read_text(internal_path)
     raw_oss = read_text(oss_path)
 
@@ -344,8 +350,9 @@ def main() -> None:
             results.append(cache[key])
             continue
 
-        res = classify(internal_path, oss_path, internal_root, oss_root,
-                       args.work_dir, rel)
+        res = classify(
+            internal_path, oss_path, internal_root, oss_root, args.work_dir, rel
+        )
         cache[key] = res
         results.append(res)
 

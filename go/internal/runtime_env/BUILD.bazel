@@ -150,11 +150,11 @@ go_test(
         ],
         "//conditions:default": ["protocol_test.go"],
     }),
-    embed = [":runtime_env"],
     # The default JSON schemas are read from disk at runtime (resolved relative
     # to this source file); declare them as test data so bazel keeps them in the
     # runfiles tree.
     data = glob(["schemas/*.json"]),
+    embed = [":runtime_env"],
     deps = [
         "//go/internal/common",
         "//go/pkg/gcs",

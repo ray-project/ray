@@ -74,9 +74,12 @@ type Module interface {
 // Run owns the HTTP/gRPC server lifecycle: it builds both servers from the
 // registered modules, starts every module, publishes the agent address in GCS
 // InternalKV, then serves HTTP and gRPC until ctx is cancelled. An HTTP bind
-// failure degrades instead of killing the agent (mirroring Python
-// agent.py, which stays alive with the HTTP service disabled and skips the
-// KV registration); a gRPC bind failure remains fatal.
+// failure with EADDRINUSE falls back to a dynamic port instead of disabling
+// the HTTP service (a co-hosted Python agent holds the shared fixed default
+// port); other HTTP bind failures degrade instead of killing the agent — the
+// agent stays alive with the HTTP service disabled and skips the KV
+// registration, mirroring Python agent.py, which does not fall back; a gRPC
+// bind failure remains fatal.
 func Run(ctx context.Context, cfg Config, mods []Module) error {
 	httpSrv, httpErr := newHTTPServer(cfg, mods)
 	if httpErr != nil {

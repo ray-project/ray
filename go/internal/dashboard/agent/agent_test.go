@@ -160,17 +160,21 @@ func nonLoopbackIPv4(t *testing.T) string {
 	return ""
 }
 
-// TestRunDegradesWhenHTTPPortTaken verifies the Python parity contract for an
-// HTTP bind failure: the agent stays alive (Run returns nil on cancellation),
-// the address is not registered in GCS, and module startup still proceeds.
-func TestRunDegradesWhenHTTPPortTaken(t *testing.T) {
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("occupy port: %v", err)
-	}
-	defer lis.Close()
-	port := lis.Addr().(*net.TCPAddr).Port
+// failingRegisterModule is a Module whose HTTP registration always fails,
+// forcing the HTTP server construction to abort before the bind. It exercises
+// the non-EADDRINUSE degrade branch of Run deterministically (a taken port
+// falls back to a dynamic port instead of degrading).
+type failingRegisterModule struct{}
 
+func (failingRegisterModule) Start(context.Context) error       { return nil }
+func (failingRegisterModule) RegisterHTTP(*http.ServeMux) error { return errors.New("boom") }
+func (failingRegisterModule) RegisterGRPC(*grpc.Server) error   { return nil }
+
+// TestRunDegradesWhenHTTPServerStartFails verifies the Python parity contract
+// for an HTTP startup failure other than a taken port: the agent stays alive
+// (Run returns nil on cancellation), the address is not registered in GCS, and
+// module startup still proceeds.
+func TestRunDegradesWhenHTTPServerStartFails(t *testing.T) {
 	fake := &fakeKVClient{}
 	mod := &stubModule{}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -178,16 +182,18 @@ func TestRunDegradesWhenHTTPPortTaken(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(ctx, Config{
-			NodeIP:     "127.0.0.1",
-			ListenPort: port,
-			GCS:        fake,
-		}, []Module{mod})
+			NodeIP: "127.0.0.1",
+			GCS:    fake,
+		}, []Module{failingRegisterModule{}, mod})
 	}()
 
-	// Give Run time to fail the HTTP bind and reach the serving state.
+	// Give Run time to fail the HTTP startup and reach the serving state.
 	time.Sleep(200 * time.Millisecond)
 	if keys := fake.kv[KVNamespaceDashboard]; len(keys) != 0 {
-		t.Errorf("agent address registered despite HTTP bind failure: %v", keys)
+		t.Errorf("agent address registered despite HTTP startup failure: %v", keys)
+	}
+	if !mod.started {
+		t.Errorf("module startup skipped despite the HTTP degrade")
 	}
 
 	cancel()
@@ -195,6 +201,65 @@ func TestRunDegradesWhenHTTPPortTaken(t *testing.T) {
 	case err := <-done:
 		if err != nil {
 			t.Fatalf("Run = %v, want nil (degraded, not failed)", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after cancellation")
+	}
+}
+
+// TestRunFallsBackToDynamicPortWhenListenPortTaken verifies that a taken fixed
+// listen port falls back to a dynamic port instead of degrading to a disabled
+// HTTP server (persisted -1): the Python and Go agents share the fixed default
+// listen port when co-hosted, and Run registers the actually bound port in GCS
+// InternalKV, which is the only channel carrying the dynamic port — the raylet
+// waits for the persisted port files only when the configured port is 0.
+func TestRunFallsBackToDynamicPortWhenListenPortTaken(t *testing.T) {
+	occupied, err := net.Listen("tcp", ":52365")
+	if err != nil {
+		t.Skipf("cannot hold the fixed port on this machine: %v", err)
+	}
+	defer occupied.Close()
+
+	cfg := testConfig(t)
+	cfg.ListenPort = 52365
+
+	// Run serves until cancelled; drive it from a goroutine and wait for the
+	// port files before asserting (mirrors TestRunPersistsDashboardAgentPorts).
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, cfg, nil)
+	}()
+
+	portFile := filepath.Join(cfg.SessionDir, dashboardAgentListenPortName+"_"+cfg.NodeID.Hex())
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(portFile); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("agent did not persist the dashboard agent listen port file")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	got := readPersistedPort(t, cfg.SessionDir, cfg.NodeID, dashboardAgentListenPortName)
+	if got <= 0 || got == 52365 {
+		t.Fatalf("listen port persisted as %d, want a dynamic port > 0 different from the taken fixed port", got)
+	}
+	// The rebound HTTP server actually serves on the new port.
+	conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", got), time.Second)
+	if dialErr != nil {
+		t.Fatalf("fallback HTTP port %d not serving: %v", got, dialErr)
+	}
+	conn.Close()
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run with the fixed port taken must succeed via fallback: %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return after cancellation")

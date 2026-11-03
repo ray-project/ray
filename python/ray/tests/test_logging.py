@@ -1506,6 +1506,10 @@ def test_start_api_server_uses_go_dashboard_when_enabled(monkeypatch, tmp_path):
         return object()
 
     class FakeGcsClient:
+        # accept the production constructor's kwargs; the fake fails the KV calls
+        def __init__(self, *args, **kwargs):
+            pass
+
         def internal_kv_get(self, key, namespace):
             raise RuntimeError("no GCS in this unit test")
 

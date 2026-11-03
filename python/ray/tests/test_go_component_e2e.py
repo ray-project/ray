@@ -10,16 +10,17 @@ skip instantly: RAYGO_E2E=1
 must be set, and the raygo binary must be resolvable (a machine with the Go
 runtime artifacts built, e.g. via //go:gen_ray_go_pkg).
 
+Clusters run under the ambient auth posture: token-auth clusters (the
+ray.init default) are supported — the head loads the auth token like any Go
+client, and the agent's token is attached by its C++ bridge from the
+inherited environment.
+
 The module adapts three environment knobs so a live matrix can run on a dev
 machine as well as on a Go-runtime image:
 
 - RAY_GO_RUNTIME_PATH is pinned to the go_runtime.so shipped beside the raygo
   binary, so the plugin loader cannot fall back to a stale copy left under an
   unrelated site-packages tree.
-- RAY_AUTH_MODE=disabled: the Go dashboard head's GCS calls are rejected as
-  Unauthenticated under the default token-auth posture (it cannot publish its
-  address to the internal KV), so the matrix runs with authentication off,
-  matching the opt-out used elsewhere in the test suite.
 - PATH gains a shim directory whose python3/python point at this test
   process's interpreter: the Go setup worker resolves the Python worker
   interpreter via PATH lookup, and it must land on the interpreter that owns
@@ -80,18 +81,6 @@ def _go_runtime_plugin_path() -> Optional[str]:
     if os.path.exists(candidate):
         return os.path.abspath(candidate)
     return None
-
-
-@pytest.fixture(autouse=True)
-def _go_e2e_auth_disabled(monkeypatch):
-    """Run every matrix cluster with token authentication off.
-
-    See the module docstring: the Go components cannot authenticate to the
-    GCS under the default token-auth posture, which is a deployment concern
-    outside what this matrix asserts about the components themselves.
-    """
-    monkeypatch.setenv("RAY_AUTH_MODE", "disabled")
-    yield
 
 
 @pytest.fixture(autouse=True, scope="module")

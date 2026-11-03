@@ -21,6 +21,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ray-project/ray/go/proto"
@@ -66,6 +70,83 @@ func WithClusterID(clusterIDHex string) GRPCOption {
 	return func(c *grpcClientConfig) {
 		c.clusterID = clusterIDHex
 	}
+}
+
+// Environment variables gating Ray token authentication, aligned with the
+// RAY_* env reads of src/ray/rpc/authentication/ (RayConfig) and
+// k8s_constants.h kRaySaTokenPath.
+const (
+	authModeEnvVar          = "RAY_AUTH_MODE"
+	authTokenEnvVar         = "RAY_AUTH_TOKEN"
+	authTokenPathEnvVar     = "RAY_AUTH_TOKEN_PATH"
+	k8sTokenAuthEnvVar      = "RAY_ENABLE_K8S_TOKEN_AUTH"
+	k8sRaySATokenPath       = "/var/run/secrets/ray.io/serviceaccount/token"
+	defaultAuthTokenSubpath = ".ray/auth_token"
+)
+
+// GCSClientOptionsFromEnv assembles the GCS client options from the process
+// environment, mirroring the authentication machinery every Ray client
+// shares (src/ray/rpc/grpc_client.cc BuildChannel +
+// authentication_token_loader.cc): token auth is active only when
+// RAY_AUTH_MODE is "token" (case-insensitive) — the posture ray.init gives
+// every child process by default since enable_token_auth_by_default. When
+// active, the token must be attached, otherwise GCS rejects every RPC as
+// Unauthenticated (the dashboard head could then never publish its address).
+// The token value follows the C++ AuthenticationTokenLoader source
+// precedence: RAY_AUTH_TOKEN, the RAY_AUTH_TOKEN_PATH file, the Ray
+// service-account token when RAY_ENABLE_K8S_TOKEN_AUTH is on, then the
+// default ~/.ray/auth_token file. Unlike the C++ loader (RAY_CHECK), a
+// configured-but-unreadable token file falls through to the next source: the
+// client never sends a wrong token, and the head degrades on GCS rejections
+// instead of dying.
+func GCSClientOptionsFromEnv(clusterIDHex string) []GRPCOption {
+	opts := []GRPCOption{WithClusterID(clusterIDHex)}
+	if !strings.EqualFold(os.Getenv(authModeEnvVar), "token") {
+		return opts
+	}
+	if token := authTokenFromEnv(); token != "" {
+		opts = append(opts, WithToken(token))
+	}
+	return opts
+}
+
+// authTokenFromEnv loads the authentication token with the C++
+// AuthenticationTokenLoader source precedence (see GCSClientOptionsFromEnv).
+func authTokenFromEnv() string {
+	if tok := strings.TrimSpace(os.Getenv(authTokenEnvVar)); tok != "" {
+		return tok
+	}
+	if path := os.Getenv(authTokenPathEnvVar); path != "" {
+		if tok := readFirstLine(path); tok != "" {
+			return tok
+		}
+	}
+	// RayConfig parses bool envs as lower(value) in {"true", "1"}.
+	if v := os.Getenv(k8sTokenAuthEnvVar); v == "1" || strings.EqualFold(v, "true") {
+		if tok := readFirstLine(k8sRaySATokenPath); tok != "" {
+			return tok
+		}
+	}
+	return readFirstLine(defaultAuthTokenPath())
+}
+
+// defaultAuthTokenPath returns ~/.ray/auth_token, aligned with
+// AuthenticationTokenLoader::GetDefaultTokenPath: HOME, falling back to the
+// user database when HOME is unset. The one deviation is logging, not path
+// resolution: the C++ loader warns ("Cannot determine home directory for
+// token storage") when no home resolves, while this code stays silent.
+// Either way an empty result makes readFirstLine find no token.
+func defaultAuthTokenPath() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		if u, err := user.Current(); err == nil {
+			home = u.HomeDir
+		}
+	}
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, defaultAuthTokenSubpath)
 }
 
 type grpcClientConfig struct {
