@@ -2,7 +2,7 @@
 This file serves as a documentation example and CI test.
 
 Structure:
-1. Monkeypatch setup: Ensures serve.run is non-blocking and removes accelerator requirements for CI testing.
+1. Monkeypatch setup: Ensures serve.run is non-blocking.
 2. Docs example (between __direct_streaming_custom_router_example_start/end__): Embedded in Sphinx docs via literalinclude.
 3. Test validation (deployment status polling + cleanup)
 
@@ -14,10 +14,8 @@ import time
 from ray import serve
 from ray.serve.schema import ApplicationStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve import llm
 
 _original_serve_run = serve.run
-_original_build_openai_app = llm.build_openai_app
 
 
 def _non_blocking_serve_run(app, **kwargs):
@@ -26,16 +24,7 @@ def _non_blocking_serve_run(app, **kwargs):
     return _original_serve_run(app, **kwargs)
 
 
-def _testing_build_openai_app(llm_serving_args):
-    """Removes accelerator requirements for testing"""
-    for config in llm_serving_args["llm_configs"]:
-        config.accelerator_type = None
-
-    return _original_build_openai_app(llm_serving_args)
-
-
 serve.run = _non_blocking_serve_run
-llm.build_openai_app = _testing_build_openai_app
 
 # __direct_streaming_custom_router_example_start__
 from ray.serve.config import RequestRouterConfig

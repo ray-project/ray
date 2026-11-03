@@ -1541,7 +1541,8 @@ class MultiAgentBatch:
 
     @PublicAPI
     def size_bytes(self) -> int:
-        """
+        """Returns the sum of the byte sizes of all policy batches.
+
         Returns:
             The overall size in bytes of all policy batches (all columns).
         """

@@ -12,8 +12,7 @@ from ray.util.annotations import PublicAPI
 
 
 def _process_return_vals(return_vals: List[Any], return_single_output: bool):
-    """
-    Process return values for return to the DAG caller. Any exceptions found in
+    """Process return values for return to the DAG caller. Any exceptions found in
     return_vals will be raised. If return_single_output=True, it indicates that
     the original DAG did not have a MultiOutputNode, so the DAG caller expects
     a single return value instead of a list.
@@ -35,8 +34,7 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
 
 @PublicAPI(stability="alpha")
 class CompiledDAGRef:
-    """
-    A reference to a compiled DAG execution result.
+    """A reference to a compiled DAG execution result.
 
     This is a subclass of ObjectRef and resembles ObjectRef.  For example,
     similar to ObjectRef, ray.get() can be called on it to retrieve the result.
@@ -149,8 +147,7 @@ class CompiledDAGRef:
 
 @PublicAPI(stability="alpha")
 class CompiledDAGFuture:
-    """
-    A reference to a compiled DAG execution result, when executed with asyncio.
+    """A reference to a compiled DAG execution result, when executed with asyncio.
     This differs from CompiledDAGRef in that `await` must be called on the
     future to get the result, instead of `ray.get()`.
 
