@@ -1108,21 +1108,31 @@ def evict_least_recently_used_images(
 # next ones run in child interpreters.
 _builds_lock = threading.Lock()
 _building_here = False
-# Each child is an interpreter that imports Ray, so at most one per two CPUs
-# runs at once; the others wait for one to finish.
-_child_builds = threading.BoundedSemaphore(max(1, (os.cpu_count() or 2) // 2))
+# Builds run at most one per two CPUs in children, plus one in this process.
+# A build takes one of these slots before it looks at this process, so builds
+# that waited for a slot use this process as soon as its build ends.
+_builds = threading.BoundedSemaphore(1 + max(1, (os.cpu_count() or 2) // 2))
 # The line a child build's error comes back on, among whatever else the
 # child prints.
 _CHILD_ERROR = "ray-sandbox-image-build-error: "
-_CHILD_BUILD = f"""
-import json, sys
-from ray.experimental.sandbox._internal import image_utils
-try:
-    image_utils._build_rootfs_image(*json.loads(sys.argv[1]))
-except BaseException as err:
-    print({_CHILD_ERROR!r} + json.dumps(str(err)), flush=True)
-    sys.exit(1)
-"""
+# What a child runs: this module and the few it imports, without Ray.
+_CHILD_ENTRYPOINT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "image_build_child.py"
+)
+# The packages a child stands in for, so that it imports their modules.
+_CHILD_PACKAGES = (
+    "ray",
+    "ray.util",
+    "ray.experimental",
+    "ray.experimental.sandbox",
+    "ray.experimental.sandbox._internal",
+)
+
+
+def _child_packages() -> Dict[str, List[str]]:
+    """Where this process loaded the child's packages from, so that a child
+    finds the same files however Ray is installed."""
+    return {name: list(sys.modules[name].__path__) for name in _CHILD_PACKAGES}
 
 
 def _build_rootfs_image(
@@ -1142,30 +1152,36 @@ def _build_rootfs_image_here_or_in_a_child(*args) -> None:
     """``_build_rootfs_image`` in this process, or in a child interpreter
     while another build runs in this process."""
     global _building_here
-    with _builds_lock:
-        here = not _building_here
-        _building_here = _building_here or here
-    if not here:
-        _build_rootfs_image_in_a_child(*args)
-        return
-    try:
-        _build_rootfs_image(*args)
-    finally:
+    with _builds:
         with _builds_lock:
-            _building_here = False
+            here = not _building_here
+            _building_here = _building_here or here
+        if not here:
+            _build_rootfs_image_in_a_child(*args)
+            return
+        try:
+            _build_rootfs_image(*args)
+        finally:
+            with _builds_lock:
+                _building_here = False
 
 
 def _build_rootfs_image_in_a_child(*args) -> None:
     """``_build_rootfs_image`` in a new interpreter. Its logs go to this
     process's stderr; its error, if any, comes back as the message of a
     ``SandboxCreationError``."""
-    with _child_builds:
-        proc = subprocess.run(
-            [sys.executable, "-c", _CHILD_BUILD, json.dumps(args)],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            text=True,
-        )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            _CHILD_ENTRYPOINT,
+            json.dumps(_child_packages()),
+            json.dumps(args),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
     if proc.returncode != 0:
         message = f"Building the image failed (exit status {proc.returncode})"
         for line in reversed(proc.stdout.splitlines()):

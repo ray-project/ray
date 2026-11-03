@@ -791,17 +791,99 @@ def test_a_build_runs_here_once_this_process_is_free(monkeypatch):
     assert calls == [("here", ("a",)), ("child", ("b",)), ("here", ("c",))]
 
 
-def test_a_child_builds_error_survives_other_output(monkeypatch):
+def test_a_child_builds_error_survives_other_output(monkeypatch, tmp_path):
     """The child's error comes back even when it prints other lines after."""
-    child = (
+    child = tmp_path / "child.py"
+    child.write_text(
         "import sys\n"
         "print('ray-sandbox-image-build-error: \"no such image\"')\n"
         'print(\'{"error": "not this one"}\')\n'
         "sys.exit(1)\n"
     )
-    monkeypatch.setattr(image_utils, "_CHILD_BUILD", child)
+    monkeypatch.setattr(image_utils, "_CHILD_ENTRYPOINT", str(child))
     with pytest.raises(SandboxCreationError, match="^no such image$"):
         image_utils._build_rootfs_image_in_a_child("img", "/r", "/d", 5.0, "/b")
+
+
+def test_builds_that_waited_for_a_slot_run_here_once_this_process_is_free(
+    monkeypatch,
+):
+    """With one child slot, a build that waits for a slot while builds run
+    here and in a child takes this process's place when its build ends, not
+    the child's."""
+    monkeypatch.setattr(image_utils, "_builds", threading.BoundedSemaphore(2))
+    here_started, here_release = threading.Event(), threading.Event()
+    child_started, child_release = threading.Event(), threading.Event()
+    calls = []
+
+    def here(*args):
+        calls.append(("here", args))
+        here_started.set()
+        here_release.wait(10)
+
+    def child(*args):
+        calls.append(("child", args))
+        child_started.set()
+        child_release.wait(10)
+
+    monkeypatch.setattr(image_utils, "_build_rootfs_image", here)
+    monkeypatch.setattr(image_utils, "_build_rootfs_image_in_a_child", child)
+    builds = [
+        threading.Thread(
+            target=image_utils._build_rootfs_image_here_or_in_a_child, args=(name,)
+        )
+        for name in "abc"
+    ]
+    builds[0].start()
+    assert here_started.wait(10)
+    builds[1].start()
+    assert child_started.wait(10)
+    here_started.clear()
+    builds[2].start()
+    # The third waits for a slot, then takes this process's when "a" ends,
+    # while "b" still builds in its child.
+    here_release.set()
+    builds[0].join()
+    assert here_started.wait(10)
+    child_release.set()
+    for build in builds[1:]:
+        build.join()
+    assert calls == [("here", ("a",)), ("child", ("b",)), ("here", ("c",))]
+
+
+def test_a_child_build_loads_image_utils_without_ray():
+    """The child entrypoint loads image_utils and the few modules it needs,
+    not Ray, whose import would cost most of a second per build."""
+    load = (
+        f"runpy.run_path({image_utils._CHILD_ENTRYPOINT!r})['_load_image_utils']"
+        f"({image_utils._child_packages()!r})\n"
+    )
+    script = (
+        "import runpy, sys\n"
+        + load
+        + "print(hasattr(sys.modules['ray'], '__file__'))\n"
+        "print(' '.join(sorted(m for m in sys.modules if m.startswith('ray'))))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+    ray_ran, modules = result.stdout.splitlines()
+    assert ray_ran == "False"
+    assert set(modules.split()) <= {
+        "ray",
+        "ray.util",
+        "ray.util.annotations",
+        "ray.experimental",
+        "ray.experimental.sandbox",
+        "ray.experimental.sandbox.exceptions",
+        "ray.experimental.sandbox._internal",
+        "ray.experimental.sandbox._internal.docker_config",
+        "ray.experimental.sandbox._internal.image_utils",
+    }, modules
 
 
 def test_pull_nonexistent_local_tar(tmp_path):
