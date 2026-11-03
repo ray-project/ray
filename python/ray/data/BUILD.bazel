@@ -2762,6 +2762,20 @@ py_test(
 )
 
 py_test(
+    name = "test_shuffle_elimination",
+    size = "large",
+    srcs = ["tests/test_shuffle_elimination.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_checkpoint",
     size = "large",
     srcs = ["tests/test_checkpoint.py"],
