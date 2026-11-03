@@ -794,6 +794,7 @@ def detect_dictionary_columns(
     )
 
 
+# Under only when a row group's column holds over 256 MiB of distinct values.
 _DICTIONARY_COLUMNS_CAP = 256 * 1024 * 1024
 
 
