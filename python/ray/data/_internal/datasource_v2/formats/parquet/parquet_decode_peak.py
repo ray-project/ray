@@ -78,11 +78,13 @@ _PHYSICAL_WIDTH = {
     "FLOAT": 4,
     "DOUBLE": 8,
 }
+# Encodings whose decoders unpack a page's value lengths up front.
 _DELTA_ENCODINGS = {"DELTA_BYTE_ARRAY", "DELTA_LENGTH_BYTE_ARRAY"}
-# parquet.thrift: ColumnMetaData.encoding_stats, PageEncodingStats.page_type
-# and .count, PageType DATA_PAGE and DATA_PAGE_V2.
-_ENCODING_STATS, _STATS_PAGE_TYPE, _STATS_COUNT = 13, 1, 3
-_DATA_PAGES = (0, 3)
+# Field ids and enum values from parquet.thrift.
+_ENCODING_STATS = 13  # ColumnMetaData.encoding_stats, list<PageEncodingStats>
+_STATS_PAGE_TYPE = 1  # PageEncodingStats.page_type
+_STATS_COUNT = 3  # PageEncodingStats.count
+_DATA_PAGES = (0, 3)  # PageType.DATA_PAGE and PageType.DATA_PAGE_V2
 
 
 def estimate_row_group_peak(
@@ -350,12 +352,12 @@ def _row_group_pages(reader: _CompactReader) -> List[Optional[int]]:
 def _chunk_pages(reader: _CompactReader) -> Optional[int]:
     """One chunk's data page count, or ``None`` without ``encoding_stats``."""
     pages = None
-    for field_id, field_type in reader._fields():
-        if field_id == _COLUMN_CHUNK_META_DATA and field_type == _STRUCT:
+    for field in reader._fields():
+        if field.id == _COLUMN_CHUNK_META_DATA and field.type == _STRUCT:
             # No data pages counted means no stats to go by.
             pages = sum(_list_field(reader, _ENCODING_STATS, _data_page_count)) or None
         else:
-            reader._skip(field_type)
+            reader._skip(field.type)
     return pages
 
 
@@ -363,13 +365,13 @@ def _data_page_count(reader: _CompactReader) -> int:
     """An ``encoding_stats`` entry's page count if they are data pages, else 0."""
     page_type, count = None, 0
     # Its page type and count; the encoding isn't needed.
-    for field_id, field_type in reader._fields():
-        if field_id == _STATS_PAGE_TYPE and field_type == _I32:
+    for field in reader._fields():
+        if field.id == _STATS_PAGE_TYPE and field.type == _I32:
             page_type = reader._zigzag()
-        elif field_id == _STATS_COUNT and field_type == _I32:
+        elif field.id == _STATS_COUNT and field.type == _I32:
             count = reader._zigzag()
         else:
-            reader._skip(field_type)
+            reader._skip(field.type)
     return count if page_type in _DATA_PAGES else 0
 
 
@@ -378,11 +380,11 @@ def _list_field(
 ) -> List[Any]:
     """Each item of a struct's list field ``field_id``, none without it."""
     items = []
-    for item_id, item_type in reader._fields():
-        if item_id == field_id and item_type == _THRIFT_LIST:
-            items = [read_item(reader) for _ in range(reader._list_header()[0])]
+    for field in reader._fields():
+        if field.id == field_id and field.type == _THRIFT_LIST:
+            items = [read_item(reader) for _ in range(reader._list_header().count)]
         else:
-            reader._skip(item_type)
+            reader._skip(field.type)
     return items
 
 
