@@ -96,6 +96,27 @@ def _remove(cgroup: Path) -> None:
 # drop locking on a single CPU. runsc applies the same floor when it sizes a
 # sandbox from a cgroup quota.
 _MIN_SANDBOX_CPUS = 2
+# The most host tasks, processes and threads, each sandbox may run: unset or
+# 0 for no limit. Under gVisor's systrap platform a guest process costs about
+# two host tasks, so without a limit one sandbox's fork bomb can use up the
+# node's process IDs.
+_PIDS_MAX_ENV = "RAY_SANDBOX_PIDS_MAX"
+
+
+def pids_limit() -> int:
+    """The node's per-sandbox task limit from RAY_SANDBOX_PIDS_MAX, or 0."""
+    raw = os.environ.get(_PIDS_MAX_ENV, "").strip()
+    if not raw:
+        return 0
+    try:
+        value = int(raw)
+    except ValueError:
+        value = -1
+    if value < 0:
+        raise RuntimeError(
+            f"{_PIDS_MAX_ENV}={raw!r} must be a non-negative integer (0 for no limit)"
+        )
+    return value
 
 
 def _pool_cpus(root: Path) -> Set[int]:
@@ -197,6 +218,8 @@ class SandboxCgroupManager:
         required = {"cpu"} if cpu > 0 else set()
         if memory > 0:
             required.add("memory")
+        if pids_limit() > 0:
+            required.add("pids")
         enabled = set(_read(root / "cgroup.subtree_control").split())
         if not required <= enabled:
             raise RuntimeError(
@@ -253,6 +276,9 @@ class SandboxCgroupManager:
                     "memory.oom.group": "1",
                 }
             )
+        pids = pids_limit()
+        if pids > 0:
+            limits["pids.max"] = str(pids)
         path = self.shared / sandbox_id
         path.mkdir()
         try:
