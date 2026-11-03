@@ -454,4 +454,18 @@ TEST_F(ObjectManagerTest, LocalObjectProducerWorkerIdFollowsTheLocalCopy) {
   EXPECT_TRUE(object_manager_->GetLocalObjectProducerWorkerId(with_producer).IsNil());
 }
 
+TEST_F(ObjectManagerTest, SetLocalObjectProducerWorkerIdNeedsALocalCopy) {
+  const WorkerID producer_worker_id = WorkerID::FromRandom();
+  const ObjectID object_id = ObjectID::FromRandom();
+  EXPECT_FALSE(
+      object_manager_->SetLocalObjectProducerWorkerId(object_id, producer_worker_id));
+  EXPECT_TRUE(object_manager_->GetLocalObjectProducerWorkerId(object_id).IsNil());
+
+  NotifyObjectAdded(object_id, 10, 1);
+  EXPECT_TRUE(
+      object_manager_->SetLocalObjectProducerWorkerId(object_id, producer_worker_id));
+  EXPECT_EQ(object_manager_->GetLocalObjectProducerWorkerId(object_id),
+            producer_worker_id);
+}
+
 }  // namespace ray

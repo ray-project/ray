@@ -97,6 +97,13 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
     return it == producer_worker_ids.end() ? WorkerID::Nil() : it->second;
   }
 
+  bool HasDiskCopy(const ObjectID &object_id) const override {
+    return disk_copies.contains(object_id);
+  }
+
+  // Settable by tests: objects spilled or being spilled.
+  absl::flat_hash_set<ObjectID> disk_copies;
+
   // NOOP
   void SpillObjectUptoMaxThroughput() override {}
 
@@ -909,6 +916,245 @@ TEST_F(NodeManagerTest, TestPinAndReportMovedObject) {
             PinResult::kNotPinnable);
   EXPECT_EQ(local_object_manager_->pinned_objects.size(), 1u);
   EXPECT_EQ(fake_object_directory_->primary_moved_objects.size(), 1u);
+}
+
+// The producer's hook runs once, when the object's last copy on the node is deleted.
+class NodeManagerOnObjectFreedTest : public NodeManagerTest {
+ protected:
+  NodeManagerOnObjectFreedTest()
+      : producer_(std::make_shared<raylet::MockWorker>(producer_id_, 10, clock_)) {
+    producer_->Connect(producer_client_);
+    fake_worker_pool_.registered_worker_by_id = producer_;
+  }
+
+  void AddRamCopy(const WorkerID &producer_worker_id) {
+    fake_object_manager_->local_object_producer_worker_ids[object_id_] =
+        producer_worker_id;
+    ObjectInfo object_info;
+    object_info.object_id = object_id_;
+    object_info.producer_worker_id = producer_worker_id;
+    node_manager_->HandleObjectLocal(object_info);
+  }
+
+  // Reads the copy's producer before deleting it, as the raylet does.
+  void DeleteRamCopy() {
+    const WorkerID producer_worker_id =
+        fake_object_manager_->GetLocalObjectProducerWorkerId(object_id_);
+    fake_object_manager_->local_object_producer_worker_ids.erase(object_id_);
+    node_manager_->HandleObjectMissing(object_id_, producer_worker_id);
+  }
+
+  void AddDiskCopy() { local_object_manager_->disk_copies.insert(object_id_); }
+
+  void DeleteDiskCopy() {
+    local_object_manager_->disk_copies.erase(object_id_);
+    node_manager_->HandleSpilledCopyDeleted(object_id_, producer_id_);
+  }
+
+  // The producer's pin, which this node records as the primary copy.
+  void Pin(const WorkerID &producer_worker_id) {
+    local_object_manager_->primary_copies.insert(object_id_);
+    local_object_manager_->producer_worker_ids[object_id_] = producer_worker_id;
+  }
+
+  // An actor task on this node takes the object as an arg.
+  void Consume(bool is_move = true) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id_.Binary());
+    node_manager_->HandleMovedActorCallArgs(WorkerID::FromRandom(), {ref}, {is_move});
+  }
+
+  bool FiredAtConsume() const {
+    return node_manager_->objects_freed_at_consume_.contains(object_id_);
+  }
+
+  // The objects the producer was told about, in order.
+  std::vector<ObjectID> FreedObjects() const {
+    std::vector<ObjectID> freed;
+    for (const rpc::OnObjectFreedRequest &request :
+         producer_client_->on_object_freed_requests) {
+      EXPECT_EQ(WorkerID::FromBinary(request.intended_worker_id()), producer_id_);
+      freed.push_back(ObjectID::FromBinary(request.object_id()));
+    }
+    return freed;
+  }
+
+  const ObjectID object_id_ = ObjectID::FromRandom();
+  const WorkerID producer_id_ = WorkerID::FromRandom();
+  std::shared_ptr<rpc::FakeCoreWorkerClient> producer_client_ =
+      std::make_shared<rpc::FakeCoreWorkerClient>();
+  std::shared_ptr<raylet::MockWorker> producer_;
+};
+
+TEST_F(NodeManagerOnObjectFreedTest, NeverSpilledFiresWhenTheCopyIsDeleted) {
+  AddRamCopy(producer_id_);
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, SpilledFiresWhenTheDiskCopyIsDeletedLast) {
+  // The in-memory copy is deleted first, by the free or by eviction.
+  AddRamCopy(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  EXPECT_TRUE(FreedObjects().empty());
+  DeleteDiskCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, SpilledFiresWhenTheRamCopyIsDeletedLast) {
+  AddRamCopy(producer_id_);
+  AddDiskCopy();
+  DeleteDiskCopy();
+  EXPECT_TRUE(FreedObjects().empty());
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, RestoredCopyFiresWhenTheDiskCopyIsDeletedLast) {
+  AddRamCopy(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  // A restored or received copy records no producer.
+  AddRamCopy(WorkerID::Nil());
+  DeleteRamCopy();
+  EXPECT_TRUE(FreedObjects().empty());
+  DeleteDiskCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, RestoredCopyFiresWhenTheRamCopyIsDeletedLast) {
+  AddRamCopy(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  AddRamCopy(WorkerID::Nil());
+  DeleteDiskCopy();
+  EXPECT_TRUE(FreedObjects().empty());
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, NoProducerDoesNotFire) {
+  AddRamCopy(WorkerID::Nil());
+  DeleteRamCopy();
+  EXPECT_TRUE(FreedObjects().empty());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MoveFiresOnceAndTheFreeDoesNotFireAgain) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  Consume();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  // A retry of the consuming task, or the same arg moved twice.
+  Consume();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MoveBeforeThePinFiresFromTheCopyList) {
+  AddRamCopy(producer_id_);
+  Consume();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest,
+       MovedSpilledObjectDoesNotFireAgainWhenRamCopyIsLast) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  Consume();
+  DeleteDiskCopy();
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest,
+       MovedSpilledObjectDoesNotFireAgainWhenDiskCopyIsLast) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  Consume();
+  DeleteRamCopy();
+  EXPECT_TRUE(FiredAtConsume());
+  DeleteDiskCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MoveAfterEvictionFiresFromThePinRecord) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  Consume();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  // Restored for the consumer, then freed with the disk copy deleted first.
+  AddRamCopy(WorkerID::Nil());
+  DeleteDiskCopy();
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MovedRestoredObjectDoesNotFireAgainWhenDiskIsLast) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  Consume();
+  AddRamCopy(WorkerID::Nil());
+  DeleteRamCopy();
+  DeleteDiskCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, FreeDuringTheRestoreDoesNotFireAgain) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  Consume();
+  // The free deletes the disk copy before the restored copy is sealed.
+  DeleteDiskCopy();
+  EXPECT_FALSE(FiredAtConsume());
+  AddRamCopy(WorkerID::Nil());
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, ArgThatIsNotMovedFiresAtTheFree) {
+  AddRamCopy(producer_id_);
+  Pin(producer_id_);
+  Consume(/*is_move=*/false);
+  EXPECT_TRUE(FreedObjects().empty());
+  DeleteRamCopy();
+  EXPECT_EQ(FreedObjects(), std::vector<ObjectID>{object_id_});
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, MoveOfACopyFromAnotherNodeDoesNotFire) {
+  // A received copy, pinned here by the move with no producer.
+  AddRamCopy(WorkerID::Nil());
+  Pin(WorkerID::Nil());
+  Consume();
+  DeleteRamCopy();
+  EXPECT_TRUE(FreedObjects().empty());
+  EXPECT_FALSE(FiredAtConsume());
+}
+
+TEST_F(NodeManagerOnObjectFreedTest, DeadProducerDoesNotFire) {
+  fake_worker_pool_.registered_worker_by_id = nullptr;
+  AddRamCopy(producer_id_);
+  AddDiskCopy();
+  DeleteRamCopy();
+  DeleteDiskCopy();
+  EXPECT_TRUE(FreedObjects().empty());
 }
 
 namespace {

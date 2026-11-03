@@ -291,7 +291,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// accounting, but does not write to any global accounting in the GCS.
   ///
   /// \param object_id The object that has been evicted locally.
-  void HandleObjectMissing(const ObjectID &object_id);
+  /// \param producer_worker_id The producer recorded on the deleted copy.
+  void HandleObjectMissing(const ObjectID &object_id, const WorkerID &producer_worker_id);
+
+  /**
+   * @brief Handle the deletion of a freed object's spilled copy.
+   *
+   * @param object_id The object whose spilled copy was deleted.
+   * @param producer_worker_id The producer recorded when the object was pinned.
+   */
+  void HandleSpilledCopyDeleted(const ObjectID &object_id,
+                                const WorkerID &producer_worker_id);
 
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
@@ -387,6 +397,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
   FRIEND_TEST(NodeManagerTest, TestHandleMovedActorCallArgs);
   FRIEND_TEST(NodeManagerTest, TestPinAndReportMovedObject);
+  friend class NodeManagerOnObjectFreedTest;
 
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
@@ -420,6 +431,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// specified in RayConfig, spill objects up to the max
   /// throughput.
   void SpillIfOverPrimaryObjectsThreshold();
+
+  /**
+   * @brief Ask the producer to run its `__on_object_freed__` hook for the object.
+   *
+   * Does nothing if the producer isn't registered on this node.
+   *
+   * @param object_id The freed object.
+   * @param producer_worker_id The worker that created the object.
+   */
+  void FireOnObjectFreed(const ObjectID &object_id, const WorkerID &producer_worker_id);
 
   /// Methods for handling nodes.
 
@@ -477,7 +498,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                  const std::vector<rpc::ObjectReference> &object_refs);
 
   /// Handle the args an actor task moves (TaskArg.is_move), before the wait
-  /// that fetches them starts: a local copy that is not the primary is pinned as
+  /// that fetches them starts: an arg created on this node runs its producer's
+  /// `__on_object_freed__` hook, a local copy that is not the primary is pinned as
   /// the new primary now, and any other arg this node does not hold the primary
   /// copy of is recorded so that its pull pins the copy on arrival.
   ///
@@ -1001,6 +1023,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ClusterLeaseManagerInterface &cluster_lease_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
+
+  /// Objects whose producer's `__on_object_freed__` hook already ran because an actor
+  /// task on this node moved them. Erased when the object's last copy here is deleted.
+  absl::flat_hash_set<ObjectID> objects_freed_at_consume_;
 
   // TODO(swang): Evict entries from these caches.
   /// Cache for the WorkerTable in the GCS.

@@ -841,8 +841,10 @@ int main(int argc, char *argv[]) {
         [&](const ray::ObjectID &object_id) {
           main_service.post(
               [&object_manager, &node_manager, object_id]() {
+                const ray::WorkerID producer_worker_id =
+                    object_manager->GetLocalObjectProducerWorkerId(object_id);
                 object_manager->HandleObjectDeleted(object_id);
-                node_manager->HandleObjectMissing(object_id);
+                node_manager->HandleObjectMissing(object_id, producer_worker_id);
               },
               "ObjectManager.ObjectDeleted");
         });
@@ -912,6 +914,10 @@ int main(int argc, char *argv[]) {
         /*is_plasma_object_spillable*/
         [&](const ray::ObjectID &object_id) {
           return object_manager->IsPlasmaObjectSpillable(object_id);
+        },
+        /*on_spilled_copy_deleted*/
+        [&](const ray::ObjectID &object_id, const ray::WorkerID &producer_worker_id) {
+          node_manager->HandleSpilledCopyDeleted(object_id, producer_worker_id);
         },
         object_directory.get(),
         object_store_memory_gauge,
