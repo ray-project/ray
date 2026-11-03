@@ -13,6 +13,9 @@ from pydantic import BaseModel
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.handle import DeploymentHandle
@@ -169,7 +172,8 @@ class TestRun:
         def is_proxy_location_correct(expected_proxy_location: str) -> bool:
             try:
                 response = httpx.get(
-                    "http://localhost:8265/api/serve/applications/"
+                    "http://localhost:8265/api/serve/applications/",
+                    headers=get_auth_headers_if_auth_enabled({}),
                 ).text
                 response_json = json.loads(response)
                 print("response_json")
@@ -197,6 +201,12 @@ class TestRun:
         wait_for_condition(
             lambda: is_proxy_location_correct(expected_proxy_location=expected),
             timeout=15,
+        )
+        # The proxy location shows up while `serve run` is still starting up, where a
+        # SIGINT can land in an object finalizer that discards the KeyboardInterrupt
+        # and leaves `p.wait()` hanging. Interrupt it only once the app is RUNNING.
+        wait_for_condition(
+            check_app_running, app_name=SERVE_DEFAULT_APP_NAME, timeout=30
         )
         p.send_signal(signal.SIGINT)
         p.wait()

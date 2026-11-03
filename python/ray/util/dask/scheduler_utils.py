@@ -159,8 +159,7 @@ DEBUG = False
 def finish_task(
     dsk, key, state, results, sortkey, delete=True, release_data=release_data
 ):
-    """
-    Update execution state after a task finishes
+    """Update execution state after a task finishes
     Mutates.  This should run atomically (with a lock).
     """
     for dep in sorted(state["dependents"][key], key=sortkey, reverse=True):
