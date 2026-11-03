@@ -44,11 +44,17 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 constexpr char kClusterIdKey[] = "ray_cluster_id";
 constexpr char kAuthTokenKey[] = "authorization";
 constexpr char kBearerPrefix[] = "Bearer ";
-// Python matches this text to detect the error; keep in sync with
-// AUTH_MODE_MISMATCH_ERROR_MESSAGE in
+// For a client with no token and for a token sent to a cluster with auth disabled.
+// Keep in sync with TOKEN_AUTH_ERROR_MESSAGE in
 // python/ray/_private/authentication/authentication_constants.py.
-constexpr char kAuthModeMismatchErrorMessage[] =
-    "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client too";
+constexpr char kTokenAuthErrorMessage[] =
+    "Token authentication is enabled on this client, but it has no token or the "
+    "cluster has token authentication disabled. To connect to a cluster with token "
+    "authentication, run `ray get-auth-token` on the head node and copy the token to "
+    "~/.ray/auth_token on this machine, or to a file that RAY_AUTH_TOKEN_PATH points "
+    "to. If the cluster was started with RAY_AUTH_MODE=disabled, set "
+    "RAY_AUTH_MODE=disabled here too. See "
+    "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information.";
 
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";

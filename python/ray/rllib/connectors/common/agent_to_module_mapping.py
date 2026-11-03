@@ -7,7 +7,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import EpisodeType, ModuleID
+from ray.rllib.utils.typing import AgentToModuleMappingFn, EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
 
@@ -103,6 +103,9 @@ class AgentToModuleMapping(ConnectorV2):
             agent_to_module_mapping_fn=(
                 lambda agent_id, eps: "module1" if agent_id == "agent1" else "module0"
             ),
+            # Keep the data of all agents. In env-to-module mode, the connector
+            # keeps only the agents that act next in `episodes`.
+            as_learner_connector=True,
         )
 
         # Call the connector (and thereby flip from AgentID based to ModuleID based
@@ -129,6 +132,20 @@ class AgentToModuleMapping(ConnectorV2):
                 },
             },
         )
+
+    Args:
+        input_observation_space: The input observation space, from the env or the
+            previous connector piece in the pipeline.
+        input_action_space: The input action space, from the env or the previous
+            connector piece in the pipeline.
+        rl_module_specs: A dict mapping the ModuleIDs to their RLModuleSpecs. A set
+            of ModuleIDs also works, as in the example above, but then the
+            per-module spaces can't come from the specs.
+        agent_to_module_mapping_fn: The function that maps an AgentID and its
+            episode to a ModuleID.
+        as_learner_connector: Whether this piece runs in a Learner connector
+            pipeline. If False, it keeps only the data of agents that act next in
+            each episode. If True, it keeps the data of all agents.
     """
 
     @override(ConnectorV2)
@@ -153,7 +170,7 @@ class AgentToModuleMapping(ConnectorV2):
         input_action_space: Optional[gym.Space] = None,
         *,
         rl_module_specs: Dict[ModuleID, RLModuleSpec],
-        agent_to_module_mapping_fn,
+        agent_to_module_mapping_fn: AgentToModuleMappingFn,
         as_learner_connector: bool = False,
     ):
         super().__init__(input_observation_space, input_action_space)

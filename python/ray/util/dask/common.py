@@ -21,8 +21,7 @@ except ImportError:
 
 
 def unpack_object_refs(*args: Any):
-    """
-    Extract Ray object refs from a set of potentially arbitrarily nested
+    """Extract Ray object refs from a set of potentially arbitrarily nested
     Python objects.
 
     Intended use is to find all Ray object references in a set of (possibly

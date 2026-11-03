@@ -44,6 +44,7 @@
 #include "ray/ray_syncer/ray_syncer_client.h"
 #include "ray/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/util/env.h"
 #include "ray/util/network_util.h"
@@ -558,7 +559,8 @@ struct SyncerServerTest {
 
     auto server_address = BuildAddress("0.0.0.0", port);
     grpc::ServerBuilder builder;
-    service = std::make_unique<RaySyncerService>(*syncer);
+    service = std::make_unique<RaySyncerService>(
+        *syncer, ray::rpc::AuthenticationTokenLoader::instance().GetToken());
     grpc_service = std::make_unique<RaySyncerGrpcService>(*service);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
     builder.RegisterService(grpc_service.get());
@@ -1168,15 +1170,16 @@ struct FakeRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
         io_context(_io_context) {}
   grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
       grpc::CallbackServerContext *context) override {
-    reactor = new RayServerBidiReactor(context,
-                                       io_context,
-                                       node_id.Binary(),
-                                       message_processor,
-                                       cleanup_cb,
-                                       nullptr,
-                                       ray::rpc::AuthenticationTokenValidator::instance(),
-                                       /*max_batch_size=*/1,
-                                       /*max_batch_delay_ms=*/0);
+    reactor = new RayServerBidiReactor(
+        context,
+        io_context,
+        node_id.Binary(),
+        message_processor,
+        cleanup_cb,
+        ray::rpc::AuthenticationTokenLoader::instance().GetToken(),
+        ray::rpc::AuthenticationTokenValidator::instance(),
+        /*max_batch_size=*/1,
+        /*max_batch_delay_ms=*/0);
     return reactor;
   }
 
@@ -1486,30 +1489,6 @@ TEST_F(SyncerAuthenticationTest, MismatchedTokens) {
   ASSERT_EQ(client.syncer->GetAllConnectedNodeIDs().size(), 0);
 }
 
-TEST_F(SyncerAuthenticationTest, ServerHasTokenClientDoesNot) {
-  // Test that connections fail when server requires token but client doesn't provide it
-  const std::string server_token = "server-token-12345";
-
-  // Client has no token - auth mode is disabled (default from SetUp)
-  ray::UnsetEnv("RAY_AUTH_TOKEN");
-  ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
-
-  // Create authenticated server
-  auto server = CreateAuthenticatedServer("37895", server_token);
-
-  // Create client with separate io_context
-  ClientSyncer client;
-  auto channel = grpc::CreateChannel(BuildAddress("0.0.0.0", "37895"),
-                                     grpc::InsecureChannelCredentials());
-
-  // Should fail to connect without token
-  client.Connect(channel);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Verify connection fails - no connected nodes
-  ASSERT_EQ(client.syncer->GetAllConnectedNodeIDs().size(), 0);
-}
-
 grpc::Status StartSyncWithMetadata(
     const std::string &port,
     const std::vector<std::pair<std::string, std::string>> &metadata) {
@@ -1526,6 +1505,14 @@ grpc::Status StartSyncWithMetadata(
   return stream->Finish();
 }
 
+TEST_F(SyncerAuthenticationTest, ServerHasTokenClientDoesNot) {
+  RayConfig::instance().AUTH_MODE() = "token";
+  auto server = CreateAuthenticatedServer("37895", "server-token-12345");
+  ASSERT_EQ(StartSyncWithMetadata("37895", {{"node_id", NodeID::FromRandom().Hex()}})
+                .error_code(),
+            grpc::StatusCode::UNAUTHENTICATED);
+}
+
 TEST_F(SyncerAuthenticationTest, ServerWithAuthDisabledRejectsToken) {
   auto server = CreateAuthenticatedServer("37896", "");
   auto status = StartSyncWithMetadata(
@@ -1534,18 +1521,18 @@ TEST_F(SyncerAuthenticationTest, ServerWithAuthDisabledRejectsToken) {
        {kAuthTokenKey,
         ray::rpc::AuthenticationToken("client-token").ToAuthorizationHeaderValue()}});
   ASSERT_EQ(status.error_code(), grpc::StatusCode::UNAUTHENTICATED);
-  ASSERT_EQ(status.error_message(),
-            "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client "
-            "too");
+  ASSERT_EQ(status.error_message(), kTokenAuthErrorMessage);
 }
 
 TEST_F(SyncerAuthenticationTest, MissingNodeIdAndTokenIsRejected) {
+  RayConfig::instance().AUTH_MODE() = "token";
   auto server = CreateAuthenticatedServer("37897", "server-token-12345");
   ASSERT_EQ(StartSyncWithMetadata("37897", {}).error_code(),
             grpc::StatusCode::UNAUTHENTICATED);
 }
 
 TEST_F(SyncerAuthenticationTest, MissingNodeIdWithValidTokenIsRejected) {
+  RayConfig::instance().AUTH_MODE() = "token";
   const std::string token = "server-token-12345";
   auto server = CreateAuthenticatedServer("37898", token);
   ASSERT_EQ(StartSyncWithMetadata(
