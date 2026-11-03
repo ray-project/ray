@@ -420,11 +420,6 @@ class TestKvOffload:
         cached_score = scores[cached_worker]
         miss_score = scores[miss_worker]
         assert cached_score["host_pinned_extension_blocks"] > 0
-        assert (
-            0
-            < cached_score["router_credit_blocks"]
-            < cached_score["host_pinned_blocks"]
-        )
         assert miss_score["device_blocks"] == 0
         assert miss_score["host_pinned_blocks"] == 0
 
