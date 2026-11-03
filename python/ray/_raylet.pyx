@@ -713,17 +713,17 @@ def raise_sys_exit_with_custom_error_message(
     raise e
 
 
-cdef find_consume_once_arg(args, c_bool moved_only):
+cdef find_consume_once_arg(args):
     """Return the hex ID of the first ObjectRef arg created with _consume_once=True.
 
-    With moved_only, only looks for MOVED args. Else looks for both MOVABLE and MOVED.
     Returns None if there is no such arg.
     """
     cdef:
         c_vector[CObjectID] arg_ids
         c_vector[optional[CMoveState]] move_states
-        CMoveState move_state
         size_t i
+    if not CCoreWorkerProcess.GetCoreWorker().HasConsumeOnceObjects():
+        return None
     for arg in args:
         # Only ObjectRef args are checked here. A consume-once ref nested inside
         # another arg (for eg: [ref], {"k": ref} etc.) is rejected by the serializer.
@@ -732,11 +732,9 @@ cdef find_consume_once_arg(args, c_bool moved_only):
     if arg_ids.empty():
         return None
     move_states = CCoreWorkerProcess.GetCoreWorker().GetMoveStates(arg_ids)
-    # The states are checked after the lock is released. That's safe because the move
-    # state only moves forward: NOT_MOVABLE never changes, and MOVABLE only becomes
-    # MOVED. So whether an arg is consume-once can't change, and a MOVED arg stays
-    # MOVED. A MOVABLE read can be stale, but it is still correct at this point since
-    # SubmitActorTask will catch it later.
+    # The states are checked after the lock is released. That's safe because whether
+    # an object is consume-once never changes: NOT_MOVABLE stays NOT_MOVABLE, and
+    # MOVABLE only becomes MOVED.
     for i in range(arg_ids.size()):
         if not move_states[i].has_value():
             # At this point, objectId is not Nil, therefore move state should not
@@ -746,9 +744,7 @@ cdef find_consume_once_arg(args, c_bool moved_only):
                 f"No reference found for task argument {arg_ids[i].Hex().decode()} "
                 "while checking for consume-once arguments.")
             continue
-        move_state = move_states[i].value()
-        if move_state == CMoveState.MOVED or (
-                not moved_only and move_state == CMoveState.MOVABLE):
+        if move_states[i].value() != CMoveState.NOT_MOVABLE:
             return arg_ids[i].Hex().decode()
     return None
 
@@ -4038,7 +4034,7 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string call_site
 
-        consume_once_arg = find_consume_once_arg(args, moved_only=False)
+        consume_once_arg = find_consume_once_arg(args)
         if consume_once_arg is not None:
             raise ValueError(
                 f"Object {consume_once_arg} was created with _consume_once=True. "
@@ -4147,7 +4143,7 @@ cdef class CoreWorker:
             c_vector[CFallbackOption] c_fallback_strategy
             c_string call_site
 
-        consume_once_arg = find_consume_once_arg(args, moved_only=False)
+        consume_once_arg = find_consume_once_arg(args)
         if consume_once_arg is not None:
             raise ValueError(
                 f"Object {consume_once_arg} was created with _consume_once=True. "
@@ -4333,14 +4329,6 @@ cdef class CoreWorker:
             optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
             c_string c_tensor_transport_str
             CTaskOptions task_options
-
-        # Fails fast before args are serialized. SubmitActorTask commits the move
-        # and checks again, atomically.
-        consume_once_arg = find_consume_once_arg(args, moved_only=True)
-        if consume_once_arg is not None:
-            raise ValueError(
-                f"Object {consume_once_arg} was created with _consume_once=True and "
-                "was already passed to an actor task.")
 
         if tensor_transport is not None:
             c_tensor_transport_str = tensor_transport.encode("utf-8")
@@ -4735,6 +4723,13 @@ cdef class CoreWorker:
                 c_object_id, &c_owner_address)
         check_status(op_status)
         return c_owner_address.SerializeAsString()
+
+    def has_consume_once_objects(self):
+        """Return True if this worker owns any object created with _consume_once=True.
+
+        Doesn't take the reference counter lock.
+        """
+        return CCoreWorkerProcess.GetCoreWorker().HasConsumeOnceObjects()
 
     def get_move_state(self, ObjectRef object_ref):
         """Return the move state of an ObjectRef in this worker's reference table.

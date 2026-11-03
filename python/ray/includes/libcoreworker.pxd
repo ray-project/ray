@@ -157,6 +157,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_string serialized_retry_exception_allowlist,
             c_string call_site,
             const CTaskID current_task_id)
+        c_bool HasConsumeOnceObjects() const
         optional[CMoveState] GetMoveState(const CObjectID &object_id)
         c_vector[optional[CMoveState]] GetMoveStates(
             const c_vector[CObjectID] &object_ids)

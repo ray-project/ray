@@ -2311,6 +2311,10 @@ std::vector<std::optional<MoveState>> CoreWorker::GetMoveStates(
   return reference_counter_->GetMoveStates(object_ids);
 }
 
+bool CoreWorker::HasConsumeOnceObjects() const {
+  return reference_counter_->HasConsumeOnceObjects();
+}
+
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
@@ -2706,7 +2710,7 @@ Status CoreWorker::SubmitActorTask(
       arg_ids.push_back(*arg_id);
     }
   }
-  if (!arg_ids.empty()) {
+  if (!arg_ids.empty() && reference_counter_->HasConsumeOnceObjects()) {
     RAY_RETURN_NOT_OK(reference_counter_->TryCommitMoves(arg_ids));
   }
 
