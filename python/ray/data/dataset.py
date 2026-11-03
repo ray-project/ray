@@ -3011,6 +3011,9 @@ class Dataset:
             >>> d3.take_batch()
             {'id': array([5, 6, 7, 8, 9])}
 
+        The dataset is executed with ``preserve_order=True``, so splits follow
+        the row order of the dataset.
+
         Time complexity: O(num splits)
 
         Args:
@@ -3044,7 +3047,8 @@ class Dataset:
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        bundle: RefBundle = self._execute()
+        # Row order decides which rows land in which split, so keep block order.
+        bundle: RefBundle = self._execute(preserve_order=True)
         blocks, metadata = _split_at_indices(
             [(entry.ref, entry.metadata) for entry in bundle.blocks],
             indices,
@@ -3232,7 +3236,7 @@ class Dataset:
             # Materialize once so split_at_indices() can reuse the computed snapshot.
             # Calling count() first would execute the upstream pipeline for counting,
             # then execute it again for the split.
-            ds = ds.materialize()
+            ds = ds._materialize(preserve_order=True)
             dataset_length = ds._meta_count()
             if dataset_length is None:
                 dataset_length = ds.count()
@@ -7938,9 +7942,12 @@ class Dataset:
         Returns:
             A MaterializedDataset holding the materialized data blocks.
         """
+        return self._materialize()
+
+    def _materialize(self, preserve_order: bool = False) -> "MaterializedDataset":
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
 
-        bundle: RefBundle = copy._execute()
+        bundle: RefBundle = copy._execute(preserve_order=preserve_order)
         blocks_with_metadata = bundle.blocks
 
         # TODO(hchen): Here we generate the same number of blocks as
