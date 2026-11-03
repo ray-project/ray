@@ -399,15 +399,31 @@ class BasicVariantGenerator(SearchAlgorithm):
         del state["_trial_iter"]
         return state
 
-    def set_state(self, state):
-        """Restores the generator's state and rebuilds its trial iterators."""
+    def set_state(self, state: Dict):
+        """Restores the generator's state and rebuilds its trial iterators.
+
+        Args:
+            state: A state that ``get_state`` returned.
+        """
         self.__dict__.update(state)
         self._trial_iter = None
         self._trial_generator = []
         for iterator in self._iterators:
             self._trial_generator = itertools.chain(self._trial_generator, iterator)
 
-    def save_to_dir(self, dirpath, session_str):
+    def save_to_dir(self, dirpath: str, session_str: str) -> Optional[bool]:
+        """Saves the generator's state to a checkpoint file in ``dirpath``.
+
+        Does nothing if any of the generator's variants are generated lazily.
+
+        Args:
+            dirpath: Directory to write the checkpoint file to.
+            session_str: Unique identifier of the current run session, used
+                in the checkpoint file name.
+
+        Returns:
+            False if the generator wasn't saved, otherwise None.
+        """
         if any(iterator.lazy_eval for iterator in self._iterators):
             return False
         state_dict = self.get_state()

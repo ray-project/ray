@@ -229,37 +229,15 @@ A minimal sample cluster configuration file looks as follows:
 
 :::{tab-item} Azure
 :sync: Azure
-```yaml
-# An unique identifier for the head node and workers of this cluster.
-cluster_name: minimal
-
-# Cloud-provider specific configuration.
-provider:
-    type: azure
-    location: westus2
-    resource_group: ray-cluster
-
-# How Ray will authenticate with newly launched nodes.
-auth:
-    ssh_user: ubuntu
-    # you must specify paths to matching private and public key pair files
-    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
-    ssh_private_key: ~/.ssh/id_rsa
-    # changes to this should match what is specified in file_mounts
-    ssh_public_key: ~/.ssh/id_rsa.pub
+```{literalinclude} ../../../../python/ray/autoscaler/azure/example-minimal.yaml
+:language: yaml
 ```
 :::
 
 :::{tab-item} GCP
 :sync: GCP
-```yaml
-# A unique identifier for the head node and workers of this cluster.
-cluster_name: minimal
-
-# Cloud-provider specific configuration.
-provider:
-    type: gcp
-    region: us-west1
+```{literalinclude} ../../../../python/ray/autoscaler/gcp/example-minimal.yaml
+:language: yaml
 ```
 :::
 ::::
