@@ -1,14 +1,15 @@
 """Read the Parquet fields that PyArrow's Python bindings don't expose.
 
-:func:`read_size_statistics` reads each column chunk's ``SizeStatistics`` from
-the footer bytes ``FileMetaData`` already holds, and :func:`read_dictionary_page`
-reads a dictionary page's header. Both decode Thrift's compact protocol by hand,
-only the fields they need.
+A Parquet file has one footer, at its end, with metadata for every leaf of every
+row group. A leaf is a column of primitive values: a flat column is one leaf, and
+a struct column of two fields is two. :func:`read_size_statistics` reads each
+leaf's ``SizeStatistics`` from the footer bytes ``FileMetaData`` already holds,
+and :func:`read_dictionary_page` reads a dictionary page's header. Both decode
+Thrift's compact protocol by hand, only the fields they need.
 
-So reading size statistics is a pure-Python pass over the whole footer, about
-6 ms per 1,000 column chunks: 0.6 s for 1,000 leaves by 100 row groups (Apple
-M5, Python 3.12). PyArrow's C++ parses the same footer about 20 times faster,
-but doesn't expose these fields.
+Reading the footer in Python takes about 6 microseconds per row group per leaf:
+0.6 s for 100 row groups of 1,000 leaves (Apple M5, Python 3.12). PyArrow's C++
+parses the same footer about 20 times faster, but doesn't expose these fields.
 """
 
 from __future__ import annotations
@@ -80,7 +81,7 @@ _DICTIONARY_PAGE = 2  # PageType.DICTIONARY_PAGE
 
 
 class LeafSizeStats(NamedTuple):
-    """A column chunk's ``SizeStatistics``: its string bytes and level histograms."""
+    """A leaf's ``SizeStatistics`` in a row group: string bytes, level histograms."""
 
     unencoded_byte_array_data_bytes: Optional[int]
     repetition_level_histogram: Tuple[int, ...]
