@@ -227,7 +227,9 @@ def test_callback_start_failure():
     with pytest.raises(RuntimeError):
         wg._start()
 
-    wg.shutdown()
+    # A failed start cleans up after itself; `WorkerGroup.create()` callers
+    # never receive the worker group, so they can't shut it down.
+    assert not wg.has_started()
 
 
 def test_start_timeout(monkeypatch):

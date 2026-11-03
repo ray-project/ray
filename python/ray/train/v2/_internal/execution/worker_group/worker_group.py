@@ -207,15 +207,22 @@ class WorkerGroup(ExecutionGroup):
         """Internal method to start the worker group."""
 
         worker_group_state_builder = WorkerGroupStateBuilder()
+        # `_start_impl` rejects an already-started worker group; that state
+        # belongs to the earlier start and must not be torn down here.
+        already_started = self.has_started()
 
         try:
             self._start_impl(
                 worker_group_state_builder,
             )
         except Exception as e:
-            if not self.has_started():
-                # Clean up partial worker group state.
-                worker_group_state_builder.shutdown()
+            # Clean up the partial worker group. The state may already be built if
+            # the failure happened after `build()` (e.g. a worker's node died
+            # while launching the train fn). The caller never receives this
+            # worker group, so nothing else would release its resources.
+            worker_group_state_builder.shutdown()
+            if not already_started:
+                self._clear_state()
             raise e
 
         assert self.has_started(), "Worker group failed to start."
@@ -378,19 +385,22 @@ class WorkerGroup(ExecutionGroup):
                     f"  Individual callback time breakdown:\n{after_wg_start_cb_breakdown}"
                 )
 
+                # Launch the training function on each worker.
+                # This task should start a worker thread and return immediately.
+                launch_start = time_monotonic()
+                ray.get(
+                    [
+                        worker.actor.run_train_fn.remote(
+                            worker_group_context.train_fn_ref
+                        )
+                        for worker in workers
+                    ]
+                )
+
             except RayActorError as actor_error:
                 error_msg = "At least one of the worker actors failed to initialize."
                 raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
-        # Launch the training function on each worker.
-        # This task should start a worker thread and return immediately.
-        launch_start = time_monotonic()
-        ray.get(
-            [
-                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
-                for worker in workers
-            ]
-        )
         logger.debug(
             "[Worker Group Initialization] Train function launched on "
             f"workers in {time_monotonic() - launch_start:.2f}s."
