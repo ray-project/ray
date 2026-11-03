@@ -1160,6 +1160,34 @@ class TestPackagingAndExtraction(unittest.TestCase):
             ):
                 extract_function_source_and_globals(fn)
 
+        # Python 3.13+ LOAD_FAST_LOAD_FAST (2-tuple argval) and comprehension defaults
+        # referencing enclosing locals that shadow a module global (GLOBAL_SCALE)
+        def make_multi_local_default():
+            GLOBAL_SCALE = 100
+            extra = 5
+
+            def inner(x: int, y: int = GLOBAL_SCALE + extra) -> int:
+                return x + y
+
+            return inner
+
+        def make_comp_default():
+            GLOBAL_SCALE = 100
+
+            def inner(
+                x: int,
+                items: list = [i + GLOBAL_SCALE for i in (1, 2)],  # noqa: B006
+            ) -> int:
+                return x + sum(items)
+
+            return inner
+
+        for fn in (make_multi_local_default(), make_comp_default()):
+            with self.assertRaisesRegex(
+                RayClientSerializationError, "Default argument .* enclosing"
+            ):
+                extract_function_source_and_globals(fn)
+
         def builtin_default(x: int, cb=print) -> bool:
             return cb is print
 
@@ -2506,6 +2534,10 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             "import asyncio\n"
             "EVENTS = []\n"
             "class AsyncExitActor:\n"
+            "    async def __init__(self, init_val: int = 10):\n"
+            "        await asyncio.sleep(0.005)\n"
+            "        self.init_val = init_val\n"
+            "        EVENTS.append(f'async_init:{init_val}')\n"
             "    @property\n"
             "    def boom_prop(self):\n"
             "        raise RuntimeError('property getter should not run during __init__')\n"
@@ -2593,8 +2625,13 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                     "kind": "class",
                     "class_name": "AsyncExitActor",
                     "module_source": async_src,
+                    "args": [25],
                     "ttl_seconds": None,
                 }
+            )
+            self.assertIn(
+                "async_init:25",
+                root_act.invoke("read_events", [], {})["result"],
             )
             self.assertEqual(
                 os.environ.get("RAY_NAMESPACE"), "ray_client_test_root_exit"
@@ -4217,6 +4254,19 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
                         runtime_env={"working_dir": bad_wd},
                     )
             self.assertEqual(len(self.state.packages), pkg_count_before)
+
+            # 5. Non-dict kwargs (e.g. list of pairs) are rejected with TypeError on run(), actor(), call(), and stream()
+            with self.assertRaisesRegex(TypeError, "kwargs must be a dict"):
+                cluster.run(get_val, 1, kwargs=[("x", 1)])  # type: ignore[arg-type]
+            with self.assertRaisesRegex(TypeError, "kwargs must be a dict"):
+                cluster.actor(StreamService, kwargs=[("x", 1)])  # type: ignore[arg-type]
+            with cluster.actor(StreamService, name="kw_check_act") as kw_act:
+                with self.assertRaisesRegex(TypeError, "kwargs must be a dict"):
+                    kw_act.call("non_stream", 1, kwargs=[("x", 1)])  # type: ignore[arg-type]
+                with self.assertRaisesRegex(TypeError, "kwargs must be a dict"):
+                    kw_act.non_stream.call(1, kwargs=[("x", 1)])  # type: ignore[arg-type]
+                with self.assertRaisesRegex(TypeError, "kwargs must be a dict"):
+                    kw_act.gen_items.stream(2, kwargs=[("count", 2)])  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

@@ -100,6 +100,8 @@ class ActorHandle:
     ) -> Any:
         if not isinstance(method, str) or not method.strip():
             raise ValueError("Actor method name must be a non-empty string.")
+        if kwargs is not None and not isinstance(kwargs, dict):
+            raise TypeError(f"kwargs must be a dict, got {kwargs!r}.")
         to_json(list(args), f"Actor '{self._name}.{method}' positional arguments")
         to_json(dict(kwargs or {}), f"Actor '{self._name}.{method}' keyword arguments")
         body: Dict[str, Any] = {
@@ -226,6 +228,8 @@ class _ActorMethodProxy:
         timeout: Optional[float] = None,
         **method_kwargs: Any,
     ) -> Any:
+        if kwargs is not None and not isinstance(kwargs, dict):
+            raise TypeError(f"kwargs must be a dict, got {kwargs!r}.")
         merged_kwargs = {**(kwargs or {}), **method_kwargs}
         return self._actor.call(
             self._method, *args, kwargs=merged_kwargs or None, timeout=timeout
@@ -238,6 +242,8 @@ class _ActorMethodProxy:
         timeout: Optional[float] = None,
         **method_kwargs: Any,
     ) -> Iterator[Any]:
+        if kwargs is not None and not isinstance(kwargs, dict):
+            raise TypeError(f"kwargs must be a dict, got {kwargs!r}.")
         merged_kwargs = {**(kwargs or {}), **method_kwargs}
         return self._actor.stream(
             self._method, *args, kwargs=merged_kwargs or None, timeout=timeout

@@ -540,9 +540,24 @@ class _ClientRootActor:
                     mod_cls = getattr(target.__ray_metadata__, "modified_class", None)
                     raw_cls = getattr(mod_cls, "__ray_actor_class__", target)
                 cls_to_instantiate = raw_cls if inspect.isclass(raw_cls) else target
-                self._instance = cls_to_instantiate(
-                    *(spec.get("args") or []), **(spec.get("kwargs") or {})
-                )
+                init_args = spec.get("args") or []
+                init_kwargs = spec.get("kwargs") or {}
+                init_fn = inspect.unwrap(getattr(cls_to_instantiate, "__init__", None))
+                if inspect.iscoroutinefunction(init_fn):
+                    inst = cls_to_instantiate.__new__(cls_to_instantiate)
+                    coro = cls_to_instantiate.__init__(inst, *init_args, **init_kwargs)
+                    loop = self._ensure_async_loop()
+                    task_holder: List[Any] = []
+                    fut = asyncio.run_coroutine_threadsafe(
+                        _await_coro_catching_system_exit(coro, task_holder),
+                        loop,
+                    )
+                    is_exit, val = self._wait_coroutine_future(fut, loop, task_holder)
+                    if is_exit:
+                        raise SystemExit(val)
+                    self._instance = inst
+                else:
+                    self._instance = cls_to_instantiate(*init_args, **init_kwargs)
                 for attr_name in dir(self._instance):
                     if (
                         attr_name != "__call__"

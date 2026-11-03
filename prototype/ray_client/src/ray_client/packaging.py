@@ -188,6 +188,7 @@ _FAST_OR_DEREF_LOADS = frozenset(
         "LOAD_DEREF",
         "LOAD_CLASSDEREF",
         "LOAD_CLOSURE",
+        "LOAD_FROM_DICT_OR_DEREF",
     }
 )
 
@@ -351,6 +352,13 @@ def _unclosed_enclosing_names(
                 if instr.opname in _FAST_OR_DEREF_LOADS:
                     if instr.argval not in cells and instr.argval not in active_comp:
                         header_unclosed.add(instr.argval)
+                elif instr.opname in (
+                    "LOAD_FAST_LOAD_FAST",
+                    "LOAD_FAST_BORROW_LOAD_FAST_BORROW",
+                ) and isinstance(instr.argval, tuple):
+                    for loaded in instr.argval:
+                        if loaded not in cells and loaded not in active_comp:
+                            header_unclosed.add(loaded)
                 elif (
                     instr.opname == "STORE_FAST_LOAD_FAST"
                     and isinstance(instr.argval, tuple)

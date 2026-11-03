@@ -1168,6 +1168,8 @@ class RayCluster:
         validated_node_id, validated_selector = _validate_node_id_and_label_selector(
             node_id, label_selector
         )
+        if kwargs is not None and not isinstance(kwargs, dict):
+            raise TypeError(f"kwargs must be a dict, got {kwargs!r}.")
         (
             resolved_cpus,
             resolved_gpus,
@@ -1691,6 +1693,8 @@ class RayCluster:
         resolved_concurrency: int = (
             1 if max_concurrency is None else _validate_max_concurrency(max_concurrency)
         )
+        if kwargs is not None and not isinstance(kwargs, dict):
+            raise TypeError(f"kwargs must be a dict, got {kwargs!r}.")
 
         if isinstance(cls_or_path, str):
             module_path, class_name = _parse_entrypoint_str(cls_or_path, "Actor")

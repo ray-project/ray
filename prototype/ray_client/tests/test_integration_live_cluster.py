@@ -603,6 +603,35 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         self.assertIn("closed:ctx_scoped_1", recorder.get_events())
         self.assertIn("closed:ctx_scoped_2", recorder.get_events())
 
+        # 6b. Actor with `async def __init__` and `async def close` runs both on the actor's event loop
+        class AsyncLifecycleWorker:
+            async def __init__(self, base: int = 10):
+                await asyncio.sleep(0.01)
+                self.q: asyncio.Queue = asyncio.Queue()
+                await self.q.put(base)
+
+            async def push_and_sum(self, val: int) -> int:
+                first = await self.q.get()
+                total = first + val
+                await self.q.put(total)
+                return total
+
+            async def close(self) -> None:
+                import ray
+
+                await asyncio.sleep(0.005)
+                rec = ray.get_actor("live_cleanup_recorder")
+                ray.get(rec.invoke.remote("record", ["closed:async_lifecycle"], {}))
+
+        with self.cluster.actor(
+            AsyncLifecycleWorker,
+            20,
+            name="live_async_lifecycle_worker",
+            get_if_exists="recreate",
+        ) as async_w:
+            self.assertEqual(async_w.push_and_sum(7), 27)
+        self.assertIn("closed:async_lifecycle", recorder.get_events())
+
         # 7. User detached actors in "ray_client" namespace are protected from
         #    list_actors(), get_actor(), kill_actor(), and get_if_exists="recreate",
         #    while concurrent get_if_exists="recreate" calls on a _ClientRootActor converge cleanly.
