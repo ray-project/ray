@@ -1,5 +1,8 @@
 """Estimate the Arrow bytes a Parquet row group decodes to, from its footer.
 
+A leaf is a column of primitive values: a flat column is one leaf, and a struct
+column of two fields is two.
+
 Per file, walk the Arrow schema into one chain of arrays per Parquet leaf: its
 structs and lists, then the leaf itself. Per row group, read each array's length
 and nulls from the footer (exact with SizeStatistics, a bound without), size it
