@@ -969,6 +969,26 @@ def test_ragged_tensors(ray_start_regular_shared, tensor_format_context):
     ]
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="Requires pyarrow>=16 for native FixedShapeTensorArray",
+)
+def test_native_tensor_null_rows(ray_start_regular_shared):
+    native = pa.FixedShapeTensorArray.from_numpy_ndarray(
+        np.array([[10.0, 11.0], [20.0, 21.0]])
+    )
+    ds = ray.data.from_arrow(pa.table({"x": native.take(pa.array([0, None, 1]))}))
+    assert isinstance(ds.schema().types[0], FixedShapeTensorType)
+
+    batch = next(iter(ds.iter_batches(batch_format="numpy", batch_size=None)))
+    rows = [row["x"] for row in ds.take_all()]
+
+    for values in (list(batch["x"]), rows):
+        np.testing.assert_array_equal(values[0], [10.0, 11.0])
+        assert values[1] is None
+        np.testing.assert_array_equal(values[2], [20.0, 21.0])
+
+
 @pytest.mark.parametrize(
     "write_format",
     [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2],
