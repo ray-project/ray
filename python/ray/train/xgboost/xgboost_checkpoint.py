@@ -76,7 +76,11 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
         return checkpoint
 
     def get_model(self) -> xgboost.Booster:
-        """Retrieve the XGBoost model stored in this checkpoint."""
+        """Retrieve the XGBoost model stored in this checkpoint.
+
+        Returns:
+            The ``xgboost.Booster`` loaded from the checkpoint.
+        """
         with self.as_directory() as checkpoint_path:
             booster = xgboost.Booster()
             booster.load_model(Path(checkpoint_path, self.MODEL_FILENAME).as_posix())

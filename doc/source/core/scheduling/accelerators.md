@@ -109,6 +109,8 @@ You can set the `HABANA_VISIBLE_MODULES` environment variable before starting a 
 :sync: Huawei Ascend
 :::{tip}
 You can set the `ASCEND_RT_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Huawei Ascend NPUs that are visible to Ray. For example, `ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'` lets Ray only see devices 1 and 3.
+
+For the Ascend driver, DCMI, and environment requirements for collecting NPU hardware metrics, see {ref}`Monitor Huawei Ascend NPUs <ascend-npu-monitoring>`.
 :::
 ::::
 

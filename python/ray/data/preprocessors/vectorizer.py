@@ -155,18 +155,25 @@ class HashingVectorizer(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately tokenize and count."""
         return self._columns
 
     @property
     def num_features(self) -> int:
+        """The number of features used to represent the vocabulary."""
         return self._num_features
 
     @property
     def tokenization_fn(self) -> Callable[[str], List[str]]:
+        """The function used to generate tokens."""
         return self._tokenization_fn
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -330,18 +337,29 @@ class CountVectorizer(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately tokenize and count."""
         return self._columns
 
     @property
     def tokenization_fn(self) -> Callable[[str], List[str]]:
+        """The function used to generate tokens."""
         return self._tokenization_fn
 
     @property
     def max_features(self) -> Optional[int]:
+        """The maximum number of tokens to encode.
+
+        Only the most frequent tokens are encoded. ``None`` means every token is
+        encoded.
+        """
         return self._max_features
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
